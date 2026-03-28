@@ -334,79 +334,163 @@ export function NewOrderScreen() {
       {/* Step 2 — Case Details */}
       {step === 2 && (
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <SectionCard title="Vaka Detayları" icon="clipboard-outline">
-            <View style={styles.urgentRow}>
-              <View>
-                <Text style={styles.fieldLabel}>Acil Vaka</Text>
-                <Text style={styles.fieldSub}>Acil vakalarda öncelikli işlem yapılır</Text>
-              </View>
-              <Switch
-                value={form.is_urgent}
-                onValueChange={set('is_urgent')}
-                trackColor={{ false: C.border, true: '#FECACA' }}
-                thumbColor={form.is_urgent ? '#DC2626' : C.textMuted}
-              />
-            </View>
 
-            <Text style={[styles.fieldLabel, { marginTop: 12 }]}>Ölçüm Tipi</Text>
-            <View style={styles.chipRow}>
+          {/* ── Öncelik & Onay ── */}
+          <SectionCard title="Öncelik & Onay" icon={'tune' as any}>
+            <View style={styles.twoCol}>
+              {/* Acil Vaka */}
+              <TouchableOpacity
+                style={[s2.toggleCard, form.is_urgent && s2.toggleCardDanger]}
+                onPress={() => set('is_urgent')(!form.is_urgent)}
+                activeOpacity={0.82}
+              >
+                <View style={[s2.toggleIconWrap, form.is_urgent ? s2.toggleIconDanger : s2.toggleIconDefault]}>
+                  <MaterialCommunityIcons name={'alarm' as any} size={18} color={form.is_urgent ? '#DC2626' : '#94A3B8'} />
+                </View>
+                <View style={s2.toggleMid}>
+                  <Text style={[s2.toggleTitle, form.is_urgent && { color: '#DC2626' }]}>Acil Vaka</Text>
+                  <Text style={s2.toggleSub}>Öncelikli işleme alınır</Text>
+                </View>
+                <Switch
+                  value={form.is_urgent}
+                  onValueChange={set('is_urgent')}
+                  trackColor={{ false: '#E2E8F0', true: '#FECACA' }}
+                  thumbColor={form.is_urgent ? '#DC2626' : '#CBD5E1'}
+                />
+              </TouchableOpacity>
+
+              {/* Tasarım Onayı */}
+              <TouchableOpacity
+                style={[s2.toggleCard, form.doctor_approval_required && s2.toggleCardPrimary]}
+                onPress={() => set('doctor_approval_required')(!form.doctor_approval_required)}
+                activeOpacity={0.82}
+              >
+                <View style={[s2.toggleIconWrap, form.doctor_approval_required ? s2.toggleIconPrimary : s2.toggleIconDefault]}>
+                  <MaterialCommunityIcons name={'check-decagram-outline' as any} size={18} color={form.doctor_approval_required ? C.primary : '#94A3B8'} />
+                </View>
+                <View style={s2.toggleMid}>
+                  <Text style={[s2.toggleTitle, form.doctor_approval_required && { color: C.primary }]}>Tasarım Onayı</Text>
+                  <Text style={s2.toggleSub}>Bitmeden onay istenir</Text>
+                </View>
+                <Switch
+                  value={form.doctor_approval_required}
+                  onValueChange={set('doctor_approval_required')}
+                  trackColor={{ false: '#E2E8F0', true: '#BFDBFE' }}
+                  thumbColor={form.doctor_approval_required ? C.primary : '#CBD5E1'}
+                />
+              </TouchableOpacity>
+            </View>
+          </SectionCard>
+
+          {/* ── Ölçüm Yöntemi ── */}
+          <SectionCard title="Ölçüm Yöntemi" icon={'ruler' as any}>
+            <View style={styles.twoCol}>
               {[
-                { value: 'manual',  label: '🧱 Manuel (Fiziksel Ölçü)' },
-                { value: 'digital', label: '💻 Dijital (STL Dosyası)' },
-              ].map((m) => (
-                <TouchableOpacity key={m.value}
-                  onPress={() => set('measurement_type')(m.value as 'manual' | 'digital')}
-                  style={[styles.chip, form.measurement_type === m.value && styles.chipActive]}>
-                  <Text style={[styles.chipText, form.measurement_type === m.value && styles.chipTextActive]}>
-                    {m.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                { value: 'manual'  as const, icon: 'gesture-tap-hold',   label: 'Manuel',  sub: 'Fiziksel ölçü alımı' },
+                { value: 'digital' as const, icon: 'monitor-eye',        label: 'Dijital', sub: 'STL / tarama dosyası' },
+              ].map((m) => {
+                const active = form.measurement_type === m.value;
+                return (
+                  <TouchableOpacity
+                    key={m.value}
+                    style={[s2.optionCard, active && s2.optionCardActive]}
+                    onPress={() => set('measurement_type')(m.value)}
+                    activeOpacity={0.82}
+                  >
+                    {active && (
+                      <View style={s2.optionCheck}>
+                        <MaterialCommunityIcons name="check" size={10} color="#FFFFFF" />
+                      </View>
+                    )}
+                    <View style={[s2.optionIconWrap, active && s2.optionIconWrapActive]}>
+                      <MaterialCommunityIcons name={m.icon as any} size={22} color={active ? '#FFFFFF' : '#94A3B8'} />
+                    </View>
+                    <Text style={[s2.optionLabel, active && s2.optionLabelActive]}>{m.label}</Text>
+                    <Text style={s2.optionSub}>{m.sub}</Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
+          </SectionCard>
 
-            <View style={[styles.rowBetween, { marginTop: 12 }]}>
-              <View>
-                <Text style={styles.fieldLabel}>Tasarım Onayı Gereksin</Text>
-                <Text style={{ fontSize: 11, color: C.textMuted }}>Tasarım bittikten sonra onay beklensin</Text>
+          {/* ── Model Tipi ── */}
+          <SectionCard title="Model Tipi" icon={'cube-outline' as any}>
+            <View style={s2.modelGrid}>
+              {[
+                { value: 'dijital',  icon: 'monitor',           label: 'Dijital Tarama', color: '#2563EB', bg: '#EFF6FF', border: '#BFDBFE' },
+                { value: 'fiziksel', icon: 'package-variant',   label: 'Fiziksel Model', color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE' },
+                { value: 'fotograf', icon: 'camera-outline',    label: 'Fotoğraf/Video', color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' },
+                { value: 'cad',      icon: 'drawing-box',       label: 'CAD Dosyası',    color: '#059669', bg: '#ECFDF5', border: '#A7F3D0' },
+              ].map((m) => {
+                const active = form.model_type === m.value;
+                return (
+                  <TouchableOpacity
+                    key={m.value}
+                    style={[s2.modelCard, active && { borderColor: m.border, backgroundColor: m.bg }]}
+                    onPress={() => set('model_type')(form.model_type === m.value ? '' : m.value)}
+                    activeOpacity={0.82}
+                  >
+                    {active && (
+                      <View style={[s2.modelCheck, { backgroundColor: m.color }]}>
+                        <MaterialCommunityIcons name="check" size={9} color="#FFFFFF" />
+                      </View>
+                    )}
+                    <MaterialCommunityIcons name={m.icon as any} size={24} color={active ? m.color : '#94A3B8'} />
+                    <Text style={[s2.modelLabel, active && { color: m.color, fontFamily: F.semibold, fontWeight: '600' }]}>
+                      {m.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </SectionCard>
+
+          {/* ── Teslim Tarihi ── */}
+          <SectionCard title="Teslim Tarihi" icon={'calendar-check-outline' as any}>
+            <View style={s2.deliveryRow}>
+              <View style={s2.deliveryIconWrap}>
+                <MaterialCommunityIcons name={'truck-outline' as any} size={18} color={C.primary} />
               </View>
-              <Switch
-                value={form.doctor_approval_required}
-                onValueChange={set('doctor_approval_required')}
-                trackColor={{ false: C.border, true: '#BFDBFE' }}
-                thumbColor={form.doctor_approval_required ? C.primary : C.textMuted}
+              <View style={{ flex: 1 }}>
+                <Text style={s2.deliveryLabel}>Teslim Edilecek Tarih</Text>
+                <DateField
+                  value={form.delivery_date}
+                  onChange={set('delivery_date')}
+                  minDate={new Date()}
+                />
+              </View>
+            </View>
+          </SectionCard>
+
+          {/* ── Notlar ── */}
+          <SectionCard title="Notlar" icon={'note-text-outline' as any}>
+            <Field
+              label="Doktor Talimatları / Açıklaması"
+              value={form.notes}
+              onChangeText={set('notes')}
+              placeholder="Hekimin özel gereksinimleri, talimatları..."
+              multiline
+            />
+            <View style={s2.labNoteWrap}>
+              <View style={s2.labNoteHeader}>
+                <MaterialCommunityIcons name="lock-outline" size={12} color="#D97706" />
+                <Text style={s2.labNoteTitle}>Lab İç Notu</Text>
+                <Text style={s2.labNoteHint}>· doktora görünmez</Text>
+              </View>
+              <TextInput
+                style={s2.labNoteInput}
+                value={form.lab_notes}
+                onChangeText={set('lab_notes')}
+                placeholder="Teknisyen notları, hatırlatmalar..."
+                placeholderTextColor={C.textMuted}
+                multiline
+                textAlignVertical="top"
+                // @ts-ignore
+                outlineStyle="none"
               />
             </View>
-
-            <Text style={[styles.fieldLabel, { marginTop: 12 }]}>Model Tipi</Text>
-            <View style={styles.chipRow}>
-              {MODEL_TYPES.map((m) => (
-                <TouchableOpacity key={m.value}
-                  onPress={() => set('model_type')(form.model_type === m.value ? '' : m.value)}
-                  style={[styles.chip, form.model_type === m.value && styles.chipActive]}>
-                  <Text style={[styles.chipText, form.model_type === m.value && styles.chipTextActive]}>
-                    {m.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <DateField
-              label="Teslim Tarihi"
-              value={form.delivery_date}
-              onChange={set('delivery_date')}
-              minDate={new Date()}
-            />
           </SectionCard>
 
-          <SectionCard title="Notlar" icon="document-text-outline">
-            <Field label="Doktor Talimatları / Açıklaması"
-              value={form.notes} onChangeText={set('notes')}
-              placeholder="Hekimin özel gereksinimleri, talimatları..." multiline />
-            <Field label="Lab İç Notu (doktora görünmez)"
-              value={form.lab_notes} onChangeText={set('lab_notes')}
-              placeholder="Teknisyen notları, hatırlatmalar..." multiline
-              style={{ backgroundColor: '#FFFBEB', borderColor: '#FDE68A' }} />
-          </SectionCard>
         </ScrollView>
       )}
 
@@ -1860,4 +1944,102 @@ const styles = StyleSheet.create({
   },
   submitBtn:   { backgroundColor: '#059669', shadowColor: '#059669' },
   nextBtnText: { fontSize: 14, fontWeight: '500', fontFamily: F.medium, color: '#FFFFFF', letterSpacing: 0.3 },
+});
+
+// ── Step 2 styles ────────────────────────────────────────────────
+const s2 = StyleSheet.create({
+  /* Toggle cards (Acil Vaka / Tasarım Onayı) */
+  toggleCard: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10,
+    padding: 13, borderRadius: 13,
+    borderWidth: 1.5, borderColor: '#E2E8F0', backgroundColor: '#FAFBFC',
+  },
+  toggleCardDanger:  { borderColor: '#FECACA', backgroundColor: '#FFF5F5' },
+  toggleCardPrimary: { borderColor: '#BFDBFE', backgroundColor: '#EFF6FF' },
+  toggleIconWrap: {
+    width: 38, height: 38, borderRadius: 11,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  toggleIconDefault: { backgroundColor: '#F1F5F9' },
+  toggleIconDanger:  { backgroundColor: '#FEE2E2' },
+  toggleIconPrimary: { backgroundColor: '#DBEAFE' },
+  toggleMid:  { flex: 1 },
+  toggleTitle: { fontSize: 13, fontWeight: '600', fontFamily: F.semibold, color: '#1E293B' },
+  toggleSub:   { fontSize: 11, fontFamily: F.regular, color: '#94A3B8', marginTop: 2 },
+
+  /* Option cards (Ölçüm Yöntemi) */
+  optionCard: {
+    flex: 1, alignItems: 'center', gap: 7,
+    paddingVertical: 18, paddingHorizontal: 12,
+    borderRadius: 14, borderWidth: 1.5, borderColor: '#E2E8F0', backgroundColor: '#FAFBFC',
+    position: 'relative',
+  },
+  optionCardActive: { borderColor: C.primary, backgroundColor: '#EFF6FF' },
+  optionIconWrap: {
+    width: 48, height: 48, borderRadius: 14,
+    backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center',
+  },
+  optionIconWrapActive: { backgroundColor: C.primary },
+  optionLabel:       { fontSize: 14, fontWeight: '600', fontFamily: F.semibold, color: '#475569' },
+  optionLabelActive: { color: C.primary },
+  optionSub:         { fontSize: 11, fontFamily: F.regular, color: '#94A3B8', textAlign: 'center' },
+  optionCheck: {
+    position: 'absolute', top: 8, right: 8,
+    width: 20, height: 20, borderRadius: 10,
+    backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center',
+  },
+
+  /* Model grid (2×2) */
+  modelGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  modelCard: {
+    width: '47.5%', alignItems: 'center', gap: 8,
+    paddingVertical: 16, paddingHorizontal: 10,
+    borderRadius: 13, borderWidth: 1.5, borderColor: '#E2E8F0', backgroundColor: '#FAFBFC',
+    position: 'relative',
+  },
+  modelLabel: {
+    fontSize: 12, fontWeight: '500', fontFamily: F.medium,
+    color: '#64748B', textAlign: 'center',
+  },
+  modelCheck: {
+    position: 'absolute', top: 7, right: 7,
+    width: 17, height: 17, borderRadius: 9,
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  /* Delivery date row */
+  deliveryRow: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+  },
+  deliveryIconWrap: {
+    width: 42, height: 42, borderRadius: 12, marginTop: 0,
+    backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center',
+  },
+  deliveryLabel: {
+    fontSize: 11, fontWeight: '500', fontFamily: F.medium, color: '#64748B',
+    marginBottom: 7, letterSpacing: 0.5, textTransform: 'uppercase',
+  },
+
+  /* Lab note */
+  labNoteWrap: {
+    borderRadius: 12, overflow: 'hidden',
+    borderWidth: 1.5, borderColor: '#FDE68A',
+  },
+  labNoteHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 12, paddingVertical: 9,
+    backgroundColor: '#FFFBEB',
+    borderBottomWidth: 1, borderBottomColor: '#FDE68A',
+  },
+  labNoteTitle: {
+    fontSize: 11, fontWeight: '600', fontFamily: F.semibold, color: '#92400E',
+    textTransform: 'uppercase', letterSpacing: 0.5,
+  },
+  labNoteHint: { fontSize: 10, fontFamily: F.regular, color: '#B45309' },
+  labNoteInput: {
+    paddingHorizontal: 13, paddingVertical: 11,
+    fontSize: 14, fontFamily: F.regular, color: '#0F172A',
+    backgroundColor: '#FFFDF5', minHeight: 88,
+    textAlignVertical: 'top',
+  },
 });
