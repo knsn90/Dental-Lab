@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { DentistIcon } from '../../../components/icons/DentistIcon';
 import { signUpDoctor } from '../api';
+import { supabase } from '../../../lib/supabase';
 import { C } from '../../../core/theme/colors';
 import { F } from '../../../core/theme/typography';
 
@@ -85,9 +86,9 @@ export function RegisterDoctorScreen() {
       return;
     }
 
-    if (!data?.session) {
-      setSuccessMsg('Kayıt başarılı! Lütfen e-posta adresinizi onaylayın, ardından giriş yapın.');
-    }
+    // Sign out immediately - doctor needs approval before accessing the app
+    await supabase.auth.signOut();
+    setSuccessMsg('Kaydınız alındı! Laborant yöneticisi onayından sonra giriş yapabilirsiniz.');
   };
 
   return (

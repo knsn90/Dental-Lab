@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { DentistIcon } from '../../../components/icons/DentistIcon';
 import { signIn } from '../api';
+import { supabase } from '../../../lib/supabase';
 import { C } from '../../../core/theme/colors';
 import { F } from '../../../core/theme/typography';
 
@@ -41,9 +42,33 @@ export function LoginScreen() {
     if (!validate()) return;
     setLoading(true);
     setErrorMsg('');
-    const { error } = await signIn(email.trim().toLowerCase(), password);
+    const { data, error } = await signIn(email.trim().toLowerCase(), password);
+    if (error) {
+      setErrorMsg('E-posta veya şifre hatalı.');
+      setLoading(false);
+      return;
+    }
+    // Check if doctor is pending approval
+    if (data?.user) {
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('user_type, approval_status, is_active')
+        .eq('id', data.user.id)
+        .single();
+      if (prof?.user_type === 'doctor' && prof?.approval_status === 'pending') {
+        await supabase.auth.signOut();
+        setErrorMsg('Hesabınız henüz onaylanmadı. Laborant yöneticisi onayından sonra giriş yapabilirsiniz.');
+        setLoading(false);
+        return;
+      }
+      if (prof?.user_type === 'doctor' && prof?.approval_status === 'rejected') {
+        await supabase.auth.signOut();
+        setErrorMsg('Hesabınız reddedildi. Detay için laborant ile iletişime geçin.');
+        setLoading(false);
+        return;
+      }
+    }
     setLoading(false);
-    if (error) setErrorMsg('E-posta veya şifre hatalı.');
   };
 
   return (

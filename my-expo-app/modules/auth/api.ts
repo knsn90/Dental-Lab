@@ -38,6 +38,12 @@ export async function signUpDoctor(params: SignUpDoctorParams) {
 
   if (authResult.error || !authResult.data.user) return authResult;
 
+  // Mark doctor as pending approval (belt & suspenders alongside trigger)
+  await supabase
+    .from('profiles')
+    .update({ is_active: false, approval_status: 'pending' })
+    .eq('id', authResult.data.user.id);
+
   // 2 — Create clinic record
   const { data: clinic, error: clinicError } = await supabase
     .from('clinics')
@@ -89,3 +95,5 @@ export async function signOut() {
 export async function fetchProfile(userId: string) {
   return supabase.from('profiles').select('*').eq('id', userId).single();
 }
+
+export { supabase };
