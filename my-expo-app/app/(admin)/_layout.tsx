@@ -1,28 +1,39 @@
 import React from 'react';
-import { Tabs } from 'expo-router';
+import { Slot, Tabs } from 'expo-router';
 import { Text, View } from 'react-native';
 import Colors from '../../constants/colors';
 import { DesktopShell, useIsDesktop } from '../../components/layout/DesktopShell';
 import { DentistIcon } from '../../components/icons/DentistIcon';
 import { usePendingApprovals } from '../../core/hooks/usePendingApprovals';
+import { useStockAlert } from '../../core/hooks/useStockAlert';
+import { useAuthStore } from '../../core/store/authStore';
 
 function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
   return <Text style={{ fontSize: focused ? 24 : 22, opacity: focused ? 1 : 0.6 }}>{emoji}</Text>;
 }
 
 export default function AdminLayout() {
+  const { profile, loading } = useAuthStore();
   const pendingCount = usePendingApprovals();
+  const stockAlert = useStockAlert();
   const isDesktop = useIsDesktop();
 
+  // Admin olmayan kullanıcı bu layout'a düştüyse sidebar gösterme
+  if (loading || !profile || profile.user_type !== 'admin') {
+    return <Slot />;
+  }
+
   const ADMIN_NAV = [
-    { label: 'Özet',      emoji: '📊', href: '/(admin)',             iconName: 'chart-bar',             iconSet: 'mdi' as const },
-    { label: 'Kullanıcı', emoji: '👥', href: '/(admin)/users',      iconName: 'account-group-outline', iconSet: 'mdi' as const },
-    { label: 'Hekimler',  emoji: '👨‍⚕️', href: '/(admin)/doctors',   iconName: 'tooth-outline',         iconSet: 'mdi' as const },
-    { label: 'Klinikler', emoji: '🏥', href: '/(admin)/clinics',    iconName: 'office-building-outline',iconSet: 'mdi' as const },
-    { label: 'Siparişler',emoji: '📋', href: '/(admin)/orders',     iconName: 'format-list-bulleted',   iconSet: 'mdi' as const },
-    { label: 'Onaylar',   emoji: '✅', href: '/(admin)/approvals',  iconName: 'account-check-outline',  iconSet: 'mdi' as const, badge: pendingCount > 0 },
-    { label: 'Loglar',    emoji: '📜', href: '/(admin)/logs',       iconName: 'clipboard-text-outline', iconSet: 'mdi' as const },
-    { label: 'Profil',    emoji: '⚙️', href: '/(admin)/profile',    iconName: 'cog-outline',            iconSet: 'mdi' as const },
+    { label: 'Özet',         emoji: '📊', href: '/(admin)',              iconName: 'chart-bar',             iconSet: 'mdi' as const },
+    { label: 'Yeni İş Emri', emoji: '➕', href: '/(admin)/new-order',   iconName: 'plus-circle-outline',   iconSet: 'mdi' as const, subtitle: 'Formu adım adım doldurun' },
+    { label: 'Kullanıcı',    emoji: '👥', href: '/(admin)/users',       iconName: 'account-group-outline', iconSet: 'mdi' as const },
+    { label: 'Hekimler',     emoji: '👨‍⚕️', href: '/(admin)/doctors',    iconName: 'tooth-outline',         iconSet: 'mdi' as const },
+    { label: 'Klinikler',    emoji: '🏥', href: '/(admin)/clinics',     iconName: 'office-building-outline',iconSet: 'mdi' as const },
+    { label: 'Siparişler',   emoji: '📋', href: '/(admin)/orders',      iconName: 'format-list-bulleted',   iconSet: 'mdi' as const },
+    { label: 'Onaylar',      emoji: '✅', href: '/(admin)/approvals',   iconName: 'account-check-outline',  iconSet: 'mdi' as const, badge: pendingCount > 0 },
+    { label: 'Loglar',       emoji: '📜', href: '/(admin)/logs',        iconName: 'clipboard-text-outline', iconSet: 'mdi' as const },
+    { label: 'Stok',         emoji: '📦', href: '/(admin)/stock',        iconName: 'package',                iconSet: 'mdi' as const, matchPrefix: true, badgeCount: stockAlert },
+    { label: 'Profil',       emoji: '⚙️', href: '/(admin)/profile',     iconName: 'cog-outline',            iconSet: 'mdi' as const },
   ];
 
   if (isDesktop) {
@@ -45,6 +56,7 @@ export default function AdminLayout() {
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'Özet', tabBarIcon: ({ focused }) => <TabIcon emoji="📊" focused={focused} /> }} />
+      <Tabs.Screen name="new-order" options={{ title: 'Yeni İş', tabBarIcon: ({ focused }) => <TabIcon emoji="➕" focused={focused} /> }} />
       <Tabs.Screen name="users" options={{ title: 'Kullanıcı', tabBarIcon: ({ focused }) => <TabIcon emoji="👥" focused={focused} /> }} />
       <Tabs.Screen
         name="doctors"
@@ -65,6 +77,7 @@ export default function AdminLayout() {
         }}
       />
       <Tabs.Screen name="logs" options={{ title: 'Loglar', tabBarIcon: ({ focused }) => <TabIcon emoji="📜" focused={focused} /> }} />
+      <Tabs.Screen name="stock" options={{ title: 'Stok', tabBarIcon: ({ focused }) => <TabIcon emoji="📦" focused={focused} /> }} />
       <Tabs.Screen name="profile" options={{ title: 'Profil', tabBarIcon: ({ focused }) => <TabIcon emoji="⚙️" focused={focused} /> }} />
     </Tabs>
   );
