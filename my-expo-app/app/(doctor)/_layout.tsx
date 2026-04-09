@@ -1,7 +1,8 @@
-import { Tabs } from 'expo-router';
+import { Slot, Tabs } from 'expo-router';
 import { Text } from 'react-native';
 import { C as Colors } from '../../core/theme/colors';
 import { DesktopShell, useIsDesktop } from '../../core/layout/DesktopShell';
+import { useAuthStore } from '../../core/store/authStore';
 
 function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
   return <Text style={{ fontSize: focused ? 24 : 22, opacity: focused ? 1 : 0.6 }}>{emoji}</Text>;
@@ -14,7 +15,14 @@ const DOCTOR_NAV = [
 ];
 
 export default function DoctorLayout() {
+  const { profile, loading } = useAuthStore();
   const isDesktop = useIsDesktop();
+
+  // Hekim olmayan kullanıcı bu layout'a düştüyse sidebar gösterme —
+  // _layout.tsx redirect gelene kadar boş slot döndür
+  if (loading || !profile || profile.user_type !== 'doctor') {
+    return <Slot />;
+  }
 
   if (isDesktop) {
     return <DesktopShell navItems={DOCTOR_NAV} accentColor={Colors.primary} />;

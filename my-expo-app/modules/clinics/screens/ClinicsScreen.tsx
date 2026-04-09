@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { fetchClinics, createClinic, updateClinic, fetchAllDoctors, createDoctor, updateDoctor } from '../api';
 import { Clinic, Doctor } from '../types';
 import { C } from '../../../core/theme/colors';
+import { ClinicIcon } from '../../../core/ui/ClinicIcon';
 
 // ─── Doctor Modal ─────────────────────────────────────────────────────────────
 
@@ -23,29 +24,47 @@ interface DoctorModalProps {
   visible: boolean;
   clinic: Clinic | null;
   doctor: Doctor | null;
+  clinics: Clinic[];
   onClose: () => void;
   onSave: () => void;
+  onClinicCreated: (clinic: Clinic) => void;
 }
 
-function DoctorModal({ visible, clinic, doctor, onClose, onSave }: DoctorModalProps) {
+function DoctorModal({ visible, clinic, doctor, clinics, onClose, onSave, onClinicCreated }: DoctorModalProps) {
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [specialty, setSpecialty] = useState('');
   const [notes, setNotes] = useState('');
+  const [selectedClinicId, setSelectedClinicId] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  // Clinic picker state
+  const [clinicSearch, setClinicSearch] = useState('');
+  const [clinicPickerOpen, setClinicPickerOpen] = useState(false);
+
+  // Nested clinic add modal
+  const [clinicModalVisible, setClinicModalVisible] = useState(false);
+  const [clinicModalPrefill, setClinicModalPrefill] = useState('');
+  const [clinicModalSaving, setClinicModalSaving] = useState(false);
+  const [clinicForm, setClinicForm] = useState({ name: '', contact_person: '', phone: '', address: '', email: '', notes: '' });
+  const [clinicError, setClinicError] = useState('');
+
   useEffect(() => {
-    if (doctor) {
-      setFullName(doctor.full_name);
-      setPhone(doctor.phone ?? '');
-      setSpecialty(doctor.specialty ?? '');
-      setNotes(doctor.notes ?? '');
-    } else {
-      setFullName(''); setPhone(''); setSpecialty(''); setNotes('');
+    if (visible) {
+      if (doctor) {
+        setFullName(doctor.full_name);
+        setPhone(doctor.phone ?? '');
+        setSpecialty(doctor.specialty ?? '');
+        setNotes(doctor.notes ?? '');
+        setSelectedClinicId(doctor.clinic_id ?? clinic?.id ?? '');
+      } else {
+        setFullName(''); setPhone(''); setSpecialty(''); setNotes('');
+        setSelectedClinicId(clinic?.id ?? '');
+      }
+      setError(''); setClinicSearch(''); setClinicPickerOpen(false);
     }
-    setError('');
-  }, [doctor, visible]);
+  }, [doctor, clinic, visible]);
 
   const handleSave = async () => {
     if (!fullName.trim()) { setError('Hekim adı zorunludur.'); return; }
@@ -55,13 +74,14 @@ function DoctorModal({ visible, clinic, doctor, onClose, onSave }: DoctorModalPr
       phone: phone || null,
       specialty: specialty || null,
       notes: notes || null,
+      clinic_id: selectedClinicId || null,
     };
     let err: any = null;
     if (doctor) {
       const res = await updateDoctor(doctor.id, payload);
       err = res.error;
     } else {
-      const res = await createDoctor({ ...payload, clinic_id: clinic?.id ?? null });
+      const res = await createDoctor(payload);
       err = res.error;
     }
     setSaving(false);
@@ -73,33 +93,145 @@ function DoctorModal({ visible, clinic, doctor, onClose, onSave }: DoctorModalPr
     onClose();
   };
 
+  const handleSaveClinic = async () => {
+    if (!clinicForm.name.trim()) { setClinicError('Klinik adı zorunludur.'); return; }
+    setClinicModalSaving(true);
+    const { data, error: err } = await createClinic({
+      name: clinicForm.name.trim(),
+      contact_person: clinicForm.contact_person || undefined,
+      phone: clinicForm.phone || undefined,
+      address: clinicForm.address || undefined,
+      email: clinicForm.email || undefined,
+      notes: clinicForm.notes || undefined,
+    });
+    setClinicModalSaving(false);
+    if (err || !data) { setClinicError('Klinik kaydedilemedi.'); return; }
+    const newClinic = data as Clinic;
+    onClinicCreated(newClinic);
+    setSelectedClinicId(newClinic.id);
+    setClinicModalVisible(false);
+    setClinicForm({ name: '', contact_person: '', phone: '', address: '', email: '', notes: '' });
+  };
+
+  const selectedClinic = clinics.find(c => c.id === selectedClinicId);
+  const filteredClinics = clinics.filter(c =>
+    c.is_active && (!clinicSearch || c.name.toLowerCase().includes(clinicSearch.toLowerCase()))
+  );
+
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={dm.overlay}>
-        <View style={dm.sheet}>
-          <View style={dm.header}>
-            <Text style={dm.title}>
-              {doctor ? 'Hekimi Düzenle' : `+ Hekim Ekle${clinic ? ` — ${clinic.name}` : ''}`}
-            </Text>
-            <TouchableOpacity onPress={onClose}>
-              <Text style={dm.close}>✕</Text>
-            </TouchableOpacity>
+    <>
+      <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+        <View style={dm.overlay}>
+          <View style={dm.sheet}>
+            <View style={dm.header}>
+              <Text style={dm.title}>
+                {doctor ? 'Hekimi Düzenle' : '+ Hekim Ekle'}
+              </Text>
+              <TouchableOpacity onPress={onClose}>
+                <Text style={dm.close}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <DField label="Hekim Adı *" value={fullName} onChangeText={(v: string) => { setFullName(v); setError(''); }} placeholder="Dr. Adı Soyadı" />
+              <DField label="Uzmanlık" value={specialty} onChangeText={setSpecialty} placeholder="Örn: Ortodonti, İmplant..." />
+              <DField label="Telefon" value={phone} onChangeText={setPhone} placeholder="0532 000 0000" keyboardType="phone-pad" />
+
+              {/* Klinik seçici */}
+              <View style={dm.field}>
+                <Text style={dm.label}>Klinik / Muayenehane</Text>
+                <TouchableOpacity
+                  style={[dm.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+                  onPress={() => setClinicPickerOpen(v => !v)}
+                >
+                  <Text style={selectedClinic ? { color: '#1E293B', fontSize: 14 } : { color: '#B0BAC9', fontSize: 14 }}>
+                    {selectedClinic ? selectedClinic.name : 'Klinik seçin...'}
+                  </Text>
+                  <Text style={{ color: '#94A3B8', fontSize: 12 }}>{clinicPickerOpen ? '▲' : '▼'}</Text>
+                </TouchableOpacity>
+                {clinicPickerOpen && (
+                  <View style={dm.pickerPanel}>
+                    <TextInput
+                      style={dm.pickerSearch}
+                      value={clinicSearch}
+                      onChangeText={setClinicSearch}
+                      placeholder="Klinik ara..."
+                      placeholderTextColor="#B0BAC9"
+                    />
+                    <ScrollView style={{ maxHeight: 160 }} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+                      {selectedClinicId ? (
+                        <TouchableOpacity style={dm.pickerItem} onPress={() => { setSelectedClinicId(''); setClinicPickerOpen(false); setClinicSearch(''); }}>
+                          <Text style={{ color: '#EF4444', fontSize: 13 }}>✕ Kliniği kaldır</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                      {filteredClinics.map(c => (
+                        <TouchableOpacity
+                          key={c.id}
+                          style={[dm.pickerItem, c.id === selectedClinicId && dm.pickerItemActive]}
+                          onPress={() => { setSelectedClinicId(c.id); setClinicPickerOpen(false); setClinicSearch(''); }}
+                        >
+                          <Text style={[{ fontSize: 14, color: '#1E293B' }, c.id === selectedClinicId && { color: '#2563EB', fontWeight: '700' }]}>
+                            {c.name}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                      {filteredClinics.length === 0 && (
+                        <Text style={{ padding: 10, color: '#94A3B8', fontSize: 13 }}>Sonuç bulunamadı</Text>
+                      )}
+                      <TouchableOpacity
+                        style={dm.pickerAddBtn}
+                        onPress={() => {
+                          setClinicPickerOpen(false);
+                          setClinicModalPrefill(clinicSearch);
+                          setClinicForm(f => ({ ...f, name: clinicSearch }));
+                          setClinicError('');
+                          setClinicModalVisible(true);
+                        }}
+                      >
+                        <Text style={dm.pickerAddText}>+ Yeni klinik ekle{clinicSearch ? `: "${clinicSearch}"` : ''}</Text>
+                      </TouchableOpacity>
+                    </ScrollView>
+                  </View>
+                )}
+              </View>
+
+              <DField label="Notlar" value={notes} onChangeText={setNotes} placeholder="Ek bilgi..." multiline />
+              {error ? (
+                <View style={dm.error}><Text style={dm.errorText}>⚠️ {error}</Text></View>
+              ) : null}
+              <TouchableOpacity style={[dm.saveBtn, saving && { opacity: 0.6 }]} onPress={handleSave} disabled={saving}>
+                <Text style={dm.saveBtnText}>{saving ? 'Kaydediliyor...' : doctor ? 'Güncelle' : 'Hekimi Kaydet'}</Text>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
-          <ScrollView showsVerticalScrollIndicator={false}>
-            <DField label="Hekim Adı *" value={fullName} onChangeText={(v: string) => { setFullName(v); setError(''); }} placeholder="Dr. Adı Soyadı" />
-            <DField label="Uzmanlık" value={specialty} onChangeText={setSpecialty} placeholder="Örn: Ortodonti, İmplant..." />
-            <DField label="Telefon" value={phone} onChangeText={setPhone} placeholder="0532 000 0000" keyboardType="phone-pad" />
-            <DField label="Notlar" value={notes} onChangeText={setNotes} placeholder="Ek bilgi..." multiline />
-            {error ? (
-              <View style={dm.error}><Text style={dm.errorText}>⚠️ {error}</Text></View>
-            ) : null}
-            <TouchableOpacity style={[dm.saveBtn, saving && { opacity: 0.6 }]} onPress={handleSave} disabled={saving}>
-              <Text style={dm.saveBtnText}>{saving ? 'Kaydediliyor...' : doctor ? 'Güncelle' : 'Hekimi Kaydet'}</Text>
-            </TouchableOpacity>
-          </ScrollView>
         </View>
-      </View>
-    </Modal>
+      </Modal>
+
+      {/* Nested clinic add modal */}
+      <Modal visible={clinicModalVisible} transparent animationType="fade" onRequestClose={() => setClinicModalVisible(false)}>
+        <View style={dm.overlay}>
+          <View style={dm.sheet}>
+            <View style={dm.header}>
+              <Text style={dm.title}>Yeni Klinik</Text>
+              <TouchableOpacity onPress={() => setClinicModalVisible(false)}>
+                <Text style={dm.close}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <DField label="Klinik Adı *" value={clinicForm.name} onChangeText={(v: string) => { setClinicForm(f => ({ ...f, name: v })); setClinicError(''); }} placeholder="Örn: Merkez Diş Kliniği" />
+              <DField label="İletişim Kişisi" value={clinicForm.contact_person} onChangeText={(v: string) => setClinicForm(f => ({ ...f, contact_person: v }))} placeholder="Dr. Ahmet Kaya" />
+              <DField label="Telefon" value={clinicForm.phone} onChangeText={(v: string) => setClinicForm(f => ({ ...f, phone: v }))} placeholder="0532 000 0000" keyboardType="phone-pad" />
+              <DField label="Adres" value={clinicForm.address} onChangeText={(v: string) => setClinicForm(f => ({ ...f, address: v }))} placeholder="Mahalle, Cadde, İl..." multiline />
+              <DField label="E-posta" value={clinicForm.email} onChangeText={(v: string) => setClinicForm(f => ({ ...f, email: v }))} placeholder="klinik@ornek.com" keyboardType="email-address" />
+              <DField label="Notlar" value={clinicForm.notes} onChangeText={(v: string) => setClinicForm(f => ({ ...f, notes: v }))} placeholder="Ek bilgiler..." multiline />
+              {clinicError ? <View style={dm.error}><Text style={dm.errorText}>⚠️ {clinicError}</Text></View> : null}
+              <TouchableOpacity style={[dm.saveBtn, clinicModalSaving && { opacity: 0.6 }]} onPress={handleSaveClinic} disabled={clinicModalSaving}>
+                <Text style={dm.saveBtnText}>{clinicModalSaving ? 'Kaydediliyor...' : 'Kliniği Kaydet'}</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -302,7 +434,7 @@ export function ClinicsScreen() {
           contentContainerStyle={s.list}
           ListEmptyComponent={
             <View style={s.empty}>
-              <Text style={s.emptyIcon}>🏥</Text>
+              <ClinicIcon size={52} color="#94A3B8" />
               <Text style={s.emptyText}>{search ? 'Sonuç bulunamadı' : 'Henüz klinik eklenmemiş'}</Text>
               {!search && (
                 <TouchableOpacity style={s.emptyBtn} onPress={openAddClinic}>
@@ -318,7 +450,7 @@ export function ClinicsScreen() {
               <View style={[s.card, !clinic.is_active && s.cardInactive]}>
                 <View style={s.cardTop}>
                   <View style={s.cardIcon}>
-                    <Text style={s.cardIconText}>🏥</Text>
+                    <ClinicIcon size={26} color={C.primary} />
                   </View>
                   <View style={s.cardMain}>
                     <Text style={s.cardName}>{clinic.name}</Text>
@@ -454,8 +586,10 @@ export function ClinicsScreen() {
         visible={doctorModal}
         clinic={doctorClinic}
         doctor={editDoctor}
+        clinics={clinics}
         onClose={() => setDoctorModal(false)}
         onSave={load}
+        onClinicCreated={(clinic) => setClinics(prev => [...prev, clinic])}
       />
     </SafeAreaView>
   );
@@ -573,6 +707,22 @@ const dm = StyleSheet.create({
   errorText: { fontSize: 13, color: '#DC2626', fontWeight: '600' },
   saveBtn: { backgroundColor: C.primary, paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginTop: 4, marginBottom: 8 },
   saveBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 15 },
+  pickerPanel: {
+    borderWidth: 1, borderColor: C.border, borderRadius: 10, backgroundColor: C.surface,
+    marginTop: 4, overflow: 'hidden',
+    ...(Platform.OS === 'web' ? { boxShadow: '0 4px 16px rgba(0,0,0,0.1)' } as any : {
+      shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 4,
+    }),
+  },
+  pickerSearch: {
+    borderBottomWidth: 1, borderBottomColor: C.border,
+    paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, color: C.textPrimary,
+    backgroundColor: C.background,
+  },
+  pickerItem: { paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border },
+  pickerItemActive: { backgroundColor: '#EFF6FF' },
+  pickerAddBtn: { paddingHorizontal: 14, paddingVertical: 10, backgroundColor: '#F0F9FF' },
+  pickerAddText: { fontSize: 13, color: C.primary, fontWeight: '700' },
 });
 
 const dc = StyleSheet.create({

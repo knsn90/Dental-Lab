@@ -166,20 +166,42 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (loading) return;
-    const inAuthGroup   = segments[0] === '(auth)';
-    // Admin-login sayfası kendi yönlendirmesini kendisi yapar —
-    // race condition'ı önlemek için burada otomatik yönlendirme engellenir.
-    const isAdminLogin  = segments[1] === 'admin-login';
+    const inAuthGroup  = segments[0] === '(auth)';
+    const isAdminLogin = segments[1] === 'admin-login';
 
     if (!session) {
       if (!inAuthGroup) router.replace('/(auth)/login');
-    } else {
-      const userType = profile?.user_type ?? (session.user.user_metadata?.user_type as string | undefined);
-      if (userType && inAuthGroup && !isAdminLogin) {
+      return;
+    }
+
+    const userType = profile?.user_type ?? (session.user.user_metadata?.user_type as string | undefined);
+    if (!userType) return;
+
+    // Kullanıcı tipine göre doğru panel grubu
+    const expectedGroup = userType === 'doctor' ? '(doctor)'
+                        : userType === 'admin'  ? '(admin)'
+                        : '(lab)';
+    const currentGroup  = segments[0];
+
+    if (inAuthGroup) {
+      // Auth sayfasındayken oturum açıldıysa doğru panele gönder
+      if (!isAdminLogin) {
         if (userType === 'doctor') router.replace('/(doctor)');
         else if (userType === 'admin') router.replace('/(admin)');
         else router.replace('/(lab)');
       }
+    } else if (currentGroup !== expectedGroup) {
+      // Admin kullanıcılar lab panelini de görüntüleyebilir (çoklu sekme desteği)
+      if (userType === 'admin' && currentGroup === '(lab)') return;
+
+      // Yanlış panel grubundaysa (ör. lab kullanıcısı (doctor)/new-order içinde)
+      // Aynı alt sayfayı doğru grup içinde aç: ['(doctor)', 'new-order'] → '/(lab)/new-order'
+      const subPath  = segments.slice(1).join('/');
+      const base     = userType === 'doctor' ? '/(doctor)'
+                     : userType === 'admin'  ? '/(admin)'
+                     : '/(lab)';
+      const target   = subPath ? `${base}/${subPath}` : base;
+      router.replace(target as any);
     }
   }, [session, profile, loading]);
 

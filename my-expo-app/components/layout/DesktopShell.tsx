@@ -13,6 +13,7 @@ import { Slot, usePathname, useRouter } from 'expo-router';
 import { useAuthStore } from '../../store/authStore';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { DentistIcon } from '../icons/DentistIcon';
+import { ToothIcon } from '../icons/ToothIcon';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const C = {
@@ -22,7 +23,7 @@ const C = {
   bg:             '#F8FAFC',
   surface:        '#FFFFFF',
   border:         '#F1F5F9',
-  borderMid:      '#E2E8F0',
+  borderMid:      '#F1F5F9',
   textPrimary:    '#0F172A',
   textSecondary:  '#64748B',
   textMuted:      '#94A3B8',
@@ -62,6 +63,9 @@ function getInitials(name?: string | null) {
 function NavIcon({ item, active }: { item: NavItem; active: boolean }) {
   const iconColor = active ? '#FFFFFF' : C.textMuted;
   const size = 18;
+  if (item.iconName === 'tooth-outline') {
+    return <ToothIcon size={size} color={iconColor} />;
+  }
   if (item.iconName) {
     return <MaterialCommunityIcons name={item.iconName as any} size={size} color={iconColor} />;
   }

@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { ClinicIcon } from '../../core/ui/ClinicIcon';
 import { DentistIcon } from '../../components/icons/DentistIcon';
 import { supabase } from '../../lib/supabase';
 import { fetchDoctors, createDoctor, updateDoctor } from '../../lib/doctors';
@@ -215,7 +216,7 @@ function DoctorCard({
         ) : null}
         {doctor.clinic ? (
           <View style={styles.detailRow}>
-            <MaterialCommunityIcons name="office-building-outline" size={13} color={Colors.textMuted} />
+            <ClinicIcon size={13} color={Colors.textMuted} />
             <Text style={styles.detail}>{doctor.clinic.name}</Text>
           </View>
         ) : null}

@@ -234,9 +234,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   navItemActive: {
-    backgroundColor: ACCENT_BG,
-    // @ts-ignore
-    boxShadow: `inset 0 0 0 1.5px ${ACCENT}33`,
+    backgroundColor: TEXT_PRIMARY,
   },
   navEmoji: {
     fontSize: 20,
@@ -290,7 +288,7 @@ const styles = StyleSheet.create({
   topBarTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: ACCENT,
+    color: TEXT_PRIMARY,
   },
   topBarSeparator: {
     fontSize: 14,
@@ -359,7 +357,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   mobileTabLabelActive: {
-    color: ACCENT,
+    color: TEXT_PRIMARY,
     fontWeight: '700',
   },
 });

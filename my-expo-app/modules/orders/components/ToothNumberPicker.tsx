@@ -1,192 +1,290 @@
-import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, useWindowDimensions } from 'react-native';
+import React, { useState } from 'react';
+import { Platform, View, Text, useWindowDimensions } from 'react-native';
+import Svg, { G, Path, Text as SvgText, Rect } from 'react-native-svg';
 import { C } from '../../../core/theme/colors';
+import { F } from '../../../core/theme/typography';
+import { TOOTH_PATHS, TOOTH_LABEL_POS } from '../assets/toothPaths';
 
-// FDI numbering — upper: 18→11 then 21→28, lower: 48→41 then 31→38
-const UPPER_TEETH = [18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28];
-const LOWER_TEETH = [48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38];
+// ── FDI quadrant groups ──────────────────────────────────────────────
+const Q1 = [18, 17, 16, 15, 14, 13, 12, 11]; // upper-right
+const Q2 = [21, 22, 23, 24, 25, 26, 27, 28]; // upper-left
+const Q3 = [31, 32, 33, 34, 35, 36, 37, 38]; // lower-left
+const Q4 = [48, 47, 46, 45, 44, 43, 42, 41]; // lower-right
 
-const toRad = (d: number) => (d * Math.PI) / 180;
+// ── SVG viewport ────────────────────────────────────────────────────
+const VB_X      = -320;
+const VB_Y      = 200;
+const VB_W      = 3720;
+const VB_H      = 4380;
+const VIEW_BOX  = `${VB_X} ${VB_Y} ${VB_W} ${VB_H}`;
+const VB_ASPECT = VB_H / VB_W;
 
-// Tooth size by type (base values, scaled later)
-function baseSize(tooth: number): number {
-  if ([18, 28, 38, 48, 17, 27, 37, 47].includes(tooth)) return 22;
-  if ([16, 26, 36, 46].includes(tooth)) return 21;
-  if ([15, 25, 35, 45, 14, 24, 34, 44].includes(tooth)) return 18;
-  if ([13, 23, 33, 43].includes(tooth)) return 16;
-  return 13; // incisors
-}
-
-function computePositions(
-  teeth: number[],
-  cx: number, cy: number,
-  rx: number, ry: number,
-  t0: number, t1: number
-) {
-  return teeth.map((tooth, i) => {
-    const t = i / (teeth.length - 1);
-    const theta = t0 + t * (t1 - t0);
-    return {
-      tooth,
-      x: cx + rx * Math.cos(toRad(theta)),
-      y: cy + ry * Math.sin(toRad(theta)),
-    };
-  });
-}
-
+// ── Props ────────────────────────────────────────────────────────────
 interface Props {
+  /** Currently selected FDI tooth numbers (11–48). */
   selected: number[];
+  /** Called with the updated selection whenever a tooth is tapped. */
   onChange: (teeth: number[]) => void;
+  /** Available pixel width of the containing box. */
+  containerWidth?: number;
+  /** Currently focused/active tooth (shows a ring highlight). */
+  activeTooth?: number | null;
+  /** Called when a tooth is pressed — if provided, overrides the default toggle. */
+  onToothPress?: (fdi: number) => void;
+  /** Called on hover enter/leave (web only). */
+  onToothHover?: (fdi: number | null) => void;
+  /** Short tooltip text per tooth (shown on hover as SVG overlay). */
+  toothInfo?: Record<number, string>;
+  /** Per-tooth fill color override (confirmed teeth colored by work type). */
+  colorMap?: Record<number, string>;
+  /** Override the primary accent color (default: theme PRIMARY). */
+  accentColor?: string;
 }
 
-export function ToothNumberPicker({ selected, onChange }: Props) {
-  const { width } = useWindowDimensions();
+// ── Component ────────────────────────────────────────────────────────
+export function ToothNumberPicker({
+  selected,
+  onChange,
+  containerWidth,
+  activeTooth,
+  onToothPress,
+  onToothHover,
+  toothInfo,
+  colorMap,
+  accentColor,
+}: Props) {
+  const PRIMARY = accentColor ?? C.primary;
+  const { width: screenWidth } = useWindowDimensions();
 
-  // Scale arch to fit available width
-  const cw = Math.min(Math.max(width - 40, 240), 320);
-  const s = cw / 280; // scale factor
-  const ch = Math.round(365 * s);
+  const dW = containerWidth
+    ? Math.max(Math.round((containerWidth - 16) * 0.96), 160)
+    : Math.min(Math.max(screenWidth - 80, 160), 340);
+  const dH = Math.round(dW * VB_ASPECT);
 
-  // Arch parameters (base coords designed for 280-wide container)
-  const cx = 140 * s;
-  const upperCY = 162 * s;
-  const lowerCY = 198 * s;
-  const rx = 108 * s;
-  const upperRY = 130 * s;
-  const lowerRY = 130 * s;
+  // Web-only hover state
+  const [hoverTooth, setHoverTooth] = useState<number | null>(null);
 
-  // Upper arch: theta 200°→340° (passes through 270° = top of ellipse = small y)
-  // Lower arch: theta 160°→20°  (passes through  90° = bottom = large y)
-  const upperPos = useMemo(
-    () => computePositions(UPPER_TEETH, cx, upperCY, rx, upperRY, 200, 340),
-    [cx, upperCY, rx, upperRY]
-  );
-  const lowerPos = useMemo(
-    () => computePositions(LOWER_TEETH, cx, lowerCY, rx, lowerRY, 160, 20),
-    [cx, lowerCY, rx, lowerRY]
-  );
+  // Scale factors
+  const svgPx     = VB_W / dW;
+  const SW_MAIN   = svgPx * 2;
+  const SW_DETAIL = svgPx * 1.3;
+  const FONT_SZ   = svgPx * 10.5;
+  const FONT_OUT  = svgPx * 2;
 
-  const toggle = (tooth: number) => {
-    onChange(
-      selected.includes(tooth)
-        ? selected.filter((t) => t !== tooth)
-        : [...selected, tooth]
-    );
+  const handlePress = (fdi: number) => {
+    if (onToothPress) {
+      onToothPress(fdi);
+    } else {
+      onChange(
+        selected.includes(fdi)
+          ? selected.filter(t => t !== fdi)
+          : [...selected, fdi],
+      );
+    }
   };
 
-  const selectGroup = (teeth: number[]) => {
-    const allIn = teeth.every((t) => selected.includes(t));
-    onChange(allIn ? selected.filter((t) => !teeth.includes(t)) : [...new Set([...selected, ...teeth])]);
+  const handleHoverEnter = (fdi: number) => {
+    setHoverTooth(fdi);
+    onToothHover?.(fdi);
   };
 
-  const renderTooth = ({ tooth, x, y }: { tooth: number; x: number; y: number }) => {
-    const size = baseSize(tooth) * s;
-    const active = selected.includes(tooth);
+  const handleHoverLeave = () => {
+    setHoverTooth(null);
+    onToothHover?.(null);
+  };
+
+  // Render a single tooth
+  const renderTooth = (fdi: number) => {
+    const paths = TOOTH_PATHS[fdi];
+    const pos   = TOOTH_LABEL_POS[fdi];
+    if (!paths || !pos) return null;
+
+    const [cx, cy] = pos;
+
+    const isSelected = selected.includes(fdi);
+    const isActive   = fdi === activeTooth;
+    const isHovered  = fdi === hoverTooth;
+    const confirmedColor = colorMap?.[fdi]; // color assigned when tooth is confirmed
+
+    // Fill: confirmed=assigned color, selected=primary, active=light, hovered=very light, default=white
+    const fillColor = confirmedColor
+      ? confirmedColor
+      : isSelected
+      ? PRIMARY
+      : isActive
+      ? '#F1F5F9'
+      : isHovered
+      ? '#F1F5F9'
+      : '#FFFFFF';
+
+    // Stroke: confirmed=assigned color (lighter if also active), selected/active=primary, default=gray
+    const strokeColor = confirmedColor
+      ? confirmedColor
+      : isSelected || isActive
+      ? PRIMARY
+      : isHovered
+      ? '#93C5FD'
+      : '#94A3B8';
+
+    const strokeWidth = isActive && !isSelected && !confirmedColor ? SW_MAIN * 2.2 : SW_MAIN;
+
+    const detailColor = (confirmedColor || isSelected)
+      ? 'rgba(255,255,255,0.38)'
+      : isActive
+      ? 'rgba(15,23,42,0.12)'
+      : '#94A3B8';
+
+    const textColor = (confirmedColor || isSelected) ? '#FFFFFF' : isActive ? '#0F172A' : '#475569';
+    const haloColor = confirmedColor ?? (isSelected ? PRIMARY : isActive ? '#F1F5F9' : '#FFFFFF');
+
+    const gProps: any = {
+      onPress: () => handlePress(fdi),
+    };
+
+    // Web-only hover handlers
+    if (Platform.OS === 'web') {
+      gProps.onMouseEnter = () => handleHoverEnter(fdi);
+      gProps.onMouseLeave = handleHoverLeave;
+    }
+
     return (
-      <TouchableOpacity
-        key={tooth}
-        onPress={() => toggle(tooth)}
-        activeOpacity={0.75}
-        style={{
-          position: 'absolute',
-          left: x - size / 2,
-          top: y - size / 2,
-          width: size,
-          height: size,
-          borderRadius: size * 0.38,
-          backgroundColor: active ? C.primary : '#D8E1EA',
-          borderWidth: 1.5,
-          borderColor: active ? C.primary : '#8FA3B5',
-          alignItems: 'center',
-          justifyContent: 'center',
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 1 },
-          shadowOpacity: 0.14,
-          shadowRadius: 1.5,
-          elevation: 2,
-        }}
-      >
-        <Text
-          style={{
-            fontSize: Math.max(size * 0.36, 6),
-            fontWeight: '700',
-            color: active ? '#fff' : '#3D5166',
-            lineHeight: size * 0.95,
-          }}
-          adjustsFontSizeToFit
-          numberOfLines={1}
+      <G key={fdi} {...gProps}>
+        {/* Active ring glow (rendered under the tooth) */}
+        {isActive && (
+          <Path
+            d={paths[0]}
+            fill="none"
+            stroke="#93C5FD"
+            strokeWidth={SW_MAIN * 5}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            opacity={0.4}
+          />
+        )}
+
+        {/* Tooth outline */}
+        <Path
+          d={paths[0]}
+          fill={fillColor}
+          stroke={strokeColor}
+          strokeWidth={strokeWidth}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+
+        {/* Internal detail lines */}
+        {paths.slice(1).map((d, i) => (
+          <Path
+            key={i}
+            d={d}
+            fill="none"
+            stroke={detailColor}
+            strokeWidth={isSelected ? SW_DETAIL * 1.8 : SW_DETAIL}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ))}
+
+        {/* Number label — halo + fill */}
+        <SvgText
+          x={cx} y={cy}
+          fontSize={FONT_SZ} fontWeight="700"
+          fill={haloColor} stroke={haloColor}
+          strokeWidth={FONT_OUT} strokeLinejoin="round"
+          textAnchor="middle"
+          // @ts-ignore
+          dominantBaseline="central"
         >
-          {tooth}
-        </Text>
-      </TouchableOpacity>
+          {String(fdi)}
+        </SvgText>
+        <SvgText
+          x={cx} y={cy}
+          fontSize={FONT_SZ} fontWeight="700"
+          fill={textColor}
+          textAnchor="middle"
+          // @ts-ignore
+          dominantBaseline="central"
+        >
+          {String(fdi)}
+        </SvgText>
+      </G>
     );
   };
 
-  // Quadrant groups
-  const q18 = UPPER_TEETH.slice(0, 8); // 18→11 (patient right upper)
-  const q28 = UPPER_TEETH.slice(8);    // 21→28 (patient left  upper)
-  const q48 = LOWER_TEETH.slice(0, 8); // 48→41 (patient right lower)
-  const q38 = LOWER_TEETH.slice(8);    // 31→38 (patient left  lower)
-  const allTeeth = [...UPPER_TEETH, ...LOWER_TEETH];
+  // Hover tooltip rendered as SVG overlay
+  const renderHoverTooltip = () => {
+    if (!hoverTooth) return null;
+    const pos = TOOTH_LABEL_POS[hoverTooth];
+    if (!pos) return null;
+    const [cx, cy] = pos;
+    const label  = String(hoverTooth);
+    const info   = toothInfo?.[hoverTooth] ?? '';
+    const text   = info ? `${label} · ${info}` : label;
+    const textLen = text.length;
+
+    // Tooltip box dimensions in SVG units
+    const TW = svgPx * (textLen * 5.5 + 14);
+    const TH = svgPx * 18;
+    const TR = svgPx * 5;
+    const FS = svgPx * 8.5;
+    const PAD = svgPx * 4;
+
+    // Position tooltip above the tooth
+    const tx = cx - TW / 2;
+    const ty = cy - TH - svgPx * 22;
+
+    return (
+      <G key="tooltip" pointerEvents="none">
+        {/* Shadow rect */}
+        <Rect
+          x={tx + svgPx} y={ty + svgPx * 1.5}
+          width={TW} height={TH}
+          rx={TR} ry={TR}
+          fill="rgba(0,0,0,0.12)"
+        />
+        {/* Background */}
+        <Rect
+          x={tx} y={ty}
+          width={TW} height={TH}
+          rx={TR} ry={TR}
+          fill="#1E293B"
+        />
+        {/* Text */}
+        <SvgText
+          x={cx} y={ty + TH / 2}
+          fontSize={FS} fontWeight="600"
+          fill="#FFFFFF"
+          textAnchor="middle"
+          // @ts-ignore
+          dominantBaseline="central"
+        >
+          {text}
+        </SvgText>
+      </G>
+    );
+  };
 
   return (
     <View style={{ alignItems: 'center' }}>
-      {/* Upper quadrant buttons */}
-      <View style={row}>
-        <QBtn label="Sağ Üst" onPress={() => selectGroup(q18)} />
-        <QBtn label="Tümünü Seç" onPress={() => selectGroup(allTeeth)} primary />
-        <QBtn label="Temizle" onPress={() => onChange([])} danger />
-        <QBtn label="Sol Üst" onPress={() => selectGroup(q28)} />
-      </View>
+      <Svg width={dW} height={dH} viewBox={VIEW_BOX}>
+        {/* Teeth — render tooltip last so it's on top */}
+        {[...Q1, ...Q2].map(renderTooth)}
+        {[...Q4, ...Q3].map(renderTooth)}
+        {renderHoverTooltip()}
+      </Svg>
 
-      {/* Arch canvas */}
-      <View
-        style={{
-          width: cw,
-          height: ch,
-          position: 'relative',
-          backgroundColor: '#F5F7FA',
-          borderRadius: 14,
-          borderWidth: 1,
-          borderColor: C.border,
-          marginVertical: 10,
-          overflow: 'hidden',
-        }}
-      >
-        {/* Corner labels */}
-        <Text style={[lbl, { top: 5, left: 8 }]}>SAĞ</Text>
-        <Text style={[lbl, { top: 5, right: 8 }]}>SOL</Text>
-        <Text style={[lbl, { top: 5, left: cw / 2 - 10 }]}>ÜST</Text>
-        <Text style={[lbl, { bottom: 5, left: cw / 2 - 10 }]}>ALT</Text>
-
-        {upperPos.map(renderTooth)}
-        {lowerPos.map(renderTooth)}
-      </View>
-
-      {/* Lower quadrant buttons */}
-      <View style={row}>
-        <QBtn label="Sağ Alt" onPress={() => selectGroup(q48)} />
-        <View style={{ flex: 1 }} />
-        <QBtn label="Sol Alt" onPress={() => selectGroup(q38)} />
-      </View>
-
-      {/* Selected teeth display */}
+      {/* Selection summary strip */}
       {selected.length > 0 && (
-        <View
-          style={{
-            flexDirection: 'row',
-            flexWrap: 'wrap',
-            marginTop: 10,
-            padding: 10,
-            backgroundColor: C.primaryBg,
-            borderRadius: 10,
-            alignSelf: 'stretch',
-          }}
-        >
-          <Text style={{ fontSize: 12, color: C.textSecondary, fontWeight: '600' }}>
-            Seçili dişler:{' '}
+        <View style={{
+          flexDirection: 'row', flexWrap: 'wrap',
+          marginTop: 8, padding: 8,
+          backgroundColor: '#F1F5F9',
+          borderRadius: 10, alignSelf: 'stretch',
+        }}>
+          <Text style={{ fontSize: 11, color: '#64748B', fontFamily: F.medium }}>
+            Seçili:{' '}
           </Text>
-          <Text style={{ fontSize: 12, color: C.primary, fontWeight: '700', flex: 1 }}>
+          <Text style={{ fontSize: 11, color: PRIMARY, fontFamily: F.semibold, flex: 1 }}>
             {[...selected].sort((a, b) => a - b).join(', ')}
           </Text>
         </View>
@@ -194,55 +292,3 @@ export function ToothNumberPicker({ selected, onChange }: Props) {
     </View>
   );
 }
-
-function QBtn({
-  label,
-  onPress,
-  primary,
-  danger,
-}: {
-  label: string;
-  onPress: () => void;
-  primary?: boolean;
-  danger?: boolean;
-}) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      style={{
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        borderRadius: 8,
-        borderWidth: 1.5,
-        borderColor: danger ? '#FECACA' : primary ? C.primary : C.border,
-        backgroundColor: danger ? C.dangerBg : primary ? C.primaryBg : C.surface,
-      }}
-    >
-      <Text
-        style={{
-          fontSize: 11,
-          fontWeight: '700',
-          color: danger ? C.danger : primary ? C.primary : C.textSecondary,
-        }}
-      >
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
-}
-
-const row: any = {
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: 6,
-  flexWrap: 'wrap',
-  alignSelf: 'stretch',
-};
-
-const lbl: any = {
-  position: 'absolute',
-  fontSize: 9,
-  fontWeight: '800',
-  color: '#8FA3B5',
-  letterSpacing: 0.5,
-};

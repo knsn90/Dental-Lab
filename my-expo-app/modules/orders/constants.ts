@@ -130,15 +130,124 @@ export function formatDeliveryDate(dateStr: string): string {
   });
 }
 
-// ─── Departments ─────────────────────────────────────────────────────────────
-export const DEPARTMENTS = [
-  'Sabit Protez',
-  'Hareketli Protez',
-  'İmplant',
-  'Ortodonti',
-  'CAD/CAM',
-  'Seramik',
-] as const;
+// ─── Auto-derive department from work type (internal only, not shown to user) ─
+const CATEGORY_TO_DEPARTMENT: Record<OpCategory, string> = {
+  crown_bridge: 'Sabit Protez',
+  implant:      'İmplant',
+  aesthetic:    'CAD/CAM',
+  removable:    'Hareketli Protez',
+  surgical:     'Sabit Protez',
+  other:        'Sabit Protez',
+};
+
+export function deriveDepartment(workType: string): string | undefined {
+  const cat = OP_CATEGORY[workType];
+  return cat ? CATEGORY_TO_DEPARTMENT[cat] : undefined;
+}
+
+// ─── Operation field config ──────────────────────────────────────────────────
+export type OpCategory =
+  | 'crown_bridge'  // shade
+  | 'implant'       // implant system + abutment + screw
+  | 'aesthetic'     // shade
+  | 'removable'     // material
+  | 'surgical'      // no extra fields
+  | 'other';
+
+export const OP_CATEGORY: Record<string, OpCategory> = {
+  'Zirkonyum Kron':                    'crown_bridge',
+  'Zirkonyum Köprü':                   'crown_bridge',
+  'Metal Destekli Porselen Kron':      'crown_bridge',
+  'Metal Destekli Porselen Köprü':     'crown_bridge',
+  'Tam Seramik Kron (e.max)':          'crown_bridge',
+  'Tam Seramik Köprü (e.max)':         'crown_bridge',
+  'İmplant Üstü Kron (Zirkonyum)':     'implant',
+  'İmplant Üstü Kron (Metal-Seramik)': 'implant',
+  'İnley / Onley':                     'aesthetic',
+  'Veneer':                            'aesthetic',
+  'Geçici Kron (3D Baskı)':            'crown_bridge',
+  'Geçici Köprü (3D Baskı)':           'crown_bridge',
+  'Cerrahi Şablon':                    'surgical',
+  'Hareketli Bölümlü Protez':          'removable',
+  'Tam Protez':                        'removable',
+  'Gece Plağı':                        'other',
+  'Diğer':                             'other',
+};
+
+export const IMPLANT_SYSTEMS = ['Straumann', 'Nobel', 'Osstem', 'Zimmer', 'Dentsply', 'Megagen', 'Diğer'] as const;
+export const ABUTMENT_TYPES  = ['Anatomik', 'Düz', 'Açılı (Angled)', 'Ti-base', 'Zirkonyum'] as const;
+export const SCREW_TYPES     = ['Multi-unit', 'Tekli', 'Hex'] as const;
+export const REMOVABLE_MATS  = ['Akrilik', 'Krom-Kobalt', 'Flexible (Valplast)', 'Diğer'] as const;
+export const CROWN_MATERIALS = ['Monolitik', 'Katmanlı (Layered)'] as const;
+
+// ─── 3-step Work Type Tree ────────────────────────────────────────────────────
+export interface WorkTypeNode {
+  label: string;
+  icon: string;
+  subtypes: { value: string; label: string }[];
+}
+
+export const WORK_TYPE_TREE: WorkTypeNode[] = [
+  {
+    label: 'Kron',
+    icon: 'crown',
+    subtypes: [
+      { value: 'Zirkonyum Kron',              label: 'Zirkonyum' },
+      { value: 'Metal Destekli Porselen Kron', label: 'Metal Destekli' },
+      { value: 'Tam Seramik Kron (e.max)',     label: 'E.max' },
+      { value: 'Geçici Kron (3D Baskı)',       label: 'Geçici (3D)' },
+    ],
+  },
+  {
+    label: 'Köprü',
+    icon: 'bridge',
+    subtypes: [
+      { value: 'Zirkonyum Köprü',              label: 'Zirkonyum' },
+      { value: 'Metal Destekli Porselen Köprü', label: 'Metal Destekli' },
+      { value: 'Tam Seramik Köprü (e.max)',     label: 'E.max' },
+      { value: 'Geçici Köprü (3D Baskı)',       label: 'Geçici (3D)' },
+    ],
+  },
+  {
+    label: 'İmplant',
+    icon: 'needle',
+    subtypes: [
+      { value: 'İmplant Üstü Kron (Zirkonyum)',     label: 'Zirkonyum Kron' },
+      { value: 'İmplant Üstü Kron (Metal-Seramik)', label: 'Metal-Seramik' },
+    ],
+  },
+  {
+    label: 'Veneer',
+    icon: 'shimmer',
+    subtypes: [
+      { value: 'Veneer',        label: 'Veneer' },
+      { value: 'İnley / Onley', label: 'İnley / Onley' },
+    ],
+  },
+  {
+    label: 'Protez',
+    icon: 'set-all',
+    subtypes: [
+      { value: 'Hareketli Bölümlü Protez', label: 'Bölümlü' },
+      { value: 'Tam Protez',               label: 'Tam Protez' },
+      { value: 'Gece Plağı',               label: 'Gece Plağı' },
+    ],
+  },
+  {
+    label: 'Diğer',
+    icon: 'dots-horizontal',
+    subtypes: [
+      { value: 'Cerrahi Şablon', label: 'Cerrahi Şablon' },
+      { value: 'Diğer',          label: 'Diğer' },
+    ],
+  },
+];
+
+// Reverse map: work_type value → ana tip label (breadcrumb için)
+export const WORK_TYPE_MAIN: Record<string, string> = {};
+WORK_TYPE_TREE.forEach(node => {
+  node.subtypes.forEach(sub => { WORK_TYPE_MAIN[sub.value] = node.label; });
+});
 
 // ─── Order Tags ───────────────────────────────────────────────────────────────
 export const ORDER_TAGS = [

@@ -19,6 +19,14 @@ export interface AdminOrder {
   is_urgent: boolean;
   patient_name: string | null;
   department: string | null;
+  assigned_to: string | null;
+  assignee_name: string | null;
+}
+
+export interface Technician {
+  id: string;
+  full_name: string;
+  role: string | null;
 }
 
 interface RawOrder {
@@ -38,10 +46,16 @@ interface RawOrder {
   is_urgent: boolean;
   patient_name: string | null;
   department: string | null;
+  assigned_to: string | null;
   doctor?: {
     full_name: string;
     clinic_name: string | null;
     phone?: string | null;
+  } | null;
+  assignee?: {
+    id: string;
+    full_name: string;
+    role: string | null;
   } | null;
 }
 
@@ -65,17 +79,38 @@ function mapOrder(raw: RawOrder): AdminOrder {
     is_urgent: raw.is_urgent ?? false,
     patient_name: raw.patient_name,
     department: raw.department,
+    assigned_to: raw.assigned_to ?? null,
+    assignee_name: raw.assignee?.full_name ?? null,
   };
 }
 
 export async function fetchAllOrders(): Promise<AdminOrder[]> {
   const { data, error } = await supabase
     .from('work_orders')
-    .select('*, doctor:doctor_id(full_name, clinic_name)')
+    .select('*, doctor:doctor_id(full_name, clinic_name), assignee:assigned_to(id, full_name, role)')
     .order('created_at', { ascending: false });
 
   if (error) throw error;
   return (data as RawOrder[]).map(mapOrder);
+}
+
+export async function assignTechnicianToOrder(orderId: string, technicianId: string): Promise<void> {
+  const { error } = await supabase
+    .from('work_orders')
+    .update({ assigned_to: technicianId })
+    .eq('id', orderId);
+  if (error) throw error;
+}
+
+export async function fetchTechniciansList(): Promise<Technician[]> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, full_name, role')
+    .eq('user_type', 'lab')
+    .eq('is_active', true)
+    .order('full_name');
+  if (error) throw error;
+  return (data ?? []) as Technician[];
 }
 
 export async function fetchOrderById(id: string): Promise<AdminOrder | null> {

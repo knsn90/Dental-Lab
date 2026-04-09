@@ -14,6 +14,10 @@ interface Movement {
   quantity: number;
   unit?: string;
   note?: string;
+  technician_name?: string;
+  lot_no?: string;
+  reference_no?: string;
+  unit_price?: number;
   created_at: string;
 }
 
@@ -56,7 +60,7 @@ export function StockMovementsScreen() {
     try {
       const { data, error } = await supabase
         .from('stock_movements')
-        .select('id, item_name, type, quantity, unit, note, created_at')
+        .select('id, item_name, type, quantity, unit, note, technician_name, lot_no, reference_no, unit_price, created_at')
         .order('created_at', { ascending: false })
         .limit(200);
 
@@ -95,6 +99,7 @@ export function StockMovementsScreen() {
           <Text style={[s.th, { flex: 3 }]}>ÜRÜN ADI</Text>
           <Text style={[s.th, { flex: 1.5 }]}>İŞLEM</Text>
           <Text style={[s.th, { flex: 1, textAlign: 'center' }]}>MİKTAR</Text>
+          <Text style={[s.th, { flex: 1.5 }]}>TEKNİSYEN</Text>
           <Text style={[s.th, { flex: 2, textAlign: 'right' }]}>TARİH</Text>
         </View>
       )}
@@ -136,6 +141,11 @@ export function StockMovementsScreen() {
                   <View style={[s.typeAccent, { backgroundColor: cfg.color }]} />
                   <View style={{ flex: 3, paddingLeft: 16 }}>
                     <Text style={s.rowName} numberOfLines={1}>{item.item_name}</Text>
+                    {(item.reference_no || item.lot_no) && (
+                      <Text style={s.rowNote} numberOfLines={1}>
+                        {[item.reference_no ? `Ref: ${item.reference_no}` : null, item.lot_no ? `Lot: ${item.lot_no}` : null].filter(Boolean).join(' · ')}
+                      </Text>
+                    )}
                     {item.note && <Text style={s.rowNote} numberOfLines={1}>{item.note}</Text>}
                   </View>
                   <View style={{ flex: 1.5 }}>
@@ -146,6 +156,15 @@ export function StockMovementsScreen() {
                       {item.type === 'IN' ? '+' : '-'}{item.quantity}
                     </Text>
                     {item.unit && <Text style={s.rowUnit}>{item.unit}</Text>}
+                  </View>
+                  <View style={{ flex: 1.5 }}>
+                    {item.technician_name ? (
+                      <View style={s.techPill}>
+                        <Text style={s.techText} numberOfLines={1}>{item.technician_name}</Text>
+                      </View>
+                    ) : (
+                      <Text style={s.rowNote}>—</Text>
+                    )}
                   </View>
                   <Text style={[s.rowDate, { flex: 2, textAlign: 'right', paddingRight: 20 }]}>
                     {fmtDate(item.created_at)}
@@ -160,6 +179,11 @@ export function StockMovementsScreen() {
                 <View style={s.cardTop}>
                   <View style={{ flex: 1 }}>
                     <Text style={s.rowName} numberOfLines={1}>{item.item_name}</Text>
+                    {(item.reference_no || item.lot_no) && (
+                      <Text style={s.rowNote} numberOfLines={1}>
+                        {[item.reference_no ? `Ref: ${item.reference_no}` : null, item.lot_no ? `Lot: ${item.lot_no}` : null].filter(Boolean).join(' · ')}
+                      </Text>
+                    )}
                     {item.note && <Text style={s.rowNote}>{item.note}</Text>}
                   </View>
                   <TypeBadge type={item.type} />
@@ -168,6 +192,11 @@ export function StockMovementsScreen() {
                   <Text style={[s.rowQty, { color: cfg.color }]}>
                     {item.type === 'IN' ? '+' : '-'}{item.quantity}{item.unit ? ` ${item.unit}` : ''}
                   </Text>
+                  {item.technician_name && (
+                    <View style={s.techPill}>
+                      <Text style={s.techText}>{item.technician_name}</Text>
+                    </View>
+                  )}
                   <Text style={s.rowDate}>{fmtDate(item.created_at)}</Text>
                 </View>
               </View>
@@ -196,6 +225,8 @@ const s = StyleSheet.create({
   rowQty:     { fontSize: 15, fontWeight: '700' },
   rowUnit:    { fontSize: 10, color: '#94A3B8', marginTop: 1 },
   rowDate:    { fontSize: 12, color: '#94A3B8' },
+  techPill:   { flexDirection: 'row', alignItems: 'center', backgroundColor: '#EFF6FF', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  techText:   { fontSize: 11, fontWeight: '600', color: '#2563EB' },
 
   card:       { marginHorizontal: 16, marginTop: 10, borderRadius: 14, borderWidth: 1, borderColor: '#F1F5F9', padding: 14 },
   cardTop:    { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 10 },

@@ -16,7 +16,6 @@ const COLS = [
   { key: 'patient', label: 'Hasta', width: 130 },
   { key: 'doctor', label: 'Hekim', width: 140 },
   { key: 'work_type', label: 'İş Türü', width: 140 },
-  { key: 'department', label: 'Departman', width: 120 },
   { key: 'status', label: 'Durum', width: 140 },
   { key: 'delivery_date', label: 'Teslim', width: 90 },
   { key: 'tags', label: 'Etiketler', width: 130 },
@@ -99,20 +98,15 @@ export function OrdersTable({ orders, onPress, onStatusAdvance, showDoctor = tru
                   <Text style={styles.cellText} numberOfLines={1}>{order.work_type}</Text>
                 </View>
 
-                {/* Department */}
-                <View style={[styles.cell, { width: COLS[4].width }]}>
-                  <Text style={styles.cellText} numberOfLines={1}>{order.department || '—'}</Text>
-                </View>
-
                 {/* Status */}
-                <View style={[styles.cell, { width: COLS[5].width }]}>
+                <View style={[styles.cell, { width: COLS[4].width }]}>
                   <View style={[styles.statusBadge, { backgroundColor: cfg.bgColor }]}>
                     <Text style={[styles.statusText, { color: cfg.color }]}>{cfg.label}</Text>
                   </View>
                 </View>
 
                 {/* Delivery date */}
-                <View style={[styles.cell, { width: COLS[6].width }]}>
+                <View style={[styles.cell, { width: COLS[5].width }]}>
                   <Text style={[styles.cellText, overdue && { color: C.danger }]}>
                     {new Date(order.delivery_date + 'T00:00:00').toLocaleDateString('tr-TR', {
                       day: 'numeric',
@@ -125,7 +119,7 @@ export function OrdersTable({ orders, onPress, onStatusAdvance, showDoctor = tru
                 </View>
 
                 {/* Tags */}
-                <View style={[styles.cell, { width: COLS[7].width, flexDirection: 'row', flexWrap: 'wrap', gap: 4 }]}>
+                <View style={[styles.cell, { width: COLS[6].width, flexDirection: 'row', flexWrap: 'wrap', gap: 4 }]}>
                   {order.tags?.length > 0
                     ? order.tags.slice(0, 2).map((tag) => (
                         <View key={tag} style={styles.tagBadge}>
@@ -140,7 +134,7 @@ export function OrdersTable({ orders, onPress, onStatusAdvance, showDoctor = tru
 
                 {/* Actions */}
                 {onStatusAdvance && nextStatus && (
-                  <View style={[styles.cell, { width: COLS[8].width }]}>
+                  <View style={[styles.cell, { width: COLS[7].width }]}>
                     <TouchableOpacity
                       style={styles.actionBtn}
                       onPress={(e) => {

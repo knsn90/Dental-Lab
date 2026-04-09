@@ -1,19 +1,14 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-  RefreshControl,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  ActivityIndicator, RefreshControl, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Feather from '@expo/vector-icons/Feather';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { supabase } from '../../lib/supabase';
-import Colors from '../../constants/colors';
 
-type LogTab = 'users' | 'doctors';
+type LogTab = 'all' | 'users' | 'doctors';
 
 interface ActivityLog {
   id: string;
@@ -28,91 +23,63 @@ interface ActivityLog {
   created_at: string;
 }
 
-// ─── Yardımcı: zaman önce ────────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function timeAgo(dateStr: string): string {
   const now  = new Date();
   const date = new Date(dateStr);
   const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
-
   if (diff < 60)     return 'Az önce';
   if (diff < 3600)   return `${Math.floor(diff / 60)} dk önce`;
   if (diff < 86400)  return `${Math.floor(diff / 3600)} saat önce`;
-  if (diff < 172800) {
-    return 'Dün ' + date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-  }
+  if (diff < 172800) return 'Dün ' + date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
   if (diff < 604800) return `${Math.floor(diff / 86400)} gün önce`;
   return date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-// ─── Aksiyon renk/ikon ───────────────────────────────────────────────────────
-
 function actionMeta(action: string): { icon: string; color: string; bg: string } {
   if (action.includes('oluşturdu') || action.includes('oluşturuldu'))
-    return { icon: 'plus-circle-outline',    color: '#059669', bg: '#D1FAE5' };
+    return { icon: 'plus-circle-outline',   color: '#059669', bg: '#D1FAE5' };
   if (action.includes('aktif edildi'))
-    return { icon: 'account-check-outline',  color: '#059669', bg: '#D1FAE5' };
-  if (action.includes('pasif edildi'))
-    return { icon: 'account-off-outline',    color: '#DC2626', bg: '#FEF2F2' };
-  if (action.includes('silindi'))
-    return { icon: 'trash-can-outline',      color: '#DC2626', bg: '#FEF2F2' };
-  if (action.includes('Durumu') || action.includes('→'))
-    return { icon: 'swap-horizontal',        color: '#7C3AED', bg: '#EDE9FE' };
+    return { icon: 'account-check-outline', color: '#059669', bg: '#D1FAE5' };
+  if (action.includes('pasif edildi') || action.includes('silindi'))
+    return { icon: 'trash-can-outline',     color: '#DC2626', bg: '#FEF2F2' };
+  if (action.includes('→') || action.includes('Durumu'))
+    return { icon: 'swap-horizontal',       color: '#7C3AED', bg: '#EDE9FE' };
   if (action.includes('güncelledi') || action.includes('güncellendi'))
-    return { icon: 'pencil-circle-outline',  color: '#2563EB', bg: '#DBEAFE' };
-  return   { icon: 'information-outline',   color: '#64748B', bg: '#F1F5F9' };
+    return { icon: 'pencil-circle-outline', color: '#0F172A', bg: '#F1F5F9' };
+  return   { icon: 'information-outline',  color: '#64748B', bg: '#F1F5F9' };
 }
 
-// ─── Rol etiketi ──────────────────────────────────────────────────────────────
+// ─── Log Row ─────────────────────────────────────────────────────────────────
 
-function RoleBadge({ type }: { type: string }) {
-  const cfg =
-    type === 'admin'  ? { label: 'Admin',  bg: '#FEF3C7', text: '#92400E' } :
-    type === 'doctor' ? { label: 'Hekim',  bg: '#DBEAFE', text: '#1D4ED8' } :
-                        { label: 'Lab',    bg: '#DCFCE7', text: '#166534' };
-  return (
-    <View style={[badge.wrap, { backgroundColor: cfg.bg }]}>
-      <Text style={[badge.text, { color: cfg.text }]}>{cfg.label}</Text>
-    </View>
-  );
-}
-
-const badge = StyleSheet.create({
-  wrap: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5 },
-  text: { fontSize: 10, fontWeight: '700' },
-});
-
-// ─── Tek log satırı ──────────────────────────────────────────────────────────
-
-function LogRow({ log }: { log: ActivityLog }) {
+function LogRow({ log, isLast }: { log: ActivityLog; isLast: boolean }) {
   const meta = actionMeta(log.action);
-  const time = timeAgo(log.created_at);
+  const badge =
+    log.actor_type === 'admin'  ? { label: 'Admin', bg: '#FEF3C7', text: '#92400E' } :
+    log.actor_type === 'doctor' ? { label: 'Hekim', bg: '#DBEAFE', text: '#1D4ED8' } :
+                                  { label: 'Lab',   bg: '#DCFCE7', text: '#166534' };
 
   return (
-    <View style={row.wrap}>
-      {/* Sol ikon */}
-      <View style={[row.iconWrap, { backgroundColor: meta.bg }]}>
-        <MaterialCommunityIcons
-          name={meta.icon as any}
-          size={18}
-          color={meta.color}
-        />
+    <View style={[lr.row, !isLast && lr.rowBorder]}>
+      {/* Icon */}
+      <View style={[lr.iconWrap, { backgroundColor: meta.bg }]}>
+        <MaterialCommunityIcons name={meta.icon as any} size={17} color={meta.color} />
       </View>
 
-      {/* İçerik */}
-      <View style={row.content}>
-        {/* Üst: isim + badge + zaman */}
-        <View style={row.topLine}>
-          <Text style={row.name} numberOfLines={1}>{log.actor_name}</Text>
-          <RoleBadge type={log.actor_type} />
-          <Text style={row.time}>{time}</Text>
+      {/* Content */}
+      <View style={lr.content}>
+        <View style={lr.topLine}>
+          <Text style={lr.name} numberOfLines={1}>{log.actor_name}</Text>
+          <View style={[lr.badge, { backgroundColor: badge.bg }]}>
+            <Text style={[lr.badgeText, { color: badge.text }]}>{badge.label}</Text>
+          </View>
+          <Text style={lr.time}>{timeAgo(log.created_at)}</Text>
         </View>
-        {/* Alt: aksiyon metni */}
-        <Text style={row.action}>{log.action}</Text>
-        {/* Entity label (sipariş no, vb.) */}
+        <Text style={lr.action}>{log.action}</Text>
         {log.entity_label ? (
-          <Text style={row.entity}>
-            {log.entity_type === 'work_order' ? '📋 ' : ''}
+          <Text style={lr.entity}>
+            {log.entity_type === 'work_order' ? '📋 ' : log.entity_type === 'clinic' ? '🏥 ' : log.entity_type === 'doctor' ? '👨‍⚕️ ' : ''}
             {log.entity_label}
           </Text>
         ) : null}
@@ -121,59 +88,41 @@ function LogRow({ log }: { log: ActivityLog }) {
   );
 }
 
-const row = StyleSheet.create({
-  wrap: {
-    flexDirection: 'row',
-    gap: 12,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  iconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 1,
-    flexShrink: 0,
-  },
-  content: { flex: 1 },
-  topLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 3,
-    flexWrap: 'wrap',
-  },
-  name:   { fontSize: 14, fontWeight: '700', color: Colors.textPrimary },
-  time:   { fontSize: 11, color: Colors.textMuted, marginLeft: 'auto' },
-  action: { fontSize: 13, color: Colors.textSecondary, marginBottom: 2 },
-  entity: { fontSize: 11, color: Colors.textMuted },
+const lr = StyleSheet.create({
+  row:       { flexDirection: 'row', gap: 12, paddingVertical: 13, paddingHorizontal: 16 },
+  rowBorder: { borderBottomWidth: 1, borderBottomColor: '#F8FAFC' },
+  iconWrap:  { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 },
+  content:   { flex: 1 },
+  topLine:   { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 },
+  name:      { fontSize: 13, fontWeight: '700', color: '#1C1C1E', flexShrink: 1 },
+  badge:     { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5 },
+  badgeText: { fontSize: 10, fontWeight: '700' },
+  time:      { fontSize: 11, color: '#AEAEB2', marginLeft: 'auto' as any },
+  action:    { fontSize: 13, color: '#6C6C70', marginBottom: 2 },
+  entity:    { fontSize: 11, color: '#AEAEB2' },
 });
 
-// ─── Ana ekran ────────────────────────────────────────────────────────────────
+// ─── Screen ──────────────────────────────────────────────────────────────────
 
 export default function AdminLogsScreen() {
-  const [logs, setLogs]         = useState<ActivityLog[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [tab, setTab]           = useState<LogTab>('users');
+  const [logs,          setLogs]          = useState<ActivityLog[]>([]);
+  const [loading,       setLoading]       = useState(true);
+  const [refreshing,    setRefreshing]    = useState(false);
+  const [tab,           setTab]           = useState<LogTab>('all');
+  const [search,        setSearch]        = useState('');
+  const [searchExpanded,setSearchExpanded]= useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
 
   const loadLogs = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
-
     try {
       const { data, error } = await supabase
         .from('activity_logs')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(300);
-
-      if (!error && data) {
-        setLogs(data as ActivityLog[]);
-      }
+        .limit(2000);
+      if (!error && data) setLogs(data as ActivityLog[]);
     } catch (_) {
     } finally {
       setLoading(false);
@@ -183,135 +132,124 @@ export default function AdminLogsScreen() {
 
   useEffect(() => { loadLogs(); }, [loadLogs]);
 
-  // Realtime: yeni log geldiğinde otomatik güncelle
+  // Realtime
   useEffect(() => {
     const channel = supabase
       .channel('activity_logs_changes')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'activity_logs' },
-        (payload) => {
-          setLogs((prev) => [payload.new as ActivityLog, ...prev].slice(0, 300));
-        }
-      )
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'activity_logs' }, (payload) => {
+        setLogs(prev => [payload.new as ActivityLog, ...prev].slice(0, 2000));
+      })
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  // Tab'a göre filtrele
-  const filtered = logs.filter((l) =>
-    tab === 'doctors'
-      ? l.actor_type === 'doctor'
-      : l.actor_type === 'lab' || l.actor_type === 'admin'
-  );
+  const q = search.trim().toLowerCase();
+  const filtered = logs.filter(l => {
+    if (tab === 'users'   && l.actor_type === 'doctor') return false;
+    if (tab === 'doctors' && l.actor_type !== 'doctor') return false;
+    if (!q) return true;
+    return l.actor_name.toLowerCase().includes(q) || l.action.toLowerCase().includes(q) || l.entity_label?.toLowerCase().includes(q);
+  });
 
-  const userCount   = logs.filter((l) => l.actor_type === 'lab' || l.actor_type === 'admin').length;
-  const doctorCount = logs.filter((l) => l.actor_type === 'doctor').length;
+  const TABS: { key: LogTab; label: string }[] = [
+    { key: 'all',     label: 'Tümü' },
+    { key: 'users',   label: 'Kullanıcılar' },
+    { key: 'doctors', label: 'Hekimler' },
+  ];
 
   return (
-    <SafeAreaView style={s.safe}>
-      {/* Header */}
+    <SafeAreaView style={s.safe} edges={['bottom']}>
+
+      {/* Header (non-scrollable) */}
       <View style={s.header}>
-        <View>
-          <Text style={s.title}>Eylem Logları</Text>
-          <Text style={s.subtitle}>Son 300 kayıt</Text>
+
+        {/* Toolbar row */}
+        <View style={s.toolbarRow}>
+          <View style={s.rightGroup}>
+            <TouchableOpacity
+              style={[s.iconBtn, (searchExpanded || search.length > 0) && s.iconBtnActive]}
+              onPress={() => setSearchExpanded(!searchExpanded)} activeOpacity={0.75}>
+              <Feather name="search" size={18} color={(searchExpanded || search.length > 0) ? '#0F172A' : '#94A3B8'} />
+            </TouchableOpacity>
+            <TouchableOpacity style={s.iconBtn} onPress={() => loadLogs(true)} disabled={refreshing} activeOpacity={0.75}>
+              {refreshing
+                ? <ActivityIndicator size="small" color="#94A3B8" />
+                : <Feather name="refresh-cw" size={16} color="#94A3B8" />}
+            </TouchableOpacity>
+          </View>
         </View>
-        <TouchableOpacity
-          style={s.refreshBtn}
-          onPress={() => loadLogs(true)}
-          disabled={refreshing}
-        >
-          {refreshing ? (
-            <ActivityIndicator size="small" color={Colors.textSecondary} />
-          ) : (
-            <MaterialCommunityIcons name="refresh" size={20} color={Colors.textSecondary} />
-          )}
-        </TouchableOpacity>
+
+        {/* Pill tab bar */}
+        <View style={s.tabBar}>
+          {TABS.map(t => {
+            const active = tab === t.key;
+            return (
+              <TouchableOpacity key={t.key} style={[s.tabItem, active && s.tabItemActive]}
+                onPress={() => setTab(t.key)} activeOpacity={0.75}>
+                <Text style={[s.tabText, active && s.tabTextActive]}>{t.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Search */}
+        {(searchExpanded || search.length > 0) && (
+          <View style={s.searchRow}>
+            <View style={[s.searchWrap, searchFocused && s.searchWrapFocused]}>
+              <Feather name="search" size={16} color={searchFocused ? '#0F172A' : '#AEAEB2'} />
+              <TextInput
+                style={s.searchInput}
+                value={search}
+                onChangeText={setSearch}
+                onFocus={() => setSearchFocused(true)}
+                onBlur={() => setSearchFocused(false)}
+                placeholder="İsim, aksiyon veya kayıt ara..."
+                placeholderTextColor="#AEAEB2"
+                returnKeyType="search"
+                autoFocus={searchExpanded && search.length === 0}
+              />
+              {search.length > 0 && (
+                <TouchableOpacity onPress={() => { setSearch(''); setSearchExpanded(false); }}>
+                  <Feather name="x-circle" size={15} color="#AEAEB2" />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        )}
       </View>
 
-      {/* Tab seçici */}
-      <View style={s.tabRow}>
-        <TouchableOpacity
-          style={[s.tabBtn, tab === 'users' && s.tabBtnActive]}
-          onPress={() => setTab('users')}
-        >
-          <MaterialCommunityIcons
-            name="account-group-outline"
-            size={16}
-            color={tab === 'users' ? '#FFFFFF' : Colors.textSecondary}
-          />
-          <Text style={[s.tabText, tab === 'users' && s.tabTextActive]}>
-            Kullanıcılar
-          </Text>
-          <View style={[s.tabCount, tab === 'users' && s.tabCountActive]}>
-            <Text style={[s.tabCountText, tab === 'users' && s.tabCountTextActive]}>
-              {userCount}
-            </Text>
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[s.tabBtn, tab === 'doctors' && s.tabBtnActive]}
-          onPress={() => setTab('doctors')}
-        >
-          <MaterialCommunityIcons
-            name="tooth-outline"
-            size={16}
-            color={tab === 'doctors' ? '#FFFFFF' : Colors.textSecondary}
-          />
-          <Text style={[s.tabText, tab === 'doctors' && s.tabTextActive]}>
-            Hekimler
-          </Text>
-          <View style={[s.tabCount, tab === 'doctors' && s.tabCountActive]}>
-            <Text style={[s.tabCountText, tab === 'doctors' && s.tabCountTextActive]}>
-              {doctorCount}
-            </Text>
-          </View>
-        </TouchableOpacity>
-      </View>
-
-      {/* İçerik */}
+      {/* Content */}
       {loading ? (
         <View style={s.center}>
-          <ActivityIndicator size="large" color={Colors.primary} />
+          <ActivityIndicator size="large" color="#0F172A" />
           <Text style={s.loadingText}>Loglar yükleniyor…</Text>
         </View>
       ) : (
         <ScrollView
           style={s.scroll}
           contentContainerStyle={s.scrollContent}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => loadLogs(true)}
-              tintColor={Colors.primary}
-            />
-          }
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => loadLogs(true)} tintColor="#0F172A" />}
           showsVerticalScrollIndicator={false}
         >
           {filtered.length === 0 ? (
             <View style={s.empty}>
-              <MaterialCommunityIcons
-                name="clipboard-text-off-outline"
-                size={44}
-                color={Colors.textMuted}
-              />
+              <MaterialCommunityIcons name="clipboard-text-off-outline" size={44} color="#AEAEB2" />
               <Text style={s.emptyTitle}>Henüz log yok</Text>
-              <Text style={s.emptySubtitle}>
-                {tab === 'doctors'
-                  ? 'Hekimlerin eylemleri burada görünecek'
-                  : 'Kullanıcıların eylemleri burada görünecek'}
-              </Text>
+              <Text style={s.emptySub}>{q ? `"${q}" ile eşleşen kayıt yok` : 'Eylemler gerçekleştikçe burada görünecek'}</Text>
             </View>
           ) : (
-            <View style={s.logList}>
-              {/* Bugün / Önceki gruplandırma */}
-              {filtered.map((log) => (
-                <LogRow key={log.id} log={log} />
+            <View style={s.card}>
+              {/* Header */}
+              <View style={s.cardHeader}>
+                <Text style={s.hCell} numberOfLines={1}>KULLANICI</Text>
+                <Text style={[s.hCell, { marginLeft: 'auto' as any }]}>{logs.length} kayıt · Gerçek zamanlı</Text>
+              </View>
+              {filtered.map((log, i) => (
+                <LogRow key={log.id} log={log} isLast={i === filtered.length - 1} />
               ))}
             </View>
           )}
+          <View style={{ height: 40 }} />
         </ScrollView>
       )}
     </SafeAreaView>
@@ -321,81 +259,48 @@ export default function AdminLogsScreen() {
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
-  safe:    { flex: 1, backgroundColor: '#FFFFFF' },
+  safe:   { flex: 1, backgroundColor: '#FFFFFF' },
+  header: { paddingHorizontal: 24, paddingTop: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
 
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  title:    { fontSize: 24, fontWeight: '800', color: Colors.textPrimary },
-  subtitle: { fontSize: 12, color: Colors.textMuted, marginTop: 2 },
-  refreshBtn: {
-    width: 38, height: 38, borderRadius: 10,
-    backgroundColor: Colors.surface,
-    borderWidth: 1, borderColor: Colors.border,
-    alignItems: 'center', justifyContent: 'center',
-  },
+  // Toolbar
+  toolbarRow:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  toolbarTitle: { flex: 1 },
+  toolbarSub:   { fontSize: 10, fontWeight: '600' as any, color: '#94A3B8', letterSpacing: 0.8, marginBottom: 2 },
+  toolbarName:  { fontSize: 22, fontWeight: '800' as any, color: '#0F172A', letterSpacing: -0.5 },
 
-  tabRow: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-    backgroundColor: '#FAFAFA',
-  },
-  tabBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: '#FFFFFF',
-  },
-  tabBtnActive: {
-    backgroundColor: '#0F172A',
-    borderColor: '#0F172A',
-  },
-  tabText: {
-    fontSize: 13, fontWeight: '600', color: Colors.textSecondary,
-  },
-  tabTextActive: { color: '#FFFFFF' },
-  tabCount: {
-    minWidth: 22, height: 18, borderRadius: 9,
-    backgroundColor: Colors.border,
-    alignItems: 'center', justifyContent: 'center',
-    paddingHorizontal: 5,
-  },
-  tabCountActive: { backgroundColor: 'rgba(255,255,255,0.2)' },
-  tabCountText: {
-    fontSize: 10, fontWeight: '700', color: Colors.textSecondary,
-  },
-  tabCountTextActive: { color: '#FFFFFF' },
+  // Tab bar
+  tabBar:        { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start' as any, backgroundColor: '#F1F5F9', borderRadius: 100, padding: 3, gap: 2 },
+  tabItem:       { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 100 },
+  tabItemActive: { backgroundColor: '#FFFFFF', boxShadow: '0 1px 6px rgba(15,23,42,0.12)' } as any,
+  tabText:       { fontSize: 13, fontWeight: '500' as any, color: '#94A3B8' },
+  tabTextActive: { fontSize: 13, fontWeight: '600' as any, color: '#0F172A' },
 
-  scroll: { flex: 1 },
-  scrollContent: { padding: 20, paddingBottom: 40 },
+  rightGroup:    { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  iconBtn:       { width: 34, height: 34, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  iconBtnActive: { backgroundColor: '#F1F5F9' },
 
-  logList: { gap: 0 },
+  searchRow:        { marginTop: 10 },
+  searchWrap:       { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: '#F1F5F9', paddingHorizontal: 12, height: 42 },
+  searchWrapFocused:{ borderColor: '#CBD5E1' },
+  searchInput:      { flex: 1, fontSize: 14, color: '#1C1C1E', height: 42, outlineStyle: 'none' } as any,
 
-  center: {
-    flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingTop: 80,
+  scroll:        { flex: 1 },
+  scrollContent: { padding: 24, paddingBottom: 60 },
+
+  card: {
+    backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#F1F5F9',
+    overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+  } as any,
+  cardHeader: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 10,
+    backgroundColor: '#F8FAFC', borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
   },
-  loadingText: { fontSize: 14, color: Colors.textMuted },
+  hCell: { fontSize: 10, fontWeight: '700' as any, color: '#94A3B8', letterSpacing: 0.6, textTransform: 'uppercase' as any },
 
-  empty: {
-    alignItems: 'center', paddingTop: 60, gap: 10,
-  },
-  emptyTitle:    { fontSize: 16, fontWeight: '700', color: Colors.textSecondary },
-  emptySubtitle: { fontSize: 13, color: Colors.textMuted, textAlign: 'center' },
+  center:      { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingTop: 80 },
+  loadingText: { fontSize: 14, color: '#AEAEB2' },
+  empty:       { alignItems: 'center', paddingTop: 60, gap: 10 },
+  emptyTitle:  { fontSize: 16, fontWeight: '700' as any, color: '#1C1C1E' },
+  emptySub:    { fontSize: 13, color: '#AEAEB2', textAlign: 'center' },
 });

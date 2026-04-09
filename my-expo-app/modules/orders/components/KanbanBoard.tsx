@@ -5,15 +5,57 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  useWindowDimensions,
 } from 'react-native';
+import Svg, { Circle } from 'react-native-svg';
 import { useRouter } from 'expo-router';
 import { WorkOrder, WorkOrderStatus } from '../types';
 import { STATUS_CONFIG, isOrderOverdue, getNextStatus } from '../constants';
 import { C } from '../../../core/theme/colors';
+import { F } from '../../../core/theme/typography';
+
+// ── Circular progress ────────────────────────────────────────────────────────
+
+const STATUS_PROGRESS: Record<WorkOrderStatus, number> = {
+  alindi:           10,
+  uretimde:         40,
+  kalite_kontrol:   70,
+  teslimata_hazir:  90,
+  teslim_edildi:   100,
+};
+
+function CircularProgress({ progress, size = 34, stroke = 3 }: { progress: number; size?: number; stroke?: number }) {
+  const r      = (size - stroke) / 2;
+  const circ   = 2 * Math.PI * r;
+  const offset = circ * (1 - Math.min(progress, 100) / 100);
+  const color  =
+    progress >= 100 ? '#10B981' :
+    progress >= 90  ? '#8B5CF6' :
+    progress >= 70  ? '#7C3AED' :
+    progress >= 40  ? '#4F46E5' : '#2563EB';
+
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <Svg width={size} height={size} style={{ position: 'absolute' }}>
+        <Circle cx={size / 2} cy={size / 2} r={r} stroke="#F1F5F9" strokeWidth={stroke} fill="none" />
+        <Circle
+          cx={size / 2} cy={size / 2} r={r}
+          stroke={color} strokeWidth={stroke} fill="none"
+          strokeDasharray={`${circ}`}
+          strokeDashoffset={`${offset}`}
+          strokeLinecap="round"
+          rotation="-90"
+          origin={`${size / 2},${size / 2}`}
+        />
+      </Svg>
+      <Text style={{ fontSize: 8, fontWeight: '700', color: '#6C6C70' }}>{progress}%</Text>
+    </View>
+  );
+}
 
 interface Props {
   orders: WorkOrder[];
-  userGroup: '(lab)' | '(doctor)';
+  userGroup: '(lab)' | '(doctor)' | '(admin)';
   onStatusAdvance?: (order: WorkOrder) => void;
 }
 
@@ -21,257 +63,410 @@ const COLUMNS: WorkOrderStatus[] = [
   'alindi',
   'uretimde',
   'kalite_kontrol',
-  'teslimata_hazir',
   'teslim_edildi',
 ];
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+const AVATAR_PALETTE = ['#6C63FF', '#FF6B9D', '#00C9A7', '#F59E0B', '#3B82F6', '#EF4444'];
+
+function avatarColor(name: string) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xff;
+  return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
+}
+
+function getInitials(name: string) {
+  const p = name.trim().split(/\s+/);
+  return p.length >= 2
+    ? (p[0][0] + p[p.length - 1][0]).toUpperCase()
+    : name.substring(0, 2).toUpperCase();
+}
+
+function dateLabel(deliveryDate: string, status: WorkOrderStatus): { text: string; color: string } {
+  if (status === 'teslim_edildi') return { text: 'Teslim edildi', color: '#94A3B8' };
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const due   = new Date(deliveryDate + 'T00:00:00');
+  const diff  = Math.ceil((due.getTime() - today.getTime()) / 86_400_000);
+  if (diff <  0) return { text: `${Math.abs(diff)}g gecikti`, color: '#EF4444' };
+  if (diff === 0) return { text: 'Bugün',                     color: '#8B5CF6' };
+  if (diff === 1) return { text: 'Yarın',                     color: '#F59E0B' };
+  if (diff <=  3) return { text: `${diff} gün kaldı`,         color: '#F59E0B' };
+  if (diff <=  7) return { text: `${diff} gün kaldı`,         color: '#6366F1' };
+  return { text: due.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }), color: '#94A3B8' };
+}
+
+// ── Board ────────────────────────────────────────────────────────────────────
+
 export function KanbanBoard({ orders, userGroup, onStatusAdvance }: Props) {
   const router = useRouter();
-  const today = new Date().toISOString().split('T')[0];
+  const { width } = useWindowDimensions();
+
+  const BOARD_PAD = 12;
+  const COL_GAP   = 10;
+  const MIN_COL_W = 210;
+  const numCols   = COLUMNS.length;
+  const available = width - BOARD_PAD * 2 - COL_GAP * (numCols - 1);
+  const colWidth  = Math.max(MIN_COL_W, available / numCols);
+  const isWide    = available / numCols >= MIN_COL_W;
 
   const byStatus = COLUMNS.reduce<Record<WorkOrderStatus, WorkOrder[]>>(
-    (acc, s) => {
-      acc[s] = orders.filter((o) => o.status === s);
-      return acc;
-    },
+    (acc, s) => { acc[s] = orders.filter((o) => o.status === s); return acc; },
     {} as Record<WorkOrderStatus, WorkOrder[]>
   );
+
+  const columnViews = COLUMNS.map((status) => {
+    const cfg = STATUS_CONFIG[status];
+    const col = byStatus[status];
+    return (
+      <View
+        key={status}
+        style={[
+          styles.column,
+          isWide ? { flex: 1 } : { width: colWidth },
+        ]}
+      >
+        {/* Column header */}
+        <View style={styles.colHeader}>
+          <Text style={styles.colTitle}>{cfg.label.toUpperCase()}</Text>
+          <View style={[styles.colCountBadge, { backgroundColor: cfg.bgColor }]}>
+            <Text style={[styles.colCount, { color: cfg.color }]}>{col.length}</Text>
+          </View>
+        </View>
+
+        {/* Thin colored divider */}
+        <View style={[styles.colDivider, { backgroundColor: cfg.color }]} />
+
+        {/* Cards */}
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.colCards}
+          style={isWide ? styles.colScrollWide : undefined}
+        >
+          {col.length === 0 ? (
+            <View style={styles.emptyCol}>
+              <Text style={styles.emptyText}>Sipariş yok</Text>
+            </View>
+          ) : (
+            col.map((order) => (
+              <KanbanCard
+                key={order.id}
+                order={order}
+                userGroup={userGroup}
+                status={status}
+                onPress={() => router.push(`/${userGroup}/order/${order.id}` as any)}
+                onAdvance={onStatusAdvance ? () => onStatusAdvance(order) : undefined}
+              />
+            ))
+          )}
+        </ScrollView>
+      </View>
+    );
+  });
+
+  if (isWide) {
+    return (
+      <View style={[styles.boardWide, { padding: BOARD_PAD, gap: COL_GAP }]}>
+        {columnViews}
+      </View>
+    );
+  }
 
   return (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.board}
+      contentContainerStyle={[styles.board, { padding: BOARD_PAD, gap: COL_GAP }]}
     >
-      {COLUMNS.map((status) => {
-        const cfg = STATUS_CONFIG[status];
-        const col = byStatus[status];
-        return (
-          <View key={status} style={styles.column}>
-            {/* Column header */}
-            <View style={[styles.colHeader, { borderTopColor: cfg.color }]}>
-              <View style={styles.colHeaderLeft}>
-                <View style={[styles.colDot, { backgroundColor: cfg.color }]} />
-                <Text style={styles.colTitle}>{cfg.label}</Text>
-              </View>
-              <View style={[styles.colCount, { backgroundColor: cfg.bgColor }]}>
-                <Text style={[styles.colCountText, { color: cfg.color }]}>{col.length}</Text>
-              </View>
-            </View>
-
-            {/* Cards */}
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.colCards}
-            >
-              {col.length === 0 ? (
-                <View style={styles.emptyCol}>
-                  <Text style={styles.emptyColText}>Sipariş yok</Text>
-                </View>
-              ) : (
-                col.map((order) => (
-                  <KanbanCard
-                    key={order.id}
-                    order={order}
-                    today={today}
-                    userGroup={userGroup}
-                    onPress={() => router.push(`/${userGroup}/order/${order.id}` as any)}
-                    onAdvance={onStatusAdvance ? () => onStatusAdvance(order) : undefined}
-                  />
-                ))
-              )}
-            </ScrollView>
-          </View>
-        );
-      })}
+      {columnViews}
     </ScrollView>
   );
 }
 
+// ── Card — identical visual language to WorkOrderCard (list view) ─────────────
+
 function KanbanCard({
   order,
-  today,
   userGroup,
+  status,
   onPress,
   onAdvance,
 }: {
   order: WorkOrder;
-  today: string;
   userGroup: string;
+  status: WorkOrderStatus;
   onPress: () => void;
   onAdvance?: () => void;
 }) {
-  const overdue = isOrderOverdue(order.delivery_date, order.status);
+  const overdue    = isOrderOverdue(order.delivery_date, order.status);
   const nextStatus = getNextStatus(order.status);
-  const daysLeft = Math.ceil(
-    (new Date(order.delivery_date + 'T00:00:00').getTime() - new Date(today).getTime()) /
-      (1000 * 60 * 60 * 24)
-  );
+  const { text: dateText, color: dateColor } = dateLabel(order.delivery_date, order.status);
+  const cfg = STATUS_CONFIG[status];
 
-  const createdDate = new Date(order.created_at).toLocaleDateString('tr-TR', {
-    day: 'numeric',
-    month: 'short',
-  });
+  const doctorName = order.doctor?.full_name ?? '';
+  const initials   = doctorName ? getInitials(doctorName) : '??';
+  const bgColor    = doctorName ? avatarColor(doctorName) : '#94A3B8';
 
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      style={[styles.card, overdue && styles.cardOverdue]}
-      activeOpacity={0.85}
-    >
-      {/* Top row */}
-      <View style={styles.cardTop}>
-        <Text style={styles.cardNum}>{order.order_number}</Text>
-        {overdue ? (
-          <View style={styles.overdueBadge}>
-            <Text style={styles.overdueBadgeText}>GECİKEN</Text>
-          </View>
-        ) : daysLeft <= 2 && order.status !== 'teslim_edildi' ? (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.78} style={styles.card}>
+
+      {/* Status dot + order number + urgent badge + status label */}
+      <View style={styles.topMeta}>
+        <View style={[styles.statusDot, { backgroundColor: overdue ? '#EF4444' : cfg.color }]} />
+        <Text style={styles.orderNum}>{order.order_number}</Text>
+        {order.is_urgent && (
           <View style={styles.urgentBadge}>
-            <Text style={styles.urgentBadgeText}>{daysLeft}g kaldı</Text>
+            <Text style={styles.urgentText}>ACİL</Text>
           </View>
-        ) : null}
+        )}
+        <View style={{ flex: 1 }} />
+        <Text style={[styles.statusLabel, { color: overdue ? '#EF4444' : cfg.color }]}>
+          {overdue ? 'Gecikti' : cfg.label}
+        </Text>
       </View>
+
+      {/* Work type — main title */}
+      <Text style={styles.workType} numberOfLines={2}>{order.work_type}</Text>
 
       {/* Doctor */}
       {order.doctor && (
-        <Text style={styles.cardDoctor}>{order.doctor.full_name}</Text>
+        <Text style={styles.doctorLine} numberOfLines={1}>{order.doctor.full_name}</Text>
       )}
 
-      {/* Work type */}
-      <Text style={styles.cardWorkType}>{order.work_type}</Text>
+      {/* Patient */}
+      {order.patient_name ? (
+        <Text style={styles.patientLine} numberOfLines={1}>{order.patient_name}</Text>
+      ) : null}
 
-      {/* Meta row */}
-      <View style={styles.cardMeta}>
-        <Text style={styles.cardMetaItem}>
-          🦷 {order.tooth_numbers.slice(0, 4).join(', ')}
-          {order.tooth_numbers.length > 4 ? '…' : ''}
-        </Text>
-        <Text style={[styles.cardMetaItem, overdue && { color: C.danger }]}>
-          📅 {new Date(order.delivery_date + 'T00:00:00').toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
-        </Text>
-      </View>
-
-      <View style={styles.cardMetaRow2}>
-        <Text style={styles.cardMetaItem}>Oluşturuldu: {createdDate}</Text>
-        {order.shade ? <Text style={styles.cardMetaItem}>🎨 {order.shade}</Text> : null}
-      </View>
-
-      {/* Actions — only for lab users */}
-      {userGroup === '(lab)' && nextStatus && onAdvance && (
-        <View style={styles.cardActions}>
-          <TouchableOpacity
-            style={styles.btnFinish}
-            onPress={(e) => {
-              e.stopPropagation?.();
-              onAdvance();
-            }}
-          >
-            <Text style={styles.btnFinishText}>
-              {order.status === 'alindi' ? 'Başlat' : 'Tamamla'}
+      {/* Footer */}
+      <View style={styles.footer}>
+        <View style={styles.footerLeft}>
+          <View style={[styles.avatar, { backgroundColor: bgColor }]}>
+            <Text style={styles.avatarText}>{initials}</Text>
+          </View>
+          {order.tooth_numbers.length > 0 && (
+            <Text style={styles.teethCount}>
+              {order.tooth_numbers.slice(0, 3).join(', ')}
+              {order.tooth_numbers.length > 3 ? ` +${order.tooth_numbers.length - 3}` : ''}
             </Text>
-          </TouchableOpacity>
+          )}
         </View>
+        <View style={styles.footerRight}>
+          <CircularProgress progress={STATUS_PROGRESS[order.status] ?? 0} />
+          <Text style={[styles.dateText, { color: overdue ? '#EF4444' : dateColor }]}>
+            {dateText}
+          </Text>
+        </View>
+      </View>
+
+      {/* Advance button */}
+      {(userGroup === '(lab)' || userGroup === '(admin)') && nextStatus && onAdvance && (
+        <TouchableOpacity
+          style={styles.advanceBtn}
+          onPress={(e) => { e.stopPropagation?.(); onAdvance(); }}
+        >
+          <Text style={styles.advanceBtnText}>
+            {order.status === 'alindi' ? 'Başlat' : 'İlerlet →'}
+          </Text>
+        </TouchableOpacity>
       )}
     </TouchableOpacity>
   );
 }
 
-const COL_WIDTH = 240;
+// ── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  // Narrow: horizontal scroll
   board: {
-    padding: 16,
-    gap: 12,
     alignItems: 'flex-start',
   },
+
+  // Wide: fills screen, no horizontal scroll
+  boardWide: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+
   column: {
-    width: COL_WIDTH,
-    maxHeight: '100%',
     flexShrink: 0,
   },
+
+  colScrollWide: {
+    flex: 1,
+  },
+
+  // Column header — centered uppercase
   colHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: C.surface,
-    borderTopWidth: 3,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 8,
-    // @ts-ignore
-    boxShadow: '0px 1px 3px rgba(0,0,0,0.06)',
+    justifyContent: 'center',
+    gap: 6,
+    paddingBottom: 8,
   },
-  colHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  colDot: { width: 8, height: 8, borderRadius: 4 },
-  colTitle: { fontSize: 13, fontWeight: '700', color: C.textPrimary },
+  colTitle: {
+    fontSize: 10,
+    fontWeight: '700',
+    fontFamily: F.bold,
+    color: '#64748B',
+    letterSpacing: 1.2,
+  },
+  colCountBadge: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
   colCount: {
-    minWidth: 22,
+    fontSize: 10,
+    fontWeight: '700',
+    fontFamily: F.bold,
+  },
+
+  colDivider: {
+    height: 2,
+    borderRadius: 1,
+    marginBottom: 10,
+    opacity: 0.45,
+  },
+
+  colCards: { gap: 7, paddingBottom: 20 },
+
+  emptyCol: {
+    alignItems: 'center',
+    paddingVertical: 32,
+    borderWidth: 1.5,
+    borderColor: C.border,
+    borderStyle: 'dashed',
+    borderRadius: 14,
+  },
+  emptyText: {
+    fontSize: 13,
+    fontFamily: F.regular,
+    color: C.textMuted,
+  },
+
+  // ── Card — same language as WorkOrderCard ──
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 10,
+    gap: 3,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+
+  topMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 2,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  orderNum: {
+    fontSize: 13,
+    fontFamily: F.bold,
+    fontWeight: '700',
+    color: '#1C1C1E',
+    letterSpacing: -0.1,
+  },
+  urgentBadge: {
+    backgroundColor: '#FEF2F2',
+    borderRadius: 3,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+  },
+  urgentText: {
+    fontSize: 8,
+    fontWeight: '700',
+    fontFamily: F.bold,
+    color: '#EF4444',
+    letterSpacing: 0.4,
+  },
+  statusLabel: {
+    fontSize: 11,
+    fontFamily: F.medium,
+    fontWeight: '500',
+  },
+
+  workType: {
+    fontSize: 11,
+    fontWeight: '400',
+    fontFamily: F.regular,
+    color: '#AEAEB2',
+    marginTop: 2,
+  },
+
+  doctorLine: {
+    fontSize: 13,
+    fontFamily: F.semibold,
+    fontWeight: '600',
+    color: '#1C1C1E',
+  },
+  patientLine: {
+    fontSize: 11,
+    fontFamily: F.regular,
+    color: '#AEAEB2',
+    marginTop: 2,
+  },
+
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 6,
+  },
+  footerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  footerRight: {
+    alignItems: 'center',
+    gap: 2,
+  },
+  avatar: {
+    width: 22,
     height: 22,
     borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 6,
   },
-  colCountText: { fontSize: 12, fontWeight: '800' },
-  colCards: { gap: 8, paddingBottom: 16 },
-  emptyCol: {
-    alignItems: 'center',
-    paddingVertical: 24,
-    borderWidth: 1.5,
-    borderColor: C.border,
-    borderStyle: 'dashed',
-    borderRadius: 8,
+  avatarText: {
+    fontSize: 11,
+    fontWeight: '800',
+    fontFamily: F.bold,
+    color: '#FFFFFF',
   },
-  emptyColText: { fontSize: 13, color: C.textMuted },
+  teethCount: {
+    fontSize: 11,
+    fontFamily: F.regular,
+    color: '#AEAEB2',
+  },
+  dateText: {
+    fontSize: 12,
+    fontFamily: F.semibold,
+    fontWeight: '600',
+  },
 
-  card: {
-    backgroundColor: C.surface,
-    borderRadius: 10,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: C.border,
-    // @ts-ignore
-    boxShadow: '0px 1px 4px rgba(0,0,0,0.06)',
-  },
-  cardOverdue: {
-    borderColor: '#FCA5A5',
-    backgroundColor: C.dangerBg,
-  },
-  cardTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  cardNum: { fontSize: 13, fontWeight: '800', color: C.textPrimary },
-  overdueBadge: {
-    backgroundColor: C.danger,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  overdueBadgeText: { fontSize: 9, fontWeight: '800', color: '#FFFFFF', letterSpacing: 0.5 },
-  urgentBadge: {
-    backgroundColor: C.warningBg,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  urgentBadgeText: { fontSize: 10, fontWeight: '700', color: C.warning },
-  cardDoctor: { fontSize: 13, fontWeight: '600', color: C.primary, marginBottom: 2 },
-  cardWorkType: { fontSize: 12, color: C.textSecondary, marginBottom: 8 },
-  cardMeta: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 },
-  cardMetaRow2: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-  cardMetaItem: { fontSize: 11, color: C.textMuted },
-  cardActions: { flexDirection: 'row', gap: 6, marginTop: 4 },
-  btnFinish: {
-    flex: 1,
-    backgroundColor: C.primary,
+  advanceBtn: {
+    marginTop: 6,
+    backgroundColor: '#F1F5F9',
     borderRadius: 6,
-    paddingVertical: 7,
+    paddingVertical: 4,
     alignItems: 'center',
   },
-  btnFinishText: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
+  advanceBtnText: {
+    fontSize: 11,
+    fontWeight: '600',
+    fontFamily: F.semibold,
+    color: '#475569',
+  },
 });

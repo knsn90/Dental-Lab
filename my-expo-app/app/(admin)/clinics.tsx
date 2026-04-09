@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { ClinicIcon } from '../../core/ui/ClinicIcon';
 import { supabase } from '../../lib/supabase';
 import { fetchClinics, createClinic, updateClinic } from '../../lib/clinics';
 import Colors from '../../constants/colors';
@@ -125,7 +126,7 @@ export default function AdminClinicsScreen() {
         <View style={styles.pageHeader}>
           <Text style={styles.title}>Klinikler</Text>
           <TouchableOpacity style={styles.addBtn} onPress={handleAdd}>
-            <MaterialCommunityIcons name="office-building-outline" size={16} color="#FFFFFF" />
+            <ClinicIcon size={16} color="#FFFFFF" />
             <Text style={styles.addBtnText}>Klinik Ekle</Text>
           </TouchableOpacity>
         </View>
@@ -134,7 +135,7 @@ export default function AdminClinicsScreen() {
           <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 40 }} />
         ) : clinics.length === 0 ? (
           <View style={styles.empty}>
-            <MaterialCommunityIcons name="office-building-outline" size={48} color={Colors.textMuted} />
+            <ClinicIcon size={48} color={Colors.textMuted} />
             <Text style={styles.emptyText}>Henüz klinik eklenmemiş</Text>
           </View>
         ) : (
@@ -177,7 +178,7 @@ function ClinicCard({
     <View style={[styles.card, !clinic.is_active && styles.cardInactive]}>
       <View style={styles.cardHeader}>
         <View style={styles.avatar}>
-          <MaterialCommunityIcons name="office-building-outline" size={20} color="#0F172A" />
+          <ClinicIcon size={20} color="#0F172A" />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={[styles.name, !clinic.is_active && styles.nameInactive]}>

@@ -3,9 +3,22 @@ import { WorkOrderStatus, MachineType, CreateWorkOrderParams } from './types';
 import { createWorkflow } from '../workflow/engine';
 
 export async function createWorkOrder(params: CreateWorkOrderParams & { measurement_type?: string; doctor_approval_required?: boolean }) {
+  // Strip columns that do not yet exist in the production DB schema.
+  // Only send fields confirmed to be in work_orders.
+  const {
+    patient_dob,          // migration 004 — not applied yet
+    patient_phone,        // migration 004 — not applied yet
+    patient_nationality,  // not in any migration
+    patient_country,      // not in any migration
+    patient_city,         // not in any migration
+    measurement_type,     // workflow plan — not applied yet
+    doctor_approval_required, // workflow plan — not applied yet
+    ...safeParams
+  } = params as any;
+
   const { data, error } = await supabase
     .from('work_orders')
-    .insert(params)
+    .insert(safeParams)
     .select()
     .single();
 

@@ -259,14 +259,14 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 11, fontWeight: '600', fontFamily: F.semibold,
-    color: C.textSecondary, textTransform: 'uppercase', letterSpacing: 0.6,
+    color: C.textSecondary, textTransform: 'none', letterSpacing: 0.6,
   },
 
   // Fields
   fieldGroup: { marginBottom: 14 },
   fieldLabel: {
     fontSize: 11, fontWeight: '500', fontFamily: F.medium,
-    color: '#64748B', marginBottom: 6, letterSpacing: 0.4, textTransform: 'uppercase',
+    color: '#64748B', marginBottom: 6, letterSpacing: 0.4, textTransform: 'none',
   },
   input: {
     borderWidth: 1, borderColor: K.border, borderRadius: 10,

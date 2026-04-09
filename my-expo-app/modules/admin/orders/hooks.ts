@@ -1,11 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   fetchAllOrders,
   fetchOrderById,
   fetchOrderStats,
   updateOrderStatus,
+  assignTechnicianToOrder,
+  fetchTechniciansList,
   AdminOrder,
   OrderStats,
+  Technician,
 } from './service';
 
 export function useAdminOrders() {
@@ -59,7 +62,41 @@ export function useAdminOrders() {
     [orders]
   );
 
-  return { orders, loading, error, refresh, filter };
+  const unassignedAlindi = useMemo(
+    () => orders.filter((o) => o.status === 'alindi' && !o.assigned_to),
+    [orders]
+  );
+
+  return { orders, loading, error, refresh, filter, unassignedAlindi };
+}
+
+export function useAssignTechnician(onSuccess: () => void) {
+  const [technicians, setTechnicians] = useState<Technician[]>([]);
+  const [loadingTechs, setLoadingTechs] = useState(false);
+  const [assigning, setAssigning] = useState(false);
+
+  const loadTechnicians = useCallback(async () => {
+    setLoadingTechs(true);
+    try {
+      const list = await fetchTechniciansList();
+      setTechnicians(list);
+    } catch {}
+    finally { setLoadingTechs(false); }
+  }, []);
+
+  const assign = useCallback(async (orderId: string, technicianId: string) => {
+    setAssigning(true);
+    try {
+      await assignTechnicianToOrder(orderId, technicianId);
+      onSuccess();
+    } catch (e: any) {
+      throw e;
+    } finally {
+      setAssigning(false);
+    }
+  }, [onSuccess]);
+
+  return { technicians, loadingTechs, assigning, loadTechnicians, assign };
 }
 
 export function useAdminOrderDetail(id: string) {

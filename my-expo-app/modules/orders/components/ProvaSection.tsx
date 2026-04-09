@@ -18,7 +18,7 @@ import { OrderItem } from '../types';
 import { C } from '../../../core/theme/colors';
 
 const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
-  planlandı:   { label: '📅 Planlandı',    color: '#1D4ED8', bg: '#EFF6FF' },
+  planlandı:   { label: '📅 Planlandı',    color: '#1D4ED8', bg: '#F1F5F9' },
   gönderildi:  { label: '📤 Gönderildi',   color: '#D97706', bg: '#FFFBEB' },
   döndü:       { label: '📥 Döndü',        color: '#7C3AED', bg: '#F5F3FF' },
   tamamlandı:  { label: '✅ Tamamlandı',   color: '#059669', bg: '#ECFDF5' },

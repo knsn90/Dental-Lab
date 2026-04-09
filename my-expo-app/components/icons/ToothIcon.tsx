@@ -1,0 +1,61 @@
+import React from 'react';
+import { Platform, View } from 'react-native';
+
+// SVG path data from big-tooth_icon-icons.com_56108.svg (viewBox 0 0 24 24)
+// Two sub-paths: outer silhouette + inner inset → evenodd fill creates clean outline
+const TOOTH_PATH =
+  'M6.513,23.395c-2.838,0-3.596-6.242-3.596-9.93c0-0.75-0.356-1.73-0.735-2.768' +
+  'c-0.822-2.259-1.847-5.069-0.063-7.67c1.134-1.652,2.36-2.422,3.861-2.422' +
+  'c0.971,0,1.908,0.313,2.901,0.646C9.866,1.58,10.885,1.92,11.928,1.92' +
+  'c1.06,0,2.073-0.333,3.053-0.656c0.978-0.322,1.901-0.626,2.868-0.626' +
+  'c1.499,0,2.759,0.755,3.965,2.378c1.87,2.515,0.847,5.397,0.024,7.715' +
+  'c-0.367,1.033-0.713,2.01-0.713,2.734c0,1.651-0.174,9.887-3.597,9.887' +
+  'c-2.365,0-2.92-2.447-3.408-4.605c-0.497-2.194-0.888-3.526-2.115-3.526' +
+  'c-1.411,0-1.909,1.875-2.437,3.861C9.006,21.201,8.423,23.395,6.513,23.395z' +
+  ' M5.979,1.406c-1.229,0-2.217,0.64-3.201,2.074c-1.551,2.26-0.645,4.748,0.155,6.942' +
+  'c0.403,1.106,0.784,2.151,0.784,3.042c0,4.487,1.045,9.129,2.795,9.129' +
+  'c1.295,0,1.774-1.806,2.282-3.719c0.555-2.088,1.184-4.456,3.21-4.456' +
+  'c1.955,0,2.433,2.11,2.896,4.15c0.545,2.405,1.021,3.981,2.628,3.981' +
+  'c1.921,0,2.796-4.71,2.796-9.086c0-0.862,0.369-1.902,0.76-3.002' +
+  'c0.798-2.249,1.702-4.798,0.087-6.971c-1.056-1.421-2.08-2.055-3.322-2.055' +
+  'c-0.838,0-1.703,0.284-2.618,0.586c-1.04,0.343-2.114,0.697-3.303,0.697' +
+  'c-1.173,0-2.254-0.361-3.301-0.711C7.698,1.699,6.82,1.406,5.979,1.406z';
+
+interface ToothIconProps {
+  size?: number;
+  color?: string;
+  style?: any;
+}
+
+export function ToothIcon({ size = 24, color = '#000000', style }: ToothIconProps) {
+  if (Platform.OS === 'web') {
+    return (
+      <View style={[{ width: size, height: size }, style]}>
+        {/* @ts-ignore */}
+        <svg
+          width={size}
+          height={size}
+          viewBox="0 0 24 24"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          {/* @ts-ignore */}
+          <path d={TOOTH_PATH} fill={color} fillRule="evenodd" />
+        </svg>
+      </View>
+    );
+  }
+
+  // Native: react-native-svg
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { Svg, Path } = require('react-native-svg');
+    return (
+      <Svg width={size} height={size} viewBox="0 0 24 24" style={style}>
+        <Path d={TOOTH_PATH} fill={color} fillRule="evenodd" />
+      </Svg>
+    );
+  } catch {
+    // Fallback: empty view if svg not available
+    return <View style={[{ width: size, height: size }, style]} />;
+  }
+}

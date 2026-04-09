@@ -19,7 +19,10 @@ export interface WorkOrder {
   patient_gender: PatientGender | null;
   patient_dob: string | null;      // YYYY-MM-DD
   patient_phone: string | null;
-  department: string | null;
+  patient_nationality: string | null;
+  patient_country: string | null;
+  patient_city: string | null;
+  lab_notes_visible: boolean;
   tags: string[];
   tooth_numbers: number[];
   work_type: string;
@@ -60,6 +63,7 @@ export interface CreateWorkOrderParams {
   patient_gender?: string;
   patient_dob?: string;       // YYYY-MM-DD, optional
   patient_phone?: string;
+  /** Auto-derived from work_type — not exposed in UI */
   department?: string;
   tags?: string[];
   tooth_numbers: number[];
@@ -71,6 +75,12 @@ export interface CreateWorkOrderParams {
   notes?: string;
   lab_notes?: string;
   delivery_date: string; // YYYY-MM-DD
+  measurement_type?: 'manual' | 'digital';
+  doctor_approval_required?: boolean;
+  patient_nationality?: string;
+  patient_country?: string;
+  patient_city?: string;
+  lab_notes_visible?: boolean;
 }
 
 export interface PendingItem {
