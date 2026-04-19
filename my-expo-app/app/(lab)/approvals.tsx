@@ -1,1 +1,1 @@
-export { PendingApprovalsScreen as default } from '../../modules/approvals/PendingApprovalsScreen';
+export { DesignApprovalsScreen as default } from '../../modules/approvals/DesignApprovalsScreen';

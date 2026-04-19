@@ -12,6 +12,7 @@ import {
   Modal,
   ActivityIndicator,
 } from 'react-native';
+import Svg, { Circle } from 'react-native-svg';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -38,6 +39,15 @@ const STATUS_FILTERS: { value: WorkOrderStatus | 'all'; label: string }[] = [
 
 type ViewMode = 'kanban' | 'list';
 type MachineFilter = 'all' | 'milling' | '3d_printing';
+type SortBy = 'delivery_date' | 'created_at' | 'order_number' | 'is_urgent';
+type SortDir = 'asc' | 'desc';
+
+const SORT_OPTIONS: { value: SortBy; label: string; icon: string }[] = [
+  { value: 'delivery_date', label: 'Teslimat Tarihi', icon: 'calendar-clock' },
+  { value: 'created_at',    label: 'Oluşturma Tarihi', icon: 'calendar-plus' },
+  { value: 'order_number',  label: 'Sipariş No',      icon: 'pound' },
+  { value: 'is_urgent',     label: 'Aciliyet',        icon: 'lightning-bolt' },
+];
 
 export default function AdminOrdersScreen() {
   const router = useRouter();
@@ -52,13 +62,39 @@ export default function AdminOrdersScreen() {
   const [selectedOrder, setSelectedOrder] = useState<WorkOrder | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
 
-  // Extra filters
+  // Applied filters
   const [urgentOnly, setUrgentOnly] = useState(false);
   const [machineFilter, setMachineFilter] = useState<MachineFilter>('all');
   const [overdueOnly, setOverdueOnly] = useState(false);
-  const [filterSheetVisible, setFilterSheetVisible] = useState(false);
+  const [sortBy, setSortBy] = useState<SortBy>('delivery_date');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
 
-  const activeFilterCount = [urgentOnly, machineFilter !== 'all', overdueOnly].filter(Boolean).length;
+  // Draft filters (used while popup is open)
+  const [filterSheetVisible, setFilterSheetVisible] = useState(false);
+  const [draftUrgent,  setDraftUrgent]  = useState(false);
+  const [draftMachine, setDraftMachine] = useState<MachineFilter>('all');
+  const [draftOverdue, setDraftOverdue] = useState(false);
+  const [draftSortBy,  setDraftSortBy]  = useState<SortBy>('delivery_date');
+  const [draftSortDir, setDraftSortDir] = useState<SortDir>('asc');
+
+  const openFilterSheet = () => {
+    setDraftUrgent(urgentOnly);
+    setDraftMachine(machineFilter);
+    setDraftOverdue(overdueOnly);
+    setDraftSortBy(sortBy);
+    setDraftSortDir(sortDir);
+    setFilterSheetVisible(true);
+  };
+  const applyFilters = () => {
+    setUrgentOnly(draftUrgent);
+    setMachineFilter(draftMachine);
+    setOverdueOnly(draftOverdue);
+    setSortBy(draftSortBy);
+    setSortDir(draftSortDir);
+    setFilterSheetVisible(false);
+  };
+
+  const activeFilterCount = [urgentOnly, machineFilter !== 'all', overdueOnly, sortBy !== 'delivery_date' || sortDir !== 'asc'].filter(Boolean).length;
 
   // Assignment
   const [assignTarget, setAssignTarget] = useState<WorkOrder | null>(null);
@@ -74,7 +110,7 @@ export default function AdminOrdersScreen() {
   const today = new Date().toISOString().split('T')[0];
 
   const filtered = useMemo(() => {
-    return orders.filter((o) => {
+    const list = orders.filter((o) => {
       const matchStatus = statusFilter === 'all' || o.status === statusFilter;
       const searchLower = search.toLowerCase();
       const matchSearch =
@@ -88,12 +124,23 @@ export default function AdminOrdersScreen() {
       const matchOverdue = !overdueOnly || (o.delivery_date < today && o.status !== 'teslim_edildi');
       return matchStatus && matchSearch && matchUrgent && matchMachine && matchOverdue;
     });
-  }, [orders, statusFilter, search, urgentOnly, machineFilter, overdueOnly, today]);
+
+    return [...list].sort((a, b) => {
+      let cmp = 0;
+      if (sortBy === 'delivery_date') cmp = a.delivery_date.localeCompare(b.delivery_date);
+      else if (sortBy === 'created_at') cmp = a.created_at.localeCompare(b.created_at);
+      else if (sortBy === 'order_number') cmp = a.order_number.localeCompare(b.order_number);
+      else if (sortBy === 'is_urgent') cmp = (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0);
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [orders, statusFilter, search, urgentOnly, machineFilter, overdueOnly, today, sortBy, sortDir]);
 
   const clearFilters = () => {
     setUrgentOnly(false);
     setMachineFilter('all');
     setOverdueOnly(false);
+    setSortBy('delivery_date');
+    setSortDir('asc');
   };
 
   const handleStatusAdvance = (order: WorkOrder) => {
@@ -134,20 +181,23 @@ export default function AdminOrdersScreen() {
 
       {/* ── Unassigned Banner ── */}
       {unassignedAlindi.length > 0 && (
-        <View style={s.unassignedBanner}>
+        <TouchableOpacity
+          style={s.unassignedBanner}
+          onPress={() => { setStatusFilter('alindi'); setViewMode('list'); }}
+          activeOpacity={0.7}
+        >
           <View style={s.bannerLeft}>
-            <MaterialCommunityIcons name={'account-alert-outline' as any} size={18} color="#B45309" />
-            <Text style={s.bannerText}>
-              {unassignedAlindi.length} sipariş teknisyen atanmayı bekliyor
+            <View style={s.bannerCount}>
+              <Text style={s.bannerCountText}>{unassignedAlindi.length}</Text>
+            </View>
+            <Text style={s.bannerText} numberOfLines={1}>
+              iş emri teknisyen bekliyor
             </Text>
           </View>
-          <TouchableOpacity
-            style={s.bannerBtn}
-            onPress={() => { setStatusFilter('alindi'); setViewMode('list'); }}
-          >
-            <Text style={s.bannerBtnText}>Göster</Text>
-          </TouchableOpacity>
-        </View>
+          <View style={s.bannerArrow}>
+            <MaterialCommunityIcons name={'chevron-right' as any} size={16} color="#0F172A" />
+          </View>
+        </TouchableOpacity>
       )}
 
       {/* ── Active filter chips ── */}
@@ -192,9 +242,10 @@ export default function AdminOrdersScreen() {
         </View>
       )}
 
-      {/* ── Toolbar: status tabs + view toggle + search + filter ── */}
+      {/* ── Toolbar: status tabs + fixed right actions ── */}
       <View style={s.toolbarRow}>
-        {viewMode !== 'kanban' ? (
+        {/* Status tab bar — only in list mode */}
+        {viewMode === 'list' ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -223,60 +274,67 @@ export default function AdminOrdersScreen() {
           <View style={{ flex: 1 }} />
         )}
 
-        {/* View mode toggle */}
-        <TouchableOpacity
-          onPress={() => setViewMode('list')}
-          style={[s.toolbarBtn, viewMode === 'list' && s.toolbarBtnActive]}
-          activeOpacity={0.75}
-        >
-          <MaterialCommunityIcons
-            name={'format-list-text' as any}
-            size={18}
-            color={viewMode === 'list' ? '#0F172A' : '#94A3B8'}
-          />
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => setViewMode('kanban')}
-          style={[s.toolbarBtn, viewMode === 'kanban' && s.toolbarBtnActive]}
-          activeOpacity={0.75}
-        >
-          <MaterialCommunityIcons
-            name={'view-column' as any}
-            size={18}
-            color={viewMode === 'kanban' ? '#0F172A' : '#94A3B8'}
-          />
-        </TouchableOpacity>
+        {/* Fixed right group — never shifts between modes */}
+        <View style={s.rightGroup}>
+          {/* iOS Segmented Control — view mode */}
+          <View style={s.segControl}>
+            <TouchableOpacity
+              onPress={() => setViewMode('list')}
+              style={[s.segBtn, viewMode === 'list' && s.segBtnActive]}
+              activeOpacity={0.75}
+            >
+              <MaterialCommunityIcons
+                name={'format-list-text' as any}
+                size={16}
+                color={viewMode === 'list' ? '#0F172A' : '#94A3B8'}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setViewMode('kanban')}
+              style={[s.segBtn, viewMode === 'kanban' && s.segBtnActive]}
+              activeOpacity={0.75}
+            >
+              <MaterialCommunityIcons
+                name={'view-column' as any}
+                size={16}
+                color={viewMode === 'kanban' ? '#0F172A' : '#94A3B8'}
+              />
+            </TouchableOpacity>
+          </View>
 
-        {viewMode !== 'kanban' && (
+          {/* Search */}
           <TouchableOpacity
-            style={[s.toolbarBtn, (searchExpanded || search.length > 0) && s.toolbarBtnActive]}
+            style={[s.iconBtn, (searchExpanded || search.length > 0) && s.iconBtnActive]}
             onPress={() => setSearchExpanded(!searchExpanded)}
             activeOpacity={0.75}
           >
             <MaterialCommunityIcons
               name={'magnify' as any}
               size={18}
-              color={(searchExpanded || search.length > 0) ? '#0F172A' : C.textMuted}
+              color={(searchExpanded || search.length > 0) ? '#0F172A' : '#94A3B8'}
             />
           </TouchableOpacity>
-        )}
 
-        <TouchableOpacity
-          style={[s.toolbarBtn, activeFilterCount > 0 && s.toolbarBtnActive]}
-          onPress={() => setFilterSheetVisible(true)}
-          activeOpacity={0.75}
-        >
-          <MaterialCommunityIcons
-            name={'tune-variant' as any}
-            size={18}
-            color={activeFilterCount > 0 ? '#0F172A' : C.textMuted}
-          />
-          {activeFilterCount > 0 && (
-            <View style={s.filterBadge}>
-              <Text style={s.filterBadgeText}>{activeFilterCount}</Text>
-            </View>
+          {/* Filter — hidden in kanban mode */}
+          {viewMode !== 'kanban' && (
+            <TouchableOpacity
+              style={[s.iconBtn, activeFilterCount > 0 && s.iconBtnActive]}
+              onPress={openFilterSheet}
+              activeOpacity={0.75}
+            >
+              <MaterialCommunityIcons
+                name={'tune-variant' as any}
+                size={18}
+                color={activeFilterCount > 0 ? '#0F172A' : '#94A3B8'}
+              />
+              {activeFilterCount > 0 && (
+                <View style={s.filterBadge}>
+                  <Text style={s.filterBadgeText}>{activeFilterCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
           )}
-        </TouchableOpacity>
+        </View>
       </View>
 
       {viewMode !== 'kanban' && (searchExpanded || search.length > 0) && (
@@ -314,23 +372,40 @@ export default function AdminOrdersScreen() {
           onStatusAdvance={handleStatusAdvance}
         />
       ) : (
-        <FlatList
-          data={filtered}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={s.listContent}
-          renderItem={({ item }) => (
-            <WorkOrderCard
-              order={item}
-              onPress={() => router.push(`/(admin)/order/${item.id}` as any)}
-              showDoctor
-              onAssign={item.status === 'alindi' && !item.assigned_to
-                ? () => openAssignModal(item)
-                : undefined}
-            />
-          )}
-          refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} />}
-          ListEmptyComponent={<EmptyState search={search} hasFilters={activeFilterCount > 0} />}
-        />
+        <ScrollView
+          style={tbl.page}
+          contentContainerStyle={tbl.pageContent}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor="#AEAEB2" />}
+          showsVerticalScrollIndicator={false}
+        >
+          {filtered.length === 0
+            ? <EmptyState search={search} hasFilters={activeFilterCount > 0} />
+            : (
+              <View style={tbl.card}>
+                {/* Table header */}
+                <View style={tbl.headerRow}>
+                  <Text style={[tbl.hCell, { flex: 2.2 }]}>İŞ EMRİ</Text>
+                  <Text style={[tbl.hCell, { flex: 1.6 }]}>İLERLEME</Text>
+                  <Text style={[tbl.hCell, { flex: 2 }]}>HEKİM / HASTA</Text>
+                  <Text style={[tbl.hCell, { flex: 1, textAlign: 'center' }]}>TESLİMAT</Text>
+                  <Text style={[tbl.hCell, { flex: 1.2, textAlign: 'right' }]}>DURUM</Text>
+                </View>
+
+                {filtered.map((item, idx) => (
+                  <OrderTableRow
+                    key={item.id}
+                    order={item}
+                    isLast={idx === filtered.length - 1}
+                    onPress={() => router.push(`/(admin)/order/${item.id}` as any)}
+                    onAssign={item.status === 'alindi' && !item.assigned_to
+                      ? () => openAssignModal(item)
+                      : undefined}
+                  />
+                ))}
+              </View>
+            )
+          }
+        </ScrollView>
       )}
 
       {/* ── Status Modal ── */}
@@ -343,103 +418,156 @@ export default function AdminOrdersScreen() {
         />
       )}
 
-      {/* ── Filter Sheet ── */}
+      {/* ── Filter Popup ── */}
       <Modal
         visible={filterSheetVisible}
         transparent
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => setFilterSheetVisible(false)}
       >
-        <View style={s.modalOverlay}>
-          <View style={s.filterSheet}>
-            <View style={s.sheetHandle} />
-            <View style={s.sheetHeader}>
-              <Text style={s.sheetTitle}>Filtrele</Text>
-              {activeFilterCount > 0 && (
-                <TouchableOpacity onPress={clearFilters}>
-                  <Text style={s.sheetClear}>Temizle</Text>
-                </TouchableOpacity>
-              )}
-            </View>
+        <TouchableOpacity style={fp.backdrop} activeOpacity={1} onPress={() => setFilterSheetVisible(false)}>
+          <View style={fp.panel} onStartShouldSetResponder={() => true}>
 
-            <Text style={s.sheetSectionLabel}>Öncelik</Text>
-            <View style={s.sheetOptions}>
-              <TouchableOpacity
-                style={[s.optionChip, !urgentOnly && s.optionChipActive]}
-                onPress={() => setUrgentOnly(false)}
-              >
-                <Text style={[s.optionChipText, !urgentOnly && s.optionChipTextActive]}>Tümü</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.optionChip, urgentOnly && s.optionChipUrgent]}
-                onPress={() => setUrgentOnly(true)}
-              >
-                <MaterialCommunityIcons
-                  name={'lightning-bolt' as any}
-                  size={13}
-                  color={urgentOnly ? '#92400E' : C.textMuted}
-                />
-                <Text style={[s.optionChipText, urgentOnly && s.optionChipTextUrgent]}>Sadece Acil</Text>
+            {/* Header */}
+            <View style={fp.header}>
+              <View style={fp.headerLeft}>
+                <MaterialCommunityIcons name={'tune-variant' as any} size={16} color="#0F172A" />
+                <Text style={fp.headerTitle}>Filtrele & Sırala</Text>
+                {(draftUrgent || draftMachine !== 'all' || draftOverdue || draftSortBy !== 'delivery_date' || draftSortDir !== 'asc') && (
+                  <View style={fp.countBadge}>
+                    <Text style={fp.countBadgeText}>
+                      {[draftUrgent, draftMachine !== 'all', draftOverdue, draftSortBy !== 'delivery_date' || draftSortDir !== 'asc'].filter(Boolean).length}
+                    </Text>
+                  </View>
+                )}
+              </View>
+              <TouchableOpacity onPress={() => {
+                setDraftUrgent(false); setDraftMachine('all'); setDraftOverdue(false);
+                setDraftSortBy('delivery_date'); setDraftSortDir('asc');
+              }}>
+                <Text style={fp.clearText}>Temizle</Text>
               </TouchableOpacity>
             </View>
 
-            <Text style={s.sheetSectionLabel}>Makine Tipi</Text>
-            <View style={s.sheetOptions}>
-              {([
-                { value: 'all',         label: 'Tümü',      icon: null },
-                { value: 'milling',     label: 'Frezeleme', icon: 'cog-outline' },
-                { value: '3d_printing', label: '3D Baskı',  icon: 'printer-3d' },
-              ] as const).map((opt) => (
-                <TouchableOpacity
-                  key={opt.value}
-                  style={[s.optionChip, machineFilter === opt.value && s.optionChipActive]}
-                  onPress={() => setMachineFilter(opt.value)}
-                >
-                  {opt.icon && (
-                    <MaterialCommunityIcons
-                      name={opt.icon as any}
-                      size={13}
-                      color={machineFilter === opt.value ? '#0F172A' : C.textMuted}
-                    />
-                  )}
-                  <Text style={[s.optionChipText, machineFilter === opt.value && s.optionChipTextActive]}>
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+            <View style={fp.divider} />
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+
+              {/* ── Sıralama ── */}
+              <View style={fp.section}>
+                <Text style={fp.sectionLabel}>Sıralama</Text>
+                <View style={fp.chipRow}>
+                  {SORT_OPTIONS.map(opt => {
+                    const active = draftSortBy === opt.value;
+                    return (
+                      <TouchableOpacity
+                        key={opt.value}
+                        style={[fp.chip, active && fp.chipActive]}
+                        onPress={() => setDraftSortBy(opt.value)}
+                        activeOpacity={0.7}
+                      >
+                        <MaterialCommunityIcons name={opt.icon as any} size={12} color={active ? '#0F172A' : '#94A3B8'} />
+                        <Text style={[fp.chipText, active && fp.chipTextActive]}>{opt.label}</Text>
+                        {active && (
+                          <TouchableOpacity onPress={() => setDraftSortDir(d => d === 'asc' ? 'desc' : 'asc')} style={fp.dirBtn}>
+                            <MaterialCommunityIcons
+                              name={(draftSortDir === 'asc' ? 'arrow-up' : 'arrow-down') as any}
+                              size={12} color="#0F172A"
+                            />
+                          </TouchableOpacity>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <View style={fp.divider} />
+
+              {/* ── Öncelik ── */}
+              <View style={fp.section}>
+                <Text style={fp.sectionLabel}>Öncelik</Text>
+                <View style={fp.chipRow}>
+                  <TouchableOpacity
+                    style={[fp.chip, !draftUrgent && fp.chipActive]}
+                    onPress={() => setDraftUrgent(false)} activeOpacity={0.7}
+                  >
+                    <Text style={[fp.chipText, !draftUrgent && fp.chipTextActive]}>Tümü</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[fp.chip, draftUrgent && fp.chipUrgent]}
+                    onPress={() => setDraftUrgent(true)} activeOpacity={0.7}
+                  >
+                    <MaterialCommunityIcons name={'lightning-bolt' as any} size={12} color={draftUrgent ? '#92400E' : '#94A3B8'} />
+                    <Text style={[fp.chipText, draftUrgent && fp.chipTextUrgent]}>Sadece Acil</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={fp.divider} />
+
+              {/* ── Makine Tipi ── */}
+              <View style={fp.section}>
+                <Text style={fp.sectionLabel}>Makine Tipi</Text>
+                <View style={fp.chipRow}>
+                  {([
+                    { value: 'all',         label: 'Tümü',      icon: null },
+                    { value: 'milling',     label: 'Frezeleme', icon: 'cog-outline' },
+                    { value: '3d_printing', label: '3D Baskı',  icon: 'printer-3d' },
+                  ] as const).map(opt => {
+                    const active = draftMachine === opt.value;
+                    return (
+                      <TouchableOpacity
+                        key={opt.value}
+                        style={[fp.chip, active && fp.chipActive]}
+                        onPress={() => setDraftMachine(opt.value)} activeOpacity={0.7}
+                      >
+                        {opt.icon && <MaterialCommunityIcons name={opt.icon as any} size={12} color={active ? '#0F172A' : '#94A3B8'} />}
+                        <Text style={[fp.chipText, active && fp.chipTextActive]}>{opt.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <View style={fp.divider} />
+
+              {/* ── Teslimat ── */}
+              <View style={fp.section}>
+                <Text style={fp.sectionLabel}>Teslimat</Text>
+                <View style={fp.chipRow}>
+                  <TouchableOpacity
+                    style={[fp.chip, !draftOverdue && fp.chipActive]}
+                    onPress={() => setDraftOverdue(false)} activeOpacity={0.7}
+                  >
+                    <Text style={[fp.chipText, !draftOverdue && fp.chipTextActive]}>Tümü</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[fp.chip, draftOverdue && fp.chipDanger]}
+                    onPress={() => setDraftOverdue(true)} activeOpacity={0.7}
+                  >
+                    <MaterialCommunityIcons name={'clock-alert-outline' as any} size={12} color={draftOverdue ? '#DC2626' : '#94A3B8'} />
+                    <Text style={[fp.chipText, draftOverdue && fp.chipTextDanger]}>Sadece Geciken</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+            </ScrollView>
+
+            <View style={fp.divider} />
+
+            {/* Footer buttons */}
+            <View style={fp.footer}>
+              <TouchableOpacity style={fp.cancelBtn} onPress={() => setFilterSheetVisible(false)} activeOpacity={0.7}>
+                <Text style={fp.cancelText}>İptal</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={fp.applyBtn} onPress={applyFilters} activeOpacity={0.7}>
+                <Text style={fp.applyText}>Uygula</Text>
+              </TouchableOpacity>
             </View>
 
-            <Text style={s.sheetSectionLabel}>Teslimat</Text>
-            <View style={s.sheetOptions}>
-              <TouchableOpacity
-                style={[s.optionChip, !overdueOnly && s.optionChipActive]}
-                onPress={() => setOverdueOnly(false)}
-              >
-                <Text style={[s.optionChipText, !overdueOnly && s.optionChipTextActive]}>Tümü</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.optionChip, overdueOnly && s.optionChipDanger]}
-                onPress={() => setOverdueOnly(true)}
-              >
-                <MaterialCommunityIcons
-                  name={'clock-alert-outline' as any}
-                  size={13}
-                  color={overdueOnly ? '#DC2626' : C.textMuted}
-                />
-                <Text style={[s.optionChipText, overdueOnly && s.optionChipTextDanger]}>Sadece Geciken</Text>
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity
-              style={s.applyBtn}
-              onPress={() => setFilterSheetVisible(false)}
-            >
-              <Text style={s.applyBtnText}>
-                Uygula{activeFilterCount > 0 ? ` (${activeFilterCount} filtre)` : ''}
-              </Text>
-            </TouchableOpacity>
           </View>
-        </View>
+        </TouchableOpacity>
       </Modal>
 
       {/* ── Assign Modal ── */}
@@ -521,10 +649,132 @@ function EmptyState({ search, hasFilters }: { search: string; hasFilters: boolea
   );
 }
 
+// ─── Progress per status ──────────────────────────────────────────────────────
+const STATUS_PROGRESS: Record<string, number> = {
+  alindi: 10, uretimde: 40, kalite_kontrol: 70, teslimata_hazir: 90, teslim_edildi: 100,
+};
+
+// ─── Circular Progress ────────────────────────────────────────────────────────
+function CircularProgress({ progress, size = 46, stroke = 4.5 }: {
+  progress: number; size?: number; stroke?: number;
+}) {
+  const r      = (size - stroke) / 2;
+  const circ   = 2 * Math.PI * r;
+  const offset = circ * (1 - Math.min(progress, 100) / 100);
+  const color  =
+    progress >= 100 ? '#10B981' :
+    progress >= 90  ? '#6D28D9' :
+    progress >= 70  ? '#7C3AED' :
+    progress >= 40  ? '#4F46E5' : '#0F172A';
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <Svg width={size} height={size} style={{ position: 'absolute' as any }}>
+        <Circle cx={size / 2} cy={size / 2} r={r} stroke="#F1F5F9" strokeWidth={stroke} fill="none" />
+        <Circle cx={size / 2} cy={size / 2} r={r}
+          stroke={color} strokeWidth={stroke} fill="none"
+          strokeDasharray={`${circ}`} strokeDashoffset={`${offset}`}
+          strokeLinecap="round" rotation="-90" origin={`${size / 2},${size / 2}`}
+        />
+      </Svg>
+      <Text style={{ fontSize: 9, fontWeight: '700', color: '#6C6C70' }}>{progress}%</Text>
+    </View>
+  );
+}
+
+// ─── Order Table Row ──────────────────────────────────────────────────────────
+function OrderTableRow({
+  order, isLast, onPress, onAssign,
+}: {
+  order: WorkOrder; isLast: boolean;
+  onPress: () => void; onAssign?: () => void;
+}) {
+  const cfg        = STATUS_CONFIG[order.status];
+  const progress   = STATUS_PROGRESS[order.status] ?? 0;
+  const doctorName = order.doctor?.full_name ?? '';
+  const clinicName = (order.doctor as any)?.clinic?.name ?? '';
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const due   = new Date(order.delivery_date + 'T00:00:00');
+  const diff  = Math.ceil((due.getTime() - today.getTime()) / 86_400_000);
+  const isOverdue = order.status !== 'teslim_edildi' && diff < 0;
+
+  const dateText  = order.status === 'teslim_edildi' ? 'Teslim edildi'
+    : diff === 0  ? 'Bugün'
+    : diff === 1  ? 'Yarın'
+    : diff < 0    ? `${Math.abs(diff)}g gecikti`
+    : due.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+  const dateColor = order.status === 'teslim_edildi' ? '#94A3B8'
+    : diff < 0    ? '#EF4444'
+    : diff <= 1   ? '#F59E0B' : '#6C6C70';
+
+  const parts    = doctorName.trim().split(/\s+/);
+  const initials = parts.length >= 2
+    ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    : doctorName.substring(0, 2).toUpperCase();
+  const PALETTE  = ['#6C63FF', '#FF6B9D', '#00C9A7', '#F59E0B', '#3B82F6', '#EF4444'];
+  let h = 0;
+  for (let i = 0; i < doctorName.length; i++) h = (h * 31 + doctorName.charCodeAt(i)) & 0xff;
+  const avatarBg = doctorName ? PALETTE[h % PALETTE.length] : '#94A3B8';
+
+  return (
+    <TouchableOpacity
+      style={[tbl.row, !isLast && tbl.rowBorder, isOverdue && tbl.rowOverdue]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      {/* İş Emri */}
+      <View style={{ flex: 2.2, gap: 3 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {order.is_urgent && (
+            <MaterialCommunityIcons name={'lightning-bolt' as any} size={12} color="#F59E0B" />
+          )}
+          <Text style={tbl.orderNo} numberOfLines={1}>{order.order_number}</Text>
+        </View>
+        <Text style={tbl.workType} numberOfLines={1}>{order.work_type}</Text>
+      </View>
+
+      {/* İlerleme */}
+      <View style={{ flex: 1.8, alignItems: 'flex-start', paddingLeft: 4 }}>
+        <CircularProgress progress={progress} size={46} stroke={4.5} />
+      </View>
+
+      {/* Hekim / Hasta */}
+      <View style={{ flex: 2, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <View style={[tbl.avatar, { backgroundColor: avatarBg }]}>
+          <Text style={tbl.avatarText}>{initials || '?'}</Text>
+        </View>
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={tbl.doctorName} numberOfLines={1}>{doctorName || '—'}</Text>
+          <Text style={tbl.clinicName} numberOfLines={1}>{clinicName || (order.patient_name ?? '—')}</Text>
+        </View>
+      </View>
+
+      {/* Teslimat */}
+      <View style={{ flex: 1, alignItems: 'center' }}>
+        <Text style={[tbl.dateText, { color: dateColor }]}>{dateText}</Text>
+        {onAssign && (
+          <TouchableOpacity style={tbl.assignBtn} onPress={(e) => { (e as any).stopPropagation?.(); onAssign(); }} activeOpacity={0.7}>
+            <Text style={tbl.assignBtnText}>Ata</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Durum */}
+      <View style={{ flex: 1.2, alignItems: 'flex-end' }}>
+        <View style={[tbl.statusBadge, { backgroundColor: cfg?.bgColor ?? '#F1F5F9' }]}>
+          <Text style={[tbl.statusText, { color: cfg?.color ?? '#6C6C70' }]} numberOfLines={1}>
+            {cfg?.label ?? order.status}
+          </Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
 const s = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: C.surface,
+    backgroundColor: '#FFFFFF',
   },
 
   // Header
@@ -563,7 +813,7 @@ const s = StyleSheet.create({
   tabRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#E2E8F0',
+    backgroundColor: '#F1F5F9',
     borderRadius: 100,
     padding: 3,
     gap: 2,
@@ -632,63 +882,103 @@ const s = StyleSheet.create({
     textDecorationLine: 'underline',
   },
 
-  // Unassigned banner
+  // Unassigned banner — iOS minimal
   unassignedBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#FFFBEB',
-    borderBottomWidth: 1,
-    borderBottomColor: '#FDE68A',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    backgroundColor: 'rgba(15,23,42,0.05)',
+    borderRadius: 14,
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 2,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
   },
   bannerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
     flex: 1,
+  },
+  bannerCount: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#0F172A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerCountText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   bannerText: {
     fontSize: 13,
     fontFamily: F.medium,
     fontWeight: '500',
-    color: '#92400E',
+    color: '#0F172A',
     flex: 1,
   },
-  bannerBtn: {
-    backgroundColor: '#D97706',
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 6,
-  },
-  bannerBtnText: {
-    fontSize: 12,
-    fontFamily: F.bold,
-    fontWeight: '700',
-    color: '#FFFFFF',
+  bannerArrow: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    opacity: 0.4,
   },
 
-  // Search
-  // ── Toolbar row (tab bar + search + filter) ──
+  // ── Toolbar row — fixed height so buttons never shift between modes ──
   toolbarRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingRight: 12,
-    gap: 4,
+    height: 52,
     backgroundColor: C.surface,
   },
-  toolbarBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 100,
+
+  // Fixed right actions — always same position
+  rightGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingRight: 12,
+    paddingLeft: 4,
+  },
+
+  // iOS Segmented Control — view mode toggle
+  segControl: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 8,
+    padding: 2,
+    gap: 1,
+    marginRight: 4,
+  },
+  segBtn: {
+    width: 32,
+    height: 28,
+    borderRadius: 6,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  toolbarBtnActive: {
-    backgroundColor: '#F1F5F9',
+  segBtnActive: {
+    backgroundColor: '#FFFFFF',
     // @ts-ignore
-    boxShadow: '0 1px 6px rgba(15,23,42,0.10)',
+    boxShadow: '0 1px 3px rgba(15,23,42,0.14)',
+  },
+
+  // Icon buttons (search, filter)
+  iconBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconBtnActive: {
+    backgroundColor: '#F1F5F9',
   },
 
   // ── Search (expandable below toolbar) ──
@@ -749,12 +1039,12 @@ const s = StyleSheet.create({
   statusTabsContent: {
     paddingLeft: 16,
     paddingRight: 4,
-    paddingVertical: 10,
+    alignItems: 'center',
   },
   statusTabBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#E2E8F0',
+    backgroundColor: '#F1F5F9',
     borderRadius: 100,
     padding: 3,
     gap: 2,
@@ -923,115 +1213,136 @@ const s = StyleSheet.create({
     marginTop: 2,
   },
 
-  // Filter sheet
-  filterSheet: {
-    backgroundColor: C.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingBottom: 32,
+});
+
+// ─── Filter Popup Styles ───────────────────────────────────────────────────────
+const fp = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.25)',
+    alignItems: 'flex-end',
+    paddingTop: 116,   // below header (~64) + toolbar (~52)
+    paddingRight: 16,
   },
-  sheetHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: C.border,
-    alignSelf: 'center',
-    marginTop: 12,
-    marginBottom: 4,
+  panel: {
+    width: 340,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.15,
+    shadowRadius: 32,
   },
-  sheetHeader: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
-  },
-  sheetTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    fontFamily: F.bold,
-    color: C.textPrimary,
-  },
-  sheetClear: {
-    fontSize: 13,
-    fontFamily: F.medium,
-    color: '#0F172A',
-  },
-  sheetSectionLabel: {
-    fontSize: 12,
-    fontFamily: F.semibold,
-    fontWeight: '600',
-    color: C.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    paddingHorizontal: 20,
-    paddingTop: 18,
-    paddingBottom: 10,
-  },
-  sheetOptions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     paddingHorizontal: 16,
-    gap: 8,
-  },
-  optionChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: C.border,
-    backgroundColor: C.surface,
-  },
-  optionChipActive: {
-    borderColor: '#0F172A',
-    backgroundColor: '#F1F5F9',
-  },
-  optionChipUrgent: {
-    borderColor: '#FDE68A',
-    backgroundColor: '#FFFBEB',
-  },
-  optionChipDanger: {
-    borderColor: '#FECACA',
-    backgroundColor: '#FEF2F2',
-  },
-  optionChipText: {
-    fontSize: 13,
-    fontFamily: F.medium,
-    fontWeight: '500',
-    color: C.textSecondary,
-  },
-  optionChipTextActive: {
-    color: '#0F172A',
-    fontFamily: F.semibold,
-    fontWeight: '600',
-  },
-  optionChipTextUrgent: {
-    color: '#92400E',
-    fontFamily: F.semibold,
-    fontWeight: '600',
-  },
-  optionChipTextDanger: {
-    color: '#DC2626',
-    fontFamily: F.semibold,
-    fontWeight: '600',
-  },
-  applyBtn: {
-    marginHorizontal: 20,
-    marginTop: 24,
-    backgroundColor: '#0F172A',
-    borderRadius: 12,
     paddingVertical: 14,
-    alignItems: 'center',
   },
-  applyBtnText: {
-    fontSize: 15,
-    fontFamily: F.bold,
-    fontWeight: '700',
-    color: '#FFFFFF',
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
+  countBadge: {
+    backgroundColor: '#0F172A', borderRadius: 10,
+    minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 5,
   },
+  countBadgeText: { fontSize: 10, fontWeight: '800', color: '#FFFFFF' },
+  clearText: { fontSize: 13, fontWeight: '500', color: '#94A3B8' },
+  divider: { height: 1, backgroundColor: '#F1F5F9' },
+
+  section: { paddingHorizontal: 16, paddingVertical: 14 },
+  sectionLabel: {
+    fontSize: 11, fontWeight: '700', color: '#94A3B8',
+    letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 10,
+  },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 12, paddingVertical: 7,
+    borderRadius: 8, borderWidth: 1.5, borderColor: '#F1F5F9',
+    backgroundColor: '#FAFAFA',
+  },
+  chipActive:  { borderColor: '#0F172A', backgroundColor: '#F1F5F9' },
+  chipUrgent:  { borderColor: '#FDE68A', backgroundColor: '#FFFBEB' },
+  chipDanger:  { borderColor: '#FECACA', backgroundColor: '#FEF2F2' },
+  chipText:    { fontSize: 13, fontWeight: '500', color: '#94A3B8' },
+  chipTextActive: { color: '#0F172A', fontWeight: '600' },
+  chipTextUrgent: { color: '#92400E', fontWeight: '600' },
+  chipTextDanger: { color: '#DC2626', fontWeight: '600' },
+  dirBtn: {
+    width: 18, height: 18, borderRadius: 4,
+    backgroundColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center', marginLeft: 2,
+  },
+
+  footer: {
+    flexDirection: 'row', gap: 8,
+    paddingHorizontal: 16, paddingVertical: 14,
+  },
+  cancelBtn: {
+    flex: 1, paddingVertical: 11, borderRadius: 10,
+    borderWidth: 1.5, borderColor: '#F1F5F9',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  cancelText: { fontSize: 14, fontWeight: '600', color: '#6C6C70' },
+  applyBtn: {
+    flex: 2, paddingVertical: 11, borderRadius: 10,
+    backgroundColor: '#0F172A',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  applyText: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
+});
+
+// ─── Table Styles ─────────────────────────────────────────────────────────────
+const tbl = StyleSheet.create({
+  page:        { flex: 1, backgroundColor: '#FFFFFF' },
+  pageContent: { padding: 16, paddingBottom: 40 },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  headerRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 18, paddingVertical: 11,
+    backgroundColor: '#F9F9FB',
+    borderBottomWidth: 1, borderBottomColor: '#F1F1F5',
+  },
+  hCell: {
+    fontSize: 10, fontWeight: '700',
+    color: '#C7C7CC', letterSpacing: 0.7,
+    textTransform: 'uppercase',
+  },
+  row: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 18, paddingVertical: 10,
+    backgroundColor: '#FFFFFF', minHeight: 64,
+  },
+  rowBorder:  { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E5E5EA' },
+  rowOverdue: { backgroundColor: '#FFFCFC' },
+  orderNo:    { fontSize: 13, fontWeight: '700', color: '#1C1C1E', letterSpacing: -0.1 },
+  workType:   { fontSize: 11, color: '#AEAEB2', fontWeight: '400', marginTop: 2 },
+  avatar: {
+    width: 32, height: 32, borderRadius: 16,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  avatarText:  { fontSize: 11, fontWeight: '800', color: '#FFFFFF' },
+  doctorName:  { fontSize: 13, fontWeight: '600', color: '#1C1C1E' },
+  clinicName:  { fontSize: 11, color: '#AEAEB2', marginTop: 2 },
+  dateText:    { fontSize: 12, fontWeight: '600', textAlign: 'center' },
+  assignBtn: {
+    marginTop: 4, backgroundColor: '#F1F5F9',
+    borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3,
+  },
+  assignBtnText: { fontSize: 11, fontWeight: '700', color: '#0F172A' },
+  statusBadge: {
+    borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, maxWidth: 100,
+  },
+  statusText:  { fontSize: 11, fontWeight: '600', textAlign: 'right' },
 });

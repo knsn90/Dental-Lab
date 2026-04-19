@@ -1,6 +1,9 @@
+export type ClinicCategory = 'klinik' | 'poliklinik' | 'hastane';
+
 export interface Clinic {
   id: string;
   name: string;
+  category: ClinicCategory | null;
   address: string | null;
   phone: string | null;
   email: string | null;

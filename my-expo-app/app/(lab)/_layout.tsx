@@ -21,8 +21,8 @@ export default function LabLayout() {
     { label: 'Yeni İş Emri', emoji: '➕', href: '/(lab)/new-order',   iconName: 'plus-circle',  iconSet: 'mdi' as const, subtitle: 'Formu adım adım doldurun' },
     { label: 'Klinikler & Hekimler', emoji: '🏥', href: '/(lab)/clinics', iconName: 'briefcase', iconSet: 'mdi' as const, matchPrefix: true },
     { label: 'Hizmetler',    emoji: '💰', href: '/(lab)/lab-services', iconName: 'tag',          iconSet: 'mdi' as const, matchPrefix: true },
+    { label: 'Stok',         emoji: '📦', href: '/(lab)/stock',        iconName: 'package',      iconSet: 'mdi' as const, matchPrefix: true, badgeCount: stockAlert },
     { label: 'Onaylar',      emoji: '✅', href: '/(lab)/approvals',   iconName: 'check-circle', iconSet: 'mdi' as const, badge: pendingCount > 0, matchPrefix: true },
-    { label: 'Stok',         emoji: '📦', href: '/(lab)/stock',        iconName: 'package',      iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'Stok Yönetimi', badgeCount: stockAlert },
     { label: 'Profil',       emoji: '👤', href: '/(lab)/profile',     iconName: 'user',         iconSet: 'mdi' as const, matchPrefix: true },
   ];
 

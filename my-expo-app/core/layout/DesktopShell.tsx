@@ -647,6 +647,11 @@ export function DesktopShell({ navItems, accentColor = C.primary }: Props) {
 
           {/* User row + toggle */}
           <View style={[s.userCard, sidebarCollapsed && s.userCardCollapsed]}>
+            <View style={[s.userAvatar, { backgroundColor: accentColor }]}>
+              {(profile as any)?.avatar_url
+                ? <Image source={{ uri: (profile as any).avatar_url }} style={s.userAvatarImg} />
+                : <Text style={s.userAvatarText}>{initials}</Text>}
+            </View>
             {!sidebarCollapsed && (
               <View style={s.userInfo}>
                 <Text style={s.userName} numberOfLines={1}>{firstName}</Text>

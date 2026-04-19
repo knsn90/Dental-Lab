@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -28,6 +29,27 @@ export function LoginScreen() {
   const [errorMsg, setErrorMsg] = useState('');
   const [focused, setFocused]   = useState<string | null>(null);
   const [showPass, setShowPass] = useState(false);
+
+  // Şifremi Unuttum
+  const [forgotMode,    setForgotMode]    = useState(false);
+  const [forgotEmail,   setForgotEmail]   = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotSent,    setForgotSent]    = useState(false);
+  const [forgotError,   setForgotError]   = useState('');
+
+  const handleForgotPassword = async () => {
+    if (!forgotEmail.trim() || !/\S+@\S+\.\S+/.test(forgotEmail)) {
+      setForgotError('Geçerli bir e-posta girin'); return;
+    }
+    setForgotLoading(true); setForgotError('');
+    const { error } = await supabase.auth.resetPasswordForEmail(
+      forgotEmail.trim().toLowerCase(),
+      { redirectTo: 'https://lab.esenkim.com/reset-password' }
+    );
+    setForgotLoading(false);
+    if (error) { setForgotError('E-posta gönderilemedi. Tekrar deneyin.'); return; }
+    setForgotSent(true);
+  };
 
   const validate = () => {
     const e: typeof errors = {};
@@ -80,13 +102,12 @@ export function LoginScreen() {
 
             {/* Brand */}
             <View style={styles.brand}>
-              <View style={styles.logoBox}>
-                <MaterialCommunityIcons name="stethoscope" size={24} color="#FFFFFF" />
-              </View>
-              <View>
-                <Text style={styles.appName}>Dental Lab</Text>
-                <Text style={styles.appSub}>Yönetim Sistemi</Text>
-              </View>
+              <Image
+                source={require('../../../assets/images/icon.png')}
+                style={styles.logoImg}
+                resizeMode="contain"
+              />
+              <Text style={styles.appName}>Dental Lab</Text>
             </View>
 
             {/* Heading */}
@@ -165,6 +186,61 @@ export function LoginScreen() {
               ) : null}
             </View>
 
+            {/* Şifremi Unuttum */}
+            <TouchableOpacity
+              style={styles.forgotLink}
+              onPress={() => { setForgotMode(true); setForgotEmail(email); setForgotSent(false); setForgotError(''); }}
+            >
+              <Text style={styles.forgotLinkText}>Şifremi Unuttum</Text>
+            </TouchableOpacity>
+
+            {/* Forgot Password Panel */}
+            {forgotMode && (
+              <View style={styles.forgotPanel}>
+                {forgotSent ? (
+                  <View style={styles.forgotSuccess}>
+                    <MaterialCommunityIcons name="check-circle-outline" size={20} color="#16A34A" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.forgotSuccessTitle}>E-posta gönderildi</Text>
+                      <Text style={styles.forgotSuccessSub}>Gelen kutunuzu kontrol edin, şifre sıfırlama linkini kullanın.</Text>
+                    </View>
+                  </View>
+                ) : (
+                  <>
+                    <Text style={styles.forgotTitle}>Şifre Sıfırla</Text>
+                    <Text style={styles.forgotSub}>E-posta adresinize sıfırlama linki göndereceğiz.</Text>
+                    <TextInput
+                      style={[styles.input, { marginTop: 10, marginBottom: 8 }]}
+                      value={forgotEmail}
+                      onChangeText={v => { setForgotEmail(v); setForgotError(''); }}
+                      placeholder="E-posta adresiniz"
+                      placeholderTextColor={C.textMuted}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      // @ts-ignore
+                      outlineStyle="none"
+                    />
+                    {forgotError ? <Text style={styles.forgotError}>{forgotError}</Text> : null}
+                    <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                      <TouchableOpacity style={styles.forgotCancelBtn} onPress={() => setForgotMode(false)}>
+                        <Text style={styles.forgotCancelText}>İptal</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.forgotSendBtn, forgotLoading && { opacity: 0.6 }]}
+                        onPress={handleForgotPassword}
+                        disabled={forgotLoading}
+                      >
+                        {forgotLoading
+                          ? <ActivityIndicator size="small" color="#FFFFFF" />
+                          : <Text style={styles.forgotSendText}>Gönder</Text>
+                        }
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
+              </View>
+            )}
+
             {/* Submit */}
             <TouchableOpacity
               style={[styles.loginBtn, loading && styles.loginBtnDisabled]}
@@ -226,10 +302,7 @@ const styles = StyleSheet.create({
 
   // Brand
   brand: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 32 },
-  logoBox: {
-    width: 48, height: 48, borderRadius: 14,
-    backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center',
-  },
+  logoImg: { width: 48, height: 48 },
   appName: { fontSize: 18, fontWeight: '800', fontFamily: F.bold, color: C.textPrimary, letterSpacing: -0.3 },
   appSub:  { fontSize: 11, fontFamily: F.regular, color: C.textMuted, marginTop: 2 },
 
@@ -288,6 +361,21 @@ const styles = StyleSheet.create({
 
   fieldErrorRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 5 },
   fieldError:    { fontSize: 11, fontFamily: F.regular, color: C.danger },
+
+  // Forgot password
+  forgotLink:        { alignSelf: 'flex-end', marginTop: -6, marginBottom: 14, paddingVertical: 4 },
+  forgotLinkText:    { fontSize: 12, color: C.primary, fontWeight: '600' },
+  forgotPanel:       { backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#E9EEF4', padding: 16, marginBottom: 14 },
+  forgotTitle:       { fontSize: 14, fontWeight: '700', color: '#0F172A', marginBottom: 2 },
+  forgotSub:         { fontSize: 12, color: '#64748B' },
+  forgotError:       { fontSize: 12, color: '#EF4444', marginBottom: 4 },
+  forgotSuccess:     { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  forgotSuccessTitle:{ fontSize: 13, fontWeight: '700', color: '#16A34A' },
+  forgotSuccessSub:  { fontSize: 12, color: '#64748B', marginTop: 2 },
+  forgotCancelBtn:   { flex: 1, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, paddingVertical: 9, alignItems: 'center' as const },
+  forgotCancelText:  { fontSize: 13, fontWeight: '600', color: '#64748B' },
+  forgotSendBtn:     { flex: 2, backgroundColor: C.primary, borderRadius: 8, paddingVertical: 9, alignItems: 'center' as const },
+  forgotSendText:    { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
 
   // Login button
   loginBtn: {

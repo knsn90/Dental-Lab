@@ -36,6 +36,27 @@ export default function AdminLoginScreen() {
   const [focused,  setFocused]  = useState<string | null>(null);
   const [showPass, setShowPass] = useState(false);
 
+  // Şifremi Unuttum
+  const [forgotMode,    setForgotMode]    = useState(false);
+  const [forgotEmail,   setForgotEmail]   = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotSent,    setForgotSent]    = useState(false);
+  const [forgotError,   setForgotError]   = useState('');
+
+  const handleForgotPassword = async () => {
+    if (!forgotEmail.trim() || !/\S+@\S+\.\S+/.test(forgotEmail)) {
+      setForgotError('Geçerli bir e-posta girin'); return;
+    }
+    setForgotLoading(true); setForgotError('');
+    const { error } = await supabase.auth.resetPasswordForEmail(
+      forgotEmail.trim().toLowerCase(),
+      { redirectTo: 'https://lab.esenkim.com/reset-password' }
+    );
+    setForgotLoading(false);
+    if (error) { setForgotError('E-posta gönderilemedi.'); return; }
+    setForgotSent(true);
+  };
+
   const validate = () => {
     const e: typeof errors = {};
     if (!email.trim()) e.email = 'E-posta gerekli';
@@ -181,6 +202,60 @@ export default function AdminLoginScreen() {
               ) : null}
             </View>
 
+            {/* Şifremi Unuttum */}
+            <TouchableOpacity
+              style={fp.link}
+              onPress={() => { setForgotMode(true); setForgotEmail(email); setForgotSent(false); setForgotError(''); }}
+            >
+              <Text style={fp.linkText}>Şifremi Unuttum</Text>
+            </TouchableOpacity>
+
+            {forgotMode && (
+              <View style={fp.panel}>
+                {forgotSent ? (
+                  <View style={fp.success}>
+                    <MaterialCommunityIcons name="check-circle-outline" size={20} color="#16A34A" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={fp.successTitle}>E-posta gönderildi</Text>
+                      <Text style={fp.successSub}>Gelen kutunuzu kontrol edin.</Text>
+                    </View>
+                  </View>
+                ) : (
+                  <>
+                    <Text style={fp.title}>Şifre Sıfırla</Text>
+                    <Text style={fp.sub}>Sıfırlama linki e-postanıza gönderilecek.</Text>
+                    <TextInput
+                      style={[styles.input, { marginTop: 10, marginBottom: 8 }]}
+                      value={forgotEmail}
+                      onChangeText={v => { setForgotEmail(v); setForgotError(''); }}
+                      placeholder="E-posta adresiniz"
+                      placeholderTextColor="#94A3B8"
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      // @ts-ignore
+                      outlineStyle="none"
+                    />
+                    {forgotError ? <Text style={fp.error}>{forgotError}</Text> : null}
+                    <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                      <TouchableOpacity style={fp.cancelBtn} onPress={() => setForgotMode(false)}>
+                        <Text style={fp.cancelText}>İptal</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[fp.sendBtn, forgotLoading && { opacity: 0.6 }]}
+                        onPress={handleForgotPassword}
+                        disabled={forgotLoading}
+                      >
+                        {forgotLoading
+                          ? <ActivityIndicator size="small" color="#FFFFFF" />
+                          : <Text style={fp.sendText}>Gönder</Text>
+                        }
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
+              </View>
+            )}
+
             {/* Submit */}
             <TouchableOpacity
               style={[styles.loginBtn, loading && styles.loginBtnDisabled]}
@@ -219,6 +294,22 @@ export default function AdminLoginScreen() {
     </SafeAreaView>
   );
 }
+
+const fp = StyleSheet.create({
+  link:         { alignSelf: 'flex-end', marginTop: -6, marginBottom: 14, paddingVertical: 4 },
+  linkText:     { fontSize: 12, color: '#0F172A', fontWeight: '600' },
+  panel:        { backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#E9EEF4', padding: 16, marginBottom: 14 },
+  title:        { fontSize: 14, fontWeight: '700', color: '#0F172A', marginBottom: 2 },
+  sub:          { fontSize: 12, color: '#64748B' },
+  error:        { fontSize: 12, color: '#EF4444', marginBottom: 4 },
+  success:      { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  successTitle: { fontSize: 13, fontWeight: '700', color: '#16A34A' },
+  successSub:   { fontSize: 12, color: '#64748B', marginTop: 2 },
+  cancelBtn:    { flex: 1, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, paddingVertical: 9, alignItems: 'center' as const },
+  cancelText:   { fontSize: 13, fontWeight: '600', color: '#64748B' },
+  sendBtn:      { flex: 2, backgroundColor: '#0F172A', borderRadius: 8, paddingVertical: 9, alignItems: 'center' as const },
+  sendText:     { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
+});
 
 const styles = StyleSheet.create({
   safe:      { flex: 1, backgroundColor: '#FFFFFF' },

@@ -27,9 +27,9 @@ export default function AdminLayout() {
     { label: 'Kullanıcılar', emoji: '👥', href: '/(admin)/users',       iconName: 'users',        iconSet: 'mdi' as const, matchPrefix: true },
     { label: 'Klinikler & Hekimler', emoji: '🏥', href: '/(admin)/clinics', iconName: 'briefcase', iconSet: 'mdi' as const, matchPrefix: true },
     { label: 'Siparişler',   emoji: '📋', href: '/(admin)/orders',      iconName: 'clipboard',    iconSet: 'mdi' as const, matchPrefix: true },
+    { label: 'Stok',         emoji: '📦', href: '/(admin)/stock',        iconName: 'package',      iconSet: 'mdi' as const, matchPrefix: true, badgeCount: stockAlert },
     { label: 'Onaylar',      emoji: '✅', href: '/(admin)/approvals',   iconName: 'check-circle', iconSet: 'mdi' as const, badge: pendingCount > 0, matchPrefix: true },
     { label: 'Loglar',       emoji: '📜', href: '/(admin)/logs',        iconName: 'file-text',    iconSet: 'mdi' as const, matchPrefix: true },
-    { label: 'Stok',         emoji: '📦', href: '/(admin)/stock',        iconName: 'package',      iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'Stok Yönetimi', badgeCount: stockAlert },
     { label: 'Profil',       emoji: '⚙️', href: '/(admin)/profile',     iconName: 'settings',     iconSet: 'mdi' as const, matchPrefix: true },
   ];
 

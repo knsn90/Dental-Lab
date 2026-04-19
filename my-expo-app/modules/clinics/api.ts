@@ -6,6 +6,7 @@ export async function fetchClinics() {
 
 export async function createClinic(data: {
   name: string;
+  category?: 'klinik' | 'poliklinik' | 'hastane';
   address?: string;
   phone?: string;
   email?: string;
@@ -19,6 +20,7 @@ export async function updateClinic(
   id: string,
   data: Partial<{
     name: string;
+    category: 'klinik' | 'poliklinik' | 'hastane';
     address: string;
     phone: string;
     email: string;
