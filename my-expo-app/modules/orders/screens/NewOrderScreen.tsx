@@ -220,6 +220,52 @@ function WithTooltip({
 
   const TIP_W = image ? 300 : 240;
 
+  // Web: raw div event handlers — RN Pressable, tooltip + embedded TouchableOpacity
+  // ile birleşince Safari'de click yutabiliyor. Raw div onMouseEnter/Leave ve
+  // child click'i eventini doğal olarak iletir.
+  if (Platform.OS === 'web') {
+    return (
+      <div
+        ref={wrapRef as any}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        style={{ alignSelf: 'flex-start', display: 'inline-block' } as any}
+      >
+        {children}
+        {pos && (
+          <WebPortal>
+            <View style={{
+              // @ts-ignore
+              position: 'fixed',
+              top: pos.top,
+              left: pos.side === 'right' ? pos.left + 12 : pos.left - TIP_W - 12,
+              transform: [{ translateY: -40 }],
+              backgroundColor: '#0F172A',
+              borderRadius: 12,
+              overflow: 'hidden',
+              width: TIP_W,
+              zIndex: 99999,
+              // @ts-ignore
+              boxShadow: '0 6px 24px rgba(0,0,0,0.32)',
+              pointerEvents: 'none',
+            }}>
+              {image && (
+                <Image
+                  source={image}
+                  style={{ width: TIP_W, height: 110 }}
+                  resizeMode="cover"
+                />
+              )}
+              <View style={{ padding: 12 }}>
+                <Text style={{ color: '#F8FAFC', fontSize: 11, lineHeight: 17 }}>{text}</Text>
+              </View>
+            </View>
+          </WebPortal>
+        )}
+      </div>
+    );
+  }
+
   return (
     <Pressable
       ref={wrapRef}
@@ -2587,7 +2633,7 @@ const makeFusStyles = (P: string) => StyleSheet.create({
   umGroup: {
     flexBasis: 'calc(50% - 7px)' as any,
     flexGrow: 1,
-    backgroundColor: '#FAFBFD',
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     borderWidth: 1, borderColor: '#F1F5F9',
     padding: 14,
@@ -2639,7 +2685,7 @@ const makeFusStyles = (P: string) => StyleSheet.create({
   uploadCardDashed: {
     borderStyle: 'dashed' as any,
     borderColor: '#CBD5E1',
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#FFFFFF',
   },
   uploadCardTab: {
     height: 10, width: '55%', alignSelf: 'center' as any,
