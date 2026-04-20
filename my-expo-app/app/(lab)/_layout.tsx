@@ -65,6 +65,10 @@ export default function LabLayout() {
         name="order/[id]"
         options={{ tabBarButton: () => null, tabBarStyle: { display: 'none' } }}
       />
+      <Tabs.Screen
+        name="order/occlusion/[id]"
+        options={{ tabBarButton: () => null, tabBarStyle: { display: 'none' } }}
+      />
     </Tabs>
   );
 }

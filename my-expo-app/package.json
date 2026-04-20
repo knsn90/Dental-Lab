@@ -38,12 +38,14 @@
     "react-native-url-polyfill": "^2.0.0",
     "react-native-web": "~0.19.13",
     "three": "^0.183.2",
+    "three-mesh-bvh": "^0.9.9",
     "xlsx": "^0.18.5",
     "zustand": "^5.0.3"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@types/react": "~18.3.12",
+    "@types/three": "^0.183.1",
     "babel-preset-expo": "~12.0.10",
     "typescript": "^5.7.3"
   },

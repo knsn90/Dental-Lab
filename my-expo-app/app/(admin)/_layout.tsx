@@ -71,6 +71,7 @@ export default function AdminLayout() {
       <Tabs.Screen name="logs" options={{ title: 'Loglar', tabBarIcon: ({ focused }) => <TabIcon emoji="📜" focused={focused} /> }} />
       <Tabs.Screen name="profile" options={{ title: 'Profil', tabBarIcon: ({ focused }) => <TabIcon emoji="⚙️" focused={focused} /> }} />
       <Tabs.Screen name="order/[id]" options={{ tabBarButton: () => null, tabBarStyle: { display: 'none' } }} />
+      <Tabs.Screen name="order/occlusion/[id]" options={{ tabBarButton: () => null, tabBarStyle: { display: 'none' } }} />
     </Tabs>
   );
 }

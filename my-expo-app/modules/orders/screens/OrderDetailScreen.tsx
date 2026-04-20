@@ -322,6 +322,16 @@ export function OrderDetailScreen() {
           <Text style={styles.btnQRText}>QR</Text>
         </TouchableOpacity>
         {Platform.OS === 'web' && (
+          <TouchableOpacity
+            onPress={() => router.push(`/order/occlusion/${order.id}` as any)}
+            style={styles.btnOcclusion}
+            activeOpacity={0.8}
+          >
+            <MaterialCommunityIcons name={'cube-scan' as any} size={14} color="#1E40AF" />
+            <Text style={styles.btnOcclusionText}>Oklüzyon</Text>
+          </TouchableOpacity>
+        )}
+        {Platform.OS === 'web' && (
           <TouchableOpacity onPress={() => handlePrint(order, qrUrl)} style={styles.btnPrint}>
             <Text style={styles.btnPrintText}>Yazdır</Text>
           </TouchableOpacity>
@@ -2065,6 +2075,19 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
   btnPrintText: { fontSize: 12, fontWeight: '600', color: '#065F46' },
+  btnOcclusion: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+    backgroundColor: '#EFF6FF',
+    marginLeft: 6,
+  },
+  btnOcclusionText: { fontSize: 12, fontWeight: '600', color: '#1E40AF' },
 
   // ── Body ──
   body: { flex: 1, flexDirection: 'column' },

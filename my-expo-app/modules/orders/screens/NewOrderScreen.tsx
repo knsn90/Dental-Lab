@@ -184,6 +184,7 @@ const UPLOAD_TIPS: Record<string, string> = {
   'Alt Çene':         'Alt dişlerin 3D taraması gereklidir.',
   'Üst Çene':         'Üst dişlerin 3D taraması gereklidir.',
   'Bite (Kapanış)':   'Bite (kapanış) kaydı, dişlerin doğru temasını belirler.\nEksik olursa oklüzyon hatası riski oluşur.',
+  'Diş Eti Taraması': 'Diş eti dokusunun 3D taraması. İmplant ve gingival kontur planlaması için kullanılır.',
   'Scan Body STL':    'İmplant pozisyonunu doğru belirlemek için gereklidir.',
   'Gülüş Videosu':    'Dinamik gülüş ve dudak hareketlerini görmek için önerilir.',
   'PDF Belgesi':      'Ek talimat, reçete veya detay bilgileri içeren belgeyi yükleyin.',
@@ -1216,7 +1217,7 @@ ${form.notes ? `<div class="card">
                   <>
                     {([
                       { label: 'Gülüş Tasarımı', icon: 'image-outline', prefixes: ['Ekartörlü Resim', 'Gülüş Resmi', 'Gülüş Videosu'] },
-                      { label: 'Tarama Verileri', icon: 'tooth-outline', prefixes: ['Alt Çene', 'Üst Çene', 'Bite (Kapanış)'] },
+                      { label: 'Tarama Verileri', icon: 'tooth-outline', prefixes: ['Alt Çene', 'Üst Çene', 'Bite (Kapanış)', 'Diş Eti Taraması'] },
                       { label: 'İmplant Bilgileri', icon: 'screw-machine-flat-top', prefixes: ['Scan Body STL'] },
                       { label: 'Ek Dosyalar', icon: 'paperclip', prefixes: ['PDF Belgesi', 'Referans Fotoğraf'] },
                     ] as const).map(group => {
@@ -1238,7 +1239,7 @@ ${form.notes ? `<div class="card">
                     })}
                     {/* Files that don't match any group */}
                     {(() => {
-                      const allGroupPrefixes = ['Ekartörlü Resim', 'Gülüş Resmi', 'Gülüş Videosu', 'Alt Çene', 'Üst Çene', 'Bite (Kapanış)', 'Scan Body STL', 'PDF Belgesi', 'Referans Fotoğraf'];
+                      const allGroupPrefixes = ['Ekartörlü Resim', 'Gülüş Resmi', 'Gülüş Videosu', 'Alt Çene', 'Üst Çene', 'Bite (Kapanış)', 'Diş Eti Taraması', 'Scan Body STL', 'PDF Belgesi', 'Referans Fotoğraf'];
                       const others = form.attachments.filter(a => !allGroupPrefixes.some(p => a.name.startsWith(p)));
                       if (others.length === 0) return null;
                       return (
@@ -1398,7 +1399,7 @@ ${form.notes ? `<div class="card">
                       <Text style={fus.umGroupTitle}>Tarama Verileri</Text>
                     </View>
                     <View style={fus.uploadCardRow}>
-                      {(['Alt Çene', 'Üst Çene', 'Bite (Kapanış)'] as const).map((label) => {
+                      {(['Alt Çene', 'Üst Çene', 'Bite (Kapanış)', 'Diş Eti Taraması'] as const).map((label) => {
                         const existing = form.attachments.find(a => a.name.startsWith(label));
                         const card = (
                           <TouchableOpacity
@@ -2304,6 +2305,7 @@ function fileDisplayTitle(file: AttachedFile): string {
   if (n.startsWith('Alt Çene'))        return 'Alt Çene Taraması';
   if (n.startsWith('Üst Çene'))        return 'Üst Çene Taraması';
   if (n.startsWith('Bite (Kapanış)'))  return 'Bite (Kapanış) Taraması';
+  if (n.startsWith('Diş Eti Taraması')) return 'Diş Eti Taraması';
   if (n.startsWith('Scan Body STL'))   return 'Scan Body STL';
   if (n.startsWith('PDF Belgesi'))     return 'PDF Belgesi';
   if (n.startsWith('Referans Fotoğraf')) return 'Referans Fotoğraf';
