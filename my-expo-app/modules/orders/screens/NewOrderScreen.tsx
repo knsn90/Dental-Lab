@@ -379,6 +379,25 @@ export function NewOrderScreen({ accentColor }: { accentColor?: string }) {
     return null;
   });
 
+  // ── Taslak prompt: localStorage'da taslak varsa ve bu oturumda henüz
+  //    sorulmadıysa kullanıcıya sor: devam et mi yeni mi başla?
+  const [draftPromptOpen, setDraftPromptOpen] = useState<boolean>(() => {
+    if (Platform.OS !== 'web') return false;
+    try {
+      const hasDraft     = !!localStorage.getItem(DRAFT_KEY);
+      const alreadyAsked = sessionStorage.getItem('new_order_draft_prompted') === '1';
+      return hasDraft && !alreadyAsked;
+    } catch { return false; }
+  });
+  const [draftSavedAtPrompt, setDraftSavedAtPrompt] = useState<Date | null>(() => {
+    if (Platform.OS !== 'web') return null;
+    try {
+      const t = localStorage.getItem(DRAFT_TS_KEY);
+      if (t) return new Date(parseInt(t, 10));
+    } catch {}
+    return null;
+  });
+
   // İlk mount'ta otomatik re-save etmeyi engelle (restored form'un timestamp'i korunur)
   const skipFirstDraftSaveRef = useRef(true);
 
@@ -431,6 +450,33 @@ export function NewOrderScreen({ accentColor }: { accentColor?: string }) {
     setConfirmedTeeth([]);
     setLastSavedAt(null);
     setStep(1);
+  }, []);
+
+  // ── Taslak prompt handler'ları ──
+  const handleContinueDraft = useCallback(() => {
+    if (Platform.OS === 'web') {
+      try { sessionStorage.setItem('new_order_draft_prompted', '1'); } catch {}
+    }
+    setDraftPromptOpen(false);
+    // form zaten init'te restore edildi, bir şey yapmaya gerek yok
+  }, []);
+
+  const handleStartNewOrder = useCallback(() => {
+    if (Platform.OS === 'web') {
+      try {
+        sessionStorage.setItem('new_order_draft_prompted', '1');
+        localStorage.removeItem(DRAFT_KEY);
+        localStorage.removeItem(DRAFT_TS_KEY);
+        sessionStorage.removeItem('new_order_form');
+        sessionStorage.removeItem('new_order_step');
+      } catch {}
+    }
+    skipFirstDraftSaveRef.current = true;
+    setForm(INITIAL_FORM);
+    setConfirmedTeeth([]);
+    setLastSavedAt(null);
+    setStep(1);
+    setDraftPromptOpen(false);
   }, []);
 
   // Clinic add modal
@@ -1052,17 +1098,17 @@ ${form.notes ? `<div class="card">
 
   return (
     <SafeAreaView style={styles.safe}>
-      {/* ── Taslak otomatik kayıt göstergesi (sağ üst) ── */}
+      {/* ── Taslak otomatik kayıt göstergesi (sol alt, Gmail tarzı) ── */}
       {Platform.OS === 'web' && lastSavedAt && (
         <View style={{
           // @ts-ignore web-only fixed pozisyon
-          position: 'fixed', top: 14, right: 16, zIndex: 50,
+          position: 'fixed', bottom: 16, left: 16, zIndex: 50,
           flexDirection: 'row' as any, alignItems: 'center' as any, gap: 8,
           backgroundColor: '#FFFFFF',
           borderWidth: 1, borderColor: '#E2E8F0',
           borderRadius: 999, paddingVertical: 6, paddingHorizontal: 12,
           // @ts-ignore
-          boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+          boxShadow: '0 2px 8px rgba(15,23,42,0.08)',
         }}>
           <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#22C55E' }} />
           <Text style={{ fontSize: 11, color: '#475569', fontFamily: F.semibold }}>
@@ -1075,6 +1121,76 @@ ${form.notes ? `<div class="card">
           >
             <MaterialCommunityIcons name={'delete-outline' as any} size={14} color="#94A3B8" />
           </TouchableOpacity>
+        </View>
+      )}
+
+      {/* ── Taslak seçim modalı: mevcut taslak varsa ilk açılışta sorar ── */}
+      {Platform.OS === 'web' && draftPromptOpen && (
+        <View style={{
+          // @ts-ignore
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999,
+          backgroundColor: 'rgba(15,23,42,0.45)',
+          alignItems: 'center' as any, justifyContent: 'center' as any,
+          padding: 20,
+        }}>
+          <View style={{
+            width: '100%', maxWidth: 440,
+            backgroundColor: '#FFFFFF', borderRadius: 16,
+            padding: 24, gap: 16,
+            // @ts-ignore
+            boxShadow: '0 20px 60px rgba(15,23,42,0.25)',
+          }}>
+            <View style={{ flexDirection: 'row' as any, alignItems: 'center' as any, gap: 10 }}>
+              <View style={{
+                width: 36, height: 36, borderRadius: 10,
+                backgroundColor: '#EFF6FF',
+                alignItems: 'center' as any, justifyContent: 'center' as any,
+              }}>
+                <MaterialCommunityIcons name={'file-document-edit-outline' as any} size={18} color={P} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 16, fontFamily: F.bold, color: '#0F172A' }}>
+                  Kaydedilmiş taslak bulundu
+                </Text>
+                {draftSavedAtPrompt && (
+                  <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                    Son kayıt · {draftSavedAtPrompt.toLocaleString('tr-TR')}
+                  </Text>
+                )}
+              </View>
+            </View>
+            <Text style={{ fontSize: 13, color: '#475569', lineHeight: 19 }}>
+              Önceki iş emri taslağınızdan kaldığınız yerden devam etmek ister misiniz, yoksa yeni bir iş emri mi başlatmak istersiniz?
+            </Text>
+            <View style={{ flexDirection: 'row' as any, gap: 8, marginTop: 4 }}>
+              <TouchableOpacity
+                onPress={handleStartNewOrder}
+                style={{
+                  flex: 1, paddingVertical: 12, borderRadius: 10,
+                  backgroundColor: '#F1F5F9',
+                  alignItems: 'center' as any,
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={{ fontSize: 13, fontFamily: F.semibold, color: '#475569' }}>
+                  Yeni iş emri
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleContinueDraft}
+                style={{
+                  flex: 1, paddingVertical: 12, borderRadius: 10,
+                  backgroundColor: P,
+                  alignItems: 'center' as any,
+                }}
+                activeOpacity={0.85}
+              >
+                <Text style={{ fontSize: 13, fontFamily: F.semibold, color: '#FFFFFF' }}>
+                  Taslaktan devam et
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
       )}
 
