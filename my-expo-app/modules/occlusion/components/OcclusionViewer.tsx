@@ -7,7 +7,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, Platform, Text } from 'react-native';
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js';
 import { pickMeshPoint, eventToNDC } from '../utils/measurementCalc';
 import type { Mode, SceneClickEvent, ViewPreset } from '../types/occlusion';
 
@@ -38,7 +38,7 @@ export function OcclusionViewer({
   const rendererRef  = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef     = useRef<THREE.Scene | null>(null);
   const cameraRef    = useRef<THREE.PerspectiveCamera | null>(null);
-  const controlsRef  = useRef<OrbitControls | null>(null);
+  const controlsRef  = useRef<TrackballControls | null>(null);
   const upperSlotRef = useRef<THREE.Mesh | null>(null);
   const lowerSlotRef = useRef<THREE.Mesh | null>(null);
   const rafRef       = useRef<number | null>(null);
@@ -80,15 +80,22 @@ export function OcclusionViewer({
     const camera = new THREE.PerspectiveCamera(35, w / h, 0.1, 2000);
     camera.position.set(40, 30, 55);
 
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.08;
+    // TrackballControls — 360° serbest rotasyon (gimbal lock yok).
+    // OrbitControls dikey eksende 0-180° ile sınırlı; dental viewer için
+    // her açıdan bakmak gerekli (occlusal, buccal, lingual, alttan vs.).
+    const controls = new TrackballControls(camera, renderer.domElement);
+    controls.rotateSpeed      = 3.0;
+    controls.zoomSpeed        = 1.2;
+    controls.panSpeed         = 0.8;
+    controls.noRotate         = false;
+    controls.noZoom           = false;
+    controls.noPan            = false;
+    controls.staticMoving     = false;
+    controls.dynamicDampingFactor = 0.15;
     // min/maxDistance fit olduğunda güncellenecek
-    controls.minDistance   = 1;
-    controls.maxDistance   = 1000;
+    controls.minDistance = 1;
+    controls.maxDistance = 1000;
     controls.target.set(0, 0, 0);
-    // Zoom hassasiyeti (mesh boyutuna göre ayarlanır)
-    controls.zoomSpeed = 1.0;
 
     // Lights — prototip clinical
     scene.add(new THREE.AmbientLight(0xffffff, 0.55));
@@ -141,6 +148,8 @@ export function OcclusionViewer({
       renderer.setSize(newW, newH);
       camera.aspect = newW / newH;
       camera.updateProjectionMatrix();
+      // TrackballControls screen koordinatlarını cache ediyor — resize'da güncelle
+      controls.handleResize();
       setSizeTick({ w: newW, h: newH });
     };
     window.addEventListener('resize', handleResize);
