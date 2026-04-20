@@ -58,7 +58,6 @@ export async function computeMeshDistance(
 
   const vertex       = new THREE.Vector3();
   const localVertex  = new THREE.Vector3();
-  const rayDir       = new THREE.Vector3(0, 1, 0);
   const inverseUpper = upperMeshMatrix.clone().invert();
 
   // BVH closestPoint target
@@ -68,17 +67,20 @@ export async function computeMeshDistance(
     faceIndex: 0,
   };
 
-  const raycaster = new THREE.Raycaster();
-  raycaster.firstHitOnly = true;
-
-  // Face normals için upper geometry (indexed)
-  const upperPos    = upperGeometry.getAttribute('position') as THREE.BufferAttribute;
+  // ── Hot loop için direct TypedArray erişimi (allocation-free) ──
   const upperNorm   = upperGeometry.getAttribute('normal') as THREE.BufferAttribute | undefined;
   const upperIndex  = upperGeometry.index;
-  const faceNormal  = new THREE.Vector3();
+  const lowerPosArr = pos.array as Float32Array;
+  const upperNormArr = upperNorm ? (upperNorm.array as Float32Array) : null;
+  const upperIndexArr = upperIndex ? (upperIndex.array as Uint16Array | Uint32Array) : null;
+
+  // Clamp sınırları
+  const maxD = maxDistance;
+  const negMaxD = -maxDistance;
 
   for (let i = 0; i < count; i += sampleStride) {
-    vertex.fromBufferAttribute(pos, i);
+    const pi = i * 3;
+    vertex.set(lowerPosArr[pi], lowerPosArr[pi + 1], lowerPosArr[pi + 2]);
 
     // Lower vertex'i upper mesh local space'ine taşı
     localVertex.copy(vertex).applyMatrix4(inverseUpper);
@@ -88,48 +90,34 @@ export async function computeMeshDistance(
 
     let d = closestTarget.distance;
 
-    // 2) Sign: faceNormal ile iç/dış tespiti
-    // closestTarget.faceIndex → üçgenin normali
-    if (closestTarget.faceIndex >= 0 && upperNorm) {
-      const fi = closestTarget.faceIndex;
-      let a: number, b_: number, c: number;
+    // 2) Sign: face normal ile iç/dış tespiti (allocation-free)
+    if (closestTarget.faceIndex >= 0 && upperNormArr) {
+      const fi3 = closestTarget.faceIndex * 3;
+      const a  = upperIndexArr ? upperIndexArr[fi3]     : fi3;
+      const b_ = upperIndexArr ? upperIndexArr[fi3 + 1] : fi3 + 1;
+      const c  = upperIndexArr ? upperIndexArr[fi3 + 2] : fi3 + 2;
 
-      if (upperIndex) {
-        a  = upperIndex.getX(fi * 3);
-        b_ = upperIndex.getX(fi * 3 + 1);
-        c  = upperIndex.getX(fi * 3 + 2);
-      } else {
-        a  = fi * 3;
-        b_ = fi * 3 + 1;
-        c  = fi * 3 + 2;
-      }
+      const a3 = a * 3, b3 = b_ * 3, c3 = c * 3;
+      // 3 vertex normalinin toplamı (normalize gereksiz — sadece dot sign'ı lazım)
+      const fnx = upperNormArr[a3]     + upperNormArr[b3]     + upperNormArr[c3];
+      const fny = upperNormArr[a3 + 1] + upperNormArr[b3 + 1] + upperNormArr[c3 + 1];
+      const fnz = upperNormArr[a3 + 2] + upperNormArr[b3 + 2] + upperNormArr[c3 + 2];
 
-      faceNormal.set(0, 0, 0);
-      faceNormal.addScaledVector(
-        new THREE.Vector3().fromBufferAttribute(upperNorm, a), 1 / 3,
-      );
-      faceNormal.addScaledVector(
-        new THREE.Vector3().fromBufferAttribute(upperNorm, b_), 1 / 3,
-      );
-      faceNormal.addScaledVector(
-        new THREE.Vector3().fromBufferAttribute(upperNorm, c), 1 / 3,
-      );
-      faceNormal.normalize();
+      // toSurface = closestPoint − localVertex (inline dot product)
+      const tsx = closestTarget.point.x - localVertex.x;
+      const tsy = closestTarget.point.y - localVertex.y;
+      const tsz = closestTarget.point.z - localVertex.z;
 
-      // vertex → closestPoint vektörü
-      const toSurface = closestTarget.point.clone().sub(localVertex);
-      // Eğer vertex normalle aynı yönde → dışarıda (pozitif gap)
-      // Eğer ters yönde → içeride (penetrasyon = negatif)
-      if (faceNormal.dot(toSurface) < 0) {
-        d = -d;
-      }
+      // dot < 0 → vertex upper mesh içinde (penetrasyon = negatif)
+      if (fnx * tsx + fny * tsy + fnz * tsz < 0) d = -d;
     }
 
-    distances[i] = Math.max(-maxDistance, Math.min(maxDistance, d));
+    // Inline clamp (Math.max/min çağrılarından ucuz)
+    distances[i] = d > maxD ? maxD : (d < negMaxD ? negMaxD : d);
 
-    if (onProgress && i % 5000 === 0) {
+    if (onProgress && i % 20000 === 0) {
       onProgress(i / count);
-      // Async yield — UI'yı dondurmamak için
+      // Async yield — UI'yı dondurmamak için (seyrek)
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
   }
