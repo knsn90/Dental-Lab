@@ -147,7 +147,7 @@ export function useOcclusionAnalysis(): UseOcclusionAnalysis {
         upperMesh.matrixWorld,
         {
           maxDistance:  5,
-          sampleStride: 1,
+          sampleStride: 2,  // ~2x hızlı — ara vertex'ler interpolasyon ile doldurulur
           onProgress:   (pct) => setProgress(0.15 + pct * 0.65),
         },
       );
