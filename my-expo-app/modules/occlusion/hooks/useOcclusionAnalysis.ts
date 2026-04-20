@@ -92,14 +92,16 @@ export function useOcclusionAnalysis(): UseOcclusionAnalysis {
           // STL loader her üçgen için 3 ayrı vertex oluşturur (paylaşım yok).
           // Scanner mesh'leri 3-6M vertex içerebilir → mergeVertices ile ~5-6x azalt.
           const beforeCount = geom.getAttribute('position')?.count ?? 0;
+          const mergeStart = performance.now();
           try {
             geom = mergeVertices(geom, 1e-4);
-          } catch {
-            // mergeVertices fail ederse orijinalle devam et
+          } catch (mergeErr) {
+            console.warn(`[occlusion] mergeVertices failed for ${file.name}:`, mergeErr);
           }
           const afterCount = geom.getAttribute('position')?.count ?? 0;
+          const mergeMs = (performance.now() - mergeStart).toFixed(0);
           if (beforeCount && afterCount) {
-            console.log(`[occlusion] mergeVertices: ${beforeCount} → ${afterCount} (${((1 - afterCount / beforeCount) * 100).toFixed(1)}% azalma)`);
+            console.log(`[occlusion] ${file.name}: ${beforeCount} → ${afterCount} vertex (${((1 - afterCount / beforeCount) * 100).toFixed(1)}% azalma, ${mergeMs}ms)`);
           }
 
           geom.computeVertexNormals();

@@ -43,7 +43,9 @@ export async function computeMeshDistance(
 
   // BVH oluştur (yoksa)
   if (!(upperGeometry as any).boundsTree) {
+    const bvhStart = performance.now();
     (upperGeometry as any).computeBoundsTree();
+    console.log(`[meshDistance] BVH build: ${(performance.now() - bvhStart).toFixed(0)}ms`);
   }
   const bvh: MeshBVH = (upperGeometry as any).boundsTree;
 
@@ -78,6 +80,13 @@ export async function computeMeshDistance(
   const maxD = maxDistance;
   const negMaxD = -maxDistance;
 
+  // Yield sıklığı: her stride'a göre dinamik — toplam ≈50 yield.
+  // Böylece stride ne olursa olsun UI akıcı, progress bar akıyor.
+  const yieldEvery = Math.max(sampleStride, Math.floor(count / 50 / sampleStride) * sampleStride) || sampleStride;
+  let lastYield = 0;
+  let outOfRangeCount = 0;
+  const loopStart = performance.now();
+
   for (let i = 0; i < count; i += sampleStride) {
     const pi = i * 3;
     vertex.set(lowerPosArr[pi], lowerPosArr[pi + 1], lowerPosArr[pi + 2]);
@@ -85,42 +94,59 @@ export async function computeMeshDistance(
     // Lower vertex'i upper mesh local space'ine taşı
     localVertex.copy(vertex).applyMatrix4(inverseUpper);
 
-    // 1) BVH closestPointToPoint (local space)
-    bvh.closestPointToPoint(localVertex, closestTarget as any);
+    // 1) BVH closestPointToPoint — maxThreshold ile pruning yapar:
+    //    vertex maxDistance'dan uzaksa BVH dalları atlanır → 3-10x hızlı.
+    //    Reset faceIndex'i — miss durumunda stale data kullanmamak için.
+    closestTarget.faceIndex = -1;
+    closestTarget.distance = maxD;
+    bvh.closestPointToPoint(localVertex, closestTarget as any, 0, maxD);
 
-    let d = closestTarget.distance;
+    let d: number;
 
-    // 2) Sign: face normal ile iç/dış tespiti (allocation-free)
-    if (closestTarget.faceIndex >= 0 && upperNormArr) {
-      const fi3 = closestTarget.faceIndex * 3;
-      const a  = upperIndexArr ? upperIndexArr[fi3]     : fi3;
-      const b_ = upperIndexArr ? upperIndexArr[fi3 + 1] : fi3 + 1;
-      const c  = upperIndexArr ? upperIndexArr[fi3 + 2] : fi3 + 2;
+    if (closestTarget.faceIndex < 0) {
+      // Hiç triangle maxDistance içinde değil → clamp'e eşit mesafe
+      d = maxD;
+      outOfRangeCount++;
+    } else {
+      d = closestTarget.distance;
 
-      const a3 = a * 3, b3 = b_ * 3, c3 = c * 3;
-      // 3 vertex normalinin toplamı (normalize gereksiz — sadece dot sign'ı lazım)
-      const fnx = upperNormArr[a3]     + upperNormArr[b3]     + upperNormArr[c3];
-      const fny = upperNormArr[a3 + 1] + upperNormArr[b3 + 1] + upperNormArr[c3 + 1];
-      const fnz = upperNormArr[a3 + 2] + upperNormArr[b3 + 2] + upperNormArr[c3 + 2];
+      // 2) Sign: face normal ile iç/dış tespiti (allocation-free)
+      if (upperNormArr) {
+        const fi3 = closestTarget.faceIndex * 3;
+        const a  = upperIndexArr ? upperIndexArr[fi3]     : fi3;
+        const b_ = upperIndexArr ? upperIndexArr[fi3 + 1] : fi3 + 1;
+        const c  = upperIndexArr ? upperIndexArr[fi3 + 2] : fi3 + 2;
 
-      // toSurface = closestPoint − localVertex (inline dot product)
-      const tsx = closestTarget.point.x - localVertex.x;
-      const tsy = closestTarget.point.y - localVertex.y;
-      const tsz = closestTarget.point.z - localVertex.z;
+        const a3 = a * 3, b3 = b_ * 3, c3 = c * 3;
+        // 3 vertex normalinin toplamı (normalize gereksiz — sadece dot sign'ı lazım)
+        const fnx = upperNormArr[a3]     + upperNormArr[b3]     + upperNormArr[c3];
+        const fny = upperNormArr[a3 + 1] + upperNormArr[b3 + 1] + upperNormArr[c3 + 1];
+        const fnz = upperNormArr[a3 + 2] + upperNormArr[b3 + 2] + upperNormArr[c3 + 2];
 
-      // dot < 0 → vertex upper mesh içinde (penetrasyon = negatif)
-      if (fnx * tsx + fny * tsy + fnz * tsz < 0) d = -d;
+        // toSurface = closestPoint − localVertex (inline dot product)
+        const tsx = closestTarget.point.x - localVertex.x;
+        const tsy = closestTarget.point.y - localVertex.y;
+        const tsz = closestTarget.point.z - localVertex.z;
+
+        // dot < 0 → vertex upper mesh içinde (penetrasyon = negatif)
+        if (fnx * tsx + fny * tsy + fnz * tsz < 0) d = -d;
+      }
     }
 
     // Inline clamp (Math.max/min çağrılarından ucuz)
     distances[i] = d > maxD ? maxD : (d < negMaxD ? negMaxD : d);
 
-    if (onProgress && i % 20000 === 0) {
+    if (onProgress && i - lastYield >= yieldEvery) {
+      lastYield = i;
       onProgress(i / count);
-      // Async yield — UI'yı dondurmamak için (seyrek)
+      // Async yield — UI'yı dondurmamak için
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
   }
+
+  const loopMs = performance.now() - loopStart;
+  const iters = Math.ceil(count / sampleStride);
+  console.log(`[meshDistance] loop: ${loopMs.toFixed(0)}ms, ${iters} iter, ${(loopMs / iters * 1000).toFixed(1)}μs/iter, pruned: ${outOfRangeCount}`);
 
   // Stride > 1 ise aralar interpolasyonla doldur
   if (sampleStride > 1) {
