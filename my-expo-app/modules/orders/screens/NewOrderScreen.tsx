@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable,
   TextInput, ActivityIndicator, Platform, useWindowDimensions,
@@ -150,6 +150,17 @@ const INITIAL_FORM: FormData = {
   delivery_method: '',
   implant_brand: '',
 };
+
+// ── Auto-save draft (Gmail taslak mantığı) ─────────────────────────────
+const DRAFT_KEY        = 'newOrderDraft:v1';
+const DRAFT_TS_KEY     = 'newOrderDraft:v1:ts';
+const DRAFT_DEBOUNCE_MS = 600;
+
+/** form'un persist edilmeyecek alanları — blob URI'lar reload sonrası geçersiz olur */
+const DRAFT_STRIP_FIELDS = ['attachments', 'voice_notes', 'lab_voice_notes', 'chat_messages'] as const;
+
+const fmtDraftTime = (d: Date) =>
+  `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 
 const ALL_IMPLANT_BRANDS = [
   'Straumann','Nobel Biocare','Osstem','Zimmer Biomet','Dentsply Sirona',
@@ -356,15 +367,16 @@ export function NewOrderScreen({ accentColor }: { accentColor?: string }) {
   const [form, setForm] = useState<FormData>(() => {
     if (Platform.OS === 'web') {
       try {
-        const saved = sessionStorage.getItem('new_order_form');
+        // Öncelik: kalıcı localStorage taslağı (Gmail draft mantığı)
+        const saved = localStorage.getItem(DRAFT_KEY) ?? sessionStorage.getItem('new_order_form');
         if (saved) {
           const parsed = JSON.parse(saved);
-          // Restore Date fields
-          if (parsed.patient_dob)  parsed.patient_dob  = new Date(parsed.patient_dob);
+          if (parsed.patient_dob)   parsed.patient_dob   = new Date(parsed.patient_dob);
           if (parsed.delivery_date) parsed.delivery_date = new Date(parsed.delivery_date);
-          // Ensure all array fields are arrays (null-safe)
           const arrFields = ['tooth_ops','pending_items','attachments','tags','voice_notes','lab_voice_notes','chat_messages'] as const;
           arrFields.forEach(k => { if (!Array.isArray(parsed[k])) parsed[k] = (INITIAL_FORM as any)[k]; });
+          // Blob URI'lar reload'dan sonra ölü — dosya/ses/chat alanlarını sıfırla
+          DRAFT_STRIP_FIELDS.forEach(k => { (parsed as any)[k] = (INITIAL_FORM as any)[k]; });
           return { ...INITIAL_FORM, ...parsed };
         }
       } catch {}
@@ -373,11 +385,70 @@ export function NewOrderScreen({ accentColor }: { accentColor?: string }) {
   });
   const [loading, setLoading] = useState(false);
 
-  // Form değiştiğinde sessionStorage'a kaydet (HMR/reload'da kaybolmasın)
+  // ── Draft save timestamp (UI göstergesinde kullanılır) ──
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(() => {
+    if (Platform.OS === 'web') {
+      try {
+        const t = localStorage.getItem(DRAFT_TS_KEY);
+        if (t) return new Date(parseInt(t, 10));
+      } catch {}
+    }
+    return null;
+  });
+
+  // İlk mount'ta otomatik re-save etmeyi engelle (restored form'un timestamp'i korunur)
+  const skipFirstDraftSaveRef = useRef(true);
+
+  // Form değiştiğinde debounced olarak localStorage'a kaydet (600ms)
   useEffect(() => {
     if (Platform.OS !== 'web') return;
-    try { sessionStorage.setItem('new_order_form', JSON.stringify(form)); } catch {}
+    if (skipFirstDraftSaveRef.current) {
+      skipFirstDraftSaveRef.current = false;
+      return;
+    }
+    const handle = setTimeout(() => {
+      try {
+        const serializable: any = { ...form };
+        DRAFT_STRIP_FIELDS.forEach(k => { delete serializable[k]; });
+        // Boş form → taslak gereksiz
+        const isEmpty =
+          !serializable.clinic_id && !serializable.doctor_id &&
+          !serializable.patient_first_name && !serializable.patient_last_name &&
+          !serializable.patient_id && !serializable.patient_phone &&
+          (serializable.tooth_ops?.length ?? 0) === 0 &&
+          (serializable.pending_items?.length ?? 0) === 0 &&
+          !serializable.notes && !serializable.lab_notes;
+        if (isEmpty) {
+          localStorage.removeItem(DRAFT_KEY);
+          localStorage.removeItem(DRAFT_TS_KEY);
+          setLastSavedAt(null);
+          return;
+        }
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(serializable));
+        const now = Date.now();
+        localStorage.setItem(DRAFT_TS_KEY, String(now));
+        setLastSavedAt(new Date(now));
+      } catch {}
+    }, DRAFT_DEBOUNCE_MS);
+    return () => clearTimeout(handle);
   }, [form]);
+
+  // Taslağı sil ve formu sıfırla
+  const discardDraft = useCallback(() => {
+    if (Platform.OS === 'web') {
+      try {
+        localStorage.removeItem(DRAFT_KEY);
+        localStorage.removeItem(DRAFT_TS_KEY);
+        sessionStorage.removeItem('new_order_form');
+        sessionStorage.removeItem('new_order_step');
+      } catch {}
+    }
+    skipFirstDraftSaveRef.current = true;  // INITIAL_FORM set'i re-save tetiklemesin
+    setForm(INITIAL_FORM);
+    setConfirmedTeeth([]);
+    setLastSavedAt(null);
+    setStep(1);
+  }, []);
 
   // Clinic add modal
   const [clinicModal, setClinicModal] = useState<{ visible: boolean; prefill: string }>({ visible: false, prefill: '' });
@@ -813,10 +884,19 @@ export function NewOrderScreen({ accentColor }: { accentColor?: string }) {
     }
 
     setLoading(false);
+    skipFirstDraftSaveRef.current = true;  // INITIAL_FORM set'i re-save tetiklemesin
     setForm(INITIAL_FORM);
     setOcclusionResult(null);
     setOcclusionScreenshot(null);
-    if (Platform.OS === 'web') { try { sessionStorage.removeItem('new_order_step'); sessionStorage.removeItem('new_order_form'); } catch {} }
+    setLastSavedAt(null);
+    if (Platform.OS === 'web') {
+      try {
+        sessionStorage.removeItem('new_order_step');
+        sessionStorage.removeItem('new_order_form');
+        localStorage.removeItem(DRAFT_KEY);
+        localStorage.removeItem(DRAFT_TS_KEY);
+      } catch {}
+    }
     setStep(1);
     router.push('/(lab)');
   };
@@ -989,6 +1069,32 @@ ${form.notes ? `<div class="card">
 
   return (
     <SafeAreaView style={styles.safe}>
+      {/* ── Taslak otomatik kayıt göstergesi (sağ üst) ── */}
+      {Platform.OS === 'web' && lastSavedAt && (
+        <View style={{
+          // @ts-ignore web-only fixed pozisyon
+          position: 'fixed', top: 14, right: 16, zIndex: 50,
+          flexDirection: 'row' as any, alignItems: 'center' as any, gap: 8,
+          backgroundColor: '#FFFFFF',
+          borderWidth: 1, borderColor: '#E2E8F0',
+          borderRadius: 999, paddingVertical: 6, paddingHorizontal: 12,
+          // @ts-ignore
+          boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+        }}>
+          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#22C55E' }} />
+          <Text style={{ fontSize: 11, color: '#475569', fontFamily: F.semibold }}>
+            Taslak kaydedildi · {fmtDraftTime(lastSavedAt)}
+          </Text>
+          <TouchableOpacity
+            onPress={discardDraft}
+            hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+            accessibilityLabel="Taslağı sil"
+          >
+            <MaterialCommunityIcons name={'delete-outline' as any} size={14} color="#94A3B8" />
+          </TouchableOpacity>
+        </View>
+      )}
+
       <View style={[styles.outerWrap, isDesktop && styles.outerWrapDesktop]}>
 
         {/* ── Vertical step sidebar (desktop only) ── */}
