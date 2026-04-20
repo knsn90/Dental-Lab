@@ -44,6 +44,8 @@ import { AppSwitch } from '../../../core/ui/AppSwitch';
 import { EkartorluIcon } from '../../../components/icons/EkartorluIcon';
 import { GulushIcon } from '../../../components/icons/GulushIcon';
 import { ModelViewer } from '../../../src/components/viewer/ModelViewer';
+import { OcclusionAnalysisModal } from '../../occlusion/components/OcclusionAnalysisModal';
+import type { OcclusionAnalysisResult } from '../../occlusion/types/occlusion';
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -472,6 +474,11 @@ export function NewOrderScreen({ accentColor }: { accentColor?: string }) {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   // Track whether preview was opened from inside the upload modal so we can reopen it on close
   const [previewFromUpload, setPreviewFromUpload] = useState(false);
+
+  // ── Oklüzyon analizi modal state ─────────────────────────────────────────
+  const [occlusionModalOpen,   setOcclusionModalOpen]   = useState(false);
+  const [occlusionResult,      setOcclusionResult]      = useState<OcclusionAnalysisResult | null>(null);
+  const [occlusionScreenshot,  setOcclusionScreenshot]  = useState<string | null>(null);
   // İmplant brand search dropdown
   const [implantBrandSearch, setImplantBrandSearch] = useState('');
   const [implantBrandDropOpen, setImplantBrandDropOpen] = useState(false);
@@ -724,8 +731,45 @@ export function NewOrderScreen({ accentColor }: { accentColor?: string }) {
       });
     }
 
+    // ─── Kapanış analizi varsa iş emrine bağla ──────────────────────────
+    if (occlusionResult) {
+      try {
+        let screenshotUrl: string | null = null;
+        if (occlusionScreenshot) {
+          const blob = await fetch(occlusionScreenshot).then(r => r.blob());
+          const path = `occlusion/${order.id}/${Date.now()}.png`;
+          const { data: up } = await supabase.storage
+            .from('occlusion-screenshots')
+            .upload(path, blob, { contentType: 'image/png', upsert: true });
+          if (up) {
+            const { data: urlData } = supabase.storage
+              .from('occlusion-screenshots')
+              .getPublicUrl(path);
+            screenshotUrl = urlData.publicUrl;
+          }
+        }
+        await supabase.from('occlusion_analyses').insert({
+          work_order_id: order.id,
+          result_json: {
+            statistics: occlusionResult.statistics,
+            penetrationPoints: occlusionResult.penetrationPoints.map((p) => ({
+              id: p.id, depth: p.depth, area: p.area, severity: p.severity,
+              position: { x: p.position.x, y: p.position.y, z: p.position.z },
+            })),
+          },
+          heatmap_screenshot_url: screenshotUrl,
+          analysis_duration_ms: occlusionResult.durationMs,
+        });
+      } catch (e) {
+        // Analiz kaydı zorunlu değil — order başarılı sayılır
+        console.warn('[occlusion] analiz kaydı başarısız', e);
+      }
+    }
+
     setLoading(false);
     setForm(INITIAL_FORM);
+    setOcclusionResult(null);
+    setOcclusionScreenshot(null);
     if (Platform.OS === 'web') { try { sessionStorage.removeItem('new_order_step'); sessionStorage.removeItem('new_order_form'); } catch {} }
     setStep(1);
     router.push('/(lab)');
@@ -1449,6 +1493,42 @@ ${form.notes ? `<div class="card">
                         );
                       })}
                     </View>
+
+                    {/* ── Kapanış Analizi (Alt + Üst + Bite yüklüyse) ── */}
+                    {(() => {
+                      const lower = form.attachments.find(a => a.name.startsWith('Alt Çene'));
+                      const upper = form.attachments.find(a => a.name.startsWith('Üst Çene'));
+                      const bite  = form.attachments.find(a => a.name.startsWith('Bite (Kapanış)'));
+                      if (!lower || !upper || !bite) return null;
+
+                      return (
+                        <TouchableOpacity
+                          style={fus.occlusionCta}
+                          onPress={() => setOcclusionModalOpen(true)}
+                          activeOpacity={0.85}
+                        >
+                          <View style={fus.occlusionCtaIcon}>
+                            <MaterialCommunityIcons name={'cube-scan' as any} size={18} color="#FFFFFF" />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={fus.occlusionCtaTitle}>
+                              Kapanış Analizi
+                              {occlusionResult && <Text style={fus.occlusionCtaBadge}>  ✓ tamamlandı</Text>}
+                            </Text>
+                            <Text style={fus.occlusionCtaSub}>
+                              {occlusionResult
+                                ? `Temas %${occlusionResult.statistics.contactPercentage} · ${occlusionResult.penetrationPoints.length} penetrasyon noktası`
+                                : '3D ısı haritası, penetrasyon ve mesafe ölçümü'}
+                            </Text>
+                          </View>
+                          <MaterialCommunityIcons
+                            name={(occlusionResult ? 'refresh' : 'arrow-right') as any}
+                            size={18}
+                            color="#FFFFFF"
+                          />
+                        </TouchableOpacity>
+                      );
+                    })()}
                   </View>
 
                   {/* ── Grup 3: İmplant Bilgileri ── */}
@@ -1715,6 +1795,21 @@ ${form.notes ? `<div class="card">
               </View>
             </View>
           </Modal>
+
+          {/* ── Kapanış Analizi Modal ── */}
+          <OcclusionAnalysisModal
+            visible={occlusionModalOpen}
+            upperUri={form.attachments.find(a => a.name.startsWith('Üst Çene'))?.uri ?? null}
+            upperName={form.attachments.find(a => a.name.startsWith('Üst Çene'))?.name}
+            lowerUri={form.attachments.find(a => a.name.startsWith('Alt Çene'))?.uri ?? null}
+            lowerName={form.attachments.find(a => a.name.startsWith('Alt Çene'))?.name}
+            biteUri={form.attachments.find(a => a.name.startsWith('Bite (Kapanış)'))?.uri ?? null}
+            onResult={(res) => setOcclusionResult(res)}
+            onClose={(snap) => {
+              if (snap) setOcclusionScreenshot(snap);
+              setOcclusionModalOpen(false);
+            }}
+          />
 
         </ScrollView>
       )}
@@ -2505,6 +2600,29 @@ const makeFusStyles = (P: string) => StyleSheet.create({
   },
   umGroupTitle: {
     fontSize: 13, fontFamily: F.bold, color: '#0F172A',
+  },
+
+  /* ── Kapanış Analizi CTA (3 scan yüklüyse görünür) ── */
+  occlusionCta: {
+    flexDirection: 'row' as any, alignItems: 'center' as any,
+    gap: 12, marginTop: 10, paddingVertical: 12, paddingHorizontal: 14,
+    borderRadius: 12, backgroundColor: '#2563EB',
+    shadowColor: '#2563EB', shadowOpacity: 0.18,
+    shadowRadius: 10, shadowOffset: { width: 0, height: 4 },
+  },
+  occlusionCtaIcon: {
+    width: 36, height: 36, borderRadius: 10,
+    alignItems: 'center' as any, justifyContent: 'center' as any,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  occlusionCtaTitle: {
+    fontSize: 13, fontFamily: F.bold, color: '#FFFFFF',
+  },
+  occlusionCtaBadge: {
+    fontSize: 11, fontFamily: F.semibold, color: '#BBF7D0',
+  },
+  occlusionCtaSub: {
+    fontSize: 11, color: 'rgba(255,255,255,0.8)', marginTop: 2,
   },
 
   /* ── Kare yükleme kartları ── */

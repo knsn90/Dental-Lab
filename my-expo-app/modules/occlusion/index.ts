@@ -4,6 +4,7 @@
 export { default as OcclusionScreen } from './screens/OcclusionScreen';
 
 export { OcclusionViewer } from './components/OcclusionViewer';
+export { OcclusionAnalysisModal } from './components/OcclusionAnalysisModal';
 export { OcclusionToolbar, ViewPresets } from './components/OcclusionToolbar';
 export { ModePanel } from './components/ModePanel';
 export { HeatmapLegend } from './components/HeatmapLegend';
