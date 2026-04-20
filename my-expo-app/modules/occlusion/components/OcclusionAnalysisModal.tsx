@@ -68,17 +68,26 @@ export function OcclusionAnalysisModal({
   const [severityFilter, setSeverityFilter] = useState<Record<Severity, boolean>>({
     low: true, medium: true, high: true,
   });
-  const [started,        setStarted]        = useState(false);
   const [loadError,      setLoadError]      = useState<string | null>(null);
+
+  // ── Stable refs so effect re-entry doesn't cancel the in-flight analysis ──
+  // (useOcclusionAnalysis returns a NEW object every render; adding it to deps
+  //  causes cleanup → cancelled=true before runAnalysis resolves.)
+  const startedRef   = useRef(false);
+  const runAnalysisRef = useRef(analysis.runAnalysis);
+  runAnalysisRef.current = analysis.runAnalysis;
 
   // ── Auto-start analysis when modal becomes visible with both URIs ──
   useEffect(() => {
-    if (!visible) return;
-    if (started) return;
+    if (!visible) {
+      startedRef.current = false;
+      return;
+    }
+    if (startedRef.current) return;
     if (!upperUri || !lowerUri) return;
 
+    startedRef.current = true;
     let cancelled = false;
-    setStarted(true);
     setLoadError(null);
 
     (async () => {
@@ -88,14 +97,14 @@ export function OcclusionAnalysisModal({
           uriToFile(lowerUri, lowerName),
         ]);
         if (cancelled) return;
-        await analysis.runAnalysis(upperFile, lowerFile);
+        await runAnalysisRef.current(upperFile, lowerFile);
       } catch (e) {
         if (!cancelled) setLoadError('Dosya yüklenemedi: ' + String(e));
       }
     })();
 
     return () => { cancelled = true; };
-  }, [visible, started, upperUri, lowerUri, upperName, lowerName, analysis]);
+  }, [visible, upperUri, lowerUri, upperName, lowerName]);
 
   // ── Emit result to parent when analysis completes ──
   const lastEmittedRef = useRef<OcclusionAnalysisResult | null>(null);
@@ -119,7 +128,7 @@ export function OcclusionAnalysisModal({
     onClose(snap);
     // Delay reset so exit animation doesn't re-flash empty UI
     setTimeout(() => {
-      setStarted(false);
+      startedRef.current = false;
       setActivePen(null);
       setReportExpanded(false);
       setLoadError(null);
