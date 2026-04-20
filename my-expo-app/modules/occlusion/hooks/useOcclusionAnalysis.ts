@@ -6,6 +6,7 @@ import { useState, useCallback, useRef } from 'react';
 import * as THREE from 'three';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js';
+import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 import { computeMeshDistance } from '../utils/meshDistance';
 import { detectPenetrations, computeStatistics } from '../utils/penetrationDetector';
@@ -87,6 +88,20 @@ export function useOcclusionAnalysis(): UseOcclusionAnalysis {
             // STL (binary veya ASCII)
             geom = new STLLoader().parse(buf);
           }
+
+          // STL loader her üçgen için 3 ayrı vertex oluşturur (paylaşım yok).
+          // Scanner mesh'leri 3-6M vertex içerebilir → mergeVertices ile ~5-6x azalt.
+          const beforeCount = geom.getAttribute('position')?.count ?? 0;
+          try {
+            geom = mergeVertices(geom, 1e-4);
+          } catch {
+            // mergeVertices fail ederse orijinalle devam et
+          }
+          const afterCount = geom.getAttribute('position')?.count ?? 0;
+          if (beforeCount && afterCount) {
+            console.log(`[occlusion] mergeVertices: ${beforeCount} → ${afterCount} (${((1 - afterCount / beforeCount) * 100).toFixed(1)}% azalma)`);
+          }
+
           geom.computeVertexNormals();
           resolve(geom);
         } catch (err) {
@@ -141,13 +156,24 @@ export function useOcclusionAnalysis(): UseOcclusionAnalysis {
       // 3) BVH mesafe hesapla
       setProgress(0.15);
       const startMs = Date.now();
+
+      // Adaptif stride: hedef ~100K iterasyon.
+      // 500K vertex → stride 5, 1M → 10, 2M → 20 … büyük mesh'lerde bile <10sn.
+      const lowerVertexCount = lowerGeom.getAttribute('position').count;
+      const TARGET_ITERATIONS = 100_000;
+      const adaptiveStride = Math.max(
+        1,
+        Math.ceil(lowerVertexCount / TARGET_ITERATIONS),
+      );
+      console.log(`[occlusion] ${lowerVertexCount} vertex → stride ${adaptiveStride} (≈${Math.ceil(lowerVertexCount / adaptiveStride)} iterasyon)`);
+
       const distances = await computeMeshDistance(
         upperGeom,
         lowerGeom,
         upperMesh.matrixWorld,
         {
           maxDistance:  5,
-          sampleStride: 2,  // ~2x hızlı — ara vertex'ler interpolasyon ile doldurulur
+          sampleStride: adaptiveStride,
           onProgress:   (pct) => setProgress(0.15 + pct * 0.65),
         },
       );
