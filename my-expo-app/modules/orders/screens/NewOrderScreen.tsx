@@ -215,107 +215,90 @@ function WithTooltip({
   image?: any;
 }) {
   const [pos, setPos] = useState<{ top: number; left: number; side: 'left' | 'right' } | null>(null);
-  const wrapRef = useRef<any>(null);
-
-  const show = () => {
-    const el = wrapRef.current;
-    if (!el) return;
-    const node: Element = typeof el.getBoundingClientRect === 'function'
-      ? el : (el as any)._nativeTag;
-    if (!node?.getBoundingClientRect) return;
-    const rect = node.getBoundingClientRect();
-    const side = rect.left + rect.width / 2 < window.innerWidth / 2 ? 'right' : 'left';
-    setPos({ top: rect.top + rect.height / 2, left: rect.left + rect.width / 2, side });
-  };
-  const hide = () => setPos(null);
 
   const TIP_W = image ? 300 : 240;
 
-  // Web: raw div event handlers — RN Pressable, tooltip + embedded TouchableOpacity
-  // ile birleşince Safari'de click yutabiliyor. Raw div onMouseEnter/Leave ve
-  // child click'i eventini doğal olarak iletir.
-  if (Platform.OS === 'web') {
-    return (
-      <div
-        ref={wrapRef as any}
-        onMouseEnter={show}
-        onMouseLeave={hide}
-        style={{ alignSelf: 'flex-start', display: 'inline-block' } as any}
-      >
-        {children}
-        {pos && (
-          <WebPortal>
-            <View style={{
-              // @ts-ignore
-              position: 'fixed',
-              top: pos.top,
-              left: pos.side === 'right' ? pos.left + 12 : pos.left - TIP_W - 12,
-              transform: [{ translateY: -40 }],
-              backgroundColor: '#0F172A',
-              borderRadius: 12,
-              overflow: 'hidden',
-              width: TIP_W,
-              zIndex: 99999,
-              // @ts-ignore
-              boxShadow: '0 6px 24px rgba(0,0,0,0.32)',
-              pointerEvents: 'none',
-            }}>
-              {image && (
-                <Image
-                  source={image}
-                  style={{ width: TIP_W, height: 110 }}
-                  resizeMode="cover"
-                />
-              )}
-              <View style={{ padding: 12 }}>
-                <Text style={{ color: '#F8FAFC', fontSize: 11, lineHeight: 17 }}>{text}</Text>
-              </View>
-            </View>
-          </WebPortal>
+  const computePos = (node: any) => {
+    const target: Element | null = node?.getBoundingClientRect
+      ? node
+      : (node?._nativeTag ?? null);
+    if (!target || typeof (target as any).getBoundingClientRect !== 'function') return;
+    const rect = (target as any).getBoundingClientRect();
+    const side = rect.left + rect.width / 2 < window.innerWidth / 2 ? 'right' : 'left';
+    setPos({
+      top: rect.top + rect.height / 2,
+      left: rect.left + rect.width / 2,
+      side,
+    });
+  };
+
+  const tooltipNode = pos ? (
+    <WebPortal>
+      <View style={{
+        // @ts-ignore
+        position: 'fixed',
+        top: pos.top,
+        left: pos.side === 'right' ? pos.left + 12 : pos.left - TIP_W - 12,
+        transform: [{ translateY: -40 }],
+        backgroundColor: '#FFFFFF',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+        overflow: 'hidden',
+        width: TIP_W,
+        zIndex: 99999,
+        // @ts-ignore
+        boxShadow: '0 10px 30px rgba(15,23,42,0.12)',
+        pointerEvents: 'none',
+      }}>
+        {image && (
+          <Image
+            source={image}
+            style={{ width: TIP_W, height: 110 }}
+            resizeMode="cover"
+          />
         )}
-      </div>
+        <View style={{ padding: 12 }}>
+          <Text style={{ color: '#0F172A', fontSize: 11, lineHeight: 17 }}>{text}</Text>
+        </View>
+      </View>
+    </WebPortal>
+  ) : null;
+
+  // ── Web: sarmalama yok — mouseEnter/Leave'i child'a inject et ──
+  // Wrapping div (hatta display:contents/inline-block) Safari'de bazen
+  // TouchableOpacity'nin onPress event'ini yutuyor. cloneElement ile
+  // child'a doğrudan eklersek click 100% çalışır.
+  if (Platform.OS === 'web') {
+    const child = React.Children.only(children) as React.ReactElement<any>;
+    const enhanced = React.cloneElement(child, {
+      onMouseEnter: (e: any) => {
+        child.props.onMouseEnter?.(e);
+        computePos(e.currentTarget);
+      },
+      onMouseLeave: (e: any) => {
+        child.props.onMouseLeave?.(e);
+        setPos(null);
+      },
+    });
+    return (
+      <>
+        {enhanced}
+        {tooltipNode}
+      </>
     );
   }
 
+  // Native fallback (mobile) — Pressable ile hover desteği
   return (
     <Pressable
-      ref={wrapRef}
       // @ts-ignore
-      onHoverIn={show}
-      onHoverOut={hide}
+      onHoverIn={(e: any) => computePos(e?.currentTarget)}
+      onHoverOut={() => setPos(null)}
       style={{ alignSelf: 'flex-start' }}
     >
       {children}
-      {pos && (
-        <WebPortal>
-          <View style={{
-            // @ts-ignore
-            position: 'fixed',
-            top: pos.top,
-            left: pos.side === 'right' ? pos.left + 12 : pos.left - TIP_W - 12,
-            transform: [{ translateY: -40 }],
-            backgroundColor: '#0F172A',
-            borderRadius: 12,
-            overflow: 'hidden',
-            width: TIP_W,
-            zIndex: 99999,
-            // @ts-ignore
-            boxShadow: '0 6px 24px rgba(0,0,0,0.32)',
-            pointerEvents: 'none',
-          }}>
-            {image && (
-              <Image
-                source={image}
-                style={{ width: TIP_W, height: 110 }}
-                resizeMode="cover"
-              />
-            )}
-            <View style={{ padding: 12 }}>
-              <Text style={{ color: '#F8FAFC', fontSize: 11, lineHeight: 17 }}>{text}</Text>
-            </View>
-          </View>
-        </WebPortal>
-      )}
+      {tooltipNode}
     </Pressable>
   );
 }
