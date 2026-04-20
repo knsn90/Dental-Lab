@@ -1098,17 +1098,20 @@ ${form.notes ? `<div class="card">
 
   return (
     <SafeAreaView style={styles.safe}>
-      {/* ── Taslak otomatik kayıt göstergesi (sol alt, Gmail tarzı) ── */}
+      {/* ── Taslak otomatik kayıt göstergesi (alt orta, viewport) ── */}
       {Platform.OS === 'web' && lastSavedAt && (
         <View style={{
-          // @ts-ignore web-only fixed pozisyon
-          position: 'fixed', bottom: 16, left: 16, zIndex: 50,
+          // @ts-ignore web-only fixed pozisyon — alt-orta, sidebar/nav ile çakışmaz
+          position: 'fixed', bottom: 20, left: '50%',
+          // @ts-ignore
+          transform: 'translateX(-50%)',
+          zIndex: 50,
           flexDirection: 'row' as any, alignItems: 'center' as any, gap: 8,
           backgroundColor: '#FFFFFF',
           borderWidth: 1, borderColor: '#E2E8F0',
           borderRadius: 999, paddingVertical: 6, paddingHorizontal: 12,
           // @ts-ignore
-          boxShadow: '0 2px 8px rgba(15,23,42,0.08)',
+          boxShadow: '0 4px 12px rgba(15,23,42,0.1)',
         }}>
           <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#22C55E' }} />
           <Text style={{ fontSize: 11, color: '#475569', fontFamily: F.semibold }}>
