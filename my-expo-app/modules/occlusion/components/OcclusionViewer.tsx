@@ -21,12 +21,14 @@ interface Props {
   onCameraMove?: () => void;
 }
 
-const VIEW_PRESETS: Record<ViewPreset, { pos: [number, number, number]; tgt: [number, number, number] }> = {
-  front: { pos: [0, 2, 34], tgt: [0, 0, 0] },
-  top:   { pos: [0, 34, 0.1], tgt: [0, 0, 0] },
-  right: { pos: [32, 2, 0], tgt: [0, 0, 0] },
-  left:  { pos: [-32, 2, 0], tgt: [0, 0, 0] },
-  iso:   { pos: [18, 14, 24], tgt: [0, 0, 0] },
+// Preset'ler mesh boyutuna göre dinamik hesaplanır (fitCameraToMeshes içinde).
+// Aşağıdaki unit vector'lar yön belirler, distance runtime'da çarpılır.
+const VIEW_PRESET_DIRS: Record<ViewPreset, [number, number, number]> = {
+  front: [0,    0.1,  1],
+  top:   [0,    1,    0.05],
+  right: [1,    0.1,  0],
+  left:  [-1,   0.1,  0],
+  iso:   [0.6,  0.5,  0.8],
 };
 
 export function OcclusionViewer({
@@ -40,6 +42,9 @@ export function OcclusionViewer({
   const upperSlotRef = useRef<THREE.Mesh | null>(null);
   const lowerSlotRef = useRef<THREE.Mesh | null>(null);
   const rafRef       = useRef<number | null>(null);
+  // Bounding sphere bilgileri (mesh'ler yüklenince hesaplanır)
+  const bsCenterRef  = useRef<THREE.Vector3>(new THREE.Vector3(0, 0, 0));
+  const bsRadiusRef  = useRef<number>(30); // default fallback
   const [sizeTick, setSizeTick] = useState({ w: 0, h: 0 });
 
   // Web-only guard
@@ -71,15 +76,19 @@ export function OcclusionViewer({
 
     const scene = new THREE.Scene();
 
-    const camera = new THREE.PerspectiveCamera(35, w / h, 0.1, 200);
-    camera.position.set(18, 14, 24);
+    // Perspective kamera — near/far bounding sphere'e göre update edilecek
+    const camera = new THREE.PerspectiveCamera(35, w / h, 0.1, 2000);
+    camera.position.set(40, 30, 55);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
-    controls.minDistance   = 12;
-    controls.maxDistance   = 80;
+    // min/maxDistance fit olduğunda güncellenecek
+    controls.minDistance   = 1;
+    controls.maxDistance   = 1000;
     controls.target.set(0, 0, 0);
+    // Zoom hassasiyeti (mesh boyutuna göre ayarlanır)
+    controls.zoomSpeed = 1.0;
 
     // Lights — prototip clinical
     scene.add(new THREE.AmbientLight(0xffffff, 0.55));
@@ -161,6 +170,67 @@ export function OcclusionViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ─── Kamera mesh'lere otomatik fit et ─────────────────────
+  // Combined bounding sphere → near/far, min/max distance, zoom speed,
+  // view preset'leri hepsi mesh boyutuna göre ayarlanır.
+  const fitCameraToMeshes = React.useCallback(() => {
+    const camera   = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) return;
+
+    const meshes: THREE.Mesh[] = [];
+    if (upperSlotRef.current) meshes.push(upperSlotRef.current);
+    if (lowerSlotRef.current) meshes.push(lowerSlotRef.current);
+    if (meshes.length === 0) return;
+
+    // Birleşik bounding box hesapla
+    const box = new THREE.Box3();
+    meshes.forEach((m) => {
+      m.updateMatrixWorld(true);
+      const b = new THREE.Box3().setFromObject(m);
+      box.union(b);
+    });
+    if (box.isEmpty()) return;
+
+    const center = new THREE.Vector3();
+    const size   = new THREE.Vector3();
+    box.getCenter(center);
+    box.getSize(size);
+    const radius = size.length() / 2; // bounding sphere radius
+
+    bsCenterRef.current.copy(center);
+    bsRadiusRef.current = radius;
+
+    // Kamera FOV'a göre gerekli mesafe (mesh tamamını ekrana sığdırmak için)
+    const fov = (camera.fov * Math.PI) / 180;
+    const fitDistance = radius / Math.sin(fov / 2);
+
+    // Near / Far — radius'a göre
+    camera.near = Math.max(0.01, radius / 1000);
+    camera.far  = radius * 100;
+
+    // Controls limits
+    controls.minDistance = radius * 0.2;
+    controls.maxDistance = radius * 15;
+    controls.zoomSpeed   = 1.2;
+
+    // Target = bounding box merkezi
+    controls.target.copy(center);
+
+    // Kamerayı mevcut yönünden, ama doğru mesafede konumlandır
+    const currentDir = new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
+    // İlk fit'te iso preset yönü kullan
+    if (currentDir.lengthSq() < 0.01) {
+      currentDir.set(0.6, 0.5, 0.8).normalize();
+    }
+    camera.position.copy(center).addScaledVector(currentDir, fitDistance * 1.4);
+
+    camera.updateProjectionMatrix();
+    controls.update();
+
+    console.log(`[viewer] fit: radius=${radius.toFixed(1)}mm, dist=${(fitDistance * 1.4).toFixed(1)}, min=${(radius * 0.2).toFixed(1)}, max=${(radius * 15).toFixed(1)}`);
+  }, []);
+
   // ─── Upper mesh slot ─────────────────────────────────────
   useEffect(() => {
     const scene = sceneRef.current;
@@ -173,8 +243,9 @@ export function OcclusionViewer({
     if (upperMesh) {
       scene.add(upperMesh);
       upperSlotRef.current = upperMesh;
+      fitCameraToMeshes();
     }
-  }, [upperMesh]);
+  }, [upperMesh, fitCameraToMeshes]);
 
   // ─── Lower mesh slot ─────────────────────────────────────
   useEffect(() => {
@@ -188,20 +259,29 @@ export function OcclusionViewer({
     if (lowerMesh) {
       scene.add(lowerMesh);
       lowerSlotRef.current = lowerMesh;
+      fitCameraToMeshes();
     }
-  }, [lowerMesh]);
+  }, [lowerMesh, fitCameraToMeshes]);
 
-  // ─── View preset → kamera animasyonu ──────────────────────
+  // ─── View preset → kamera animasyonu (bounding sphere'e göre dinamik) ──
   useEffect(() => {
     const camera   = cameraRef.current;
     const controls = controlsRef.current;
     if (!camera || !controls) return;
 
-    const target = VIEW_PRESETS[viewPreset];
+    const center = bsCenterRef.current;
+    const radius = bsRadiusRef.current;
+    const fov = (camera.fov * Math.PI) / 180;
+    const fitDistance = (radius / Math.sin(fov / 2)) * 1.4;
+
+    const dir = new THREE.Vector3(...VIEW_PRESET_DIRS[viewPreset]).normalize();
+    const end = new THREE.Vector3()
+      .copy(center)
+      .addScaledVector(dir, fitDistance);
+
     const start    = camera.position.clone();
-    const end      = new THREE.Vector3(...target.pos);
     const startTgt = controls.target.clone();
-    const endTgt   = new THREE.Vector3(...target.tgt);
+    const endTgt   = center.clone();
 
     const duration = 500;
     const t0 = performance.now();
