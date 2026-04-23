@@ -51,6 +51,7 @@ export default function LabLayout() {
     { label: 'İzin & Devam', emoji: '📅', href: '/(lab)/hr',             iconName: 'calendar',         iconSet: 'mdi' as const, matchPrefix: true,
       badgeCount: isManager && pendingLeaveCount > 0 ? pendingLeaveCount : undefined },
     { label: 'Bordro',        emoji: '💰', href: '/(lab)/payroll',        iconName: 'dollar-sign',      iconSet: 'mdi' as const, matchPrefix: true },
+    { label: 'SGK',           emoji: '🏛️', href: '/(lab)/sgk',           iconName: 'shield',           iconSet: 'mdi' as const, matchPrefix: true },
     { label: 'Performans',    emoji: '🏆', href: '/(lab)/performance',    iconName: 'award',            iconSet: 'mdi' as const, matchPrefix: true },
     { label: 'Dosyalar',      emoji: '📁', href: '/(lab)/documents',      iconName: 'folder',           iconSet: 'mdi' as const, matchPrefix: true },
     { label: 'Stok',         emoji: '📦', href: '/(lab)/stock',          iconName: 'package',          iconSet: 'mdi' as const, matchPrefix: true, badgeCount: stockAlert },
@@ -105,6 +106,7 @@ export default function LabLayout() {
         <Tabs.Screen name="employees" options={{ title: 'Çalışanlar', tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="hr" options={{ title: 'İzin & Devam', tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="payroll" options={{ title: 'Bordro', tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="sgk" options={{ title: 'SGK', tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="performance" options={{ title: 'Performans', tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="documents" options={{ title: 'Dosyalar', tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="balance" options={{ title: 'Cari Hesap', tabBarStyle: { display: 'none' } }} />

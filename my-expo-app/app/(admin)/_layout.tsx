@@ -49,6 +49,7 @@ export default function AdminLayout() {
     { label: 'İzin & Devam', emoji: '📅', href: '/(admin)/hr',            iconName: 'calendar',         iconSet: 'mdi' as const, matchPrefix: true,
       badgeCount: pendingLeaveCount > 0 ? pendingLeaveCount : undefined },
     { label: 'Bordro',        emoji: '💰', href: '/(admin)/payroll',       iconName: 'dollar-sign',      iconSet: 'mdi' as const, matchPrefix: true },
+    { label: 'SGK',           emoji: '🏛️', href: '/(admin)/sgk',          iconName: 'shield',           iconSet: 'mdi' as const, matchPrefix: true },
     { label: 'Performans',    emoji: '🏆', href: '/(admin)/performance',   iconName: 'award',            iconSet: 'mdi' as const, matchPrefix: true },
     { label: 'Dosyalar',      emoji: '📁', href: '/(admin)/documents',     iconName: 'folder',           iconSet: 'mdi' as const, matchPrefix: true },
     { label: 'Stok',         emoji: '📦', href: '/(admin)/stock',         iconName: 'package',          iconSet: 'mdi' as const, matchPrefix: true, badgeCount: stockAlert },
@@ -102,6 +103,7 @@ export default function AdminLayout() {
         <Tabs.Screen name="employees" options={{ title: 'Çalışanlar', tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="hr" options={{ title: 'İzin & Devam', tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="payroll" options={{ title: 'Bordro', tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="sgk" options={{ title: 'SGK', tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="performance" options={{ title: 'Performans', tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="documents" options={{ title: 'Dosyalar', tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="checkin-settings" options={{ title: 'QR Check-in', tabBarStyle: { display: 'none' } }} />
