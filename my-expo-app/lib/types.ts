@@ -19,6 +19,8 @@ export interface Profile {
   is_active: boolean;
   approval_status: 'pending' | 'approved' | 'rejected';
   lab_id?: string | null;      // çok-kiracılı (012_multi_tenancy)
+  clinic_id?: string | null;   // doctor → clinics.id (033_profile_clinic_doctor_link)
+  doctor_id?: string | null;   // doctor → doctors.id (033_profile_clinic_doctor_link)
   avatar_url?: string | null;
   created_at: string;
   updated_at: string;

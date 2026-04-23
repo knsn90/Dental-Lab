@@ -38,11 +38,7 @@ export async function signUpDoctor(params: SignUpDoctorParams) {
 
   if (authResult.error || !authResult.data.user) return authResult;
 
-  // Mark doctor as pending approval (belt & suspenders alongside trigger)
-  await supabase
-    .from('profiles')
-    .update({ is_active: false, approval_status: 'pending' })
-    .eq('id', authResult.data.user.id);
+  const userId = authResult.data.user.id;
 
   // 2 — Create clinic record
   const { data: clinic, error: clinicError } = await supabase
@@ -52,18 +48,36 @@ export async function signUpDoctor(params: SignUpDoctorParams) {
       phone: params.phone,
       address: params.address,
       contact_person: params.full_name,
+      email: params.email,
     })
     .select()
     .single();
 
-  if (clinicError || !clinic) return authResult; // Non-fatal — auth succeeded
-
   // 3 — Create doctor record linked to the new clinic
-  await supabase.from('doctors').insert({
-    full_name: params.full_name,
-    phone: params.phone,
-    clinic_id: clinic.id,
-  });
+  let doctorId: string | null = null;
+  if (!clinicError && clinic) {
+    const { data: doctor } = await supabase
+      .from('doctors')
+      .insert({
+        full_name: params.full_name,
+        phone: params.phone,
+        clinic_id: clinic.id,
+      })
+      .select('id')
+      .single();
+    doctorId = doctor?.id ?? null;
+  }
+
+  // 4 — Link profile to clinic + doctor and mark pending-approval
+  await supabase
+    .from('profiles')
+    .update({
+      is_active: false,
+      approval_status: 'pending',
+      clinic_id: clinic?.id ?? null,
+      doctor_id: doctorId,
+    })
+    .eq('id', userId);
 
   return authResult;
 }
