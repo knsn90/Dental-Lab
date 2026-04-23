@@ -103,7 +103,7 @@ export default function CheckinPage() {
       const msgs: Record<string, string> = {
         invalid_token:    'Geçersiz QR kodu. Lab yöneticinize bildirin.',
         out_of_range:     `Lab'a çok uzaktasınız (${res.distance_m ?? '?'}m uzak, izin: ${res.allowed_m ?? 150}m).`,
-        employee_not_found: 'Bu lab'da kayıtlı çalışan bulunamadı.',
+        employee_not_found: "Bu lab'da kayıtlı çalışan bulunamadı.",
         already_complete: 'Bugünkü giriş/çıkışınız zaten tamamlandı.',
       };
       setErrorMsg(msgs[res.error ?? ''] ?? 'Bilinmeyen hata.');
