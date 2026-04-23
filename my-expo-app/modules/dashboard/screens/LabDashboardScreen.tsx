@@ -1,12 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View, Text, ScrollView, StyleSheet,
   TouchableOpacity, useWindowDimensions, RefreshControl,
+  Animated, Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Feather from '@expo/vector-icons/Feather';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import Svg, { Path, Circle, Line, Polyline } from 'react-native-svg';
 import { useAuthStore } from '../../../core/store/authStore';
 import { useTodayOrders } from '../../orders/hooks/useTodayOrders';
 import { isOrderOverdue } from '../../orders/constants';
@@ -43,6 +43,8 @@ const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> =
   teslim_edildi:   { label: 'Teslim Edildi',   color: '#94A3B8',  bg: '#F8FAFC' },
 };
 
+const MONTHS_TR = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
+
 function todayStr() { return new Date().toISOString().split('T')[0]; }
 function fmtDate(date: string) {
   const d = new Date(date);
@@ -60,6 +62,210 @@ function initials(name?: string | null) {
   return parts.map(p => p[0]?.toUpperCase() ?? '').join('') || '—';
 }
 
+// ── SVG Icons (Lucide-style) ──────────────────────────────────────────
+type IconName =
+  | 'arrow-up-right' | 'plus' | 'receipt' | 'activity'
+  | 'users' | 'user' | 'trending-up' | 'alert-triangle'
+  | 'check-square';
+
+function Icon({ name, size = 24, color = '#0F172A', strokeWidth = 1.75 }: {
+  name: IconName; size?: number; color?: string; strokeWidth?: number;
+}) {
+  const p = { stroke: color, strokeWidth, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, fill: 'none' };
+  switch (name) {
+    case 'arrow-up-right':
+      return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M7 17L17 7" {...p}/><Path d="M7 7H17V17" {...p}/></Svg>;
+    case 'plus':
+      return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M12 5v14M5 12h14" {...p}/></Svg>;
+    case 'receipt':
+      return (
+        <Svg width={size} height={size} viewBox="0 0 24 24">
+          <Path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1-2-1Z" {...p}/>
+          <Path d="M16 8H8M16 12H8M13 16H8" {...p}/>
+        </Svg>
+      );
+    case 'activity':
+      return <Svg width={size} height={size} viewBox="0 0 24 24"><Polyline points="22 12 18 12 15 21 9 3 6 12 2 12" {...p}/></Svg>;
+    case 'users':
+      return (
+        <Svg width={size} height={size} viewBox="0 0 24 24">
+          <Path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" {...p}/>
+          <Circle cx="9" cy="7" r="4" {...p}/>
+          <Path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" {...p}/>
+        </Svg>
+      );
+    case 'user':
+      return (
+        <Svg width={size} height={size} viewBox="0 0 24 24">
+          <Path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" {...p}/>
+          <Circle cx="12" cy="7" r="4" {...p}/>
+        </Svg>
+      );
+    case 'trending-up':
+      return (
+        <Svg width={size} height={size} viewBox="0 0 24 24">
+          <Polyline points="23 6 13.5 15.5 8.5 10.5 1 18" {...p}/>
+          <Polyline points="17 6 23 6 23 12" {...p}/>
+        </Svg>
+      );
+    case 'alert-triangle':
+      return (
+        <Svg width={size} height={size} viewBox="0 0 24 24">
+          <Path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" {...p}/>
+          <Line x1="12" y1="9" x2="12" y2="13" {...p}/>
+          <Line x1="12" y1="17" x2="12.01" y2="17" {...p}/>
+        </Svg>
+      );
+    case 'check-square':
+      return (
+        <Svg width={size} height={size} viewBox="0 0 24 24">
+          <Polyline points="9 11 12 14 22 4" {...p}/>
+          <Path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" {...p}/>
+        </Svg>
+      );
+    default: return null;
+  }
+}
+
+// ── Quick Actions Bento ───────────────────────────────────────────────
+interface QAItem {
+  icon: IconName; label: string; onPress: () => void;
+  accent: string; accentBg: string; primary?: boolean;
+}
+
+function BentoCard({
+  item, style, iconSize = 24, showArrow = true,
+}: {
+  item: QAItem; style?: any; iconSize?: number; showArrow?: boolean;
+}) {
+  const scaleRef = useRef(new Animated.Value(1)).current;
+
+  const onPressIn = () =>
+    Animated.spring(scaleRef, { toValue: 0.95, useNativeDriver: true, damping: 15 }).start();
+  const onPressOut = () =>
+    Animated.spring(scaleRef, { toValue: 1, useNativeDriver: true, damping: 15 }).start();
+
+  return (
+    <TouchableOpacity
+      onPress={item.onPress}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
+      activeOpacity={1}
+      style={[{ flex: 1 }, style]}
+    >
+      <Animated.View
+        style={[
+          bento.card,
+          item.primary && bento.cardPrimary,
+          { transform: [{ scale: scaleRef }] },
+        ]}
+      >
+        {item.primary && <View style={bento.primarySheen} pointerEvents="none" />}
+
+        {showArrow && (
+          <View style={[bento.arrowBadge, item.primary && bento.arrowBadgePrimary]}>
+            <Icon
+              name="arrow-up-right"
+              size={11}
+              color={item.primary ? 'rgba(255,255,255,0.6)' : '#CBD5E1'}
+              strokeWidth={2.5}
+            />
+          </View>
+        )}
+
+        <View
+          style={[
+            bento.iconWrap,
+            { backgroundColor: item.primary ? 'rgba(255,255,255,0.14)' : item.accentBg },
+          ]}
+        >
+          <Icon
+            name={item.icon}
+            size={iconSize}
+            color={item.primary ? '#FFFFFF' : item.accent}
+            strokeWidth={1.75}
+          />
+        </View>
+
+        <Text style={[bento.label, item.primary && bento.labelPrimary]} numberOfLines={1}>
+          {item.label}
+        </Text>
+      </Animated.View>
+    </TouchableOpacity>
+  );
+}
+
+function QuickActionsSection({
+  onNewOrder, onApprovals, onClinics, onOrders, onProfile,
+}: {
+  onNewOrder: () => void; onApprovals: () => void; onClinics: () => void;
+  onOrders: () => void; onProfile: () => void;
+}) {
+  const items: QAItem[] = [
+    { icon: 'plus',        label: 'Yeni İş',      onPress: onNewOrder,   accent: '#FFFFFF', accentBg: 'rgba(255,255,255,0.14)', primary: true },
+    { icon: 'receipt',     label: 'Siparişler',   onPress: onOrders,     accent: P,         accentBg: '#EFF6FF' },
+    { icon: 'activity',    label: 'Hekimler',     onPress: onClinics,    accent: '#059669', accentBg: '#ECFDF5' },
+    { icon: 'check-square',label: 'Onaylar',      onPress: onApprovals,  accent: '#7C3AED', accentBg: '#F5F3FF' },
+    { icon: 'user',        label: 'Profil',       onPress: onProfile,    accent: '#D97706', accentBg: '#FFFBEB' },
+  ];
+
+  return (
+    <View style={bento.grid}>
+      <View style={bento.row}>
+        <BentoCard item={items[0]} style={{ flex: 3 }} iconSize={28} />
+        <View style={bento.col}>
+          <BentoCard item={items[1]} showArrow={false} />
+          <BentoCard item={items[2]} showArrow={false} />
+        </View>
+      </View>
+      <View style={bento.row}>
+        <BentoCard item={items[3]} />
+        <BentoCard item={items[4]} />
+      </View>
+    </View>
+  );
+}
+
+const bento = StyleSheet.create({
+  grid: { gap: 10, marginBottom: 24 },
+  row:  { flexDirection: 'row', gap: 10 },
+  col:  { flex: 2, gap: 10 },
+
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 18,
+    gap: 12,
+    minHeight: 110,
+    justifyContent: 'space-between',
+    overflow: 'hidden',
+    position: 'relative',
+    ...Platform.select({
+      web: { boxShadow: '0 1px 3px rgba(15,23,42,0.06), 0 4px 16px rgba(15,23,42,0.04)' } as any,
+      default: { shadowColor: '#0F172A', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
+    }),
+  },
+  cardPrimary: { backgroundColor: P, minHeight: 220 },
+
+  primarySheen: {
+    position: 'absolute', top: -40, right: -40,
+    width: 120, height: 120, borderRadius: 60,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  arrowBadge: {
+    position: 'absolute', top: 14, right: 14,
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center',
+  },
+  arrowBadgePrimary: { backgroundColor: 'rgba(255,255,255,0.15)' },
+  iconWrap: {
+    width: 48, height: 48, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  label: { fontSize: 13, fontWeight: '700', color: '#0F172A', letterSpacing: -0.2 },
+  labelPrimary: { color: '#FFFFFF', fontSize: 15 },
+});
+
 // ── Status Badge ──────────────────────────────────────────────────────
 function StatusBadge({ status }: { status: string }) {
   const c = STATUS_CFG[status] ?? { label: status, color: '#64748B', bg: '#F1F5F9' };
@@ -70,34 +276,6 @@ function StatusBadge({ status }: { status: string }) {
     </View>
   );
 }
-
-// ── Quick Action Card ─────────────────────────────────────────────────
-function QuickAction({ icon, label, onPress, primary }: { icon: string; label: string; onPress: () => void; primary?: boolean }) {
-  return (
-    <TouchableOpacity style={qa.card} onPress={onPress} activeOpacity={0.85}>
-      <View style={[qa.iconCircle, primary && qa.iconCirclePrimary]}>
-        <MaterialCommunityIcons name={icon as any} size={22} color={primary ? '#FFFFFF' : P} />
-      </View>
-      <Text style={qa.label}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-const qa = StyleSheet.create({
-  card: {
-    flex: 1, minWidth: 120,
-    backgroundColor: '#FFFFFF', borderRadius: 16,
-    paddingVertical: 18, paddingHorizontal: 8,
-    alignItems: 'center', justifyContent: 'center', gap: 10,
-    borderWidth: 1, borderColor: '#F1F5F9',
-  },
-  iconCircle: {
-    width: 48, height: 48, borderRadius: 24,
-    backgroundColor: CLR.blueBg,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  iconCirclePrimary: { backgroundColor: P },
-  label: { fontSize: 12, fontWeight: '600', color: '#0F172A', textAlign: 'center' },
-});
 
 // ── Stat Card ─────────────────────────────────────────────────────────
 function StatCard({ label, value, accent, delta, accentBar }: {
@@ -111,7 +289,7 @@ function StatCard({ label, value, accent, delta, accentBar }: {
         <Text style={[sc.value, accent ? { color: accent } : null]}>{value}</Text>
         {delta && (
           <View style={sc.delta}>
-            <MaterialCommunityIcons name="arrow-up" size={10} color={P} />
+            <Icon name="trending-up" size={10} color={P} strokeWidth={2.5} />
             <Text style={sc.deltaText}>{delta}</Text>
           </View>
         )}
@@ -148,15 +326,8 @@ function CardHeader({ title, right }: { title: string; right?: React.ReactNode }
   );
 }
 const card = StyleSheet.create({
-  wrap: {
-    backgroundColor: '#FFFFFF', borderRadius: 16,
-    borderWidth: 1, borderColor: '#F1F5F9',
-    overflow: 'hidden',
-  },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingVertical: 16,
-  },
+  wrap: { backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#F1F5F9', overflow: 'hidden' },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16 },
   title: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
 });
 
@@ -172,34 +343,98 @@ const sec = StyleSheet.create({
   },
 });
 
+// ── Animated Bar ──────────────────────────────────────────────────────
+function AnimatedBar({
+  pct, isActive, isHighest, count, label, delay,
+}: {
+  pct: number; isActive: boolean; isHighest: boolean;
+  count: number; label: string; delay: number;
+}) {
+  const heightAnim  = useRef(new Animated.Value(0)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(heightAnim, { toValue: pct, damping: 14, stiffness: 120, delay, useNativeDriver: false }),
+      Animated.timing(opacityAnim, { toValue: 1, duration: 300, delay, useNativeDriver: false }),
+    ]).start();
+  }, [pct]);
+
+  const animatedHeight = heightAnim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] });
+
+  return (
+    <Animated.View style={{ flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end', opacity: opacityAnim }}>
+      {isHighest && count > 0 && (
+        <View style={ch.tooltipWrap}>
+          <View style={[ch.tooltipBubble, isActive && ch.tooltipBubbleActive]}>
+            <Text style={ch.tooltipText}>{count}</Text>
+          </View>
+          <View style={[ch.tooltipArrow, isActive && ch.tooltipArrowActive]} />
+        </View>
+      )}
+      {!isHighest && count > 0 && (
+        <Text style={[ch.barLabel, isActive && { color: P }]}>{count}</Text>
+      )}
+      <View style={ch.track}>
+        <Animated.View style={[ch.fill, { height: animatedHeight }, isActive ? ch.fillActive : ch.fillInactive]}>
+          <View style={ch.fillGloss} />
+        </Animated.View>
+      </View>
+      <Text style={[ch.monthLabel, isActive && ch.monthLabelActive]}>{label}</Text>
+    </Animated.View>
+  );
+}
+
 // ── Monthly Chart ─────────────────────────────────────────────────────
 function MonthlyChart({ data }: { data: MonthBar[] }) {
   const max = Math.max(...data.map(d => d.count), 1);
+  const highestIdx = data.reduce((best, d, i) => d.count > data[best].count ? i : best, 0);
+  const lastIdx = data.length - 1;
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const id = 'candy-stripe-lab';
+    if (document.getElementById(id)) return;
+    const el = document.createElement('style');
+    el.id = id;
+    el.textContent = `.candy-track-lab::before { content:''; position:absolute; inset:0; background-image:repeating-linear-gradient(135deg,rgba(37,99,235,0.06) 0px,rgba(37,99,235,0.06) 1px,transparent 1px,transparent 8px); border-radius:10px; pointer-events:none; }`;
+    document.head.appendChild(el);
+  }, []);
+
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: 160, gap: 10, paddingHorizontal: 20, paddingBottom: 20, paddingTop: 8 }}>
-      {data.map((d, i) => {
-        const pct = Math.max((d.count / max) * 100, 6);
-        const isLast = i === data.length - 1;
-        return (
-          <View key={i} style={{ flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end' }}>
-            {d.count > 0 && (
-              <Text style={{ fontSize: 10, fontWeight: '700', color: isLast ? P : '#94A3B8', marginBottom: 6 }}>
-                {d.count}
-              </Text>
-            )}
-            <View style={{ width: '100%', height: '78%', justifyContent: 'flex-end', borderRadius: 8, overflow: 'hidden' }}>
-              <View style={{ width: '100%', borderRadius: 8, height: `${pct}%` as any,
-                backgroundColor: isLast ? P : `${P}25` }} />
-            </View>
-            <Text style={{ fontSize: 10, color: isLast ? P : '#94A3B8', marginTop: 8, fontWeight: isLast ? '700' : '500' }}>
-              {d.month}
-            </Text>
-          </View>
-        );
-      })}
+    <View style={ch.container}>
+      {data.map((d, i) => (
+        <AnimatedBar
+          key={i}
+          pct={Math.max((d.count / max) * 100, 4)}
+          isActive={i === lastIdx}
+          isHighest={i === highestIdx}
+          count={d.count}
+          label={d.month}
+          delay={i * 60}
+        />
+      ))}
     </View>
   );
 }
+
+const ch = StyleSheet.create({
+  container: { flexDirection: 'row', alignItems: 'flex-end', height: 180, gap: 8, paddingHorizontal: 20, paddingBottom: 20, paddingTop: 36 },
+  track: { width: '100%', flex: 1, justifyContent: 'flex-end', borderRadius: 10, overflow: 'hidden', backgroundColor: 'rgba(37,99,235,0.07)', position: 'relative' },
+  fill: { width: '100%', borderRadius: 10, overflow: 'hidden', position: 'relative' },
+  fillActive:   { backgroundColor: P },
+  fillInactive: { backgroundColor: `${P}30` },
+  fillGloss: { position: 'absolute', top: 0, left: 0, right: 0, height: 6, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.2)' },
+  barLabel:      { fontSize: 10, fontWeight: '700', color: '#94A3B8', marginBottom: 5 },
+  monthLabel:    { fontSize: 10, color: '#94A3B8', marginTop: 8, fontWeight: '500', textAlign: 'center' },
+  monthLabelActive: { color: P, fontWeight: '800' },
+  tooltipWrap:   { alignItems: 'center', marginBottom: 6, position: 'absolute', top: -32, left: 0, right: 0 },
+  tooltipBubble: { backgroundColor: `${P}30`, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3 },
+  tooltipBubbleActive: { backgroundColor: P },
+  tooltipText:   { fontSize: 10, fontWeight: '800', color: '#FFFFFF' },
+  tooltipArrow:  { width: 6, height: 6, borderRadius: 1, backgroundColor: `${P}30`, transform: [{ rotate: '45deg' }], marginTop: -3 },
+  tooltipArrowActive: { backgroundColor: P },
+});
 
 // ── Main Screen ───────────────────────────────────────────────────────
 export function LabDashboardScreen() {
@@ -220,10 +455,10 @@ export function LabDashboardScreen() {
   const [refreshing,    setRefreshing]    = useState(false);
   const [hovered,       setHovered]       = useState<string | null>(null);
 
-  const today          = todayStr();
-  const overdueOrders  = orders.filter(o => isOrderOverdue(o.delivery_date, o.status));
+  const today         = todayStr();
+  const overdueOrders = orders.filter(o => isOrderOverdue(o.delivery_date, o.status));
 
-  const loadExtra = async () => {
+  const loadExtra = useCallback(async () => {
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
     const { data } = await supabase
@@ -234,35 +469,37 @@ export function LabDashboardScreen() {
 
     if (data) {
       setAllOrders(data.slice(0, 6));
-      const monthNames = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
       const bars: MonthBar[] = [];
       for (let i = 5; i >= 0; i--) {
         const d = new Date(); d.setMonth(d.getMonth() - i);
         const y = d.getFullYear(), m = d.getMonth();
-        bars.push({ month: monthNames[m], count: data.filter(o => {
-          const c = new Date(o.created_at);
-          return c.getFullYear() === y && c.getMonth() === m;
-        }).length });
+        bars.push({
+          month: MONTHS_TR[m],
+          count: data.filter(o => {
+            const c = new Date(o.created_at);
+            return c.getFullYear() === y && c.getMonth() === m;
+          }).length,
+        });
       }
       setMonthly(bars);
     }
 
-    const { count: totalCount }    = await supabase.from('work_orders').select('id', { count: 'exact', head: true });
-    const { count: todayCount }    = await supabase.from('work_orders').select('id', { count: 'exact', head: true }).gte('created_at', `${today}T00:00:00`);
-    const { count: drCount }       = await supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('user_type', 'doctor');
-    const { count: labUserCount }  = await supabase.from('profiles').select('id', { count: 'exact', head: true }).in('user_type', ['lab_user', 'mesul_mudur']);
+    const { count: totalCount }   = await supabase.from('work_orders').select('id', { count: 'exact', head: true });
+    const { count: todayCount }   = await supabase.from('work_orders').select('id', { count: 'exact', head: true }).gte('created_at', `${today}T00:00:00`);
+    const { count: drCount }      = await supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('user_type', 'doctor');
+    const { count: labUserCount } = await supabase.from('profiles').select('id', { count: 'exact', head: true }).in('user_type', ['lab_user', 'mesul_mudur']);
     setTotalOrders(totalCount ?? 0);
     setTodayNewCount(todayCount ?? 0);
     setDoctorCount(drCount ?? 0);
     setUserCount(labUserCount ?? 0);
-  };
+  }, [today]);
 
-  const loadProvas = async () => {
+  const loadProvas = useCallback(async () => {
     setProvasLoading(true);
     const { data } = await fetchTodayProvas();
     setProvas((data as TodayProva[]) ?? []);
     setProvasLoading(false);
-  };
+  }, []);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -298,12 +535,9 @@ export function LabDashboardScreen() {
 
           {overdueOrders.length > 0 && (
             <View style={[s.alertCard, isDesktop && { width: 300 }]}>
-              <MaterialCommunityIcons
-                name="alert-outline"
-                size={180}
-                color={CLR.red}
-                style={s.alertDecorIcon}
-              />
+              <View style={s.alertDecorIcon} pointerEvents="none">
+                <Icon name="alert-triangle" size={180} color={CLR.red} strokeWidth={0.6} />
+              </View>
               <View style={s.alertTop}>
                 <Text style={s.alertPill}>KRİTİK</Text>
               </View>
@@ -325,13 +559,13 @@ export function LabDashboardScreen() {
 
         {/* ── Quick Actions ─────────────────────────────────────── */}
         <SectionTitle text="Hızlı İşlemler" />
-        <View style={s.quickRow}>
-          <QuickAction icon="plus"              label="Yeni İş"      primary onPress={() => router.push('/(lab)/new-order' as any)} />
-          <QuickAction icon="account-group-outline" label="Kullanıcılar"       onPress={() => router.push('/(lab)/approvals' as any)} />
-          <QuickAction icon="doctor"            label="Hekimler"             onPress={() => router.push('/(lab)/clinics' as any)} />
-          <QuickAction icon="receipt"           label="Siparişler"           onPress={() => router.push('/(lab)/all-orders' as any)} />
-          <QuickAction icon="account-circle-outline" label="Profil"          onPress={() => router.push('/(lab)/profile' as any)} />
-        </View>
+        <QuickActionsSection
+          onNewOrder={() => router.push('/(lab)/new-order' as any)}
+          onApprovals={() => router.push('/(lab)/approvals' as any)}
+          onClinics={() => router.push('/(lab)/clinics' as any)}
+          onOrders={() => router.push('/(lab)/all-orders' as any)}
+          onProfile={() => router.push('/(lab)/profile' as any)}
+        />
 
         {/* ── Genel Bakış + Sağ Kolon ───────────────────────────── */}
         <View style={[s.mainGrid, isDesktop && s.mainGridDesktop]}>
@@ -341,14 +575,13 @@ export function LabDashboardScreen() {
             <SectionTitle text="Genel Bakış" />
             <View style={s.statsGrid}>
               <StatCard label="Toplam Sipariş" value={totalOrders.toLocaleString('tr-TR')} delta={totalOrders > 0 ? '+12%' : undefined} />
-              <StatCard label="Bugün Yeni"    value={todayNewCount} accent={P} accentBar />
-              <StatCard label="Geciken"       value={overdueOrders.length} accent={overdueOrders.length > 0 ? CLR.red : undefined} />
-              <StatCard label="Bugün Teslim"  value={orders.length} />
-              <StatCard label="Kayıtlı Hekim" value={doctorCount} />
+              <StatCard label="Bugün Yeni"      value={todayNewCount} accent={P} accentBar />
+              <StatCard label="Geciken"         value={overdueOrders.length} accent={overdueOrders.length > 0 ? CLR.red : undefined} />
+              <StatCard label="Bugün Teslim"    value={orders.length} />
+              <StatCard label="Kayıtlı Hekim"   value={doctorCount} />
               <StatCard label="Lab Kullanıcısı" value={userCount} />
             </View>
 
-            {/* Aylık Trend */}
             <Card>
               <CardHeader
                 title="Sipariş Trendi"
@@ -367,7 +600,6 @@ export function LabDashboardScreen() {
           <View style={[{ gap: 20 }, isDesktop && { flex: 1 }]}>
             <SectionTitle text="Analiz" />
 
-            {/* Statü Dağılımı */}
             <Card>
               <CardHeader title="Statü Dağılımı" />
               <View style={{ paddingHorizontal: 20, paddingBottom: 20, gap: 14 }}>
@@ -390,7 +622,6 @@ export function LabDashboardScreen() {
               </View>
             </Card>
 
-            {/* Bugünün Provaları */}
             {(provas.length > 0 || provasLoading) && (
               <Card>
                 <CardHeader
@@ -403,28 +634,24 @@ export function LabDashboardScreen() {
                 />
                 {provasLoading
                   ? <Text style={s.loadingText}>Yükleniyor...</Text>
-                  : provas.slice(0, 5).map((p, idx) => {
-                      const typeCfg = PROVA_TYPES.find(t => t.value === p.prova_type);
+                  : provas.slice(0, 5).map((pv, idx) => {
+                      const typeCfg = PROVA_TYPES.find(t => t.value === pv.prova_type);
                       const isLast  = idx === Math.min(provas.length, 5) - 1;
                       return (
                         <TouchableOpacity
-                          key={p.id}
+                          key={pv.id}
                           style={[s.provaRow, !isLast && s.rowBorder]}
-                          onPress={() => p.work_order && router.push(`/(lab)/order/${p.work_order.id}` as any)}
+                          onPress={() => pv.work_order && router.push(`/(lab)/order/${pv.work_order.id}` as any)}
                           activeOpacity={0.7}
                         >
                           <View style={s.provaEmoji}>
                             <Text style={{ fontSize: 16 }}>{typeCfg?.emoji ?? '🦷'}</Text>
                           </View>
                           <View style={{ flex: 1, gap: 2 }}>
-                            <Text style={s.cellMain} numberOfLines={1}>
-                              {p.work_order?.order_number ?? '—'}
-                            </Text>
-                            <Text style={s.cellSub} numberOfLines={1}>
-                              {typeCfg?.label ?? 'Prova'} #{p.prova_number}
-                            </Text>
+                            <Text style={s.cellMain} numberOfLines={1}>{pv.work_order?.order_number ?? '—'}</Text>
+                            <Text style={s.cellSub} numberOfLines={1}>{typeCfg?.label ?? 'Prova'} #{pv.prova_number}</Text>
                           </View>
-                          <StatusBadge status={p.status} />
+                          <StatusBadge status={pv.status} />
                         </TouchableOpacity>
                       );
                     })
@@ -504,30 +731,23 @@ const s = StyleSheet.create({
   safe:   { flex: 1, backgroundColor: BG },
   scroll: { padding: 24, paddingBottom: 40, maxWidth: 1400, alignSelf: 'stretch' },
 
-  // Hero
   heroRow:        { gap: 16, marginBottom: 24 },
   heroRowDesktop: { flexDirection: 'row' },
 
   welcomeCard: {
     backgroundColor: '#FFFFFF', borderRadius: 16,
-    padding: 28,
-    borderWidth: 1, borderColor: '#F1F5F9',
-    overflow: 'hidden',
+    padding: 28, borderWidth: 1, borderColor: '#F1F5F9', overflow: 'hidden',
   },
   welcomeGreet: { fontSize: 28, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
   welcomeDate:  { fontSize: 28, fontWeight: '300', color: P, letterSpacing: -0.5, marginTop: 2 },
   welcomeSub:   { fontSize: 13, color: '#64748B', marginTop: 10 },
 
-  // Critical alert
   alertCard: {
     backgroundColor: '#FFF1F2', borderRadius: 16,
-    padding: 20, gap: 8,
-    position: 'relative', overflow: 'hidden',
+    padding: 20, gap: 8, position: 'relative', overflow: 'hidden',
   },
-  alertDecorIcon: {
-    position: 'absolute', top: -30, left: -30, opacity: 0.1,
-  } as any,
-  alertTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'flex-end' },
+  alertDecorIcon: { position: 'absolute', top: -30, left: -30, opacity: 0.1 } as any,
+  alertTop:  { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'flex-end' },
   alertPill: {
     fontSize: 10, fontWeight: '800', color: CLR.red,
     backgroundColor: '#FEE2E2', paddingHorizontal: 8, paddingVertical: 4,
@@ -542,26 +762,19 @@ const s = StyleSheet.create({
   },
   alertBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
 
-  // Quick actions
-  quickRow: { flexDirection: 'row', gap: 12, flexWrap: 'wrap', marginBottom: 24 },
-
-  // Main grid
   mainGrid:        { gap: 20 },
   mainGridDesktop: { flexDirection: 'row' },
 
-  // Stats grid
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
 
-  // Chips
-  chip:      { backgroundColor: '#F1F5F9', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
-  chipText:  { fontSize: 11, color: '#64748B', fontWeight: '600' },
+  chip:     { backgroundColor: '#F1F5F9', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
+  chipText: { fontSize: 11, color: '#64748B', fontWeight: '600' },
 
   countChip:     { backgroundColor: P, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3, minWidth: 26, alignItems: 'center' },
   countChipText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
 
   linkBtn: { fontSize: 13, color: P, fontWeight: '700' },
 
-  // Table
   tableHead: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 20, paddingVertical: 12,
@@ -575,21 +788,18 @@ const s = StyleSheet.create({
   tableRowOverdue: { backgroundColor: '#FEF2F2' },
   rowBorder:       { borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
 
-  provaRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, gap: 10 },
-  provaEmoji: { width: 36, height: 36, borderRadius: 10, backgroundColor: CLR.blueBg, alignItems: 'center', justifyContent: 'center' },
+  provaRow:  { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, gap: 10 },
+  provaEmoji:{ width: 36, height: 36, borderRadius: 10, backgroundColor: CLR.blueBg, alignItems: 'center', justifyContent: 'center' },
 
-  orderNo:   { fontSize: 12, fontWeight: '700', color: P },
+  orderNo:    { fontSize: 12, fontWeight: '700', color: P },
 
-  avatar: {
-    width: 28, height: 28, borderRadius: 14,
-    backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center',
-  },
+  avatar:     { width: 28, height: 28, borderRadius: 14, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
   avatarText: { fontSize: 10, fontWeight: '700', color: '#64748B' },
 
-  cellMain:         { fontSize: 13, fontWeight: '600', color: '#0F172A' },
-  cellSub:          { fontSize: 12, color: '#64748B' },
-  cellDate:         { fontSize: 12, color: '#94A3B8', fontWeight: '500' },
-  cellDateOverdue:  { color: CLR.red, fontWeight: '700' },
+  cellMain:        { fontSize: 13, fontWeight: '600', color: '#0F172A' },
+  cellSub:         { fontSize: 12, color: '#64748B' },
+  cellDate:        { fontSize: 12, color: '#94A3B8', fontWeight: '500' },
+  cellDateOverdue: { color: CLR.red, fontWeight: '700' },
 
   loadingText: { fontSize: 13, color: '#94A3B8', padding: 24, textAlign: 'center' },
 });

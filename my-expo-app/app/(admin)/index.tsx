@@ -12,9 +12,66 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import Svg, { Path, Circle, Line, Polyline } from 'react-native-svg';
 import { supabase } from '../../lib/supabase';
 import { BlurFade } from '../../core/ui/BlurFade';
+
+// ── SVG Icons (Lucide-style) ──────────────────────────────────────────
+type IconName =
+  | 'arrow-up-right' | 'plus' | 'receipt' | 'activity'
+  | 'users' | 'user' | 'trending-up' | 'alert-triangle';
+
+function Icon({ name, size = 24, color = '#0F172A', strokeWidth = 1.75 }: {
+  name: IconName; size?: number; color?: string; strokeWidth?: number;
+}) {
+  const p = { stroke: color, strokeWidth, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, fill: 'none' };
+  switch (name) {
+    case 'arrow-up-right':
+      return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M7 17L17 7" {...p}/><Path d="M7 7H17V17" {...p}/></Svg>;
+    case 'plus':
+      return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M12 5v14M5 12h14" {...p}/></Svg>;
+    case 'receipt':
+      return (
+        <Svg width={size} height={size} viewBox="0 0 24 24">
+          <Path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1-2-1Z" {...p}/>
+          <Path d="M16 8H8M16 12H8M13 16H8" {...p}/>
+        </Svg>
+      );
+    case 'activity':
+      return <Svg width={size} height={size} viewBox="0 0 24 24"><Polyline points="22 12 18 12 15 21 9 3 6 12 2 12" {...p}/></Svg>;
+    case 'users':
+      return (
+        <Svg width={size} height={size} viewBox="0 0 24 24">
+          <Path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" {...p}/>
+          <Circle cx="9" cy="7" r="4" {...p}/>
+          <Path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" {...p}/>
+        </Svg>
+      );
+    case 'user':
+      return (
+        <Svg width={size} height={size} viewBox="0 0 24 24">
+          <Path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" {...p}/>
+          <Circle cx="12" cy="7" r="4" {...p}/>
+        </Svg>
+      );
+    case 'trending-up':
+      return (
+        <Svg width={size} height={size} viewBox="0 0 24 24">
+          <Polyline points="23 6 13.5 15.5 8.5 10.5 1 18" {...p}/>
+          <Polyline points="17 6 23 6 23 12" {...p}/>
+        </Svg>
+      );
+    case 'alert-triangle':
+      return (
+        <Svg width={size} height={size} viewBox="0 0 24 24">
+          <Path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" {...p}/>
+          <Line x1="12" y1="9" x2="12" y2="13" {...p}/>
+          <Line x1="12" y1="17" x2="12.01" y2="17" {...p}/>
+        </Svg>
+      );
+    default: return null;
+  }
+}
 
 const K  = '#0F172A';
 const BG = '#F7F9FB';
@@ -68,7 +125,7 @@ function StatusBadge({ status }: { status: string }) {
 
 // ── Quick Actions Bento ───────────────────────────────────────────────
 interface QAItem {
-  icon: string; label: string; onPress: () => void;
+  icon: IconName; label: string; onPress: () => void;
   accent: string; accentBg: string; primary?: boolean;
 }
 
@@ -108,10 +165,11 @@ function BentoCard({
         {/* Arrow badge */}
         {showArrow && (
           <View style={[bento.arrowBadge, item.primary && bento.arrowBadgePrimary]}>
-            <MaterialCommunityIcons
-              name="arrow-top-right"
+            <Icon
+              name="arrow-up-right"
               size={11}
               color={item.primary ? 'rgba(255,255,255,0.6)' : '#CBD5E1'}
+              strokeWidth={2.5}
             />
           </View>
         )}
@@ -124,10 +182,11 @@ function BentoCard({
             horizontal && { marginRight: 10 },
           ]}
         >
-          <MaterialCommunityIcons
-            name={item.icon as any}
+          <Icon
+            name={item.icon}
             size={iconSize}
             color={item.primary ? '#FFFFFF' : item.accent}
+            strokeWidth={1.75}
           />
         </View>
 
@@ -150,11 +209,11 @@ function QuickActionsSection({
   onOrders: () => void;   onProfile: () => void;
 }) {
   const items: QAItem[] = [
-    { icon: 'plus',                   label: 'Yeni İş',      onPress: onNewOrder, accent: '#FFFFFF',  accentBg: 'rgba(255,255,255,0.14)', primary: true },
-    { icon: 'receipt',                label: 'Siparişler',   onPress: onOrders,   accent: '#2563EB',  accentBg: '#EFF6FF' },
-    { icon: 'doctor',                 label: 'Hekimler',     onPress: onDoctors,  accent: '#059669',  accentBg: '#ECFDF5' },
-    { icon: 'account-group-outline',  label: 'Kullanıcılar', onPress: onUsers,    accent: '#7C3AED',  accentBg: '#F5F3FF' },
-    { icon: 'account-circle-outline', label: 'Profil',       onPress: onProfile,  accent: '#D97706',  accentBg: '#FFFBEB' },
+    { icon: 'plus',     label: 'Yeni İş',      onPress: onNewOrder, accent: '#FFFFFF', accentBg: 'rgba(255,255,255,0.14)', primary: true },
+    { icon: 'receipt',  label: 'Siparişler',   onPress: onOrders,   accent: '#2563EB', accentBg: '#EFF6FF' },
+    { icon: 'activity', label: 'Hekimler',     onPress: onDoctors,  accent: '#059669', accentBg: '#ECFDF5' },
+    { icon: 'users',    label: 'Kullanıcılar', onPress: onUsers,    accent: '#7C3AED', accentBg: '#F5F3FF' },
+    { icon: 'user',     label: 'Profil',       onPress: onProfile,  accent: '#D97706', accentBg: '#FFFBEB' },
   ];
 
   return (
@@ -278,7 +337,7 @@ function StatCard({ label, value, accent, delta, accentBar }: {
         <Text style={[sc.value, accent ? { color: accent } : null]}>{value}</Text>
         {delta && (
           <View style={sc.delta}>
-            <MaterialCommunityIcons name="arrow-up" size={10} color={K} />
+            <Icon name="trending-up" size={10} color={K} strokeWidth={2.5} />
             <Text style={sc.deltaText}>{delta}</Text>
           </View>
         )}
@@ -703,12 +762,9 @@ export default function AdminDashboard() {
 
           {overdueOrders > 0 && (
             <View style={[s.alertCard, isDesktop && { width: 300 }]}>
-              <MaterialCommunityIcons
-                name="alert-outline"
-                size={180}
-                color={CLR.red}
-                style={s.alertDecorIcon}
-              />
+              <View style={s.alertDecorIcon} pointerEvents="none">
+                <Icon name="alert-triangle" size={180} color={CLR.red} strokeWidth={0.6} />
+              </View>
               <View style={s.alertTop}>
                 <Text style={s.alertPill}>KRİTİK</Text>
               </View>
