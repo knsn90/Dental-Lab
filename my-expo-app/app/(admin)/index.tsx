@@ -66,32 +66,204 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-// ── Quick Action Card ─────────────────────────────────────────────────
-function QuickAction({ icon, label, onPress, primary }: { icon: string; label: string; onPress: () => void; primary?: boolean }) {
+// ── Quick Actions Bento ───────────────────────────────────────────────
+interface QAItem {
+  icon: string; label: string; onPress: () => void;
+  accent: string; accentBg: string; primary?: boolean;
+}
+
+function BentoCard({
+  item, style, iconSize = 24, showArrow = true, horizontal = false,
+}: {
+  item: QAItem; style?: any; iconSize?: number; showArrow?: boolean; horizontal?: boolean;
+}) {
+  const scaleRef = useRef(new Animated.Value(1)).current;
+
+  const onPressIn = () =>
+    Animated.spring(scaleRef, { toValue: 0.95, useNativeDriver: true, damping: 15 }).start();
+  const onPressOut = () =>
+    Animated.spring(scaleRef, { toValue: 1, useNativeDriver: true, damping: 15 }).start();
+
   return (
-    <TouchableOpacity style={qa.card} onPress={onPress} activeOpacity={0.85}>
-      <View style={[qa.iconCircle, primary && qa.iconCirclePrimary]}>
-        <MaterialCommunityIcons name={icon as any} size={22} color={primary ? '#FFFFFF' : K} />
-      </View>
-      <Text style={qa.label}>{label}</Text>
+    <TouchableOpacity
+      onPress={item.onPress}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
+      activeOpacity={1}
+      style={[{ flex: 1 }, style]}
+    >
+      <Animated.View
+        style={[
+          bento.card,
+          item.primary && bento.cardPrimary,
+          horizontal && bento.cardHorizontal,
+          { transform: [{ scale: scaleRef }] },
+        ]}
+      >
+        {/* Subtle top-right gradient sheen for primary */}
+        {item.primary && (
+          <View style={bento.primarySheen} pointerEvents="none" />
+        )}
+
+        {/* Arrow badge */}
+        {showArrow && (
+          <View style={[bento.arrowBadge, item.primary && bento.arrowBadgePrimary]}>
+            <MaterialCommunityIcons
+              name="arrow-top-right"
+              size={11}
+              color={item.primary ? 'rgba(255,255,255,0.6)' : '#CBD5E1'}
+            />
+          </View>
+        )}
+
+        {/* Icon */}
+        <View
+          style={[
+            bento.iconWrap,
+            { backgroundColor: item.primary ? 'rgba(255,255,255,0.14)' : item.accentBg },
+            horizontal && { marginRight: 10 },
+          ]}
+        >
+          <MaterialCommunityIcons
+            name={item.icon as any}
+            size={iconSize}
+            color={item.primary ? '#FFFFFF' : item.accent}
+          />
+        </View>
+
+        {/* Label */}
+        <Text
+          style={[bento.label, item.primary && bento.labelPrimary]}
+          numberOfLines={1}
+        >
+          {item.label}
+        </Text>
+      </Animated.View>
     </TouchableOpacity>
   );
 }
-const qa = StyleSheet.create({
+
+function QuickActionsSection({
+  onNewOrder, onUsers, onDoctors, onOrders, onProfile,
+}: {
+  onNewOrder: () => void; onUsers: () => void; onDoctors: () => void;
+  onOrders: () => void;   onProfile: () => void;
+}) {
+  const items: QAItem[] = [
+    { icon: 'plus',                   label: 'Yeni İş',      onPress: onNewOrder, accent: '#FFFFFF',  accentBg: 'rgba(255,255,255,0.14)', primary: true },
+    { icon: 'receipt',                label: 'Siparişler',   onPress: onOrders,   accent: '#2563EB',  accentBg: '#EFF6FF' },
+    { icon: 'doctor',                 label: 'Hekimler',     onPress: onDoctors,  accent: '#059669',  accentBg: '#ECFDF5' },
+    { icon: 'account-group-outline',  label: 'Kullanıcılar', onPress: onUsers,    accent: '#7C3AED',  accentBg: '#F5F3FF' },
+    { icon: 'account-circle-outline', label: 'Profil',       onPress: onProfile,  accent: '#D97706',  accentBg: '#FFFBEB' },
+  ];
+
+  return (
+    <View style={bento.grid}>
+      {/* Row 1: Primary (large) + two small stacked */}
+      <View style={bento.row}>
+        {/* Primary — Yeni İş */}
+        <BentoCard item={items[0]} style={{ flex: 3 }} iconSize={28} />
+
+        {/* Siparişler + Hekimler stacked */}
+        <View style={bento.col}>
+          <BentoCard item={items[1]} showArrow={false} />
+          <BentoCard item={items[2]} showArrow={false} />
+        </View>
+      </View>
+
+      {/* Row 2: Kullanıcılar + Profil */}
+      <View style={bento.row}>
+        <BentoCard item={items[3]} />
+        <BentoCard item={items[4]} />
+      </View>
+    </View>
+  );
+}
+
+const bento = StyleSheet.create({
+  grid: { gap: 10, marginBottom: 24 },
+  row:  { flexDirection: 'row', gap: 10 },
+  col:  { flex: 2, gap: 10 },
+
   card: {
-    flex: 1, minWidth: 120,
-    backgroundColor: '#FFFFFF', borderRadius: 16,
-    paddingVertical: 18, paddingHorizontal: 8,
-    alignItems: 'center', justifyContent: 'center', gap: 10,
-    borderWidth: 1, borderColor: '#F1F5F9',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 18,
+    gap: 12,
+    minHeight: 110,
+    justifyContent: 'space-between',
+    overflow: 'hidden',
+    position: 'relative',
+    ...Platform.select({
+      web: {
+        boxShadow: '0 1px 3px rgba(15,23,42,0.06), 0 4px 16px rgba(15,23,42,0.04)',
+      } as any,
+      default: {
+        shadowColor: '#0F172A',
+        shadowOpacity: 0.06,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 2 },
+        elevation: 2,
+      },
+    }),
   },
-  iconCircle: {
-    width: 48, height: 48, borderRadius: 24,
-    backgroundColor: CLR.blackBg,
-    alignItems: 'center', justifyContent: 'center',
+  cardPrimary: {
+    backgroundColor: K,
+    minHeight: 220,
   },
-  iconCirclePrimary: { backgroundColor: K },
-  label: { fontSize: 12, fontWeight: '600', color: '#0F172A', textAlign: 'center' },
+  cardHorizontal: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 64,
+  },
+
+  // Sheen overlay top-right for primary card
+  primarySheen: {
+    position: 'absolute',
+    top: -40,
+    right: -40,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+
+  // Arrow badge top-right
+  arrowBadge: {
+    position: 'absolute',
+    top: 14,
+    right: 14,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  arrowBadgePrimary: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+
+  // Icon container
+  iconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Labels
+  label: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F172A',
+    letterSpacing: -0.2,
+  },
+  labelPrimary: {
+    color: '#FFFFFF',
+    fontSize: 15,
+  },
 });
 
 // ── Stat Card ─────────────────────────────────────────────────────────
@@ -558,13 +730,13 @@ export default function AdminDashboard() {
 
         {/* ── Quick Actions ─────────────────────────────────────── */}
         <SectionTitle text="Hızlı İşlemler" />
-        <View style={s.quickRow}>
-          <QuickAction icon="plus"                    label="Yeni İş"      primary onPress={() => router.push('/(admin)/new-order' as any)} />
-          <QuickAction icon="account-group-outline"   label="Kullanıcılar"         onPress={() => router.push('/(admin)/users' as any)} />
-          <QuickAction icon="doctor"                  label="Hekimler"             onPress={() => router.push('/(admin)/doctors' as any)} />
-          <QuickAction icon="receipt"                 label="Siparişler"           onPress={() => router.push('/(admin)/orders' as any)} />
-          <QuickAction icon="account-circle-outline"  label="Profil"               onPress={() => router.push('/(admin)/profile' as any)} />
-        </View>
+        <QuickActionsSection
+          onNewOrder={() => router.push('/(admin)/new-order' as any)}
+          onUsers={() => router.push('/(admin)/users' as any)}
+          onDoctors={() => router.push('/(admin)/doctors' as any)}
+          onOrders={() => router.push('/(admin)/orders' as any)}
+          onProfile={() => router.push('/(admin)/profile' as any)}
+        />
 
         {loading ? (
           <View style={s.loadingBox}>
@@ -760,9 +932,6 @@ const s = StyleSheet.create({
     paddingVertical: 10, alignItems: 'center',
   },
   alertBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
-
-  // Quick actions
-  quickRow: { flexDirection: 'row', gap: 12, flexWrap: 'wrap', marginBottom: 24 },
 
   loadingBox: { alignItems: 'center', paddingVertical: 80 },
 
