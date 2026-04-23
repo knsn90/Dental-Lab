@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   useWindowDimensions,
   ActivityIndicator,
+  Animated,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -165,34 +167,239 @@ const sec = StyleSheet.create({
   },
 });
 
+// ── Animated Bar ──────────────────────────────────────────────────────
+function AnimatedBar({
+  pct, isActive, isHighest, count, label, delay,
+}: {
+  pct: number; isActive: boolean; isHighest: boolean;
+  count: number; label: string; delay: number;
+}) {
+  const heightAnim = useRef(new Animated.Value(0)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(heightAnim, {
+        toValue: pct,
+        damping: 14,
+        stiffness: 120,
+        delay,
+        useNativeDriver: false,
+      }),
+      Animated.timing(opacityAnim, {
+        toValue: 1,
+        duration: 300,
+        delay,
+        useNativeDriver: false,
+      }),
+    ]).start();
+  }, [pct]);
+
+  const animatedHeight = heightAnim.interpolate({
+    inputRange: [0, 100],
+    outputRange: ['0%', '100%'],
+  });
+
+  return (
+    <Animated.View style={{ flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end', opacity: opacityAnim }}>
+      {/* Tooltip bubble above highest bar */}
+      {isHighest && count > 0 && (
+        <View style={ch.tooltipWrap}>
+          <View style={[ch.tooltipBubble, isActive && ch.tooltipBubbleActive]}>
+            <Text style={ch.tooltipText}>{count}</Text>
+          </View>
+          {/* Arrow */}
+          <View style={[ch.tooltipArrow, isActive && ch.tooltipArrowActive]} />
+        </View>
+      )}
+
+      {/* Value label — non-highest bars */}
+      {!isHighest && count > 0 && (
+        <Text style={[ch.barLabel, isActive && { color: K }]}>{count}</Text>
+      )}
+
+      {/* Bar track (candy stripe bg) */}
+      <View style={ch.track}>
+        {/* Stripe overlay (web only via CSS, native via opacity layer) */}
+        {Platform.OS === 'web' ? (
+          <View
+            style={StyleSheet.absoluteFillObject}
+            // @ts-ignore
+            pointerEvents="none"
+          />
+        ) : (
+          <View style={[StyleSheet.absoluteFillObject, ch.stripeNative]} pointerEvents="none" />
+        )}
+
+        {/* Filled portion */}
+        <Animated.View
+          style={[
+            ch.fill,
+            { height: animatedHeight },
+            isActive ? ch.fillActive : ch.fillInactive,
+          ]}
+        >
+          {/* Inner top gloss */}
+          <View style={ch.fillGloss} />
+        </Animated.View>
+      </View>
+
+      <Text style={[ch.monthLabel, isActive && ch.monthLabelActive]}>{label}</Text>
+    </Animated.View>
+  );
+}
+
 // ── Monthly Chart ─────────────────────────────────────────────────────
 function MonthlyChart({ data }: { data: { label: string; count: number }[] }) {
   const max = Math.max(...data.map(d => d.count), 1);
+  const highestIdx = data.reduce((best, d, i) => d.count > data[best].count ? i : best, 0);
+  const lastIdx = data.length - 1;
+
+  // Web: inject candy-stripe CSS once
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const id = 'candy-stripe-style';
+    if (document.getElementById(id)) return;
+    const el = document.createElement('style');
+    el.id = id;
+    el.textContent = `
+      .candy-track::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background-image: repeating-linear-gradient(
+          135deg,
+          rgba(15,23,42,0.04) 0px,
+          rgba(15,23,42,0.04) 1px,
+          transparent 1px,
+          transparent 8px
+        );
+        border-radius: 10px;
+        pointer-events: none;
+      }
+    `;
+    document.head.appendChild(el);
+  }, []);
+
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: 160, gap: 10, paddingHorizontal: 20, paddingBottom: 20, paddingTop: 8 }}>
+    <View style={ch.container}>
       {data.map((d, i) => {
-        const pct = Math.max((d.count / max) * 100, 6);
-        const isLast = i === data.length - 1;
+        const pct = Math.max((d.count / max) * 100, 4);
         return (
-          <View key={i} style={{ flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end' }}>
-            {d.count > 0 && (
-              <Text style={{ fontSize: 10, fontWeight: '700', color: isLast ? K : '#94A3B8', marginBottom: 6 }}>
-                {d.count}
-              </Text>
-            )}
-            <View style={{ width: '100%', height: '78%', justifyContent: 'flex-end', borderRadius: 8, overflow: 'hidden' }}>
-              <View style={{ width: '100%', borderRadius: 8, height: `${pct}%` as any,
-                backgroundColor: isLast ? K : `${K}25` }} />
-            </View>
-            <Text style={{ fontSize: 10, color: isLast ? K : '#94A3B8', marginTop: 8, fontWeight: isLast ? '700' : '500' }}>
-              {d.label}
-            </Text>
-          </View>
+          <AnimatedBar
+            key={i}
+            pct={pct}
+            isActive={i === lastIdx}
+            isHighest={i === highestIdx}
+            count={d.count}
+            label={d.label}
+            delay={i * 60}
+          />
         );
       })}
     </View>
   );
 }
+
+const ch = StyleSheet.create({
+  container: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    height: 180,
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    paddingTop: 36,
+  },
+  // Bar track
+  track: {
+    width: '100%',
+    flex: 1,
+    justifyContent: 'flex-end',
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(15,23,42,0.05)',
+    position: 'relative',
+  },
+  stripeNative: {
+    opacity: 0.5,
+    backgroundColor: 'transparent',
+  },
+  // Filled bar
+  fill: {
+    width: '100%',
+    borderRadius: 10,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  fillActive: {
+    backgroundColor: K,
+  },
+  fillInactive: {
+    backgroundColor: 'rgba(15,23,42,0.18)',
+  },
+  fillGloss: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 6,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  // Labels
+  barLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#94A3B8',
+    marginBottom: 5,
+  },
+  monthLabel: {
+    fontSize: 10,
+    color: '#94A3B8',
+    marginTop: 8,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  monthLabelActive: {
+    color: K,
+    fontWeight: '800',
+  },
+  // Tooltip
+  tooltipWrap: {
+    alignItems: 'center',
+    marginBottom: 6,
+    position: 'absolute',
+    top: -32,
+    left: 0,
+    right: 0,
+  },
+  tooltipBubble: {
+    backgroundColor: 'rgba(15,23,42,0.18)',
+    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  tooltipBubbleActive: {
+    backgroundColor: K,
+  },
+  tooltipText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  tooltipArrow: {
+    width: 6,
+    height: 6,
+    borderRadius: 1,
+    backgroundColor: 'rgba(15,23,42,0.18)',
+    transform: [{ rotate: '45deg' }],
+    marginTop: -3,
+  },
+  tooltipArrowActive: {
+    backgroundColor: K,
+  },
+});
 
 // ── Main Screen ───────────────────────────────────────────────────────
 export default function AdminDashboard() {
