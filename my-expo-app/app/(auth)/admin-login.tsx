@@ -84,7 +84,10 @@ function FloatingInput({
   return (
     <View style={fi.wrap}>
       <View style={[fi.box, { borderColor }]}>
-        <Animated.Text style={[fi.label, { top: labelTop, fontSize: labelSize, color: labelColor }]}>
+        <Animated.Text
+          pointerEvents="none"
+          style={[fi.label, { top: labelTop, fontSize: labelSize, color: labelColor }]}
+        >
           {label}
         </Animated.Text>
         <TextInput
