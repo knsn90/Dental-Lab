@@ -306,7 +306,22 @@ function WithTooltip({
 // InfoTooltip artık kullanılmıyor — WithTooltip ile değiştirildi
 function InfoTooltip(_props: { text: string; color?: string }) { return null; }
 
-export function NewOrderScreen({ accentColor, onClose }: { accentColor?: string; onClose?: () => void }) {
+export function NewOrderScreen({
+  accentColor,
+  onClose,
+  lockedClinicId,
+  lockedDoctorId,
+  successRedirect,
+}: {
+  accentColor?: string;
+  onClose?: () => void;
+  /** Verildiğinde Step 1'deki klinik seçimi kilitli gösterilir (hekim paneli için). */
+  lockedClinicId?: string | null;
+  /** Verildiğinde Step 1'deki hekim seçimi kilitli gösterilir (hekim paneli için). */
+  lockedDoctorId?: string | null;
+  /** Submit sonrası yönlendirme. Default: '/(lab)' */
+  successRedirect?: string;
+}) {
   const P     = accentColor ?? C.primary;
   const PBg   = accentColor ? '#F1F5F9' : C.primaryBg;
   const PLight = accentColor ? '#1E293B' : C.primaryLight;
@@ -544,6 +559,18 @@ export function NewOrderScreen({ accentColor, onClose }: { accentColor?: string;
       setDataLoading(false);
     });
   }, []);
+
+  // Hekim panelinde klinik/hekim sabit — taslak restore/form initial ne olursa
+  // olsun bu iki alanı daima kilit değerine eşitle.
+  useEffect(() => {
+    if (!lockedClinicId && !lockedDoctorId) return;
+    setForm(prev => {
+      const next = { ...prev };
+      if (lockedClinicId && prev.clinic_id !== lockedClinicId) next.clinic_id = lockedClinicId;
+      if (lockedDoctorId && prev.doctor_id !== lockedDoctorId) next.doctor_id = lockedDoctorId;
+      return next;
+    });
+  }, [lockedClinicId, lockedDoctorId]);
 
   const set = <K extends keyof FormData>(key: K) =>
     (val: FormData[K]) => {
@@ -933,7 +960,7 @@ export function NewOrderScreen({ accentColor, onClose }: { accentColor?: string;
     if (onClose) {
       onClose();
     } else {
-      router.push('/(lab)');
+      router.push((successRedirect ?? '/(lab)') as any);
     }
   };
 
@@ -1226,37 +1253,59 @@ ${form.notes ? `<div class="card">
       {step === 1 && (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {/* Clinic & Doctor */}
-          <SectionCard title="Klinik & diş hekimi" iconNode={<ClinicIcon size={14} color={stepAttempted[1] && errors.doctor_id ? '#EF4444' : P} />} errorCount={stepAttempted[1] && errors.doctor_id ? 1 : 0} accentColor={P}>
-            <View style={twoColStyle}>
-              <SearchableDropdown
-                label="Klinik"
-                placeholder="Klinik seçin veya ekleyin"
-                options={clinics.filter(c => c.is_active).map(c => ({ id: c.id, label: c.name, sublabel: c.phone ?? undefined }))}
-                selectedId={form.clinic_id}
-                onSelect={(id) => { set('clinic_id')(id); set('doctor_id')(''); }}
-                onAddNew={async (name) => {
-                  setClinicModal({ visible: true, prefill: name });
-                }}
-                addNewLabel="Yeni klinik ekle"
-                required
-              />
-              <SearchableDropdown
-                label="Diş hekimi"
-                placeholder={form.clinic_id ? 'Diş hekimi seçin veya ekleyin' : 'Önce klinik seçin'}
-                disabled={!form.clinic_id}
-                disabledHint="Önce klinik seçin"
-                options={filteredDoctors.map(d => ({ id: d.id, label: d.full_name, sublabel: d.clinic?.name ?? undefined }))}
-                selectedId={form.doctor_id}
-                onSelect={set('doctor_id')}
-                onAddNew={async (name) => {
-                  setDoctorModal({ visible: true, prefill: name });
-                }}
-                addNewLabel="Yeni diş hekimi ekle"
-                required
-                error={fe('doctor_id')}
-              />
-            </View>
-          </SectionCard>
+          {(lockedClinicId || lockedDoctorId) ? (
+            <SectionCard title="Klinik & diş hekimi" iconNode={<ClinicIcon size={14} color={P} />} accentColor={P}>
+              <View style={{
+                flexDirection: 'row', alignItems: 'center', gap: 12,
+                padding: 14, borderRadius: 10,
+                backgroundColor: PBg, borderWidth: 1, borderColor: P,
+              }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 11, color: '#64748B', fontWeight: '700', letterSpacing: 0.3 }}>KLİNİK</Text>
+                  <Text style={{ fontSize: 15, color: '#0F172A', fontWeight: '700', marginTop: 2 }}>
+                    {selectedClinic?.name ?? '—'}
+                  </Text>
+                  <Text style={{ fontSize: 11, color: '#64748B', fontWeight: '700', letterSpacing: 0.3, marginTop: 8 }}>HEKİM</Text>
+                  <Text style={{ fontSize: 15, color: '#0F172A', fontWeight: '700', marginTop: 2 }}>
+                    {selectedDoctor?.full_name ?? profile?.full_name ?? '—'}
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 18 }}>🔒</Text>
+              </View>
+            </SectionCard>
+          ) : (
+            <SectionCard title="Klinik & diş hekimi" iconNode={<ClinicIcon size={14} color={stepAttempted[1] && errors.doctor_id ? '#EF4444' : P} />} errorCount={stepAttempted[1] && errors.doctor_id ? 1 : 0} accentColor={P}>
+              <View style={twoColStyle}>
+                <SearchableDropdown
+                  label="Klinik"
+                  placeholder="Klinik seçin veya ekleyin"
+                  options={clinics.filter(c => c.is_active).map(c => ({ id: c.id, label: c.name, sublabel: c.phone ?? undefined }))}
+                  selectedId={form.clinic_id}
+                  onSelect={(id) => { set('clinic_id')(id); set('doctor_id')(''); }}
+                  onAddNew={async (name) => {
+                    setClinicModal({ visible: true, prefill: name });
+                  }}
+                  addNewLabel="Yeni klinik ekle"
+                  required
+                />
+                <SearchableDropdown
+                  label="Diş hekimi"
+                  placeholder={form.clinic_id ? 'Diş hekimi seçin veya ekleyin' : 'Önce klinik seçin'}
+                  disabled={!form.clinic_id}
+                  disabledHint="Önce klinik seçin"
+                  options={filteredDoctors.map(d => ({ id: d.id, label: d.full_name, sublabel: d.clinic?.name ?? undefined }))}
+                  selectedId={form.doctor_id}
+                  onSelect={set('doctor_id')}
+                  onAddNew={async (name) => {
+                    setDoctorModal({ visible: true, prefill: name });
+                  }}
+                  addNewLabel="Yeni diş hekimi ekle"
+                  required
+                  error={fe('doctor_id')}
+                />
+              </View>
+            </SectionCard>
+          )}
 
           {/* Patient info */}
           <SectionCard title="Hasta bilgileri" icon={'account-outline' as any}

@@ -4,7 +4,8 @@ import { Slot, Tabs } from 'expo-router';
 import { C as Colors } from '../../core/theme/colors';
 import { DesktopShell, useIsDesktop } from '../../core/layout/DesktopShell';
 import { useAuthStore } from '../../core/store/authStore';
-import { DoctorNewOrderScreen } from '../../modules/orders/screens/DoctorNewOrderScreen';
+import { useDoctorScope } from '../../modules/clinics/hooks/useDoctorScope';
+import { NewOrderScreen } from '../../modules/orders/screens/NewOrderScreen';
 
 // NOT: Desktop'ta "Yeni İş Emri" → route navigate eder (/(doctor)/new-order),
 // sidebar kaybolmaz. Modal SADECE mobil için.
@@ -16,6 +17,7 @@ function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
 export default function DoctorLayout() {
   const { profile, loading } = useAuthStore();
   const isDesktop = useIsDesktop();
+  const { clinicId, doctorId } = useDoctorScope();
   const [newOrderOpen, setNewOrderOpen] = useState(false);
 
   const DOCTOR_NAV = [
@@ -111,7 +113,12 @@ export default function DoctorLayout() {
         presentationStyle="pageSheet"
         onRequestClose={() => setNewOrderOpen(false)}
       >
-        <DoctorNewOrderScreen onClose={() => setNewOrderOpen(false)} />
+        <NewOrderScreen
+          lockedClinicId={clinicId}
+          lockedDoctorId={doctorId}
+          successRedirect="/(doctor)"
+          onClose={() => setNewOrderOpen(false)}
+        />
       </Modal>
     </>
   );

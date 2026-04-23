@@ -1,23 +1,51 @@
-import React, { useEffect } from 'react';
+import React from 'react';
+import { View, Text, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../../core/store/authStore';
-import { DoctorNewOrderScreen } from '../../modules/orders/screens/DoctorNewOrderScreen';
+import { useDoctorScope } from '../../modules/clinics/hooks/useDoctorScope';
+import { NewOrderScreen } from '../../modules/orders/screens/NewOrderScreen';
+import { C } from '../../core/theme/colors';
 
 export default function DoctorNewOrderRoute() {
   const router = useRouter();
   const { profile, loading } = useAuthStore();
+  const { clinicId, doctorId, loading: scopeLoading, clinic, doctor } = useDoctorScope();
 
-  useEffect(() => {
-    if (!loading && profile && profile.user_type !== 'doctor') {
-      router.replace('/(lab)/new-order' as any);
-    }
-  }, [profile, loading]);
+  if (loading || !profile || scopeLoading) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator color={C.primary} />
+      </View>
+    );
+  }
 
-  // Profil yüklenene kadar hiçbir şey gösterme (flash önlemi)
-  if (loading || !profile) return null;
+  if (profile.user_type !== 'doctor') {
+    router.replace('/(lab)/new-order' as any);
+    return null;
+  }
 
-  // Hekim değilse _layout.tsx redirect alana kadar boş ekran
-  if (profile.user_type !== 'doctor') return null;
+  // Klinik / hekim kaydı bulunamadıysa uyar
+  if (!clinicId || !doctorId) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 8 }}>
+        <Text style={{ fontSize: 40 }}>⚠️</Text>
+        <Text style={{ fontSize: 16, fontWeight: '700', color: C.textPrimary }}>
+          Klinik kaydınız eşleşmedi
+        </Text>
+        <Text style={{ fontSize: 14, color: C.textSecondary, textAlign: 'center', maxWidth: 320 }}>
+          Yeni iş emri açabilmek için hesabınızın bir klinik + hekim kaydıyla
+          ilişkilendirilmesi gerekir. Lütfen laboratuvar yönetimi ile iletişime
+          geçin. (clinic: {String(!!clinic)}, doctor: {String(!!doctor)})
+        </Text>
+      </View>
+    );
+  }
 
-  return <DoctorNewOrderScreen />;
+  return (
+    <NewOrderScreen
+      lockedClinicId={clinicId}
+      lockedDoctorId={doctorId}
+      successRedirect="/(doctor)"
+    />
+  );
 }
