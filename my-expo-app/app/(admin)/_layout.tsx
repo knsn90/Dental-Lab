@@ -54,8 +54,9 @@ export default function AdminLayout() {
     { label: 'Stok',         emoji: '📦', href: '/(admin)/stock',         iconName: 'package',          iconSet: 'mdi' as const, matchPrefix: true, badgeCount: stockAlert },
 
     // ── Sistem ─────────────────────────────────────────────────────────────
-    { label: 'Loglar',       emoji: '📜', href: '/(admin)/logs',          iconName: 'file-text',     iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'Sistem' },
-    { label: 'Profil',       emoji: '⚙️', href: '/(admin)/profile',      iconName: 'settings',      iconSet: 'mdi' as const, matchPrefix: true },
+    { label: 'QR Check-in',  emoji: '📷', href: '/(admin)/checkin-settings', iconName: 'camera',    iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'Sistem' },
+    { label: 'Loglar',       emoji: '📜', href: '/(admin)/logs',             iconName: 'file-text', iconSet: 'mdi' as const, matchPrefix: true },
+    { label: 'Profil',       emoji: '⚙️', href: '/(admin)/profile',         iconName: 'settings',  iconSet: 'mdi' as const, matchPrefix: true },
   ];
 
   if (isDesktop) {
@@ -103,6 +104,7 @@ export default function AdminLayout() {
         <Tabs.Screen name="payroll" options={{ title: 'Bordro', tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="performance" options={{ title: 'Performans', tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="documents" options={{ title: 'Dosyalar', tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="checkin-settings" options={{ title: 'QR Check-in', tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="approvals" options={{ title: 'Onaylar' }} />
         <Tabs.Screen name="logs" options={{ title: 'Loglar' }} />
         <Tabs.Screen name="profile" options={{ title: 'Profil' }} />

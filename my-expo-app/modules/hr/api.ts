@@ -34,13 +34,21 @@ export interface EmployeeAttendance {
   lab_id: string;
   employee_id: string;
   work_date: string;
-  check_in: string | null;   // "HH:MM"
-  check_out: string | null;  // "HH:MM"
+  check_in: string | null;        // "HH:MM"
+  check_out: string | null;       // "HH:MM"
   status: AttendanceStatus;
   work_minutes: number | null;
   overtime_minutes: number;
   notes: string | null;
   created_at: string;
+  // yeni alanlar (030_checkin migration)
+  check_in_method: CheckinMethod | null;
+  check_out_method: CheckinMethod | null;
+  check_in_lat: number | null;
+  check_in_lng: number | null;
+  check_out_lat: number | null;
+  check_out_lng: number | null;
+  recorded_by: string | null;
 }
 
 export interface LeaveSummary {
@@ -246,6 +254,114 @@ export async function upsertAttendance(params: CreateAttendanceParams) {
 
 export async function deleteAttendance(id: string) {
   return supabase.from('employee_attendance').delete().eq('id', id);
+}
+
+// ─── Check-in Types ───────────────────────────────────────────────────────────
+export type CheckinMethod = 'qr_gps' | 'qr_only' | 'manual';
+
+export interface QrCheckinResult {
+  ok: boolean;
+  action?: 'check_in' | 'check_out';
+  time?: string;
+  employee?: string;
+  work_minutes?: number;
+  error?: 'invalid_token' | 'out_of_range' | 'employee_not_found' | 'already_complete';
+  distance_m?: number;
+  allowed_m?: number;
+}
+
+export interface LabLocation {
+  location_lat: number | null;
+  location_lng: number | null;
+  location_radius: number;
+  checkin_token: string;
+}
+
+// ─── Check-in API ─────────────────────────────────────────────────────────────
+/** QR check-in — çalışan kendi QR'ını okutunca çağrılır */
+export async function qrCheckin(
+  token: string,
+  lat: number,
+  lng: number,
+  method: CheckinMethod = 'qr_gps',
+): Promise<QrCheckinResult> {
+  const { data, error } = await supabase.rpc('qr_checkin', {
+    p_token: token,
+    p_lat:   lat,
+    p_lng:   lng,
+    p_method: method,
+  });
+  if (error) throw error;
+  return data as QrCheckinResult;
+}
+
+/** Manuel giriş/çıkış — yetkili kişi tarafından çağrılır */
+export async function manualAttendanceRPC(params: {
+  employeeId: string;
+  workDate:   string;    // YYYY-MM-DD
+  checkIn:    string;    // HH:MM
+  checkOut?:  string;    // HH:MM
+  notes?:     string;
+}) {
+  return supabase.rpc('manual_attendance', {
+    p_employee_id: params.employeeId,
+    p_work_date:   params.workDate,
+    p_check_in:    params.checkIn,
+    p_check_out:   params.checkOut ?? null,
+    p_notes:       params.notes    ?? null,
+  });
+}
+
+/** Lab'ın GPS konumu ve QR token'ını çek */
+export async function fetchLabLocation() {
+  return supabase
+    .from('labs')
+    .select('location_lat, location_lng, location_radius, checkin_token')
+    .limit(1)
+    .single<LabLocation>();
+}
+
+/** Lab konumunu güncelle */
+export async function updateLabLocation(params: {
+  lat:    number | null;
+  lng:    number | null;
+  radius: number;
+}) {
+  // get current lab_id via get_my_lab_id() — we use a simple select approach
+  const { data: labRow } = await supabase
+    .from('labs')
+    .select('id')
+    .limit(1)
+    .single<{ id: string }>();
+
+  if (!labRow) throw new Error('Lab bulunamadı');
+
+  return supabase
+    .from('labs')
+    .update({
+      location_lat:    params.lat,
+      location_lng:    params.lng,
+      location_radius: params.radius,
+    })
+    .eq('id', labRow.id);
+}
+
+/** Yeni bir QR token üret (token'ı değiştirince eski QR geçersiz olur) */
+export async function regenerateCheckinToken() {
+  const { data: labRow } = await supabase
+    .from('labs')
+    .select('id')
+    .limit(1)
+    .single<{ id: string }>();
+
+  if (!labRow) throw new Error('Lab bulunamadı');
+
+  return supabase
+    .from('labs')
+    .update({ checkin_token: crypto.randomUUID() })
+    .eq('id', labRow.id)
+    .select('checkin_token')
+    .single<{ checkin_token: string }>();
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

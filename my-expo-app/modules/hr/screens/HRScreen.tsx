@@ -15,7 +15,7 @@ import {
   LEAVE_TYPE_LABELS, LEAVE_TYPE_ICONS, LEAVE_TYPE_COLORS,
   LEAVE_STATUS_CFG, ATTENDANCE_STATUS_CFG,
   createLeave, approveLeave, rejectLeave, cancelLeave, deleteLeave,
-  upsertAttendance, deleteAttendance,
+  upsertAttendance, deleteAttendance, manualAttendanceRPC,
   calcBusinessDays, fmtMinutes,
 } from '../api';
 import { useLeaveSummaries, useEmployeeLeaves, useAttendance, usePendingLeaves } from '../hooks/useHR';
@@ -780,11 +780,18 @@ function MiniStat({ label, value, color, isText = false }: {
   );
 }
 
+const METHOD_CFG: Record<string, { label: string; fg: string; bg: string; icon: string }> = {
+  qr_gps:  { label: 'QR+GPS',  fg: '#059669', bg: '#D1FAE5', icon: 'map-marker-check' },
+  qr_only: { label: 'QR',      fg: '#7C3AED', bg: '#EDE9FE', icon: 'qrcode' },
+  manual:  { label: 'Manuel',  fg: '#2563EB', bg: '#DBEAFE', icon: 'account-edit' },
+};
+
 function AttendanceRow({ record: r, onDelete }: {
   record: EmployeeAttendance;
   onDelete: (id: string) => void;
 }) {
-  const cfg = ATTENDANCE_STATUS_CFG[r.status];
+  const cfg    = ATTENDANCE_STATUS_CFG[r.status];
+  const method = r.check_in_method ? METHOD_CFG[r.check_in_method] : null;
   return (
     <View style={ac.row}>
       <View style={{ flex: 1, gap: 3 }}>
@@ -794,6 +801,12 @@ function AttendanceRow({ record: r, onDelete }: {
           {r.work_minutes ? `  ·  ${fmtMinutes(r.work_minutes)}` : ''}
           {r.overtime_minutes > 0 ? `  +${fmtMinutes(r.overtime_minutes)} OT` : ''}
         </Text>
+        {method && (
+          <View style={[ac.methodPill, { backgroundColor: method.bg }]}>
+            <MaterialCommunityIcons name={method.icon as any} size={10} color={method.fg} />
+            <Text style={[ac.methodText, { color: method.fg }]}>{method.label}</Text>
+          </View>
+        )}
         {r.notes ? <Text style={ac.notes} numberOfLines={1}>{r.notes}</Text> : null}
       </View>
       <View style={[ac.statusPill, { backgroundColor: cfg.bg }]}>
@@ -1124,18 +1137,36 @@ function AttendanceModal({ visible, employeeId, employeeName, onClose, onSaved }
 
   const handleSave = async () => {
     if (!employeeId) { toast.error('Çalışan seçilmedi.'); return; }
+    if (workDate.length !== 10) { toast.error('Geçerli bir tarih girin (YYYY-AA-GG).'); return; }
     setSaving(true);
     try {
-      const { error } = await upsertAttendance({
-        employee_id: employeeId,
-        work_date: workDate,
-        status,
-        check_in: showTime ? (checkIn || undefined) : undefined,
-        check_out: showTime ? (checkOut || undefined) : undefined,
-        overtime_minutes: status === 'normal' ? (parseInt(overtime) || 0) : 0,
-        notes: notes.trim() || undefined,
-      });
-      if (error) throw error;
+      if (showTime && checkIn) {
+        // Giriş/çıkış saati varsa → manualAttendanceRPC (recorded_by izlenebilir)
+        const { error } = await manualAttendanceRPC({
+          employeeId,
+          workDate,
+          checkIn,
+          checkOut: checkOut || undefined,
+          notes: notes.trim() || undefined,
+        });
+        if (error) throw error;
+        // Durumu ayrıca güncelle (status, overtime)
+        await upsertAttendance({
+          employee_id: employeeId,
+          work_date: workDate,
+          status,
+          overtime_minutes: status === 'normal' ? (parseInt(overtime) || 0) : 0,
+        });
+      } else {
+        // Saat yok (devamsız, izinli vb.) → direkt upsert
+        const { error } = await upsertAttendance({
+          employee_id: employeeId,
+          work_date: workDate,
+          status,
+          notes: notes.trim() || undefined,
+        });
+        if (error) throw error;
+      }
       toast.success('Devam kaydı eklendi.');
       onSaved();
     } catch (e: any) { toast.error(e?.message ?? 'Hata oluştu.'); }
@@ -1437,6 +1468,8 @@ const ac = StyleSheet.create({
   notes:      { fontSize: 11, color: C.textMuted, fontStyle: 'italic', marginTop: 1 },
   statusPill: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   statusText: { fontSize: 10, fontWeight: '700' },
+  methodPill: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, alignSelf: 'flex-start', marginTop: 1 },
+  methodText: { fontSize: 9, fontWeight: '700' },
   delBtn:     { width: 28, height: 28, borderRadius: 8, backgroundColor: C.border, alignItems: 'center', justifyContent: 'center' },
 });
 

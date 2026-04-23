@@ -56,7 +56,8 @@ export default function LabLayout() {
     { label: 'Stok',         emoji: '📦', href: '/(lab)/stock',          iconName: 'package',          iconSet: 'mdi' as const, matchPrefix: true, badgeCount: stockAlert },
 
     // ── Hesap ──────────────────────────────────────────────────────────────
-    { label: 'Profil',       emoji: '👤', href: '/(lab)/profile',        iconName: 'user',          iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'Hesap' },
+    { label: 'QR Check-in',  emoji: '📷', href: '/(lab)/checkin-settings',  iconName: 'camera',      iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'Hesap' },
+    { label: 'Profil',       emoji: '👤', href: '/(lab)/profile',            iconName: 'user',        iconSet: 'mdi' as const, matchPrefix: true },
   ];
 
   if (isDesktop) {
@@ -107,6 +108,7 @@ export default function LabLayout() {
         <Tabs.Screen name="performance" options={{ title: 'Performans', tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="documents" options={{ title: 'Dosyalar', tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="balance" options={{ title: 'Cari Hesap', tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="checkin-settings" options={{ title: 'QR Check-in', tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="approvals" options={{ title: 'Onaylar' }} />
         <Tabs.Screen name="profile" options={{ title: 'Profil' }} />
         <Tabs.Screen name="order/[id]" options={{ tabBarStyle: { display: 'none' } }} />
