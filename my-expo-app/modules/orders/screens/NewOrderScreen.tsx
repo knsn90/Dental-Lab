@@ -5179,7 +5179,7 @@ function Field({ label, value, onChangeText, placeholder, multiline, flex, style
 
 // ── Drum-roll Wheel Picker ──────────────────────────────────────
 
-const WHEEL_ITEM_H = 44;
+const WHEEL_ITEM_H = 36;
 const WHEEL_VISIBLE = 5;
 const WHEEL_H = WHEEL_ITEM_H * WHEEL_VISIBLE;
 
@@ -5267,7 +5267,7 @@ function WheelPickerColumn({
                   scrollSnapAlign: 'center',
                   height: WHEEL_ITEM_H,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: dist === 0 ? 17 : 15,
+                  fontSize: dist === 0 ? 15 : 13,
                   fontWeight: dist === 0 ? '600' : '400',
                   fontFamily: "'Plus Jakarta Sans', sans-serif",
                   color: '#0F172A',
@@ -5312,7 +5312,7 @@ function WheelPickerColumn({
           return (
             <View key={i} style={{ height: WHEEL_ITEM_H, alignItems: 'center', justifyContent: 'center' }}>
               <Text style={{
-                fontSize: dist === 0 ? 17 : 15,
+                fontSize: dist === 0 ? 15 : 13,
                 fontFamily: dist === 0 ? F.semibold : F.regular,
                 fontWeight: dist === 0 ? '600' : '400',
                 color: '#0F172A',
@@ -5380,8 +5380,8 @@ function DateWheelPickerModal({
   const dayIdx   = Math.max(0, clampedDay - 1);
 
   // Card dimensions (approximate)
-  const CARD_W = 260;
-  const CARD_H = 330;
+  const CARD_W = 230;
+  const CARD_H = 290;
 
   // Positioned below the anchor; flip above if too close to bottom
   const cardTop = anchorPos
@@ -5410,9 +5410,9 @@ function DateWheelPickerModal({
 
           {/* Column labels */}
           <View style={dp.colLabels}>
-            <Text style={[dp.colLabel, { width: 88 }]}>YIL</Text>
-            <Text style={[dp.colLabel, { width: 72 }]}>AY</Text>
-            <Text style={[dp.colLabel, { width: 64 }]}>GÜN</Text>
+            <Text style={[dp.colLabel, { width: 76 }]}>YIL</Text>
+            <Text style={[dp.colLabel, { width: 64 }]}>AY</Text>
+            <Text style={[dp.colLabel, { width: 54 }]}>GÜN</Text>
           </View>
 
           {/* Three scroll columns */}
@@ -5421,19 +5421,19 @@ function DateWheelPickerModal({
               items={years}
               selectedIndex={yearIdx}
               onChange={(i) => setSelYear(parseInt(years[i]))}
-              width={88}
+              width={76}
             />
             <WheelPickerColumn
               items={TR_MONTHS}
               selectedIndex={selMonth}
               onChange={setSelMonth}
-              width={72}
+              width={64}
             />
             <WheelPickerColumn
               items={days}
               selectedIndex={dayIdx}
               onChange={(i) => setSelDay(i + 1)}
-              width={64}
+              width={54}
             />
           </View>
 
@@ -5454,32 +5454,32 @@ const makeDpStyles = (P: string) => StyleSheet.create({
   },
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    width: 260,
+    borderRadius: 14,
+    width: 230,
     overflow: 'hidden',
     shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 16,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 12,
     borderWidth: 1,
     borderColor: '#F1F5F9',
   },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingTop: 20, paddingBottom: 8,
+    paddingHorizontal: 14, paddingTop: 14, paddingBottom: 6,
   },
   headerTitle: {
-    fontSize: 11, fontWeight: '500', fontFamily: F.medium,
+    fontSize: 10, fontWeight: '500', fontFamily: F.medium,
     color: '#94A3B8', letterSpacing: 0.3,
   },
   closeBtn: {
-    width: 26, height: 26, borderRadius: 13,
+    width: 22, height: 22, borderRadius: 11,
     backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center',
   },
-  closeX: { fontSize: 11, color: '#64748B', fontWeight: '600' },
+  closeX: { fontSize: 10, color: '#64748B', fontWeight: '600' },
   colLabels: {
-    flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 4, gap: 0,
+    flexDirection: 'row', paddingHorizontal: 12, paddingBottom: 3, gap: 0,
   },
   colLabel: {
     fontSize: 9, fontWeight: '500', fontFamily: F.medium,
@@ -5487,19 +5487,19 @@ const makeDpStyles = (P: string) => StyleSheet.create({
   },
   columns: {
     flexDirection: 'row',
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     borderTopWidth: 1,
     borderTopColor: '#F1F5F9',
   },
   submitBtn: {
-    margin: 14,
+    margin: 10,
     backgroundColor: P,
-    borderRadius: 12,
-    paddingVertical: 14,
+    borderRadius: 10,
+    paddingVertical: 11,
     alignItems: 'center',
   },
   submitText: {
-    color: '#FFFFFF', fontSize: 12,
+    color: '#FFFFFF', fontSize: 11,
     fontWeight: '600', fontFamily: F.semibold,
     letterSpacing: 0.3,
   },
