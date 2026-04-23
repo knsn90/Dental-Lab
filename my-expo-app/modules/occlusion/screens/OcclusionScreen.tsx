@@ -246,6 +246,12 @@ export default function OcclusionScreen() {
             onClose={isMobile ? () => setPanelOpen(false) : undefined}
             upperOpacity={analysis.upperOpacity}
             setUpperOpacity={analysis.setUpperOpacity}
+            lowerOpacity={analysis.lowerOpacity}
+            setLowerOpacity={analysis.setLowerOpacity}
+            upperVisible={analysis.upperVisible}
+            setUpperVisible={analysis.setUpperVisible}
+            lowerVisible={analysis.lowerVisible}
+            setLowerVisible={analysis.setLowerVisible}
             heatmapConfig={analysis.heatmapConfig}
             setPalette={analysis.setPalette}
             setMaxDistance={analysis.setMaxDistance}

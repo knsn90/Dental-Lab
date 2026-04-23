@@ -43,8 +43,11 @@ export interface UseOcclusionAnalysis {
   // Display state
   activeMode:   Mode;
   heatmapConfig: HeatmapConfig;
-  upperOpacity: number;
-  viewPreset:   ViewPreset;
+  upperOpacity:  number;
+  lowerOpacity:  number;
+  upperVisible:  boolean;
+  lowerVisible:  boolean;
+  viewPreset:    ViewPreset;
 
   // Actions
   runAnalysis:       (upper: File, lower: File) => Promise<void>;
@@ -52,6 +55,9 @@ export interface UseOcclusionAnalysis {
   setPalette:        (p: PaletteName) => void;
   setMaxDistance:    (mm: number) => void;
   setUpperOpacity:   (v: number) => void;
+  setLowerOpacity:   (v: number) => void;
+  setUpperVisible:   (v: boolean) => void;
+  setLowerVisible:   (v: boolean) => void;
   setViewPreset:     (p: ViewPreset) => void;
   exportReport:      () => OcclusionReport | null;
   saveToSupabase:    (workOrderId: string) => Promise<void>;
@@ -64,6 +70,9 @@ export function useOcclusionAnalysis(): UseOcclusionAnalysis {
   const [error,       setError]       = useState<string | null>(null);
   const [activeMode,  setActiveMode]  = useState<Mode>('heatmap');
   const [upperOpacity, setUpperOpacityState] = useState(1.0);
+  const [lowerOpacity, setLowerOpacityState] = useState(1.0);
+  const [upperVisible, setUpperVisibleState] = useState(true);
+  const [lowerVisible, setLowerVisibleState] = useState(true);
   const [viewPreset,  setViewPresetState]    = useState<ViewPreset>('iso');
   const [heatmapConfig, setHeatmapConfig]    = useState<HeatmapConfig>(DEFAULT_HEATMAP_CONFIG);
 
@@ -259,6 +268,31 @@ export function useOcclusionAnalysis(): UseOcclusionAnalysis {
     }
   }, []);
 
+  // ─── Lower opacity ───────────────────────────────────────
+  const setLowerOpacity = useCallback((v: number) => {
+    setLowerOpacityState(v);
+    const lower = lowerMeshRef.current;
+    if (lower) {
+      const mat = lower.material as THREE.MeshPhongMaterial;
+      mat.transparent = v < 1;
+      mat.opacity     = v;
+      mat.needsUpdate = true;
+    }
+  }, []);
+
+  // ─── Visibility toggles ──────────────────────────────────
+  const setUpperVisible = useCallback((visible: boolean) => {
+    setUpperVisibleState(visible);
+    const upper = upperMeshRef.current;
+    if (upper) upper.visible = visible;
+  }, []);
+
+  const setLowerVisible = useCallback((visible: boolean) => {
+    setLowerVisibleState(visible);
+    const lower = lowerMeshRef.current;
+    if (lower) lower.visible = visible;
+  }, []);
+
   const setViewPreset = useCallback((p: ViewPreset) => {
     setViewPresetState(p);
     // Kamera animasyonu OcclusionViewer'da yönetilir — buradan viewPreset state değişimi yeterli
@@ -328,12 +362,18 @@ export function useOcclusionAnalysis(): UseOcclusionAnalysis {
     activeMode,
     heatmapConfig,
     upperOpacity,
+    lowerOpacity,
+    upperVisible,
+    lowerVisible,
     viewPreset,
     runAnalysis,
     setMode,
     setPalette,
     setMaxDistance,
     setUpperOpacity,
+    setLowerOpacity,
+    setUpperVisible,
+    setLowerVisible,
     setViewPreset,
     exportReport,
     saveToSupabase,

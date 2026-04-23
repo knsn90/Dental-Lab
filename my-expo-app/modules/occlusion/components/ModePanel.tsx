@@ -54,9 +54,15 @@ function Slider({ value, min, max, step, onChange }: SliderProps) {
 interface Props {
   mode: Mode;
 
-  // View controls
+  // View controls — layers
   upperOpacity:    number;
   setUpperOpacity: (v: number) => void;
+  lowerOpacity:    number;
+  setLowerOpacity: (v: number) => void;
+  upperVisible:    boolean;
+  setUpperVisible: (v: boolean) => void;
+  lowerVisible:    boolean;
+  setLowerVisible: (v: boolean) => void;
 
   // Heatmap
   heatmapConfig:   HeatmapConfig;
@@ -114,18 +120,69 @@ export function ModePanel(p: Props) {
 }
 
 // ─── View mode ─────────────────────────────────────────────
-function ViewControls({ upperOpacity, setUpperOpacity }: Props) {
+function ViewControls({
+  upperOpacity, setUpperOpacity,
+  lowerOpacity, setLowerOpacity,
+  upperVisible, setUpperVisible,
+  lowerVisible, setLowerVisible,
+}: Props) {
   return (
     <View>
-      <View style={s.field}>
-        <View style={s.fieldLabel}>
-          <Text style={s.fieldName}>Üst Çene Opaklığı</Text>
-          <Text style={s.fieldVal}>{Math.round(upperOpacity * 100)}%</Text>
+      {/* ─ Section label ─ */}
+      <Text style={[s.fieldName, { marginBottom: 8 }]}>KATMANLAR</Text>
+
+      {/* ── Üst Çene ── */}
+      <View style={s.layerCard}>
+        <View style={s.layerHeader}>
+          <View style={[s.layerSwatch, { backgroundColor: '#F4EDE0' }]} />
+          <Text style={s.layerLabel}>Üst Çene</Text>
+          <Text style={s.layerPct}>{upperVisible ? `${Math.round(upperOpacity * 100)}%` : '—'}</Text>
+          <TouchableOpacity
+            onPress={() => setUpperVisible(!upperVisible)}
+            hitSlop={8}
+            style={s.eyeBtn}
+          >
+            <MaterialCommunityIcons
+              name={upperVisible ? 'eye-outline' : 'eye-off-outline'}
+              size={16}
+              color={upperVisible ? '#0F172A' : '#CBD5E1'}
+            />
+          </TouchableOpacity>
         </View>
-        <Slider value={upperOpacity} min={0} max={1} step={0.05} onChange={setUpperOpacity} />
+        {upperVisible && (
+          <View style={s.layerSlider}>
+            <Slider value={upperOpacity} min={0} max={1} step={0.05} onChange={setUpperOpacity} />
+          </View>
+        )}
       </View>
+
+      {/* ── Alt Çene ── */}
+      <View style={[s.layerCard, { marginBottom: 14 }]}>
+        <View style={s.layerHeader}>
+          <View style={[s.layerSwatch, { backgroundColor: '#CBD5E1' }]} />
+          <Text style={s.layerLabel}>Alt Çene</Text>
+          <Text style={s.layerPct}>{lowerVisible ? `${Math.round(lowerOpacity * 100)}%` : '—'}</Text>
+          <TouchableOpacity
+            onPress={() => setLowerVisible(!lowerVisible)}
+            hitSlop={8}
+            style={s.eyeBtn}
+          >
+            <MaterialCommunityIcons
+              name={lowerVisible ? 'eye-outline' : 'eye-off-outline'}
+              size={16}
+              color={lowerVisible ? '#0F172A' : '#CBD5E1'}
+            />
+          </TouchableOpacity>
+        </View>
+        {lowerVisible && (
+          <View style={s.layerSlider}>
+            <Slider value={lowerOpacity} min={0} max={1} step={0.05} onChange={setLowerOpacity} />
+          </View>
+        )}
+      </View>
+
       <Text style={s.hint}>
-        Üst çeneyi yarı saydam yaparak iç yapıyı ve kontakt bölgelerini inceleyebilirsiniz.
+        Katmanları gizleyerek veya saydam yaparak kontakt bölgelerini daha kolay inceleyebilirsiniz.
       </Text>
       <View style={s.kbdRow}>
         <Text style={s.kbd}>Sol Tık</Text><Text style={s.kbdLbl}>döndür</Text>
@@ -422,4 +479,26 @@ const s = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   measureDel: { padding: 4 },
+
+  // Layer controls
+  layerCard: {
+    borderWidth: 1, borderColor: '#F1F5F9', borderRadius: 8,
+    padding: 10, marginBottom: 8, backgroundColor: '#FAFAFA',
+  },
+  layerHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+  },
+  layerSwatch: {
+    width: 12, height: 12, borderRadius: 3,
+    borderWidth: 1, borderColor: '#E2E8F0',
+  },
+  layerLabel: { flex: 1, fontSize: 12, fontWeight: '600', color: '#0F172A' },
+  layerPct:   {
+    fontSize: 11, fontWeight: '700', color: '#64748B',
+    fontVariant: ['tabular-nums'],
+  },
+  eyeBtn: {
+    padding: 2,
+  },
+  layerSlider: { marginTop: 8 },
 });
