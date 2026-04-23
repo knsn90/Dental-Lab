@@ -11,6 +11,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Modal, View, Text, StyleSheet, TouchableOpacity, Platform, ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
@@ -59,11 +60,15 @@ export function OcclusionAnalysisModal({
   biteUri: _biteUri,
   onClose, onResult,
 }: OcclusionAnalysisModalProps) {
+  const { width: _viewportW } = useWindowDimensions();
+  const isMobile = _viewportW < 769;
+
   const analysis    = useOcclusionAnalysis();
   const measurement = useMeasurement();
 
   const [canvasSize,     setCanvasSize]     = useState({ w: 0, h: 0 });
   const [reportExpanded, setReportExpanded] = useState(false);
+  const [panelOpen,      setPanelOpen]      = useState(!isMobile);
   const [activePen,      setActivePen]      = useState<PenetrationPoint | null>(null);
   const [severityFilter, setSeverityFilter] = useState<Record<Severity, boolean>>({
     low: true, medium: true, high: true,
@@ -171,25 +176,31 @@ export function OcclusionAnalysisModal({
     >
       <View style={s.root}>
         {/* ── Top bar ── */}
-        <View style={s.topBar}>
+        <View style={[s.topBar, isMobile && { paddingHorizontal: 12, paddingVertical: 10, gap: 8 }]}>
           <View style={s.titleRow}>
             <View style={s.titleIcon}>
               <MaterialCommunityIcons name={'cube-scan' as any} size={18} color="#0F172A" />
             </View>
-            <View>
-              <Text style={s.title}>Kapanış Analizi</Text>
-              <Text style={s.sub}>Alt / Üst çene oklüzyon karşılaştırması</Text>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={[s.title, isMobile && { fontSize: 13 }]} numberOfLines={1}>Kapanış Analizi</Text>
+              {!isMobile && (
+                <Text style={s.sub} numberOfLines={1}>Alt / Üst çene oklüzyon karşılaştırması</Text>
+              )}
             </View>
-            {analysis.result && (
+            {analysis.result && !isMobile && (
               <View style={s.chip}>
                 <View style={s.chipDot} />
                 <Text style={s.chipText}>Analiz tamamlandı</Text>
               </View>
             )}
           </View>
-          <TouchableOpacity style={s.closeBtn} onPress={handleClose} activeOpacity={0.8}>
+          <TouchableOpacity
+            style={[s.closeBtn, isMobile && { paddingHorizontal: 8, paddingVertical: 8 }]}
+            onPress={handleClose}
+            activeOpacity={0.8}
+          >
             <MaterialCommunityIcons name={'close' as any} size={16} color="#0F172A" />
-            <Text style={s.closeBtnText}>Kapat</Text>
+            {!isMobile && <Text style={s.closeBtnText}>Kapat</Text>}
           </TouchableOpacity>
         </View>
 
@@ -229,15 +240,36 @@ export function OcclusionAnalysisModal({
           {/* Toolbar + view presets */}
           {analysis.result && (
             <>
-              <OcclusionToolbar mode={analysis.activeMode} onModeChange={analysis.setMode} />
-              <ViewPresets value={analysis.viewPreset} onChange={analysis.setViewPreset} />
+              <OcclusionToolbar
+                mode={analysis.activeMode}
+                onModeChange={analysis.setMode}
+                position={isMobile ? 'top' : 'left'}
+              />
+              <ViewPresets value={analysis.viewPreset} onChange={analysis.setViewPreset} isMobile={isMobile} />
             </>
           )}
 
+          {/* Mobile panel toggle FAB */}
+          {analysis.result && isMobile && (
+            <TouchableOpacity
+              style={s.panelToggle}
+              onPress={() => setPanelOpen((v) => !v)}
+              activeOpacity={0.85}
+            >
+              <MaterialCommunityIcons
+                name={panelOpen ? 'chevron-down' : 'tune-vertical'}
+                size={18}
+                color="#0F172A"
+              />
+            </TouchableOpacity>
+          )}
+
           {/* Mode panel (right sidebar) */}
-          {analysis.result && (
+          {analysis.result && (!isMobile || panelOpen) && (
             <ModePanel
               mode={analysis.activeMode}
+              isMobile={isMobile}
+              onClose={isMobile ? () => setPanelOpen(false) : undefined}
               upperOpacity={analysis.upperOpacity}
               setUpperOpacity={analysis.setUpperOpacity}
               heatmapConfig={analysis.heatmapConfig}
@@ -286,6 +318,7 @@ export function OcclusionAnalysisModal({
               penPoints={analysis.result.penetrationPoints}
               expanded={reportExpanded}
               onToggle={() => setReportExpanded((e) => !e)}
+              isMobile={isMobile}
             />
           )}
         </View>
@@ -370,4 +403,18 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: '#FECACA', borderRadius: 8,
   },
   errorText: { color: '#DC2626', fontSize: 12, flex: 1 },
+
+  panelToggle: {
+    position: 'absolute',
+    right: 12,
+    top: 12,
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1, borderColor: '#F1F5F9',
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOpacity: 0.06,
+    shadowRadius: 8, shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+    zIndex: 10,
+  },
 });

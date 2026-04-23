@@ -13,10 +13,10 @@ import { isOrderOverdue } from '../../orders/constants';
 import { fetchTodayProvas } from '../../provas/api';
 import { PROVA_TYPES } from '../../provas/types';
 import { supabase } from '../../../core/api/supabase';
+import { BlurFade } from '../../../core/ui/BlurFade';
 
-// ─── Lab accent ───────────────────────────────────────────────────────────────
 const P  = '#2563EB';
-const BG = '#FFFFFF';
+const BG = '#F7F9FB';
 
 const CLR = {
   blue:   '#2563EB', blueBg:   '#EFF6FF',
@@ -25,7 +25,6 @@ const CLR = {
   red:    '#EF4444', redBg:    '#FEF2F2',
 };
 
-// ─── Types ────────────────────────────────────────────────────────────────────
 interface TodayProva {
   id: string; prova_number: number; prova_type: string | null;
   scheduled_date: string | null; status: string; order_item_name: string | null;
@@ -44,7 +43,6 @@ const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> =
   teslim_edildi:   { label: 'Teslim Edildi',   color: '#94A3B8',  bg: '#F8FAFC' },
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 function todayStr() { return new Date().toISOString().split('T')[0]; }
 function fmtDate(date: string) {
   const d = new Date(date);
@@ -53,94 +51,98 @@ function fmtDate(date: string) {
 function getTodayLabel() {
   const d = new Date();
   const days = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
-  const months = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
-  return `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+  const months = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+  return `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]}`;
+}
+function initials(name?: string | null) {
+  if (!name) return '—';
+  const parts = name.trim().split(/\s+/).slice(0, 2);
+  return parts.map(p => p[0]?.toUpperCase() ?? '').join('') || '—';
 }
 
-// ─── StatusBadge ──────────────────────────────────────────────────────────────
+// ── Status Badge ──────────────────────────────────────────────────────
 function StatusBadge({ status }: { status: string }) {
   const c = STATUS_CFG[status] ?? { label: status, color: '#64748B', bg: '#F1F5F9' };
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20, backgroundColor: c.bg, gap: 4 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20, backgroundColor: c.bg, gap: 4, alignSelf: 'flex-start' }}>
       <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.color }} />
       <Text style={{ fontSize: 11, fontWeight: '600', color: c.color }}>{c.label}</Text>
     </View>
   );
 }
 
-// ─── KPI Card ─────────────────────────────────────────────────────────────────
-function KpiCard({ icon, label, value, color, bg, delta }: {
-  icon: string; label: string; value: number | string;
-  color: string; bg: string; delta?: number;
+// ── Quick Action Card ─────────────────────────────────────────────────
+function QuickAction({ icon, label, onPress, primary }: { icon: string; label: string; onPress: () => void; primary?: boolean }) {
+  return (
+    <TouchableOpacity style={qa.card} onPress={onPress} activeOpacity={0.85}>
+      <View style={[qa.iconCircle, primary && qa.iconCirclePrimary]}>
+        <MaterialCommunityIcons name={icon as any} size={22} color={primary ? '#FFFFFF' : P} />
+      </View>
+      <Text style={qa.label}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+const qa = StyleSheet.create({
+  card: {
+    flex: 1, minWidth: 120,
+    backgroundColor: '#FFFFFF', borderRadius: 16,
+    paddingVertical: 18, paddingHorizontal: 8,
+    alignItems: 'center', justifyContent: 'center', gap: 10,
+    borderWidth: 1, borderColor: '#F1F5F9',
+  },
+  iconCircle: {
+    width: 48, height: 48, borderRadius: 24,
+    backgroundColor: CLR.blueBg,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  iconCirclePrimary: { backgroundColor: P },
+  label: { fontSize: 12, fontWeight: '600', color: '#0F172A', textAlign: 'center' },
+});
+
+// ── Stat Card ─────────────────────────────────────────────────────────
+function StatCard({ label, value, accent, delta, accentBar }: {
+  label: string; value: number | string; accent?: string; delta?: string; accentBar?: boolean;
 }) {
   return (
-    <View style={kc.card}>
-      <View style={kc.top}>
-        <View style={[kc.iconCircle, { backgroundColor: bg }]}>
-          <MaterialCommunityIcons name={icon as any} size={20} color={color} />
-        </View>
-        {delta !== undefined && delta !== 0 && (
-          <View style={[kc.delta, { backgroundColor: delta > 0 ? CLR.greenBg : CLR.redBg }]}>
-            <MaterialCommunityIcons
-              name={delta > 0 ? 'trending-up' : 'trending-down'}
-              size={11}
-              color={delta > 0 ? CLR.green : CLR.red}
-            />
-            <Text style={[kc.deltaText, { color: delta > 0 ? CLR.green : CLR.red }]}>
-              {Math.abs(delta)}
-            </Text>
+    <View style={sc.card}>
+      {accentBar && <View style={sc.accentBar} />}
+      <Text style={sc.label}>{label}</Text>
+      <View style={sc.valueRow}>
+        <Text style={[sc.value, accent ? { color: accent } : null]}>{value}</Text>
+        {delta && (
+          <View style={sc.delta}>
+            <MaterialCommunityIcons name="arrow-up" size={10} color={P} />
+            <Text style={sc.deltaText}>{delta}</Text>
           </View>
         )}
       </View>
-      <Text style={kc.value}>{value}</Text>
-      <Text style={kc.label}>{label}</Text>
     </View>
   );
 }
-const kc = StyleSheet.create({
+const sc = StyleSheet.create({
   card: {
-    flex: 1, minWidth: 140,
-    backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16,
+    flex: 1, minWidth: 150,
+    backgroundColor: '#FFFFFF', borderRadius: 16,
+    padding: 18,
     borderWidth: 1, borderColor: '#F1F5F9',
-    // @ts-ignore
-    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+    position: 'relative', overflow: 'hidden',
   },
-  top:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
-  iconCircle:{ width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  delta:    { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 20 },
-  deltaText:{ fontSize: 10, fontWeight: '700' },
-  value:    { fontSize: 30, fontWeight: '800', color: '#0F172A', letterSpacing: -1, marginBottom: 4 },
-  label:    { fontSize: 12, fontWeight: '500', color: '#94A3B8' },
+  accentBar: { position: 'absolute', right: 0, top: 0, bottom: 0, width: 3, backgroundColor: P },
+  label: { fontSize: 11, color: '#94A3B8', fontWeight: '500', marginBottom: 10 },
+  valueRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  value: { fontSize: 28, fontWeight: '800', color: '#0F172A', letterSpacing: -0.8, lineHeight: 32 },
+  delta: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: CLR.blueBg, marginBottom: 4 },
+  deltaText: { fontSize: 10, fontWeight: '700', color: P },
 });
 
-// ─── Section Label ────────────────────────────────────────────────────────────
-function SectionLabel({ text, action, onAction }: { text: string; action?: string; onAction?: () => void }) {
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, marginTop: 4 }}>
-      <Text style={{ fontSize: 10, fontWeight: '700', color: '#94A3B8', letterSpacing: 1.2, textTransform: 'uppercase' }}>
-        {text}
-      </Text>
-      {action && (
-        <TouchableOpacity onPress={onAction} style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-          <Text style={{ fontSize: 12, color: P, fontWeight: '600' }}>{action}</Text>
-          <Feather name="chevron-right" size={13} color={P} />
-        </TouchableOpacity>
-      )}
-    </View>
-  );
-}
-
-// ─── Card wrapper ─────────────────────────────────────────────────────────────
+// ── Card wrap ─────────────────────────────────────────────────────────
 function Card({ children, style }: { children: React.ReactNode; style?: any }) {
   return <View style={[card.wrap, style]}>{children}</View>;
 }
-function CardHeader({ title, sub, right }: { title: string; sub?: string; right?: React.ReactNode }) {
+function CardHeader({ title, right }: { title: string; right?: React.ReactNode }) {
   return (
     <View style={card.header}>
-      <View style={{ flex: 1 }}>
-        <Text style={card.title}>{title}</Text>
-        {sub && <Text style={card.sub}>{sub}</Text>}
-      </View>
+      <Text style={card.title}>{title}</Text>
       {right}
     </View>
   );
@@ -148,40 +150,48 @@ function CardHeader({ title, sub, right }: { title: string; sub?: string; right?
 const card = StyleSheet.create({
   wrap: {
     backgroundColor: '#FFFFFF', borderRadius: 16,
-    borderWidth: 1, borderColor: '#F1F5F9', overflow: 'hidden',
-    // @ts-ignore
-    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+    borderWidth: 1, borderColor: '#F1F5F9',
+    overflow: 'hidden',
   },
   header: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 20, paddingVertical: 14,
-    borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
-    backgroundColor: '#F8FAFC',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingVertical: 16,
   },
-  title: { fontSize: 13, fontWeight: '600', color: '#1E293B' },
-  sub:   { fontSize: 11, color: '#94A3B8', marginTop: 2 },
+  title: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
 });
 
-// ─── Monthly Chart ────────────────────────────────────────────────────────────
+// ── Section Title ─────────────────────────────────────────────────────
+function SectionTitle({ text }: { text: string }) {
+  return <Text style={sec.text}>{text}</Text>;
+}
+const sec = StyleSheet.create({
+  text: {
+    fontSize: 11, fontWeight: '700', color: '#64748B',
+    letterSpacing: 1.0, textTransform: 'uppercase',
+    marginBottom: 12, marginTop: 4, paddingHorizontal: 2,
+  },
+});
+
+// ── Monthly Chart ─────────────────────────────────────────────────────
 function MonthlyChart({ data }: { data: MonthBar[] }) {
   const max = Math.max(...data.map(d => d.count), 1);
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: 140, gap: 8, paddingHorizontal: 20, paddingBottom: 16, paddingTop: 16 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: 160, gap: 10, paddingHorizontal: 20, paddingBottom: 20, paddingTop: 8 }}>
       {data.map((d, i) => {
         const pct = Math.max((d.count / max) * 100, 6);
         const isLast = i === data.length - 1;
         return (
           <View key={i} style={{ flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end' }}>
             {d.count > 0 && (
-              <Text style={{ fontSize: 10, fontWeight: '700', color: isLast ? P : '#94A3B8', marginBottom: 5 }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', color: isLast ? P : '#94A3B8', marginBottom: 6 }}>
                 {d.count}
               </Text>
             )}
-            <View style={{ width: '80%', height: '75%', justifyContent: 'flex-end', borderRadius: 8, backgroundColor: '#F8FAFC', overflow: 'hidden' }}>
+            <View style={{ width: '100%', height: '78%', justifyContent: 'flex-end', borderRadius: 8, overflow: 'hidden' }}>
               <View style={{ width: '100%', borderRadius: 8, height: `${pct}%` as any,
-                backgroundColor: isLast ? P : `${P}30` }} />
+                backgroundColor: isLast ? P : `${P}25` }} />
             </View>
-            <Text style={{ fontSize: 10, color: isLast ? P : '#94A3B8', marginTop: 7, fontWeight: isLast ? '700' : '500' }}>
+            <Text style={{ fontSize: 10, color: isLast ? P : '#94A3B8', marginTop: 8, fontWeight: isLast ? '700' : '500' }}>
               {d.month}
             </Text>
           </View>
@@ -191,25 +201,27 @@ function MonthlyChart({ data }: { data: MonthBar[] }) {
   );
 }
 
-// ─── Main Screen ──────────────────────────────────────────────────────────────
+// ── Main Screen ───────────────────────────────────────────────────────
 export function LabDashboardScreen() {
   const router  = useRouter();
   const { profile } = useAuthStore();
   const { orders, loading, refetch } = useTodayOrders();
   const { width } = useWindowDimensions();
-  const isDesktop = width >= 769;
+  const isDesktop = width >= 900;
 
   const [provas,        setProvas]        = useState<TodayProva[]>([]);
   const [provasLoading, setProvasLoading] = useState(true);
   const [monthly,       setMonthly]       = useState<MonthBar[]>([]);
   const [allOrders,     setAllOrders]     = useState<any[]>([]);
+  const [totalOrders,   setTotalOrders]   = useState(0);
+  const [todayNewCount, setTodayNewCount] = useState(0);
+  const [doctorCount,   setDoctorCount]   = useState(0);
+  const [userCount,     setUserCount]     = useState(0);
   const [refreshing,    setRefreshing]    = useState(false);
   const [hovered,       setHovered]       = useState<string | null>(null);
 
   const today          = todayStr();
   const overdueOrders  = orders.filter(o => isOrderOverdue(o.delivery_date, o.status));
-  const readyCount     = orders.filter(o => o.status === 'teslimata_hazir').length;
-  const inProdCount    = orders.filter(o => o.status === 'uretimde').length;
 
   const loadExtra = async () => {
     const sixMonthsAgo = new Date();
@@ -221,7 +233,7 @@ export function LabDashboardScreen() {
       .order('created_at', { ascending: false });
 
     if (data) {
-      setAllOrders(data.slice(0, 10));
+      setAllOrders(data.slice(0, 6));
       const monthNames = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
       const bars: MonthBar[] = [];
       for (let i = 5; i >= 0; i--) {
@@ -234,6 +246,15 @@ export function LabDashboardScreen() {
       }
       setMonthly(bars);
     }
+
+    const { count: totalCount }    = await supabase.from('work_orders').select('id', { count: 'exact', head: true });
+    const { count: todayCount }    = await supabase.from('work_orders').select('id', { count: 'exact', head: true }).gte('created_at', `${today}T00:00:00`);
+    const { count: drCount }       = await supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('user_type', 'doctor');
+    const { count: labUserCount }  = await supabase.from('profiles').select('id', { count: 'exact', head: true }).in('user_type', ['lab_user', 'mesul_mudur']);
+    setTotalOrders(totalCount ?? 0);
+    setTodayNewCount(todayCount ?? 0);
+    setDoctorCount(drCount ?? 0);
+    setUserCount(labUserCount ?? 0);
   };
 
   const loadProvas = async () => {
@@ -261,210 +282,217 @@ export function LabDashboardScreen() {
         refreshControl={<RefreshControl refreshing={refreshing || loading} onRefresh={handleRefresh} tintColor={P} />}
       >
 
-        {/* ── Compact Toolbar ── */}
-        <View style={s.toolbar}>
-          <View style={{ flex: 1 }}>
-            <Text style={s.toolbarSub}>{getTodayLabel().toUpperCase()}</Text>
-            <Text style={s.toolbarTitle}>Hoş geldin, {firstName} 👋</Text>
+        {/* ── Hero Welcome + Critical Alert ────────────────────── */}
+        <View style={[s.heroRow, isDesktop && s.heroRowDesktop]}>
+          <View style={[s.welcomeCard, isDesktop && { flex: 1 }]}>
+            <BlurFade duration={600} delay={0} yOffset={8}>
+              <Text style={s.welcomeGreet}>Hoş geldin{firstName ? `, ${firstName}` : ''},</Text>
+            </BlurFade>
+            <BlurFade duration={600} delay={80} yOffset={8}>
+              <Text style={s.welcomeDate}>{getTodayLabel()}</Text>
+            </BlurFade>
+            <BlurFade duration={600} delay={160} yOffset={8}>
+              <Text style={s.welcomeSub}>Laboratuvar portalına hoş geldin. Günlük özetin hazır.</Text>
+            </BlurFade>
           </View>
-          <TouchableOpacity style={s.refreshBtn} onPress={handleRefresh} activeOpacity={0.7}>
-            <MaterialCommunityIcons name="refresh" size={17} color={P} />
-          </TouchableOpacity>
-        </View>
 
-        {/* ── Overdue Alert ── */}
-        {overdueOrders.length > 0 && (
-          <TouchableOpacity
-            style={s.alertCard}
-            onPress={() => router.push('/(lab)/all-orders' as any)}
-            activeOpacity={0.8}
-          >
-            <View style={s.alertIconWrap}>
-              <MaterialCommunityIcons name="clock-alert-outline" size={18} color={CLR.red} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.alertTitle}>{overdueOrders.length} geciken iş var</Text>
-              <Text style={s.alertSub}>Görüntülemek için tıklayın</Text>
-            </View>
-            <Feather name="chevron-right" size={16} color={CLR.red} />
-          </TouchableOpacity>
-        )}
-
-        {/* ── KPI Cards ── */}
-        <SectionLabel text="Bugün" />
-        <View style={s.kpiRow}>
-          <KpiCard
-            icon="package-variant-closed"
-            label="Bugün Teslim"
-            value={orders.length}
-            color={CLR.blue}
-            bg={CLR.blueBg}
-            delta={orders.length}
-          />
-          <KpiCard
-            icon="check-circle-outline"
-            label="Hazır"
-            value={readyCount}
-            color={CLR.green}
-            bg={CLR.greenBg}
-          />
-          <KpiCard
-            icon="cog-outline"
-            label="Üretimde"
-            value={inProdCount}
-            color={CLR.orange}
-            bg={CLR.orangeBg}
-          />
-          <KpiCard
-            icon="clock-alert-outline"
-            label="Geciken"
-            value={overdueOrders.length}
-            color={overdueOrders.length > 0 ? CLR.red : '#94A3B8'}
-            bg={overdueOrders.length > 0 ? CLR.redBg : '#F8FAFC'}
-            delta={overdueOrders.length > 0 ? -overdueOrders.length : undefined}
-          />
-        </View>
-
-        {/* ── Charts ── */}
-        <SectionLabel text="İş Akışı" />
-        <View style={[s.chartsRow, isDesktop && s.chartsRowDesktop]}>
-          {/* Monthly Trend */}
-          <Card style={isDesktop ? { flex: 2 } : {}}>
-            <CardHeader title="Aylık Trend" sub="Son 6 ay" />
-            {monthly.length > 0
-              ? <MonthlyChart data={monthly} />
-              : <View style={{ height: 140, alignItems: 'center', justifyContent: 'center' }}>
-                  <Text style={{ color: '#94A3B8', fontSize: 13 }}>Yükleniyor...</Text>
-                </View>
-            }
-          </Card>
-
-          {/* Status Distribution */}
-          <Card style={isDesktop ? { flex: 1 } : {}}>
-            <CardHeader title="Statü Dağılımı" />
-            <View style={{ padding: 20, gap: 12 }}>
-              {Object.entries(STATUS_CFG).map(([key, cfg]) => {
-                const count = allOrders.filter(o => o.status === key).length;
-                const total = allOrders.length || 1;
-                const pct   = Math.round((count / total) * 100);
-                return (
-                  <View key={key}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
-                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: cfg.color, marginRight: 8 }} />
-                      <Text style={{ flex: 1, fontSize: 12, color: '#64748B', fontWeight: '500' }}>{cfg.label}</Text>
-                      <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>{count}</Text>
-                    </View>
-                    <View style={{ height: 4, backgroundColor: '#F1F5F9', borderRadius: 4, overflow: 'hidden' }}>
-                      <View style={{ height: 4, borderRadius: 4, backgroundColor: cfg.color, width: `${pct}%` as any }} />
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
-          </Card>
-        </View>
-
-        {/* ── Today's Provas ── */}
-        {(provas.length > 0 || provasLoading) && (
-          <>
-            <SectionLabel text="Bugünün Provaları" />
-            <Card style={{ marginBottom: 20 }}>
-              <CardHeader
-                title="Provalar"
-                right={
-                  <View style={{ backgroundColor: P, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3, minWidth: 26, alignItems: 'center' }}>
-                    <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800' }}>{provas.length}</Text>
-                  </View>
-                }
+          {overdueOrders.length > 0 && (
+            <View style={[s.alertCard, isDesktop && { width: 300 }]}>
+              <MaterialCommunityIcons
+                name="alert-outline"
+                size={180}
+                color={CLR.red}
+                style={s.alertDecorIcon}
               />
-              {provasLoading
-                ? <Text style={s.loadingText}>Yükleniyor...</Text>
-                : provas.map((p, idx) => {
-                    const typeCfg = PROVA_TYPES.find(t => t.value === p.prova_type);
-                    const isLast  = idx === provas.length - 1;
-                    return (
-                      <TouchableOpacity
-                        key={p.id}
-                        style={[s.tableRow, !isLast && s.tableRowBorder]}
-                        onPress={() => p.work_order && router.push(`/(lab)/order/${p.work_order.id}` as any)}
-                        activeOpacity={0.7}
-                      >
-                        <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: CLR.blueBg, alignItems: 'center', justifyContent: 'center' }}>
-                          <Text style={{ fontSize: 16 }}>{typeCfg?.emoji ?? '🦷'}</Text>
-                        </View>
-                        <View style={{ flex: 1, gap: 2 }}>
-                          <Text style={s.cellMain} numberOfLines={1}>
-                            {p.work_order?.order_number ?? '—'}
-                            {p.work_order?.patient_name ? ` · ${p.work_order.patient_name}` : ''}
-                          </Text>
-                          <Text style={s.cellSub} numberOfLines={1}>
-                            {typeCfg?.label ?? 'Prova'} #{p.prova_number}
-                            {p.order_item_name ? ` — ${p.order_item_name}` : ''}
-                          </Text>
-                        </View>
-                        <StatusBadge status={p.status} />
-                      </TouchableOpacity>
-                    );
-                  })
+              <View style={s.alertTop}>
+                <Text style={s.alertPill}>KRİTİK</Text>
+              </View>
+              <Text style={s.alertTitle}>
+                <Text style={s.alertCount}>{overdueOrders.length}</Text>
+                {' geciken sipariş'}
+              </Text>
+              <Text style={s.alertSub}>Acil müdahale gerektiren vakalar.</Text>
+              <TouchableOpacity
+                style={s.alertBtn}
+                onPress={() => router.push('/(lab)/all-orders' as any)}
+                activeOpacity={0.9}
+              >
+                <Text style={s.alertBtnText}>Detayları Gör</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
+        {/* ── Quick Actions ─────────────────────────────────────── */}
+        <SectionTitle text="Hızlı İşlemler" />
+        <View style={s.quickRow}>
+          <QuickAction icon="plus"              label="Yeni İş"      primary onPress={() => router.push('/(lab)/new-order' as any)} />
+          <QuickAction icon="account-group-outline" label="Kullanıcılar"       onPress={() => router.push('/(lab)/approvals' as any)} />
+          <QuickAction icon="doctor"            label="Hekimler"             onPress={() => router.push('/(lab)/clinics' as any)} />
+          <QuickAction icon="receipt"           label="Siparişler"           onPress={() => router.push('/(lab)/all-orders' as any)} />
+          <QuickAction icon="account-circle-outline" label="Profil"          onPress={() => router.push('/(lab)/profile' as any)} />
+        </View>
+
+        {/* ── Genel Bakış + Sağ Kolon ───────────────────────────── */}
+        <View style={[s.mainGrid, isDesktop && s.mainGridDesktop]}>
+
+          {/* Left — 2/3 */}
+          <View style={[{ gap: 20 }, isDesktop && { flex: 2 }]}>
+            <SectionTitle text="Genel Bakış" />
+            <View style={s.statsGrid}>
+              <StatCard label="Toplam Sipariş" value={totalOrders.toLocaleString('tr-TR')} delta={totalOrders > 0 ? '+12%' : undefined} />
+              <StatCard label="Bugün Yeni"    value={todayNewCount} accent={P} accentBar />
+              <StatCard label="Geciken"       value={overdueOrders.length} accent={overdueOrders.length > 0 ? CLR.red : undefined} />
+              <StatCard label="Bugün Teslim"  value={orders.length} />
+              <StatCard label="Kayıtlı Hekim" value={doctorCount} />
+              <StatCard label="Lab Kullanıcısı" value={userCount} />
+            </View>
+
+            {/* Aylık Trend */}
+            <Card>
+              <CardHeader
+                title="Sipariş Trendi"
+                right={<View style={s.chip}><Text style={s.chipText}>Son 6 Ay</Text></View>}
+              />
+              {monthly.length > 0
+                ? <MonthlyChart data={monthly} />
+                : <View style={{ height: 160, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ color: '#94A3B8', fontSize: 13 }}>Yükleniyor...</Text>
+                  </View>
               }
             </Card>
-          </>
-        )}
-
-        {/* ── Recent Orders ── */}
-        <SectionLabel
-          text="Son İşler"
-          action="Tümünü Gör"
-          onAction={() => router.push('/(lab)/all-orders' as any)}
-        />
-        <Card>
-          {/* Table header */}
-          <View style={s.tableHead}>
-            <Text style={[s.thCell, { flex: 2 }]}>Sipariş No</Text>
-            {isDesktop && <Text style={[s.thCell, { flex: 2 }]}>Hekim</Text>}
-            <Text style={[s.thCell, { flex: 2 }]}>İş Tipi</Text>
-            <Text style={[s.thCell, { flex: 1.4 }]}>Statü</Text>
-            {isDesktop && <Text style={[s.thCell, { flex: 0.8, textAlign: 'right' }]}>Teslim</Text>}
           </View>
 
-          {allOrders.length === 0
-            ? <Text style={s.loadingText}>Yükleniyor...</Text>
-            : allOrders.map((order, idx) => {
-                const overdue = order.delivery_date < today && order.status !== 'teslim_edildi';
-                const isLast  = idx === allOrders.length - 1;
-                return (
-                  <TouchableOpacity
-                    key={order.id}
-                    style={[s.tableRow, !isLast && s.tableRowBorder, hovered === order.id && s.tableRowHover]}
-                    onPress={() => router.push(`/(lab)/order/${order.id}` as any)}
-                    activeOpacity={0.9}
-                    // @ts-ignore
-                    onMouseEnter={() => setHovered(order.id)}
-                    onMouseLeave={() => setHovered(null)}
-                  >
-                    <View style={{ flex: 2, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: STATUS_CFG[order.status]?.color ?? '#94A3B8' }} />
-                      <Text style={s.cellMain} numberOfLines={1}>{order.order_number}</Text>
+          {/* Right — 1/3 */}
+          <View style={[{ gap: 20 }, isDesktop && { flex: 1 }]}>
+            <SectionTitle text="Analiz" />
+
+            {/* Statü Dağılımı */}
+            <Card>
+              <CardHeader title="Statü Dağılımı" />
+              <View style={{ paddingHorizontal: 20, paddingBottom: 20, gap: 14 }}>
+                {Object.entries(STATUS_CFG).map(([key, cfg]) => {
+                  const count = allOrders.filter(o => o.status === key).length;
+                  const total = allOrders.length || 1;
+                  const pct   = Math.round((count / total) * 100);
+                  return (
+                    <View key={key}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                        <Text style={{ flex: 1, fontSize: 12, color: '#64748B', fontWeight: '500' }}>{cfg.label}</Text>
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>{count}</Text>
+                      </View>
+                      <View style={{ height: 5, backgroundColor: '#F1F5F9', borderRadius: 4, overflow: 'hidden' }}>
+                        <View style={{ height: 5, borderRadius: 4, backgroundColor: cfg.color, width: `${pct}%` as any }} />
+                      </View>
                     </View>
-                    {isDesktop && (
-                      <Text style={[s.cellSub, { flex: 2 }]} numberOfLines={1}>
-                        {(order.doctor as any)?.full_name ?? '—'}
-                      </Text>
-                    )}
-                    <Text style={[s.cellSub, { flex: 2 }]} numberOfLines={1}>{order.work_type}</Text>
-                    <View style={{ flex: 1.4 }}>
-                      <StatusBadge status={order.status} />
+                  );
+                })}
+              </View>
+            </Card>
+
+            {/* Bugünün Provaları */}
+            {(provas.length > 0 || provasLoading) && (
+              <Card>
+                <CardHeader
+                  title="Bugünün Provaları"
+                  right={
+                    <View style={s.countChip}>
+                      <Text style={s.countChipText}>{provas.length}</Text>
                     </View>
-                    {isDesktop && (
-                      <Text style={[s.cellDate, { flex: 0.8, textAlign: 'right' }, overdue && s.cellDateOverdue]}>
-                        {fmtDate(order.delivery_date)}
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-                );
-              })
-          }
-        </Card>
+                  }
+                />
+                {provasLoading
+                  ? <Text style={s.loadingText}>Yükleniyor...</Text>
+                  : provas.slice(0, 5).map((p, idx) => {
+                      const typeCfg = PROVA_TYPES.find(t => t.value === p.prova_type);
+                      const isLast  = idx === Math.min(provas.length, 5) - 1;
+                      return (
+                        <TouchableOpacity
+                          key={p.id}
+                          style={[s.provaRow, !isLast && s.rowBorder]}
+                          onPress={() => p.work_order && router.push(`/(lab)/order/${p.work_order.id}` as any)}
+                          activeOpacity={0.7}
+                        >
+                          <View style={s.provaEmoji}>
+                            <Text style={{ fontSize: 16 }}>{typeCfg?.emoji ?? '🦷'}</Text>
+                          </View>
+                          <View style={{ flex: 1, gap: 2 }}>
+                            <Text style={s.cellMain} numberOfLines={1}>
+                              {p.work_order?.order_number ?? '—'}
+                            </Text>
+                            <Text style={s.cellSub} numberOfLines={1}>
+                              {typeCfg?.label ?? 'Prova'} #{p.prova_number}
+                            </Text>
+                          </View>
+                          <StatusBadge status={p.status} />
+                        </TouchableOpacity>
+                      );
+                    })
+                }
+              </Card>
+            )}
+          </View>
+        </View>
+
+        {/* ── Son Siparişler ────────────────────────────────────── */}
+        <View style={{ marginTop: 20 }}>
+          <Card>
+            <CardHeader
+              title="Son Siparişler"
+              right={
+                <TouchableOpacity onPress={() => router.push('/(lab)/all-orders' as any)}>
+                  <Text style={s.linkBtn}>Tümünü Gör</Text>
+                </TouchableOpacity>
+              }
+            />
+            <View style={s.tableHead}>
+              <Text style={[s.thCell, { flex: 1.2 }]}>Sipariş No</Text>
+              <Text style={[s.thCell, { flex: 2 }]}>Hekim</Text>
+              {isDesktop && <Text style={[s.thCell, { flex: 2 }]}>İş Tipi</Text>}
+              <Text style={[s.thCell, { flex: 1.4 }]}>Statü</Text>
+              {isDesktop && <Text style={[s.thCell, { flex: 1, textAlign: 'right' }]}>Teslim</Text>}
+            </View>
+
+            {allOrders.length === 0
+              ? <Text style={s.loadingText}>Yükleniyor...</Text>
+              : allOrders.map((order, idx) => {
+                  const overdue = order.delivery_date < today && order.status !== 'teslim_edildi';
+                  const isLast  = idx === allOrders.length - 1;
+                  const drName  = (order.doctor as any)?.full_name ?? '—';
+                  return (
+                    <TouchableOpacity
+                      key={order.id}
+                      style={[s.tableRow, !isLast && s.rowBorder, overdue && s.tableRowOverdue, hovered === order.id && s.tableRowHover]}
+                      onPress={() => router.push(`/(lab)/order/${order.id}` as any)}
+                      activeOpacity={0.9}
+                      // @ts-ignore
+                      onMouseEnter={() => setHovered(order.id)}
+                      onMouseLeave={() => setHovered(null)}
+                    >
+                      <Text style={[s.orderNo, { flex: 1.2 }]} numberOfLines={1}>#{order.order_number}</Text>
+                      <View style={{ flex: 2, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                        <View style={s.avatar}>
+                          <Text style={s.avatarText}>{initials(drName)}</Text>
+                        </View>
+                        <Text style={s.cellMain} numberOfLines={1}>{drName}</Text>
+                      </View>
+                      {isDesktop && (
+                        <Text style={[s.cellSub, { flex: 2 }]} numberOfLines={1}>{order.work_type}</Text>
+                      )}
+                      <View style={{ flex: 1.4 }}>
+                        <StatusBadge status={order.status} />
+                      </View>
+                      {isDesktop && (
+                        <Text style={[s.cellDate, { flex: 1, textAlign: 'right' }, overdue && s.cellDateOverdue]}>
+                          {fmtDate(order.delivery_date)}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })
+            }
+          </Card>
+        </View>
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -472,60 +500,93 @@ export function LabDashboardScreen() {
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   safe:   { flex: 1, backgroundColor: BG },
-  scroll: { padding: 24, paddingBottom: 40 },
+  scroll: { padding: 24, paddingBottom: 40, maxWidth: 1400, alignSelf: 'stretch' },
 
-  // Compact toolbar
-  toolbar: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between', marginBottom: 20,
-  },
-  toolbarSub:   { fontSize: 10, fontWeight: '600', color: '#94A3B8', letterSpacing: 1.0, marginBottom: 3 },
-  toolbarTitle: { fontSize: 22, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
-  refreshBtn: {
-    width: 36, height: 36, borderRadius: 10,
-    backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center',
+  // Hero
+  heroRow:        { gap: 16, marginBottom: 24 },
+  heroRowDesktop: { flexDirection: 'row' },
+
+  welcomeCard: {
+    backgroundColor: '#FFFFFF', borderRadius: 16,
+    padding: 28,
     borderWidth: 1, borderColor: '#F1F5F9',
+    overflow: 'hidden',
   },
+  welcomeGreet: { fontSize: 28, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
+  welcomeDate:  { fontSize: 28, fontWeight: '300', color: P, letterSpacing: -0.5, marginTop: 2 },
+  welcomeSub:   { fontSize: 13, color: '#64748B', marginTop: 10 },
 
-  // Overdue alert
+  // Critical alert
   alertCard: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#FFFFFF', borderRadius: 14, padding: 14, gap: 12, marginBottom: 20,
-    borderWidth: 1, borderColor: '#FCA5A5',
-    // @ts-ignore
-    boxShadow: '0 1px 3px rgba(239,68,68,0.06)',
+    backgroundColor: '#FFF1F2', borderRadius: 16,
+    padding: 20, gap: 8,
+    position: 'relative', overflow: 'hidden',
   },
-  alertIconWrap: {
-    width: 38, height: 38, borderRadius: 10,
-    backgroundColor: CLR.redBg, alignItems: 'center', justifyContent: 'center',
+  alertDecorIcon: {
+    position: 'absolute', top: -30, left: -30, opacity: 0.1,
+  } as any,
+  alertTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'flex-end' },
+  alertPill: {
+    fontSize: 10, fontWeight: '800', color: CLR.red,
+    backgroundColor: '#FEE2E2', paddingHorizontal: 8, paddingVertical: 4,
+    borderRadius: 6, letterSpacing: 0.8,
   },
-  alertTitle: { fontSize: 13, fontWeight: '700', color: '#0F172A', marginBottom: 2 },
-  alertSub:   { fontSize: 11, color: '#94A3B8' },
+  alertTitle: { fontSize: 20, fontWeight: '800', color: '#7F1D1D', marginTop: 6, letterSpacing: -0.4 },
+  alertCount: { fontSize: 36, fontWeight: '900', letterSpacing: -1 },
+  alertSub:   { fontSize: 12, color: '#B91C1C' },
+  alertBtn: {
+    marginTop: 6, backgroundColor: CLR.red, borderRadius: 10,
+    paddingVertical: 10, alignItems: 'center',
+  },
+  alertBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
 
-  // KPI
-  kpiRow: { flexDirection: 'row', gap: 10, flexWrap: 'wrap', marginBottom: 24 },
+  // Quick actions
+  quickRow: { flexDirection: 'row', gap: 12, flexWrap: 'wrap', marginBottom: 24 },
 
-  // Charts
-  chartsRow:        { gap: 14, marginBottom: 20 },
-  chartsRowDesktop: { flexDirection: 'row' },
+  // Main grid
+  mainGrid:        { gap: 20 },
+  mainGridDesktop: { flexDirection: 'row' },
+
+  // Stats grid
+  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+
+  // Chips
+  chip:      { backgroundColor: '#F1F5F9', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
+  chipText:  { fontSize: 11, color: '#64748B', fontWeight: '600' },
+
+  countChip:     { backgroundColor: P, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3, minWidth: 26, alignItems: 'center' },
+  countChipText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
+
+  linkBtn: { fontSize: 13, color: P, fontWeight: '700' },
 
   // Table
   tableHead: {
     flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 20, paddingVertical: 10,
-    borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
-    backgroundColor: '#F8FAFC',
+    paddingHorizontal: 20, paddingVertical: 12,
+    borderTopWidth: 1, borderTopColor: '#F1F5F9',
+    backgroundColor: '#FAFBFC',
   },
   thCell: { fontSize: 10, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.6 },
 
-  tableRow:       { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 13, gap: 10, minHeight: 52 },
-  tableRowBorder: { borderBottomWidth: 1, borderBottomColor: '#F8FAFC' },
-  tableRowHover:  { backgroundColor: '#FAFBFD' },
+  tableRow:        { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, gap: 10, minHeight: 56 },
+  tableRowHover:   { backgroundColor: '#FAFBFD' },
+  tableRowOverdue: { backgroundColor: '#FEF2F2' },
+  rowBorder:       { borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
 
-  cellMain:         { fontSize: 13, fontWeight: '700', color: '#0F172A' },
+  provaRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, gap: 10 },
+  provaEmoji: { width: 36, height: 36, borderRadius: 10, backgroundColor: CLR.blueBg, alignItems: 'center', justifyContent: 'center' },
+
+  orderNo:   { fontSize: 12, fontWeight: '700', color: P },
+
+  avatar: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center',
+  },
+  avatarText: { fontSize: 10, fontWeight: '700', color: '#64748B' },
+
+  cellMain:         { fontSize: 13, fontWeight: '600', color: '#0F172A' },
   cellSub:          { fontSize: 12, color: '#64748B' },
   cellDate:         { fontSize: 12, color: '#94A3B8', fontWeight: '500' },
   cellDateOverdue:  { color: CLR.red, fontWeight: '700' },

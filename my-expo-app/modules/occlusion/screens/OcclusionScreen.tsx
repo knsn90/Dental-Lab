@@ -5,6 +5,7 @@
 import React, { useCallback, useRef, useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Platform, ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -26,11 +27,15 @@ export default function OcclusionScreen() {
   const router = useRouter();
   const { id: workOrderId } = useLocalSearchParams<{ id: string }>();
 
+  const { width: _viewportW } = useWindowDimensions();
+  const isMobile = _viewportW < 769;
+
   const analysis    = useOcclusionAnalysis();
   const measurement = useMeasurement();
 
   const [canvasSize, setCanvasSize] = useState({ w: 0, h: 0 });
   const [reportExpanded, setReportExpanded] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(!isMobile);
   const [activePen, setActivePen] = useState<PenetrationPoint | null>(null);
   const [severityFilter, setSeverityFilter] = useState<Record<Severity, boolean>>({
     low: true, medium: true, high: true,
@@ -102,18 +107,18 @@ export default function OcclusionScreen() {
   if (!analysis.result && !analysis.isAnalyzing) {
     return (
       <SafeAreaView style={s.safe} edges={['top']}>
-        <TopBar onBack={() => router.back()} workOrderId={workOrderId as string} />
+        <TopBar onBack={() => router.back()} workOrderId={workOrderId as string} isMobile={isMobile} />
 
-        <View style={s.empty}>
+        <View style={[s.empty, isMobile && { padding: 20, gap: 12 }]}>
           <View style={s.emptyIcon}>
             <MaterialCommunityIcons name="molecule" size={48} color="#94A3B8" />
           </View>
-          <Text style={s.emptyTitle}>Oklüzyon Analizi Başlat</Text>
+          <Text style={[s.emptyTitle, isMobile && { fontSize: 18, textAlign: 'center' }]}>Oklüzyon Analizi Başlat</Text>
           <Text style={s.emptySub}>
             Üst ve alt çene STL/PLY dosyalarını yükleyerek ısı haritası ve penetrasyon analizini başlatın.
           </Text>
 
-          <View style={s.uploadGrid}>
+          <View style={[s.uploadGrid, isMobile && { flexDirection: 'column', gap: 10 }]}>
             <UploadCard
               label="Üst Çene"
               file={pendingUpper}
@@ -170,6 +175,7 @@ export default function OcclusionScreen() {
         workOrderId={workOrderId as string}
         analysisDone={!!analysis.result}
         onSave={handleSaveToOrder}
+        isMobile={isMobile}
       />
 
       <View style={s.stage}>
@@ -208,18 +214,36 @@ export default function OcclusionScreen() {
           <OcclusionToolbar
             mode={analysis.activeMode}
             onModeChange={analysis.setMode}
+            position={isMobile ? 'top' : 'left'}
           />
         )}
 
         {/* View presets */}
         {analysis.result && (
-          <ViewPresets value={analysis.viewPreset} onChange={analysis.setViewPreset} />
+          <ViewPresets value={analysis.viewPreset} onChange={analysis.setViewPreset} isMobile={isMobile} />
+        )}
+
+        {/* Mobile panel toggle */}
+        {analysis.result && isMobile && (
+          <TouchableOpacity
+            style={s.panelToggle}
+            onPress={() => setPanelOpen((v) => !v)}
+            activeOpacity={0.85}
+          >
+            <MaterialCommunityIcons
+              name={panelOpen ? 'chevron-down' : 'tune-vertical'}
+              size={18}
+              color="#0F172A"
+            />
+          </TouchableOpacity>
         )}
 
         {/* Right mode panel */}
-        {analysis.result && (
+        {analysis.result && (!isMobile || panelOpen) && (
           <ModePanel
             mode={analysis.activeMode}
+            isMobile={isMobile}
+            onClose={isMobile ? () => setPanelOpen(false) : undefined}
             upperOpacity={analysis.upperOpacity}
             setUpperOpacity={analysis.setUpperOpacity}
             heatmapConfig={analysis.heatmapConfig}
@@ -269,6 +293,7 @@ export default function OcclusionScreen() {
             expanded={reportExpanded}
             onToggle={() => setReportExpanded((e) => !e)}
             onSaveToOrder={workOrderId ? handleSaveToOrder : undefined}
+            isMobile={isMobile}
           />
         )}
       </View>
@@ -278,31 +303,35 @@ export default function OcclusionScreen() {
 
 // ─── TopBar ────────────────────────────────────────────────
 function TopBar({
-  onBack, workOrderId, analysisDone, onSave,
+  onBack, workOrderId, analysisDone, onSave, isMobile,
 }: {
-  onBack: () => void; workOrderId?: string; analysisDone?: boolean; onSave?: () => void;
+  onBack: () => void; workOrderId?: string; analysisDone?: boolean; onSave?: () => void; isMobile?: boolean;
 }) {
   return (
-    <View style={tb.bar}>
+    <View style={[tb.bar, isMobile && { paddingHorizontal: 12, paddingVertical: 10, gap: 8 }]}>
       <TouchableOpacity onPress={onBack} style={tb.back}>
         <MaterialCommunityIcons name="arrow-left" size={18} color="#0F172A" />
       </TouchableOpacity>
       <View style={tb.titleWrap}>
-        <Text style={tb.title}>Oklüzyon Analizi</Text>
+        <Text style={[tb.title, isMobile && { fontSize: 14 }]} numberOfLines={1}>Oklüzyon Analizi</Text>
         {workOrderId && (
           <Text style={tb.sub}>İş Emri · {workOrderId.slice(0, 8)}</Text>
         )}
       </View>
-      {analysisDone && (
+      {analysisDone && !isMobile && (
         <View style={tb.chip}>
           <View style={tb.dot} />
           <Text style={tb.chipText}>Analiz tamamlandı</Text>
         </View>
       )}
       {analysisDone && onSave && (
-        <TouchableOpacity style={tb.primary} onPress={onSave} activeOpacity={0.85}>
+        <TouchableOpacity
+          style={[tb.primary, isMobile && { paddingHorizontal: 10, paddingVertical: 8 }]}
+          onPress={onSave}
+          activeOpacity={0.85}
+        >
           <MaterialCommunityIcons name="link-variant" size={14} color="#FFFFFF" />
-          <Text style={tb.primaryText}>İş Emrine Ekle</Text>
+          {!isMobile && <Text style={tb.primaryText}>İş Emrine Ekle</Text>}
         </TouchableOpacity>
       )}
     </View>
@@ -406,6 +435,21 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: '#FECACA', borderRadius: 8,
   },
   errorText: { color: '#DC2626', fontSize: 12 },
+
+  // Mobile panel toggle FAB
+  panelToggle: {
+    position: 'absolute',
+    right: 12,
+    top: 68,
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1, borderColor: '#F1F5F9',
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOpacity: 0.06,
+    shadowRadius: 8, shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+    zIndex: 10,
+  },
 });
 
 const tb = StyleSheet.create({

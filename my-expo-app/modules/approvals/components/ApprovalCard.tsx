@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput } from 'react-native';
+import { toast } from '../../../core/ui/Toast';
 import { Approval } from '../types';
 import { useApprove } from '../hooks/useApprove';
 import { STEP_ICONS, MANUAL_STEPS, DIGITAL_STEPS } from '../../workflow/templates';
@@ -32,14 +33,14 @@ export function ApprovalCard({ approval, onResolved, canApprove = false }: Props
   const handleApprove = async () => {
     const ok = await approve(approval.id);
     if (ok) onResolved?.();
-    else Alert.alert('Hata', 'Onaylanamadı');
+    else toast.error('Onaylanamadı');
   };
 
   const handleReject = async () => {
-    if (!reason.trim()) { Alert.alert('Hata', 'Red gerekçesi giriniz'); return; }
+    if (!reason.trim()) { toast.error('Red gerekçesi giriniz'); return; }
     const ok = await reject(approval.id, reason);
     if (ok) onResolved?.();
-    else Alert.alert('Hata', 'Reddedilemedi');
+    else toast.error('Reddedilemedi');
   };
 
   return (

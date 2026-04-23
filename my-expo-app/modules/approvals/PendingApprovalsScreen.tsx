@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   ActivityIndicator, RefreshControl, Alert,
 } from 'react-native';
+import { toast } from '../../core/ui/Toast';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { ClinicIcon } from '../../core/ui/ClinicIcon';
 import { supabase } from '../../lib/supabase';
@@ -50,7 +51,7 @@ export function PendingApprovalsScreen() {
       .update({ is_active: true, approval_status: 'approved' })
       .eq('id', profile.id);
     if (error) {
-      Alert.alert('Hata', 'Onaylama işlemi başarısız oldu.');
+      toast.error('Onaylama işlemi başarısız oldu.');
     } else {
       setDoctors(prev => prev.filter(d => d.id !== profile.id));
     }
@@ -72,7 +73,7 @@ export function PendingApprovalsScreen() {
               .update({ is_active: false, approval_status: 'rejected' })
               .eq('id', profile.id);
             if (error) {
-              Alert.alert('Hata', 'Reddetme işlemi başarısız oldu.');
+              toast.error('Reddetme işlemi başarısız oldu.');
             } else {
               setDoctors(prev => prev.filter(d => d.id !== profile.id));
             }

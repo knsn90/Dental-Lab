@@ -1,7 +1,11 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { CaseStep, StepStatus } from '../types';
-import { STEP_ICONS } from '../../workflow/templates';
+import { STEP_ICONS, MANUAL_STEPS, DIGITAL_STEPS } from '../../workflow/templates';
+
+const STEP_LABELS: Record<string, string> = Object.fromEntries(
+  [...MANUAL_STEPS, ...DIGITAL_STEPS].map(s => [s.name, s.label])
+);
 
 interface Props {
   step: CaseStep;
@@ -39,7 +43,7 @@ export function StepCard({ step, onStart, onComplete, loading }: Props) {
         </View>
         <View style={styles.info}>
           <Text style={styles.order}>#{step.step_order}</Text>
-          <Text style={styles.name}>{step.step_name.replace(/_/g, ' ')}</Text>
+          <Text style={styles.name}>{STEP_LABELS[step.step_name] ?? step.step_name.replace(/_/g, ' ')}</Text>
         </View>
         <View style={[styles.badge, { backgroundColor: ss.bg }]}>
           <Text style={[styles.badgeText, { color: ss.color }]}>{ss.label}</Text>
@@ -66,7 +70,7 @@ export function StepCard({ step, onStart, onComplete, loading }: Props) {
       )}
 
       {loading ? (
-        <ActivityIndicator size="small" color="#2563EB" style={{ marginTop: 8 }} />
+        <ActivityIndicator size="small" color="#0F172A" style={{ marginTop: 8 }} />
       ) : (
         <View style={styles.actions}>
           {step.status === 'pending' && onStart && (
@@ -115,10 +119,10 @@ const styles = StyleSheet.create({
   approvalNoteText: { fontSize: 12, color: '#D97706', fontWeight: '600' },
   actions: { flexDirection: 'row', gap: 8, marginTop: 8 },
   btnStart: {
-    backgroundColor: '#EFF6FF', borderRadius: 8,
+    backgroundColor: '#F1F5F9', borderRadius: 8,
     paddingHorizontal: 14, paddingVertical: 7,
   },
-  btnStartText: { fontSize: 13, color: '#2563EB', fontWeight: '700' },
+  btnStartText: { fontSize: 13, color: '#0F172A', fontWeight: '700' },
   btnDone: {
     backgroundColor: '#ECFDF5', borderRadius: 8,
     paddingHorizontal: 14, paddingVertical: 7,

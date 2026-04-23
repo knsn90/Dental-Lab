@@ -2,8 +2,9 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   ActivityIndicator, Modal, TextInput,
-  KeyboardAvoidingView, Platform, Alert,
+  KeyboardAvoidingView, Platform, Alert, Animated, Pressable,
 } from 'react-native';
+import { toast } from '../../../core/ui/Toast';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -12,6 +13,9 @@ import { AppSwitch } from '../../../core/ui/AppSwitch';
 import { supabase } from '../../../core/api/supabase';
 import { fetchClinics, createClinic, updateClinic, createDoctor, updateDoctor } from '../api';
 import { ILLER, ILCELER } from '../data/turkey';
+import { useIsDesktop } from '../../../core/layout/DesktopShell';
+import { SlideTabBar } from '../../../core/ui/SlideTabBar';
+import { IconBtn } from '../../../core/ui/IconBtn';
 
 const ERR = '#EF4444';
 
@@ -66,14 +70,17 @@ interface Props {
 }
 
 export default function ClinicsScreen({ accentColor = '#0F172A' }: Props) {
+  const isDesktop = useIsDesktop();
   const [clinics, setClinics]   = useState<Clinic[]>([]);
   const [doctors, setDoctors]   = useState<Doctor[]>([]);
   const [loading, setLoading]   = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [search,   setSearch]   = useState('');
 
-  const [showClinicModal, setShowClinicModal] = useState(false);
-  const [editingClinic,   setEditingClinic]   = useState<Clinic | null>(null);
+  const [showClinicModal,   setShowClinicModal]   = useState(false);
+  const [editingClinic,     setEditingClinic]     = useState<Clinic | null>(null);
+  const [discountClinic,    setDiscountClinic]    = useState<Clinic | null>(null);
+  const [discountMap,       setDiscountMap]       = useState<Record<string, number>>({});  // clinic_id → %
 
   const [showDoctorModal, setShowDoctorModal] = useState(false);
   const [editingDoctor,   setEditingDoctor]   = useState<Doctor | null>(null);
@@ -82,18 +89,25 @@ export default function ClinicsScreen({ accentColor = '#0F172A' }: Props) {
   const [activeTab,       setActiveTab]       = useState<'all' | ClinicCategory | 'doctors'>('all');
   const [searchExpanded,  setSearchExpanded]  = useState(false);
   const [searchFocused,   setSearchFocused]   = useState(false);
+  const [searchOpen,      setSearchOpen]      = useState(false);
   const [categoryFilter,  setCategoryFilter]  = useState<ClinicCategory | 'all'>('all');
   const [statusFilter,    setStatusFilter]    = useState<'all' | 'active' | 'inactive'>('all');
   const [showFilterSheet, setShowFilterSheet] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [clinicsRes, doctorsRes] = await Promise.all([
+    const [clinicsRes, doctorsRes, discountsRes] = await Promise.all([
       fetchClinics(),
       supabase.from('doctors').select('*').order('full_name'),
+      supabase.from('clinic_discounts').select('clinic_id, discount_percent'),
     ]);
     if (!clinicsRes.error && clinicsRes.data) setClinics(clinicsRes.data as Clinic[]);
     if (!doctorsRes.error && doctorsRes.data) setDoctors(doctorsRes.data as Doctor[]);
+    if (!discountsRes.error && discountsRes.data) {
+      const map: Record<string, number> = {};
+      (discountsRes.data as any[]).forEach(r => { map[r.clinic_id] = Number(r.discount_percent); });
+      setDiscountMap(map);
+    }
     setLoading(false);
   }, []);
 
@@ -118,7 +132,7 @@ export default function ClinicsScreen({ accentColor = '#0F172A' }: Props) {
       { text: 'Sil', style: 'destructive', onPress: async () => {
         const { error } = await supabase.from('clinics').delete().eq('id', clinic.id);
         if (!error) setClinics(prev => prev.filter(c => c.id !== clinic.id));
-        else Alert.alert('Hata', 'Klinik silinemedi.');
+        else toast.error('Klinik silinemedi.');
       }},
     ]);
   };
@@ -135,7 +149,7 @@ export default function ClinicsScreen({ accentColor = '#0F172A' }: Props) {
       { text: 'Sil', style: 'destructive', onPress: async () => {
         const { error } = await supabase.from('doctors').delete().eq('id', doctor.id);
         if (!error) setDoctors(prev => prev.filter(d => d.id !== doctor.id));
-        else Alert.alert('Hata', 'Hekim silinemedi.');
+        else toast.error('Hekim silinemedi.');
       }},
     ]);
   };
@@ -182,112 +196,88 @@ export default function ClinicsScreen({ accentColor = '#0F172A' }: Props) {
     return getDoctorsByClinic(c.id).some(d => d.full_name.toLowerCase().includes(q));
   });
 
+  const activeClinicsCount   = clinics.filter(c => c.is_active).length;
+  const inactiveClinicsCount = clinics.length - activeClinicsCount;
+  const totalDoctorsCount    = doctors.length;
+
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
       <ScrollView contentContainerStyle={s.container} showsVerticalScrollIndicator={false}>
 
-        {/* Toolbar row */}
-        <View style={s.toolbarRow}>
-          {/* Category + Doctors tabs */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={s.tabsScroll}
-            contentContainerStyle={s.tabsContent}
-          >
-            <View style={s.tabBar}>
-              {([
-                { value: 'all',         label: 'Tümü' },
-                { value: 'klinik',      label: 'Klinik' },
-                { value: 'poliklinik',  label: 'Poliklinik' },
-                { value: 'hastane',     label: 'Hastane' },
-                { value: 'laboratuvar', label: 'Laboratuvar' },
-                { value: 'doctors',     label: 'Hekimler' },
-              ] as { value: string; label: string }[]).map(tab => {
-                const active = activeTab === tab.value;
-                return (
-                  <TouchableOpacity
-                    key={tab.value}
-                    style={[s.tabItem, active && s.tabItemActive]}
-                    onPress={() => setActiveTab(tab.value as any)}
-                    activeOpacity={0.75}
-                  >
-                    <Text style={[s.tabText, active && s.tabTextActive]}>{tab.label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </ScrollView>
+        <View style={[s.pageWrap, isDesktop && s.pageWrapRow]}>
 
-          <View style={s.rightGroup}>
-            {/* Search icon */}
-            <TouchableOpacity
-              style={[s.iconBtn, (searchExpanded || search.length > 0) && s.iconBtnActive]}
-              onPress={() => setSearchExpanded(!searchExpanded)}
-              activeOpacity={0.75}
-            >
-              <Feather name="search" size={18} color={(searchExpanded || search.length > 0) ? '#0F172A' : '#94A3B8'} />
-            </TouchableOpacity>
+          {/* ── Main Column ── */}
+          <View style={[s.mainCol, isDesktop && s.mainColDesktop]}>
 
-            {/* Filter icon — only for clinics tabs */}
-            {activeTab !== 'doctors' && (
-              <TouchableOpacity
-                style={[s.iconBtn, activeFilterCount > 0 && s.iconBtnActive]}
-                onPress={openFilter}
-                activeOpacity={0.75}
+            {/* ── Pill Tabs + Search + Filter ── */}
+            <View style={s.tabsWrap}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={s.tabsContent}
+                style={{ flex: 1 }}
               >
-                <MaterialCommunityIcons name={'tune-variant' as any} size={18} color={activeFilterCount > 0 ? '#0F172A' : '#94A3B8'} />
-                {activeFilterCount > 0 && (
-                  <View style={s.filterBadge}>
-                    <Text style={s.filterBadgeText}>{activeFilterCount}</Text>
+                <SlideTabBar
+                  items={[
+                    { key: 'all',         label: 'Tümü' },
+                    { key: 'klinik',      label: 'Klinik' },
+                    { key: 'poliklinik',  label: 'Poliklinik' },
+                    { key: 'hastane',     label: 'Hastane' },
+                    { key: 'laboratuvar', label: 'Laboratuvar' },
+                    { key: 'doctors',     label: 'Hekimler' },
+                  ]}
+                  activeKey={activeTab as string}
+                  onChange={(k) => setActiveTab(k as any)}
+                  accentColor={accentColor}
+                />
+              </ScrollView>
+
+              <View style={s.tabsRight}>
+                {searchOpen ? (
+                  <View style={[s.searchInline, searchFocused && { borderColor: accentColor }]}>
+                    <Feather name="search" size={15} color={searchFocused ? accentColor : '#94A3B8'} />
+                    <TextInput
+                      autoFocus
+                      style={s.searchInlineInput}
+                      value={search}
+                      onChangeText={setSearch}
+                      onFocus={() => setSearchFocused(true)}
+                      onBlur={() => {
+                        setSearchFocused(false);
+                        if (!search) setSearchOpen(false);
+                      }}
+                      placeholder={activeTab === 'doctors' ? 'Hekim ara...' : 'Klinik ara...'}
+                      placeholderTextColor="#94A3B8"
+                      returnKeyType="search"
+                    />
+                    <TouchableOpacity
+                      onPress={() => { setSearch(''); setSearchOpen(false); }}
+                      hitSlop={8}
+                    >
+                      <Feather name="x" size={14} color="#94A3B8" />
+                    </TouchableOpacity>
                   </View>
+                ) : (
+                  <IconBtn onPress={() => setSearchOpen(true)}>
+                    <Feather name="search" size={20} color="#64748B" />
+                  </IconBtn>
                 )}
-              </TouchableOpacity>
-            )}
-
-            {/* Add button */}
-            <TouchableOpacity
-              style={[s.addBtn, { backgroundColor: accentColor }]}
-              onPress={() => {
-                if (activeTab === 'doctors') { setEditingDoctor(null); setDefaultClinicId(''); setShowDoctorModal(true); }
-                else { setEditingClinic(null); setShowClinicModal(true); }
-              }}
-              activeOpacity={0.8}
-            >
-              <Feather name="plus" size={15} color="#FFFFFF" />
-              <Text style={s.addBtnText}>{activeTab === 'doctors' ? 'Hekim Ekle' : 'Sağlık Kurumu Ekle'}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Expandable search row */}
-        {(searchExpanded || search.length > 0) && (
-          <View style={s.searchRow}>
-            <View style={[s.searchWrap, searchFocused && s.searchWrapFocused]}>
-              <Feather name="search" size={16} color={searchFocused ? '#0F172A' : '#AEAEB2'} />
-              <TextInput
-                style={s.searchInput}
-                value={search}
-                onChangeText={setSearch}
-                onFocus={() => setSearchFocused(true)}
-                onBlur={() => setSearchFocused(false)}
-                placeholder={activeTab === 'doctors' ? 'Hekim ara...' : 'Klinik ara...'}
-                placeholderTextColor="#AEAEB2"
-                returnKeyType="search"
-                autoFocus={searchExpanded && search.length === 0}
-              />
-              {search.length > 0 && (
-                <TouchableOpacity onPress={() => { setSearch(''); setSearchExpanded(false); }}>
-                  <Feather name="x-circle" size={15} color="#AEAEB2" />
-                </TouchableOpacity>
-              )}
+                {activeTab !== 'doctors' && (
+                  <IconBtn active={activeFilterCount > 0} onPress={openFilter} style={{ position: 'relative' }}>
+                    <MaterialCommunityIcons name={'tune-variant' as any} size={20} color={activeFilterCount > 0 ? accentColor : '#64748B'} />
+                    {activeFilterCount > 0 && (
+                      <View style={[s.filterBadge, { backgroundColor: accentColor }]}>
+                        <Text style={s.filterBadgeText}>{activeFilterCount}</Text>
+                      </View>
+                    )}
+                  </IconBtn>
+                )}
+              </View>
             </View>
-          </View>
-        )}
 
-        {loading ? (
-          <ActivityIndicator size="large" color={accentColor} style={{ marginTop: 60 }} />
-        ) : activeTab === 'doctors' ? (
+            {loading ? (
+              <ActivityIndicator size="large" color={accentColor} style={{ marginTop: 60 }} />
+            ) : activeTab === 'doctors' ? (
           // ── Doctors tab ──
           (() => {
             const filteredDoctors = doctors.filter(d => {
@@ -367,79 +357,150 @@ export default function ClinicsScreen({ accentColor = '#0F172A' }: Props) {
               </View>
             );
           })()
-        ) : clinics.length === 0 ? (
-          <View style={s.empty}>
-            <ClinicIcon size={44} color="#AEAEB2" />
-            <Text style={s.emptyTitle}>Henüz klinik eklenmemiş</Text>
-            <Text style={s.emptySub}>İlk kliniği ekleyerek başlayın</Text>
-          </View>
-        ) : filteredClinics.length === 0 ? (
-          <View style={s.empty}>
-            <Feather name="search" size={36} color="#E5E7EB" />
-            <Text style={s.emptyTitle}>Sonuç bulunamadı</Text>
-            <Text style={s.emptySub}>"{search}" ile eşleşen kayıt yok</Text>
-          </View>
-        ) : (
-          <>
-            {/* ── Table Card ── */}
-            <View style={tbl.card}>
-              {/* Table header */}
-              <View style={tbl.headerRow}>
-                <Text style={[tbl.hCell, { flex: 2.8 }]}>KLİNİK</Text>
-                <Text style={[tbl.hCell, { flex: 1.1 }]}>KATEGORİ</Text>
-                <Text style={[tbl.hCell, { flex: 0.7, textAlign: 'center' }]}>HEKİM</Text>
-                <Text style={[tbl.hCell, { flex: 1.4 }]}>TELEFON</Text>
-                <Text style={[tbl.hCell, { flex: 0.9, textAlign: 'center' }]}>DURUM</Text>
-                <View style={{ width: 76 }} />
+            ) : clinics.length === 0 ? (
+              <View style={s.empty}>
+                <ClinicIcon size={44} color="#AEAEB2" />
+                <Text style={s.emptyTitle}>Henüz klinik eklenmemiş</Text>
+                <Text style={s.emptySub}>İlk kliniği ekleyerek başlayın</Text>
               </View>
+            ) : filteredClinics.length === 0 ? (
+              <View style={s.empty}>
+                <Feather name="search" size={36} color="#E5E7EB" />
+                <Text style={s.emptyTitle}>Sonuç bulunamadı</Text>
+                <Text style={s.emptySub}>"{search}" ile eşleşen kayıt yok</Text>
+              </View>
+            ) : (
+              <View style={s.cardList}>
+                {filteredClinics.map(clinic => (
+                  <ClinicRow
+                    key={clinic.id}
+                    clinic={clinic}
+                    doctors={getDoctorsByClinic(clinic.id)}
+                    isExpanded={expanded.has(clinic.id)}
+                    accentColor={accentColor}
+                    discountPercent={discountMap[clinic.id] ?? null}
+                    onToggleExpand={() => toggleExpand(clinic.id)}
+                    onToggleClinic={() => handleToggleClinic(clinic)}
+                    onEditClinic={() => { setEditingClinic(clinic); setShowClinicModal(true); }}
+                    onDeleteClinic={() => handleDeleteClinic(clinic)}
+                    onSetDiscount={() => setDiscountClinic(clinic)}
+                    onAddDoctor={() => openAddDoctor(clinic.id)}
+                    onToggleDoctor={handleToggleDoctor}
+                    onEditDoctor={openEditDoctor}
+                    onDeleteDoctor={handleDeleteDoctor}
+                  />
+                ))}
 
-              {filteredClinics.map((clinic, idx) => (
-                <ClinicRow
-                  key={clinic.id}
-                  clinic={clinic}
-                  doctors={getDoctorsByClinic(clinic.id)}
-                  isExpanded={expanded.has(clinic.id)}
-                  isLast={idx === filteredClinics.length - 1}
-                  accentColor={accentColor}
-                  onToggleExpand={() => toggleExpand(clinic.id)}
-                  onToggleClinic={() => handleToggleClinic(clinic)}
-                  onEditClinic={() => { setEditingClinic(clinic); setShowClinicModal(true); }}
-                  onDeleteClinic={() => handleDeleteClinic(clinic)}
-                  onAddDoctor={() => openAddDoctor(clinic.id)}
-                  onToggleDoctor={handleToggleDoctor}
-                  onEditDoctor={openEditDoctor}
-                  onDeleteDoctor={handleDeleteDoctor}
-                />
-              ))}
-            </View>
-
-            {/* ── Kliniksiz Hekimler ── */}
-            {unassigned.length > 0 && (
-              <View style={s.unassignedSection}>
-                <View style={s.unassignedHeader}>
-                  <Feather name="user-x" size={13} color="#AEAEB2" />
-                  <Text style={s.unassignedLabel}>Kliniksiz Hekimler</Text>
-                  <View style={s.countBadge}>
-                    <Text style={s.countBadgeText}>{unassigned.length}</Text>
+                {unassigned.length > 0 && (
+                  <View style={s.unassignedSection}>
+                    <View style={s.unassignedHeader}>
+                      <Feather name="user-x" size={13} color="#AEAEB2" />
+                      <Text style={s.unassignedLabel}>Kliniksiz Hekimler</Text>
+                      <View style={s.countBadge}>
+                        <Text style={s.countBadgeText}>{unassigned.length}</Text>
+                      </View>
+                    </View>
+                    <View style={tbl.card}>
+                      {unassigned.map((d, i) => (
+                        <DoctorRow
+                          key={d.id}
+                          doctor={d}
+                          isLast={i === unassigned.length - 1}
+                          accentColor={accentColor}
+                          onToggle={() => handleToggleDoctor(d)}
+                          onEdit={() => openEditDoctor(d)}
+                          onDelete={() => handleDeleteDoctor(d)}
+                        />
+                      ))}
+                    </View>
                   </View>
-                </View>
-                <View style={tbl.card}>
-                  {unassigned.map((d, i) => (
-                    <DoctorRow
-                      key={d.id}
-                      doctor={d}
-                      isLast={i === unassigned.length - 1}
-                      accentColor={accentColor}
-                      onToggle={() => handleToggleDoctor(d)}
-                      onEdit={() => openEditDoctor(d)}
-                      onDelete={() => handleDeleteDoctor(d)}
-                    />
-                  ))}
-                </View>
+                )}
               </View>
             )}
-          </>
-        )}
+
+            <View style={{ height: 24 }} />
+          </View>
+
+          {/* ── Right Sidebar ── */}
+          <View style={[s.sidebar, isDesktop && s.sidebarDesktop]}>
+            {/* Network Summary */}
+            <View style={sb.card}>
+              <Text style={sb.label}>Ağ Özeti</Text>
+              <View style={{ gap: 18 }}>
+                <View style={sb.row}>
+                  <View style={sb.rowLeft}>
+                    <View style={[sb.circle, { backgroundColor: accentColor + '18' }]}>
+                      <MaterialCommunityIcons name={'office-building-outline' as any} size={18} color={accentColor} />
+                    </View>
+                    <Text style={sb.rowLabel}>Toplam Kurum</Text>
+                  </View>
+                  <Text style={sb.rowValue}>{clinics.length}</Text>
+                </View>
+                <View style={sb.row}>
+                  <View style={sb.rowLeft}>
+                    <View style={[sb.circle, { backgroundColor: '#D1FAE5' }]}>
+                      <MaterialCommunityIcons name={'check-decagram-outline' as any} size={18} color="#059669" />
+                    </View>
+                    <Text style={sb.rowLabel}>Aktif Kurumlar</Text>
+                  </View>
+                  <Text style={sb.rowValue}>{activeClinicsCount}</Text>
+                </View>
+                <View style={sb.row}>
+                  <View style={sb.rowLeft}>
+                    <View style={[sb.circle, { backgroundColor: accentColor + '12' }]}>
+                      <Feather name="users" size={18} color={accentColor} />
+                    </View>
+                    <Text style={sb.rowLabel}>Toplam Hekim</Text>
+                  </View>
+                  <Text style={sb.rowValue}>{totalDoctorsCount}</Text>
+                </View>
+                {inactiveClinicsCount > 0 && (
+                  <View style={[sb.row, sb.rowDivider]}>
+                    <View style={sb.rowLeft}>
+                      <View style={[sb.circle, { backgroundColor: '#FEF2F2' }]}>
+                        <Feather name="alert-circle" size={18} color={ERR} />
+                      </View>
+                      <Text style={sb.rowLabel}>Pasif Kurumlar</Text>
+                    </View>
+                    <Text style={[sb.rowValue, { color: ERR }]}>{inactiveClinicsCount}</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+
+            {/* Quick Actions */}
+            <View style={sb.card}>
+              <Text style={sb.label}>Hızlı İşlemler</Text>
+              <View style={{ gap: 4 }}>
+                <TouchableOpacity
+                  style={sb.action}
+                  onPress={() => { setEditingClinic(null); setShowClinicModal(true); }}
+                  activeOpacity={0.7}
+                >
+                  <Feather name="plus-circle" size={16} color="#64748B" />
+                  <Text style={sb.actionText}>Yeni Kurum Ekle</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={sb.action}
+                  onPress={() => { setEditingDoctor(null); setDefaultClinicId(''); setShowDoctorModal(true); }}
+                  activeOpacity={0.7}
+                >
+                  <Feather name="user-plus" size={16} color="#64748B" />
+                  <Text style={sb.actionText}>Hekim Ekle</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={sb.action}
+                  onPress={() => { setActiveTab('doctors'); }}
+                  activeOpacity={0.7}
+                >
+                  <Feather name="list" size={16} color="#64748B" />
+                  <Text style={sb.actionText}>Tüm Hekimleri Görüntüle</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+
+        </View>
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -461,6 +522,16 @@ export default function ClinicsScreen({ accentColor = '#0F172A' }: Props) {
         accentColor={accentColor}
         onClose={() => { setShowDoctorModal(false); setEditingDoctor(null); }}
         onSuccess={() => { setShowDoctorModal(false); setEditingDoctor(null); loadData(); }}
+      />
+
+      <DiscountModal
+        clinic={discountClinic}
+        currentDiscount={discountClinic ? (discountMap[discountClinic.id] ?? null) : null}
+        onClose={() => setDiscountClinic(null)}
+        onSaved={(clinicId, percent) => {
+          setDiscountMap(prev => ({ ...prev, [clinicId]: percent }));
+          setDiscountClinic(null);
+        }}
       />
 
       {/* Filter Panel */}
@@ -546,88 +617,108 @@ export default function ClinicsScreen({ accentColor = '#0F172A' }: Props) {
   );
 }
 
-// ─── Clinic Row (table row with accordion) ────────────────────────────────────
+// ─── Clinic Card (Stitch-style) ───────────────────────────────────────────────
 function ClinicRow({
-  clinic, doctors, isExpanded, isLast, accentColor,
+  clinic, doctors, isExpanded, accentColor, discountPercent,
   onToggleExpand, onToggleClinic, onEditClinic, onDeleteClinic,
-  onAddDoctor, onToggleDoctor, onEditDoctor, onDeleteDoctor,
+  onSetDiscount, onAddDoctor, onToggleDoctor, onEditDoctor, onDeleteDoctor,
 }: {
-  clinic: Clinic; doctors: Doctor[]; isExpanded: boolean; isLast: boolean; accentColor: string;
+  clinic: Clinic; doctors: Doctor[]; isExpanded: boolean; accentColor: string;
+  discountPercent: number | null;
   onToggleExpand: () => void; onToggleClinic: () => void;
   onEditClinic: () => void; onDeleteClinic: () => void;
+  onSetDiscount: () => void;
   onAddDoctor: () => void;
   onToggleDoctor: (d: Doctor) => void;
   onEditDoctor: (d: Doctor) => void;
   onDeleteDoctor: (d: Doctor) => void;
 }) {
   const cat = CLINIC_CATEGORIES.find(c => c.value === (clinic.category ?? 'klinik')) ?? CLINIC_CATEGORIES[0];
+  const primaryDoctor = doctors[0];
+  const extraDoctors  = Math.max(0, doctors.length - 1);
 
   return (
-    <View style={[!isLast && tbl.rowBorder]}>
-      {/* Table row */}
-      <TouchableOpacity style={[tbl.row, !clinic.is_active && tbl.rowInactive]} onPress={onToggleExpand} activeOpacity={0.7}>
-
-        {/* Clinic name */}
-        <View style={[tbl.col, { flex: 2.8, flexDirection: 'row', alignItems: 'center', gap: 10 }]}>
-          <View style={[tbl.catDot, { backgroundColor: cat.color + '18' }]}>
-            <MaterialCommunityIcons name={cat.icon as any} size={14} color={cat.color} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={tbl.name} numberOfLines={1}>{clinic.name}</Text>
-            {clinic.contact_person ? (
-              <Text style={tbl.meta} numberOfLines={1}>{clinic.contact_person}</Text>
-            ) : null}
-          </View>
-          {!clinic.is_active && (
-            <View style={tbl.inactivePill}><Text style={tbl.inactivePillText}>PASİF</Text></View>
-          )}
+    <View style={[cc.card, !clinic.is_active && cc.cardInactive]}>
+      {/* Card main row */}
+      <View style={cc.rowMain}>
+        {/* Icon box */}
+        <View style={[cc.iconBox, { backgroundColor: clinic.is_active ? cat.bg : '#F1F5F9' }]}>
+          <MaterialCommunityIcons
+            name={cat.icon as any}
+            size={26}
+            color={clinic.is_active ? cat.color : '#94A3B8'}
+          />
         </View>
 
-        {/* Category */}
-        <View style={[tbl.col, { flex: 1.1 }]}>
-          <View style={[tbl.badge, { backgroundColor: cat.bg }]}>
-            <Text style={[tbl.badgeText, { color: cat.color }]}>{cat.label}</Text>
+        {/* Middle content */}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <View style={cc.badgeRow}>
+            <View style={[cc.catPill, { backgroundColor: clinic.is_active ? cat.bg : '#F1F5F9' }]}>
+              <Text style={[cc.catPillText, { color: clinic.is_active ? cat.color : '#94A3B8' }]}>
+                {cat.label}
+              </Text>
+            </View>
+            {!clinic.is_active && (
+              <View style={cc.inactiveBadge}>
+                <Text style={cc.inactiveBadgeText}>PASİF</Text>
+              </View>
+            )}
           </View>
-        </View>
-
-        {/* Doctor count */}
-        <Text style={[tbl.cell, { flex: 0.7, textAlign: 'center' }]}>
-          {doctors.length > 0 ? doctors.length : '—'}
-        </Text>
-
-        {/* Phone */}
-        <Text style={[tbl.cellMuted, { flex: 1.4 }]} numberOfLines={1}>
-          {clinic.phone || '—'}
-        </Text>
-
-        {/* Status */}
-        <View style={[tbl.col, { flex: 0.9, alignItems: 'center' }]}>
-          <View style={[tbl.statusPill, { backgroundColor: clinic.is_active ? '#D1FAE5' : '#F3F4F6' }]}>
-            <Text style={[tbl.statusPillText, { color: clinic.is_active ? '#059669' : '#9CA3AF' }]}>
-              {clinic.is_active ? 'Aktif' : 'Pasif'}
+          <Text style={cc.name} numberOfLines={1}>{clinic.name}</Text>
+          <View style={cc.subRow}>
+            <Feather
+              name={extraDoctors > 0 ? 'users' : 'user'}
+              size={14}
+              color="#94A3B8"
+            />
+            <Text style={cc.subText} numberOfLines={1}>
+              {primaryDoctor
+                ? (extraDoctors > 0
+                    ? `${primaryDoctor.full_name} · +${extraDoctors} hekim daha`
+                    : primaryDoctor.full_name)
+                : (clinic.contact_person || 'Henüz hekim eklenmemiş')}
             </Text>
           </View>
         </View>
 
-        {/* Actions */}
-        <View style={tbl.actions}>
-          <TouchableOpacity style={tbl.iconBtn} onPress={(e) => { e.stopPropagation?.(); onEditClinic(); }} activeOpacity={0.7}>
-            <Feather name="edit-2" size={13} color="#6C6C70" />
+        {/* Right actions */}
+        {clinic.is_active ? (
+          <View style={cc.actions}>
+            <TouchableOpacity style={cc.iconBtn} onPress={onEditClinic} activeOpacity={0.7}>
+              <Feather name="edit-2" size={16} color="#64748B" />
+            </TouchableOpacity>
+            <TouchableOpacity style={cc.iconBtn} onPress={onDeleteClinic} activeOpacity={0.7}>
+              <Feather name="trash-2" size={16} color={ERR} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[cc.chevronBtn, isExpanded && { backgroundColor: accentColor + '14' }]}
+              onPress={onToggleExpand}
+              activeOpacity={0.7}
+            >
+              <Feather
+                name={isExpanded ? 'chevron-up' : 'chevron-right'}
+                size={18}
+                color={isExpanded ? accentColor : '#475569'}
+              />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={[cc.reactivateBtn, { borderColor: accentColor + '33' }]}
+            onPress={onToggleClinic}
+            activeOpacity={0.75}
+          >
+            <Feather name="refresh-cw" size={13} color={accentColor} />
+            <Text style={[cc.reactivateText, { color: accentColor }]}>Aktif Et</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={tbl.iconBtn} onPress={(e) => { e.stopPropagation?.(); onDeleteClinic(); }} activeOpacity={0.7}>
-            <Feather name="trash-2" size={13} color={ERR} />
-          </TouchableOpacity>
-          <Feather name={isExpanded ? 'chevron-up' : 'chevron-down'} size={16} color="#AEAEB2" />
-        </View>
-      </TouchableOpacity>
+        )}
+      </View>
 
       {/* Expanded body */}
-      {isExpanded && (
-        <View style={tbl.expanded}>
-
-          {/* Clinic info */}
+      {isExpanded && clinic.is_active && (
+        <View style={cc.expanded}>
           {(clinic.phone || clinic.email || clinic.address) && (
-            <View style={tbl.detailBlock}>
+            <View style={cc.infoBlock}>
               {clinic.phone   && <InfoRow icon="phone"   text={clinic.phone} />}
               {clinic.email   && <InfoRow icon="mail"    text={clinic.email} />}
               {clinic.address && (() => {
@@ -638,29 +729,35 @@ function ClinicRow({
             </View>
           )}
 
-          {/* Doctors */}
           {doctors.length > 0 && (
             <View>
-              <Text style={tbl.subLabel}>HEKİMLER</Text>
-              {doctors.map((d, i) => (
-                <DoctorRow
-                  key={d.id}
-                  doctor={d}
-                  isLast={i === doctors.length - 1}
-                  accentColor={accentColor}
-                  onToggle={() => onToggleDoctor(d)}
-                  onEdit={() => onEditDoctor(d)}
-                  onDelete={() => onDeleteDoctor(d)}
-                />
-              ))}
+              <Text style={cc.subLabel}>Hekimler</Text>
+              <View style={cc.doctorList}>
+                {doctors.map((d, i) => (
+                  <DoctorRow
+                    key={d.id}
+                    doctor={d}
+                    isLast={i === doctors.length - 1}
+                    accentColor={accentColor}
+                    onToggle={() => onToggleDoctor(d)}
+                    onEdit={() => onEditDoctor(d)}
+                    onDelete={() => onDeleteDoctor(d)}
+                  />
+                ))}
+              </View>
             </View>
           )}
 
-          {/* Add doctor + toggle footer */}
-          <View style={tbl.expandedFooter}>
-            <TouchableOpacity style={tbl.addDoctorBtn} onPress={onAddDoctor} activeOpacity={0.7}>
-              <Feather name="user-plus" size={13} color="#6C6C70" />
-              <Text style={tbl.addDoctorText}>Bu kliniğe hekim ekle</Text>
+          <View style={cc.expandedFooter}>
+            <TouchableOpacity style={cc.addDoctorBtn} onPress={onAddDoctor} activeOpacity={0.7}>
+              <Feather name="user-plus" size={14} color={accentColor} />
+              <Text style={[cc.addDoctorText, { color: accentColor }]}>Bu kliniğe hekim ekle</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={cc.discountBtn} onPress={onSetDiscount} activeOpacity={0.7}>
+              <MaterialCommunityIcons name={'percent' as any} size={13} color="#7C3AED" />
+              <Text style={cc.discountBtnText}>
+                {discountPercent != null && discountPercent > 0 ? `%${discountPercent} İndirim` : 'İndirim Ekle'}
+              </Text>
             </TouchableOpacity>
             <View style={{ flex: 1 }} />
             <AppSwitch
@@ -668,7 +765,7 @@ function ClinicRow({
               onValueChange={onToggleClinic}
               accentColor={accentColor}
             />
-            <Text style={tbl.activeLabel}>{clinic.is_active ? 'Aktif' : 'Pasif'}</Text>
+            <Text style={cc.activeLabel}>Aktif</Text>
           </View>
         </View>
       )}
@@ -1281,88 +1378,225 @@ const dm = StyleSheet.create({
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
-  safe:      { flex: 1, backgroundColor: '#FFFFFF' },
+  safe:      { flex: 1, backgroundColor: '#F7F9FB' },
   container: { padding: 20, paddingBottom: 60 },
 
-  toolbarRow: {
-    flexDirection: 'row', alignItems: 'center',
-    marginBottom: 12,
+  // ── Page layout ────────────────────────────────────────────
+  pageWrap:       { flexDirection: 'column', gap: 24 },
+  pageWrapRow:    { flexDirection: 'row', gap: 32, alignItems: 'flex-start' },
+  mainCol:        { flex: 1 },
+  mainColDesktop: { maxWidth: 820 },
+  sidebar:        { gap: 16 },
+  sidebarDesktop: { width: 320, flexShrink: 0, gap: 16 },
+
+  // ── Header ─────────────────────────────────────────────────
+  header:    { flexDirection: 'column', alignItems: 'stretch', gap: 16, marginBottom: 24 },
+  headerRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16 },
+  headerTitle: {
+    fontSize: 34, fontWeight: '700', color: '#0F172A',
+    letterSpacing: -0.5, lineHeight: 38, marginBottom: 6,
   },
-  rightGroup: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
+  headerSub: { fontSize: 14, color: '#64748B', lineHeight: 20 },
+  headerSearchWrap: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#E6E8EA', borderRadius: 12,
+    paddingHorizontal: 14, height: 42, width: '100%',
+    maxWidth: 260, alignSelf: 'stretch',
   },
+  headerSearchWrapFocused: { backgroundColor: '#FFFFFF' },
+  headerSearchInput: { flex: 1, fontSize: 14, color: '#0F172A', height: 42, outlineStyle: 'none' } as any,
+
+  // ── Tabs row (Stitch) ──────────────────────────────────────
+  tabsWrap:    { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 20 },
+  tabsContent: { gap: 4, alignItems: 'center', paddingRight: 8 },
+  pill: {
+    paddingHorizontal: 22, paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: 'transparent',
+    position: 'relative',
+  },
+  pillBg: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+  },
+  pillHoverBg: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 999,
+    backgroundColor: '#EEF2F6',
+  },
+  pillText: { fontSize: 12, fontWeight: '600', color: '#64748B', letterSpacing: 0.2 },
+
+  tabsRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  searchInline: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    height: 38, paddingHorizontal: 12,
+    backgroundColor: '#FFFFFF', borderRadius: 999,
+    borderWidth: 1, borderColor: '#E2E8F0',
+    width: 240,
+  },
+  searchInlineInput: {
+    flex: 1, fontSize: 13, color: '#0F172A', height: 38,
+    // @ts-ignore
+    outlineStyle: 'none',
+  } as any,
   iconBtn: {
-    width: 34, height: 34, borderRadius: 9,
+    width: 38, height: 38, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#F2F4F6',
+  },
+  iconBtnActive: { backgroundColor: '#E6E8EA' },
+
+  filterBadge: {
+    position: 'absolute', top: 4, right: 4,
+    width: 14, height: 14, borderRadius: 7,
     alignItems: 'center', justifyContent: 'center',
   },
-  iconBtnActive: {
-    backgroundColor: '#F1F5F9',
-  },
-  searchRow: {
-    marginBottom: 12,
-  },
-  searchWrap: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#F8FAFC', borderRadius: 12,
-    borderWidth: 1, borderColor: '#F1F5F9',
-    paddingHorizontal: 12, height: 42,
-  },
-  searchWrapFocused: {
-    borderColor: '#CBD5E1',
-  },
-  searchInput: { flex: 1, fontSize: 14, color: '#1C1C1E', height: 42, outlineStyle: 'none' } as any,
+  filterBadgeText: { fontSize: 8, fontWeight: '800', color: '#FFFFFF' },
 
   addBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 14, height: 38, borderRadius: 10,
   },
-  addBtnText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
+  addBtnText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF', letterSpacing: 0.2 },
+
+  // ── Card list ──────────────────────────────────────────────
+  cardList: { gap: 16 },
 
   empty:      { alignItems: 'center', paddingTop: 60, gap: 10 },
   emptyTitle: { fontSize: 16, fontWeight: '700', color: '#1C1C1E' },
   emptySub:   { fontSize: 13, color: '#AEAEB2' },
 
-  // Tab bar (orders-page pill style)
-  tabsScroll: { flex: 1 },
-  tabsContent: { alignItems: 'center', paddingRight: 8 },
-  tabBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F1F5F9',
-    borderRadius: 100,
-    padding: 3,
-    gap: 2,
-  },
-  tabItem: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 100,
-  },
-  tabItemActive: {
-    backgroundColor: '#FFFFFF',
-    // @ts-ignore
-    boxShadow: '0 1px 6px rgba(15,23,42,0.12)',
-  },
-  tabText: {
-    fontSize: 13, fontWeight: '500', color: '#94A3B8',
-  },
-  tabTextActive: {
-    fontSize: 13, fontWeight: '600', color: '#0F172A',
-  },
-
-  filterBadge: {
-    position: 'absolute', top: 4, right: 4,
-    width: 14, height: 14, borderRadius: 7,
-    backgroundColor: '#0F172A',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  filterBadgeText: { fontSize: 8, fontWeight: '700', color: '#FFFFFF' },
-
-  unassignedSection: { marginTop: 20 },
+  // ── Unassigned doctors ─────────────────────────────────────
+  unassignedSection: { marginTop: 16 },
   unassignedHeader:  { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
   unassignedLabel:   { fontSize: 11, fontWeight: '700', color: '#AEAEB2', textTransform: 'uppercase', letterSpacing: 0.8 },
   countBadge:        { backgroundColor: '#F1F5F9', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2 },
   countBadgeText:    { fontSize: 11, fontWeight: '700', color: '#6C6C70' },
+});
+
+// ── Clinic card styles (Stitch) ───────────────────────────────
+const cc = StyleSheet.create({
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(195,198,215,0.25)',
+    padding: 20,
+    // @ts-ignore
+    boxShadow: '0 4px 16px rgba(15,23,42,0.03)',
+  },
+  cardInactive: { opacity: 0.7 },
+
+  rowMain:  { flexDirection: 'row', alignItems: 'center', gap: 16 },
+
+  iconBox: {
+    width: 56, height: 56, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+
+  badgeRow:    { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  catPill: {
+    borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2,
+  },
+  catPillText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase' },
+
+  inactiveBadge:     { backgroundColor: '#FEF2F2', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
+  inactiveBadgeText: { fontSize: 9, fontWeight: '800', color: ERR, letterSpacing: 0.6 },
+
+  name: { fontSize: 17, fontWeight: '700', color: '#0F172A', letterSpacing: -0.2, lineHeight: 22 },
+
+  subRow:  { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  subText: { fontSize: 13, color: '#64748B', flex: 1 },
+
+  actions: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
+  iconBtn: {
+    width: 36, height: 36, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  chevronBtn: {
+    width: 40, height: 40, borderRadius: 20, marginLeft: 4,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#F2F4F6',
+  },
+
+  reactivateBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 14, paddingVertical: 8,
+    borderRadius: 10, borderWidth: 1.5, backgroundColor: '#FFFFFF',
+  },
+  reactivateText: { fontSize: 13, fontWeight: '700' },
+
+  // Expanded
+  expanded: {
+    marginTop: 16, paddingTop: 16,
+    borderTopWidth: 1, borderTopColor: '#F1F5F9',
+    gap: 10,
+  },
+  infoBlock: { gap: 6, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+
+  subLabel: {
+    fontSize: 10, fontWeight: '800', color: '#94A3B8',
+    letterSpacing: 0.8, textTransform: 'uppercase',
+    marginTop: 6, marginBottom: 8,
+  },
+  doctorList: {
+    backgroundColor: '#F7F9FB',
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1, borderColor: '#F1F5F9',
+  },
+
+  expandedFooter: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    marginTop: 6,
+  },
+  addDoctorBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingVertical: 6,
+  },
+  addDoctorText: { fontSize: 13, fontWeight: '600' },
+  activeLabel:   { fontSize: 12, color: '#64748B', fontWeight: '500' },
+  discountBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 8, backgroundColor: '#EDE9FE', marginLeft: 8,
+  },
+  discountBtnText: { fontSize: 12, fontWeight: '700', color: '#7C3AED' },
+});
+
+// ── Sidebar styles (Network Summary + Quick Actions) ─────────
+const sb = StyleSheet.create({
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(195,198,215,0.25)',
+    padding: 22,
+    // @ts-ignore
+    boxShadow: '0 8px 24px rgba(15,23,42,0.04)',
+  },
+  label: {
+    fontSize: 10, fontWeight: '800', color: '#64748B',
+    letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 18,
+  },
+
+  row:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  rowDivider: { paddingTop: 16, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+  rowLeft:    { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  circle: {
+    width: 40, height: 40, borderRadius: 20,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  rowLabel: { fontSize: 14, fontWeight: '600', color: '#0F172A' },
+  rowValue: { fontSize: 20, fontWeight: '800', color: '#0F172A', letterSpacing: -0.3 },
+
+  action: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 12, paddingVertical: 11,
+    borderRadius: 10,
+  },
+  actionText: { fontSize: 14, fontWeight: '500', color: '#0F172A' },
 });
 
 // Table styles — mirrors orders page
@@ -1704,4 +1938,147 @@ const fp = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   applyText: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
+});
+
+// ─── Discount Modal ────────────────────────────────────────────────────────────
+function DiscountModal({
+  clinic,
+  currentDiscount,
+  onClose,
+  onSaved,
+}: {
+  clinic: { id: string; name: string } | null;
+  currentDiscount: number | null;
+  onClose: () => void;
+  onSaved: (clinicId: string, percent: number) => void;
+}) {
+  const [value, setValue] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+
+  React.useEffect(() => {
+    if (clinic) setValue(currentDiscount != null ? String(currentDiscount) : '');
+  }, [clinic, currentDiscount]);
+
+  const handleSave = async () => {
+    const pct = Number(value.replace(',', '.'));
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+      toast.error('İndirim oranı 0 ile 100 arasında olmalıdır.');
+      return;
+    }
+    if (!clinic) return;
+    setSaving(true);
+    const { error } = await supabase
+      .from('clinic_discounts')
+      .upsert({ clinic_id: clinic.id, discount_percent: pct }, { onConflict: 'clinic_id' });
+    setSaving(false);
+    if (error) { toast.error(error.message); return; }
+    onSaved(clinic.id, pct);
+  };
+
+  const handleRemove = async () => {
+    if (!clinic) return;
+    setSaving(true);
+    await supabase.from('clinic_discounts').delete().eq('clinic_id', clinic.id);
+    setSaving(false);
+    onSaved(clinic.id, 0);
+  };
+
+  return (
+    <Modal visible={!!clinic} animationType="fade" transparent onRequestClose={onClose}>
+      <View style={dsc.overlay}>
+        <View style={dsc.card}>
+          <View style={dsc.header}>
+            <View style={dsc.iconWrap}>
+              <MaterialCommunityIcons name={'percent' as any} size={18} color="#7C3AED" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={dsc.title}>Klinik İndirimi</Text>
+              <Text style={dsc.sub} numberOfLines={1}>{clinic?.name}</Text>
+            </View>
+            <TouchableOpacity onPress={onClose} style={dsc.closeBtn}>
+              <Feather name="x" size={16} color="#94A3B8" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={dsc.body}>
+            <Text style={dsc.label}>İndirim Oranı (%)</Text>
+            <View style={dsc.inputRow}>
+              <TextInput
+                style={dsc.input}
+                value={value}
+                onChangeText={setValue}
+                keyboardType="decimal-pad"
+                placeholder="Örn: 10"
+                placeholderTextColor="#94A3B8"
+                maxLength={5}
+              />
+              <View style={dsc.suffix}>
+                <Text style={dsc.suffixText}>%</Text>
+              </View>
+            </View>
+            <Text style={dsc.hint}>
+              Bu oran yeni fatura oluştururken otomatik uygulanır. 0 girerek indirim kaldırabilirsiniz.
+            </Text>
+
+            {currentDiscount != null && currentDiscount > 0 && (
+              <TouchableOpacity style={dsc.removeBtn} onPress={handleRemove} disabled={saving} activeOpacity={0.8}>
+                <Feather name="trash-2" size={13} color="#DC2626" />
+                <Text style={dsc.removeBtnText}>İndirimi Kaldır</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <View style={dsc.footer}>
+            <TouchableOpacity style={dsc.cancelBtn} onPress={onClose} disabled={saving}>
+              <Text style={dsc.cancelText}>İptal</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[dsc.saveBtn, saving && { opacity: 0.5 }]}
+              onPress={handleSave}
+              disabled={saving}
+              activeOpacity={0.85}
+            >
+              <Text style={dsc.saveText}>{saving ? 'Kaydediliyor…' : 'Kaydet'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const dsc = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  card: { backgroundColor: '#fff', borderRadius: 20, width: '100%', maxWidth: 400, overflow: 'hidden' },
+  header: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 20, paddingVertical: 16,
+    borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
+  },
+  iconWrap: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#EDE9FE', alignItems: 'center', justifyContent: 'center' },
+  title: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
+  sub: { fontSize: 11, color: '#64748B', marginTop: 1 },
+  closeBtn: { width: 28, height: 28, borderRadius: 8, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
+  body: { padding: 20, gap: 4 },
+  label: { fontSize: 11, fontWeight: '700', color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
+  inputRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, overflow: 'hidden' },
+  input: { flex: 1, fontSize: 22, fontWeight: '800', color: '#0F172A', paddingHorizontal: 16, paddingVertical: 12 },
+  suffix: { paddingHorizontal: 16, borderLeftWidth: 1, borderLeftColor: '#E2E8F0', backgroundColor: '#F8FAFC' },
+  suffixText: { fontSize: 20, fontWeight: '800', color: '#7C3AED' },
+  hint: { fontSize: 12, color: '#94A3B8', lineHeight: 17, marginTop: 8 },
+  removeBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    marginTop: 12, paddingVertical: 8, paddingHorizontal: 12,
+    borderRadius: 8, backgroundColor: '#FEF2F2', alignSelf: 'flex-start',
+  },
+  removeBtnText: { fontSize: 12, fontWeight: '700', color: '#DC2626' },
+  footer: {
+    flexDirection: 'row', gap: 8,
+    paddingHorizontal: 20, paddingVertical: 14,
+    borderTopWidth: 1, borderTopColor: '#F1F5F9',
+  },
+  cancelBtn: { flex: 1, paddingVertical: 11, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center' },
+  cancelText: { fontSize: 14, fontWeight: '600', color: '#64748B' },
+  saveBtn: { flex: 2, paddingVertical: 11, borderRadius: 10, backgroundColor: '#7C3AED', alignItems: 'center' },
+  saveText: { fontSize: 14, fontWeight: '700', color: '#fff' },
 });

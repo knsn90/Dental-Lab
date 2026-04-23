@@ -4,9 +4,9 @@ const Colors = {
   primaryDark: '#1D4ED8',    // Dark blue
   primaryLight: '#EFF6FF',   // Primary light background (blue tint)
   primaryMid: '#3B82F6',     // Mid blue (for accents)
-  background: '#E8EDF5',     // Page background
+  background: '#FFFFFF',     // Page background
   surface: '#FFFFFF',        // Card/surface background
-  border: '#E2E8F0',         // Default border
+  border: '#F1F5F9',         // Default border
   borderLight: '#F1F5F9',    // Subtle border
 
   textPrimary: '#0F172A',

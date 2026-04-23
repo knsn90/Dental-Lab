@@ -9,6 +9,7 @@ import {
   Image,
   Platform,
 } from 'react-native';
+import { toast } from '../../../core/ui/Toast';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -54,7 +55,7 @@ const INITIAL_FORM: FormData = {
   photo_uris: [],
 };
 
-export function DoctorNewOrderScreen() {
+export function DoctorNewOrderScreen({ onClose }: { onClose?: () => void } = {}) {
   const router = useRouter();
   const { profile } = useAuthStore();
   const [step, setStep] = useState<Step>(1);
@@ -117,7 +118,7 @@ export function DoctorNewOrderScreen() {
     });
 
     if (error || !order) {
-      Alert.alert('Hata', (error as any)?.message ?? 'İş emri oluşturulamadı.');
+      toast.error((error as any)?.message ?? 'İş emri oluşturulamadı.');
       setLoading(false);
       return;
     }
@@ -128,9 +129,10 @@ export function DoctorNewOrderScreen() {
     }
 
     setLoading(false);
-    Alert.alert('Başarılı', `${order.order_number} numaralı iş emri oluşturuldu.`, [
-      { text: 'Tamam', onPress: () => { setForm(INITIAL_FORM); setStep(1); router.push('/(doctor)'); } },
-    ]);
+    toast.success(`${order.order_number} numaralı iş emri oluşturuldu.`);
+    setForm(INITIAL_FORM);
+    setStep(1);
+    if (onClose) { onClose(); } else { router.push('/(doctor)'); }
   };
 
   return (

@@ -72,9 +72,8 @@ const s = StyleSheet.create({
     flexDirection:   'column',
   },
   horizontal: {
-    top:             16,
-    left:            '50%',
-    transform:       [{ translateX: -80 }],
+    top:             64,
+    left:            12,
     flexDirection:   'row',
   },
   btn: {
@@ -93,9 +92,10 @@ const s = StyleSheet.create({
 interface ViewPresetsProps {
   value:    'front' | 'top' | 'right' | 'left' | 'iso';
   onChange: (v: 'front' | 'top' | 'right' | 'left' | 'iso') => void;
+  isMobile?: boolean;
 }
 
-export function ViewPresets({ value, onChange }: ViewPresetsProps) {
+export function ViewPresets({ value, onChange, isMobile }: ViewPresetsProps) {
   const presets = [
     { id: 'front', label: 'Ön' },
     { id: 'top',   label: 'Üst' },
@@ -104,7 +104,7 @@ export function ViewPresets({ value, onChange }: ViewPresetsProps) {
     { id: 'iso',   label: 'İzo' },
   ] as const;
   return (
-    <View style={vps.pills}>
+    <View style={isMobile ? vps.pillsMobile : vps.pills}>
       {presets.map((p) => {
         const active = value === p.id;
         return (
@@ -129,6 +129,25 @@ const vps = StyleSheet.create({
     left:            '50%',
     transform:       [{ translateX: -110 }],
     flexDirection:   'row',
+    alignItems:      'center',
+    gap:             4,
+    backgroundColor: '#FFFFFF',
+    borderWidth:     1,
+    borderColor:     '#F1F5F9',
+    borderRadius:    999,
+    padding:         4,
+    shadowColor:     '#000',
+    shadowOpacity:   0.04,
+    shadowRadius:    8,
+    shadowOffset:    { width: 0, height: 2 },
+  },
+  pillsMobile: {
+    position:        'absolute',
+    top:             112,
+    left:            12,
+    flexDirection:   'row',
+    alignItems:      'center',
+    alignSelf:       'flex-start',
     gap:             4,
     backgroundColor: '#FFFFFF',
     borderWidth:     1,

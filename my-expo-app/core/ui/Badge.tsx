@@ -10,8 +10,8 @@ interface BadgeProps {
 
 export function Badge({
   label,
-  color = '#EFF6FF',
-  textColor = '#2563EB',
+  color = '#F1F5F9',
+  textColor = '#0F172A',
   size = 'md',
 }: BadgeProps) {
   return (

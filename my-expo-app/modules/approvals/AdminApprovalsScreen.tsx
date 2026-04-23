@@ -5,6 +5,7 @@ import { PendingApprovalsScreen } from './PendingApprovalsScreen';
 import { DesignApprovalsScreen } from './DesignApprovalsScreen';
 import { usePendingApprovals as useDesignApprovals } from './hooks/usePendingApprovals';
 import { F } from '../../core/theme/typography';
+import { SlideTabBar } from '../../core/ui/SlideTabBar';
 
 type Tab = 'doctors' | 'design';
 
@@ -13,14 +14,14 @@ export function AdminApprovalsScreen() {
   const { approvals }     = useDesignApprovals();
   const designPending     = approvals.length;
 
-  const TABS: { key: Tab; label: string; badge?: number }[] = [
+  const TABS: { key: Tab; label: string; count?: number }[] = [
     { key: 'doctors', label: 'Hekim Kayıtları' },
-    { key: 'design',  label: 'Tasarım Onayları', badge: designPending > 0 ? designPending : undefined },
+    { key: 'design',  label: 'Tasarım Onayları', count: designPending > 0 ? designPending : undefined },
   ];
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
-      {/* Pill tab bar — matches ClinicsScreen style */}
+      {/* Slide tab bar — tek kayan cursor */}
       <View style={s.toolbarRow}>
         <ScrollView
           horizontal
@@ -28,26 +29,12 @@ export function AdminApprovalsScreen() {
           style={s.tabsScroll}
           contentContainerStyle={s.tabsContent}
         >
-          <View style={s.tabBar}>
-            {TABS.map(t => {
-              const active = tab === t.key;
-              return (
-                <TouchableOpacity
-                  key={t.key}
-                  style={[s.tabItem, active && s.tabItemActive]}
-                  onPress={() => setTab(t.key)}
-                  activeOpacity={0.75}
-                >
-                  <Text style={[s.tabText, active && s.tabTextActive]}>{t.label}</Text>
-                  {t.badge !== undefined && (
-                    <View style={s.badge}>
-                      <Text style={s.badgeText}>{t.badge}</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          <SlideTabBar
+            items={TABS}
+            activeKey={tab}
+            onChange={setTab}
+            accentColor="#0F172A"
+          />
         </ScrollView>
       </View>
 
@@ -69,9 +56,7 @@ const s = StyleSheet.create({
   tabsScroll:  { flex: 1 },
   tabsContent: { alignItems: 'center' },
   tabBar: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#F1F5F9', borderRadius: 100,
-    padding: 3, gap: 2,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
   },
   tabItem: {
     flexDirection: 'row', alignItems: 'center', gap: 6,

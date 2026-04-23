@@ -13,11 +13,11 @@ import { useRouter } from 'expo-router';
 import { useSalesReport } from '../../../modules/admin/reports/hooks';
 
 const C = {
-  primary: '#2563EB', primaryBg: '#EFF6FF',
+  primary: '#0F172A', primaryBg: '#F1F5F9',
   accent: '#7C3AED', accentBg: '#F5F3FF',
-  background: '#E8EDF5', surface: '#FFFFFF', surfaceAlt: '#F8FAFC',
+  background: '#FFFFFF', surface: '#FFFFFF', surfaceAlt: '#F8FAFC',
   textPrimary: '#0F172A', textSecondary: '#64748B', textMuted: '#94A3B8',
-  border: '#E2E8F0',
+  border: '#F1F5F9',
   success: '#059669', successBg: '#ECFDF5',
   warning: '#D97706', warningBg: '#FFFBEB',
   danger: '#DC2626', dangerBg: '#FEF2F2',

@@ -12,20 +12,21 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAdminUserDetail } from '../../../modules/admin/users/hooks';
+import { AppSwitch } from '../../../core/ui/AppSwitch';
 
 const C = {
-  primary: '#2563EB', primaryBg: '#EFF6FF',
+  primary: '#0F172A', primaryBg: '#F1F5F9',
   accent: '#7C3AED', accentBg: '#F5F3FF',
-  background: '#E8EDF5', surface: '#FFFFFF', surfaceAlt: '#F8FAFC',
+  background: '#FFFFFF', surface: '#FFFFFF', surfaceAlt: '#F8FAFC',
   textPrimary: '#0F172A', textSecondary: '#64748B', textMuted: '#94A3B8',
-  border: '#E2E8F0',
+  border: '#F1F5F9',
   success: '#059669', successBg: '#ECFDF5',
   warning: '#D97706', warningBg: '#FFFBEB',
   danger: '#DC2626', dangerBg: '#FEF2F2',
 };
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: string }> = {
-  alindi:           { label: 'Alındı',          color: '#2563EB', bgColor: '#EFF6FF' },
+  alindi:           { label: 'Alındı',          color: '#0F172A', bgColor: '#F1F5F9' },
   uretimde:         { label: 'Üretimde',         color: '#D97706', bgColor: '#FFFBEB' },
   kalite_kontrol:   { label: 'Kalite Kontrol',   color: '#7C3AED', bgColor: '#F5F3FF' },
   teslimata_hazir:  { label: 'Teslimata Hazır',  color: '#059669', bgColor: '#ECFDF5' },
@@ -125,11 +126,10 @@ export default function AdminUserDetailScreen() {
             </View>
             <View style={styles.activeToggleRow}>
               <Text style={styles.activeLabel}>{user.is_active ? 'Aktif' : 'Pasif'}</Text>
-              <Switch
+              <AppSwitch
                 value={user.is_active}
                 onValueChange={() => toggleActive(user.is_active)}
-                trackColor={{ false: C.border, true: C.success }}
-                thumbColor="#FFFFFF"
+                accentColor="#0F172A"
               />
             </View>
           </View>

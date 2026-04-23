@@ -54,7 +54,8 @@ export async function fetchWorkOrderById(id: string) {
       doctor:doctors!work_orders_doctor_id_fkey(id, full_name, phone, clinic:clinics(id, name)),
       assignee:profiles!work_orders_assigned_to_fkey(id, full_name, role),
       photos:work_order_photos(*),
-      status_history(*, changer:profiles!status_history_changed_by_fkey(id, full_name, role))
+      status_history(*, changer:profiles!status_history_changed_by_fkey(id, full_name, role)),
+      order_items(*)
     `
     )
     .eq('id', id)

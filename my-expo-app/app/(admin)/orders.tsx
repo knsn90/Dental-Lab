@@ -12,7 +12,6 @@ import {
   Modal,
   ActivityIndicator,
 } from 'react-native';
-import Svg, { Circle } from 'react-native-svg';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -26,6 +25,8 @@ import { WorkOrder, WorkOrderStatus } from '../../modules/orders/types';
 import { useAuthStore } from '../../core/store/authStore';
 import { C } from '../../core/theme/colors';
 import { F } from '../../core/theme/typography';
+import { SlideTabBar } from '../../core/ui/SlideTabBar';
+import { IconBtn } from '../../core/ui/IconBtn';
 import { useAssignTechnician } from '../../modules/admin/orders/hooks';
 
 const STATUS_FILTERS: { value: WorkOrderStatus | 'all'; label: string }[] = [
@@ -252,23 +253,12 @@ export default function AdminOrdersScreen() {
             style={s.statusTabsScroll}
             contentContainerStyle={s.statusTabsContent}
           >
-            <View style={s.statusTabBar}>
-              {STATUS_FILTERS.map((item) => {
-                const active = statusFilter === item.value;
-                return (
-                  <TouchableOpacity
-                    key={item.value}
-                    onPress={() => setStatusFilter(item.value)}
-                    style={[s.statusTab, active && s.statusTabActive]}
-                    activeOpacity={0.75}
-                  >
-                    <Text style={[s.statusTabText, active && s.statusTabTextActive]}>
-                      {item.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+            <SlideTabBar
+              items={STATUS_FILTERS.map(f => ({ key: String(f.value), label: f.label }))}
+              activeKey={String(statusFilter)}
+              onChange={(k) => setStatusFilter(k as any)}
+              accentColor="#0F172A"
+            />
           </ScrollView>
         ) : (
           <View style={{ flex: 1 }} />
@@ -276,63 +266,40 @@ export default function AdminOrdersScreen() {
 
         {/* Fixed right group — never shifts between modes */}
         <View style={s.rightGroup}>
-          {/* iOS Segmented Control — view mode */}
-          <View style={s.segControl}>
-            <TouchableOpacity
-              onPress={() => setViewMode('list')}
-              style={[s.segBtn, viewMode === 'list' && s.segBtnActive]}
-              activeOpacity={0.75}
-            >
-              <MaterialCommunityIcons
-                name={'format-list-text' as any}
-                size={16}
-                color={viewMode === 'list' ? '#0F172A' : '#94A3B8'}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setViewMode('kanban')}
-              style={[s.segBtn, viewMode === 'kanban' && s.segBtnActive]}
-              activeOpacity={0.75}
-            >
-              <MaterialCommunityIcons
-                name={'view-column' as any}
-                size={16}
-                color={viewMode === 'kanban' ? '#0F172A' : '#94A3B8'}
-              />
-            </TouchableOpacity>
-          </View>
+          {/* View mode toggle */}
+          <IconBtn active={viewMode === 'list'} onPress={() => setViewMode('list')}>
+            <MaterialCommunityIcons name={'format-list-text' as any} size={20} color={viewMode === 'list' ? '#0F172A' : '#64748B'} />
+          </IconBtn>
+          <IconBtn active={viewMode === 'kanban'} onPress={() => setViewMode('kanban')}>
+            <MaterialCommunityIcons name={'view-column' as any} size={20} color={viewMode === 'kanban' ? '#0F172A' : '#64748B'} />
+          </IconBtn>
 
           {/* Search */}
-          <TouchableOpacity
-            style={[s.iconBtn, (searchExpanded || search.length > 0) && s.iconBtnActive]}
+          <IconBtn
+            active={searchExpanded || search.length > 0}
             onPress={() => setSearchExpanded(!searchExpanded)}
-            activeOpacity={0.75}
           >
             <MaterialCommunityIcons
               name={'magnify' as any}
-              size={18}
-              color={(searchExpanded || search.length > 0) ? '#0F172A' : '#94A3B8'}
+              size={20}
+              color={(searchExpanded || search.length > 0) ? '#0F172A' : '#64748B'}
             />
-          </TouchableOpacity>
+          </IconBtn>
 
           {/* Filter — hidden in kanban mode */}
           {viewMode !== 'kanban' && (
-            <TouchableOpacity
-              style={[s.iconBtn, activeFilterCount > 0 && s.iconBtnActive]}
-              onPress={openFilterSheet}
-              activeOpacity={0.75}
-            >
+            <IconBtn active={activeFilterCount > 0} onPress={openFilterSheet} style={{ position: 'relative' }}>
               <MaterialCommunityIcons
                 name={'tune-variant' as any}
-                size={18}
-                color={activeFilterCount > 0 ? '#0F172A' : '#94A3B8'}
+                size={20}
+                color={activeFilterCount > 0 ? '#0F172A' : '#64748B'}
               />
               {activeFilterCount > 0 && (
                 <View style={s.filterBadge}>
                   <Text style={s.filterBadgeText}>{activeFilterCount}</Text>
                 </View>
               )}
-            </TouchableOpacity>
+            </IconBtn>
           )}
         </View>
       </View>
@@ -381,21 +348,12 @@ export default function AdminOrdersScreen() {
           {filtered.length === 0
             ? <EmptyState search={search} hasFilters={activeFilterCount > 0} />
             : (
-              <View style={tbl.card}>
-                {/* Table header */}
-                <View style={tbl.headerRow}>
-                  <Text style={[tbl.hCell, { flex: 2.2 }]}>İŞ EMRİ</Text>
-                  <Text style={[tbl.hCell, { flex: 1.6 }]}>İLERLEME</Text>
-                  <Text style={[tbl.hCell, { flex: 2 }]}>HEKİM / HASTA</Text>
-                  <Text style={[tbl.hCell, { flex: 1, textAlign: 'center' }]}>TESLİMAT</Text>
-                  <Text style={[tbl.hCell, { flex: 1.2, textAlign: 'right' }]}>DURUM</Text>
-                </View>
-
-                {filtered.map((item, idx) => (
-                  <OrderTableRow
+              <View style={card.list}>
+                {filtered.map((item) => (
+                  <OrderCard
                     key={item.id}
                     order={item}
-                    isLast={idx === filtered.length - 1}
+                    accent="#0F172A"
                     onPress={() => router.push(`/(admin)/order/${item.id}` as any)}
                     onAssign={item.status === 'alindi' && !item.assigned_to
                       ? () => openAssignModal(item)
@@ -654,39 +612,27 @@ const STATUS_PROGRESS: Record<string, number> = {
   alindi: 10, uretimde: 40, kalite_kontrol: 70, teslimata_hazir: 90, teslim_edildi: 100,
 };
 
-// ─── Circular Progress ────────────────────────────────────────────────────────
-function CircularProgress({ progress, size = 46, stroke = 4.5 }: {
-  progress: number; size?: number; stroke?: number;
-}) {
-  const r      = (size - stroke) / 2;
-  const circ   = 2 * Math.PI * r;
-  const offset = circ * (1 - Math.min(progress, 100) / 100);
-  const color  =
-    progress >= 100 ? '#10B981' :
-    progress >= 90  ? '#6D28D9' :
-    progress >= 70  ? '#7C3AED' :
-    progress >= 40  ? '#4F46E5' : '#0F172A';
-  return (
-    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      <Svg width={size} height={size} style={{ position: 'absolute' as any }}>
-        <Circle cx={size / 2} cy={size / 2} r={r} stroke="#F1F5F9" strokeWidth={stroke} fill="none" />
-        <Circle cx={size / 2} cy={size / 2} r={r}
-          stroke={color} strokeWidth={stroke} fill="none"
-          strokeDasharray={`${circ}`} strokeDashoffset={`${offset}`}
-          strokeLinecap="round" rotation="-90" origin={`${size / 2},${size / 2}`}
-        />
-      </Svg>
-      <Text style={{ fontSize: 9, fontWeight: '700', color: '#6C6C70' }}>{progress}%</Text>
-    </View>
-  );
+// ─── Status accent color for card left strip ──────────────────────────────────
+function getStatusAccent(status: WorkOrderStatus, isOverdue: boolean, primary: string) {
+  if (isOverdue) return '#EF4444';
+  switch (status) {
+    case 'alindi':          return '#94A3B8';
+    case 'uretimde':        return primary;
+    case 'kalite_kontrol':  return '#7C3AED';
+    case 'teslimata_hazir': return '#059669';
+    case 'teslim_edildi':   return '#10B981';
+    default:                return '#94A3B8';
+  }
 }
 
-// ─── Order Table Row ──────────────────────────────────────────────────────────
-function OrderTableRow({
-  order, isLast, onPress, onAssign,
+// ─── Order Card ───────────────────────────────────────────────────────────────
+function OrderCard({
+  order, onPress, onAssign, accent,
 }: {
-  order: WorkOrder; isLast: boolean;
-  onPress: () => void; onAssign?: () => void;
+  order: WorkOrder;
+  onPress: () => void;
+  onAssign?: () => void;
+  accent: string;
 }) {
   const cfg        = STATUS_CONFIG[order.status];
   const progress   = STATUS_PROGRESS[order.status] ?? 0;
@@ -705,66 +651,65 @@ function OrderTableRow({
     : due.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
   const dateColor = order.status === 'teslim_edildi' ? '#94A3B8'
     : diff < 0    ? '#EF4444'
-    : diff <= 1   ? '#F59E0B' : '#6C6C70';
+    : diff <= 1   ? '#D97706' : '#475569';
+  const dateIcon  = diff < 0 && order.status !== 'teslim_edildi' ? 'alert-circle-outline' : 'clock-outline';
 
-  const parts    = doctorName.trim().split(/\s+/);
-  const initials = parts.length >= 2
-    ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-    : doctorName.substring(0, 2).toUpperCase();
-  const PALETTE  = ['#6C63FF', '#FF6B9D', '#00C9A7', '#F59E0B', '#3B82F6', '#EF4444'];
-  let h = 0;
-  for (let i = 0; i < doctorName.length; i++) h = (h * 31 + doctorName.charCodeAt(i)) & 0xff;
-  const avatarBg = doctorName ? PALETTE[h % PALETTE.length] : '#94A3B8';
+  const stripColor = getStatusAccent(order.status, isOverdue, accent);
 
   return (
     <TouchableOpacity
-      style={[tbl.row, !isLast && tbl.rowBorder, isOverdue && tbl.rowOverdue]}
+      style={card.wrap}
       onPress={onPress}
-      activeOpacity={0.7}
+      activeOpacity={0.85}
     >
-      {/* İş Emri */}
-      <View style={{ flex: 2.2, gap: 3 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          {order.is_urgent && (
-            <MaterialCommunityIcons name={'lightning-bolt' as any} size={12} color="#F59E0B" />
+      <View style={[card.accentStrip, { backgroundColor: stripColor }]} />
+      <View style={card.body}>
+        <View style={card.topRow}>
+          <View style={card.topLeft}>
+            <View style={card.idRow}>
+              {order.is_urgent && (
+                <MaterialCommunityIcons name={'lightning-bolt' as any} size={12} color="#F59E0B" />
+              )}
+              <Text style={[card.orderNo, { color: accent }]} numberOfLines={1}>
+                #{order.order_number}
+              </Text>
+            </View>
+            <Text style={card.title} numberOfLines={1}>{order.work_type}</Text>
+            <View style={card.metaRow}>
+              <MaterialCommunityIcons name={'domain' as any} size={13} color="#94A3B8" />
+              <Text style={card.metaText} numberOfLines={1}>
+                {doctorName || '—'}
+                {clinicName ? `, ${clinicName}` : ''}
+              </Text>
+            </View>
+          </View>
+          <View style={card.topRight}>
+            <View style={[card.statusPill, { backgroundColor: cfg?.bgColor ?? '#F1F5F9' }]}>
+              <Text style={[card.statusText, { color: cfg?.color ?? '#6C6C70' }]} numberOfLines={1}>
+                {cfg?.label ?? order.status}
+              </Text>
+            </View>
+            <View style={card.timeRow}>
+              <MaterialCommunityIcons name={dateIcon as any} size={12} color={dateColor} />
+              <Text style={[card.timeText, { color: dateColor }]}>{dateText}</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={card.progressRow}>
+          <View style={card.progressTrack}>
+            <View style={[card.progressFill, { width: `${progress}%`, backgroundColor: stripColor }]} />
+          </View>
+          <Text style={card.progressText}>{progress}%</Text>
+          {onAssign && (
+            <TouchableOpacity
+              style={[card.assignBtn, { backgroundColor: accent }]}
+              onPress={(e) => { (e as any).stopPropagation?.(); onAssign(); }}
+              activeOpacity={0.8}
+            >
+              <Text style={card.assignBtnText}>Teknisyen Ata</Text>
+            </TouchableOpacity>
           )}
-          <Text style={tbl.orderNo} numberOfLines={1}>{order.order_number}</Text>
-        </View>
-        <Text style={tbl.workType} numberOfLines={1}>{order.work_type}</Text>
-      </View>
-
-      {/* İlerleme */}
-      <View style={{ flex: 1.8, alignItems: 'flex-start', paddingLeft: 4 }}>
-        <CircularProgress progress={progress} size={46} stroke={4.5} />
-      </View>
-
-      {/* Hekim / Hasta */}
-      <View style={{ flex: 2, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <View style={[tbl.avatar, { backgroundColor: avatarBg }]}>
-          <Text style={tbl.avatarText}>{initials || '?'}</Text>
-        </View>
-        <View style={{ flex: 1, gap: 2 }}>
-          <Text style={tbl.doctorName} numberOfLines={1}>{doctorName || '—'}</Text>
-          <Text style={tbl.clinicName} numberOfLines={1}>{clinicName || (order.patient_name ?? '—')}</Text>
-        </View>
-      </View>
-
-      {/* Teslimat */}
-      <View style={{ flex: 1, alignItems: 'center' }}>
-        <Text style={[tbl.dateText, { color: dateColor }]}>{dateText}</Text>
-        {onAssign && (
-          <TouchableOpacity style={tbl.assignBtn} onPress={(e) => { (e as any).stopPropagation?.(); onAssign(); }} activeOpacity={0.7}>
-            <Text style={tbl.assignBtnText}>Ata</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Durum */}
-      <View style={{ flex: 1.2, alignItems: 'flex-end' }}>
-        <View style={[tbl.statusBadge, { backgroundColor: cfg?.bgColor ?? '#F1F5F9' }]}>
-          <Text style={[tbl.statusText, { color: cfg?.color ?? '#6C6C70' }]} numberOfLines={1}>
-            {cfg?.label ?? order.status}
-          </Text>
         </View>
       </View>
     </TouchableOpacity>
@@ -1294,55 +1239,128 @@ const fp = StyleSheet.create({
   applyText: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
 });
 
-// ─── Table Styles ─────────────────────────────────────────────────────────────
+// ─── Card Styles (Stitch) ─────────────────────────────────────────────────────
 const tbl = StyleSheet.create({
-  page:        { flex: 1, backgroundColor: '#FFFFFF' },
-  pageContent: { padding: 16, paddingBottom: 40 },
-  card: {
+  page:        { flex: 1, backgroundColor: '#F7F9FB' },
+  pageContent: { padding: 24, paddingBottom: 48 },
+});
+
+const card = StyleSheet.create({
+  list: { gap: 16 },
+  wrap: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 14,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 2,
+    position: 'relative',
+    borderWidth: 1,
+    borderColor: '#EEF2F6',
+    // @ts-ignore
+    boxShadow: '0 1px 2px rgba(15,23,42,0.03)',
   },
-  headerRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 18, paddingVertical: 11,
-    backgroundColor: '#F9F9FB',
-    borderBottomWidth: 1, borderBottomColor: '#F1F1F5',
+  accentStrip: {
+    position: 'absolute',
+    top: 0, left: 0, bottom: 0,
+    width: 4,
   },
-  hCell: {
-    fontSize: 10, fontWeight: '700',
-    color: '#C7C7CC', letterSpacing: 0.7,
+  body: {
+    paddingTop: 20,
+    paddingBottom: 18,
+    paddingLeft: 24,
+    paddingRight: 20,
+    gap: 18,
+  },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 16,
+  },
+  topLeft: { flex: 1, gap: 4 },
+  idRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  orderNo: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.6,
     textTransform: 'uppercase',
   },
-  row: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 18, paddingVertical: 10,
-    backgroundColor: '#FFFFFF', minHeight: 64,
+  title: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F172A',
+    letterSpacing: -0.2,
   },
-  rowBorder:  { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E5E5EA' },
-  rowOverdue: { backgroundColor: '#FFFCFC' },
-  orderNo:    { fontSize: 13, fontWeight: '700', color: '#1C1C1E', letterSpacing: -0.1 },
-  workType:   { fontSize: 11, color: '#AEAEB2', fontWeight: '400', marginTop: 2 },
-  avatar: {
-    width: 32, height: 32, borderRadius: 16,
-    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 2,
   },
-  avatarText:  { fontSize: 11, fontWeight: '800', color: '#FFFFFF' },
-  doctorName:  { fontSize: 13, fontWeight: '600', color: '#1C1C1E' },
-  clinicName:  { fontSize: 11, color: '#AEAEB2', marginTop: 2 },
-  dateText:    { fontSize: 12, fontWeight: '600', textAlign: 'center' },
+  metaText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#64748B',
+    flex: 1,
+  },
+  topRight: {
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+  statusPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  statusText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  timeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  timeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  progressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  progressTrack: {
+    flex: 1,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: '#F1F5F9',
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+  progressText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#94A3B8',
+    width: 38,
+    textAlign: 'right',
+  },
   assignBtn: {
-    marginTop: 4, backgroundColor: '#F1F5F9',
-    borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
   },
-  assignBtnText: { fontSize: 11, fontWeight: '700', color: '#0F172A' },
-  statusBadge: {
-    borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, maxWidth: 100,
+  assignBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.2,
   },
-  statusText:  { fontSize: 11, fontWeight: '600', textAlign: 'right' },
 });

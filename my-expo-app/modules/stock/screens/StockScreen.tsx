@@ -8,6 +8,8 @@ import Feather from '@expo/vector-icons/Feather';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { supabase } from '../../../lib/supabase';
+import { SlideTabBar } from '../../../core/ui/SlideTabBar';
+import { IconBtn } from '../../../core/ui/IconBtn';
 import { StockMovementsScreen } from './StockMovementsScreen';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -657,59 +659,30 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
   return (
     <View style={{ gap: 16 }}>
 
-      {/* ── Hızlı İşlemler ── */}
-      <View style={db.qaGrid}>
-        <TouchableOpacity style={[db.qaCard, db.qaCardPrimary, { backgroundColor: accentColor }]} onPress={onAddProduct} activeOpacity={0.85}>
-          <View style={db.qaIconWrapWhite}>
-            <Feather name="plus" size={18} color={accentColor} />
-          </View>
-          <Text style={db.qaCardLabelWhite}>Yeni Ürün{'\n'}Ekle</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={db.qaCard} onPress={() => onMovement(null, 'IN')} activeOpacity={0.85}>
-          <View style={db.qaIconWrap}>
-            <Feather name="arrow-down" size={18} color="#64748B" />
-          </View>
-          <Text style={db.qaCardLabel}>Stok{'\n'}Girişi</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={db.qaCard} onPress={() => onMovement(null, 'OUT')} activeOpacity={0.85}>
-          <View style={db.qaIconWrap}>
-            <Feather name="arrow-up" size={18} color="#64748B" />
-          </View>
-          <Text style={db.qaCardLabel}>Stok{'\n'}Çıkışı</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={db.qaCard} onPress={() => onMovement(null, 'WASTE')} activeOpacity={0.85}>
-          <View style={db.qaIconWrap}>
-            <Feather name="trash-2" size={18} color="#64748B" />
-          </View>
-          <Text style={db.qaCardLabel}>Fire{'\n'}Ekle</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* ── 4 Stat kartları (Pixelfit tarzı — renkli arka plan) ── */}
+      {/* ── 4 Stat kartları (Stitch tarzı — temiz beyaz kart, yuvarlak ikon) ── */}
       <View style={db.statRow}>
         {([
-          { label: 'Toplam Ürün', value: total,           sub: `${catStats.length} kategori`,                              bg: '#EEF2FF', iconBg: '#6366F1', icon: 'package'        as const, trend: null,              trendPos: true  },
-          { label: 'Normal',      value: normal.length,   sub: 'stok yeterli',                                             bg: '#ECFDF5', iconBg: '#059669', icon: 'check-circle'   as const, trend: total > 0 ? `%${Math.round(normal.length/total*100)}` : null, trendPos: true  },
-          { label: 'Kritik',      value: critical.length, sub: 'minimum altında',                                          bg: '#FFFBEB', iconBg: '#F59E0B', icon: 'alert-triangle' as const, trend: critical.length > 0 ? `+${critical.length}` : null, trendPos: false },
-          { label: 'Tükendi',     value: empty.length,    sub: 'stoksuz ürün',                                             bg: '#FFF1F2', iconBg: '#EF4444', icon: 'x-circle'       as const, trend: empty.length > 0     ? `+${empty.length}`     : null, trendPos: false },
-        ] as const).map((s, i) => (
-          <View key={i} style={[db.statCard, { backgroundColor: s.bg }]}>
-            <View style={db.statCardTop}>
-              <View style={[db.statIcon, { backgroundColor: s.iconBg }]}>
-                <Feather name={s.icon} size={15} color="#FFFFFF" />
-              </View>
-              {s.trend && (
-                <View style={[db.statBadge, { backgroundColor: s.trendPos ? '#D1FAE5' : '#FEE2E2' }]}>
-                  <Feather name={s.trendPos ? 'trending-up' : 'trending-down'} size={9} color={s.trendPos ? '#059669' : '#DC2626'} />
-                  <Text style={[db.statBadgeText, { color: s.trendPos ? '#059669' : '#DC2626' }]}>{s.trend}</Text>
+          { label: 'TOPLAM ÜRÜN',   value: total,           sub: `${catStats.length} kategori`,                                                   icon: 'package'        as const, tone: 'neutral' as const },
+          { label: 'NORMAL STOK',   value: normal.length,   sub: total > 0 ? `%${Math.round(normal.length/total*100)} yeterli` : 'yeterli stok',   icon: 'check-circle'   as const, tone: 'success' as const },
+          { label: 'KRİTİK SEVİYE', value: critical.length, sub: critical.length > 0 ? 'minimum altında' : 'tümü normal',                          icon: 'alert-triangle' as const, tone: 'warning' as const },
+          { label: 'TÜKENDİ',       value: empty.length,    sub: empty.length > 0 ? 'acil sipariş gerekli' : 'eksik ürün yok',                     icon: 'x-circle'       as const, tone: 'danger'  as const },
+        ] as const).map((stat, i) => {
+          const isAlert    = stat.tone === 'danger' && stat.value > 0;
+          const iconBgMap  = { neutral: '#F1F5F9', success: '#ECFDF5', warning: '#FFFBEB', danger: isAlert ? '#FEE2E2' : '#F1F5F9' };
+          const iconColMap = { neutral: '#64748B', success: '#059669', warning: '#D97706', danger: isAlert ? '#DC2626' : '#94A3B8' };
+          return (
+            <View key={i} style={[db.statCard, isAlert && db.statCardAlert]}>
+              <View style={db.statCardTop}>
+                <Text style={[db.statLabel, isAlert && { color: '#DC2626' }]}>{stat.label}</Text>
+                <View style={[db.statIcon, { backgroundColor: iconBgMap[stat.tone] }]}>
+                  <Feather name={stat.icon} size={18} color={iconColMap[stat.tone]} />
                 </View>
-              )}
+              </View>
+              <Text style={[db.statValue, isAlert && { color: '#DC2626' }]}>{stat.value}</Text>
+              <Text style={db.statSub}>{stat.sub}</Text>
             </View>
-            <Text style={db.statValue}>{s.value}</Text>
-            <Text style={db.statLabel}>{s.label}</Text>
-            <Text style={db.statSub}>{s.sub}</Text>
-          </View>
-        ))}
+          );
+        })}
       </View>
 
       {/* ── Orta satır: Kategori bar grafik + Durum donuts ── */}
@@ -792,22 +765,21 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
             return (
               <View key={item.id} style={[db.urgRow, !isLast && db.urgDivider]}>
                 <View style={[db.urgIconBox, { backgroundColor: bg }]}>
-                  <Feather name={isEmpty ? 'x-circle' : 'alert-triangle'} size={14} color={clr} />
+                  <Feather name={isEmpty ? 'alert-circle' : 'alert-triangle'} size={22} color={clr} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={db.urgName} numberOfLines={1}>{item.name}</Text>
                   <Text style={db.urgMeta}>
-                    {isEmpty ? 'Stok tükendi' : `${item.quantity}${item.unit ? ` ${item.unit}` : ''} kaldı · min: ${item.min_quantity}`}
+                    {isEmpty ? 'Stok tükendi' : `${item.quantity}${item.unit ? ` ${item.unit}` : ''} kaldı · minimum: ${item.min_quantity}`}
                   </Text>
                 </View>
-                <View style={{ flexDirection: 'row', gap: 6 }}>
-                  <TouchableOpacity style={[db.urgActionBtn, { backgroundColor: clr + '15', borderColor: clr + '30' }]} onPress={() => onMovement(item, 'IN')} activeOpacity={0.8}>
-                    <Feather name="plus" size={12} color={clr} />
-                  </TouchableOpacity>
-                  <TouchableOpacity style={db.urgEditBtn} onPress={() => onEditProduct(item)} activeOpacity={0.8}>
-                    <Feather name="edit-2" size={12} color="#94A3B8" />
-                  </TouchableOpacity>
-                </View>
+                <TouchableOpacity
+                  style={[db.urgReorderBtn, { backgroundColor: accentColor }]}
+                  onPress={() => onMovement(item, 'IN')}
+                  activeOpacity={0.85}
+                >
+                  <Text style={db.urgReorderText}>Yeniden Sipariş</Text>
+                </TouchableOpacity>
               </View>
             );
           })}
@@ -829,16 +801,17 @@ const db = StyleSheet.create({
   qaCardLabel:       { fontSize: 12, fontWeight: '700', color: '#334155', textAlign: 'center', lineHeight: 17 },
   qaCardLabelWhite:  { fontSize: 12, fontWeight: '700', color: '#FFFFFF', textAlign: 'center', lineHeight: 17 },
 
-  // Stat cards (Pixelfit style)
-  statRow:       { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
-  statCard:      { flex: 1, minWidth: 130, borderRadius: 16, padding: 16, gap: 3 },
-  statCardTop:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  statIcon:      { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  statBadge:     { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 100 },
-  statBadgeText: { fontSize: 10, fontWeight: '700' },
-  statValue:     { fontSize: 30, fontWeight: '800', color: '#0F172A', letterSpacing: -1 },
-  statLabel:     { fontSize: 13, fontWeight: '700', color: '#334155' },
-  statSub:       { fontSize: 11, color: '#94A3B8', fontWeight: '500' },
+  // Stat cards (Stitch style — clean white cards with circular icon)
+  statRow:        { flexDirection: 'row', gap: 12, flexWrap: 'wrap' },
+  statCard:       { flex: 1, minWidth: 150, backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#F1F5F9', padding: 18, gap: 4 },
+  statCardAlert:  { borderColor: '#FECACA', backgroundColor: '#FFF5F5' },
+  statCardTop:    { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 },
+  statIcon:       { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  statBadge:      { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 100 },
+  statBadgeText:  { fontSize: 10, fontWeight: '700' },
+  statValue:      { fontSize: 32, fontWeight: '800', color: '#0F172A', letterSpacing: -1 },
+  statLabel:      { fontSize: 11, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.8, flex: 1, paddingRight: 8, paddingTop: 4 },
+  statSub:        { fontSize: 11, color: '#94A3B8', fontWeight: '500' },
 
   // Category bar chart
   barTrack:    { height: 8, backgroundColor: '#F1F5F9', borderRadius: 4, overflow: 'hidden' },
@@ -856,16 +829,16 @@ const db = StyleSheet.create({
   redBadge:     { backgroundColor: '#FEE2E2', borderRadius: 100, paddingHorizontal: 9, paddingVertical: 3 },
   redBadgeText: { fontSize: 11, fontWeight: '700', color: '#DC2626' },
 
-  // Urgent list
-  urgRow:        { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
-  urgDivider:    { borderBottomWidth: 1, borderBottomColor: '#F8FAFC' },
-  urgIconBox:    { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  urgName:       { fontSize: 13, fontWeight: '600', color: '#0F172A' },
-  urgMeta:       { fontSize: 11, color: '#94A3B8', fontWeight: '500', marginTop: 1 },
-  urgBadge:      { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
-  urgBadgeText:  { fontSize: 10, fontWeight: '700' },
-  urgActionBtn:  { width: 28, height: 28, borderRadius: 7, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  urgEditBtn:    { width: 28, height: 28, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8FAFC' },
+  // Urgent list (Stitch — büyük ikon kutusu + "Yeniden Sipariş" butonu)
+  urgRow:         { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14 },
+  urgDivider:     { borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  urgIconBox:     { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  urgName:        { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  urgMeta:        { fontSize: 12, color: '#94A3B8', fontWeight: '500', marginTop: 2 },
+  urgBadge:       { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  urgBadgeText:   { fontSize: 10, fontWeight: '700' },
+  urgReorderBtn:  { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10 },
+  urgReorderText: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
 
   // Pie chart
   pieWrap:     { flexDirection: 'row', alignItems: 'center', gap: 20 },
@@ -1401,28 +1374,32 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
     <SafeAreaView style={s.safe} edges={['bottom']}>
       <ScrollView contentContainerStyle={s.container} showsVerticalScrollIndicator={false}>
 
-        {/* ── Pill tab bar ── */}
-        <View style={s.tabBarWrap}>
-          <View style={s.tabBar}>
-            {([
-              { value: 'dashboard', label: 'Genel Bakış' },
-              { value: 'list',      label: 'Stok Listesi' },
-              { value: 'movements', label: 'Hareketler' },
-              { value: 'settings',  label: 'Ayarlar' },
-            ] as const).map(t => {
-              const active = tab === t.value;
-              return (
-                <TouchableOpacity
-                  key={t.value}
-                  style={[s.tabItem, active && s.tabItemActive]}
-                  onPress={() => setTab(t.value)}
-                  activeOpacity={0.75}
-                >
-                  <Text style={[s.tabText, active && s.tabTextActive]}>{t.label}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+        {/* ── Slide tab bar + CTA ── */}
+        <View style={s.tabBarRow}>
+          <SlideTabBar
+            items={[
+              { key: 'dashboard', label: 'Genel Bakış' },
+              { key: 'list',      label: 'Stok Listesi' },
+              { key: 'movements', label: 'Hareketler' },
+              { key: 'settings',  label: 'Ayarlar' },
+            ] as const}
+            activeKey={tab as any}
+            onChange={(k) => setTab(k as any)}
+            accentColor={accentColor}
+          />
+          {tab !== 'settings' && (
+            <TouchableOpacity
+              style={[s.pageCta, { backgroundColor: accentColor }]}
+              onPress={() => {
+                if (tab === 'movements') setMovModal({ visible: true, item: null });
+                else setProductModal({ visible: true, item: null });
+              }}
+              activeOpacity={0.85}
+            >
+              <Feather name="plus" size={15} color="#FFFFFF" />
+              <Text style={s.pageCtaText}>{tab === 'movements' ? 'Yeni Hareket' : 'Yeni Ürün'}</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {tab === 'settings' ? (
@@ -1440,19 +1417,7 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
             />
           )
         ) : tab === 'movements' ? (
-          <>
-            <View style={[s.toolbar, { justifyContent: 'flex-end' }]}>
-              <TouchableOpacity
-                style={[s.addBtn, { backgroundColor: accentColor }]}
-                onPress={() => setMovModal({ visible: true, item: null })}
-                activeOpacity={0.8}
-              >
-                <Feather name="plus" size={15} color="#FFFFFF" />
-                <Text style={s.addBtnText}>Kayıt Ekle</Text>
-              </TouchableOpacity>
-            </View>
-            <StockMovementsScreen />
-          </>
+          <StockMovementsScreen />
         ) : loading ? (
           <ActivityIndicator size="large" color={accentColor} style={{ marginTop: 60 }} />
         ) : !tableExists ? (
@@ -1465,42 +1430,39 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
           <>
             {/* ── Toolbar ── */}
             <View style={s.toolbar}>
-              <View style={[s.searchWrap, searchFocused && s.searchWrapFocused]}>
-                <Feather name="search" size={15} color={searchFocused ? '#0F172A' : '#AEAEB2'} />
-                <TextInput
-                  style={s.searchInput}
-                  value={search}
-                  onChangeText={setSearch}
-                  onFocus={() => setSearchFocused(true)}
-                  onBlur={() => setSearchFocused(false)}
-                  placeholder="Ürün ara…"
-                  placeholderTextColor="#AEAEB2"
-                />
-                {search.length > 0 && (
-                  <TouchableOpacity onPress={() => setSearch('')}>
-                    <Feather name="x-circle" size={14} color="#AEAEB2" />
+              {searchExpanded || search.length > 0 ? (
+                <View style={[s.searchWrap, searchFocused && s.searchWrapFocused]}>
+                  <Feather name="search" size={15} color={searchFocused ? accentColor : '#94A3B8'} />
+                  <TextInput
+                    autoFocus
+                    style={s.searchInput}
+                    value={search}
+                    onChangeText={setSearch}
+                    onFocus={() => setSearchFocused(true)}
+                    onBlur={() => { setSearchFocused(false); if (!search) setSearchExpanded(false); }}
+                    placeholder="Ürün ara…"
+                    placeholderTextColor="#AEAEB2"
+                  />
+                  <TouchableOpacity onPress={() => { setSearch(''); setSearchExpanded(false); }} hitSlop={8}>
+                    <Feather name="x" size={14} color="#94A3B8" />
                   </TouchableOpacity>
-                )}
-              </View>
+                </View>
+              ) : (
+                <View style={{ flex: 1 }} />
+              )}
 
-              <TouchableOpacity style={[s.filterBtn, activeFilterCount > 0 && s.filterBtnActive]} onPress={openFilter} activeOpacity={0.8}>
-                <MaterialCommunityIcons name={'tune-variant' as any} size={15} color={activeFilterCount > 0 ? accentColor : '#64748B'} />
-                <Text style={[s.filterBtnText, activeFilterCount > 0 && { color: accentColor }]}>Filtrele</Text>
+              <IconBtn active={searchExpanded || search.length > 0} onPress={() => setSearchExpanded(true)}>
+                <Feather name="search" size={20} color={searchExpanded || search.length > 0 ? accentColor : '#64748B'} />
+              </IconBtn>
+
+              <IconBtn active={activeFilterCount > 0} onPress={openFilter} style={{ position: 'relative' }}>
+                <MaterialCommunityIcons name={'tune-variant' as any} size={20} color={activeFilterCount > 0 ? accentColor : '#64748B'} />
                 {activeFilterCount > 0 && (
-                  <View style={[s.filterCount, { backgroundColor: accentColor }]}>
+                  <View style={[s.filterCount, { backgroundColor: accentColor, position: 'absolute', top: 4, right: 4, minWidth: 14, height: 14, borderRadius: 7, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 }]}>
                     <Text style={s.filterCountText}>{activeFilterCount}</Text>
                   </View>
                 )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[s.addBtn, { backgroundColor: accentColor }]}
-                onPress={() => setProductModal({ visible: true, item: null })}
-                activeOpacity={0.8}
-              >
-                <Feather name="plus" size={15} color="#FFFFFF" />
-                <Text style={s.addBtnText}>Yeni Ürün</Text>
-              </TouchableOpacity>
+              </IconBtn>
             </View>
 
             {/* ── Table ── */}
@@ -1726,6 +1688,11 @@ const s = StyleSheet.create({
   safe:      { flex: 1, backgroundColor: '#FFFFFF' },
   container: { padding: 20, paddingBottom: 60 },
 
+  /* Tab bar + CTA row (Stitch) */
+  tabBarRow:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 18, flexWrap: 'wrap' },
+  pageCta:      { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 },
+  pageCtaText:  { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
+
   /* Stats header */
   statsCard:     { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FAFBFC', borderRadius: 12, borderWidth: 1, borderColor: '#F1F5F9', paddingHorizontal: 16, paddingVertical: 12, marginBottom: 16, gap: 16 },
   statsLeft:     { flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -1743,11 +1710,7 @@ const s = StyleSheet.create({
 
   /* Pill tab bar */
   tabBarWrap:    { marginBottom: 18 },
-  tabBar:        { flexDirection: 'row', alignSelf: 'flex-start', backgroundColor: '#F1F5F9', borderRadius: 100, padding: 3, gap: 2 },
-  tabItem:       { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 100 },
-  tabItemActive: { backgroundColor: '#FFFFFF', boxShadow: '0 1px 6px rgba(15,23,42,0.10)' } as any,
-  tabText:       { fontSize: 13, fontWeight: '500', color: '#94A3B8' },
-  tabTextActive: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
+  tabBar: { flexDirection: 'row', alignItems: 'center', gap: 4 },
 
   /* Toolbar */
   toolbar:          { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },

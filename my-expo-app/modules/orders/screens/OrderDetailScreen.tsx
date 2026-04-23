@@ -13,6 +13,7 @@ import {
   Platform,
   useWindowDimensions,
 } from 'react-native';
+import { toast } from '../../../core/ui/Toast';
 import QRCode from 'react-native-qrcode-svg';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -35,6 +36,8 @@ import { uploadChatAttachment } from '../chatApi';
 import { ToothIcon } from '../../../components/icons/ToothIcon';
 import { StepTimeline } from '../../production/components/StepTimeline';
 import { useCaseSteps } from '../../production/hooks/useCaseSteps';
+import { printDeliveryReceipt } from '../../receipt/printReceipt';
+import { createInvoiceFromOrder } from '../../invoices/api';
 
 type Section = 'details' | 'steps' | 'prova' | 'vaka' | 'billing' | 'doctor' | 'files' | 'chat';
 
@@ -210,8 +213,22 @@ export function OrderDetailScreen() {
   const handleStatusUpdate = async (newStatus: WorkOrderStatus, note: string) => {
     if (!profile) return;
     const { error } = await advanceOrderStatus(order.id, newStatus, profile.id, note || undefined);
-    if (error) Alert.alert('Hata', 'Durum güncellenemedi: ' + (error as any).message);
+    if (error) toast.error('Durum güncellenemedi: ' + (error as any).message);
     else refetch();
+  };
+
+  const handlePrintReceipt = async () => {
+    const res = await printDeliveryReceipt(order, profile?.lab_id);
+    if (!res.ok && res.error) toast.error(res.error);
+  };
+
+  const handleCreateInvoice = async () => {
+    const { data, error } = await createInvoiceFromOrder(order.id);
+    if (error || !data) {
+      toast.error((error as any)?.message ?? 'Fatura oluşturulamadı');
+      return;
+    }
+    router.push(`/(lab)/invoice/${data.id}` as any);
   };
 
   const handleAddPhoto = async (toothNumber?: number | null) => {
@@ -222,7 +239,7 @@ export function OrderDetailScreen() {
       setUploadingPhoto(true);
       const { error } = await uploadPhoto(uri, order.id, profile.id, toothNumber);
       setUploadingPhoto(false);
-      if (error) Alert.alert('Hata', error);
+      if (error) toast.error(error);
       else refetch();
       return;
     }
@@ -235,7 +252,7 @@ export function OrderDetailScreen() {
           setUploadingPhoto(true);
           const { error } = await uploadPhoto(uri, order.id, profile.id, toothNumber);
           setUploadingPhoto(false);
-          if (error) Alert.alert('Hata', error);
+          if (error) toast.error(error);
           else refetch();
         },
       },
@@ -247,7 +264,7 @@ export function OrderDetailScreen() {
           setUploadingPhoto(true);
           const { error } = await uploadPhoto(uri, order.id, profile.id, toothNumber);
           setUploadingPhoto(false);
-          if (error) Alert.alert('Hata', error);
+          if (error) toast.error(error);
           else refetch();
         },
       },
@@ -336,6 +353,22 @@ export function OrderDetailScreen() {
             <Text style={styles.btnPrintText}>Yazdır</Text>
           </TouchableOpacity>
         )}
+        <TouchableOpacity
+          onPress={handlePrintReceipt}
+          style={styles.btnReceipt}
+          activeOpacity={0.8}
+        >
+          <MaterialCommunityIcons name={'receipt-text-outline' as any} size={14} color="#0F172A" />
+          <Text style={styles.btnReceiptText}>Teslimat Fişi</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={handleCreateInvoice}
+          style={styles.btnInvoice}
+          activeOpacity={0.8}
+        >
+          <MaterialCommunityIcons name={'file-document-outline' as any} size={14} color="#FFFFFF" />
+          <Text style={styles.btnInvoiceText}>Fatura Oluştur</Text>
+        </TouchableOpacity>
       </View>
 
       {/* ── Body ── */}
@@ -1161,10 +1194,9 @@ function ChatSection({
     const err = await send(profile.id, content);
     if (err) {
       setText(content); // restore text on failure
-      Alert.alert(
-        'Mesaj gönderilemedi',
+      toast.error(
         err.includes('does not exist')
-          ? 'Mesaj tablosu henüz oluşturulmamış. Lütfen Supabase SQL Editor\'da 011_order_messages.sql ve 012_order_messages_attachments.sql migration\'larını çalıştırın.'
+          ? 'Mesaj tablosu henüz oluşturulmamış. Lütfen Supabase SQL Editor\'da 011_order_messages.sql ve 011b_order_messages_attachments.sql migration\'larını çalıştırın.'
           : err
       );
     } else {
@@ -1192,9 +1224,9 @@ function ChatSection({
     const { url, error } = await uploadChatAttachment(pendingFile, workOrderId, pendingFile.name);
     setUploading(false);
 
-    if (error || !url) { Alert.alert('Hata', error ?? 'Yükleme başarısız'); return; }
+    if (error || !url) { toast.error(error ?? 'Yükleme başarısız'); return; }
     const err = await sendWithAttachment(profile.id, pendingCaption.trim(), { url, type, name: pendingFile.name, size: pendingFile.size });
-    if (err) { Alert.alert('Mesaj gönderilemedi', err); return; }
+    if (err) { toast.error(err); return; }
     setPendingFile(null);
     setPendingCaption('');
     scrollToEnd();
@@ -1217,9 +1249,9 @@ function ChatSection({
         setUploading(true);
         const { url, error } = await uploadChatAttachment(blob, workOrderId, `voice_${Date.now()}.${ext}`);
         setUploading(false);
-        if (error || !url) { Alert.alert('Hata', error ?? 'Ses yüklenemedi'); return; }
+        if (error || !url) { toast.error(error ?? 'Ses yüklenemedi'); return; }
         const err = await sendWithAttachment(profile.id, '', { url, type: 'audio', name: 'Sesli Mesaj', size: blob.size });
-        if (err) { Alert.alert('Mesaj gönderilemedi', err); return; }
+        if (err) { toast.error(err); return; }
         scrollToEnd();
       };
       recorder.start();
@@ -1228,7 +1260,7 @@ function ChatSection({
       setRecSeconds(0);
       recTimerRef.current = setInterval(() => setRecSeconds((s) => s + 1), 1000);
     } catch {
-      Alert.alert('Mikrofon', 'Mikrofon erişimi reddedildi');
+      toast.error('Mikrofon erişimi reddedildi');
     }
   };
 
@@ -2075,6 +2107,26 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
   btnPrintText: { fontSize: 12, fontWeight: '600', color: '#065F46' },
+  btnReceipt: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#FFFFFF',
+    marginLeft: 6,
+  },
+  btnReceiptText: { fontSize: 12, fontWeight: '600', color: '#0F172A' },
+  btnInvoice: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
+    backgroundColor: '#2563EB',
+    marginLeft: 6,
+  },
+  btnInvoiceText: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
   btnOcclusion: {
     flexDirection: 'row',
     alignItems: 'center',

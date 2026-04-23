@@ -7,6 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { supabase } from '../../lib/supabase';
+import { IconBtn } from '../../core/ui/IconBtn';
+import { SlideTabBar } from '../../core/ui/SlideTabBar';
 
 type LogTab = 'all' | 'users' | 'doctors';
 
@@ -166,31 +168,24 @@ export default function AdminLogsScreen() {
         {/* Toolbar row */}
         <View style={s.toolbarRow}>
           <View style={s.rightGroup}>
-            <TouchableOpacity
-              style={[s.iconBtn, (searchExpanded || search.length > 0) && s.iconBtnActive]}
-              onPress={() => setSearchExpanded(!searchExpanded)} activeOpacity={0.75}>
-              <Feather name="search" size={18} color={(searchExpanded || search.length > 0) ? '#0F172A' : '#94A3B8'} />
-            </TouchableOpacity>
-            <TouchableOpacity style={s.iconBtn} onPress={() => loadLogs(true)} disabled={refreshing} activeOpacity={0.75}>
+            <IconBtn active={searchExpanded || search.length > 0} onPress={() => setSearchExpanded(!searchExpanded)}>
+              <Feather name="search" size={20} color={(searchExpanded || search.length > 0) ? '#0F172A' : '#64748B'} />
+            </IconBtn>
+            <IconBtn onPress={() => loadLogs(true)}>
               {refreshing
-                ? <ActivityIndicator size="small" color="#94A3B8" />
-                : <Feather name="refresh-cw" size={16} color="#94A3B8" />}
-            </TouchableOpacity>
+                ? <ActivityIndicator size="small" color="#64748B" />
+                : <Feather name="refresh-cw" size={20} color="#64748B" />}
+            </IconBtn>
           </View>
         </View>
 
-        {/* Pill tab bar */}
-        <View style={s.tabBar}>
-          {TABS.map(t => {
-            const active = tab === t.key;
-            return (
-              <TouchableOpacity key={t.key} style={[s.tabItem, active && s.tabItemActive]}
-                onPress={() => setTab(t.key)} activeOpacity={0.75}>
-                <Text style={[s.tabText, active && s.tabTextActive]}>{t.label}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        {/* Slide tab bar */}
+        <SlideTabBar
+          items={TABS.map(t => ({ key: t.key, label: t.label }))}
+          activeKey={tab}
+          onChange={(k) => setTab(k as any)}
+          accentColor="#0F172A"
+        />
 
         {/* Search */}
         {(searchExpanded || search.length > 0) && (
@@ -269,11 +264,7 @@ const s = StyleSheet.create({
   toolbarName:  { fontSize: 22, fontWeight: '800' as any, color: '#0F172A', letterSpacing: -0.5 },
 
   // Tab bar
-  tabBar:        { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start' as any, backgroundColor: '#F1F5F9', borderRadius: 100, padding: 3, gap: 2 },
-  tabItem:       { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 100 },
-  tabItemActive: { backgroundColor: '#FFFFFF', boxShadow: '0 1px 6px rgba(15,23,42,0.12)' } as any,
-  tabText:       { fontSize: 13, fontWeight: '500' as any, color: '#94A3B8' },
-  tabTextActive: { fontSize: 13, fontWeight: '600' as any, color: '#0F172A' },
+  tabBar: { flexDirection: 'row', alignItems: 'center', gap: 4 },
 
   rightGroup:    { flexDirection: 'row', alignItems: 'center', gap: 4 },
   iconBtn:       { width: 34, height: 34, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },

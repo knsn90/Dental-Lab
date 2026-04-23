@@ -22,7 +22,7 @@ import { F } from '../../../core/theme/typography';
 const C = Colors;
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: string }> = {
-  alindi:           { label: 'Alındı',          color: '#2563EB', bgColor: '#EFF6FF' },
+  alindi:           { label: 'Alındı',          color: '#0F172A', bgColor: '#F1F5F9' },
   uretimde:         { label: 'Üretimde',         color: '#D97706', bgColor: '#FFFBEB' },
   kalite_kontrol:   { label: 'Kalite Kontrol',   color: '#7C3AED', bgColor: '#F5F3FF' },
   teslimata_hazir:  { label: 'Teslimata Hazır',  color: '#059669', bgColor: '#ECFDF5' },

@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Platform, View } from 'react-native';
+import { ToastContainer } from '../core/ui/Toast';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../core/store/authStore';
 import {
@@ -214,6 +215,7 @@ export default function RootLayout() {
     <>
       <StatusBar style="dark" />
       <Stack screenOptions={{ headerShown: false }} />
+      <ToastContainer />
     </>
   );
 }

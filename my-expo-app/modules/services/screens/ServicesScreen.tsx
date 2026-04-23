@@ -1,12 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Modal, ActivityIndicator, Switch,
+  TextInput, Modal, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Feather from '@expo/vector-icons/Feather';
 import { fetchAllLabServices, createLabService, updateLabService } from '../api';
 import { LabService } from '../types';
 import { C } from '../../../core/theme/colors';
+import { AppSwitch } from '../../../core/ui/AppSwitch';
+import { SlideTabBar } from '../../../core/ui/SlideTabBar';
+import { IconBtn } from '../../../core/ui/IconBtn';
 
 const CATEGORIES = ['Sabit Protez', 'Hareketli Protez', 'İmplant', 'Ortodonti', 'CAD/CAM', 'Seramik', 'Diğer'];
 
@@ -19,6 +23,8 @@ export function ServicesScreen() {
   const [services, setServices] = useState<LabService[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [searchExpanded, setSearchExpanded] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
   const [catFilter, setCatFilter] = useState('Tümü');
   const [modal, setModal] = useState(false);
   const [edit, setEdit] = useState<LabService | null>(null);
@@ -68,38 +74,64 @@ export function ServicesScreen() {
     return acc;
   }, {});
 
-  const totalActive = services.filter((s) => s.is_active).length;
-
   return (
     <SafeAreaView style={styles.safe}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>Hizmet Kataloğu</Text>
-          <Text style={styles.sub}>{totalActive} aktif hizmet</Text>
-        </View>
-        <TouchableOpacity style={styles.addBtn} onPress={openAdd}>
+      {/* Tabs + search + action — single row */}
+      <View style={styles.subToolbar}>
+        <SlideTabBar
+          items={categories.map((cat) => ({
+            key: cat,
+            label: cat,
+            count: cat === 'Tümü'
+              ? services.length
+              : services.filter((s) => s.category === cat).length,
+          }))}
+          activeKey={catFilter}
+          onChange={setCatFilter}
+          accentColor={C.primary}
+        />
+
+        <View style={{ flex: 1 }} />
+
+        <IconBtn
+          active={searchExpanded || search.length > 0}
+          onPress={() => setSearchExpanded(!searchExpanded)}
+        >
+          <Feather
+            name="search"
+            size={20}
+            color={(searchExpanded || search.length > 0) ? C.primary : '#64748B'}
+          />
+        </IconBtn>
+
+        <TouchableOpacity style={styles.addBtn} onPress={openAdd} activeOpacity={0.85}>
           <Text style={styles.addBtnText}>+ Hizmet Ekle</Text>
         </TouchableOpacity>
       </View>
 
-      <View style={styles.searchRow}>
-        <TextInput
-          style={styles.searchInput}
-          value={search} onChangeText={setSearch}
-          placeholder="🔍  Hizmet ara..." placeholderTextColor={C.textMuted}
-        />
-      </View>
-
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
-        <View style={styles.catRow}>
-          {categories.map((c) => (
-            <TouchableOpacity key={c} onPress={() => setCatFilter(c)}
-              style={[styles.catChip, catFilter === c && styles.catChipActive]}>
-              <Text style={[styles.catChipText, catFilter === c && styles.catChipTextActive]}>{c}</Text>
-            </TouchableOpacity>
-          ))}
+      {(searchExpanded || search.length > 0) && (
+        <View style={styles.searchRow}>
+          <View style={[styles.searchWrap, searchFocused && styles.searchWrapFocused]}>
+            <Feather name="search" size={16} color={searchFocused ? C.primary : '#AEAEB2'} />
+            <TextInput
+              style={styles.searchInput}
+              value={search}
+              onChangeText={setSearch}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
+              placeholder="Hizmet ara..."
+              placeholderTextColor="#AEAEB2"
+              returnKeyType="search"
+              autoFocus={searchExpanded && search.length === 0}
+            />
+            {search.length > 0 && (
+              <TouchableOpacity onPress={() => { setSearch(''); setSearchExpanded(false); }}>
+                <Feather name="x-circle" size={15} color="#AEAEB2" />
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
-      </ScrollView>
+      )}
 
       {loading ? (
         <ActivityIndicator color={C.primary} style={{ marginTop: 40 }} />
@@ -126,50 +158,108 @@ export function ServicesScreen() {
         </ScrollView>
       )}
 
+      {/* ── Modal ── */}
       <Modal visible={modal} animationType="fade" transparent onRequestClose={() => setModal(false)}>
-        <View style={styles.overlay}>
-          <View style={styles.modalBox}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{edit ? 'Hizmeti Düzenle' : 'Yeni Hizmet'}</Text>
-              <TouchableOpacity onPress={() => setModal(false)}>
-                <Text style={styles.closeBtn}>✕</Text>
+        <View style={m.overlay}>
+          <View style={m.sheet}>
+
+            {/* Header */}
+            <View style={m.header}>
+              <Text style={m.title}>{edit ? 'Hizmeti Düzenle' : 'Hizmet Ekle'}</Text>
+              <TouchableOpacity style={m.closeBtn} onPress={() => setModal(false)}>
+                <Feather name="x" size={16} color="#64748B" />
               </TouchableOpacity>
             </View>
-            <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled">
-              <Field label="Hizmet Adı *" value={form.name}
-                onChangeText={(v: string) => { setForm((f) => ({ ...f, name: v })); setError(''); }}
-                placeholder="Örn: Zirkonyum Kron" />
 
-              <Text style={styles.fieldLabel}>Kategori</Text>
-              <View style={styles.catGrid}>
-                {CATEGORIES.map((c) => (
-                  <TouchableOpacity key={c} onPress={() => setForm((f) => ({ ...f, category: c }))}
-                    style={[styles.catOption, form.category === c && styles.catOptionActive]}>
-                    <Text style={[styles.catOptionText, form.category === c && styles.catOptionTextActive]}>{c}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+            <ScrollView style={m.body} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
 
-              <View style={styles.priceRow}>
-                <View style={{ flex: 1 }}>
-                  <Field label="Fiyat" value={form.price}
-                    onChangeText={(v: string) => setForm((f) => ({ ...f, price: v }))}
-                    placeholder="0.00" keyboardType="decimal-pad" />
-                </View>
-                <View style={{ width: 80 }}>
-                  <Field label="Para Birimi" value={form.currency}
-                    onChangeText={(v: string) => setForm((f) => ({ ...f, currency: v }))}
-                    placeholder="TRY" />
+              {/* Hizmet Bilgileri */}
+              <View style={m.sectionCard}>
+                <Text style={m.sectionTitle}>Hizmet Bilgileri</Text>
+                <View style={m.fieldWrap}>
+                  <Text style={m.fieldLabel}>Hizmet Adı <Text style={m.req}>*</Text></Text>
+                  <TextInput
+                    style={m.fieldInput}
+                    value={form.name}
+                    onChangeText={(v) => { setForm((f) => ({ ...f, name: v })); setError(''); }}
+                    placeholder="Örn: Zirkonyum Kron"
+                    placeholderTextColor="#C7C7CC"
+                  />
                 </View>
               </View>
 
-              {error ? <View style={styles.errorBox}><Text style={styles.errorText}>⚠️ {error}</Text></View> : null}
+              {/* Kategori */}
+              <View style={m.sectionCard}>
+                <Text style={m.sectionTitle}>Kategori</Text>
+                <View style={m.catGrid}>
+                  {CATEGORIES.map((c) => (
+                    <TouchableOpacity
+                      key={c}
+                      onPress={() => setForm((f) => ({ ...f, category: c }))}
+                      style={[m.catChip, form.category === c && { borderColor: C.primary, backgroundColor: C.primaryBg }]}
+                    >
+                      <Text style={[m.catChipText, form.category === c && { color: C.primary, fontWeight: '700' as const }]}>{c}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
 
-              <TouchableOpacity style={[styles.saveBtn, saving && { opacity: 0.6 }]}
-                onPress={handleSave} disabled={saving}>
-                <Text style={styles.saveBtnText}>{saving ? 'Kaydediliyor...' : edit ? 'Güncelle' : 'Kaydet'}</Text>
-              </TouchableOpacity>
+              {/* Fiyatlandırma */}
+              <View style={m.sectionCard}>
+                <Text style={m.sectionTitle}>Fiyatlandırma</Text>
+                <View style={m.twoCol}>
+                  <View style={{ flex: 1 }}>
+                    <View style={m.fieldWrap}>
+                      <Text style={m.fieldLabel}>Fiyat</Text>
+                      <TextInput
+                        style={m.fieldInput}
+                        value={form.price}
+                        onChangeText={(v) => setForm((f) => ({ ...f, price: v }))}
+                        placeholder="0.00"
+                        placeholderTextColor="#C7C7CC"
+                        keyboardType="decimal-pad"
+                      />
+                    </View>
+                  </View>
+                  <View style={{ width: 100 }}>
+                    <View style={m.fieldWrap}>
+                      <Text style={m.fieldLabel}>Para Birimi</Text>
+                      <TextInput
+                        style={m.fieldInput}
+                        value={form.currency}
+                        onChangeText={(v) => setForm((f) => ({ ...f, currency: v }))}
+                        placeholder="TRY"
+                        placeholderTextColor="#C7C7CC"
+                        autoCapitalize="characters"
+                      />
+                    </View>
+                  </View>
+                </View>
+              </View>
+
+              {error ? (
+                <View style={m.errorBox}>
+                  <Text style={m.errorText}>⚠️ {error}</Text>
+                </View>
+              ) : null}
+
+              <View style={{ height: 8 }} />
             </ScrollView>
+
+            {/* Footer */}
+            <View style={m.footer}>
+              <TouchableOpacity style={m.cancelBtn} onPress={() => setModal(false)}>
+                <Text style={m.cancelText}>İptal</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[m.saveBtn, { backgroundColor: C.primary }, saving && { opacity: 0.6 }]}
+                onPress={handleSave}
+                disabled={saving}
+              >
+                <Text style={m.saveText}>{saving ? 'Kaydediliyor...' : edit ? 'Güncelle' : 'Hizmet Ekle'}</Text>
+              </TouchableOpacity>
+            </View>
+
           </View>
         </View>
       </Modal>
@@ -190,41 +280,32 @@ function ServiceRow({ service: s, onEdit, onToggle }: { service: LabService; onE
         <TouchableOpacity style={styles.editBtn} onPress={() => onEdit(s)}>
           <Text style={styles.editBtnText}>Düzenle</Text>
         </TouchableOpacity>
-        <Switch value={s.is_active} onValueChange={() => onToggle(s)}
-          trackColor={{ false: C.border, true: C.primaryBg }}
-          thumbColor={s.is_active ? C.primary : C.textMuted} />
+        <AppSwitch value={s.is_active} onValueChange={() => onToggle(s)}
+          accentColor={C.primary} />
       </View>
     </View>
   );
 }
 
-function Field({ label, value, onChangeText, placeholder, keyboardType, multiline }: any) {
-  return (
-    <View style={styles.fieldWrap}>
-      <Text style={styles.fieldLabel}>{label}</Text>
-      <TextInput style={[styles.fieldInput, multiline && styles.fieldInputMulti]}
-        value={value} onChangeText={onChangeText} placeholder={placeholder}
-        placeholderTextColor={C.textMuted} keyboardType={keyboardType}
-        multiline={multiline} textAlignVertical={multiline ? 'top' : 'auto'} />
-    </View>
-  );
-}
-
+// ── Page styles ──────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.background },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, backgroundColor: C.surface, borderBottomWidth: 1, borderBottomColor: C.border },
-  title: { fontSize: 22, fontWeight: '800', color: C.textPrimary },
-  sub: { fontSize: 13, color: C.textSecondary, marginTop: 2 },
   addBtn: { backgroundColor: C.primary, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 10 },
   addBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
-  searchRow: { padding: 12, backgroundColor: C.surface, borderBottomWidth: 1, borderBottomColor: C.border },
-  searchInput: { backgroundColor: C.background, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: C.textPrimary },
-  catScroll: { maxHeight: 48, backgroundColor: C.surface, borderBottomWidth: 1, borderBottomColor: C.border },
-  catRow: { flexDirection: 'row', padding: 8, gap: 6 },
-  catChip: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20, borderWidth: 1.5, borderColor: C.border, backgroundColor: C.surface },
-  catChipActive: { borderColor: C.primary, backgroundColor: C.primaryBg },
-  catChipText: { fontSize: 12, color: C.textSecondary, fontWeight: '600' },
-  catChipTextActive: { color: C.primary },
+  subToolbar: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 12, paddingVertical: 6,
+    backgroundColor: C.surface, borderBottomWidth: 1, borderBottomColor: C.border,
+  },
+  searchRow: { paddingHorizontal: 12, paddingVertical: 10, backgroundColor: C.surface, borderBottomWidth: 1, borderBottomColor: C.border },
+  searchWrap: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#FFFFFF', borderRadius: 12,
+    borderWidth: 1, borderColor: '#F1F5F9',
+    paddingHorizontal: 12, height: 42,
+  },
+  searchWrapFocused: { borderColor: C.primary },
+  searchInput: { flex: 1, fontSize: 14, color: '#0F172A', height: 42, outlineStyle: 'none' } as any,
   list: { padding: 16, paddingBottom: 40 },
   catHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: C.border, marginBottom: 4 },
   catTitle: { fontSize: 13, fontWeight: '800', color: C.textPrimary, letterSpacing: 0.3 },
@@ -242,24 +323,66 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 15, color: C.textSecondary },
   emptyBtn: { backgroundColor: C.primary, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 },
   emptyBtnText: { color: '#FFFFFF', fontWeight: '700' },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  modalBox: { backgroundColor: C.surface, borderRadius: 16, width: '100%', maxWidth: 480, maxHeight: '90%', overflow: 'hidden' },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: C.border },
-  modalTitle: { fontSize: 18, fontWeight: '800', color: C.textPrimary },
-  closeBtn: { fontSize: 18, color: C.textSecondary, paddingLeft: 20 },
-  modalBody: { padding: 20 },
-  fieldWrap: { marginBottom: 16 },
-  fieldLabel: { fontSize: 13, fontWeight: '600', color: C.textPrimary, marginBottom: 6 },
-  fieldInput: { borderWidth: 1.5, borderColor: C.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: C.textPrimary, backgroundColor: C.background },
-  fieldInputMulti: { minHeight: 80, textAlignVertical: 'top' },
-  catGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
-  catOption: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1.5, borderColor: C.border, backgroundColor: C.surface },
-  catOptionActive: { borderColor: C.primary, backgroundColor: C.primaryBg },
-  catOptionText: { fontSize: 12, color: C.textSecondary, fontWeight: '600' },
-  catOptionTextActive: { color: C.primary, fontWeight: '700' },
-  priceRow: { flexDirection: 'row', gap: 12 },
-  errorBox: { backgroundColor: '#FEF2F2', borderRadius: 10, padding: 12, marginBottom: 12 },
+});
+
+// ── Modal styles — New Order form design system ──────────────────────────────
+const m = StyleSheet.create({
+  overlay: {
+    flex: 1, backgroundColor: 'rgba(15,23,42,0.4)',
+    justifyContent: 'center', alignItems: 'center', padding: 24,
+  },
+  sheet: {
+    backgroundColor: '#FFFFFF', borderRadius: 16,
+    width: '100%', maxWidth: 540, maxHeight: '92%', overflow: 'hidden',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.15, shadowRadius: 48,
+  },
+  header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 24, paddingTop: 22, paddingBottom: 18,
+    borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
+  },
+  title: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
+  closeBtn: {
+    width: 32, height: 32, borderRadius: 8, backgroundColor: '#F1F5F9',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  body: { padding: 16 },
+  sectionCard: {
+    backgroundColor: '#FFFFFF', borderRadius: 14,
+    borderWidth: 1, borderColor: '#E9EEF4',
+    padding: 16, marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 13, fontWeight: '600', color: '#1E293B',
+    marginBottom: 14,
+  },
+  twoCol: { flexDirection: 'row', gap: 12 },
+  fieldWrap: { marginBottom: 14 },
+  fieldLabel: { fontSize: 11, fontWeight: '500', color: '#64748B', marginBottom: 7, letterSpacing: 0.5 },
+  req: { color: '#EF4444' },
+  fieldInput: {
+    borderWidth: 1, borderColor: '#F1F5F9', borderRadius: 10,
+    paddingHorizontal: 14, paddingVertical: 11,
+    fontSize: 14, color: '#0F172A', backgroundColor: '#FFFFFF',
+    // @ts-ignore
+    outlineStyle: 'none',
+  },
+  catGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  catChip: {
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10,
+    borderWidth: 1.5, borderColor: '#E2E8F0', backgroundColor: '#F8FAFC',
+  },
+  catChipText: { fontSize: 13, fontWeight: '600', color: '#94A3B8' },
+  errorBox: { backgroundColor: '#FEF2F2', borderRadius: 10, padding: 12, marginBottom: 4 },
   errorText: { color: '#DC2626', fontWeight: '600', fontSize: 13 },
-  saveBtn: { backgroundColor: C.primary, paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginBottom: 32 },
-  saveBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 16 },
+  footer: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end',
+    gap: 10, paddingHorizontal: 24, paddingVertical: 16,
+    borderTopWidth: 1, borderTopColor: '#F1F5F9',
+  },
+  cancelBtn: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, borderColor: '#E2E8F0' },
+  cancelText: { fontSize: 14, fontWeight: '600', color: '#475569' },
+  saveBtn: { paddingHorizontal: 22, paddingVertical: 10, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  saveText: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
 });

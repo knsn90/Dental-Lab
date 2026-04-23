@@ -306,7 +306,7 @@ function WithTooltip({
 // InfoTooltip artık kullanılmıyor — WithTooltip ile değiştirildi
 function InfoTooltip(_props: { text: string; color?: string }) { return null; }
 
-export function NewOrderScreen({ accentColor }: { accentColor?: string }) {
+export function NewOrderScreen({ accentColor, onClose }: { accentColor?: string; onClose?: () => void }) {
   const P     = accentColor ?? C.primary;
   const PBg   = accentColor ? '#F1F5F9' : C.primaryBg;
   const PLight = accentColor ? '#1E293B' : C.primaryLight;
@@ -318,6 +318,9 @@ export function NewOrderScreen({ accentColor }: { accentColor?: string }) {
   const { profile } = useAuthStore();
   const { width } = useWindowDimensions();
   const isDesktop = width >= 769;
+
+  // Mobilde iki-sütunlu alan satırları tek sütuna düşsün (dar ekranda input daralmasın)
+  const twoColStyle = isDesktop ? styles.twoCol : styles.twoColStack;
 
   const [step, setStep] = useState<Step>(() => {
     if (Platform.OS === 'web') {
@@ -927,7 +930,11 @@ export function NewOrderScreen({ accentColor }: { accentColor?: string }) {
       } catch {}
     }
     setStep(1);
-    router.push('/(lab)');
+    if (onClose) {
+      onClose();
+    } else {
+      router.push('/(lab)');
+    }
   };
 
   const selectedClinic = clinics.find((c) => c.id === form.clinic_id);
@@ -1220,7 +1227,7 @@ ${form.notes ? `<div class="card">
         <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {/* Clinic & Doctor */}
           <SectionCard title="Klinik & diş hekimi" iconNode={<ClinicIcon size={14} color={stepAttempted[1] && errors.doctor_id ? '#EF4444' : P} />} errorCount={stepAttempted[1] && errors.doctor_id ? 1 : 0} accentColor={P}>
-            <View style={styles.twoCol}>
+            <View style={twoColStyle}>
               <SearchableDropdown
                 label="Klinik"
                 placeholder="Klinik seçin veya ekleyin"
@@ -1258,7 +1265,7 @@ ${form.notes ? `<div class="card">
           >
 
             {/* Satır 1: Ad + Soyad */}
-            <View style={styles.twoCol}>
+            <View style={twoColStyle}>
               <Field label="Ad" value={form.patient_first_name}
                 onChangeText={set('patient_first_name')} placeholder="Ad" flex
                 required error={fe('patient_first_name')} />
@@ -1268,7 +1275,7 @@ ${form.notes ? `<div class="card">
             </View>
 
             {/* Satır 2: TC / Pasaport + Doğum tarihi */}
-            <View style={styles.twoCol}>
+            <View style={twoColStyle}>
               <Field label="TC / Pasaport No" value={form.patient_id}
                 onChangeText={set('patient_id')} placeholder="TC veya Pasaport No" flex
                 required error={fe('patient_id')} />
@@ -1285,7 +1292,7 @@ ${form.notes ? `<div class="card">
             </View>
 
             {/* Satır 3: Uyruk + Cinsiyet */}
-            <View style={styles.twoCol}>
+            <View style={twoColStyle}>
               <SearchableDropdown
                 label="Uyruk"
                 placeholder="Ülke ara..."
@@ -1314,7 +1321,7 @@ ${form.notes ? `<div class="card">
             </View>
 
             {/* Satır 4: İkamet ülkesi + İkamet şehri */}
-            <View style={styles.twoCol}>
+            <View style={twoColStyle}>
               <SearchableDropdown
                 label="İkamet ülkesi"
                 placeholder="Ülke ara..."
@@ -1339,7 +1346,7 @@ ${form.notes ? `<div class="card">
             </View>
 
             {/* Satır 5: İletişim + boş */}
-            <View style={styles.twoCol}>
+            <View style={twoColStyle}>
               <Field label="İletişim" value={form.patient_phone}
                 onChangeText={set('patient_phone')} placeholder="05XX XXX XX XX" flex />
               <View style={{ flex: 1 }} />
@@ -1355,12 +1362,16 @@ ${form.notes ? `<div class="card">
         <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
 
           {/* ── Split: Vaka detayları (sol) + Mesaj kutusu (sağ) ── */}
-          <View style={{ flexDirection: 'row', gap: 12, alignItems: 'stretch' }}>
+          <View style={{
+            flexDirection: isDesktop ? 'row' : 'column',
+            gap: 12,
+            alignItems: 'stretch',
+          }}>
           <View style={{ flex: 1 }}>
           <SectionCard title="Vaka detayları" icon={'tune-variant' as any} style={{ flex: 1, marginBottom: 0 }} accentColor={P}>
 
-            {/* Acil vaka + Tasarım onayı — yan yana */}
-            <View style={s2.toggleRow}>
+            {/* Acil vaka + Tasarım onayı — yan yana (mobilde stacklenir) */}
+            <View style={[s2.toggleRow, !isDesktop && { flexDirection: 'column', gap: 10 }]}>
 
               {/* Acil vaka */}
               <TouchableOpacity
@@ -1397,8 +1408,8 @@ ${form.notes ? `<div class="card">
 
             <View style={s2.separator} />
 
-            {/* Ölçüm Yöntemi + Model Tipi — yan yana dropdown */}
-            <View style={s2.selectRow}>
+            {/* Ölçüm Yöntemi + Model Tipi — yan yana dropdown (mobilde stacklenir) */}
+            <View style={[s2.selectRow, !isDesktop && { flexDirection: 'column', gap: 12 }]}>
               <InlineSelect
                 label="* Ölçüm yöntemi"
                 icon={'ruler-square' as any}
@@ -1428,8 +1439,8 @@ ${form.notes ? `<div class="card">
 
             <View style={s2.separator} />
 
-            {/* En geç teslim tarihi + Teslim yöntemi */}
-            <View style={s2.selectRow}>
+            {/* En geç teslim tarihi + Teslim yöntemi (mobilde stacklenir) */}
+            <View style={[s2.selectRow, !isDesktop && { flexDirection: 'column', gap: 12 }]}>
               <InlineDateSelect
                 label="* En geç teslim tarihi"
                 value={form.delivery_date}
@@ -1470,10 +1481,10 @@ ${form.notes ? `<div class="card">
           {/* ── Dosyalar ── */}
           <SectionCard title="Dosyalar" icon={'paperclip' as any} accentColor={P}>
 
-            <View style={fus.twoCol}>
+            <View style={[fus.twoCol, !isDesktop && { flexDirection: 'column', gap: 16 }]}>
 
               {/* ── Sol: Yükleme butonu ── */}
-              <View style={fus.twoColLeft}>
+              <View style={[fus.twoColLeft, !isDesktop && { paddingRight: 0 }]}>
                 <TouchableOpacity
                   style={fus.uploadTrigger}
                   onPress={() => setUploadModalOpen(true)}
@@ -1496,11 +1507,16 @@ ${form.notes ? `<div class="card">
                 </TouchableOpacity>
               </View>
 
-              {/* Dikey ayırıcı */}
-              <View style={fus.twoColDivider} />
+              {/* Dikey ayırıcı (mobilde yatay çizgi) */}
+              <View
+                style={[
+                  fus.twoColDivider,
+                  !isDesktop && { width: '100%', height: 1, alignSelf: 'auto' as any },
+                ]}
+              />
 
               {/* ── Sağ: Dosya listesi ── */}
-              <View style={fus.twoColRight}>
+              <View style={[fus.twoColRight, !isDesktop && { paddingLeft: 0 }]}>
                 <View style={fus.subHeader}>
                   <Text style={fus.subLabel}>YÜKLENEN DOSYALAR</Text>
                   <Text style={fus.subHint}>Tüm ekler ve ön izleme</Text>
@@ -1571,11 +1587,14 @@ ${form.notes ? `<div class="card">
             animationType="fade"
             onRequestClose={() => setUploadModalOpen(false)}
           >
-            <View style={fus.umOverlay}>
-              <View style={fus.umCard}>
+            <View style={[fus.umOverlay, !isDesktop && { padding: 0 }]}>
+              <View style={[
+                fus.umCard,
+                !isDesktop && { borderRadius: 0, maxHeight: '100%' as any, flex: 1 },
+              ]}>
 
                 {/* Header */}
-                <View style={fus.umHeader}>
+                <View style={[fus.umHeader, !isDesktop && { paddingHorizontal: 16, paddingVertical: 14 }]}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                     <View style={[fus.umHeaderIcon, { backgroundColor: P + '18' }]}>
                       <MaterialCommunityIcons name={'cloud-upload-outline' as any} size={20} color={P} />
@@ -1587,11 +1606,15 @@ ${form.notes ? `<div class="card">
                   </TouchableOpacity>
                 </View>
 
-                <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 24 }} showsVerticalScrollIndicator={false}>
-                  <View style={fus.umGrid}>
+                <ScrollView
+                  style={{ flex: 1 }}
+                  contentContainerStyle={{ padding: isDesktop ? 24 : 14 }}
+                  showsVerticalScrollIndicator={false}
+                >
+                  <View style={[fus.umGrid, !isDesktop && { gap: 10 }]}>
 
                   {/* ── Grup 1: Gülüş Tasarımı ── */}
-                  <View style={fus.umGroup}>
+                  <View style={[fus.umGroup, !isDesktop && { flexBasis: '100%' as any, padding: 12 }]}>
                     <View style={fus.umGroupHeader}>
                       <View style={[fus.umGroupDot, { backgroundColor: P }]} />
                       <Text style={fus.umGroupTitle}>Gülüş Tasarımı</Text>
@@ -1691,7 +1714,7 @@ ${form.notes ? `<div class="card">
                   </View>
 
                   {/* ── Grup 2: Tarama Verileri ── */}
-                  <View style={fus.umGroup}>
+                  <View style={[fus.umGroup, !isDesktop && { flexBasis: '100%' as any, padding: 12 }]}>
                     <View style={fus.umGroupHeader}>
                       <View style={[fus.umGroupDot, { backgroundColor: '#0EA5E9' }]} />
                       <Text style={fus.umGroupTitle}>Tarama Verileri</Text>
@@ -1786,7 +1809,7 @@ ${form.notes ? `<div class="card">
                   </View>
 
                   {/* ── Grup 3: İmplant Bilgileri ── */}
-                  <View style={fus.umGroup}>
+                  <View style={[fus.umGroup, !isDesktop && { flexBasis: '100%' as any, padding: 12 }]}>
                     <View style={fus.umGroupHeader}>
                       <View style={[fus.umGroupDot, { backgroundColor: '#8B5CF6' }]} />
                       <Text style={fus.umGroupTitle}>İmplant Bilgileri</Text>
@@ -1919,7 +1942,7 @@ ${form.notes ? `<div class="card">
                   </View>
 
                   {/* ── Grup 4: Ek Dosyalar ── */}
-                  <View style={fus.umGroup}>
+                  <View style={[fus.umGroup, !isDesktop && { flexBasis: '100%' as any, padding: 12 }]}>
                     <View style={fus.umGroupHeader}>
                       <View style={[fus.umGroupDot, { backgroundColor: '#F59E0B' }]} />
                       <Text style={fus.umGroupTitle}>Ek Dosyalar</Text>
@@ -2034,10 +2057,14 @@ ${form.notes ? `<div class="card">
 
                 </ScrollView>
 
-                {/* Footer — Tamam butonu */}
-                <View style={fus.umFooter}>
+                {/* Footer — Tamam butonu (mobilde tam genişlik) */}
+                <View style={[fus.umFooter, !isDesktop && { padding: 12, alignItems: 'stretch' as any }]}>
                   <TouchableOpacity
-                    style={[fus.umOkBtn, { backgroundColor: P }]}
+                    style={[
+                      fus.umOkBtn,
+                      { backgroundColor: P },
+                      !isDesktop && { justifyContent: 'center' as any },
+                    ]}
                     onPress={() => setUploadModalOpen(false)}
                     activeOpacity={0.85}
                   >
@@ -2073,7 +2100,7 @@ ${form.notes ? `<div class="card">
         <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
 
           {/* Split row: Diş Seçimi | Operasyon Detayı */}
-          <View style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
+          <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: 12, alignItems: 'stretch' }}>
 
             {/* Left — Diş Seçimi */}
             <View style={{ flex: 1 }}>
@@ -2144,7 +2171,7 @@ ${form.notes ? `<div class="card">
                       }
                     }
                   }}
-                  containerWidth={(width - (isDesktop ? 100 : 0)) / 2 - 64}
+                  containerWidth={isDesktop ? (width - 100) / 2 - 64 : width - 80}
                 />
 
                 <FieldError msg={fe('tooth_ops')} />
@@ -2403,9 +2430,12 @@ ${form.notes ? `<div class="card">
         </View>
       ) : null}
 
-      {/* Navigation — floating, transparent — her iki buton sağda yan yana */}
+      {/* Navigation — floating, transparent — her iki buton sağda yan yana.
+          Mobilde alttaki cam tab bar'ın üstüne kaldırılır. */}
       <View style={{
-        position: 'absolute', bottom: 16, right: 16,
+        position: 'absolute',
+        bottom: isDesktop ? 16 : 96,
+        right: 16,
         flexDirection: 'row', gap: 8,
         pointerEvents: 'box-none',
       }}>
@@ -6164,8 +6194,10 @@ const makeStyles = (P: string) => StyleSheet.create({
   stepLineActive: { backgroundColor: P },
   stepLabel: { fontSize: 13, color: '#64748B', fontWeight: '500', fontFamily: F.medium },
 
-  /* Form content area — light background so cards pop */
-  content: { padding: 20, paddingBottom: 80, gap: 16 },
+  /* Form content area — light background so cards pop.
+     Bottom padding leaves room for the floating nav buttons (Geri/İleri)
+     + the floating glass tab bar on mobile. */
+  content: { padding: 20, paddingBottom: 140, gap: 16 },
 
   /* Section cards — real cards with shadow */
   sectionCard: {
@@ -6232,6 +6264,7 @@ const makeStyles = (P: string) => StyleSheet.create({
 
   /* Form fields */
   twoCol: { flexDirection: 'row', gap: 12, overflow: 'visible', marginBottom: 14 },
+  twoColStack: { flexDirection: 'column', gap: 14, overflow: 'visible', marginBottom: 14 },
   fieldWrap: { marginBottom: 0 },
   fieldLabel: {
     fontSize: 13, fontWeight: '600', fontFamily: F.semibold, color: '#475569',

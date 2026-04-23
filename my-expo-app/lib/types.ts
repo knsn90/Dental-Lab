@@ -18,6 +18,8 @@ export interface Profile {
   email?: string | null;
   is_active: boolean;
   approval_status: 'pending' | 'approved' | 'rejected';
+  lab_id?: string | null;      // çok-kiracılı (012_multi_tenancy)
+  avatar_url?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -85,6 +87,7 @@ export interface WorkOrderPhoto {
   uploaded_by: string;
   caption: string | null;
   created_at: string;
+  tooth_number: number | null; // FDI tooth number this file belongs to (null = general)
   signed_url?: string; // populated client-side after getSignedUrl
 }
 

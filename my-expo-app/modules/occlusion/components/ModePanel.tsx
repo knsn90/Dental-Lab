@@ -76,6 +76,10 @@ interface Props {
   removeMeasurement: (id: string) => void;
   clearMeasurements: () => void;
   resetPending:      () => void;
+
+  // Mobile
+  isMobile?: boolean;
+  onClose?:  () => void;
 }
 
 export function ModePanel(p: Props) {
@@ -88,10 +92,15 @@ export function ModePanel(p: Props) {
   const h = titles[p.mode];
 
   return (
-    <View style={s.panel}>
+    <View style={[s.panel, p.isMobile && s.panelMobile]}>
       <View style={s.header}>
         <Text style={s.title}>{h.t}</Text>
         <View style={s.badge}><Text style={s.badgeText}>{h.b}</Text></View>
+        {p.isMobile && p.onClose && (
+          <TouchableOpacity onPress={p.onClose} style={s.closeBtn} hitSlop={8}>
+            <MaterialCommunityIcons name="close" size={16} color="#64748B" />
+          </TouchableOpacity>
+        )}
       </View>
 
       <ScrollView style={s.body} contentContainerStyle={{ paddingBottom: 16 }}>
@@ -295,6 +304,21 @@ const s = StyleSheet.create({
     shadowOffset:    { width: 0, height: 4 },
     elevation:       3,
     overflow:        'hidden',
+  },
+  panelMobile: {
+    top:             undefined,
+    right:           12,
+    left:            12,
+    bottom:          108,
+    width:           undefined,
+    maxHeight:       '55%',
+    zIndex:          20,
+  },
+  closeBtn: {
+    marginLeft:      8,
+    width:           24, height: 24, borderRadius: 12,
+    alignItems:      'center', justifyContent: 'center',
+    backgroundColor: '#F8FAFC',
   },
   header: {
     flexDirection:   'row',

@@ -18,6 +18,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import Feather from '@expo/vector-icons/Feather';
 import { useOrders } from '../../modules/orders/hooks/useOrders';
 import { supabase } from '../api/supabase';
+import { BlurFade } from '../ui/BlurFade';
 
 // ─── Tokens ───────────────────────────────────────────────────────────────────
 const C = {
@@ -58,6 +59,8 @@ export interface NavItem {
   iconSet?: 'ionicons' | 'mci' | 'mdi' | string;
   subtitle?: string;
   sectionLabel?: string; // renders a section divider + label before this item
+  /** Navigasyon yerine modal açmak için override. Verildiğinde router.push atlanır. */
+  onPress?: () => void;
 }
 
 interface Props {
@@ -71,11 +74,11 @@ function getInitials(name?: string | null) {
 }
 
 function NavIcon({ item, active, accentColor }: { item: NavItem; active: boolean; accentColor: string }) {
-  const iconColor = active ? accentColor : '#94A3B8';
+  const iconColor = active ? accentColor : '#64748B';
   if (item.iconName) {
     return <Feather name={item.iconName as any} size={18} color={iconColor} />;
   }
-  return <Text style={{ fontSize: 17, opacity: active ? 1 : 0.45, width: 22, textAlign: 'center' }}>{item.emoji}</Text>;
+  return <Text style={{ fontSize: 17, opacity: active ? 1 : 0.55, width: 22, textAlign: 'center' }}>{item.emoji}</Text>;
 }
 
 // ─── Right panel ──────────────────────────────────────────────────────────────
@@ -591,11 +594,10 @@ export function DesktopShell({ navItems, accentColor = C.primary }: Props) {
               <React.Fragment key={item.href}>
               {item.sectionLabel && (
                 <View style={s.navSectionRow}>
-                  <View style={s.navSectionLine} />
-                  {!sidebarCollapsed && (
-                    <Text style={s.navSectionLabel}>{item.sectionLabel}</Text>
-                  )}
-                  <View style={s.navSectionLine} />
+                  {sidebarCollapsed
+                    ? <View style={s.navSectionLine} />
+                    : <Text style={s.navSectionLabel}>{item.sectionLabel}</Text>
+                  }
                 </View>
               )}
               <TouchableOpacity
@@ -605,7 +607,7 @@ export function DesktopShell({ navItems, accentColor = C.primary }: Props) {
                   active && [s.navItemActive, { backgroundColor: accentColor + '14' }],
                   !active && hover && s.navItemHover,
                 ]}
-                onPress={() => router.push(item.href as any)}
+                onPress={() => item.onPress ? item.onPress() : router.push(item.href as any)}
                 // @ts-ignore
                 onMouseEnter={(e: any) => { setHovered(item.href); if (sidebarCollapsed) setNavTooltip({ label: item.label, y: e.nativeEvent.pageY }); }}
                 onMouseLeave={() => { setHovered(null); setNavTooltip(null); }}
@@ -639,7 +641,7 @@ export function DesktopShell({ navItems, accentColor = C.primary }: Props) {
             onMouseEnter={(e: any) => { setHovered('__out'); if (sidebarCollapsed) setNavTooltip({ label: 'Çıkış Yap', y: e.nativeEvent.pageY }); }}
             onMouseLeave={() => { setHovered(null); setNavTooltip(null); }}
           >
-            <Feather name="log-out" size={17} color={hovered === '__out' ? C.danger : '#94A3B8'} />
+            <Feather name="log-out" size={17} color={hovered === '__out' ? C.danger : '#64748B'} />
             {!sidebarCollapsed && (
               <Text style={[s.navLabel, hovered === '__out' && { color: C.danger }]}>Çıkış Yap</Text>
             )}
@@ -679,7 +681,9 @@ export function DesktopShell({ navItems, accentColor = C.primary }: Props) {
       <View style={s.main}>
         {/* Header bar — like Overpay: title left, icons + avatar right */}
         <View style={s.header}>
-          <Text style={s.headerTitle}>{activeLabel}</Text>
+          <BlurFade key={activeLabel}>
+            <Text style={s.headerTitle}>{activeLabel}</Text>
+          </BlurFade>
           <View style={s.headerRight}>
             <TouchableOpacity style={s.headerIcon} onPress={() => setShowSearch(true)}>
               <Feather name="search" size={18} color={C.textSecondary} />
@@ -742,13 +746,13 @@ const s = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
 
-  /* ── Sidebar ── */
+  /* ── Sidebar (Stitch) ── */
   sidebar: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F8FAFC',
     flexDirection: 'column',
-    paddingTop: 20,
-    borderRightWidth: StyleSheet.hairlineWidth,
-    borderRightColor: '#E5E5EA',
+    paddingTop: 22,
+    borderRightWidth: 1,
+    borderRightColor: '#E2E8F0',
     zIndex: 100,
     overflow: 'visible' as any,
   },
@@ -759,8 +763,8 @@ const s = StyleSheet.create({
   logoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    marginBottom: 20,
+    paddingHorizontal: 18,
+    marginBottom: 24,
     gap: 10,
     minHeight: 40,
   },
@@ -768,35 +772,35 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 0,
   },
-  logoImg: { width: 36, height: 36, flexShrink: 0 },
-  logoTitle:  { fontSize: 13, fontWeight: '700', color: '#1C1C1E', letterSpacing: -0.3 },
-  logoSub:    { fontSize: 10, color: '#AEAEB2', marginTop: 1 },
+  logoImg: { width: 34, height: 34, flexShrink: 0 },
+  logoTitle:  { fontSize: 14, fontWeight: '800', color: '#0F172A', letterSpacing: -0.3 },
+  logoSub:    { fontSize: 10, color: '#94A3B8', marginTop: 1 },
 
   // Nav
-  navScroll: { flex: 1, paddingHorizontal: 8 },
+  navScroll: { flex: 1, paddingHorizontal: 10 },
   navSectionRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 8, paddingTop: 14, paddingBottom: 6, gap: 6,
+    paddingHorizontal: 14, paddingTop: 18, paddingBottom: 4,
   },
-  navSectionLine:  { flex: 1, height: 1, backgroundColor: '#F1F5F9' },
-  navSectionLabel: { fontSize: 9, fontWeight: '700', color: '#AEAEB2', textTransform: 'uppercase', letterSpacing: 1.2, flexShrink: 0 },
+  navSectionLine:  { height: 1, backgroundColor: '#E2E8F0', marginVertical: 8 },
+  navSectionLabel: { fontSize: 9, fontWeight: '800' as const, color: '#94A3B8', letterSpacing: 1.4,
+                     textTransform: 'uppercase' as const },
 
   navDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: '#E5E5EA',
-    marginHorizontal: 8,
-    marginBottom: 4,
+    height: 1,
+    backgroundColor: '#E2E8F0',
+    marginHorizontal: 10,
+    marginBottom: 6,
   },
 
   navItem: {
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 10,
-    paddingVertical: 9,
-    paddingHorizontal: 10,
-    marginBottom: 1,
-    gap: 10,
-    minHeight: 40,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 2,
+    gap: 12,
+    minHeight: 42,
   },
   navItemCollapsed: {
     width: 44,
@@ -806,12 +810,16 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 0,
     paddingVertical: 0,
-    marginBottom: 2,
+    marginBottom: 4,
   },
-  navItemActive:  {},
-  navItemHover:   { backgroundColor: '#F2F2F7' },
-  navItemLogout:  { backgroundColor: '#FFF1F0' },
-  navLabel:       { flex: 1, fontSize: 13, fontWeight: '500', color: '#3C3C43', letterSpacing: -0.1 },
+  navItemActive: {
+    backgroundColor: '#FFFFFF',
+    // @ts-ignore
+    boxShadow: '0 1px 3px rgba(15,23,42,0.06), 0 0 0 1px rgba(15,23,42,0.04)',
+  },
+  navItemHover:   { backgroundColor: 'rgba(255,255,255,0.6)' },
+  navItemLogout:  { backgroundColor: '#FEF2F2' },
+  navLabel:       { flex: 1, fontSize: 13, fontWeight: '500', color: '#64748B', letterSpacing: -0.1 },
   navLabelActive: { fontWeight: '600' },
   navBadgeDot:       { width: 7, height: 7, borderRadius: 4 },
   navBadgeCount:     { minWidth: 18, height: 18, borderRadius: 9, backgroundColor: C.danger, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
@@ -837,40 +845,42 @@ const s = StyleSheet.create({
   tooltipText: { fontSize: 12, fontWeight: '600', color: '#FFFFFF' },
 
   // Bottom section
-  sidebarBottom: { paddingHorizontal: 8, paddingBottom: 14 },
+  sidebarBottom: { paddingHorizontal: 10, paddingBottom: 16 },
 
   // User card + toggle
   userCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     paddingTop: 10,
     paddingBottom: 2,
-    gap: 8,
+    gap: 10,
   },
   userCardCollapsed: {
     flexDirection: 'column',
     alignItems: 'center',
     paddingHorizontal: 0,
-    gap: 6,
+    gap: 8,
   },
-  userAvatar:     { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' },
-  userAvatarImg:  { width: 30, height: 30, borderRadius: 15 },
-  userAvatarText: { color: '#fff', fontSize: 11, fontWeight: '800' },
+  userAvatar:     { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' },
+  userAvatarImg:  { width: 34, height: 34, borderRadius: 17 },
+  userAvatarText: { color: '#fff', fontSize: 12, fontWeight: '800' },
   userInfo:       { flex: 1 },
-  userName:       { fontSize: 12, fontWeight: '600', color: '#1C1C1E' },
-  userRole:       { fontSize: 10, color: '#AEAEB2', textTransform: 'capitalize', marginTop: 1 },
+  userName:       { fontSize: 13, fontWeight: '700', color: '#0F172A', letterSpacing: -0.1 },
+  userRole:       { fontSize: 11, color: '#94A3B8', textTransform: 'capitalize', marginTop: 1 },
   sidebarToggle: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    backgroundColor: '#F2F2F7',
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   sidebarToggleCollapsed: {
-    marginTop: 2,
+    marginTop: 4,
   },
 
   /* ── Main ── */
@@ -881,22 +891,23 @@ const s = StyleSheet.create({
     overflow: 'hidden',
   },
 
-  /* ── Header bar ── */
+  /* ── Header bar (Stitch style — big extrabold title) ── */
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 28,
-    paddingVertical: 18,
+    paddingHorizontal: 32,
+    paddingVertical: 24,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 34,
     fontWeight: '800',
-    color: '#1C1C1E',
-    letterSpacing: -0.3,
+    color: '#0F172A',
+    letterSpacing: -0.9,
+    lineHeight: 38,
   },
   headerRight: {
     flexDirection: 'row',

@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { toast } from '../../../core/ui/Toast';
 import { CaseStep } from '../types';
 import { StepCard } from './StepCard';
-import { useStartStep } from '../hooks/useStartStep';
-import { useCompleteStep } from '../hooks/useCompleteStep';
+import { startStep as apiStartStep } from '../api';
+import { completeStep as apiCompleteStep } from '../api';
+import { useAuthStore } from '../../../core/store/authStore';
 
 interface Props {
   steps: CaseStep[];
@@ -12,8 +14,7 @@ interface Props {
 }
 
 export function StepTimeline({ steps, loading, onRefresh }: Props) {
-  const { startStep, loading: starting, error: startError } = useStartStep();
-  const { completeStep, loading: completing, error: completeError } = useCompleteStep();
+  const { profile } = useAuthStore();
   const [activeStepId, setActiveStepId] = useState<string | null>(null);
 
   const done  = steps.filter(s => s.status === 'done').length;
@@ -21,19 +22,29 @@ export function StepTimeline({ steps, loading, onRefresh }: Props) {
   const pct   = total > 0 ? Math.round((done / total) * 100) : 0;
 
   const handleStart = async (step: CaseStep) => {
+    if (!profile?.id) return;
     setActiveStepId(step.id);
-    const ok = await startStep(step.id);
-    if (ok) onRefresh?.();
-    else Alert.alert('Hata', startError ?? 'Başlatılamadı');
-    setActiveStepId(null);
+    try {
+      await apiStartStep(step.id, profile.id);
+      onRefresh?.();
+    } catch (e: any) {
+      toast.error(e.message ?? 'Bir hata oluştu');
+    } finally {
+      setActiveStepId(null);
+    }
   };
 
   const handleComplete = async (step: CaseStep) => {
+    if (!profile?.id) return;
     setActiveStepId(step.id);
-    const ok = await completeStep(step.id);
-    if (ok) onRefresh?.();
-    else Alert.alert('Hata', completeError ?? 'Tamamlanamadı');
-    setActiveStepId(null);
+    try {
+      await apiCompleteStep(step.id, profile.id);
+      onRefresh?.();
+    } catch (e: any) {
+      toast.error(e.message ?? 'Bir hata oluştu');
+    } finally {
+      setActiveStepId(null);
+    }
   };
 
   return (
@@ -49,7 +60,7 @@ export function StepTimeline({ steps, loading, onRefresh }: Props) {
       <Text style={styles.progressSub}>{done} / {total} adım tamamlandı</Text>
 
       {/* Steps */}
-      <ScrollView showsVerticalScrollIndicator={false} style={{ marginTop: 12 }}>
+      <View style={{ marginTop: 12 }}>
         {steps.map((step) => (
           <StepCard
             key={step.id}
@@ -59,7 +70,7 @@ export function StepTimeline({ steps, loading, onRefresh }: Props) {
             onComplete={handleComplete}
           />
         ))}
-      </ScrollView>
+      </View>
     </View>
   );
 }
@@ -68,8 +79,8 @@ const styles = StyleSheet.create({
   wrap: { flex: 1, padding: 16 },
   progressRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
   progressLabel: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
-  progressPct:   { fontSize: 13, fontWeight: '800', color: '#2563EB' },
-  progressBg:    { height: 8, backgroundColor: '#E2E8F0', borderRadius: 4, overflow: 'hidden' },
-  progressFill:  { height: 8, backgroundColor: '#2563EB', borderRadius: 4 },
+  progressPct:   { fontSize: 13, fontWeight: '800', color: '#0F172A' },
+  progressBg:    { height: 8, backgroundColor: '#F1F5F9', borderRadius: 4, overflow: 'hidden' },
+  progressFill:  { height: 8, backgroundColor: '#0F172A', borderRadius: 4 },
   progressSub:   { fontSize: 11, color: '#94A3B8', marginTop: 4 },
 });

@@ -89,7 +89,7 @@ const styles = StyleSheet.create({
   secondary: {
     backgroundColor: C.primaryBg,
     borderWidth: 1,
-    borderColor: '#BFDBFE',
+    borderColor: '#CBD5E1',
   },
   ghost: {
     backgroundColor: 'transparent',

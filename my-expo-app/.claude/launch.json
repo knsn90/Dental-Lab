@@ -2,27 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "Expo (QR / Expo Go)",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": ["expo", "start"],
-      "port": 8081
-    },
-    {
       "name": "Expo Web",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": ["expo", "start", "--web", "--clear"],
-      "port": 8081
-    },
-    {
-      "name": "Expo iOS Simulator",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": ["expo", "start", "--ios"],
-      "port": 8081
-    },
-    {
-      "name": "Expo Android Emulator",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": ["expo", "start", "--android"],
+      "runtimeExecutable": "/bin/bash",
+      "runtimeArgs": ["-c", "cd '/Users/saber/Desktop/Dental Software/.claude/worktrees/heuristic-allen' && PATH=/usr/local/bin:$PATH npx expo start --web --port 8081"],
       "port": 8081
     }
   ]

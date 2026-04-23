@@ -15,10 +15,11 @@ interface Props {
   onToggle:       () => void;
   onExportPDF?:   () => void;
   onSaveToOrder?: () => void;
+  isMobile?:      boolean;
 }
 
 export function OcclusionReport({
-  stats, penPoints, expanded, onToggle, onExportPDF, onSaveToOrder,
+  stats, penPoints, expanded, onToggle, onExportPDF, onSaveToOrder, isMobile,
 }: Props) {
   const sevCounts = useMemo(() => {
     const c: Record<Severity, number> = { low: 0, medium: 0, high: 0 };
@@ -32,26 +33,60 @@ export function OcclusionReport({
   const summaryText = clinicalSummary(stats, sevCounts);
 
   return (
-    <View style={[s.container, expanded && s.containerExpanded]}>
+    <View style={[s.container, expanded && s.containerExpanded, isMobile && s.containerMobile, isMobile && expanded && s.containerMobileExpanded]}>
       {/* Summary strip (always visible) */}
-      <TouchableOpacity style={s.summary} onPress={onToggle} activeOpacity={0.95}>
-        <Stat label="Temas Alanı"      value={`${stats.contactPercentage}`} unit="%"  tone={stats.contactPercentage > 30 ? 'ok' : 'warn'} />
-        <Divider />
-        <Stat label="Penetrasyon"       value={`${totalPen}`}                tone={sevCounts.high > 0 ? 'danger' : sevCounts.medium > 0 ? 'warn' : 'ok'} />
-        <Divider />
-        <Stat label="Min Mesafe"        value={stats.minDistance.toFixed(2)}  unit="mm" />
-        <Divider />
-        <Stat label="Ort. Mesafe"       value={stats.avgDistance.toFixed(2)}  unit="mm" />
-        <Divider />
-        <Stat label="Toplam Pen. Alanı" value={stats.totalPenetrationArea.toFixed(1)} unit="mm²" />
-        <View style={s.toggle}>
-          <Text style={s.toggleText}>{expanded ? 'Gizle' : 'Detay'}</Text>
-          <MaterialCommunityIcons
-            name={expanded ? 'chevron-down' : 'chevron-up'}
-            size={14} color="#64748B"
-          />
-        </View>
-      </TouchableOpacity>
+      {isMobile ? (
+        <TouchableOpacity activeOpacity={0.95} onPress={onToggle} style={s.summaryMobileWrap}>
+          <View style={s.summaryMobileHeader}>
+            <Text style={s.summaryMobileTitle}>Özet</Text>
+            <View style={s.toggle}>
+              <Text style={s.toggleText}>{expanded ? 'Gizle' : 'Detay'}</Text>
+              <MaterialCommunityIcons
+                name={expanded ? 'chevron-down' : 'chevron-up'}
+                size={14} color="#64748B"
+              />
+            </View>
+          </View>
+          <View style={s.summaryMobileGrid}>
+            <View style={s.gridCell}>
+              <StatCompact label="Temas Alanı" value={`${stats.contactPercentage}`} unit="%"
+                tone={stats.contactPercentage > 30 ? 'ok' : 'warn'} />
+            </View>
+            <View style={s.gridCell}>
+              <StatCompact label="Penetrasyon" value={`${totalPen}`}
+                tone={sevCounts.high > 0 ? 'danger' : sevCounts.medium > 0 ? 'warn' : 'ok'} />
+            </View>
+            <View style={s.gridCell}>
+              <StatCompact label="Min Mesafe" value={stats.minDistance.toFixed(2)} unit="mm" />
+            </View>
+            <View style={s.gridCell}>
+              <StatCompact label="Ort. Mesafe" value={stats.avgDistance.toFixed(2)} unit="mm" />
+            </View>
+            <View style={[s.gridCell, s.gridCellFull]}>
+              <StatCompact label="Toplam Pen. Alanı" value={stats.totalPenetrationArea.toFixed(1)} unit="mm²" />
+            </View>
+          </View>
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity style={s.summary} onPress={onToggle} activeOpacity={0.95}>
+          <Stat label="Temas Alanı"      value={`${stats.contactPercentage}`} unit="%"  tone={stats.contactPercentage > 30 ? 'ok' : 'warn'} />
+          <Divider />
+          <Stat label="Penetrasyon"       value={`${totalPen}`}                tone={sevCounts.high > 0 ? 'danger' : sevCounts.medium > 0 ? 'warn' : 'ok'} />
+          <Divider />
+          <Stat label="Min Mesafe"        value={stats.minDistance.toFixed(2)}  unit="mm" />
+          <Divider />
+          <Stat label="Ort. Mesafe"       value={stats.avgDistance.toFixed(2)}  unit="mm" />
+          <Divider />
+          <Stat label="Toplam Pen. Alanı" value={stats.totalPenetrationArea.toFixed(1)} unit="mm²" />
+          <View style={s.toggle}>
+            <Text style={s.toggleText}>{expanded ? 'Gizle' : 'Detay'}</Text>
+            <MaterialCommunityIcons
+              name={expanded ? 'chevron-down' : 'chevron-up'}
+              size={14} color="#64748B"
+            />
+          </View>
+        </TouchableOpacity>
+      )}
 
       {/* Expanded detail */}
       {expanded && (
@@ -125,6 +160,22 @@ function Stat({
   );
 }
 
+// Compact stat for mobile grid — tighter type sizes, labels on top
+function StatCompact({
+  label, value, unit, tone = 'default',
+}: { label: string; value: string; unit?: string; tone?: 'default' | 'ok' | 'warn' | 'danger' }) {
+  const toneColor = tone === 'ok' ? '#059669' : tone === 'warn' ? '#D97706' : tone === 'danger' ? '#DC2626' : '#0F172A';
+  return (
+    <View style={stS.statCompact}>
+      <Text style={stS.labelCompact} numberOfLines={1}>{label}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+        <Text style={[stS.valueCompact, { color: toneColor }]} numberOfLines={1}>{value}</Text>
+        {unit && <Text style={stS.unitCompact}>{unit}</Text>}
+      </View>
+    </View>
+  );
+}
+
 function Divider() {
   return <View style={stS.divider} />;
 }
@@ -186,9 +237,40 @@ const s = StyleSheet.create({
   containerExpanded: {
     maxHeight: 420,
   },
+  containerMobile: {
+    left: 12, right: 12, bottom: 12,
+    borderRadius: 14,
+  },
+  containerMobileExpanded: {
+    maxHeight: 340,
+  },
   summary: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 16, paddingVertical: 12, gap: 12,
+  },
+  summaryMobileWrap: {
+    paddingHorizontal: 12, paddingTop: 10, paddingBottom: 10,
+  },
+  summaryMobileHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  summaryMobileTitle: {
+    fontSize: 11, fontWeight: '800', color: '#94A3B8',
+    letterSpacing: 0.6, textTransform: 'uppercase',
+  },
+  summaryMobileGrid: {
+    flexDirection: 'row', flexWrap: 'wrap',
+    rowGap: 10, columnGap: 10,
+  },
+  gridCell: {
+    width: '48%',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    paddingHorizontal: 10, paddingVertical: 8,
+  },
+  gridCellFull: {
+    width: '100%',
   },
   toggle: {
     marginLeft: 'auto',
@@ -253,6 +335,18 @@ const stS = StyleSheet.create({
   },
   unit: { fontSize: 11, fontWeight: '600', color: '#94A3B8', marginLeft: 2 },
   divider: { width: 1, height: 24, backgroundColor: '#F1F5F9' },
+
+  // Compact variants for mobile grid
+  statCompact: { alignItems: 'flex-start', gap: 2 },
+  labelCompact: {
+    fontSize: 9, fontWeight: '700', color: '#94A3B8',
+    letterSpacing: 0.5, textTransform: 'uppercase',
+  },
+  valueCompact: {
+    fontSize: 16, fontWeight: '800', color: '#0F172A',
+    letterSpacing: -0.3, fontVariant: ['tabular-nums'],
+  },
+  unitCompact: { fontSize: 10, fontWeight: '600', color: '#94A3B8', marginLeft: 2 },
 
   histo: {
     flexDirection: 'row', alignItems: 'flex-end',
