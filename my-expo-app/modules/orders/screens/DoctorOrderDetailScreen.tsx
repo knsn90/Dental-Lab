@@ -3,30 +3,34 @@ import {
   View, Text, ScrollView, StyleSheet,
   Image, TouchableOpacity, TextInput,
   ActivityIndicator, Platform, Modal, Pressable,
-  KeyboardAvoidingView,
+  KeyboardAvoidingView, useWindowDimensions,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Path, Circle, Line, Polyline } from 'react-native-svg';
+import Svg, {
+  Path, Circle, Line, Polyline,
+  Defs, RadialGradient, Stop, Rect,
+} from 'react-native-svg';
 import { useAuthStore } from '../../../core/store/authStore';
 import { useOrderDetail } from '../hooks/useOrderDetail';
 import { useChatMessages } from '../hooks/useChatMessages';
 import { StatusBadge } from '../components/StatusBadge';
 import { StatusTimeline } from '../components/StatusTimeline';
-import { Card } from '../../../core/ui/Card';
 import { BrandedQR } from '../../../core/ui/BrandedQR';
-import { isOrderOverdue, formatDeliveryDate } from '../constants';
-import { C } from '../../../core/theme/colors';
+import { isOrderOverdue, formatDeliveryDate, STATUS_CONFIG } from '../constants';
 
-const ACCENT = '#0EA5E9'; // doctor sky blue
+// ── Design tokens ────────────────────────────────────────────────
+const ACCENT      = '#0EA5E9';
+const ACCENT_DARK = '#0284C7';
+const BG          = '#F7F9FB';
+const SURFACE     = '#FFFFFF';
+const BORDER      = '#F1F5F9';
+const TEXT        = '#0F172A';
+const MUTED       = '#64748B';
+const SUBTLE      = '#94A3B8';
+const DANGER      = '#EF4444';
 
 // ── Helpers ──────────────────────────────────────────────────────
-function initials(name?: string | null) {
-  if (!name) return '?';
-  return name.trim().split(/\s+/).slice(0, 2)
-    .map(p => p[0]?.toUpperCase() ?? '').join('') || '?';
-}
-
 function hexA(hex: string, a: number) {
   try {
     const r = parseInt(hex.slice(1, 3), 16);
@@ -35,14 +39,32 @@ function hexA(hex: string, a: number) {
     return `rgba(${r},${g},${b},${a})`;
   } catch { return hex; }
 }
-
+function initials(name?: string | null) {
+  if (!name) return '?';
+  return name.trim().split(/\s+/).slice(0, 2)
+    .map(p => p[0]?.toUpperCase() ?? '').join('') || '?';
+}
 function formatTime(ts: string) {
   return new Date(ts).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
 }
+function daysUntil(deliveryDate: string, status: string): { text: string; tone: 'green' | 'amber' | 'red' | 'neutral' } {
+  if (status === 'teslim_edildi') return { text: 'Teslim edildi', tone: 'neutral' };
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const due   = new Date(deliveryDate + 'T00:00:00');
+  const diff  = Math.ceil((due.getTime() - today.getTime()) / 86_400_000);
+  if (diff < 0)  return { text: `${Math.abs(diff)} gün gecikti`, tone: 'red' };
+  if (diff === 0) return { text: 'Bugün teslim',                 tone: 'amber' };
+  if (diff === 1) return { text: 'Yarın teslim',                 tone: 'amber' };
+  if (diff <= 3)  return { text: `${diff} gün kaldı`,            tone: 'amber' };
+  return { text: `${diff} gün kaldı`, tone: 'green' };
+}
 
 // ── Icons ────────────────────────────────────────────────────────
-type IconName = 'send' | 'qr-code' | 'arrow-left' | 'check-check' | 'message-circle' | 'x';
-function Icon({ name, size = 18, color = '#0F172A', strokeWidth = 1.8 }: {
+type IconName =
+  | 'send' | 'qr-code' | 'arrow-left' | 'check-check' | 'message-circle'
+  | 'x' | 'package' | 'palette' | 'cog' | 'calendar' | 'tooth' | 'note'
+  | 'image' | 'history' | 'printer';
+function Icon({ name, size = 18, color = TEXT, strokeWidth = 1.8 }: {
   name: IconName; size?: number; color?: string; strokeWidth?: number;
 }) {
   const p = { stroke: color, strokeWidth, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, fill: 'none' };
@@ -53,45 +75,196 @@ function Icon({ name, size = 18, color = '#0F172A', strokeWidth = 1.8 }: {
     case 'check-check':    return <Svg width={size} height={size} viewBox="0 0 24 24"><Polyline points="18 6 7 17 2 12" {...p}/><Polyline points="22 10 13 19" {...p}/></Svg>;
     case 'message-circle': return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" {...p}/></Svg>;
     case 'x':              return <Svg width={size} height={size} viewBox="0 0 24 24"><Line x1="18" y1="6" x2="6" y2="18" {...p}/><Line x1="6" y1="6" x2="18" y2="18" {...p}/></Svg>;
+    case 'package':        return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M16.5 9.4l-9-5.19M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" {...p}/></Svg>;
+    case 'palette':        return <Svg width={size} height={size} viewBox="0 0 24 24"><Circle cx="12" cy="12" r="10" {...p}/><Circle cx="7" cy="11" r="1" {...p}/><Circle cx="11" cy="7" r="1" {...p}/><Circle cx="17" cy="11" r="1" {...p}/></Svg>;
+    case 'cog':            return <Svg width={size} height={size} viewBox="0 0 24 24"><Circle cx="12" cy="12" r="3" {...p}/><Path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" {...p}/></Svg>;
+    case 'calendar':       return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M3 9h18M21 10V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-8" {...p}/><Polyline points="8 2 8 6" {...p}/><Polyline points="16 2 16 6" {...p}/></Svg>;
+    case 'tooth':          return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M5 4c0-1 1-2 3-2 1.5 0 2.5 1 4 1s2.5-1 4-1c2 0 3 1 3 2v6c0 4-2 11-3 11s-1-3-2-3h-4c-1 0-1 3-2 3s-3-7-3-11V4z" {...p}/></Svg>;
+    case 'note':           return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" {...p}/><Polyline points="14 2 14 8 20 8" {...p}/><Line x1="16" y1="13" x2="8" y2="13" {...p}/><Line x1="16" y1="17" x2="8" y2="17" {...p}/></Svg>;
+    case 'image':          return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M21 15V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14" {...p}/><Circle cx="8.5" cy="8.5" r="1.5" {...p}/><Polyline points="21 15 16 10 5 21" {...p}/></Svg>;
+    case 'history':        return <Svg width={size} height={size} viewBox="0 0 24 24"><Polyline points="1 4 1 10 7 10" {...p}/><Path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" {...p}/><Polyline points="12 7 12 12 16 14" {...p}/></Svg>;
+    case 'printer':        return <Svg width={size} height={size} viewBox="0 0 24 24"><Polyline points="6 9 6 2 18 2 18 9" {...p}/><Path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" {...p}/><Rect x="6" y="14" width="12" height="8" {...p}/></Svg>;
     default: return null;
   }
 }
 
-// ── InfoRow ──────────────────────────────────────────────────────
-function InfoRow({ label, value, valueStyle }: {
-  label: string; value: string; valueStyle?: object;
-}) {
+// ── HERO ─────────────────────────────────────────────────────────
+function Hero({ order, daysInfo }: { order: any; daysInfo: ReturnType<typeof daysUntil> }) {
+  const cfg = STATUS_CONFIG[order.status as keyof typeof STATUS_CONFIG];
+  const toneColor =
+    daysInfo.tone === 'red'    ? DANGER :
+    daysInfo.tone === 'amber'  ? '#F59E0B' :
+    daysInfo.tone === 'green'  ? '#16A34A' :
+                                 SUBTLE;
+  const toneBg = hexA(toneColor, 0.12);
+
   return (
-    <View style={info.row}>
-      <Text style={info.label}>{label}</Text>
-      <Text style={[info.value, valueStyle]}>{value}</Text>
+    <View style={hero.wrap}>
+      {/* Layered radial gradient background */}
+      <Svg width="100%" height="100%" viewBox="0 0 800 240" preserveAspectRatio="none" style={StyleSheet.absoluteFillObject}>
+        <Defs>
+          <RadialGradient id="ord-g1" cx="10%" cy="20%" r="55%">
+            <Stop offset="0%"   stopColor={ACCENT} stopOpacity="0.16" />
+            <Stop offset="100%" stopColor={ACCENT} stopOpacity="0" />
+          </RadialGradient>
+          <RadialGradient id="ord-g2" cx="95%" cy="90%" r="55%">
+            <Stop offset="0%"   stopColor={ACCENT_DARK} stopOpacity="0.10" />
+            <Stop offset="100%" stopColor={ACCENT_DARK} stopOpacity="0" />
+          </RadialGradient>
+        </Defs>
+        <Rect width="800" height="240" fill="url(#ord-g1)" />
+        <Rect width="800" height="240" fill="url(#ord-g2)" />
+      </Svg>
+
+      <View style={hero.content}>
+        <View style={hero.topRow}>
+          <View style={[hero.statusPill, { backgroundColor: cfg?.bgColor ?? '#F1F5F9' }]}>
+            <View style={[hero.statusDot, { backgroundColor: cfg?.color ?? SUBTLE }]} />
+            <Text style={[hero.statusText, { color: cfg?.color ?? MUTED }]}>{cfg?.label ?? order.status}</Text>
+          </View>
+          {order.is_urgent && (
+            <View style={hero.urgentBadge}>
+              <Text style={hero.urgentText}>ACİL</Text>
+            </View>
+          )}
+          <View style={{ flex: 1 }} />
+          <View style={[hero.daysBadge, { backgroundColor: toneBg }]}>
+            <Icon name="calendar" size={11} color={toneColor} strokeWidth={2} />
+            <Text style={[hero.daysText, { color: toneColor }]}>{daysInfo.text}</Text>
+          </View>
+        </View>
+
+        <Text style={hero.title} numberOfLines={2}>
+          {order.work_type || 'İş türü belirtilmemiş'}
+        </Text>
+
+        {order.patient_name && (
+          <Text style={hero.patient}>{order.patient_name}</Text>
+        )}
+
+        <View style={hero.metaRow}>
+          {order.tooth_numbers?.length > 0 && (
+            <View style={hero.metaChip}>
+              <Icon name="tooth" size={11} color={ACCENT_DARK} strokeWidth={2} />
+              <Text style={hero.metaText}>
+                Diş {order.tooth_numbers.slice(0, 4).join(', ')}
+                {order.tooth_numbers.length > 4 ? ` +${order.tooth_numbers.length - 4}` : ''}
+              </Text>
+            </View>
+          )}
+          {order.shade && (
+            <View style={hero.metaChip}>
+              <Icon name="palette" size={11} color={ACCENT_DARK} strokeWidth={2} />
+              <Text style={hero.metaText}>Renk {order.shade}</Text>
+            </View>
+          )}
+          <View style={hero.metaChip}>
+            <Icon name="cog" size={11} color={ACCENT_DARK} strokeWidth={2} />
+            <Text style={hero.metaText}>
+              {order.machine_type === 'milling' ? 'Frezeleme' : '3D Baskı'}
+            </Text>
+          </View>
+        </View>
+      </View>
     </View>
   );
 }
-const info = StyleSheet.create({
-  row:   { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.border },
-  label: { fontSize: 14, color: C.textSecondary, fontWeight: '500' },
-  value: { fontSize: 14, color: C.textPrimary, fontWeight: '600', flex: 1, textAlign: 'right' },
+const hero = StyleSheet.create({
+  wrap: {
+    backgroundColor: SURFACE,
+    borderRadius: 20,
+    borderWidth: 1, borderColor: BORDER,
+    overflow: 'hidden',
+    position: 'relative',
+    marginBottom: 16,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: `0 1px 2px ${hexA(ACCENT, 0.04)}, 0 8px 24px ${hexA(ACCENT, 0.06)}` } as any)
+      : { shadowColor: ACCENT, shadowOpacity: 0.08, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 3 }),
+  },
+  content:    { padding: 20, zIndex: 1 },
+  topRow:     { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' },
+  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+  statusDot:  { width: 7, height: 7, borderRadius: 4 },
+  statusText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.3, textTransform: 'uppercase' as const },
+  urgentBadge:{ backgroundColor: hexA(DANGER, 0.12), paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  urgentText: { fontSize: 9, fontWeight: '900', color: DANGER, letterSpacing: 0.6 },
+  daysBadge:  { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+  daysText:   { fontSize: 11, fontWeight: '800' },
+
+  title:   { fontSize: 26, fontWeight: '800', color: TEXT, letterSpacing: -0.6, lineHeight: 30 },
+  patient: { fontSize: 13, color: MUTED, fontWeight: '500', marginTop: 4 },
+  metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12 },
+  metaChip:{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: hexA(ACCENT, 0.10), paddingHorizontal: 9, paddingVertical: 5, borderRadius: 20 },
+  metaText:{ fontSize: 11, fontWeight: '700', color: ACCENT_DARK },
 });
 
-// ── Message Bubble ───────────────────────────────────────────────
-function Bubble({ msg, isMine }: { msg: any; isMine: boolean }) {
+// ── Card primitive ───────────────────────────────────────────────
+function Card({ children, style }: { children: React.ReactNode; style?: any }) {
+  return <View style={[card.wrap, style]}>{children}</View>;
+}
+function CardHeader({ icon, title, right }: { icon?: IconName; title: string; right?: React.ReactNode }) {
   return (
-    <View style={[bs.row, isMine ? bs.rowMine : bs.rowOther]}>
-      {!isMine && (
-        <View style={[bs.avatar, { backgroundColor: '#94A3B8' }]}>
-          <Text style={bs.avatarText}>{initials(msg.sender?.full_name)}</Text>
+    <View style={card.header}>
+      {icon && (
+        <View style={card.headerIcon}>
+          <Icon name={icon} size={14} color={ACCENT} strokeWidth={2} />
         </View>
       )}
-      <View style={[bs.bubble, isMine ? [bs.bubbleMine, { backgroundColor: ACCENT }] : bs.bubbleOther]}>
-        {!isMine && msg.sender?.full_name && (
-          <Text style={bs.sender}>{msg.sender.full_name}</Text>
+      <Text style={card.title}>{title}</Text>
+      <View style={{ flex: 1 }} />
+      {right}
+    </View>
+  );
+}
+const card = StyleSheet.create({
+  wrap:  { backgroundColor: SURFACE, borderRadius: 16, borderWidth: 1, borderColor: BORDER, overflow: 'hidden' },
+  header:{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 18, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: BORDER },
+  headerIcon: { width: 28, height: 28, borderRadius: 9, backgroundColor: hexA(ACCENT, 0.10), alignItems: 'center', justifyContent: 'center' },
+  title: { fontSize: 14, fontWeight: '700', color: TEXT, letterSpacing: -0.1 },
+});
+
+// ── Detail row ───────────────────────────────────────────────────
+function DetailRow({ icon, label, value, valueColor }: {
+  icon?: IconName; label: string; value: string; valueColor?: string;
+}) {
+  return (
+    <View style={dr.row}>
+      <View style={dr.left}>
+        {icon && <Icon name={icon} size={13} color={SUBTLE} strokeWidth={2} />}
+        <Text style={dr.label}>{label}</Text>
+      </View>
+      <Text style={[dr.value, valueColor ? { color: valueColor } : undefined]} numberOfLines={2}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+const dr = StyleSheet.create({
+  row:   { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 11, gap: 12, borderBottomWidth: 1, borderBottomColor: BORDER },
+  left:  { flexDirection: 'row', alignItems: 'center', gap: 7, minWidth: 90 },
+  label: { fontSize: 12, color: MUTED, fontWeight: '500' },
+  value: { fontSize: 13, color: TEXT, fontWeight: '700', flex: 1, textAlign: 'right' },
+});
+
+// ── Message bubble ───────────────────────────────────────────────
+function Bubble({ msg, isMine, showSender }: { msg: any; isMine: boolean; showSender: boolean }) {
+  return (
+    <View style={[mb.row, isMine ? mb.rowMine : mb.rowOther]}>
+      {!isMine && showSender && (
+        <View style={[mb.avatar, { backgroundColor: SUBTLE }]}>
+          <Text style={mb.avatarText}>{initials(msg.sender?.full_name)}</Text>
+        </View>
+      )}
+      {!isMine && !showSender && <View style={{ width: 26 }} />}
+      <View style={[mb.bubble, isMine ? [mb.bubbleMine, { backgroundColor: ACCENT }] : mb.bubbleOther]}>
+        {!isMine && showSender && msg.sender?.full_name && (
+          <Text style={mb.sender}>{msg.sender.full_name}</Text>
         )}
         {msg.content ? (
-          <Text style={[bs.text, isMine && { color: '#FFFFFF' }]}>{msg.content}</Text>
+          <Text style={[mb.text, isMine && { color: '#FFFFFF' }]}>{msg.content}</Text>
         ) : null}
-        <View style={bs.foot}>
-          <Text style={[bs.time, isMine && { color: 'rgba(255,255,255,0.78)' }]}>
+        <View style={mb.foot}>
+          <Text style={[mb.time, isMine && { color: 'rgba(255,255,255,0.78)' }]}>
             {formatTime(msg.created_at)}
           </Text>
           {isMine && <Icon name="check-check" size={11} color="rgba(255,255,255,0.85)" strokeWidth={2.2} />}
@@ -100,23 +273,23 @@ function Bubble({ msg, isMine }: { msg: any; isMine: boolean }) {
     </View>
   );
 }
-const bs = StyleSheet.create({
-  row:        { flexDirection: 'row', alignItems: 'flex-end', gap: 6, marginVertical: 3 },
+const mb = StyleSheet.create({
+  row:        { flexDirection: 'row', alignItems: 'flex-end', gap: 6, marginVertical: 2 },
   rowMine:    { justifyContent: 'flex-end' },
   rowOther:   { justifyContent: 'flex-start' },
   avatar:     { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: '#FFFFFF', fontSize: 9, fontWeight: '800' },
+  avatarText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800' },
   bubble:     { maxWidth: '78%', borderRadius: 14, paddingHorizontal: 11, paddingVertical: 7, gap: 3 },
   bubbleMine: { borderBottomRightRadius: 4 },
-  bubbleOther:{ backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: C.border, borderBottomLeftRadius: 4 },
-  sender:     { fontSize: 10, color: '#94A3B8', fontWeight: '700' },
-  text:       { fontSize: 13, color: C.textPrimary, lineHeight: 18 },
+  bubbleOther:{ backgroundColor: SURFACE, borderWidth: 1, borderColor: BORDER, borderBottomLeftRadius: 4 },
+  sender:     { fontSize: 10, color: SUBTLE, fontWeight: '700' },
+  text:       { fontSize: 13, color: TEXT, lineHeight: 18 },
   foot:       { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 4, marginTop: 1 },
-  time:       { fontSize: 9, color: '#94A3B8', fontWeight: '600' },
+  time:       { fontSize: 9, color: SUBTLE, fontWeight: '600' },
 });
 
-// ── Inline Chat Section ──────────────────────────────────────────
-function ChatSection({ workOrderId }: { workOrderId: string }) {
+// ── Chat panel ───────────────────────────────────────────────────
+function ChatPanel({ workOrderId, fillHeight }: { workOrderId: string; fillHeight: boolean }) {
   const { profile } = useAuthStore();
   const { messages, loading, sending, send } = useChatMessages(workOrderId);
   const [text, setText] = useState('');
@@ -136,22 +309,22 @@ function ChatSection({ workOrderId }: { workOrderId: string }) {
   };
 
   return (
-    <Card style={styles.card}>
-      <View style={chat.header}>
-        <Icon name="message-circle" size={18} color={ACCENT} strokeWidth={2} />
-        <Text style={styles.sectionTitle}>Mesajlar</Text>
-        <View style={{ flex: 1 }} />
-        {messages.length > 0 && (
-          <View style={chat.countPill}>
-            <Text style={chat.countText}>{messages.length}</Text>
-          </View>
-        )}
-      </View>
-
+    <View style={[card.wrap, fillHeight && { flex: 1, minHeight: 480 }]}>
+      <CardHeader
+        icon="message-circle"
+        title="Mesajlar"
+        right={
+          messages.length > 0 ? (
+            <View style={cp.countPill}>
+              <Text style={cp.countText}>{messages.length}</Text>
+            </View>
+          ) : null
+        }
+      />
       <ScrollView
         ref={scrollRef}
-        style={chat.area}
-        contentContainerStyle={{ paddingVertical: 8 }}
+        style={[cp.area, fillHeight && { flex: 1 }]}
+        contentContainerStyle={{ padding: 12 }}
         showsVerticalScrollIndicator={false}
         nestedScrollEnabled
       >
@@ -160,25 +333,29 @@ function ChatSection({ workOrderId }: { workOrderId: string }) {
             <ActivityIndicator color={ACCENT} />
           </View>
         ) : messages.length === 0 ? (
-          <View style={chat.empty}>
-            <Text style={chat.emptyText}>
-              Henüz mesaj yok. Lab ile bu iş hakkında yazışabilirsin.
-            </Text>
+          <View style={cp.empty}>
+            <View style={cp.emptyIcon}>
+              <Icon name="message-circle" size={20} color={ACCENT} strokeWidth={1.6} />
+            </View>
+            <Text style={cp.emptyTitle}>Henüz mesaj yok</Text>
+            <Text style={cp.emptySub}>Lab ile bu iş hakkında yazışabilirsin.</Text>
           </View>
         ) : (
-          messages.map(m => (
-            <Bubble key={m.id} msg={m} isMine={m.sender_id === profile?.id} />
-          ))
+          messages.map((m, i) => {
+            const isMine = m.sender_id === profile?.id;
+            const prev   = messages[i - 1];
+            const showSender = !isMine && (!prev || prev.sender_id !== m.sender_id);
+            return <Bubble key={m.id} msg={m} isMine={isMine} showSender={showSender} />;
+          })
         )}
       </ScrollView>
-
-      <View style={chat.composer}>
+      <View style={cp.composer}>
         <TextInput
-          style={chat.input}
+          style={cp.input}
           value={text}
           onChangeText={setText}
           placeholder="Mesaj yaz..."
-          placeholderTextColor="#94A3B8"
+          placeholderTextColor={SUBTLE}
           multiline
         />
         <TouchableOpacity
@@ -186,7 +363,7 @@ function ChatSection({ workOrderId }: { workOrderId: string }) {
           disabled={!text.trim() || sending}
           activeOpacity={0.7}
           style={[
-            chat.sendBtn,
+            cp.sendBtn,
             { backgroundColor: text.trim() ? ACCENT : hexA(ACCENT, 0.3) },
           ]}
         >
@@ -196,107 +373,146 @@ function ChatSection({ workOrderId }: { workOrderId: string }) {
           }
         </TouchableOpacity>
       </View>
-    </Card>
+    </View>
   );
 }
-const chat = StyleSheet.create({
-  header:    { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
+const cp = StyleSheet.create({
+  area:      { backgroundColor: BG },
+  empty:     { padding: 32, alignItems: 'center', gap: 6 },
+  emptyIcon: { width: 48, height: 48, borderRadius: 14, backgroundColor: hexA(ACCENT, 0.10), alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  emptyTitle:{ fontSize: 14, fontWeight: '800', color: TEXT },
+  emptySub:  { fontSize: 12, color: MUTED, textAlign: 'center' },
   countPill: { backgroundColor: hexA(ACCENT, 0.12), borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2, minWidth: 24, alignItems: 'center' },
-  countText: { color: ACCENT, fontSize: 11, fontWeight: '800' },
-  area:      { maxHeight: 360, backgroundColor: '#F7F9FB', borderRadius: 12, padding: 8, marginBottom: 10 },
-  empty:     { padding: 20, alignItems: 'center' },
-  emptyText: { fontSize: 12, color: C.textSecondary, textAlign: 'center', maxWidth: 240, lineHeight: 17 },
-  composer:  { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  countText: { color: ACCENT_DARK, fontSize: 11, fontWeight: '800' },
+  composer:  { flexDirection: 'row', alignItems: 'flex-end', gap: 8, padding: 12, borderTopWidth: 1, borderTopColor: BORDER, backgroundColor: SURFACE },
   input: {
-    flex: 1, minHeight: 38, maxHeight: 100,
-    backgroundColor: '#F7F9FB', borderRadius: 18,
-    paddingHorizontal: 14, paddingVertical: 9,
-    fontSize: 13, color: C.textPrimary,
+    flex: 1, minHeight: 40, maxHeight: 120,
+    backgroundColor: BG, borderRadius: 20,
+    paddingHorizontal: 14, paddingVertical: 10,
+    fontSize: 13, color: TEXT,
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
   },
-  sendBtn:   { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  sendBtn:   { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
 });
 
-// ── QR Section ───────────────────────────────────────────────────
-function QRSection({ orderId, orderNumber }: { orderId: string; orderNumber: string }) {
+// ── QR Card ──────────────────────────────────────────────────────
+function QRCard({ orderId, orderNumber }: { orderId: string; orderNumber: string }) {
   const [open, setOpen] = useState(false);
-
   const qrUrl =
     Platform.OS === 'web' && typeof window !== 'undefined'
       ? `${window.location.origin}/order/${orderId}`
       : `https://dental-lab-steel.vercel.app/order/${orderId}`;
 
   return (
-    <Card style={styles.card}>
-      <View style={qr.row}>
-        <View style={qr.thumbWrap}>
-          <BrandedQR value={qrUrl} size={80} color="#0F172A" backgroundColor="#FFFFFF" />
+    <Card>
+      <CardHeader icon="qr-code" title="QR Kodu" />
+      <View style={qrs.body}>
+        <View style={qrs.thumbWrap}>
+          <BrandedQR value={qrUrl} size={110} color={TEXT} backgroundColor="#FFFFFF" />
         </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.sectionTitle}>QR Kodu</Text>
-          <Text style={qr.sub}>
+        <View style={{ flex: 1, gap: 10 }}>
+          <Text style={qrs.desc}>
             Tarayan kişi bu siparişi anında açar. Etikete bas, takip kolaylaşsın.
           </Text>
-          <TouchableOpacity
-            onPress={() => setOpen(true)}
-            activeOpacity={0.85}
-            style={[qr.btn, { backgroundColor: ACCENT }]}
-          >
-            <Icon name="qr-code" size={14} color="#FFFFFF" strokeWidth={2} />
-            <Text style={qr.btnText}>Büyüt & Yazdır</Text>
-          </TouchableOpacity>
+          <View style={qrs.btnRow}>
+            <TouchableOpacity onPress={() => setOpen(true)} activeOpacity={0.85} style={[qrs.btn, qrs.btnPrimary]}>
+              <Icon name="qr-code" size={13} color="#FFFFFF" strokeWidth={2} />
+              <Text style={qrs.btnPrimaryText}>Büyüt</Text>
+            </TouchableOpacity>
+            {Platform.OS === 'web' && (
+              <TouchableOpacity onPress={() => typeof window !== 'undefined' && window.print()} activeOpacity={0.85} style={[qrs.btn, qrs.btnGhost]}>
+                <Icon name="printer" size={13} color={ACCENT_DARK} strokeWidth={2} />
+                <Text style={qrs.btnGhostText}>Yazdır</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       </View>
 
-      {/* Modal — büyük QR */}
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <Pressable style={qr.backdrop} onPress={() => setOpen(false)}>
-          <Pressable style={qr.modalCard} onPress={() => {}}>
-            <View style={qr.modalHeader}>
-              <Text style={qr.modalTitle}>İş Emri QR Kodu</Text>
-              <TouchableOpacity onPress={() => setOpen(false)} style={qr.closeBtn}>
-                <Icon name="x" size={16} color={C.textSecondary} strokeWidth={2} />
+        <Pressable style={qrs.backdrop} onPress={() => setOpen(false)}>
+          <Pressable style={qrs.modalCard} onPress={() => {}}>
+            <View style={qrs.modalHeader}>
+              <Text style={qrs.modalTitle}>İş Emri QR Kodu</Text>
+              <TouchableOpacity onPress={() => setOpen(false)} style={qrs.closeBtn}>
+                <Icon name="x" size={16} color={MUTED} strokeWidth={2} />
               </TouchableOpacity>
             </View>
-            <Text style={qr.modalSub}>{orderNumber}</Text>
-            <View style={qr.bigQr}>
-              <BrandedQR value={qrUrl} size={240} color="#0F172A" backgroundColor="#FFFFFF" />
+            <Text style={qrs.modalSub}>{orderNumber}</Text>
+            <View style={qrs.bigQr}>
+              <BrandedQR value={qrUrl} size={260} color={TEXT} backgroundColor="#FFFFFF" />
             </View>
-            <Text style={qr.hint}>Tarayan kullanıcı bu siparişi panelinde açar</Text>
+            <Text style={qrs.hint}>Tarayan kullanıcı bu siparişi panelinde açar</Text>
           </Pressable>
         </Pressable>
       </Modal>
     </Card>
   );
 }
-const qr = StyleSheet.create({
-  row:        { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  thumbWrap:  { padding: 6, backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: C.border },
-  sub:        { fontSize: 12, color: C.textSecondary, marginTop: 4, marginBottom: 10, lineHeight: 16 },
-  btn:        { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
-  btnText:    { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
+const qrs = StyleSheet.create({
+  body:      { flexDirection: 'row', alignItems: 'center', gap: 16, padding: 18 },
+  thumbWrap: { padding: 8, backgroundColor: '#FFFFFF', borderRadius: 14, borderWidth: 1, borderColor: BORDER },
+  desc:      { fontSize: 12, color: MUTED, lineHeight: 17 },
+  btnRow:    { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  btn:       { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10 },
+  btnPrimary:    { backgroundColor: ACCENT },
+  btnPrimaryText:{ color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
+  btnGhost:      { backgroundColor: hexA(ACCENT, 0.10) },
+  btnGhostText:  { color: ACCENT_DARK, fontSize: 12, fontWeight: '800' },
 
   backdrop:   { flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', alignItems: 'center', justifyContent: 'center', padding: 20 },
-  modalCard:  { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 24, alignItems: 'center', gap: 4, maxWidth: 360, width: '100%' },
+  modalCard:  { backgroundColor: SURFACE, borderRadius: 20, padding: 24, alignItems: 'center', gap: 4, maxWidth: 380, width: '100%' },
   modalHeader:{ flexDirection: 'row', alignItems: 'center', alignSelf: 'stretch' },
-  modalTitle: { flex: 1, fontSize: 18, fontWeight: '800', color: C.textPrimary, letterSpacing: -0.3 },
-  closeBtn:   { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1F5F9' },
-  modalSub:   { fontSize: 12, color: C.textSecondary, marginTop: 2, fontWeight: '600' },
-  bigQr:      { padding: 12, backgroundColor: '#FFFFFF', borderRadius: 14, marginTop: 16, marginBottom: 6 },
-  hint:       { fontSize: 11, color: C.textSecondary, textAlign: 'center' },
+  modalTitle: { flex: 1, fontSize: 18, fontWeight: '800', color: TEXT, letterSpacing: -0.3 },
+  closeBtn:   { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: BG },
+  modalSub:   { fontSize: 12, color: MUTED, marginTop: 2, fontWeight: '600' },
+  bigQr:      { padding: 12, backgroundColor: SURFACE, borderRadius: 14, marginTop: 16, marginBottom: 6 },
+  hint:       { fontSize: 11, color: MUTED, textAlign: 'center' },
+});
+
+// ── Photos grid ──────────────────────────────────────────────────
+function PhotosGrid({ photos, signedUrls }: { photos: any[]; signedUrls: Record<string, string> }) {
+  return (
+    <Card>
+      <CardHeader icon="image" title="Fotoğraflar" right={
+        <View style={cp.countPill}>
+          <Text style={cp.countText}>{photos.length}</Text>
+        </View>
+      } />
+      <View style={ph.grid}>
+        {photos.map(p => {
+          const url = signedUrls[p.storage_path];
+          return url ? (
+            <View key={p.id} style={ph.cell}>
+              <Image source={{ uri: url }} style={ph.img} />
+            </View>
+          ) : null;
+        })}
+      </View>
+    </Card>
+  );
+}
+const ph = StyleSheet.create({
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, padding: 14 },
+  cell: { width: 110, height: 110, borderRadius: 12, overflow: 'hidden', backgroundColor: BG },
+  img:  { width: '100%', height: '100%' },
 });
 
 // ── Main Screen ──────────────────────────────────────────────────
 export function DoctorOrderDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { order, signedUrls, loading, error } = useOrderDetail(id);
+  const { order, signedUrls, loading, error, refetch } = useOrderDetail(id);
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 900;
+  const isWide    = width >= 1200;
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safe}>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ color: C.textSecondary }}>Yükleniyor...</Text>
+      <SafeAreaView style={s.safe}>
+        <View style={s.center}>
+          <ActivityIndicator color={ACCENT} size="large" />
+          <Text style={{ color: MUTED, marginTop: 12 }}>Yükleniyor...</Text>
         </View>
       </SafeAreaView>
     );
@@ -304,99 +520,105 @@ export function DoctorOrderDetailScreen() {
 
   if (error || !order) {
     return (
-      <SafeAreaView style={styles.safe}>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 }}>
+      <SafeAreaView style={s.safe}>
+        <View style={[s.center, { padding: 24, gap: 12 }]}>
           <Text style={{ fontSize: 32 }}>⚠️</Text>
-          <Text style={{ fontSize: 16, fontWeight: '700', color: C.textPrimary, textAlign: 'center' }}>
+          <Text style={{ fontSize: 16, fontWeight: '800', color: TEXT, textAlign: 'center' }}>
             Sipariş yüklenemedi
           </Text>
-          <Text style={{ fontSize: 13, color: C.textSecondary, textAlign: 'center', maxWidth: 320 }}>
+          <Text style={{ fontSize: 13, color: MUTED, textAlign: 'center', maxWidth: 360 }}>
             {error ?? 'Sipariş bulunamadı veya erişim yetkiniz yok.'}
           </Text>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={{ marginTop: 8, backgroundColor: ACCENT, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10 }}
-            activeOpacity={0.8}
-          >
-            <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>← Geri</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+            <TouchableOpacity onPress={() => router.back()} activeOpacity={0.8}
+              style={{ backgroundColor: BG, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 }}>
+              <Text style={{ color: TEXT, fontWeight: '700' }}>← Geri</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={refetch} activeOpacity={0.8}
+              style={{ backgroundColor: ACCENT, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 }}>
+              <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>Tekrar Dene</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </SafeAreaView>
     );
   }
 
-  const overdue = isOrderOverdue(order.delivery_date, order.status);
+  const overdue   = isOrderOverdue(order.delivery_date, order.status);
+  const daysInfo  = daysUntil(order.delivery_date, order.status);
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={s.safe} edges={['top']}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        {/* Top bar */}
-        <View style={styles.topBar}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Icon name="arrow-left" size={18} color={ACCENT} strokeWidth={2} />
-            <Text style={styles.back}>Geri</Text>
+        {/* Top bar — sade breadcrumb */}
+        <View style={s.topBar}>
+          <TouchableOpacity onPress={() => router.back()} style={s.backBtn} activeOpacity={0.7}>
+            <Icon name="arrow-left" size={16} color={ACCENT} strokeWidth={2.2} />
+            <Text style={s.backText}>İşlerim</Text>
           </TouchableOpacity>
-          <Text style={styles.orderNumber}>{order.order_number}</Text>
+          <Text style={s.crumbSep}>/</Text>
+          <Text style={s.crumb} numberOfLines={1}>#{order.order_number}</Text>
         </View>
 
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          {/* Status */}
-          <Card style={styles.card}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <StatusBadge status={order.status} />
-              {overdue && <Text style={styles.overdueWarning}>⚠️ Teslim tarihi geçti!</Text>}
-            </View>
-          </Card>
+        <ScrollView
+          contentContainerStyle={[s.scroll, isWide && { maxWidth: 1400, alignSelf: 'center', width: '100%' }]}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Hero */}
+          <Hero order={order} daysInfo={daysInfo} />
 
-          {/* Work Details */}
-          <Card style={styles.card}>
-            <Text style={styles.sectionTitle}>İş Detayları</Text>
-            <InfoRow label="İş Türü" value={order.work_type} />
-            <InfoRow label="Diş Numaraları" value={order.tooth_numbers.join(', ')} />
-            {order.shade && <InfoRow label="Renk" value={order.shade} />}
-            <InfoRow
-              label="Makine"
-              value={order.machine_type === 'milling' ? '⚙️ Frezeleme' : '🖨️ 3D Baskı'}
-            />
-            <InfoRow
-              label="Teslim Tarihi"
-              value={formatDeliveryDate(order.delivery_date)}
-              valueStyle={overdue ? { color: C.danger } : undefined}
-            />
-            {order.notes && <InfoRow label="Notlar" value={order.notes} />}
-          </Card>
-
-          {/* QR */}
-          <QRSection orderId={order.id} orderNumber={order.order_number} />
-
-          {/* Mesajlar — bu işin chat kutusu */}
-          <ChatSection workOrderId={order.id} />
-
-          {/* Photos */}
-          {order.photos && order.photos.length > 0 && (
-            <Card style={styles.card}>
-              <Text style={styles.sectionTitle}>Fotoğraflar</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View style={styles.photoRow}>
-                  {order.photos.map((photo) => {
-                    const url = signedUrls[photo.storage_path];
-                    return url ? (
-                      <Image key={photo.id} source={{ uri: url }} style={styles.photo} />
-                    ) : null;
-                  })}
+          {/* Main grid — desktop 2-col (left details, right chat) */}
+          <View style={[s.grid, isDesktop && s.gridDesktop]}>
+            {/* LEFT — details, qr, photos, history */}
+            <View style={[s.col, isDesktop && { flex: 1.3, gap: 16 }]}>
+              {/* Detaylar */}
+              <Card>
+                <CardHeader icon="package" title="İş Detayları" />
+                <View>
+                  <DetailRow icon="package"  label="İş Türü"        value={order.work_type || '—'} />
+                  <DetailRow icon="tooth"    label="Diş Numaraları" value={order.tooth_numbers?.length > 0 ? order.tooth_numbers.join(', ') : '—'} />
+                  {order.shade && <DetailRow icon="palette" label="Renk" value={order.shade} />}
+                  <DetailRow icon="cog"      label="Makine"
+                    value={order.machine_type === 'milling' ? '⚙️ Frezeleme' : '🖨️ 3D Baskı'} />
+                  <DetailRow icon="calendar" label="Teslim"
+                    value={formatDeliveryDate(order.delivery_date)}
+                    valueColor={overdue ? DANGER : undefined} />
+                  {order.notes && <DetailRow icon="note" label="Notlar" value={order.notes} />}
                 </View>
-              </ScrollView>
-            </Card>
-          )}
+              </Card>
 
-          {/* Status History */}
-          <Card style={styles.card}>
-            <Text style={styles.sectionTitle}>Durum Geçmişi</Text>
-            <StatusTimeline history={order.status_history ?? []} />
-          </Card>
+              {/* QR */}
+              <QRCard orderId={order.id} orderNumber={order.order_number} />
+
+              {/* Mobile chat — desktop'ta sağ kolonda */}
+              {!isDesktop && <ChatPanel workOrderId={order.id} fillHeight={false} />}
+
+              {/* Fotoğraflar */}
+              {order.photos && order.photos.length > 0 && (
+                <PhotosGrid photos={order.photos} signedUrls={signedUrls} />
+              )}
+
+              {/* Durum geçmişi */}
+              <Card>
+                <CardHeader icon="history" title="Durum Geçmişi" />
+                <View style={{ padding: 16 }}>
+                  <StatusTimeline history={order.status_history ?? []} />
+                </View>
+              </Card>
+            </View>
+
+            {/* RIGHT — sticky chat (desktop only) */}
+            {isDesktop && (
+              <View style={[s.col, { flex: 1, alignSelf: 'stretch' }]}>
+                <View style={s.stickyChat}>
+                  <ChatPanel workOrderId={order.id} fillHeight />
+                </View>
+              </View>
+            )}
+          </View>
 
           <View style={{ height: 24 }} />
         </ScrollView>
@@ -405,21 +627,26 @@ export function DoctorOrderDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: C.background },
+const s = StyleSheet.create({
+  safe:    { flex: 1, backgroundColor: BG },
+  center:  { flex: 1, alignItems: 'center', justifyContent: 'center' },
+
   topBar: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: C.border,
-    backgroundColor: C.surface,
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 20, paddingVertical: 12,
+    borderBottomWidth: 1, borderBottomColor: BORDER,
+    backgroundColor: SURFACE,
   },
-  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4, paddingHorizontal: 4 },
-  back: { fontSize: 14, color: ACCENT, fontWeight: '700' },
-  orderNumber: { fontSize: 13, fontWeight: '700', color: C.textSecondary, letterSpacing: 0.3 },
-  content: { padding: 16 },
-  card: { marginBottom: 12 },
-  sectionTitle: { fontSize: 15, fontWeight: '700', color: C.textPrimary, marginBottom: 10 },
-  overdueWarning: { color: C.danger, fontWeight: '700', fontSize: 12 },
-  photoRow: { flexDirection: 'row', gap: 10 },
-  photo: { width: 120, height: 120, borderRadius: 10 },
+  backBtn:   { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4, paddingHorizontal: 4 },
+  backText:  { fontSize: 13, color: ACCENT, fontWeight: '700' },
+  crumbSep:  { fontSize: 13, color: SUBTLE },
+  crumb:     { fontSize: 13, color: MUTED, fontWeight: '600' },
+
+  scroll:    { padding: 16 },
+
+  grid:        { gap: 16 },
+  gridDesktop: { flexDirection: 'row', alignItems: 'flex-start' },
+  col:         { gap: 16 },
+
+  stickyChat:  { ...(Platform.OS === 'web' ? ({ position: 'sticky' as any, top: 16 }) : {}) },
 });
