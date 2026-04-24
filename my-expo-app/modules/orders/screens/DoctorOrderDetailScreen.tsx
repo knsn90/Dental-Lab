@@ -7,9 +7,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BlurView } from 'expo-blur';
 import Svg, { Path, Circle, Line, Polyline } from 'react-native-svg';
-import { AuroraBackground } from '../../../core/ui/AuroraBackground';
 import { useAuthStore } from '../../../core/store/authStore';
 import { useOrderDetail } from '../hooks/useOrderDetail';
 import { useChatMessages } from '../hooks/useChatMessages';
@@ -87,12 +85,7 @@ function Icon({ name, size = 18, color = TEXT, strokeWidth = 1.8 }: {
   }
 }
 
-// ── HERO — Liquid Glass over colorful mesh (gerçek backdrop-blur) ──
-//
-// Liquid glass'ın çalışması için cam'ın ARKASINDA bulanıklaştırılacak
-// renkli içerik olmalı. Burada SVG ile renkli mesh çiziyoruz; cam onu
-// blur(40px) saturate ile karıştırıyor → gerçek Apple WWDC25 etkisi.
-//
+// ── HERO — sade beyaz card (performans öncelikli) ───────────────
 function Hero({
   order,
   daysInfo,
@@ -111,169 +104,98 @@ function Hero({
     daysInfo.tone === 'green'  ? '#16A34A' :
                                  SUBTLE;
   const toneBg = hexA(toneColor, 0.12);
-  const isNativeBlur = Platform.OS === 'ios' || Platform.OS === 'android';
 
   const qrUrl =
     Platform.OS === 'web' && typeof window !== 'undefined'
       ? `${window.location.origin}/order/${order.id}`
       : `https://dental-lab-steel.vercel.app/order/${order.id}`;
 
-  const Container: any = isNativeBlur ? BlurView : View;
-  const containerProps = isNativeBlur ? { intensity: 70, tint: 'light' as const } : {};
-
   return (
-    <View style={hero.outer}>
-      {/* ═══ LIQUID GLASS SURFACE ════════════════════════════════
-          Aurora artık sayfa seviyesinde — cam onu blur'lar.
-          ────────────────────────────────────────────────────── */}
-      <Container {...containerProps} style={[hero.glass, !isNativeBlur && hero.glassWeb]}>
-        {/* Layer 1 — saturated mesh "kaynama" — ekstra renk doygunluğu */}
-        <View pointerEvents="none" style={hero.tintLayer} />
-        {/* Layer 2 — top specular shimmer */}
-        <View pointerEvents="none" style={hero.shimmerTop} />
-        {/* Layer 3 — bottom refraction edge */}
-        <View pointerEvents="none" style={hero.shimmerBottom} />
-        {/* Layer 4 — top hairline ("rim of glass") */}
-        <View pointerEvents="none" style={hero.hairlineTop} />
-
-        {/* ── Content ── */}
-        <View style={[hero.content, isCompact && hero.contentCompact]}>
-          {/* Left/main */}
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <View style={hero.topRow}>
-              <View style={[hero.statusPill, { backgroundColor: cfg?.bgColor ?? '#F1F5F9' }]}>
-                <View style={[hero.statusDot, { backgroundColor: cfg?.color ?? SUBTLE }]} />
-                <Text style={[hero.statusText, { color: cfg?.color ?? MUTED }]}>{cfg?.label ?? order.status}</Text>
-              </View>
-              {order.is_urgent && (
-                <View style={hero.urgentBadge}>
-                  <Text style={hero.urgentText}>ACİL</Text>
-                </View>
-              )}
-              <View style={{ flex: 1 }} />
-              <View style={[hero.daysBadge, { backgroundColor: toneBg }]}>
-                <Icon name="calendar" size={10} color={toneColor} strokeWidth={2} />
-                <Text style={[hero.daysText, { color: toneColor }]}>{daysInfo.text}</Text>
-              </View>
+    <View style={hero.card}>
+      <View style={[hero.content, isCompact && hero.contentCompact]}>
+        {/* Left/main */}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <View style={hero.topRow}>
+            <View style={[hero.statusPill, { backgroundColor: cfg?.bgColor ?? '#F1F5F9' }]}>
+              <View style={[hero.statusDot, { backgroundColor: cfg?.color ?? SUBTLE }]} />
+              <Text style={[hero.statusText, { color: cfg?.color ?? MUTED }]}>{cfg?.label ?? order.status}</Text>
             </View>
-
-            <Text style={hero.title} numberOfLines={2}>
-              {order.work_type || 'İş türü belirtilmemiş'}
-            </Text>
-
-            {order.patient_name && (
-              <Text style={hero.patient}>{order.patient_name}</Text>
+            {order.is_urgent && (
+              <View style={hero.urgentBadge}>
+                <Text style={hero.urgentText}>ACİL</Text>
+              </View>
             )}
+            <View style={{ flex: 1 }} />
+            <View style={[hero.daysBadge, { backgroundColor: toneBg }]}>
+              <Icon name="calendar" size={10} color={toneColor} strokeWidth={2} />
+              <Text style={[hero.daysText, { color: toneColor }]}>{daysInfo.text}</Text>
+            </View>
+          </View>
 
-            <View style={hero.metaRow}>
-              {order.tooth_numbers?.length > 0 && (
-                <View style={hero.metaChip}>
-                  <Icon name="tooth" size={10} color={ACCENT_DARK} strokeWidth={2} />
-                  <Text style={hero.metaText}>
-                    Diş {order.tooth_numbers.slice(0, 4).join(', ')}
-                    {order.tooth_numbers.length > 4 ? ` +${order.tooth_numbers.length - 4}` : ''}
-                  </Text>
-                </View>
-              )}
-              {order.shade && (
-                <View style={hero.metaChip}>
-                  <Icon name="palette" size={10} color={ACCENT_DARK} strokeWidth={2} />
-                  <Text style={hero.metaText}>Renk {order.shade}</Text>
-                </View>
-              )}
+          <Text style={hero.title} numberOfLines={2}>
+            {order.work_type || 'İş türü belirtilmemiş'}
+          </Text>
+
+          {order.patient_name && (
+            <Text style={hero.patient}>{order.patient_name}</Text>
+          )}
+
+          <View style={hero.metaRow}>
+            {order.tooth_numbers?.length > 0 && (
               <View style={hero.metaChip}>
-                <Icon name="cog" size={10} color={ACCENT_DARK} strokeWidth={2} />
+                <Icon name="tooth" size={10} color={ACCENT_DARK} strokeWidth={2} />
                 <Text style={hero.metaText}>
-                  {order.machine_type === 'milling' ? 'Frezeleme' : '3D Baskı'}
+                  Diş {order.tooth_numbers.slice(0, 4).join(', ')}
+                  {order.tooth_numbers.length > 4 ? ` +${order.tooth_numbers.length - 4}` : ''}
                 </Text>
               </View>
+            )}
+            {order.shade && (
+              <View style={hero.metaChip}>
+                <Icon name="palette" size={10} color={ACCENT_DARK} strokeWidth={2} />
+                <Text style={hero.metaText}>Renk {order.shade}</Text>
+              </View>
+            )}
+            <View style={hero.metaChip}>
+              <Icon name="cog" size={10} color={ACCENT_DARK} strokeWidth={2} />
+              <Text style={hero.metaText}>
+                {order.machine_type === 'milling' ? 'Frezeleme' : '3D Baskı'}
+              </Text>
             </View>
           </View>
-
-          {/* QR — kompakt sağ kolon */}
-          <View style={hero.qrZone}>
-            <TouchableOpacity onPress={onPressQR} activeOpacity={0.85} style={hero.qrCard}>
-              <BrandedQR value={qrUrl} size={isCompact ? 72 : 84} color={TEXT} backgroundColor="#FFFFFF" />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={onPressQR} activeOpacity={0.85} style={hero.qrBtn}>
-              <Icon name="qr-code" size={10} color={ACCENT_DARK} strokeWidth={2.2} />
-              <Text style={hero.qrBtnText}>Büyüt</Text>
-            </TouchableOpacity>
-          </View>
         </View>
-      </Container>
+
+        {/* QR — sağ kolon */}
+        <View style={hero.qrZone}>
+          <TouchableOpacity onPress={onPressQR} activeOpacity={0.85} style={hero.qrCard}>
+            <BrandedQR value={qrUrl} size={isCompact ? 72 : 84} color={TEXT} backgroundColor="#FFFFFF" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onPressQR} activeOpacity={0.85} style={hero.qrBtn}>
+            <Icon name="qr-code" size={10} color={ACCENT_DARK} strokeWidth={2.2} />
+            <Text style={hero.qrBtnText}>Büyüt</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
     </View>
   );
 }
 
 const hero = StyleSheet.create({
-  /* Outer wrapper — relative position for mesh layering + drop shadow */
-  outer: {
+  /* Sade beyaz card */
+  card: {
+    backgroundColor: SURFACE,
+    borderRadius: 16,
+    borderWidth: 1, borderColor: BORDER,
     marginBottom: 16,
-    borderRadius: 20,
-    position: 'relative',
-    ...(Platform.OS === 'web'
-      ? ({
-          boxShadow: [
-            '0 1px 2px rgba(15,23,42,0.04)',
-            '0 10px 32px rgba(15,23,42,0.08)',
-            '0 3px 10px rgba(15,23,42,0.04)',
-          ].join(', '),
-        } as any)
-      : { shadowColor: '#0F172A', shadowOpacity: 0.10, shadowRadius: 18, shadowOffset: { width: 0, height: 6 }, elevation: 5 }),
-  },
-
-  /* Mesh — colorful animated background BEHIND the glass */
-  meshWrap: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 20,
     overflow: 'hidden',
   },
-  /* Aurora base — white wash that aurora plays over */
-  auroraBase: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#FFFFFF',
-  },
 
-  /* Glass container — sits on top of mesh, blurs it */
-  glass: {
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.55)',
-    overflow: 'hidden',
-    position: 'relative',
-  },
-
-  /* Web-only glass styling — REAL backdrop-filter */
-  glassWeb: {
-    backgroundColor: 'rgba(255,255,255,0.20)',
-    ...(Platform.OS === 'web'
-      ? ({
-          backdropFilter:       'blur(28px) saturate(180%) brightness(1.05)',
-          WebkitBackdropFilter: 'blur(28px) saturate(180%) brightness(1.05)',
-          boxShadow: [
-            'inset 0 1.5px 0 rgba(255,255,255,0.85)',
-            'inset 0 -1px 0 rgba(255,255,255,0.30)',
-            'inset 1px 0 0 rgba(255,255,255,0.25)',
-            'inset -1px 0 0 rgba(255,255,255,0.25)',
-          ].join(', '),
-        } as any)
-      : {}),
-  },
-
-  /* ── Glass overlays ── */
-  tintLayer:     { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.10)', pointerEvents: 'none' },
-  shimmerTop:    { position: 'absolute', top: 0, left: 0, right: 0, height: '38%', backgroundColor: 'rgba(255,255,255,0.18)', pointerEvents: 'none' },
-  shimmerBottom: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 1.5, backgroundColor: 'rgba(255,255,255,0.40)', pointerEvents: 'none' },
-  hairlineTop:   { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.85)', pointerEvents: 'none' },
-
-  /* Content layout — daha kompakt padding */
+  /* Content layout */
   content: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 14,
     padding: 16,
-    zIndex: 1,
   },
   contentCompact: {
     flexDirection: 'column',
@@ -281,7 +203,7 @@ const hero = StyleSheet.create({
     padding: 14,
   },
 
-  /* Header pill row — daha kompakt */
+  /* Header pill row */
   topRow:     { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' },
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20 },
   statusDot:  { width: 6, height: 6, borderRadius: 3 },
@@ -291,42 +213,32 @@ const hero = StyleSheet.create({
   daysBadge:  { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20 },
   daysText:   { fontSize: 10, fontWeight: '800' },
 
-  /* Typography — daha kompakt */
+  /* Typography */
   title:   { fontSize: 22, fontWeight: '800', color: TEXT, letterSpacing: -0.5, lineHeight: 26 },
   patient: { fontSize: 12, color: MUTED, fontWeight: '500', marginTop: 3 },
 
-  /* Meta chips — frosted glass üstüne uyumlu */
+  /* Meta chips */
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 10 },
   metaChip:{
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: 'rgba(255,255,255,0.55)',
+    backgroundColor: hexA(ACCENT, 0.08),
     paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.85)',
   },
   metaText:{ fontSize: 10, fontWeight: '700', color: ACCENT_DARK },
 
-  /* QR — kompakt */
+  /* QR */
   qrZone:  { alignItems: 'center', gap: 6, flexShrink: 0 },
   qrCard:  {
     padding: 6,
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.9)',
-    ...(Platform.OS === 'web'
-      ? ({ boxShadow: '0 3px 10px rgba(15,23,42,0.10), inset 0 1px 0 rgba(255,255,255,0.95)' } as any)
-      : { shadowColor: '#0F172A', shadowOpacity: 0.10, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 }),
+    borderWidth: 1, borderColor: BORDER,
   },
   qrBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 9, paddingVertical: 4,
     borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.65)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: hexA(ACCENT, 0.10),
   },
   qrBtnText: { color: ACCENT_DARK, fontSize: 10, fontWeight: '800' },
 });
@@ -570,7 +482,6 @@ export function DoctorOrderDetailScreen() {
   if (loading) {
     return (
       <SafeAreaView style={s.safe}>
-        <AuroraBackground palette="sky" intensity={0.55} durationSec={50} showRadialGradient={false} />
         <View style={s.center}>
           <ActivityIndicator color={ACCENT} size="large" />
           <Text style={{ color: MUTED, marginTop: 12 }}>Yükleniyor...</Text>
@@ -582,7 +493,6 @@ export function DoctorOrderDetailScreen() {
   if (error || !order) {
     return (
       <SafeAreaView style={s.safe}>
-        <AuroraBackground palette="sky" intensity={0.55} durationSec={50} showRadialGradient={false} />
         <View style={[s.center, { padding: 24, gap: 12 }]}>
           <Text style={{ fontSize: 32 }}>⚠️</Text>
           <Text style={{ fontSize: 16, fontWeight: '800', color: TEXT, textAlign: 'center' }}>
@@ -611,9 +521,6 @@ export function DoctorOrderDetailScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
-      {/* ═══ AURORA — sayfa arka planı (gri zemin yerine animasyonlu) ═══ */}
-      <AuroraBackground palette="sky" intensity={0.55} durationSec={50} showRadialGradient={false} />
-
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
