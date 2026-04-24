@@ -19,13 +19,36 @@ import { C } from '../../../core/theme/colors';
 export function DoctorOrderDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { order, signedUrls, loading } = useOrderDetail(id);
+  const { order, signedUrls, loading, error } = useOrderDetail(id);
 
-  if (loading || !order) {
+  if (loading) {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <Text style={{ color: C.textSecondary }}>Yükleniyor...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error || !order) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 }}>
+          <Text style={{ fontSize: 32 }}>⚠️</Text>
+          <Text style={{ fontSize: 16, fontWeight: '700', color: C.textPrimary, textAlign: 'center' }}>
+            Sipariş yüklenemedi
+          </Text>
+          <Text style={{ fontSize: 13, color: C.textSecondary, textAlign: 'center', maxWidth: 320 }}>
+            {error ?? 'Sipariş bulunamadı veya erişim yetkiniz yok.'}
+          </Text>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={{ marginTop: 8, backgroundColor: C.primary, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10 }}
+            activeOpacity={0.8}
+          >
+            <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>← Geri</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );

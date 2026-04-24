@@ -179,7 +179,7 @@ export function OrderDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { profile } = useAuthStore();
-  const { order, signedUrls, loading, refetch } = useOrderDetail(id);
+  const { order, signedUrls, loading, error, refetch } = useOrderDetail(id);
   const { width } = useWindowDimensions();
   const isDesktop = width >= 769;
 
@@ -188,11 +188,43 @@ export function OrderDetailScreen() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [showQR, setShowQR] = useState(false);
 
-  if (loading || !order) {
+  if (loading) {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <Text style={{ color: C.textSecondary }}>Yükleniyor...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error || !order) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 }}>
+          <Text style={{ fontSize: 32 }}>⚠️</Text>
+          <Text style={{ fontSize: 16, fontWeight: '700', color: C.textPrimary, textAlign: 'center' }}>
+            Sipariş yüklenemedi
+          </Text>
+          <Text style={{ fontSize: 13, color: C.textSecondary, textAlign: 'center', maxWidth: 360 }}>
+            {error ?? 'Sipariş bulunamadı veya erişim yetkiniz yok.'}
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+            <TouchableOpacity
+              onPress={() => router.back()}
+              style={{ backgroundColor: '#F1F5F9', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 }}
+              activeOpacity={0.8}
+            >
+              <Text style={{ color: C.textPrimary, fontWeight: '700' }}>← Geri</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={refetch}
+              style={{ backgroundColor: C.primary, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 }}
+              activeOpacity={0.8}
+            >
+              <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>Tekrar Dene</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </SafeAreaView>
     );

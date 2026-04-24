@@ -46,12 +46,14 @@ export async function fetchAllWorkOrders() {
 }
 
 export async function fetchWorkOrderById(id: string) {
-  return supabase
+  // Önce siparişi ve auxiliary join'leri (assignee/photos/status/items) çek.
+  // doctor_id polymorphic (doctors.id VEYA profiles.id) olduğundan otomatik
+  // FK embed yapmıyoruz — manuel olarak iki tabloyu dener, bulduğumuzu yapıştırırız.
+  const result = await supabase
     .from('work_orders')
     .select(
       `
       *,
-      doctor:doctors!work_orders_doctor_id_fkey(id, full_name, phone, clinic:clinics(id, name)),
       assignee:profiles!work_orders_assigned_to_fkey(id, full_name, role),
       photos:work_order_photos(*),
       status_history(*, changer:profiles!status_history_changed_by_fkey(id, full_name, role)),
@@ -61,6 +63,46 @@ export async function fetchWorkOrderById(id: string) {
     .eq('id', id)
     .order('created_at', { ascending: true, referencedTable: 'status_history' })
     .single();
+
+  if (result.error || !result.data) return result;
+
+  const doctorId: string | null = (result.data as any).doctor_id ?? null;
+  if (doctorId) {
+    // 1. Önce external doctors tablosu (lab/admin'in açtığı siparişler)
+    const { data: extDoctor } = await supabase
+      .from('doctors')
+      .select('id, full_name, phone, clinic:clinics(id, name)')
+      .eq('id', doctorId)
+      .maybeSingle();
+
+    if (extDoctor) {
+      (result.data as any).doctor = extDoctor;
+    } else {
+      // 2. Bulunamadıysa profiles (hekim kendi açtı veya klinik müdürü)
+      const { data: profDoctor } = await supabase
+        .from('profiles')
+        .select('id, full_name, phone, clinic_name')
+        .eq('id', doctorId)
+        .maybeSingle();
+
+      if (profDoctor) {
+        (result.data as any).doctor = {
+          id: profDoctor.id,
+          full_name: profDoctor.full_name,
+          phone: profDoctor.phone,
+          clinic: profDoctor.clinic_name
+            ? { id: null, name: profDoctor.clinic_name }
+            : null,
+        };
+      } else {
+        (result.data as any).doctor = null;
+      }
+    }
+  } else {
+    (result.data as any).doctor = null;
+  }
+
+  return result;
 }
 
 export async function advanceOrderStatus(
