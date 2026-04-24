@@ -23,6 +23,7 @@ const CLR = {
   green:  '#16A34A', greenBg:  '#DCFCE7',
   orange: '#D97706', orangeBg: '#FEF3C7',
   red:    '#EF4444', redBg:    '#FEF2F2',
+  purple: '#7C3AED', purpleBg: '#EDE9FE',
 };
 
 interface TodayProva {
@@ -62,11 +63,21 @@ function initials(name?: string | null) {
   return parts.map(p => p[0]?.toUpperCase() ?? '').join('') || '—';
 }
 
+/** Convert 6-char hex + 0-1 alpha → rgba() string (safe for all platforms) */
+function hexA(hex: string, alpha: number) {
+  try {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  } catch { return hex; }
+}
+
 // ── SVG Icons (Lucide-style) ──────────────────────────────────────────
 type IconName =
   | 'arrow-up-right' | 'plus' | 'receipt' | 'activity'
   | 'users' | 'user' | 'trending-up' | 'alert-triangle'
-  | 'check-square';
+  | 'check-square' | 'clock' | 'check-circle' | 'package';
 
 function Icon({ name, size = 24, color = '#0F172A', strokeWidth = 1.75 }: {
   name: IconName; size?: number; color?: string; strokeWidth?: number;
@@ -123,6 +134,12 @@ function Icon({ name, size = 24, color = '#0F172A', strokeWidth = 1.75 }: {
           <Path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" {...p}/>
         </Svg>
       );
+    case 'clock':
+      return <Svg width={size} height={size} viewBox="0 0 24 24"><Circle cx="12" cy="12" r="10" {...p}/><Polyline points="12 6 12 12 16 14" {...p}/></Svg>;
+    case 'check-circle':
+      return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" {...p}/><Polyline points="22 4 12 14.01 9 11.01" {...p}/></Svg>;
+    case 'package':
+      return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M16.5 9.4l-9-5.19M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" {...p}/><Polyline points="3.27 6.96 12 12.01 20.73 6.96" {...p}/><Line x1="12" y1="22.08" x2="12" y2="12" {...p}/></Svg>;
     default: return null;
   }
 }
@@ -202,11 +219,11 @@ function QuickActionsSection({
   onOrders: () => void; onProfile: () => void;
 }) {
   const items: QAItem[] = [
-    { icon: 'plus',        label: 'Yeni İş',      onPress: onNewOrder,   accent: '#FFFFFF', accentBg: 'rgba(255,255,255,0.14)', primary: true },
-    { icon: 'receipt',     label: 'Siparişler',   onPress: onOrders,     accent: P,         accentBg: '#EFF6FF' },
-    { icon: 'activity',    label: 'Hekimler',     onPress: onClinics,    accent: '#059669', accentBg: '#ECFDF5' },
-    { icon: 'check-square',label: 'Onaylar',      onPress: onApprovals,  accent: '#7C3AED', accentBg: '#F5F3FF' },
-    { icon: 'user',        label: 'Profil',       onPress: onProfile,    accent: '#D97706', accentBg: '#FFFBEB' },
+    { icon: 'plus',        label: 'Yeni İş',    onPress: onNewOrder,  accent: '#FFFFFF', accentBg: 'rgba(255,255,255,0.14)', primary: true },
+    { icon: 'receipt',     label: 'Siparişler', onPress: onOrders,    accent: P,         accentBg: '#EFF6FF' },
+    { icon: 'activity',    label: 'Hekimler',   onPress: onClinics,   accent: '#059669', accentBg: '#ECFDF5' },
+    { icon: 'check-square',label: 'Onaylar',    onPress: onApprovals, accent: '#7C3AED', accentBg: '#F5F3FF' },
+    { icon: 'user',        label: 'Profil',     onPress: onProfile,   accent: '#D97706', accentBg: '#FFFBEB' },
   ];
 
   return (
@@ -227,7 +244,7 @@ function QuickActionsSection({
 }
 
 const bento = StyleSheet.create({
-  grid: { gap: 10, marginBottom: 24 },
+  grid: { gap: 10 },
   row:  { flexDirection: 'row', gap: 10 },
   col:  { flex: 2, gap: 10 },
 
@@ -266,6 +283,42 @@ const bento = StyleSheet.create({
   labelPrimary: { color: '#FFFFFF', fontSize: 15 },
 });
 
+// ── KPI Card ──────────────────────────────────────────────────────────
+function KPICard({ label, value, icon, accent, trend }: {
+  label: string; value: string | number; icon: IconName; accent: string; trend?: string;
+}) {
+  return (
+    <View style={kpi.card}>
+      <View style={[kpi.iconWrap, { backgroundColor: hexA(accent, 0.09) }]}>
+        <Icon name={icon} size={18} color={accent} strokeWidth={1.75} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={kpi.label} numberOfLines={1}>{label}</Text>
+        <Text style={[kpi.value, { color: accent }]}>{value}</Text>
+        {trend && (
+          <View style={kpi.trendRow}>
+            <Icon name="trending-up" size={9} color={CLR.green} strokeWidth={2.5} />
+            <Text style={kpi.trendText}>{trend}</Text>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
+const kpi = StyleSheet.create({
+  card: {
+    flex: 1, minWidth: 140,
+    backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16,
+    borderWidth: 1, borderColor: '#F1F5F9',
+    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+  },
+  iconWrap: { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  label:    { fontSize: 10, color: '#94A3B8', fontWeight: '600', letterSpacing: 0.3, marginBottom: 4 },
+  value:    { fontSize: 22, fontWeight: '800', letterSpacing: -0.6, lineHeight: 26 },
+  trendRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 3 },
+  trendText:{ fontSize: 9, color: CLR.green, fontWeight: '700' },
+});
+
 // ── Status Badge ──────────────────────────────────────────────────────
 function StatusBadge({ status }: { status: string }) {
   const c = STATUS_CFG[status] ?? { label: status, color: '#64748B', bg: '#F1F5F9' };
@@ -277,55 +330,19 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-// ── Stat Card ─────────────────────────────────────────────────────────
-function StatCard({ label, value, accent, delta, accentBar }: {
-  label: string; value: number | string; accent?: string; delta?: string; accentBar?: boolean;
-}) {
-  return (
-    <View style={sc.card}>
-      {accentBar && <View style={sc.accentBar} />}
-      <Text style={sc.label}>{label}</Text>
-      <View style={sc.valueRow}>
-        <Text style={[sc.value, accent ? { color: accent } : null]}>{value}</Text>
-        {delta && (
-          <View style={sc.delta}>
-            <Icon name="trending-up" size={10} color={P} strokeWidth={2.5} />
-            <Text style={sc.deltaText}>{delta}</Text>
-          </View>
-        )}
-      </View>
-    </View>
-  );
-}
-const sc = StyleSheet.create({
-  card: {
-    flex: 1, minWidth: 150,
-    backgroundColor: '#FFFFFF', borderRadius: 16,
-    padding: 18,
-    borderWidth: 1, borderColor: '#F1F5F9',
-    position: 'relative', overflow: 'hidden',
-  },
-  accentBar: { position: 'absolute', right: 0, top: 0, bottom: 0, width: 3, backgroundColor: P },
-  label: { fontSize: 11, color: '#94A3B8', fontWeight: '500', marginBottom: 10 },
-  valueRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
-  value: { fontSize: 28, fontWeight: '800', color: '#0F172A', letterSpacing: -0.8, lineHeight: 32 },
-  delta: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: CLR.blueBg, marginBottom: 4 },
-  deltaText: { fontSize: 10, fontWeight: '700', color: P },
-});
-
 // ── Card wrap ─────────────────────────────────────────────────────────
 function Card({ children, style }: { children: React.ReactNode; style?: any }) {
-  return <View style={[card.wrap, style]}>{children}</View>;
+  return <View style={[crd.wrap, style]}>{children}</View>;
 }
 function CardHeader({ title, right }: { title: string; right?: React.ReactNode }) {
   return (
-    <View style={card.header}>
-      <Text style={card.title}>{title}</Text>
+    <View style={crd.header}>
+      <Text style={crd.title}>{title}</Text>
       {right}
     </View>
   );
 }
-const card = StyleSheet.create({
+const crd = StyleSheet.create({
   wrap: { backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#F1F5F9', overflow: 'hidden' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16 },
   title: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
@@ -436,6 +453,35 @@ const ch = StyleSheet.create({
   tooltipArrowActive: { backgroundColor: P },
 });
 
+// ── Status Distribution Card ──────────────────────────────────────────
+function StatusDistCard({ orders }: { orders: any[] }) {
+  const total = orders.length || 1;
+  return (
+    <Card>
+      <CardHeader title="Statü Dağılımı" />
+      <View style={{ paddingHorizontal: 20, paddingBottom: 20, gap: 14 }}>
+        {Object.entries(STATUS_CFG).map(([key, cfg]) => {
+          const count = orders.filter(o => o.status === key).length;
+          const pct   = Math.round((count / total) * 100);
+          return (
+            <View key={key}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: cfg.color, marginRight: 8 }} />
+                <Text style={{ flex: 1, fontSize: 12, color: '#64748B', fontWeight: '500' }}>{cfg.label}</Text>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>{count}</Text>
+                <Text style={{ fontSize: 10, color: '#94A3B8', marginLeft: 6, width: 28, textAlign: 'right' }}>{pct}%</Text>
+              </View>
+              <View style={{ height: 4, backgroundColor: '#F1F5F9', borderRadius: 4, overflow: 'hidden' }}>
+                <View style={{ height: 4, borderRadius: 4, backgroundColor: cfg.color, width: `${pct}%` as any }} />
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    </Card>
+  );
+}
+
 // ── Main Screen ───────────────────────────────────────────────────────
 export function LabDashboardScreen() {
   const router  = useRouter();
@@ -468,7 +514,7 @@ export function LabDashboardScreen() {
       .order('created_at', { ascending: false });
 
     if (data) {
-      setAllOrders(data.slice(0, 6));
+      setAllOrders(data.slice(0, 8));
       const bars: MonthBar[] = [];
       for (let i = 5; i >= 0; i--) {
         const d = new Date(); d.setMonth(d.getMonth() - i);
@@ -519,7 +565,7 @@ export function LabDashboardScreen() {
         refreshControl={<RefreshControl refreshing={refreshing || loading} onRefresh={handleRefresh} tintColor={P} />}
       >
 
-        {/* ── Hero Welcome + Critical Alert ────────────────────── */}
+        {/* ── Hero Welcome + Critical Alert ──────────────────── */}
         <View style={[s.heroRow, isDesktop && s.heroRowDesktop]}>
           <View style={[s.welcomeCard, isDesktop && { flex: 1 }]}>
             <BlurFade duration={600} delay={0} yOffset={8}>
@@ -557,32 +603,38 @@ export function LabDashboardScreen() {
           )}
         </View>
 
-        {/* ── Quick Actions ─────────────────────────────────────── */}
-        <SectionTitle text="Hızlı İşlemler" />
-        <QuickActionsSection
-          onNewOrder={() => router.push('/(lab)/new-order' as any)}
-          onApprovals={() => router.push('/(lab)/approvals' as any)}
-          onClinics={() => router.push('/(lab)/clinics' as any)}
-          onOrders={() => router.push('/(lab)/all-orders' as any)}
-          onProfile={() => router.push('/(lab)/profile' as any)}
-        />
+        {/* ── KPI Strip ──────────────────────────────────────── */}
+        <View style={[s.kpiStrip, isDesktop && s.kpiStripDesktop]}>
+          <KPICard label="TOPLAM SİPARİŞ" value={totalOrders.toLocaleString('tr-TR')} icon="package" accent={P} trend="+12%" />
+          <KPICard label="BUGÜN YENİ"     value={todayNewCount}          icon="plus"           accent={CLR.green} />
+          <KPICard label="GECİKEN"        value={overdueOrders.length}   icon="clock"          accent={overdueOrders.length > 0 ? CLR.red : '#94A3B8'} />
+          <KPICard label="BUGÜN TESLİM"   value={orders.length}          icon="check-circle"   accent={CLR.orange} />
+          <KPICard label="KAYITLI HEKİM"  value={doctorCount}            icon="activity"       accent={CLR.blue} />
+          <KPICard label="LAB KULLANICI"  value={userCount}              icon="users"          accent={CLR.purple} />
+        </View>
 
-        {/* ── Genel Bakış + Sağ Kolon ───────────────────────────── */}
+        {/* ── 3-Column Main Grid ─────────────────────────────── */}
         <View style={[s.mainGrid, isDesktop && s.mainGridDesktop]}>
 
-          {/* Left — 2/3 */}
-          <View style={[{ gap: 20 }, isDesktop && { flex: 2 }]}>
-            <SectionTitle text="Genel Bakış" />
-            <View style={s.statsGrid}>
-              <StatCard label="Toplam Sipariş" value={totalOrders.toLocaleString('tr-TR')} delta={totalOrders > 0 ? '+12%' : undefined} />
-              <StatCard label="Bugün Yeni"      value={todayNewCount} accent={P} accentBar />
-              <StatCard label="Geciken"         value={overdueOrders.length} accent={overdueOrders.length > 0 ? CLR.red : undefined} />
-              <StatCard label="Bugün Teslim"    value={orders.length} />
-              <StatCard label="Kayıtlı Hekim"   value={doctorCount} />
-              <StatCard label="Lab Kullanıcısı" value={userCount} />
-            </View>
+          {/* ── Col 1: Quick Actions + Status Distribution ───── */}
+          <View style={[s.col1, isDesktop && { flex: 1.1 }]}>
+            <SectionTitle text="Hızlı İşlemler" />
+            <QuickActionsSection
+              onNewOrder={() => router.push('/(lab)/new-order' as any)}
+              onApprovals={() => router.push('/(lab)/approvals' as any)}
+              onClinics={() => router.push('/(lab)/clinics' as any)}
+              onOrders={() => router.push('/(lab)/all-orders' as any)}
+              onProfile={() => router.push('/(lab)/profile' as any)}
+            />
+            <View style={{ height: 20 }} />
+            <SectionTitle text="Statü Dağılımı" />
+            <StatusDistCard orders={allOrders} />
+          </View>
 
-            <Card>
+          {/* ── Col 2: Chart + Recent Orders ─────────────────── */}
+          <View style={[s.col2, isDesktop && { flex: 2 }]}>
+            <SectionTitle text="Sipariş Trendi" />
+            <Card style={{ marginBottom: 20 }}>
               <CardHeader
                 title="Sipariş Trendi"
                 right={<View style={s.chip}><Text style={s.chipText}>Son 6 Ay</Text></View>}
@@ -594,131 +646,121 @@ export function LabDashboardScreen() {
                   </View>
               }
             </Card>
+
+            <SectionTitle text="Son Siparişler" />
+            <Card>
+              <CardHeader
+                title="Son Siparişler"
+                right={
+                  <TouchableOpacity onPress={() => router.push('/(lab)/all-orders' as any)}>
+                    <Text style={s.linkBtn}>Tümünü Gör →</Text>
+                  </TouchableOpacity>
+                }
+              />
+              <View style={s.tableHead}>
+                <Text style={[s.thCell, { flex: 1.2 }]}>Sipariş No</Text>
+                <Text style={[s.thCell, { flex: 2 }]}>Hekim</Text>
+                {isDesktop && <Text style={[s.thCell, { flex: 2 }]}>İş Tipi</Text>}
+                <Text style={[s.thCell, { flex: 1.4 }]}>Statü</Text>
+                {isDesktop && <Text style={[s.thCell, { flex: 1, textAlign: 'right' }]}>Teslim</Text>}
+              </View>
+
+              {allOrders.length === 0
+                ? <Text style={s.loadingText}>Yükleniyor...</Text>
+                : allOrders.map((order, idx) => {
+                    const overdue = order.delivery_date < today && order.status !== 'teslim_edildi';
+                    const isLast  = idx === allOrders.length - 1;
+                    const drName  = (order.doctor as any)?.full_name ?? '—';
+                    return (
+                      <TouchableOpacity
+                        key={order.id}
+                        style={[s.tableRow, !isLast && s.rowBorder, overdue && s.tableRowOverdue, hovered === order.id && s.tableRowHover]}
+                        onPress={() => router.push(`/(lab)/order/${order.id}` as any)}
+                        activeOpacity={0.9}
+                        // @ts-ignore
+                        onMouseEnter={() => setHovered(order.id)}
+                        onMouseLeave={() => setHovered(null)}
+                      >
+                        <Text style={[s.orderNo, { flex: 1.2 }]} numberOfLines={1}>#{order.order_number}</Text>
+                        <View style={{ flex: 2, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                          <View style={s.avatar}>
+                            <Text style={s.avatarText}>{initials(drName)}</Text>
+                          </View>
+                          <Text style={s.cellMain} numberOfLines={1}>{drName}</Text>
+                        </View>
+                        {isDesktop && (
+                          <Text style={[s.cellSub, { flex: 2 }]} numberOfLines={1}>{order.work_type || '—'}</Text>
+                        )}
+                        <View style={{ flex: 1.4 }}>
+                          <StatusBadge status={order.status} />
+                        </View>
+                        {isDesktop && (
+                          <Text style={[s.cellDate, { flex: 1, textAlign: 'right' }, overdue && s.cellDateOverdue]}>
+                            {fmtDate(order.delivery_date)}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })
+              }
+            </Card>
           </View>
 
-          {/* Right — 1/3 */}
-          <View style={[{ gap: 20 }, isDesktop && { flex: 1 }]}>
-            <SectionTitle text="Analiz" />
-
-            <Card>
-              <CardHeader title="Statü Dağılımı" />
-              <View style={{ paddingHorizontal: 20, paddingBottom: 20, gap: 14 }}>
-                {Object.entries(STATUS_CFG).map(([key, cfg]) => {
-                  const count = allOrders.filter(o => o.status === key).length;
-                  const total = allOrders.length || 1;
-                  const pct   = Math.round((count / total) * 100);
-                  return (
-                    <View key={key}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
-                        <Text style={{ flex: 1, fontSize: 12, color: '#64748B', fontWeight: '500' }}>{cfg.label}</Text>
-                        <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>{count}</Text>
-                      </View>
-                      <View style={{ height: 5, backgroundColor: '#F1F5F9', borderRadius: 4, overflow: 'hidden' }}>
-                        <View style={{ height: 5, borderRadius: 4, backgroundColor: cfg.color, width: `${pct}%` as any }} />
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-            </Card>
-
+          {/* ── Col 3: Today's Provas ─────────────────────────── */}
+          <View style={[s.col3, isDesktop && { flex: 1.1 }]}>
             {(provas.length > 0 || provasLoading) && (
-              <Card>
-                <CardHeader
-                  title="Bugünün Provaları"
-                  right={
-                    <View style={s.countChip}>
-                      <Text style={s.countChipText}>{provas.length}</Text>
-                    </View>
+              <>
+                <SectionTitle text="Bugünün Provaları" />
+                <Card>
+                  <CardHeader
+                    title="Bugünün Provaları"
+                    right={
+                      <View style={s.countChip}>
+                        <Text style={s.countChipText}>{provas.length}</Text>
+                      </View>
+                    }
+                  />
+                  {provasLoading
+                    ? <Text style={s.loadingText}>Yükleniyor...</Text>
+                    : provas.slice(0, 8).map((pv, idx) => {
+                        const typeCfg = PROVA_TYPES.find(t => t.value === pv.prova_type);
+                        const isLast  = idx === Math.min(provas.length, 8) - 1;
+                        return (
+                          <TouchableOpacity
+                            key={pv.id}
+                            style={[s.provaRow, !isLast && s.rowBorder]}
+                            onPress={() => pv.work_order && router.push(`/(lab)/order/${pv.work_order.id}` as any)}
+                            activeOpacity={0.7}
+                          >
+                            <View style={s.provaEmoji}>
+                              <Text style={{ fontSize: 16 }}>{typeCfg?.emoji ?? '🦷'}</Text>
+                            </View>
+                            <View style={{ flex: 1, gap: 2 }}>
+                              <Text style={s.cellMain} numberOfLines={1}>{pv.work_order?.order_number ?? '—'}</Text>
+                              <Text style={s.cellSub} numberOfLines={1}>{typeCfg?.label ?? 'Prova'} #{pv.prova_number}</Text>
+                            </View>
+                            <StatusBadge status={pv.status} />
+                          </TouchableOpacity>
+                        );
+                      })
                   }
-                />
-                {provasLoading
-                  ? <Text style={s.loadingText}>Yükleniyor...</Text>
-                  : provas.slice(0, 5).map((pv, idx) => {
-                      const typeCfg = PROVA_TYPES.find(t => t.value === pv.prova_type);
-                      const isLast  = idx === Math.min(provas.length, 5) - 1;
-                      return (
-                        <TouchableOpacity
-                          key={pv.id}
-                          style={[s.provaRow, !isLast && s.rowBorder]}
-                          onPress={() => pv.work_order && router.push(`/(lab)/order/${pv.work_order.id}` as any)}
-                          activeOpacity={0.7}
-                        >
-                          <View style={s.provaEmoji}>
-                            <Text style={{ fontSize: 16 }}>{typeCfg?.emoji ?? '🦷'}</Text>
-                          </View>
-                          <View style={{ flex: 1, gap: 2 }}>
-                            <Text style={s.cellMain} numberOfLines={1}>{pv.work_order?.order_number ?? '—'}</Text>
-                            <Text style={s.cellSub} numberOfLines={1}>{typeCfg?.label ?? 'Prova'} #{pv.prova_number}</Text>
-                          </View>
-                          <StatusBadge status={pv.status} />
-                        </TouchableOpacity>
-                      );
-                    })
-                }
-              </Card>
+                </Card>
+              </>
+            )}
+
+            {!provasLoading && provas.length === 0 && (
+              <>
+                <SectionTitle text="Bugünün Provaları" />
+                <Card>
+                  <View style={{ padding: 24, alignItems: 'center', gap: 8 }}>
+                    <Text style={{ fontSize: 24 }}>🦷</Text>
+                    <Text style={{ fontSize: 13, color: '#94A3B8', textAlign: 'center' }}>Bugün prova yok</Text>
+                  </View>
+                </Card>
+              </>
             )}
           </View>
-        </View>
 
-        {/* ── Son Siparişler ────────────────────────────────────── */}
-        <View style={{ marginTop: 20 }}>
-          <Card>
-            <CardHeader
-              title="Son Siparişler"
-              right={
-                <TouchableOpacity onPress={() => router.push('/(lab)/all-orders' as any)}>
-                  <Text style={s.linkBtn}>Tümünü Gör</Text>
-                </TouchableOpacity>
-              }
-            />
-            <View style={s.tableHead}>
-              <Text style={[s.thCell, { flex: 1.2 }]}>Sipariş No</Text>
-              <Text style={[s.thCell, { flex: 2 }]}>Hekim</Text>
-              {isDesktop && <Text style={[s.thCell, { flex: 2 }]}>İş Tipi</Text>}
-              <Text style={[s.thCell, { flex: 1.4 }]}>Statü</Text>
-              {isDesktop && <Text style={[s.thCell, { flex: 1, textAlign: 'right' }]}>Teslim</Text>}
-            </View>
-
-            {allOrders.length === 0
-              ? <Text style={s.loadingText}>Yükleniyor...</Text>
-              : allOrders.map((order, idx) => {
-                  const overdue = order.delivery_date < today && order.status !== 'teslim_edildi';
-                  const isLast  = idx === allOrders.length - 1;
-                  const drName  = (order.doctor as any)?.full_name ?? '—';
-                  return (
-                    <TouchableOpacity
-                      key={order.id}
-                      style={[s.tableRow, !isLast && s.rowBorder, overdue && s.tableRowOverdue, hovered === order.id && s.tableRowHover]}
-                      onPress={() => router.push(`/(lab)/order/${order.id}` as any)}
-                      activeOpacity={0.9}
-                      // @ts-ignore
-                      onMouseEnter={() => setHovered(order.id)}
-                      onMouseLeave={() => setHovered(null)}
-                    >
-                      <Text style={[s.orderNo, { flex: 1.2 }]} numberOfLines={1}>#{order.order_number}</Text>
-                      <View style={{ flex: 2, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                        <View style={s.avatar}>
-                          <Text style={s.avatarText}>{initials(drName)}</Text>
-                        </View>
-                        <Text style={s.cellMain} numberOfLines={1}>{drName}</Text>
-                      </View>
-                      {isDesktop && (
-                        <Text style={[s.cellSub, { flex: 2 }]} numberOfLines={1}>{order.work_type}</Text>
-                      )}
-                      <View style={{ flex: 1.4 }}>
-                        <StatusBadge status={order.status} />
-                      </View>
-                      {isDesktop && (
-                        <Text style={[s.cellDate, { flex: 1, textAlign: 'right' }, overdue && s.cellDateOverdue]}>
-                          {fmtDate(order.delivery_date)}
-                        </Text>
-                      )}
-                    </TouchableOpacity>
-                  );
-                })
-            }
-          </Card>
         </View>
 
         <View style={{ height: 40 }} />
@@ -729,9 +771,10 @@ export function LabDashboardScreen() {
 
 const s = StyleSheet.create({
   safe:   { flex: 1, backgroundColor: BG },
-  scroll: { padding: 24, paddingBottom: 40, maxWidth: 1400, alignSelf: 'stretch' },
+  scroll: { padding: 20, paddingBottom: 40, maxWidth: 1600, alignSelf: 'stretch' },
 
-  heroRow:        { gap: 16, marginBottom: 24 },
+  // ── Hero ──────────────────────────────────────────────────────────────
+  heroRow:        { gap: 16, marginBottom: 20 },
   heroRowDesktop: { flexDirection: 'row' },
 
   welcomeCard: {
@@ -762,11 +805,18 @@ const s = StyleSheet.create({
   },
   alertBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
 
+  // ── KPI Strip ─────────────────────────────────────────────────────────
+  kpiStrip:        { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 20 },
+  kpiStripDesktop: { flexWrap: 'nowrap' },
+
+  // ── 3-Column Grid ─────────────────────────────────────────────────────
   mainGrid:        { gap: 20 },
-  mainGridDesktop: { flexDirection: 'row' },
+  mainGridDesktop: { flexDirection: 'row', alignItems: 'flex-start' },
+  col1: { gap: 0 },
+  col2: { gap: 0 },
+  col3: { gap: 0 },
 
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-
+  // ── Chips ─────────────────────────────────────────────────────────────
   chip:     { backgroundColor: '#F1F5F9', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
   chipText: { fontSize: 11, color: '#64748B', fontWeight: '600' },
 
@@ -775,6 +825,7 @@ const s = StyleSheet.create({
 
   linkBtn: { fontSize: 13, color: P, fontWeight: '700' },
 
+  // ── Table ─────────────────────────────────────────────────────────────
   tableHead: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 20, paddingVertical: 12,
@@ -788,8 +839,8 @@ const s = StyleSheet.create({
   tableRowOverdue: { backgroundColor: '#FEF2F2' },
   rowBorder:       { borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
 
-  provaRow:  { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, gap: 10 },
-  provaEmoji:{ width: 36, height: 36, borderRadius: 10, backgroundColor: CLR.blueBg, alignItems: 'center', justifyContent: 'center' },
+  provaRow:   { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, gap: 10 },
+  provaEmoji: { width: 36, height: 36, borderRadius: 10, backgroundColor: CLR.blueBg, alignItems: 'center', justifyContent: 'center' },
 
   orderNo:    { fontSize: 12, fontWeight: '700', color: P },
 
