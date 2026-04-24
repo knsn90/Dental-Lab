@@ -15,7 +15,8 @@ export default function Index() {
 
   if (!userType) return <LoadingSpinner fullScreen message="Yükleniyor..." />;
 
-  if (userType === 'admin')  return <Redirect href="/(admin)" />;
-  if (userType === 'doctor') return <Redirect href="/(doctor)" />;
+  if (userType === 'admin')        return <Redirect href="/(admin)" />;
+  if (userType === 'clinic_admin') return <Redirect href={"/(clinic)" as any} />;
+  if (userType === 'doctor')       return <Redirect href="/(doctor)" />;
   return <Redirect href="/(lab)" />;
 }

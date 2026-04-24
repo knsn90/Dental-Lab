@@ -310,6 +310,7 @@ export function NewOrderScreen({
   accentColor,
   onClose,
   doctorMode = false,
+  clinicMode = false,
 }: {
   accentColor?: string;
   onClose?: () => void;
@@ -319,6 +320,11 @@ export function NewOrderScreen({
    * ve submit sonrası /(doctor) rotasına yönlendirilir.
    */
   doctorMode?: boolean;
+  /**
+   * Klinik müdürü panelinden çağrıldığında klinik sabit, hekim seçimi yapılabilir
+   * ancak sadece kendi kliniğindeki hekimler listelenir.
+   */
+  clinicMode?: boolean;
 }) {
   const P     = accentColor ?? C.primary;
   const PBg   = accentColor ? '#F1F5F9' : C.primaryBg;
@@ -540,13 +546,16 @@ export function NewOrderScreen({
   const [materialPrices, setMaterialPrices] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    // Doctor modunda clinic/doctor fetch'i atla (RLS erişimi farklı, gereksiz)
+    // Doctor mode: clinic/doctor fetch'i atla
+    // Clinic mode: allDoctors yerine my_clinic_doctors view'dan çek
     const clinicsPromise = doctorMode
       ? Promise.resolve({ data: [] })
       : fetchClinics();
     const doctorsPromise = doctorMode
       ? Promise.resolve({ data: [] })
-      : fetchAllDoctors();
+      : clinicMode
+        ? supabase.from('my_clinic_doctors').select('id, full_name, phone, avatar_url, clinic_id')
+        : fetchAllDoctors();
 
     Promise.all([
       clinicsPromise,
@@ -555,7 +564,19 @@ export function NewOrderScreen({
       supabase.from('materials').select('name,price').eq('is_active', true),
     ]).then(([clinicsRes, doctorsRes, servicesRes, matsRes]) => {
       setClinics((clinicsRes.data as Clinic[]) ?? []);
-      setAllDoctors((doctorsRes.data as Doctor[]) ?? []);
+      // clinicMode: view'dan gelen satırları Doctor tipine map et
+      if (clinicMode) {
+        const rows = ((doctorsRes.data as any[]) ?? []).map(d => ({
+          id: d.id,
+          full_name: d.full_name,
+          phone: d.phone,
+          clinic_id: d.clinic_id,
+          clinic: null,
+        }));
+        setAllDoctors(rows as unknown as Doctor[]);
+      } else {
+        setAllDoctors((doctorsRes.data as Doctor[]) ?? []);
+      }
       setServices((servicesRes.data as LabService[]) ?? []);
       const priceMap: Record<string, number> = {};
       ((matsRes.data ?? []) as { name: string; price: number }[]).forEach(m => {
@@ -961,12 +982,14 @@ export function NewOrderScreen({
     if (onClose) {
       onClose();
     } else {
-      router.push((doctorMode ? '/(doctor)' : '/(lab)') as any);
+      const dest = doctorMode ? '/(doctor)' : clinicMode ? '/(clinic)' : '/(lab)';
+      router.push(dest as any);
     }
   };
 
-  // Doctor modunda klinik/hekim profile'den gelir; diğer modlarda seçilen kayıtlar
-  const selectedClinic = doctorMode
+  // Doctor modunda klinik/hekim profile'den gelir
+  // Clinic modunda klinik profile'den, hekim ise allDoctors'dan (kliniğin hekimleri)
+  const selectedClinic = doctorMode || clinicMode
     ? (profile?.clinic_name ? { id: '', name: profile.clinic_name, phone: null, is_active: true } as any : undefined)
     : clinics.find((c) => c.id === form.clinic_id);
   const selectedDoctor = doctorMode
@@ -1258,8 +1281,40 @@ ${form.notes ? `<div class="card">
       {/* Step 1 — Clinic & Patient */}
       {step === 1 && (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          {/* Clinic & Doctor — Doctor modunda read-only, diğer modlarda seçilebilir */}
-          {doctorMode ? (
+          {/* Clinic & Doctor — üç mod: doctorMode (tam read-only), clinicMode (klinik kilitli+hekim seçilir), normal (tam seçilir) */}
+          {clinicMode ? (
+            <SectionCard
+              title="Klinik & diş hekimi"
+              iconNode={<ClinicIcon size={14} color={stepAttempted[1] && errors.doctor_id ? '#EF4444' : P} />}
+              errorCount={stepAttempted[1] && errors.doctor_id ? 1 : 0}
+              accentColor={P}
+            >
+              {/* Klinik kartı — kilitli (profile'den) */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', paddingHorizontal: 14, paddingVertical: 12, marginBottom: 12 }}>
+                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E2E8F0' }}>
+                  <MaterialCommunityIcons name={'hospital-building' as any} size={20} color="#64748B" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.6, textTransform: 'uppercase' }}>Klinik</Text>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#0F172A', marginTop: 2 }} numberOfLines={1}>
+                    {profile?.clinic_name ?? 'Klinik belirtilmemiş'}
+                  </Text>
+                </View>
+                <MaterialCommunityIcons name={'lock-outline' as any} size={14} color="#94A3B8" />
+              </View>
+
+              {/* Hekim seçici — sadece kliniğin hekimleri */}
+              <SearchableDropdown
+                label="Diş hekimi"
+                placeholder={allDoctors.length > 0 ? 'Kliniğinizdeki hekimi seçin' : 'Kliniğinizde hekim bulunmuyor'}
+                options={allDoctors.map(d => ({ id: d.id, label: d.full_name, sublabel: (d as any).phone ?? undefined }))}
+                selectedId={form.doctor_id}
+                onSelect={set('doctor_id')}
+                required
+                error={fe('doctor_id')}
+              />
+            </SectionCard>
+          ) : doctorMode ? (
             <SectionCard
               title="Klinik & diş hekimi"
               iconNode={<ClinicIcon size={14} color={P} />}

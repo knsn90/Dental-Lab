@@ -179,17 +179,19 @@ export default function RootLayout() {
     if (!userType) return;
 
     // Kullanıcı tipine göre doğru panel grubu
-    const expectedGroup = userType === 'doctor' ? '(doctor)'
-                        : userType === 'admin'  ? '(admin)'
+    const expectedGroup = userType === 'doctor'       ? '(doctor)'
+                        : userType === 'admin'        ? '(admin)'
+                        : userType === 'clinic_admin' ? '(clinic)'
                         : '(lab)';
     const currentGroup  = segments[0];
 
     if (inAuthGroup) {
       // Auth sayfasındayken oturum açıldıysa doğru panele gönder
       if (!isAdminLogin) {
-        if (userType === 'doctor') router.replace('/(doctor)');
-        else if (userType === 'admin') router.replace('/(admin)');
-        else router.replace('/(lab)');
+        if (userType === 'doctor')            router.replace('/(doctor)');
+        else if (userType === 'admin')        router.replace('/(admin)');
+        else if (userType === 'clinic_admin') router.replace('/(clinic)' as any);
+        else                                  router.replace('/(lab)');
       }
     } else if (currentGroup !== expectedGroup) {
       // Admin kullanıcılar lab panelini de görüntüleyebilir (çoklu sekme desteği)
@@ -198,8 +200,9 @@ export default function RootLayout() {
       // Yanlış panel grubundaysa (ör. lab kullanıcısı (doctor)/new-order içinde)
       // Aynı alt sayfayı doğru grup içinde aç: ['(doctor)', 'new-order'] → '/(lab)/new-order'
       const subPath  = segments.slice(1).join('/');
-      const base     = userType === 'doctor' ? '/(doctor)'
-                     : userType === 'admin'  ? '/(admin)'
+      const base     = userType === 'doctor'       ? '/(doctor)'
+                     : userType === 'admin'        ? '/(admin)'
+                     : userType === 'clinic_admin' ? '/(clinic)'
                      : '/(lab)';
       const target   = subPath ? `${base}/${subPath}` : base;
       router.replace(target as any);

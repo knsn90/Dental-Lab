@@ -1,4 +1,4 @@
-export type UserType = 'lab' | 'doctor' | 'admin';
+export type UserType = 'lab' | 'doctor' | 'admin' | 'clinic_admin';
 export type LabRole = 'technician' | 'manager';
 export type MachineType = 'milling' | '3d_printing';
 export type WorkOrderStatus =
@@ -13,6 +13,8 @@ export interface Profile {
   user_type: UserType;
   full_name: string;
   clinic_name: string | null;
+  /** clinics.id — klinik müdürü + çoklu hekim klinikte çalışan hekim için (033_clinic_panel). Bireysel hekim için NULL. */
+  clinic_id?: string | null;
   role: LabRole | null;
   phone: string | null;
   email?: string | null;
