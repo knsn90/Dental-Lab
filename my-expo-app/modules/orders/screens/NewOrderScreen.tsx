@@ -28,6 +28,7 @@ import { ClinicIcon } from '../../../core/ui/ClinicIcon';
 import { BrandedQR } from '../../../core/ui/BrandedQR';
 import { useAuthStore } from '../../../core/store/authStore';
 import { createWorkOrder, addOrderItem } from '../api';
+import { sendMessage, uploadChatAttachment, AttachmentType } from '../chatApi';
 import { supabase } from '../../../core/api/supabase';
 import { fetchClinics, fetchAllDoctors, createClinic, createDoctor } from '../../clinics/api';
 import { fetchLabServices } from '../../services/api';
@@ -927,6 +928,43 @@ export function NewOrderScreen({
         price: item.price,
         quantity: item.quantity,
       });
+    }
+
+    // ─── Form'da yazılan chat mesajlarını order_messages tablosuna persist et ──
+    // Yeni iş emrindeki sohbet, sipariş açıldıktan sonra detay sayfasında
+    // ve mesaj kutusunda dahil olan herkesin panelinde görünmeli.
+    for (const m of form.chat_messages) {
+      try {
+        if (m.type === 'text') {
+          if (m.text?.trim()) {
+            await sendMessage(order.id, profile.id, m.text.trim());
+          }
+        } else if (m.uri) {
+          // Voice / file / image — blob'a çevir, upload et, sonra send
+          const response = await fetch(m.uri);
+          const blob     = await response.blob();
+          const ext      = m.type === 'image' ? 'jpg'
+                         : m.type === 'voice' ? 'webm'
+                         : 'bin';
+          const fileName = m.fileName ?? `${m.type}-${m.id}.${ext}`;
+          const { url }  = await uploadChatAttachment(blob, order.id, fileName);
+          if (url) {
+            const attachmentType: AttachmentType =
+              m.type === 'image' ? 'image' :
+              m.type === 'voice' ? 'audio' :
+                                   'file';
+            await sendMessage(order.id, profile.id, m.text ?? '', {
+              url,
+              type: attachmentType,
+              name: fileName,
+              size: m.fileSize,
+            });
+          }
+        }
+      } catch (e) {
+        // Mesaj persist hatası ana siparişi bozmasın
+        console.warn('[chat-persist] failed for message', m.id, e);
+      }
     }
 
     // ─── Kapanış analizi varsa iş emrine bağla ──────────────────────────
