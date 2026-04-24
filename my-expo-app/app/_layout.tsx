@@ -7,12 +7,12 @@ import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../core/store/authStore';
 import {
   useFonts,
-  PlusJakartaSans_300Light,
-  PlusJakartaSans_400Regular,
-  PlusJakartaSans_500Medium,
-  PlusJakartaSans_600SemiBold,
-  PlusJakartaSans_700Bold,
-} from '@expo-google-fonts/plus-jakarta-sans';
+  Poppins_300Light,
+  Poppins_400Regular,
+  Poppins_500Medium,
+  Poppins_600SemiBold,
+  Poppins_700Bold,
+} from '@expo-google-fonts/poppins';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 // Inject web-only global CSS for the phone-shell layout
@@ -32,11 +32,11 @@ function useWebStyles() {
     preconnect2.crossOrigin = 'anonymous';
     document.head.appendChild(preconnect2);
 
-    // Load Plus Jakarta Sans
+    // Load Poppins
     const fontLink = document.createElement('link');
     fontLink.rel = 'stylesheet';
     fontLink.href =
-      'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap';
+      'https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap';
     document.head.appendChild(fontLink);
 
     const id = 'dental-lab-global-styles';
@@ -51,7 +51,7 @@ function useWebStyles() {
         margin: 0; padding: 0;
         height: 100%;
         background-color: #FFFFFF;
-        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
         font-weight: 400;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
@@ -110,7 +110,7 @@ function useWebStyles() {
       ::-webkit-scrollbar-thumb:hover { background: #93C5FD; }
 
       input, textarea, select {
-        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
         outline: none;
       }
 
@@ -134,11 +134,11 @@ export default function RootLayout() {
   useWebStyles();
 
   const [fontsLoaded] = useFonts({
-    PlusJakartaSans_300Light,
-    PlusJakartaSans_400Regular,
-    PlusJakartaSans_500Medium,
-    PlusJakartaSans_600SemiBold,
-    PlusJakartaSans_700Bold,
+    Poppins_300Light,
+    Poppins_400Regular,
+    Poppins_500Medium,
+    Poppins_600SemiBold,
+    Poppins_700Bold,
     ...MaterialCommunityIcons.font,
   });
 

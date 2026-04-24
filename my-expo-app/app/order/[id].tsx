@@ -50,5 +50,5 @@ export default function OrderRedirect() {
 
 const s = StyleSheet.create({
   container: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8FAFC', gap: 12 },
-  text:      { fontSize: 14, color: '#64748B', fontFamily: 'PlusJakartaSans_400Regular' },
+  text:      { fontSize: 14, color: '#64748B', fontFamily: 'Poppins_400Regular' },
 });

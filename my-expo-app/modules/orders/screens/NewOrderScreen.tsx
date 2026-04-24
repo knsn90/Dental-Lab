@@ -5402,7 +5402,7 @@ function WheelPickerColumn({
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: dist === 0 ? 15 : 13,
                   fontWeight: dist === 0 ? '600' : '400',
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontFamily: "'Poppins', sans-serif",
                   color: '#0F172A',
                   opacity: dist === 0 ? 1 : dist === 1 ? 0.38 : 0.14,
                   cursor: 'pointer',

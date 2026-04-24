@@ -2,16 +2,16 @@ import { Platform } from 'react-native';
 import { C } from './colors';
 
 /**
- * Plus Jakarta Sans font families.
+ * Poppins font families.
  * - On web: CSS weight axis handles variants, single family string suffices.
  * - On native: each weight is a separate loaded font file.
  */
 export const F = {
-  light:    Platform.OS === 'web' ? "'Plus Jakarta Sans', sans-serif" : 'PlusJakartaSans_300Light',
-  regular:  Platform.OS === 'web' ? "'Plus Jakarta Sans', sans-serif" : 'PlusJakartaSans_400Regular',
-  medium:   Platform.OS === 'web' ? "'Plus Jakarta Sans', sans-serif" : 'PlusJakartaSans_500Medium',
-  semibold: Platform.OS === 'web' ? "'Plus Jakarta Sans', sans-serif" : 'PlusJakartaSans_600SemiBold',
-  bold:     Platform.OS === 'web' ? "'Plus Jakarta Sans', sans-serif" : 'PlusJakartaSans_700Bold',
+  light:    Platform.OS === 'web' ? "'Poppins', sans-serif" : 'Poppins_300Light',
+  regular:  Platform.OS === 'web' ? "'Poppins', sans-serif" : 'Poppins_400Regular',
+  medium:   Platform.OS === 'web' ? "'Poppins', sans-serif" : 'Poppins_500Medium',
+  semibold: Platform.OS === 'web' ? "'Poppins', sans-serif" : 'Poppins_600SemiBold',
+  bold:     Platform.OS === 'web' ? "'Poppins', sans-serif" : 'Poppins_700Bold',
 };
 
 // ─── Font size scale ──────────────────────────────────────────────────────────
