@@ -14,7 +14,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { toast } from '../../../core/ui/Toast';
-import QRCode from 'react-native-qrcode-svg';
+import { BrandedQR } from '../../../core/ui/BrandedQR';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -492,7 +492,7 @@ export function OrderDetailScreen() {
             <Text style={qrs.subtitle}>{order.order_number}</Text>
 
             <View style={qrs.qrWrap}>
-              <QRCode
+              <BrandedQR
                 value={qrUrl}
                 size={200}
                 color="#0F172A"
@@ -782,7 +782,7 @@ function DetailsSection({ order, qrUrl, onAddFile }: {
           <Text style={sectionStyles.qrUrl} numberOfLines={1}>{qrUrl}</Text>
         </View>
         <View style={sectionStyles.qrCodeWrap}>
-          <QRCode value={qrUrl} size={90} color="#0F172A" backgroundColor="#FFFFFF" />
+          <BrandedQR value={qrUrl} size={90} color="#0F172A" backgroundColor="#FFFFFF" />
         </View>
       </View>
     </View>

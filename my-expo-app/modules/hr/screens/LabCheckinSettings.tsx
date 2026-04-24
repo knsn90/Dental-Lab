@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
-import QRCode from 'react-native-qrcode-svg';
+import { BrandedQR } from '../../../core/ui/BrandedQR';
 import * as Location from 'expo-location';
 
 import { C } from '../../../core/theme/colors';
@@ -153,12 +153,11 @@ export function LabCheckinSettings({ accentColor = '#2563EB' }: Props) {
 
           <View style={s.qrWrapper}>
             {lab?.checkin_token ? (
-              <QRCode
+              <BrandedQR
                 value={qrValue}
                 size={200}
                 color="#0F172A"
                 backgroundColor="#FFFFFF"
-                logo={undefined}
               />
             ) : (
               <View style={s.qrPlaceholder}>

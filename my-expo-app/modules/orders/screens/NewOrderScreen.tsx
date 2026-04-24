@@ -25,7 +25,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import Svg, { Path as SvgPath } from 'react-native-svg';
 import { ClinicIcon } from '../../../core/ui/ClinicIcon';
-import QRCode from 'react-native-qrcode-svg';
+import { BrandedQR } from '../../../core/ui/BrandedQR';
 import { useAuthStore } from '../../../core/store/authStore';
 import { createWorkOrder, addOrderItem } from '../api';
 import { supabase } from '../../../core/api/supabase';
@@ -2546,7 +2546,7 @@ ${form.notes ? `<div class="card">
             <View style={{ alignItems: 'center', paddingVertical: 24,
               borderTopWidth: 1, borderTopColor: '#F1F5F9', marginTop: 8 }}>
               <View nativeID="dental-qr-container">
-                <QRCode value={qrValue} size={130} color="#0F172A" backgroundColor="#FFFFFF" />
+                <BrandedQR value={qrValue} size={130} color="#0F172A" backgroundColor="#FFFFFF" />
               </View>
               <Text style={{ marginTop: 10, fontSize: 11, color: '#94A3B8', fontFamily: F.regular, textAlign: 'center' }}>
                 QR kodu ile vaka bilgileri
