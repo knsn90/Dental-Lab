@@ -4,7 +4,10 @@ import { Slot, Tabs } from 'expo-router';
 import { C as Colors } from '../../core/theme/colors';
 import { DesktopShell, useIsDesktop } from '../../core/layout/DesktopShell';
 import { useAuthStore } from '../../core/store/authStore';
-import { DoctorNewOrderScreen } from '../../modules/orders/screens/DoctorNewOrderScreen';
+import { NewOrderScreen } from '../../modules/orders/screens/NewOrderScreen';
+
+// Doktor paneli teması (lab #2563EB / admin #0F172A'dan ayrıştırılmış sky blue)
+const DOCTOR_ACCENT = '#0EA5E9';
 
 // NOT: Desktop'ta "Yeni İş Emri" → route navigate eder (/(doctor)/new-order),
 // sidebar kaybolmaz. Modal SADECE mobil için.
@@ -31,7 +34,7 @@ export default function DoctorLayout() {
 
   if (isDesktop) {
     // Desktop: DesktopShell içinde route render edilir, sidebar hiç kaybolmaz.
-    return <DesktopShell navItems={DOCTOR_NAV} accentColor={Colors.primary} />;
+    return <DesktopShell navItems={DOCTOR_NAV} accentColor={DOCTOR_ACCENT} />;
   }
 
   return (
@@ -84,7 +87,7 @@ export default function DoctorLayout() {
         presentationStyle="pageSheet"
         onRequestClose={() => setNewOrderOpen(false)}
       >
-        <DoctorNewOrderScreen onClose={() => setNewOrderOpen(false)} />
+        <NewOrderScreen doctorMode accentColor={DOCTOR_ACCENT} onClose={() => setNewOrderOpen(false)} />
       </Modal>
     </>
   );

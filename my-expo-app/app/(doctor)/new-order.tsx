@@ -1,8 +1,12 @@
 import React, { useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../../core/store/authStore';
-import { DoctorNewOrderScreen } from '../../modules/orders/screens/DoctorNewOrderScreen';
+import { NewOrderScreen } from '../../modules/orders/screens/NewOrderScreen';
 
+/**
+ * Doktor paneli — yeni iş emri oluşturma.
+ * Admin/lab ile aynı ekran kullanılır; sadece klinik + hekim sabit (doctorMode).
+ */
 export default function DoctorNewOrderRoute() {
   const router = useRouter();
   const { profile, loading } = useAuthStore();
@@ -19,5 +23,6 @@ export default function DoctorNewOrderRoute() {
   // Hekim değilse _layout.tsx redirect alana kadar boş ekran
   if (profile.user_type !== 'doctor') return null;
 
-  return <DoctorNewOrderScreen />;
+  // Doktor paneli teması: sky blue (lab #2563EB ve admin #0F172A'dan ayrıştırılmış)
+  return <NewOrderScreen doctorMode accentColor="#0EA5E9" />;
 }

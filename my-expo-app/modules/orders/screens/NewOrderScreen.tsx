@@ -306,7 +306,20 @@ function WithTooltip({
 // InfoTooltip artık kullanılmıyor — WithTooltip ile değiştirildi
 function InfoTooltip(_props: { text: string; color?: string }) { return null; }
 
-export function NewOrderScreen({ accentColor, onClose }: { accentColor?: string; onClose?: () => void }) {
+export function NewOrderScreen({
+  accentColor,
+  onClose,
+  doctorMode = false,
+}: {
+  accentColor?: string;
+  onClose?: () => void;
+  /**
+   * Doktor panelinden çağrıldığında klinik+hekim seçimi gizlenir,
+   * doctor_id otomatik olarak giriş yapan hekimin profile.id'si ile doldurulur,
+   * ve submit sonrası /(doctor) rotasına yönlendirilir.
+   */
+  doctorMode?: boolean;
+}) {
   const P     = accentColor ?? C.primary;
   const PBg   = accentColor ? '#F1F5F9' : C.primaryBg;
   const PLight = accentColor ? '#1E293B' : C.primaryLight;
@@ -527,9 +540,17 @@ export function NewOrderScreen({ accentColor, onClose }: { accentColor?: string;
   const [materialPrices, setMaterialPrices] = useState<Record<string, number>>({});
 
   useEffect(() => {
+    // Doctor modunda clinic/doctor fetch'i atla (RLS erişimi farklı, gereksiz)
+    const clinicsPromise = doctorMode
+      ? Promise.resolve({ data: [] })
+      : fetchClinics();
+    const doctorsPromise = doctorMode
+      ? Promise.resolve({ data: [] })
+      : fetchAllDoctors();
+
     Promise.all([
-      fetchClinics(),
-      fetchAllDoctors(),
+      clinicsPromise,
+      doctorsPromise,
       fetchLabServices(),
       supabase.from('materials').select('name,price').eq('is_active', true),
     ]).then(([clinicsRes, doctorsRes, servicesRes, matsRes]) => {
@@ -556,9 +577,16 @@ export function NewOrderScreen({ accentColor, onClose }: { accentColor?: string;
   });
   const [submitError, setSubmitError] = useState('');
 
+  // Doctor mode: doctor_id'yi giriş yapan hekimin profile.id'si ile sabitle
+  useEffect(() => {
+    if (doctorMode && profile?.id && form.doctor_id !== profile.id) {
+      setForm(f => ({ ...f, doctor_id: profile.id }));
+    }
+  }, [doctorMode, profile?.id, form.doctor_id]);
+
   const errors = useMemo((): Record<string, string> => {
     const e: Record<string, string> = {};
-    if (!form.doctor_id)                        e.doctor_id      = 'Diş hekimi seçin';
+    if (!doctorMode && !form.doctor_id)         e.doctor_id      = 'Diş hekimi seçin';
     if (!form.patient_first_name.trim())        e.patient_first_name = 'Ad zorunlu';
     if (!form.patient_last_name.trim())         e.patient_last_name  = 'Soyad zorunlu';
     if (!form.patient_dob)                      e.patient_dob        = 'Doğum tarihi zorunlu';
@@ -933,12 +961,17 @@ export function NewOrderScreen({ accentColor, onClose }: { accentColor?: string;
     if (onClose) {
       onClose();
     } else {
-      router.push('/(lab)');
+      router.push((doctorMode ? '/(doctor)' : '/(lab)') as any);
     }
   };
 
-  const selectedClinic = clinics.find((c) => c.id === form.clinic_id);
-  const selectedDoctor = allDoctors.find((d) => d.id === form.doctor_id);
+  // Doctor modunda klinik/hekim profile'den gelir; diğer modlarda seçilen kayıtlar
+  const selectedClinic = doctorMode
+    ? (profile?.clinic_name ? { id: '', name: profile.clinic_name, phone: null, is_active: true } as any : undefined)
+    : clinics.find((c) => c.id === form.clinic_id);
+  const selectedDoctor = doctorMode
+    ? (profile ? { id: profile.id, full_name: profile.full_name, phone: profile.phone ?? null, clinic_id: '', clinic: profile.clinic_name ? { name: profile.clinic_name } : undefined } as any : undefined)
+    : allDoctors.find((d) => d.id === form.doctor_id);
 
   // QR content & print
   const qrValue = useMemo(() => [
@@ -1225,38 +1258,83 @@ ${form.notes ? `<div class="card">
       {/* Step 1 — Clinic & Patient */}
       {step === 1 && (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          {/* Clinic & Doctor */}
-          <SectionCard title="Klinik & diş hekimi" iconNode={<ClinicIcon size={14} color={stepAttempted[1] && errors.doctor_id ? '#EF4444' : P} />} errorCount={stepAttempted[1] && errors.doctor_id ? 1 : 0} accentColor={P}>
-            <View style={twoColStyle}>
-              <SearchableDropdown
-                label="Klinik"
-                placeholder="Klinik seçin veya ekleyin"
-                options={clinics.filter(c => c.is_active).map(c => ({ id: c.id, label: c.name, sublabel: c.phone ?? undefined }))}
-                selectedId={form.clinic_id}
-                onSelect={(id) => { set('clinic_id')(id); set('doctor_id')(''); }}
-                onAddNew={async (name) => {
-                  setClinicModal({ visible: true, prefill: name });
-                }}
-                addNewLabel="Yeni klinik ekle"
-                required
-              />
-              <SearchableDropdown
-                label="Diş hekimi"
-                placeholder={form.clinic_id ? 'Diş hekimi seçin veya ekleyin' : 'Önce klinik seçin'}
-                disabled={!form.clinic_id}
-                disabledHint="Önce klinik seçin"
-                options={filteredDoctors.map(d => ({ id: d.id, label: d.full_name, sublabel: d.clinic?.name ?? undefined }))}
-                selectedId={form.doctor_id}
-                onSelect={set('doctor_id')}
-                onAddNew={async (name) => {
-                  setDoctorModal({ visible: true, prefill: name });
-                }}
-                addNewLabel="Yeni diş hekimi ekle"
-                required
-                error={fe('doctor_id')}
-              />
-            </View>
-          </SectionCard>
+          {/* Clinic & Doctor — Doctor modunda read-only, diğer modlarda seçilebilir */}
+          {doctorMode ? (
+            <SectionCard
+              title="Klinik & diş hekimi"
+              iconNode={<ClinicIcon size={14} color={P} />}
+              accentColor={P}
+            >
+              <View style={[twoColStyle, { gap: 12 }]}>
+                {/* Hekim kartı */}
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: P + '0F', borderRadius: 12, borderWidth: 1, borderColor: P + '22', paddingHorizontal: 14, paddingVertical: 12 }}>
+                  <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: P, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 14 }}>
+                      {(profile?.full_name ?? '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.6, textTransform: 'uppercase' }}>Diş Hekimi</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#0F172A', marginTop: 2 }} numberOfLines={1}>
+                      {profile?.full_name ?? '—'}
+                    </Text>
+                    {profile?.phone && (
+                      <Text style={{ fontSize: 11, color: '#64748B', marginTop: 1 }} numberOfLines={1}>
+                        {profile.phone}
+                      </Text>
+                    )}
+                  </View>
+                  <MaterialCommunityIcons name={'lock-outline' as any} size={14} color="#94A3B8" />
+                </View>
+
+                {/* Klinik kartı */}
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', paddingHorizontal: 14, paddingVertical: 12 }}>
+                  <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E2E8F0' }}>
+                    <MaterialCommunityIcons name={'hospital-building' as any} size={20} color="#64748B" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.6, textTransform: 'uppercase' }}>Klinik</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#0F172A', marginTop: 2 }} numberOfLines={1}>
+                      {profile?.clinic_name ?? 'Klinik belirtilmemiş'}
+                    </Text>
+                  </View>
+                  <MaterialCommunityIcons name={'lock-outline' as any} size={14} color="#94A3B8" />
+                </View>
+              </View>
+            </SectionCard>
+          ) : (
+            <SectionCard title="Klinik & diş hekimi" iconNode={<ClinicIcon size={14} color={stepAttempted[1] && errors.doctor_id ? '#EF4444' : P} />} errorCount={stepAttempted[1] && errors.doctor_id ? 1 : 0} accentColor={P}>
+              <View style={twoColStyle}>
+                <SearchableDropdown
+                  label="Klinik"
+                  placeholder="Klinik seçin veya ekleyin"
+                  options={clinics.filter(c => c.is_active).map(c => ({ id: c.id, label: c.name, sublabel: c.phone ?? undefined }))}
+                  selectedId={form.clinic_id}
+                  onSelect={(id) => { set('clinic_id')(id); set('doctor_id')(''); }}
+                  onAddNew={async (name) => {
+                    setClinicModal({ visible: true, prefill: name });
+                  }}
+                  addNewLabel="Yeni klinik ekle"
+                  required
+                />
+                <SearchableDropdown
+                  label="Diş hekimi"
+                  placeholder={form.clinic_id ? 'Diş hekimi seçin veya ekleyin' : 'Önce klinik seçin'}
+                  disabled={!form.clinic_id}
+                  disabledHint="Önce klinik seçin"
+                  options={filteredDoctors.map(d => ({ id: d.id, label: d.full_name, sublabel: d.clinic?.name ?? undefined }))}
+                  selectedId={form.doctor_id}
+                  onSelect={set('doctor_id')}
+                  onAddNew={async (name) => {
+                    setDoctorModal({ visible: true, prefill: name });
+                  }}
+                  addNewLabel="Yeni diş hekimi ekle"
+                  required
+                  error={fe('doctor_id')}
+                />
+              </View>
+            </SectionCard>
+          )}
 
           {/* Patient info */}
           <SectionCard title="Hasta bilgileri" icon={'account-outline' as any}
