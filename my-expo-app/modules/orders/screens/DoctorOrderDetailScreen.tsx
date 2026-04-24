@@ -8,10 +8,8 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
-import Svg, {
-  Path, Circle, Line, Polyline,
-  Defs, RadialGradient, Stop, Rect,
-} from 'react-native-svg';
+import Svg, { Path, Circle, Line, Polyline } from 'react-native-svg';
+import { AuroraBackground } from '../../../core/ui/AuroraBackground';
 import { useAuthStore } from '../../../core/store/authStore';
 import { useOrderDetail } from '../hooks/useOrderDetail';
 import { useChatMessages } from '../hooks/useChatMessages';
@@ -125,40 +123,18 @@ function Hero({
 
   return (
     <View style={hero.outer}>
-      {/* ═══ COLORFUL MESH BACKDROP ═══════════════════════════════
-          Cam'ın blurlayacağı renkli zemin. 4 yumuşak radial blob:
-          sky blue, lavender, mint, peach. Soft saturated palette.
+      {/* ═══ ANIMATED AURORA BACKDROP ═══════════════════════════
+          Cam'ın blurlayacağı CANLI zemin. Aurora animasyonu mavi/
+          violet stripeleri sürekli hareket ettirir → cam onları
+          bulanıklaştırınca gerçek Apple liquid glass etkisi.
           ─────────────────────────────────────────────────────── */}
       <View style={hero.meshWrap} pointerEvents="none">
-        <Svg width="100%" height="100%" viewBox="0 0 800 240" preserveAspectRatio="none">
-          <Defs>
-            <RadialGradient id="mesh-sky"     cx="12%" cy="20%" r="45%">
-              <Stop offset="0%"   stopColor="#0EA5E9" stopOpacity="0.55" />
-              <Stop offset="100%" stopColor="#0EA5E9" stopOpacity="0" />
-            </RadialGradient>
-            <RadialGradient id="mesh-lav"     cx="78%" cy="18%" r="42%">
-              <Stop offset="0%"   stopColor="#A78BFA" stopOpacity="0.45" />
-              <Stop offset="100%" stopColor="#A78BFA" stopOpacity="0" />
-            </RadialGradient>
-            <RadialGradient id="mesh-mint"    cx="32%" cy="92%" r="48%">
-              <Stop offset="0%"   stopColor="#34D399" stopOpacity="0.40" />
-              <Stop offset="100%" stopColor="#34D399" stopOpacity="0" />
-            </RadialGradient>
-            <RadialGradient id="mesh-peach"   cx="88%" cy="85%" r="42%">
-              <Stop offset="0%"   stopColor="#FCA5A5" stopOpacity="0.40" />
-              <Stop offset="100%" stopColor="#FCA5A5" stopOpacity="0" />
-            </RadialGradient>
-          </Defs>
-          <Rect width="800" height="240" fill="#FFFFFF" />
-          <Rect width="800" height="240" fill="url(#mesh-sky)" />
-          <Rect width="800" height="240" fill="url(#mesh-lav)" />
-          <Rect width="800" height="240" fill="url(#mesh-mint)" />
-          <Rect width="800" height="240" fill="url(#mesh-peach)" />
-        </Svg>
+        <View style={hero.auroraBase} />
+        <AuroraBackground palette="sky" intensity={0.65} durationSec={45} showRadialGradient />
       </View>
 
       {/* ═══ LIQUID GLASS SURFACE ════════════════════════════════
-          Cam — backdrop-filter blur(40px) ile mesh'i bulanıklaştırır
+          Cam — backdrop-filter blur(28px) ile aurora'yı bulanıklaştırır
           ────────────────────────────────────────────────────── */}
       <Container {...containerProps} style={[hero.glass, !isNativeBlur && hero.glassWeb]}>
         {/* Layer 1 — saturated mesh "kaynama" — ekstra renk doygunluğu */}
@@ -257,11 +233,16 @@ const hero = StyleSheet.create({
       : { shadowColor: '#0F172A', shadowOpacity: 0.10, shadowRadius: 18, shadowOffset: { width: 0, height: 6 }, elevation: 5 }),
   },
 
-  /* Mesh — colorful saturated background BEHIND the glass */
+  /* Mesh — colorful animated background BEHIND the glass */
   meshWrap: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: 20,
     overflow: 'hidden',
+  },
+  /* Aurora base — white wash that aurora plays over */
+  auroraBase: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#FFFFFF',
   },
 
   /* Glass container — sits on top of mesh, blurs it */
