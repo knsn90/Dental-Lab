@@ -7,6 +7,7 @@ import { useStockAlert } from '../../core/hooks/useStockAlert';
 import { useAuthStore } from '../../core/store/authStore';
 import { MobileTabBar, type MobileTabItem } from '../../core/ui/MobileTabBar';
 import { NewOrderScreen } from '../../modules/orders/screens/NewOrderScreen';
+import { MessagesPopup } from '../../modules/orders/components/MessagesPopup';
 import { usePendingLeaveCount } from '../../modules/hr/hooks/useHR';
 
 // NOT: Desktop'ta "Yeni İş Emri" → route navigate eder (/(admin)/new-order),
@@ -19,6 +20,7 @@ export default function AdminLayout() {
   const isDesktop         = useIsDesktop();
   const pendingLeaveCount = usePendingLeaveCount(); // Admin her zaman görebilir
   const [newOrderOpen, setNewOrderOpen] = useState(false);
+  const [messagesOpen, setMessagesOpen] = useState(false);
 
   // Yükleme tamamlandı ve kesinlikle admin değil → sidebar gösterme
   if (!loading && profile && profile.user_type !== 'admin') {
@@ -31,7 +33,7 @@ export default function AdminLayout() {
 
     // ── İş Yönetimi ────────────────────────────────────────────────────────
     { label: 'Siparişler',   emoji: '📋', href: '/(admin)/orders',       iconName: 'clipboard',      iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'İş Yönetimi' },
-    { label: 'Mesajlar',     emoji: '💬', href: '/(admin)/messages',    iconName: 'message-circle', iconSet: 'mdi' as const, matchPrefix: true },
+    { label: 'Mesajlar',     emoji: '💬', href: '__messages__',        iconName: 'message-circle', iconSet: 'mdi' as const, onPress: () => setMessagesOpen(true) },
     { label: 'Yeni İş Emri', emoji: '➕', href: '/(admin)/new-order',   iconName: 'plus-circle',    iconSet: 'mdi' as const },
     { label: 'Onaylar',      emoji: '✅', href: '/(admin)/approvals',   iconName: 'check-circle',   iconSet: 'mdi' as const, badge: pendingCount > 0, matchPrefix: true },
 
@@ -62,8 +64,16 @@ export default function AdminLayout() {
   ];
 
   if (isDesktop) {
-    // Desktop: DesktopShell içinde route render edilir, sidebar hiç kaybolmaz.
-    return <DesktopShell navItems={ADMIN_NAV} accentColor="#0F172A" />;
+    return (
+      <>
+        <DesktopShell navItems={ADMIN_NAV} accentColor="#0F172A" />
+        <MessagesPopup
+          visible={messagesOpen}
+          onClose={() => setMessagesOpen(false)}
+          accentColor="#0F172A"
+        />
+      </>
+    );
   }
 
   const MOBILE_TABS: MobileTabItem[] = [
@@ -124,6 +134,13 @@ export default function AdminLayout() {
       >
         <NewOrderScreen accentColor="#0F172A" onClose={() => setNewOrderOpen(false)} />
       </Modal>
+
+      {/* Mesajlar Popup */}
+      <MessagesPopup
+        visible={messagesOpen}
+        onClose={() => setMessagesOpen(false)}
+        accentColor="#0F172A"
+      />
     </>
   );
 }

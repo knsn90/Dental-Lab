@@ -5,12 +5,10 @@ import { C as Colors } from '../../core/theme/colors';
 import { DesktopShell, useIsDesktop } from '../../core/layout/DesktopShell';
 import { useAuthStore } from '../../core/store/authStore';
 import { NewOrderScreen } from '../../modules/orders/screens/NewOrderScreen';
+import { MessagesPopup } from '../../modules/orders/components/MessagesPopup';
 
 // Doktor paneli teması (lab #2563EB / admin #0F172A'dan ayrıştırılmış sky blue)
 const DOCTOR_ACCENT = '#0EA5E9';
-
-// NOT: Desktop'ta "Yeni İş Emri" → route navigate eder (/(doctor)/new-order),
-// sidebar kaybolmaz. Modal SADECE mobil için.
 
 function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
   return <Text style={{ fontSize: focused ? 24 : 22, opacity: focused ? 1 : 0.6 }}>{emoji}</Text>;
@@ -20,13 +18,14 @@ export default function DoctorLayout() {
   const { profile, loading } = useAuthStore();
   const isDesktop = useIsDesktop();
   const [newOrderOpen, setNewOrderOpen] = useState(false);
+  const [messagesOpen, setMessagesOpen] = useState(false);
 
   const DOCTOR_NAV = [
-    { label: 'Dashboard',    emoji: '📊', href: '/(doctor)',            iconName: 'grid',         iconSet: 'mdi' as const },
-    { label: 'Siparişlerim', emoji: '📋', href: '/(doctor)/orders',    iconName: 'file-text',    iconSet: 'mdi' as const },
-    { label: 'Mesajlar',     emoji: '💬', href: '/(doctor)/messages', iconName: 'message-circle', iconSet: 'mdi' as const },
-    { label: 'Yeni İş Emri', emoji: '➕', href: '/(doctor)/new-order', iconName: 'plus-circle',  iconSet: 'mdi' as const, subtitle: 'Formu adım adım doldurun' },
-    { label: 'Profil',       emoji: '👤', href: '/(doctor)/profile',   iconName: 'user',         iconSet: 'mdi' as const },
+    { label: 'Dashboard',    emoji: '📊', href: '/(doctor)',            iconName: 'grid',           iconSet: 'mdi' as const },
+    { label: 'Siparişlerim', emoji: '📋', href: '/(doctor)/orders',    iconName: 'file-text',      iconSet: 'mdi' as const },
+    { label: 'Mesajlar',     emoji: '💬', href: '__messages__',       iconName: 'message-circle', iconSet: 'mdi' as const, onPress: () => setMessagesOpen(true) },
+    { label: 'Yeni İş Emri', emoji: '➕', href: '/(doctor)/new-order', iconName: 'plus-circle',    iconSet: 'mdi' as const, subtitle: 'Formu adım adım doldurun' },
+    { label: 'Profil',       emoji: '👤', href: '/(doctor)/profile',   iconName: 'user',           iconSet: 'mdi' as const },
   ];
 
   // Hekim olmayan kullanıcı bu layout'a düştüyse sidebar gösterme
@@ -35,8 +34,16 @@ export default function DoctorLayout() {
   }
 
   if (isDesktop) {
-    // Desktop: DesktopShell içinde route render edilir, sidebar hiç kaybolmaz.
-    return <DesktopShell navItems={DOCTOR_NAV} accentColor={DOCTOR_ACCENT} />;
+    return (
+      <>
+        <DesktopShell navItems={DOCTOR_NAV} accentColor={DOCTOR_ACCENT} />
+        <MessagesPopup
+          visible={messagesOpen}
+          onClose={() => setMessagesOpen(false)}
+          accentColor={DOCTOR_ACCENT}
+        />
+      </>
+    );
   }
 
   return (
@@ -75,6 +82,12 @@ export default function DoctorLayout() {
             title: 'Mesajlar',
             tabBarIcon: ({ focused }) => <TabIcon emoji="💬" focused={focused} />,
           }}
+          listeners={{
+            tabPress: (e) => {
+              e.preventDefault();
+              setMessagesOpen(true);
+            },
+          }}
         />
         <Tabs.Screen
           name="new-order"
@@ -105,6 +118,13 @@ export default function DoctorLayout() {
       >
         <NewOrderScreen doctorMode accentColor={DOCTOR_ACCENT} onClose={() => setNewOrderOpen(false)} />
       </Modal>
+
+      {/* Mesajlar Popup — her ekran boyutunda */}
+      <MessagesPopup
+        visible={messagesOpen}
+        onClose={() => setMessagesOpen(false)}
+        accentColor={DOCTOR_ACCENT}
+      />
     </>
   );
 }

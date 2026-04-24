@@ -7,6 +7,7 @@ import { usePendingApprovals as useDesignPending } from '../../modules/approvals
 import { useStockAlert } from '../../core/hooks/useStockAlert';
 import { MobileTabBar, type MobileTabItem } from '../../core/ui/MobileTabBar';
 import { NewOrderScreen } from '../../modules/orders/screens/NewOrderScreen';
+import { MessagesPopup } from '../../modules/orders/components/MessagesPopup';
 import { usePendingLeaveCount } from '../../modules/hr/hooks/useHR';
 import { useAuthStore } from '../../core/store/authStore';
 
@@ -24,6 +25,7 @@ export default function LabLayout() {
   const isManager = profile?.role === 'manager' || profile?.user_type === 'admin';
 
   const [newOrderOpen, setNewOrderOpen] = useState(false);
+  const [messagesOpen, setMessagesOpen] = useState(false);
 
   const LAB_NAV = [
     // ── Ana ekran ──────────────────────────────────────────────────────────
@@ -31,7 +33,7 @@ export default function LabLayout() {
 
     // ── İş Yönetimi ────────────────────────────────────────────────────────
     { label: 'Siparişler',   emoji: '📋', href: '/(lab)/all-orders',   iconName: 'clipboard',      iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'İş Yönetimi' },
-    { label: 'Mesajlar',     emoji: '💬', href: '/(lab)/messages',    iconName: 'message-circle', iconSet: 'mdi' as const, matchPrefix: true },
+    { label: 'Mesajlar',     emoji: '💬', href: '__messages__',       iconName: 'message-circle', iconSet: 'mdi' as const, onPress: () => setMessagesOpen(true) },
     { label: 'Yeni İş Emri', emoji: '➕', href: '/(lab)/new-order',   iconName: 'plus-circle',    iconSet: 'mdi' as const },
     { label: 'Onaylar',      emoji: '✅', href: '/(lab)/approvals',   iconName: 'check-circle',   iconSet: 'mdi' as const, badge: pendingCount > 0, matchPrefix: true },
 
@@ -63,9 +65,16 @@ export default function LabLayout() {
   ];
 
   if (isDesktop) {
-    // Desktop'ta "Yeni İş Emri" → route navigate eder, sidebar kaybolmaz.
-    // Modal sadece mobil için.
-    return <DesktopShell navItems={LAB_NAV} accentColor={Colors.primary} />;
+    return (
+      <>
+        <DesktopShell navItems={LAB_NAV} accentColor={Colors.primary} />
+        <MessagesPopup
+          visible={messagesOpen}
+          onClose={() => setMessagesOpen(false)}
+          accentColor={Colors.primary}
+        />
+      </>
+    );
   }
 
   const MOBILE_TABS: MobileTabItem[] = [
@@ -129,6 +138,13 @@ export default function LabLayout() {
       >
         <NewOrderScreen onClose={() => setNewOrderOpen(false)} />
       </Modal>
+
+      {/* Mesajlar Popup */}
+      <MessagesPopup
+        visible={messagesOpen}
+        onClose={() => setMessagesOpen(false)}
+        accentColor={Colors.primary}
+      />
     </>
   );
 }

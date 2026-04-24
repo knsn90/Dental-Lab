@@ -5,6 +5,7 @@ import { C as Colors } from '../../core/theme/colors';
 import { DesktopShell, useIsDesktop } from '../../core/layout/DesktopShell';
 import { useAuthStore } from '../../core/store/authStore';
 import { NewOrderScreen } from '../../modules/orders/screens/NewOrderScreen';
+import { MessagesPopup } from '../../modules/orders/components/MessagesPopup';
 
 // Klinik paneli teması — daha koyu sky blue (otorite/yönetici hissi)
 // Hekim     #0EA5E9 · Klinik müdürü #0369A1 · Lab #2563EB · Admin #0F172A
@@ -18,12 +19,13 @@ export default function ClinicLayout() {
   const { profile, loading } = useAuthStore();
   const isDesktop = useIsDesktop();
   const [newOrderOpen, setNewOrderOpen] = useState(false);
+  const [messagesOpen, setMessagesOpen] = useState(false);
 
   const CLINIC_NAV = [
     { label: 'Dashboard',    emoji: '📊', href: '/(clinic)',           iconName: 'grid',           iconSet: 'mdi' as const },
     { label: 'Hekimler',     emoji: '🩺', href: '/(clinic)/doctors',   iconName: 'activity',       iconSet: 'mdi' as const },
     { label: 'Siparişler',   emoji: '📋', href: '/(clinic)/orders',    iconName: 'file-text',      iconSet: 'mdi' as const },
-    { label: 'Mesajlar',     emoji: '💬', href: '/(clinic)/messages',  iconName: 'message-circle', iconSet: 'mdi' as const },
+    { label: 'Mesajlar',     emoji: '💬', href: '__messages__',       iconName: 'message-circle', iconSet: 'mdi' as const, onPress: () => setMessagesOpen(true) },
     { label: 'Yeni İş Emri', emoji: '➕', href: '/(clinic)/new-order', iconName: 'plus-circle',    iconSet: 'mdi' as const },
     { label: 'Profil',       emoji: '👤', href: '/(clinic)/profile',   iconName: 'user',           iconSet: 'mdi' as const },
   ];
@@ -34,7 +36,16 @@ export default function ClinicLayout() {
   }
 
   if (isDesktop) {
-    return <DesktopShell navItems={CLINIC_NAV} accentColor={CLINIC_ACCENT} />;
+    return (
+      <>
+        <DesktopShell navItems={CLINIC_NAV} accentColor={CLINIC_ACCENT} />
+        <MessagesPopup
+          visible={messagesOpen}
+          onClose={() => setMessagesOpen(false)}
+          accentColor={CLINIC_ACCENT}
+        />
+      </>
+    );
   }
 
   return (
@@ -72,6 +83,12 @@ export default function ClinicLayout() {
           options={{
             title: 'Mesajlar',
             tabBarIcon: ({ focused }) => <TabIcon emoji="💬" focused={focused} />,
+          }}
+          listeners={{
+            tabPress: (e) => {
+              e.preventDefault();
+              setMessagesOpen(true);
+            },
           }}
         />
         <Tabs.Screen
@@ -114,6 +131,13 @@ export default function ClinicLayout() {
           onClose={() => setNewOrderOpen(false)}
         />
       </Modal>
+
+      {/* Mesajlar Popup */}
+      <MessagesPopup
+        visible={messagesOpen}
+        onClose={() => setMessagesOpen(false)}
+        accentColor={CLINIC_ACCENT}
+      />
     </>
   );
 }
