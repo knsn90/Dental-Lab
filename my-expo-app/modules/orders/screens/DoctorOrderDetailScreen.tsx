@@ -127,7 +127,7 @@ function Hero({
             )}
             <View style={{ flex: 1 }} />
             <View style={[hero.daysBadge, { backgroundColor: toneBg }]}>
-              <Icon name="calendar" size={10} color={toneColor} strokeWidth={2} />
+              <Icon name="calendar" size={9} color={toneColor} strokeWidth={2} />
               <Text style={[hero.daysText, { color: toneColor }]}>{daysInfo.text}</Text>
             </View>
           </View>
@@ -143,7 +143,7 @@ function Hero({
           <View style={hero.metaRow}>
             {order.tooth_numbers?.length > 0 && (
               <View style={hero.metaChip}>
-                <Icon name="tooth" size={10} color={ACCENT_DARK} strokeWidth={2} />
+                <Icon name="tooth" size={9} color={ACCENT_DARK} strokeWidth={2} />
                 <Text style={hero.metaText}>
                   Diş {order.tooth_numbers.slice(0, 4).join(', ')}
                   {order.tooth_numbers.length > 4 ? ` +${order.tooth_numbers.length - 4}` : ''}
@@ -152,12 +152,12 @@ function Hero({
             )}
             {order.shade && (
               <View style={hero.metaChip}>
-                <Icon name="palette" size={10} color={ACCENT_DARK} strokeWidth={2} />
+                <Icon name="palette" size={9} color={ACCENT_DARK} strokeWidth={2} />
                 <Text style={hero.metaText}>Renk {order.shade}</Text>
               </View>
             )}
             <View style={hero.metaChip}>
-              <Icon name="cog" size={10} color={ACCENT_DARK} strokeWidth={2} />
+              <Icon name="cog" size={9} color={ACCENT_DARK} strokeWidth={2} />
               <Text style={hero.metaText}>
                 {order.machine_type === 'milling' ? 'Frezeleme' : '3D Baskı'}
               </Text>
@@ -168,10 +168,10 @@ function Hero({
         {/* QR — sağ kolon */}
         <View style={hero.qrZone}>
           <TouchableOpacity onPress={onPressQR} activeOpacity={0.85} style={hero.qrCard}>
-            <BrandedQR value={qrUrl} size={isCompact ? 72 : 84} color={TEXT} backgroundColor="#FFFFFF" />
+            <BrandedQR value={qrUrl} size={isCompact ? 56 : 68} color={TEXT} backgroundColor="#FFFFFF" />
           </TouchableOpacity>
           <TouchableOpacity onPress={onPressQR} activeOpacity={0.85} style={hero.qrBtn}>
-            <Icon name="qr-code" size={10} color={ACCENT_DARK} strokeWidth={2.2} />
+            <Icon name="qr-code" size={9} color={ACCENT_DARK} strokeWidth={2.2} />
             <Text style={hero.qrBtnText}>Büyüt</Text>
           </TouchableOpacity>
         </View>
@@ -181,66 +181,66 @@ function Hero({
 }
 
 const hero = StyleSheet.create({
-  /* Sade beyaz card */
+  /* Sade beyaz card — kompakt */
   card: {
     backgroundColor: SURFACE,
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1, borderColor: BORDER,
-    marginBottom: 16,
+    marginBottom: 12,
     overflow: 'hidden',
   },
 
-  /* Content layout */
+  /* Content layout — küçük padding */
   content: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 14,
-    padding: 16,
+    gap: 12,
+    padding: 12,
   },
   contentCompact: {
     flexDirection: 'column',
-    gap: 12,
-    padding: 14,
+    gap: 10,
+    padding: 10,
   },
 
-  /* Header pill row */
-  topRow:     { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' },
-  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20 },
-  statusDot:  { width: 6, height: 6, borderRadius: 3 },
-  statusText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase' as const },
-  urgentBadge:{ backgroundColor: hexA(DANGER, 0.14), paddingHorizontal: 7, paddingVertical: 3, borderRadius: 5 },
-  urgentText: { fontSize: 9, fontWeight: '900', color: DANGER, letterSpacing: 0.5 },
-  daysBadge:  { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20 },
-  daysText:   { fontSize: 10, fontWeight: '800' },
+  /* Header pill row — kompakt */
+  topRow:     { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 8, flexWrap: 'wrap' },
+  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 16 },
+  statusDot:  { width: 5, height: 5, borderRadius: 3 },
+  statusText: { fontSize: 9, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase' as const },
+  urgentBadge:{ backgroundColor: hexA(DANGER, 0.14), paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  urgentText: { fontSize: 8, fontWeight: '900', color: DANGER, letterSpacing: 0.5 },
+  daysBadge:  { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 16 },
+  daysText:   { fontSize: 9, fontWeight: '800' },
 
-  /* Typography */
-  title:   { fontSize: 22, fontWeight: '800', color: TEXT, letterSpacing: -0.5, lineHeight: 26 },
-  patient: { fontSize: 12, color: MUTED, fontWeight: '500', marginTop: 3 },
+  /* Typography — daha küçük */
+  title:   { fontSize: 17, fontWeight: '800', color: TEXT, letterSpacing: -0.4, lineHeight: 21 },
+  patient: { fontSize: 11, color: MUTED, fontWeight: '500', marginTop: 2 },
 
-  /* Meta chips */
-  metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 10 },
+  /* Meta chips — küçük */
+  metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 8 },
   metaChip:{
-    flexDirection: 'row', alignItems: 'center', gap: 4,
+    flexDirection: 'row', alignItems: 'center', gap: 3,
     backgroundColor: hexA(ACCENT, 0.08),
-    paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20,
+    paddingHorizontal: 7, paddingVertical: 3, borderRadius: 16,
   },
-  metaText:{ fontSize: 10, fontWeight: '700', color: ACCENT_DARK },
+  metaText:{ fontSize: 9, fontWeight: '700', color: ACCENT_DARK },
 
-  /* QR */
-  qrZone:  { alignItems: 'center', gap: 6, flexShrink: 0 },
+  /* QR — kompakt */
+  qrZone:  { alignItems: 'center', gap: 4, flexShrink: 0 },
   qrCard:  {
-    padding: 6,
+    padding: 4,
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    borderRadius: 10,
     borderWidth: 1, borderColor: BORDER,
   },
   qrBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 9, paddingVertical: 4,
-    borderRadius: 14,
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    paddingHorizontal: 7, paddingVertical: 3,
+    borderRadius: 12,
     backgroundColor: hexA(ACCENT, 0.10),
   },
-  qrBtnText: { color: ACCENT_DARK, fontSize: 10, fontWeight: '800' },
+  qrBtnText: { color: ACCENT_DARK, fontSize: 9, fontWeight: '800' },
 });
 
 // ── Card primitive ───────────────────────────────────────────────
