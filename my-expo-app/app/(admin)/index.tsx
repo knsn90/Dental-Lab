@@ -48,7 +48,21 @@ function initials(name?: string | null) {
   return name.trim().split(/\s+/).slice(0,2).map(p => p[0]?.toUpperCase() ?? '').join('') || '—';
 }
 function fmtMoney(n: number) {
-  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(n);
+  try {
+    return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(n);
+  } catch {
+    return `₺${Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')}`;
+  }
+}
+
+/** Convert 6-char hex + 0-1 alpha → rgba() string (safe for all platforms) */
+function hexA(hex: string, alpha: number) {
+  try {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  } catch { return hex; }
 }
 
 // ── SVG Icons (Lucide-style) ──────────────────────────────────────────
@@ -194,7 +208,7 @@ function KPICard({ label, value, icon, accent, trend }: {
 }) {
   return (
     <View style={kpi.card}>
-      <View style={[kpi.iconWrap, { backgroundColor: accent + '18' }]}>
+      <View style={[kpi.iconWrap, { backgroundColor: hexA(accent, 0.09) }]}>
         <Icon name={icon} size={18} color={accent} strokeWidth={1.75} />
       </View>
       <View style={{ flex: 1 }}>
