@@ -7,10 +7,8 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, {
-  Path, Circle, Line, Polyline,
-  Defs, RadialGradient, Stop, Rect,
-} from 'react-native-svg';
+import { BlurView } from 'expo-blur';
+import Svg, { Path, Circle, Line, Polyline } from 'react-native-svg';
 import { useAuthStore } from '../../../core/store/authStore';
 import { useOrderDetail } from '../hooks/useOrderDetail';
 import { useChatMessages } from '../hooks/useChatMessages';
@@ -88,8 +86,18 @@ function Icon({ name, size = 18, color = TEXT, strokeWidth = 1.8 }: {
   }
 }
 
-// ── HERO ─────────────────────────────────────────────────────────
-function Hero({ order, daysInfo }: { order: any; daysInfo: ReturnType<typeof daysUntil> }) {
+// ── HERO — Apple WWDC25 Liquid Glass + entegre QR ───────────────
+function Hero({
+  order,
+  daysInfo,
+  onPressQR,
+  isCompact,
+}: {
+  order: any;
+  daysInfo: ReturnType<typeof daysUntil>;
+  onPressQR: () => void;
+  isCompact: boolean;
+}) {
   const cfg = STATUS_CONFIG[order.status as keyof typeof STATUS_CONFIG];
   const toneColor =
     daysInfo.tone === 'red'    ? DANGER :
@@ -97,91 +105,170 @@ function Hero({ order, daysInfo }: { order: any; daysInfo: ReturnType<typeof day
     daysInfo.tone === 'green'  ? '#16A34A' :
                                  SUBTLE;
   const toneBg = hexA(toneColor, 0.12);
+  const isNativeBlur = Platform.OS === 'ios' || Platform.OS === 'android';
+
+  const qrUrl =
+    Platform.OS === 'web' && typeof window !== 'undefined'
+      ? `${window.location.origin}/order/${order.id}`
+      : `https://dental-lab-steel.vercel.app/order/${order.id}`;
+
+  const Container: any = isNativeBlur ? BlurView : View;
+  const containerProps = isNativeBlur ? { intensity: 60, tint: 'light' as const } : {};
 
   return (
-    <View style={hero.wrap}>
-      {/* Layered radial gradient background */}
-      <Svg width="100%" height="100%" viewBox="0 0 800 240" preserveAspectRatio="none" style={StyleSheet.absoluteFillObject}>
-        <Defs>
-          <RadialGradient id="ord-g1" cx="10%" cy="20%" r="55%">
-            <Stop offset="0%"   stopColor={ACCENT} stopOpacity="0.16" />
-            <Stop offset="100%" stopColor={ACCENT} stopOpacity="0" />
-          </RadialGradient>
-          <RadialGradient id="ord-g2" cx="95%" cy="90%" r="55%">
-            <Stop offset="0%"   stopColor={ACCENT_DARK} stopOpacity="0.10" />
-            <Stop offset="100%" stopColor={ACCENT_DARK} stopOpacity="0" />
-          </RadialGradient>
-        </Defs>
-        <Rect width="800" height="240" fill="url(#ord-g1)" />
-        <Rect width="800" height="240" fill="url(#ord-g2)" />
-      </Svg>
+    <View style={hero.outer}>
+      {/* ── Layered liquid glass surface ── */}
+      <Container {...containerProps} style={[hero.glass, !isNativeBlur && hero.glassWeb]}>
+        {/* Layer 1 — white frost wash */}
+        <View pointerEvents="none" style={hero.frostLayer} />
+        {/* Layer 2 — top specular shimmer (gradient white → transparent) */}
+        <View pointerEvents="none" style={hero.shimmerTop} />
+        {/* Layer 3 — bottom edge refraction */}
+        <View pointerEvents="none" style={hero.shimmerBottom} />
+        {/* Layer 4 — top hairline highlight (Apple "rim of glass") */}
+        <View pointerEvents="none" style={hero.hairlineTop} />
+        {/* Layer 5 — subtle accent tint top-left corner */}
+        <View pointerEvents="none" style={hero.accentBlob} />
 
-      <View style={hero.content}>
-        <View style={hero.topRow}>
-          <View style={[hero.statusPill, { backgroundColor: cfg?.bgColor ?? '#F1F5F9' }]}>
-            <View style={[hero.statusDot, { backgroundColor: cfg?.color ?? SUBTLE }]} />
-            <Text style={[hero.statusText, { color: cfg?.color ?? MUTED }]}>{cfg?.label ?? order.status}</Text>
-          </View>
-          {order.is_urgent && (
-            <View style={hero.urgentBadge}>
-              <Text style={hero.urgentText}>ACİL</Text>
+        {/* ── Content ── */}
+        <View style={[hero.content, isCompact && hero.contentCompact]}>
+          {/* Left/main */}
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <View style={hero.topRow}>
+              <View style={[hero.statusPill, { backgroundColor: cfg?.bgColor ?? '#F1F5F9' }]}>
+                <View style={[hero.statusDot, { backgroundColor: cfg?.color ?? SUBTLE }]} />
+                <Text style={[hero.statusText, { color: cfg?.color ?? MUTED }]}>{cfg?.label ?? order.status}</Text>
+              </View>
+              {order.is_urgent && (
+                <View style={hero.urgentBadge}>
+                  <Text style={hero.urgentText}>ACİL</Text>
+                </View>
+              )}
+              <View style={{ flex: 1 }} />
+              <View style={[hero.daysBadge, { backgroundColor: toneBg }]}>
+                <Icon name="calendar" size={11} color={toneColor} strokeWidth={2} />
+                <Text style={[hero.daysText, { color: toneColor }]}>{daysInfo.text}</Text>
+              </View>
             </View>
-          )}
-          <View style={{ flex: 1 }} />
-          <View style={[hero.daysBadge, { backgroundColor: toneBg }]}>
-            <Icon name="calendar" size={11} color={toneColor} strokeWidth={2} />
-            <Text style={[hero.daysText, { color: toneColor }]}>{daysInfo.text}</Text>
-          </View>
-        </View>
 
-        <Text style={hero.title} numberOfLines={2}>
-          {order.work_type || 'İş türü belirtilmemiş'}
-        </Text>
-
-        {order.patient_name && (
-          <Text style={hero.patient}>{order.patient_name}</Text>
-        )}
-
-        <View style={hero.metaRow}>
-          {order.tooth_numbers?.length > 0 && (
-            <View style={hero.metaChip}>
-              <Icon name="tooth" size={11} color={ACCENT_DARK} strokeWidth={2} />
-              <Text style={hero.metaText}>
-                Diş {order.tooth_numbers.slice(0, 4).join(', ')}
-                {order.tooth_numbers.length > 4 ? ` +${order.tooth_numbers.length - 4}` : ''}
-              </Text>
-            </View>
-          )}
-          {order.shade && (
-            <View style={hero.metaChip}>
-              <Icon name="palette" size={11} color={ACCENT_DARK} strokeWidth={2} />
-              <Text style={hero.metaText}>Renk {order.shade}</Text>
-            </View>
-          )}
-          <View style={hero.metaChip}>
-            <Icon name="cog" size={11} color={ACCENT_DARK} strokeWidth={2} />
-            <Text style={hero.metaText}>
-              {order.machine_type === 'milling' ? 'Frezeleme' : '3D Baskı'}
+            <Text style={hero.title} numberOfLines={2}>
+              {order.work_type || 'İş türü belirtilmemiş'}
             </Text>
+
+            {order.patient_name && (
+              <Text style={hero.patient}>{order.patient_name}</Text>
+            )}
+
+            <View style={hero.metaRow}>
+              {order.tooth_numbers?.length > 0 && (
+                <View style={hero.metaChip}>
+                  <Icon name="tooth" size={11} color={ACCENT_DARK} strokeWidth={2} />
+                  <Text style={hero.metaText}>
+                    Diş {order.tooth_numbers.slice(0, 4).join(', ')}
+                    {order.tooth_numbers.length > 4 ? ` +${order.tooth_numbers.length - 4}` : ''}
+                  </Text>
+                </View>
+              )}
+              {order.shade && (
+                <View style={hero.metaChip}>
+                  <Icon name="palette" size={11} color={ACCENT_DARK} strokeWidth={2} />
+                  <Text style={hero.metaText}>Renk {order.shade}</Text>
+                </View>
+              )}
+              <View style={hero.metaChip}>
+                <Icon name="cog" size={11} color={ACCENT_DARK} strokeWidth={2} />
+                <Text style={hero.metaText}>
+                  {order.machine_type === 'milling' ? 'Frezeleme' : '3D Baskı'}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* QR — sağ tarafta entegre */}
+          <View style={hero.qrZone}>
+            <TouchableOpacity onPress={onPressQR} activeOpacity={0.85} style={hero.qrCard}>
+              <BrandedQR value={qrUrl} size={isCompact ? 92 : 108} color={TEXT} backgroundColor="#FFFFFF" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={onPressQR} activeOpacity={0.85} style={hero.qrBtn}>
+              <Icon name="qr-code" size={11} color={ACCENT_DARK} strokeWidth={2.2} />
+              <Text style={hero.qrBtnText}>Büyüt</Text>
+            </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </Container>
     </View>
   );
 }
+
 const hero = StyleSheet.create({
-  wrap: {
-    backgroundColor: SURFACE,
-    borderRadius: 20,
-    borderWidth: 1, borderColor: BORDER,
+  /* Outer wrapper — drop shadow + spacing */
+  outer: {
+    marginBottom: 16,
+    borderRadius: 22,
+    ...(Platform.OS === 'web'
+      ? ({
+          boxShadow: [
+            '0 1px 2px rgba(15,23,42,0.04)',
+            '0 12px 40px rgba(15,23,42,0.08)',
+            '0 4px 12px rgba(15,23,42,0.04)',
+          ].join(', '),
+        } as any)
+      : { shadowColor: '#0F172A', shadowOpacity: 0.10, shadowRadius: 22, shadowOffset: { width: 0, height: 8 }, elevation: 6 }),
+  },
+
+  /* Glass container — base */
+  glass: {
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.78)',
     overflow: 'hidden',
     position: 'relative',
-    marginBottom: 16,
-    ...(Platform.OS === 'web'
-      ? ({ boxShadow: `0 1px 2px ${hexA(ACCENT, 0.04)}, 0 8px 24px ${hexA(ACCENT, 0.06)}` } as any)
-      : { shadowColor: ACCENT, shadowOpacity: 0.08, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 3 }),
   },
-  content:    { padding: 20, zIndex: 1 },
+
+  /* Web-only glass styling — backdrop-filter */
+  glassWeb: {
+    backgroundColor: 'rgba(255,255,255,0.62)',
+    ...(Platform.OS === 'web'
+      ? ({
+          backdropFilter:       'blur(40px) saturate(180%) brightness(1.04)',
+          WebkitBackdropFilter: 'blur(40px) saturate(180%) brightness(1.04)',
+          boxShadow: [
+            'inset 0 1.5px 0 rgba(255,255,255,0.95)',
+            'inset 0 -1px 0 rgba(255,255,255,0.40)',
+            'inset 1px 0 0 rgba(255,255,255,0.30)',
+            'inset -1px 0 0 rgba(255,255,255,0.30)',
+          ].join(', '),
+        } as any)
+      : {}),
+  },
+
+  /* ── Liquid glass layers ── */
+  frostLayer:    { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.30)', pointerEvents: 'none' },
+  shimmerTop:    { position: 'absolute', top: 0, left: 0, right: 0, height: '40%', backgroundColor: 'rgba(255,255,255,0.22)', pointerEvents: 'none' },
+  shimmerBottom: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: 'rgba(255,255,255,0.45)', pointerEvents: 'none' },
+  hairlineTop:   { position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: 'rgba(255,255,255,0.95)', pointerEvents: 'none' },
+  /* Accent blob — top-left subtle sky-blue tint (Apple liquid feel) */
+  accentBlob: {
+    position: 'absolute',
+    top: -40, left: -20,
+    width: 220, height: 220, borderRadius: 110,
+    backgroundColor: hexA(ACCENT, 0.10),
+    pointerEvents: 'none',
+  },
+
+  /* Content layout */
+  content: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 18,
+    padding: 22,
+    zIndex: 1,
+  },
+  contentCompact: {
+    flexDirection: 'column',
+    gap: 14,
+  },
+
   topRow:     { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' },
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
   statusDot:  { width: 7, height: 7, borderRadius: 4 },
@@ -194,8 +281,33 @@ const hero = StyleSheet.create({
   title:   { fontSize: 26, fontWeight: '800', color: TEXT, letterSpacing: -0.6, lineHeight: 30 },
   patient: { fontSize: 13, color: MUTED, fontWeight: '500', marginTop: 4 },
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12 },
-  metaChip:{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: hexA(ACCENT, 0.10), paddingHorizontal: 9, paddingVertical: 5, borderRadius: 20 },
+  metaChip:{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.65)', paddingHorizontal: 9, paddingVertical: 5, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)' },
   metaText:{ fontSize: 11, fontWeight: '700', color: ACCENT_DARK },
+
+  /* QR zone */
+  qrZone:  { alignItems: 'center', gap: 8, flexShrink: 0 },
+  qrCard:  {
+    padding: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.85)',
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 4px 14px rgba(15,23,42,0.08), inset 0 1px 0 rgba(255,255,255,0.85)' } as any)
+      : { shadowColor: '#0F172A', shadowOpacity: 0.10, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 3 }),
+  },
+  qrBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.9)',
+  },
+  qrBtnText: { color: ACCENT_DARK, fontSize: 11, fontWeight: '800' },
 });
 
 // ── Card primitive ───────────────────────────────────────────────
@@ -395,81 +507,6 @@ const cp = StyleSheet.create({
   sendBtn:   { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
 });
 
-// ── QR Card ──────────────────────────────────────────────────────
-function QRCard({ orderId, orderNumber }: { orderId: string; orderNumber: string }) {
-  const [open, setOpen] = useState(false);
-  const qrUrl =
-    Platform.OS === 'web' && typeof window !== 'undefined'
-      ? `${window.location.origin}/order/${orderId}`
-      : `https://dental-lab-steel.vercel.app/order/${orderId}`;
-
-  return (
-    <Card>
-      <CardHeader icon="qr-code" title="QR Kodu" />
-      <View style={qrs.body}>
-        <View style={qrs.thumbWrap}>
-          <BrandedQR value={qrUrl} size={110} color={TEXT} backgroundColor="#FFFFFF" />
-        </View>
-        <View style={{ flex: 1, gap: 10 }}>
-          <Text style={qrs.desc}>
-            Tarayan kişi bu siparişi anında açar. Etikete bas, takip kolaylaşsın.
-          </Text>
-          <View style={qrs.btnRow}>
-            <TouchableOpacity onPress={() => setOpen(true)} activeOpacity={0.85} style={[qrs.btn, qrs.btnPrimary]}>
-              <Icon name="qr-code" size={13} color="#FFFFFF" strokeWidth={2} />
-              <Text style={qrs.btnPrimaryText}>Büyüt</Text>
-            </TouchableOpacity>
-            {Platform.OS === 'web' && (
-              <TouchableOpacity onPress={() => typeof window !== 'undefined' && window.print()} activeOpacity={0.85} style={[qrs.btn, qrs.btnGhost]}>
-                <Icon name="printer" size={13} color={ACCENT_DARK} strokeWidth={2} />
-                <Text style={qrs.btnGhostText}>Yazdır</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-      </View>
-
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <Pressable style={qrs.backdrop} onPress={() => setOpen(false)}>
-          <Pressable style={qrs.modalCard} onPress={() => {}}>
-            <View style={qrs.modalHeader}>
-              <Text style={qrs.modalTitle}>İş Emri QR Kodu</Text>
-              <TouchableOpacity onPress={() => setOpen(false)} style={qrs.closeBtn}>
-                <Icon name="x" size={16} color={MUTED} strokeWidth={2} />
-              </TouchableOpacity>
-            </View>
-            <Text style={qrs.modalSub}>{orderNumber}</Text>
-            <View style={qrs.bigQr}>
-              <BrandedQR value={qrUrl} size={260} color={TEXT} backgroundColor="#FFFFFF" />
-            </View>
-            <Text style={qrs.hint}>Tarayan kullanıcı bu siparişi panelinde açar</Text>
-          </Pressable>
-        </Pressable>
-      </Modal>
-    </Card>
-  );
-}
-const qrs = StyleSheet.create({
-  body:      { flexDirection: 'row', alignItems: 'center', gap: 16, padding: 18 },
-  thumbWrap: { padding: 8, backgroundColor: '#FFFFFF', borderRadius: 14, borderWidth: 1, borderColor: BORDER },
-  desc:      { fontSize: 12, color: MUTED, lineHeight: 17 },
-  btnRow:    { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  btn:       { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10 },
-  btnPrimary:    { backgroundColor: ACCENT },
-  btnPrimaryText:{ color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
-  btnGhost:      { backgroundColor: hexA(ACCENT, 0.10) },
-  btnGhostText:  { color: ACCENT_DARK, fontSize: 12, fontWeight: '800' },
-
-  backdrop:   { flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', alignItems: 'center', justifyContent: 'center', padding: 20 },
-  modalCard:  { backgroundColor: SURFACE, borderRadius: 20, padding: 24, alignItems: 'center', gap: 4, maxWidth: 380, width: '100%' },
-  modalHeader:{ flexDirection: 'row', alignItems: 'center', alignSelf: 'stretch' },
-  modalTitle: { flex: 1, fontSize: 18, fontWeight: '800', color: TEXT, letterSpacing: -0.3 },
-  closeBtn:   { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: BG },
-  modalSub:   { fontSize: 12, color: MUTED, marginTop: 2, fontWeight: '600' },
-  bigQr:      { padding: 12, backgroundColor: SURFACE, borderRadius: 14, marginTop: 16, marginBottom: 6 },
-  hint:       { fontSize: 11, color: MUTED, textAlign: 'center' },
-});
-
 // ── Photos grid ──────────────────────────────────────────────────
 function PhotosGrid({ photos, signedUrls }: { photos: any[]; signedUrls: Record<string, string> }) {
   return (
@@ -506,6 +543,8 @@ export function DoctorOrderDetailScreen() {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 900;
   const isWide    = width >= 1200;
+  const isCompact = width < 600;
+  const [qrOpen, setQrOpen] = useState(false);
 
   if (loading) {
     return (
@@ -567,12 +606,17 @@ export function DoctorOrderDetailScreen() {
           contentContainerStyle={[s.scroll, isWide && { maxWidth: 1400, alignSelf: 'center', width: '100%' }]}
           showsVerticalScrollIndicator={false}
         >
-          {/* Hero */}
-          <Hero order={order} daysInfo={daysInfo} />
+          {/* Hero — liquid glass + entegre QR */}
+          <Hero
+            order={order}
+            daysInfo={daysInfo}
+            isCompact={isCompact}
+            onPressQR={() => setQrOpen(true)}
+          />
 
           {/* Main grid — desktop 2-col (left details, right chat) */}
           <View style={[s.grid, isDesktop && s.gridDesktop]}>
-            {/* LEFT — details, qr, photos, history */}
+            {/* LEFT — details, photos, history */}
             <View style={[s.col, isDesktop && { flex: 1.3, gap: 16 }]}>
               {/* Detaylar */}
               <Card>
@@ -589,9 +633,6 @@ export function DoctorOrderDetailScreen() {
                   {order.notes && <DetailRow icon="note" label="Notlar" value={order.notes} />}
                 </View>
               </Card>
-
-              {/* QR */}
-              <QRCard orderId={order.id} orderNumber={order.order_number} />
 
               {/* Mobile chat — desktop'ta sağ kolonda */}
               {!isDesktop && <ChatPanel workOrderId={order.id} fillHeight={false} />}
@@ -622,10 +663,61 @@ export function DoctorOrderDetailScreen() {
 
           <View style={{ height: 24 }} />
         </ScrollView>
+
+        {/* ── QR Modal (büyük versiyon) ── */}
+        <Modal visible={qrOpen} transparent animationType="fade" onRequestClose={() => setQrOpen(false)}>
+          <Pressable style={qrModal.backdrop} onPress={() => setQrOpen(false)}>
+            <Pressable style={qrModal.card} onPress={() => {}}>
+              <View style={qrModal.headerRow}>
+                <Text style={qrModal.title}>İş Emri QR Kodu</Text>
+                <TouchableOpacity onPress={() => setQrOpen(false)} style={qrModal.closeBtn}>
+                  <Icon name="x" size={16} color={MUTED} strokeWidth={2} />
+                </TouchableOpacity>
+              </View>
+              <Text style={qrModal.sub}>{order.order_number}</Text>
+              <View style={qrModal.qrWrap}>
+                <BrandedQR
+                  value={
+                    Platform.OS === 'web' && typeof window !== 'undefined'
+                      ? `${window.location.origin}/order/${order.id}`
+                      : `https://dental-lab-steel.vercel.app/order/${order.id}`
+                  }
+                  size={260}
+                  color={TEXT}
+                  backgroundColor="#FFFFFF"
+                />
+              </View>
+              <Text style={qrModal.hint}>Tarayan kullanıcı bu siparişi panelinde açar</Text>
+              {Platform.OS === 'web' && (
+                <TouchableOpacity
+                  onPress={() => typeof window !== 'undefined' && window.print()}
+                  activeOpacity={0.85}
+                  style={qrModal.printBtn}
+                >
+                  <Icon name="printer" size={14} color="#FFFFFF" strokeWidth={2} />
+                  <Text style={qrModal.printBtnText}>Yazdır</Text>
+                </TouchableOpacity>
+              )}
+            </Pressable>
+          </Pressable>
+        </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
+
+const qrModal = StyleSheet.create({
+  backdrop:  { flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  card:      { backgroundColor: SURFACE, borderRadius: 22, padding: 26, alignItems: 'center', gap: 6, maxWidth: 380, width: '100%' },
+  headerRow: { flexDirection: 'row', alignItems: 'center', alignSelf: 'stretch' },
+  title:     { flex: 1, fontSize: 18, fontWeight: '800', color: TEXT, letterSpacing: -0.3 },
+  closeBtn:  { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: BG },
+  sub:       { fontSize: 12, color: MUTED, fontWeight: '600', alignSelf: 'flex-start' },
+  qrWrap:    { padding: 14, backgroundColor: SURFACE, borderRadius: 16, marginTop: 18, marginBottom: 8 },
+  hint:      { fontSize: 11, color: MUTED, textAlign: 'center' },
+  printBtn:  { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: ACCENT, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 12, marginTop: 10 },
+  printBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
+});
 
 const s = StyleSheet.create({
   safe:    { flex: 1, backgroundColor: BG },
