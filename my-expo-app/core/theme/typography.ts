@@ -2,16 +2,16 @@ import { Platform } from 'react-native';
 import { C } from './colors';
 
 /**
- * Poppins font families.
+ * Zilla Slab font families (slab serif).
  * - On web: CSS weight axis handles variants, single family string suffices.
  * - On native: each weight is a separate loaded font file.
  */
 export const F = {
-  light:    Platform.OS === 'web' ? "'Poppins', sans-serif" : 'Poppins_300Light',
-  regular:  Platform.OS === 'web' ? "'Poppins', sans-serif" : 'Poppins_400Regular',
-  medium:   Platform.OS === 'web' ? "'Poppins', sans-serif" : 'Poppins_500Medium',
-  semibold: Platform.OS === 'web' ? "'Poppins', sans-serif" : 'Poppins_600SemiBold',
-  bold:     Platform.OS === 'web' ? "'Poppins', sans-serif" : 'Poppins_700Bold',
+  light:    Platform.OS === 'web' ? "'Zilla Slab', serif" : 'ZillaSlab_300Light',
+  regular:  Platform.OS === 'web' ? "'Zilla Slab', serif" : 'ZillaSlab_400Regular',
+  medium:   Platform.OS === 'web' ? "'Zilla Slab', serif" : 'ZillaSlab_500Medium',
+  semibold: Platform.OS === 'web' ? "'Zilla Slab', serif" : 'ZillaSlab_600SemiBold',
+  bold:     Platform.OS === 'web' ? "'Zilla Slab', serif" : 'ZillaSlab_700Bold',
 };
 
 // ─── Font size scale ──────────────────────────────────────────────────────────

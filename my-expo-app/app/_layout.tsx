@@ -7,12 +7,12 @@ import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../core/store/authStore';
 import {
   useFonts,
-  Poppins_300Light,
-  Poppins_400Regular,
-  Poppins_500Medium,
-  Poppins_600SemiBold,
-  Poppins_700Bold,
-} from '@expo-google-fonts/poppins';
+  ZillaSlab_300Light,
+  ZillaSlab_400Regular,
+  ZillaSlab_500Medium,
+  ZillaSlab_600SemiBold,
+  ZillaSlab_700Bold,
+} from '@expo-google-fonts/zilla-slab';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 // Inject web-only global CSS for the phone-shell layout
@@ -32,11 +32,11 @@ function useWebStyles() {
     preconnect2.crossOrigin = 'anonymous';
     document.head.appendChild(preconnect2);
 
-    // Load Poppins
+    // Load Zilla Slab
     const fontLink = document.createElement('link');
     fontLink.rel = 'stylesheet';
     fontLink.href =
-      'https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap';
+      'https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@300;400;500;600;700&display=swap';
     document.head.appendChild(fontLink);
 
     const id = 'dental-lab-global-styles';
@@ -51,7 +51,7 @@ function useWebStyles() {
         margin: 0; padding: 0;
         height: 100%;
         background-color: #FFFFFF;
-        font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-family: 'Zilla Slab', Georgia, 'Times New Roman', serif;
         font-weight: 400;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
@@ -110,7 +110,7 @@ function useWebStyles() {
       ::-webkit-scrollbar-thumb:hover { background: #93C5FD; }
 
       input, textarea, select {
-        font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-family: 'Zilla Slab', Georgia, 'Times New Roman', serif;
         outline: none;
       }
 
@@ -134,11 +134,11 @@ export default function RootLayout() {
   useWebStyles();
 
   const [fontsLoaded] = useFonts({
-    Poppins_300Light,
-    Poppins_400Regular,
-    Poppins_500Medium,
-    Poppins_600SemiBold,
-    Poppins_700Bold,
+    ZillaSlab_300Light,
+    ZillaSlab_400Regular,
+    ZillaSlab_500Medium,
+    ZillaSlab_600SemiBold,
+    ZillaSlab_700Bold,
     ...MaterialCommunityIcons.font,
   });
 
