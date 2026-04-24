@@ -123,18 +123,8 @@ function Hero({
 
   return (
     <View style={hero.outer}>
-      {/* ═══ ANIMATED AURORA BACKDROP ═══════════════════════════
-          Cam'ın blurlayacağı CANLI zemin. Aurora animasyonu mavi/
-          violet stripeleri sürekli hareket ettirir → cam onları
-          bulanıklaştırınca gerçek Apple liquid glass etkisi.
-          ─────────────────────────────────────────────────────── */}
-      <View style={hero.meshWrap} pointerEvents="none">
-        <View style={hero.auroraBase} />
-        <AuroraBackground palette="sky" intensity={0.65} durationSec={45} showRadialGradient />
-      </View>
-
       {/* ═══ LIQUID GLASS SURFACE ════════════════════════════════
-          Cam — backdrop-filter blur(28px) ile aurora'yı bulanıklaştırır
+          Aurora artık sayfa seviyesinde — cam onu blur'lar.
           ────────────────────────────────────────────────────── */}
       <Container {...containerProps} style={[hero.glass, !isNativeBlur && hero.glassWeb]}>
         {/* Layer 1 — saturated mesh "kaynama" — ekstra renk doygunluğu */}
@@ -580,6 +570,7 @@ export function DoctorOrderDetailScreen() {
   if (loading) {
     return (
       <SafeAreaView style={s.safe}>
+        <AuroraBackground palette="sky" intensity={0.55} durationSec={50} showRadialGradient={false} />
         <View style={s.center}>
           <ActivityIndicator color={ACCENT} size="large" />
           <Text style={{ color: MUTED, marginTop: 12 }}>Yükleniyor...</Text>
@@ -591,6 +582,7 @@ export function DoctorOrderDetailScreen() {
   if (error || !order) {
     return (
       <SafeAreaView style={s.safe}>
+        <AuroraBackground palette="sky" intensity={0.55} durationSec={50} showRadialGradient={false} />
         <View style={[s.center, { padding: 24, gap: 12 }]}>
           <Text style={{ fontSize: 32 }}>⚠️</Text>
           <Text style={{ fontSize: 16, fontWeight: '800', color: TEXT, textAlign: 'center' }}>
@@ -619,6 +611,9 @@ export function DoctorOrderDetailScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
+      {/* ═══ AURORA — sayfa arka planı (gri zemin yerine animasyonlu) ═══ */}
+      <AuroraBackground palette="sky" intensity={0.55} durationSec={50} showRadialGradient={false} />
+
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
