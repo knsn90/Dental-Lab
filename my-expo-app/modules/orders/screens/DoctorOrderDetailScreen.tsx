@@ -8,7 +8,10 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
-import Svg, { Path, Circle, Line, Polyline } from 'react-native-svg';
+import Svg, {
+  Path, Circle, Line, Polyline,
+  Defs, RadialGradient, Stop, Rect,
+} from 'react-native-svg';
 import { useAuthStore } from '../../../core/store/authStore';
 import { useOrderDetail } from '../hooks/useOrderDetail';
 import { useChatMessages } from '../hooks/useChatMessages';
@@ -86,7 +89,12 @@ function Icon({ name, size = 18, color = TEXT, strokeWidth = 1.8 }: {
   }
 }
 
-// ── HERO — Apple WWDC25 Liquid Glass + entegre QR ───────────────
+// ── HERO — Liquid Glass over colorful mesh (gerçek backdrop-blur) ──
+//
+// Liquid glass'ın çalışması için cam'ın ARKASINDA bulanıklaştırılacak
+// renkli içerik olmalı. Burada SVG ile renkli mesh çiziyoruz; cam onu
+// blur(40px) saturate ile karıştırıyor → gerçek Apple WWDC25 etkisi.
+//
 function Hero({
   order,
   daysInfo,
@@ -113,22 +121,54 @@ function Hero({
       : `https://dental-lab-steel.vercel.app/order/${order.id}`;
 
   const Container: any = isNativeBlur ? BlurView : View;
-  const containerProps = isNativeBlur ? { intensity: 60, tint: 'light' as const } : {};
+  const containerProps = isNativeBlur ? { intensity: 70, tint: 'light' as const } : {};
 
   return (
     <View style={hero.outer}>
-      {/* ── Layered liquid glass surface ── */}
+      {/* ═══ COLORFUL MESH BACKDROP ═══════════════════════════════
+          Cam'ın blurlayacağı renkli zemin. 4 yumuşak radial blob:
+          sky blue, lavender, mint, peach. Soft saturated palette.
+          ─────────────────────────────────────────────────────── */}
+      <View style={hero.meshWrap} pointerEvents="none">
+        <Svg width="100%" height="100%" viewBox="0 0 800 240" preserveAspectRatio="none">
+          <Defs>
+            <RadialGradient id="mesh-sky"     cx="12%" cy="20%" r="45%">
+              <Stop offset="0%"   stopColor="#0EA5E9" stopOpacity="0.55" />
+              <Stop offset="100%" stopColor="#0EA5E9" stopOpacity="0" />
+            </RadialGradient>
+            <RadialGradient id="mesh-lav"     cx="78%" cy="18%" r="42%">
+              <Stop offset="0%"   stopColor="#A78BFA" stopOpacity="0.45" />
+              <Stop offset="100%" stopColor="#A78BFA" stopOpacity="0" />
+            </RadialGradient>
+            <RadialGradient id="mesh-mint"    cx="32%" cy="92%" r="48%">
+              <Stop offset="0%"   stopColor="#34D399" stopOpacity="0.40" />
+              <Stop offset="100%" stopColor="#34D399" stopOpacity="0" />
+            </RadialGradient>
+            <RadialGradient id="mesh-peach"   cx="88%" cy="85%" r="42%">
+              <Stop offset="0%"   stopColor="#FCA5A5" stopOpacity="0.40" />
+              <Stop offset="100%" stopColor="#FCA5A5" stopOpacity="0" />
+            </RadialGradient>
+          </Defs>
+          <Rect width="800" height="240" fill="#FFFFFF" />
+          <Rect width="800" height="240" fill="url(#mesh-sky)" />
+          <Rect width="800" height="240" fill="url(#mesh-lav)" />
+          <Rect width="800" height="240" fill="url(#mesh-mint)" />
+          <Rect width="800" height="240" fill="url(#mesh-peach)" />
+        </Svg>
+      </View>
+
+      {/* ═══ LIQUID GLASS SURFACE ════════════════════════════════
+          Cam — backdrop-filter blur(40px) ile mesh'i bulanıklaştırır
+          ────────────────────────────────────────────────────── */}
       <Container {...containerProps} style={[hero.glass, !isNativeBlur && hero.glassWeb]}>
-        {/* Layer 1 — white frost wash */}
-        <View pointerEvents="none" style={hero.frostLayer} />
-        {/* Layer 2 — top specular shimmer (gradient white → transparent) */}
+        {/* Layer 1 — saturated mesh "kaynama" — ekstra renk doygunluğu */}
+        <View pointerEvents="none" style={hero.tintLayer} />
+        {/* Layer 2 — top specular shimmer */}
         <View pointerEvents="none" style={hero.shimmerTop} />
-        {/* Layer 3 — bottom edge refraction */}
+        {/* Layer 3 — bottom refraction edge */}
         <View pointerEvents="none" style={hero.shimmerBottom} />
-        {/* Layer 4 — top hairline highlight (Apple "rim of glass") */}
+        {/* Layer 4 — top hairline ("rim of glass") */}
         <View pointerEvents="none" style={hero.hairlineTop} />
-        {/* Layer 5 — subtle accent tint top-left corner */}
-        <View pointerEvents="none" style={hero.accentBlob} />
 
         {/* ── Content ── */}
         <View style={[hero.content, isCompact && hero.contentCompact]}>
@@ -146,7 +186,7 @@ function Hero({
               )}
               <View style={{ flex: 1 }} />
               <View style={[hero.daysBadge, { backgroundColor: toneBg }]}>
-                <Icon name="calendar" size={11} color={toneColor} strokeWidth={2} />
+                <Icon name="calendar" size={10} color={toneColor} strokeWidth={2} />
                 <Text style={[hero.daysText, { color: toneColor }]}>{daysInfo.text}</Text>
               </View>
             </View>
@@ -162,7 +202,7 @@ function Hero({
             <View style={hero.metaRow}>
               {order.tooth_numbers?.length > 0 && (
                 <View style={hero.metaChip}>
-                  <Icon name="tooth" size={11} color={ACCENT_DARK} strokeWidth={2} />
+                  <Icon name="tooth" size={10} color={ACCENT_DARK} strokeWidth={2} />
                   <Text style={hero.metaText}>
                     Diş {order.tooth_numbers.slice(0, 4).join(', ')}
                     {order.tooth_numbers.length > 4 ? ` +${order.tooth_numbers.length - 4}` : ''}
@@ -171,12 +211,12 @@ function Hero({
               )}
               {order.shade && (
                 <View style={hero.metaChip}>
-                  <Icon name="palette" size={11} color={ACCENT_DARK} strokeWidth={2} />
+                  <Icon name="palette" size={10} color={ACCENT_DARK} strokeWidth={2} />
                   <Text style={hero.metaText}>Renk {order.shade}</Text>
                 </View>
               )}
               <View style={hero.metaChip}>
-                <Icon name="cog" size={11} color={ACCENT_DARK} strokeWidth={2} />
+                <Icon name="cog" size={10} color={ACCENT_DARK} strokeWidth={2} />
                 <Text style={hero.metaText}>
                   {order.machine_type === 'milling' ? 'Frezeleme' : '3D Baskı'}
                 </Text>
@@ -184,13 +224,13 @@ function Hero({
             </View>
           </View>
 
-          {/* QR — sağ tarafta entegre */}
+          {/* QR — kompakt sağ kolon */}
           <View style={hero.qrZone}>
             <TouchableOpacity onPress={onPressQR} activeOpacity={0.85} style={hero.qrCard}>
-              <BrandedQR value={qrUrl} size={isCompact ? 92 : 108} color={TEXT} backgroundColor="#FFFFFF" />
+              <BrandedQR value={qrUrl} size={isCompact ? 72 : 84} color={TEXT} backgroundColor="#FFFFFF" />
             </TouchableOpacity>
             <TouchableOpacity onPress={onPressQR} activeOpacity={0.85} style={hero.qrBtn}>
-              <Icon name="qr-code" size={11} color={ACCENT_DARK} strokeWidth={2.2} />
+              <Icon name="qr-code" size={10} color={ACCENT_DARK} strokeWidth={2.2} />
               <Text style={hero.qrBtnText}>Büyüt</Text>
             </TouchableOpacity>
           </View>
@@ -201,113 +241,123 @@ function Hero({
 }
 
 const hero = StyleSheet.create({
-  /* Outer wrapper — drop shadow + spacing */
+  /* Outer wrapper — relative position for mesh layering + drop shadow */
   outer: {
     marginBottom: 16,
-    borderRadius: 22,
+    borderRadius: 20,
+    position: 'relative',
     ...(Platform.OS === 'web'
       ? ({
           boxShadow: [
             '0 1px 2px rgba(15,23,42,0.04)',
-            '0 12px 40px rgba(15,23,42,0.08)',
-            '0 4px 12px rgba(15,23,42,0.04)',
+            '0 10px 32px rgba(15,23,42,0.08)',
+            '0 3px 10px rgba(15,23,42,0.04)',
           ].join(', '),
         } as any)
-      : { shadowColor: '#0F172A', shadowOpacity: 0.10, shadowRadius: 22, shadowOffset: { width: 0, height: 8 }, elevation: 6 }),
+      : { shadowColor: '#0F172A', shadowOpacity: 0.10, shadowRadius: 18, shadowOffset: { width: 0, height: 6 }, elevation: 5 }),
   },
 
-  /* Glass container — base */
+  /* Mesh — colorful saturated background BEHIND the glass */
+  meshWrap: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+
+  /* Glass container — sits on top of mesh, blurs it */
   glass: {
-    borderRadius: 22,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.78)',
+    borderColor: 'rgba(255,255,255,0.55)',
     overflow: 'hidden',
     position: 'relative',
   },
 
-  /* Web-only glass styling — backdrop-filter */
+  /* Web-only glass styling — REAL backdrop-filter */
   glassWeb: {
-    backgroundColor: 'rgba(255,255,255,0.62)',
+    backgroundColor: 'rgba(255,255,255,0.20)',
     ...(Platform.OS === 'web'
       ? ({
-          backdropFilter:       'blur(40px) saturate(180%) brightness(1.04)',
-          WebkitBackdropFilter: 'blur(40px) saturate(180%) brightness(1.04)',
+          backdropFilter:       'blur(28px) saturate(180%) brightness(1.05)',
+          WebkitBackdropFilter: 'blur(28px) saturate(180%) brightness(1.05)',
           boxShadow: [
-            'inset 0 1.5px 0 rgba(255,255,255,0.95)',
-            'inset 0 -1px 0 rgba(255,255,255,0.40)',
-            'inset 1px 0 0 rgba(255,255,255,0.30)',
-            'inset -1px 0 0 rgba(255,255,255,0.30)',
+            'inset 0 1.5px 0 rgba(255,255,255,0.85)',
+            'inset 0 -1px 0 rgba(255,255,255,0.30)',
+            'inset 1px 0 0 rgba(255,255,255,0.25)',
+            'inset -1px 0 0 rgba(255,255,255,0.25)',
           ].join(', '),
         } as any)
       : {}),
   },
 
-  /* ── Liquid glass layers ── */
-  frostLayer:    { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.30)', pointerEvents: 'none' },
-  shimmerTop:    { position: 'absolute', top: 0, left: 0, right: 0, height: '40%', backgroundColor: 'rgba(255,255,255,0.22)', pointerEvents: 'none' },
-  shimmerBottom: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, backgroundColor: 'rgba(255,255,255,0.45)', pointerEvents: 'none' },
-  hairlineTop:   { position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: 'rgba(255,255,255,0.95)', pointerEvents: 'none' },
-  /* Accent blob — top-left subtle sky-blue tint (Apple liquid feel) */
-  accentBlob: {
-    position: 'absolute',
-    top: -40, left: -20,
-    width: 220, height: 220, borderRadius: 110,
-    backgroundColor: hexA(ACCENT, 0.10),
-    pointerEvents: 'none',
-  },
+  /* ── Glass overlays ── */
+  tintLayer:     { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.10)', pointerEvents: 'none' },
+  shimmerTop:    { position: 'absolute', top: 0, left: 0, right: 0, height: '38%', backgroundColor: 'rgba(255,255,255,0.18)', pointerEvents: 'none' },
+  shimmerBottom: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 1.5, backgroundColor: 'rgba(255,255,255,0.40)', pointerEvents: 'none' },
+  hairlineTop:   { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.85)', pointerEvents: 'none' },
 
-  /* Content layout */
+  /* Content layout — daha kompakt padding */
   content: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 18,
-    padding: 22,
+    gap: 14,
+    padding: 16,
     zIndex: 1,
   },
   contentCompact: {
     flexDirection: 'column',
-    gap: 14,
+    gap: 12,
+    padding: 14,
   },
 
-  topRow:     { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' },
-  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
-  statusDot:  { width: 7, height: 7, borderRadius: 4 },
-  statusText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.3, textTransform: 'uppercase' as const },
-  urgentBadge:{ backgroundColor: hexA(DANGER, 0.12), paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  urgentText: { fontSize: 9, fontWeight: '900', color: DANGER, letterSpacing: 0.6 },
-  daysBadge:  { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
-  daysText:   { fontSize: 11, fontWeight: '800' },
+  /* Header pill row — daha kompakt */
+  topRow:     { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' },
+  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20 },
+  statusDot:  { width: 6, height: 6, borderRadius: 3 },
+  statusText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase' as const },
+  urgentBadge:{ backgroundColor: hexA(DANGER, 0.14), paddingHorizontal: 7, paddingVertical: 3, borderRadius: 5 },
+  urgentText: { fontSize: 9, fontWeight: '900', color: DANGER, letterSpacing: 0.5 },
+  daysBadge:  { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20 },
+  daysText:   { fontSize: 10, fontWeight: '800' },
 
-  title:   { fontSize: 26, fontWeight: '800', color: TEXT, letterSpacing: -0.6, lineHeight: 30 },
-  patient: { fontSize: 13, color: MUTED, fontWeight: '500', marginTop: 4 },
-  metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12 },
-  metaChip:{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.65)', paddingHorizontal: 9, paddingVertical: 5, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)' },
-  metaText:{ fontSize: 11, fontWeight: '700', color: ACCENT_DARK },
+  /* Typography — daha kompakt */
+  title:   { fontSize: 22, fontWeight: '800', color: TEXT, letterSpacing: -0.5, lineHeight: 26 },
+  patient: { fontSize: 12, color: MUTED, fontWeight: '500', marginTop: 3 },
 
-  /* QR zone */
-  qrZone:  { alignItems: 'center', gap: 8, flexShrink: 0 },
+  /* Meta chips — frosted glass üstüne uyumlu */
+  metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 10 },
+  metaChip:{
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.55)',
+    paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.85)',
+  },
+  metaText:{ fontSize: 10, fontWeight: '700', color: ACCENT_DARK },
+
+  /* QR — kompakt */
+  qrZone:  { alignItems: 'center', gap: 6, flexShrink: 0 },
   qrCard:  {
-    padding: 8,
+    padding: 6,
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.85)',
+    borderColor: 'rgba(255,255,255,0.9)',
     ...(Platform.OS === 'web'
-      ? ({ boxShadow: '0 4px 14px rgba(15,23,42,0.08), inset 0 1px 0 rgba(255,255,255,0.85)' } as any)
-      : { shadowColor: '#0F172A', shadowOpacity: 0.10, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 3 }),
+      ? ({ boxShadow: '0 3px 10px rgba(15,23,42,0.10), inset 0 1px 0 rgba(255,255,255,0.95)' } as any)
+      : { shadowColor: '#0F172A', shadowOpacity: 0.10, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 }),
   },
   qrBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.7)',
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.65)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.9)',
   },
-  qrBtnText: { color: ACCENT_DARK, fontSize: 11, fontWeight: '800' },
+  qrBtnText: { color: ACCENT_DARK, fontSize: 10, fontWeight: '800' },
 });
 
 // ── Card primitive ───────────────────────────────────────────────
