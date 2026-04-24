@@ -629,51 +629,21 @@ export function DesktopShell({ navItems, accentColor = C.primary }: Props) {
           })}
         </ScrollView>
 
-        {/* Bottom: logout + user + toggle */}
+        {/* Bottom: just the collapse toggle */}
         <View style={s.sidebarBottom}>
           <View style={s.navDivider} />
-
-          {/* Logout */}
           <TouchableOpacity
-            style={[s.navItem, sidebarCollapsed && s.navItemCollapsed, hovered === '__out' && s.navItemLogout]}
-            onPress={signOut}
-            // @ts-ignore
-            onMouseEnter={(e: any) => { setHovered('__out'); if (sidebarCollapsed) setNavTooltip({ label: 'Çıkış Yap', y: e.nativeEvent.pageY }); }}
-            onMouseLeave={() => { setHovered(null); setNavTooltip(null); }}
+            onPress={() => setSidebarCollapsed(v => !v)}
+            style={[s.collapseRow, sidebarCollapsed && s.collapseRowCollapsed]}
+            activeOpacity={0.7}
           >
-            <Feather name="log-out" size={17} color={hovered === '__out' ? C.danger : '#64748B'} />
-            {!sidebarCollapsed && (
-              <Text style={[s.navLabel, hovered === '__out' && { color: C.danger }]}>Çıkış Yap</Text>
-            )}
+            <Feather
+              name={sidebarCollapsed ? 'chevrons-right' : 'chevrons-left' as any}
+              size={15}
+              color="#94A3B8"
+            />
+            {!sidebarCollapsed && <Text style={s.collapseLabel}>Daralt</Text>}
           </TouchableOpacity>
-
-          {/* User row + toggle */}
-          <View style={[s.userCard, sidebarCollapsed && s.userCardCollapsed]}>
-            <View style={[s.userAvatar, { backgroundColor: accentColor }]}>
-              {(profile as any)?.avatar_url
-                ? <Image source={{ uri: (profile as any).avatar_url }} style={s.userAvatarImg} />
-                : <Text style={s.userAvatarText}>{initials}</Text>}
-            </View>
-            {!sidebarCollapsed && (
-              <View style={s.userInfo}>
-                <Text style={s.userName} numberOfLines={1}>{firstName}</Text>
-                <Text style={s.userRole} numberOfLines={1}>
-                  {(profile as any)?.role ?? (profile as any)?.user_type ?? 'Kullanıcı'}
-                </Text>
-              </View>
-            )}
-            <TouchableOpacity
-              onPress={() => setSidebarCollapsed(v => !v)}
-              style={[s.sidebarToggle, sidebarCollapsed && s.sidebarToggleCollapsed]}
-              activeOpacity={0.7}
-            >
-              <Feather
-                name={sidebarCollapsed ? 'chevron-right' : 'chevron-left' as any}
-                size={13}
-                color="#AEAEB2"
-              />
-            </TouchableOpacity>
-          </View>
         </View>
       </View>
 
@@ -692,6 +662,51 @@ export function DesktopShell({ navItems, accentColor = C.primary }: Props) {
               <Feather name="bell" size={18} color={C.textSecondary} />
               {/* Notification red dot */}
               <View style={s.notifDot} />
+            </TouchableOpacity>
+
+            <View style={s.headerDivider} />
+
+            {/* Profile avatar — tap to open profile */}
+            <TouchableOpacity
+              style={s.headerProfile}
+              onPress={() => {
+                const isAdmin = (profile as any)?.user_type === 'admin';
+                router.push((isAdmin ? '/(admin)/profile' : '/(lab)/profile') as any);
+              }}
+              // @ts-ignore
+              onMouseEnter={() => setHovered('__prof')}
+              onMouseLeave={() => setHovered(null)}
+              activeOpacity={0.8}
+            >
+              <View style={[s.headerAvatar, { backgroundColor: accentColor }]}>
+                {(profile as any)?.avatar_url
+                  ? <Image source={{ uri: (profile as any).avatar_url }} style={s.headerAvatarImg} />
+                  : <Text style={s.headerAvatarText}>{initials}</Text>}
+              </View>
+              {width >= 1024 && (
+                <View style={s.headerProfileMeta}>
+                  <Text style={s.headerName} numberOfLines={1}>{firstName}</Text>
+                  <Text style={s.headerRole} numberOfLines={1}>
+                    {(profile as any)?.role === 'manager'    ? 'Mesul Müdür'
+                     : (profile as any)?.role === 'technician' ? 'Teknisyen'
+                     : (profile as any)?.user_type === 'admin' ? 'Yönetici'
+                     : (profile as any)?.user_type === 'lab'   ? 'Lab'
+                     : 'Kullanıcı'}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
+            {/* Logout */}
+            <TouchableOpacity
+              style={[s.headerIcon, hovered === '__out' && s.headerIconLogout]}
+              onPress={signOut}
+              // @ts-ignore
+              onMouseEnter={() => setHovered('__out')}
+              onMouseLeave={() => setHovered(null)}
+              accessibilityLabel="Çıkış Yap"
+            >
+              <Feather name="log-out" size={18} color={hovered === '__out' ? C.danger : C.textSecondary} />
             </TouchableOpacity>
           </View>
         </View>
@@ -847,40 +862,26 @@ const s = StyleSheet.create({
   // Bottom section
   sidebarBottom: { paddingHorizontal: 10, paddingBottom: 16 },
 
-  // User card + toggle
-  userCard: {
+  // Collapse toggle row
+  collapseRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingTop: 10,
-    paddingBottom: 2,
-    gap: 10,
-  },
-  userCardCollapsed: {
-    flexDirection: 'column',
-    alignItems: 'center',
-    paddingHorizontal: 0,
-    gap: 8,
-  },
-  userAvatar:     { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' },
-  userAvatarImg:  { width: 34, height: 34, borderRadius: 17 },
-  userAvatarText: { color: '#fff', fontSize: 12, fontWeight: '800' },
-  userInfo:       { flex: 1 },
-  userName:       { fontSize: 13, fontWeight: '700', color: '#0F172A', letterSpacing: -0.1 },
-  userRole:       { fontSize: 11, color: '#94A3B8', textTransform: 'capitalize', marginTop: 1 },
-  sidebarToggle: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
     justifyContent: 'center',
-    flexShrink: 0,
+    gap: 8,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
-  sidebarToggleCollapsed: {
-    marginTop: 4,
+  collapseRowCollapsed: {
+    paddingVertical: 8,
+  },
+  collapseLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
+    letterSpacing: -0.1,
   },
 
   /* ── Main ── */
@@ -922,6 +923,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     position: 'relative',
   },
+  headerIconLogout: { backgroundColor: '#FEF2F2' },
   notifDot: {
     position: 'absolute',
     top: 8,
@@ -942,8 +944,16 @@ const s = StyleSheet.create({
   headerProfile: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
     paddingLeft: 4,
+    paddingRight: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  headerProfileMeta: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    justifyContent: 'center',
   },
   headerAvatar: {
     width: 36,
@@ -951,9 +961,12 @@ const s = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
+  headerAvatarImg:  { width: 36, height: 36, borderRadius: 18 },
   headerAvatarText: { color: '#fff', fontSize: 13, fontWeight: '800' },
-  headerName: { fontSize: 14, fontWeight: '600', color: '#1C1C1E' },
+  headerName:       { fontSize: 13, fontWeight: '700', color: '#1C1C1E', letterSpacing: -0.1 },
+  headerRole:       { fontSize: 11, color: '#94A3B8', marginTop: 1 },
 
   /* ── Page ── */
   page: { flex: 1, backgroundColor: '#FFFFFF' },
