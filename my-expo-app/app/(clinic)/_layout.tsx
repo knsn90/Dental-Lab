@@ -20,11 +20,12 @@ export default function ClinicLayout() {
   const [newOrderOpen, setNewOrderOpen] = useState(false);
 
   const CLINIC_NAV = [
-    { label: 'Dashboard',    emoji: '📊', href: '/(clinic)',           iconName: 'grid',        iconSet: 'mdi' as const },
-    { label: 'Hekimler',     emoji: '🩺', href: '/(clinic)/doctors',   iconName: 'activity',    iconSet: 'mdi' as const },
-    { label: 'Siparişler',   emoji: '📋', href: '/(clinic)/orders',    iconName: 'file-text',   iconSet: 'mdi' as const },
-    { label: 'Yeni İş Emri', emoji: '➕', href: '/(clinic)/new-order', iconName: 'plus-circle', iconSet: 'mdi' as const },
-    { label: 'Profil',       emoji: '👤', href: '/(clinic)/profile',   iconName: 'user',        iconSet: 'mdi' as const },
+    { label: 'Dashboard',    emoji: '📊', href: '/(clinic)',           iconName: 'grid',           iconSet: 'mdi' as const },
+    { label: 'Hekimler',     emoji: '🩺', href: '/(clinic)/doctors',   iconName: 'activity',       iconSet: 'mdi' as const },
+    { label: 'Siparişler',   emoji: '📋', href: '/(clinic)/orders',    iconName: 'file-text',      iconSet: 'mdi' as const },
+    { label: 'Mesajlar',     emoji: '💬', href: '/(clinic)/messages',  iconName: 'message-circle', iconSet: 'mdi' as const },
+    { label: 'Yeni İş Emri', emoji: '➕', href: '/(clinic)/new-order', iconName: 'plus-circle',    iconSet: 'mdi' as const },
+    { label: 'Profil',       emoji: '👤', href: '/(clinic)/profile',   iconName: 'user',           iconSet: 'mdi' as const },
   ];
 
   // Klinik müdürü olmayan kullanıcı bu layout'a düştüyse sidebar gösterme
@@ -64,6 +65,13 @@ export default function ClinicLayout() {
           options={{
             title: 'Siparişler',
             tabBarIcon: ({ focused }) => <TabIcon emoji="📋" focused={focused} />,
+          }}
+        />
+        <Tabs.Screen
+          name="messages"
+          options={{
+            title: 'Mesajlar',
+            tabBarIcon: ({ focused }) => <TabIcon emoji="💬" focused={focused} />,
           }}
         />
         <Tabs.Screen

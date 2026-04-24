@@ -30,9 +30,10 @@ export default function AdminLayout() {
     { label: 'Özet',         emoji: '📊', href: '/(admin)',              iconName: 'grid',          iconSet: 'mdi' as const },
 
     // ── İş Yönetimi ────────────────────────────────────────────────────────
-    { label: 'Siparişler',   emoji: '📋', href: '/(admin)/orders',       iconName: 'clipboard',     iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'İş Yönetimi' },
-    { label: 'Yeni İş Emri', emoji: '➕', href: '/(admin)/new-order',   iconName: 'plus-circle',   iconSet: 'mdi' as const },
-    { label: 'Onaylar',      emoji: '✅', href: '/(admin)/approvals',   iconName: 'check-circle',  iconSet: 'mdi' as const, badge: pendingCount > 0, matchPrefix: true },
+    { label: 'Siparişler',   emoji: '📋', href: '/(admin)/orders',       iconName: 'clipboard',      iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'İş Yönetimi' },
+    { label: 'Mesajlar',     emoji: '💬', href: '/(admin)/messages',    iconName: 'message-circle', iconSet: 'mdi' as const, matchPrefix: true },
+    { label: 'Yeni İş Emri', emoji: '➕', href: '/(admin)/new-order',   iconName: 'plus-circle',    iconSet: 'mdi' as const },
+    { label: 'Onaylar',      emoji: '✅', href: '/(admin)/approvals',   iconName: 'check-circle',   iconSet: 'mdi' as const, badge: pendingCount > 0, matchPrefix: true },
 
     // ── Müşteriler ─────────────────────────────────────────────────────────
     { label: 'Klinikler',    emoji: '🏥', href: '/(admin)/clinics',      iconName: 'briefcase',     iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'Müşteriler' },

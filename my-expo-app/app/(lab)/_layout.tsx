@@ -30,9 +30,10 @@ export default function LabLayout() {
     { label: 'Bugün',        emoji: '📅', href: '/(lab)',              iconName: 'home',          iconSet: 'mdi' as const },
 
     // ── İş Yönetimi ────────────────────────────────────────────────────────
-    { label: 'Siparişler',   emoji: '📋', href: '/(lab)/all-orders',   iconName: 'clipboard',     iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'İş Yönetimi' },
-    { label: 'Yeni İş Emri', emoji: '➕', href: '/(lab)/new-order',   iconName: 'plus-circle',   iconSet: 'mdi' as const },
-    { label: 'Onaylar',      emoji: '✅', href: '/(lab)/approvals',   iconName: 'check-circle',  iconSet: 'mdi' as const, badge: pendingCount > 0, matchPrefix: true },
+    { label: 'Siparişler',   emoji: '📋', href: '/(lab)/all-orders',   iconName: 'clipboard',      iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'İş Yönetimi' },
+    { label: 'Mesajlar',     emoji: '💬', href: '/(lab)/messages',    iconName: 'message-circle', iconSet: 'mdi' as const, matchPrefix: true },
+    { label: 'Yeni İş Emri', emoji: '➕', href: '/(lab)/new-order',   iconName: 'plus-circle',    iconSet: 'mdi' as const },
+    { label: 'Onaylar',      emoji: '✅', href: '/(lab)/approvals',   iconName: 'check-circle',   iconSet: 'mdi' as const, badge: pendingCount > 0, matchPrefix: true },
 
     // ── Müşteriler ─────────────────────────────────────────────────────────
     { label: 'Klinikler',    emoji: '🏥', href: '/(lab)/clinics',      iconName: 'briefcase',     iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'Müşteriler' },

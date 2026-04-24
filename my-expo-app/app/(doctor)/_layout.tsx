@@ -22,10 +22,11 @@ export default function DoctorLayout() {
   const [newOrderOpen, setNewOrderOpen] = useState(false);
 
   const DOCTOR_NAV = [
-    { label: 'Dashboard',    emoji: '📊', href: '/(doctor)',            iconName: 'grid',        iconSet: 'mdi' as const },
-    { label: 'Siparişlerim', emoji: '📋', href: '/(doctor)/orders',    iconName: 'file-text',   iconSet: 'mdi' as const },
-    { label: 'Yeni İş Emri', emoji: '➕', href: '/(doctor)/new-order', iconName: 'plus-circle', iconSet: 'mdi' as const, subtitle: 'Formu adım adım doldurun' },
-    { label: 'Profil',       emoji: '👤', href: '/(doctor)/profile',   iconName: 'user',        iconSet: 'mdi' as const },
+    { label: 'Dashboard',    emoji: '📊', href: '/(doctor)',            iconName: 'grid',         iconSet: 'mdi' as const },
+    { label: 'Siparişlerim', emoji: '📋', href: '/(doctor)/orders',    iconName: 'file-text',    iconSet: 'mdi' as const },
+    { label: 'Mesajlar',     emoji: '💬', href: '/(doctor)/messages', iconName: 'message-circle', iconSet: 'mdi' as const },
+    { label: 'Yeni İş Emri', emoji: '➕', href: '/(doctor)/new-order', iconName: 'plus-circle',  iconSet: 'mdi' as const, subtitle: 'Formu adım adım doldurun' },
+    { label: 'Profil',       emoji: '👤', href: '/(doctor)/profile',   iconName: 'user',         iconSet: 'mdi' as const },
   ];
 
   // Hekim olmayan kullanıcı bu layout'a düştüyse sidebar gösterme
@@ -66,6 +67,13 @@ export default function DoctorLayout() {
           options={{
             title: 'Siparişlerim',
             tabBarIcon: ({ focused }) => <TabIcon emoji="📋" focused={focused} />,
+          }}
+        />
+        <Tabs.Screen
+          name="messages"
+          options={{
+            title: 'Mesajlar',
+            tabBarIcon: ({ focused }) => <TabIcon emoji="💬" focused={focused} />,
           }}
         />
         <Tabs.Screen
