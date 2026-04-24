@@ -6,7 +6,10 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Path, Circle, Line, Polyline } from 'react-native-svg';
+import Svg, {
+  Path, Circle, Line, Polyline,
+  Defs, RadialGradient, Stop, Rect,
+} from 'react-native-svg';
 import { useAuthStore } from '../../../core/store/authStore';
 import { useClinicOrders } from '../../clinic/hooks/useClinicOrders';
 import { isOrderOverdue, STATUS_CONFIG } from '../../orders/constants';
@@ -194,18 +197,47 @@ export function ClinicDashboardScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={P} />}
       >
-        {/* Hero */}
+        {/* Hero — layered radial gradients (frontend-design: depth) */}
         <View style={[s.heroRow, isDesktop && s.heroRowDesktop]}>
           <View style={[s.welcome, isDesktop && { flex: 1 }]}>
-            <BlurFade duration={500} delay={0} yOffset={6}>
-              <Text style={s.greeting}>Merhaba{firstName ? `, ${firstName}` : ''}</Text>
-            </BlurFade>
-            <BlurFade duration={500} delay={70} yOffset={6}>
-              <Text style={s.clinicName}>{clinicName}</Text>
-            </BlurFade>
-            <BlurFade duration={500} delay={140} yOffset={6}>
-              <Text style={s.date}>{getTodayLabel()}</Text>
-            </BlurFade>
+            {/* Gradient background layer */}
+            <Svg
+              width="100%" height="100%"
+              viewBox="0 0 400 200"
+              preserveAspectRatio="none"
+              style={StyleSheet.absoluteFillObject}
+            >
+              <Defs>
+                <RadialGradient id="clinic-g1" cx="15%" cy="25%" r="55%">
+                  <Stop offset="0%"   stopColor={P} stopOpacity="0.16" />
+                  <Stop offset="100%" stopColor={P} stopOpacity="0" />
+                </RadialGradient>
+                <RadialGradient id="clinic-g2" cx="90%" cy="90%" r="55%">
+                  <Stop offset="0%"   stopColor="#0EA5E9" stopOpacity="0.10" />
+                  <Stop offset="100%" stopColor="#0EA5E9" stopOpacity="0" />
+                </RadialGradient>
+              </Defs>
+              <Rect width="400" height="200" fill="url(#clinic-g1)" />
+              <Rect width="400" height="200" fill="url(#clinic-g2)" />
+            </Svg>
+
+            {/* Content on top */}
+            <View style={{ zIndex: 1 }}>
+              <BlurFade duration={500} delay={0} yOffset={6}>
+                <Text style={s.greeting}>Merhaba{firstName ? `, ${firstName}` : ''}</Text>
+              </BlurFade>
+              <BlurFade duration={500} delay={70} yOffset={6}>
+                <Text style={s.clinicName}>{clinicName}</Text>
+              </BlurFade>
+              <BlurFade duration={500} delay={140} yOffset={6}>
+                <View style={s.metaRow}>
+                  <View style={s.metaChip}>
+                    <Icon name="calendar" size={11} color="#075985" strokeWidth={2} />
+                    <Text style={s.metaText}>{getTodayLabel()}</Text>
+                  </View>
+                </View>
+              </BlurFade>
+            </View>
           </View>
 
           {overdue > 0 && (
@@ -386,16 +418,28 @@ const s = StyleSheet.create({
   safe:   { flex: 1, backgroundColor: BG },
   scroll: { padding: 20, paddingBottom: 120, maxWidth: 1400, alignSelf: 'stretch' },
 
-  /* Hero */
+  /* Hero — layered depth with tinted shadow */
   heroRow:        { gap: 16, marginBottom: 20 },
   heroRowDesktop: { flexDirection: 'row' },
   welcome: {
-    backgroundColor: '#FFFFFF', borderRadius: 16,
+    backgroundColor: '#FFFFFF', borderRadius: 20,
     padding: 24, borderWidth: 1, borderColor: '#F1F5F9', overflow: 'hidden',
+    position: 'relative',
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: `0 1px 2px rgba(3,105,161,0.04), 0 8px 24px rgba(3,105,161,0.06)` } as any)
+      : { shadowColor: P, shadowOpacity: 0.08, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 3 }),
   },
   greeting:   { fontSize: 14, color: '#64748B', fontWeight: '500' },
   clinicName: { fontSize: 26, fontWeight: '800', color: P, letterSpacing: -0.5, marginTop: 4 },
   date:       { fontSize: 12, color: '#94A3B8', fontWeight: '500', marginTop: 6 },
+  metaRow:    { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
+  metaChip:   {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: hexA(P, 0.08),
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 20,
+  },
+  metaText:   { fontSize: 11, fontWeight: '700', color: '#075985', letterSpacing: 0.1 },
 
   alertCard: {
     backgroundColor: '#FFF1F2', borderRadius: 16,
@@ -421,7 +465,7 @@ const s = StyleSheet.create({
   linkBtn:   { fontSize: 12, color: P, fontWeight: '700' },
   emptyText: { fontSize: 13, color: '#94A3B8', padding: 24, textAlign: 'center' },
 
-  /* FAB */
+  /* FAB — layered tinted shadow (frontend-design) */
   fab: {
     position: 'absolute',
     right: 20, bottom: 100,
@@ -429,7 +473,7 @@ const s = StyleSheet.create({
     backgroundColor: P,
     alignItems: 'center', justifyContent: 'center',
     ...(Platform.OS === 'web'
-      ? { boxShadow: '0 12px 32px rgba(3,105,161,0.35)' } as any
-      : { shadowColor: P, shadowOpacity: 0.35, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 10 }),
+      ? ({ boxShadow: `0 4px 8px ${hexA(P, 0.18)}, 0 14px 36px ${hexA(P, 0.40)}` } as any)
+      : { shadowColor: P, shadowOpacity: 0.40, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 10 }),
   },
 });

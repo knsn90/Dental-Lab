@@ -22,7 +22,8 @@ export default function DoctorLayout() {
   const [newOrderOpen, setNewOrderOpen] = useState(false);
 
   const DOCTOR_NAV = [
-    { label: 'İşlerim',      emoji: '📋', href: '/(doctor)',            iconName: 'file-text',   iconSet: 'mdi' as const },
+    { label: 'Dashboard',    emoji: '📊', href: '/(doctor)',            iconName: 'grid',        iconSet: 'mdi' as const },
+    { label: 'Siparişlerim', emoji: '📋', href: '/(doctor)/orders',    iconName: 'file-text',   iconSet: 'mdi' as const },
     { label: 'Yeni İş Emri', emoji: '➕', href: '/(doctor)/new-order', iconName: 'plus-circle', iconSet: 'mdi' as const, subtitle: 'Formu adım adım doldurun' },
     { label: 'Profil',       emoji: '👤', href: '/(doctor)/profile',   iconName: 'user',        iconSet: 'mdi' as const },
   ];
@@ -42,7 +43,7 @@ export default function DoctorLayout() {
       <Tabs
         screenOptions={{
           headerShown: false,
-          tabBarActiveTintColor: Colors.primary,
+          tabBarActiveTintColor: DOCTOR_ACCENT,
           tabBarInactiveTintColor: Colors.textSecondary,
           tabBarStyle: {
             backgroundColor: Colors.surface,
@@ -56,7 +57,14 @@ export default function DoctorLayout() {
         <Tabs.Screen
           name="index"
           options={{
-            title: 'İşlerim',
+            title: 'Dashboard',
+            tabBarIcon: ({ focused }) => <TabIcon emoji="📊" focused={focused} />,
+          }}
+        />
+        <Tabs.Screen
+          name="orders"
+          options={{
+            title: 'Siparişlerim',
             tabBarIcon: ({ focused }) => <TabIcon emoji="📋" focused={focused} />,
           }}
         />
