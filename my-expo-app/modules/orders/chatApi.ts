@@ -41,6 +41,12 @@ export interface OrderChatInboxItem {
   status:        string;
   is_urgent:     boolean;
   doctor_name:   string | null;
+  // ── Sticky pin info (chat detail başlığı altında gösterilir) ──────
+  tooth_numbers: number[] | null;
+  shade:         string | null;
+  machine_type:  string | null;
+  delivery_date: string | null;
+  notes:         string | null;
   /** Son mesajın gövdesi (yoksa null) */
   last_content:      string | null;
   last_attachment_type: AttachmentType | null;
@@ -85,7 +91,7 @@ export async function fetchOrderChatInbox(currentUserId: string): Promise<{
   //    gördüğü için bu iş emirlerine de erişimi olmalı)
   const { data: orders, error: ordErr } = await supabase
     .from('work_orders')
-    .select('id, order_number, work_type, patient_name, doctor_id, status, is_urgent')
+    .select('id, order_number, work_type, patient_name, doctor_id, status, is_urgent, tooth_numbers, shade, machine_type, delivery_date, notes')
     .in('id', orderIds);
   if (ordErr) return { data: null, error: ordErr };
 
@@ -115,6 +121,11 @@ export async function fetchOrderChatInbox(currentUserId: string): Promise<{
       status:        o.status,
       is_urgent:     !!o.is_urgent,
       doctor_name:   doctorName.get(o.doctor_id) ?? null,
+      tooth_numbers: o.tooth_numbers ?? null,
+      shade:         o.shade ?? null,
+      machine_type:  o.machine_type ?? null,
+      delivery_date: o.delivery_date ?? null,
+      notes:         o.notes ?? null,
       last_content:     last?.content ?? null,
       last_attachment_type: last?.attachment_type ?? null,
       last_created_at:  last?.created_at ?? null,

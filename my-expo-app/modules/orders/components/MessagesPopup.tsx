@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TextInput,
-  TouchableOpacity, Animated, Modal,
+  TouchableOpacity, Animated, Easing, Modal,
   FlatList, ScrollView, useWindowDimensions, Platform,
   Image, ActivityIndicator, KeyboardAvoidingView, Pressable,
 } from 'react-native';
@@ -24,7 +24,8 @@ const SUBTLE  = '#94A3B8';
 type IconName =
   | 'x' | 'search' | 'send' | 'paperclip' | 'smile' | 'mic'
   | 'message-circle' | 'video' | 'phone' | 'more-vertical'
-  | 'image' | 'file' | 'arrow-left' | 'check' | 'check-check';
+  | 'image' | 'file' | 'arrow-left' | 'check' | 'check-check'
+  | 'pin' | 'calendar' | 'tooth' | 'palette' | 'cog';
 function Icon({ name, size = 18, color = TEXT, strokeWidth = 1.8 }: {
   name: IconName; size?: number; color?: string; strokeWidth?: number;
 }) {
@@ -45,6 +46,11 @@ function Icon({ name, size = 18, color = TEXT, strokeWidth = 1.8 }: {
     case 'arrow-left':     return <Svg width={size} height={size} viewBox="0 0 24 24"><Line x1="19" y1="12" x2="5" y2="12" {...p}/><Polyline points="12 19 5 12 12 5" {...p}/></Svg>;
     case 'check':          return <Svg width={size} height={size} viewBox="0 0 24 24"><Polyline points="20 6 9 17 4 12" {...p}/></Svg>;
     case 'check-check':    return <Svg width={size} height={size} viewBox="0 0 24 24"><Polyline points="18 6 7 17 2 12" {...p}/><Polyline points="22 10 13 19" {...p}/></Svg>;
+    case 'pin':            return <Svg width={size} height={size} viewBox="0 0 24 24"><Line x1="12" y1="17" x2="12" y2="22" {...p}/><Path d="M5 17h14l-2-9V4H7v4l-2 9z" {...p}/></Svg>;
+    case 'calendar':       return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M19 4H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z" {...p}/><Line x1="16" y1="2" x2="16" y2="6" {...p}/><Line x1="8" y1="2" x2="8" y2="6" {...p}/><Line x1="3" y1="10" x2="21" y2="10" {...p}/></Svg>;
+    case 'tooth':          return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M7 3c-2 0-3 1.5-3 4 0 2 .8 3.4 1.2 5.5.4 2 .3 4 .8 6 .5 1.7 1.5 3.5 2.6 3.5 1.2 0 1.4-2 1.6-3.6.2-1.5.5-3 1.8-3s1.6 1.5 1.8 3c.2 1.6.4 3.6 1.6 3.6 1.1 0 2.1-1.8 2.6-3.5.5-2 .4-4 .8-6C18.2 10.4 19 9 19 7c0-2.5-1-4-3-4-1.6 0-2.6 1-4 1s-2.4-1-4-1z" {...p}/></Svg>;
+    case 'palette':        return <Svg width={size} height={size} viewBox="0 0 24 24"><Circle cx="13.5" cy="6.5" r="0.5" {...p} fill={color} /><Circle cx="17.5" cy="10.5" r="0.5" {...p} fill={color} /><Circle cx="8.5" cy="7.5" r="0.5" {...p} fill={color} /><Circle cx="6.5" cy="12.5" r="0.5" {...p} fill={color} /><Path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8z" {...p}/></Svg>;
+    case 'cog':            return <Svg width={size} height={size} viewBox="0 0 24 24"><Circle cx="12" cy="12" r="3" {...p}/><Path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" {...p}/></Svg>;
     default: return null;
   }
 }
@@ -87,6 +93,12 @@ function formatTime(ts?: string | null): string {
 function formatTimeFull(ts: string): string {
   const d = new Date(ts);
   return d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatDateShort(ts?: string | null): string {
+  if (!ts) return '';
+  const d = new Date(ts);
+  return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' });
 }
 
 function lastPreview(item: any, currentUserId: string | null): string {
@@ -327,9 +339,19 @@ function ChatDetail({ selectedOrder, accentColor, currentUserId, onBack }: ChatD
     );
   }
 
-  const title = selectedOrder.work_type || 'İş emri';
-  const avatarBg = colorFor(selectedOrder.work_order_id);
-  const statusCfg = STATUS_CONFIG[selectedOrder.status as WorkOrderStatus];
+  const patientName = selectedOrder.patient_name || 'Hasta belirtilmemiş';
+  const workType    = selectedOrder.work_type || 'İş emri';
+  const avatarBg    = colorFor(selectedOrder.work_order_id);
+  const statusCfg   = STATUS_CONFIG[selectedOrder.status as WorkOrderStatus];
+
+  // Pinned summary chips (sadece dolu olanlar gösterilir)
+  const teethStr = Array.isArray(selectedOrder.tooth_numbers) && selectedOrder.tooth_numbers.length > 0
+    ? selectedOrder.tooth_numbers.join(', ')
+    : null;
+  const hasPinDetails =
+    !!teethStr || !!selectedOrder.shade ||
+    !!selectedOrder.machine_type || !!selectedOrder.delivery_date ||
+    !!selectedOrder.notes;
 
   const handleSend = async () => {
     if (!text.trim() || !currentUserId) return;
@@ -348,20 +370,65 @@ function ChatDetail({ selectedOrder, accentColor, currentUserId, onBack }: ChatD
           </TouchableOpacity>
         )}
         <View style={[cd.headerAvatar, { backgroundColor: avatarBg }]}>
-          <Text style={cd.headerAvatarText}>{initials(title)}</Text>
+          <Text style={cd.headerAvatarText}>{initials(patientName)}</Text>
           {statusCfg && (
             <View style={[cd.headerStatusDot, { backgroundColor: statusCfg.color }]} />
           )}
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={cd.headerTitle} numberOfLines={1}>{title}</Text>
+          <Text style={cd.headerTitle} numberOfLines={1}>
+            {patientName}
+            {selectedOrder.is_urgent && <Text style={cd.headerUrgent}>  · ACİL</Text>}
+          </Text>
           <Text style={cd.headerSub} numberOfLines={1}>
             #{selectedOrder.order_number}
-            {selectedOrder.patient_name ? ` · ${selectedOrder.patient_name}` : ''}
             {selectedOrder.doctor_name ? ` · ${selectedOrder.doctor_name}` : ''}
+            {statusCfg ? ` · ${statusCfg.label}` : ''}
           </Text>
         </View>
       </View>
+
+      {/* Pinned summary — iş açıklaması ve özet (WhatsApp pin tarzı) */}
+      {(workType || hasPinDetails) && (
+        <View style={[cd.pinWrap, { borderLeftColor: accentColor }]}>
+          <View style={cd.pinTopRow}>
+            <Icon name="pin" size={12} color={accentColor} strokeWidth={2.2} />
+            <Text style={[cd.pinLabel, { color: accentColor }]}>SABİTLENDİ · İş Özeti</Text>
+          </View>
+          <Text style={cd.pinTitle} numberOfLines={2}>{workType}</Text>
+          {hasPinDetails && (
+            <View style={cd.pinChipsRow}>
+              {teethStr && (
+                <View style={cd.pinChip}>
+                  <Icon name="tooth" size={11} color={MUTED} strokeWidth={2} />
+                  <Text style={cd.pinChipText}>{teethStr}</Text>
+                </View>
+              )}
+              {selectedOrder.shade && (
+                <View style={cd.pinChip}>
+                  <Icon name="palette" size={11} color={MUTED} strokeWidth={2} />
+                  <Text style={cd.pinChipText}>{selectedOrder.shade}</Text>
+                </View>
+              )}
+              {selectedOrder.machine_type && (
+                <View style={cd.pinChip}>
+                  <Icon name="cog" size={11} color={MUTED} strokeWidth={2} />
+                  <Text style={cd.pinChipText}>{selectedOrder.machine_type}</Text>
+                </View>
+              )}
+              {selectedOrder.delivery_date && (
+                <View style={cd.pinChip}>
+                  <Icon name="calendar" size={11} color={MUTED} strokeWidth={2} />
+                  <Text style={cd.pinChipText}>{formatDateShort(selectedOrder.delivery_date)}</Text>
+                </View>
+              )}
+            </View>
+          )}
+          {selectedOrder.notes && (
+            <Text style={cd.pinNote} numberOfLines={2}>“{selectedOrder.notes}”</Text>
+          )}
+        </View>
+      )}
 
       {/* Messages */}
       <ScrollView
@@ -447,8 +514,31 @@ const cd = StyleSheet.create({
   headerAvatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', position: 'relative' },
   headerAvatarText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
   headerStatusDot: { position: 'absolute', right: -1, bottom: -1, width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: SURFACE },
-  headerTitle: { fontSize: 14, fontWeight: '800', color: TEXT },
+  headerTitle: { fontSize: 15, fontWeight: '800', color: TEXT, letterSpacing: -0.2 },
   headerSub:   { fontSize: 11, color: MUTED, marginTop: 2 },
+  headerUrgent:{ fontSize: 10, fontWeight: '800', color: '#EF4444', letterSpacing: 0.4 },
+
+  // ── Pinned summary card ──────────────────────────────────────────
+  pinWrap: {
+    backgroundColor: SURFACE,
+    borderBottomWidth: 1, borderBottomColor: BORDER,
+    borderLeftWidth: 3,
+    paddingHorizontal: 14, paddingTop: 10, paddingBottom: 11,
+    gap: 6,
+  },
+  pinTopRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  pinLabel:  { fontSize: 9.5, fontWeight: '800', letterSpacing: 0.6 },
+  pinTitle:  { fontSize: 13, fontWeight: '700', color: TEXT, letterSpacing: -0.1, lineHeight: 18 },
+  pinChipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 },
+  pinChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: BG_SOFT,
+    paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1, borderColor: BORDER,
+  },
+  pinChipText: { fontSize: 10.5, fontWeight: '600', color: MUTED, letterSpacing: -0.05 },
+  pinNote:   { fontSize: 11, color: MUTED, fontStyle: 'italic', marginTop: 2 },
 
   messages: { flex: 1 },
   loadingBox: { padding: 40, alignItems: 'center' },
@@ -491,27 +581,43 @@ export function MessagesPopup({ visible, onClose, accentColor }: MessagesPopupPr
   const [selected, setSelected] = useState<any | null>(null);
   const [mounted,  setMounted]  = useState(visible);
 
-  // Entry / exit animations
-  const opacity = useRef(new Animated.Value(0)).current;
-  const scale   = useRef(new Animated.Value(0.92)).current;
-  const translateY = useRef(new Animated.Value(20)).current;
+  // Entry / exit animations — tek bir progress değeri üzerinden
+  // interpolate edilen opacity / scale / translateY kullanıyoruz.
+  // Bu, üç ayrı animasyonun zamanlama farkından doğan "kayma" hissini
+  // ortadan kaldırır ve hareketin tamamen senkron akmasını sağlar.
+  const progress = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (visible) {
+      // Önce mount et, sonra bir frame sonra animasyonu başlat
+      // (böylece ilk render initial state ile basılır, sonra
+      // smooth bir geçiş oynanır)
       setMounted(true);
-      Animated.parallel([
-        Animated.timing(opacity,    { toValue: 1, duration: 220, useNativeDriver: true }),
-        Animated.spring(scale,      { toValue: 1, damping: 18, stiffness: 240, useNativeDriver: true }),
-        Animated.spring(translateY, { toValue: 0, damping: 18, stiffness: 240, useNativeDriver: true }),
-      ]).start();
+      const id = requestAnimationFrame(() => {
+        Animated.timing(progress, {
+          toValue: 1,
+          duration: 260,
+          easing: Easing.bezier(0.16, 1, 0.3, 1), // smooth ease-out
+          useNativeDriver: true,
+        }).start();
+      });
+      return () => cancelAnimationFrame(id);
     } else if (mounted) {
-      Animated.parallel([
-        Animated.timing(opacity,    { toValue: 0,    duration: 180, useNativeDriver: true }),
-        Animated.timing(scale,      { toValue: 0.95, duration: 180, useNativeDriver: true }),
-        Animated.timing(translateY, { toValue: 12,   duration: 180, useNativeDriver: true }),
-      ]).start(({ finished }) => { if (finished) setMounted(false); });
+      Animated.timing(progress, {
+        toValue: 0,
+        duration: 180,
+        easing: Easing.bezier(0.4, 0, 1, 1), // hızlı ease-in
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (finished) setMounted(false);
+      });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
+
+  const opacity    = progress;
+  const scale      = progress.interpolate({ inputRange: [0, 1], outputRange: [0.97, 1] });
+  const translateY = progress.interpolate({ inputRange: [0, 1], outputRange: [10, 0] });
 
   // Auto-select first chat on desktop when inbox loads
   useEffect(() => {
