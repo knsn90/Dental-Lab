@@ -344,6 +344,31 @@ function AudioPlayer({ url, isMine, accentColor }: { url: string; isMine: boolea
   );
 }
 
+// ── Recording Wave (animated bars during live recording) ─────────────
+function RecordingWave({ color = '#EF4444' }: { color?: string }) {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => (t + 1) % 20), 90);
+    return () => clearInterval(id);
+  }, []);
+  const BASE = [0.3, 0.7, 1.0, 0.5, 0.8, 0.4, 0.9, 0.6, 0.4, 0.7, 0.9, 0.5, 0.3, 0.8, 0.6, 1.0, 0.5, 0.7, 0.4, 0.8];
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2.5, flex: 1, height: 26 }}>
+      {Array.from({ length: 20 }, (_, i) => {
+        const h = BASE[((tick + i * 3) % BASE.length)];
+        return (
+          <View key={i} style={{
+            width: 2.5, borderRadius: 1.5,
+            height: 4 + h * 18,
+            backgroundColor: color,
+            opacity: 0.85,
+          }} />
+        );
+      })}
+    </View>
+  );
+}
+
 // ── Message Bubble ───────────────────────────────────────────────────
 function MessageBubble({ msg, isMine, accentColor, showAvatar, senderColor }: {
   msg: any; isMine: boolean; accentColor: string; showAvatar: boolean; senderColor: string;
@@ -458,20 +483,28 @@ function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerType, onB
   const chat = useChatMessages(selectedOrder?.work_order_id ?? '');
   const workOrderId = selectedOrder?.work_order_id ?? '';
 
-  // ── Attachment & voice recording state (web) ────────────────────
+  // ── Attachment state ─────────────────────────────────────────────
   const [attachOpen, setAttachOpen]       = useState(false);
   const [uploading, setUploading]         = useState(false);
   const [pendingFile, setPendingFile]     = useState<File | null>(null);
   const [pendingCaption, setPendingCaption] = useState('');
-  const [isRecording, setIsRecording]     = useState(false);
-  const [recSeconds, setRecSeconds]       = useState(0);
 
-  const imageInputRef = useRef<any>(null);
-  const scanInputRef  = useRef<any>(null);
-  const fileInputRef  = useRef<any>(null);
-  const recorderRef   = useRef<any>(null);
-  const chunksRef     = useRef<Blob[]>([]);
-  const recTimerRef   = useRef<any>(null);
+  // ── Voice recording — state machine: idle → recording → recorded ─
+  type VoiceMode = 'idle' | 'recording' | 'recorded';
+  const [voiceMode, setVoiceMode]           = useState<VoiceMode>('idle');
+  const [recSeconds, setRecSeconds]         = useState(0);
+  const [recordedBlob, setRecordedBlob]     = useState<Blob | null>(null);
+  const [recordedUrl, setRecordedUrl]       = useState<string | null>(null);
+  const [recordedDuration, setRecordedDuration] = useState(0);
+
+  const imageInputRef   = useRef<any>(null);
+  const scanInputRef    = useRef<any>(null);
+  const fileInputRef    = useRef<any>(null);
+  const recorderRef     = useRef<any>(null);
+  const chunksRef       = useRef<Blob[]>([]);
+  const recTimerRef     = useRef<any>(null);
+  const recSecondsRef   = useRef(0);   // stable ref for onstop closure
+  const mimeTypeRef     = useRef('audio/webm');
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -480,12 +513,12 @@ function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerType, onB
     }
   }, [chat.messages.length]);
 
-  // Reset attachment state when switching chats
+  // Reset attachment + voice state when switching chats
   useEffect(() => {
     setAttachOpen(false);
     setPendingFile(null);
     setPendingCaption('');
-    if (isRecording) cancelRecording();
+    discardRecording();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workOrderId]);
 
@@ -561,49 +594,74 @@ function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerType, onB
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg';
+      mimeTypeRef.current = mimeType;
       const recorder = new MediaRecorder(stream, { mimeType });
       chunksRef.current = [];
       recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-      recorder.onstop = async () => {
+      recorder.onstop = () => {
         stream.getTracks().forEach((t) => t.stop());
-        if (!currentUserId || !workOrderId) return;
-        const blob = new Blob(chunksRef.current, { type: mimeType });
-        const ext  = mimeType.includes('webm') ? 'webm' : 'ogg';
-        setUploading(true);
-        const { url, error } = await uploadChatAttachment(blob, workOrderId, `voice_${Date.now()}.${ext}`);
-        if (!error && url) {
-          await chat.sendWithAttachment(currentUserId, '', {
-            url, type: 'audio', name: 'Sesli Mesaj', size: blob.size,
-          });
-        }
-        setUploading(false);
+        const blob = new Blob(chunksRef.current, { type: mimeTypeRef.current });
+        const url  = URL.createObjectURL(blob);
+        setRecordedBlob(blob);
+        setRecordedUrl(url);
+        setRecordedDuration(recSecondsRef.current);
+        setVoiceMode('recorded');
       };
       recorder.start();
       recorderRef.current = recorder;
-      setIsRecording(true);
+      recSecondsRef.current = 0;
       setRecSeconds(0);
-      recTimerRef.current = setInterval(() => setRecSeconds((s) => s + 1), 1000);
+      setVoiceMode('recording');
+      recTimerRef.current = setInterval(() => {
+        recSecondsRef.current += 1;
+        setRecSeconds((s) => s + 1);
+      }, 1000);
     } catch (err) {
       console.warn('[chat-popup] mic permission denied:', err);
     }
   }
 
+  // Stop recording — enters 'recorded' preview mode (no upload yet)
   function stopRecording() {
-    recorderRef.current?.stop();
     if (recTimerRef.current) clearInterval(recTimerRef.current);
-    setIsRecording(false);
-    setRecSeconds(0);
+    if (recorderRef.current) {
+      recorderRef.current.stop();
+      recorderRef.current = null;
+    }
+    // state is set by recorder.onstop above
   }
 
-  function cancelRecording() {
+  // Discard the recording entirely — back to idle
+  function discardRecording() {
     if (recorderRef.current) {
       recorderRef.current.ondataavailable = null;
       recorderRef.current.onstop = null;
       try { recorderRef.current.stop(); } catch {}
+      recorderRef.current = null;
     }
     if (recTimerRef.current) clearInterval(recTimerRef.current);
-    setIsRecording(false);
+    if (recordedUrl) URL.revokeObjectURL(recordedUrl);
+    setRecordedBlob(null);
+    setRecordedUrl(null);
+    setRecordedDuration(0);
+    recSecondsRef.current = 0;
     setRecSeconds(0);
+    setVoiceMode('idle');
+  }
+
+  // Upload the recorded blob and send as audio message
+  async function sendRecorded() {
+    if (!recordedBlob || !currentUserId || !workOrderId) return;
+    const ext = mimeTypeRef.current.includes('webm') ? 'webm' : 'ogg';
+    setUploading(true);
+    const { url, error } = await uploadChatAttachment(recordedBlob, workOrderId, `voice_${Date.now()}.${ext}`);
+    if (!error && url) {
+      await chat.sendWithAttachment(currentUserId, '', {
+        url, type: 'audio', name: 'Sesli Mesaj', size: recordedBlob.size,
+      });
+    }
+    setUploading(false);
+    discardRecording();
   }
 
   const fmtSec = (s: number) =>
@@ -784,140 +842,177 @@ function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerType, onB
         </Modal>
       ) : null}
 
-      {/* Recording indicator (above composer, like ChatBox) */}
-      {isRecording && (
-        <View style={cd.recordBar}>
-          <View style={cd.recDot} />
-          <Text style={cd.recordText}>Kaydediliyor  {fmtSec(recSeconds)}</Text>
-          <TouchableOpacity onPress={cancelRecording} activeOpacity={0.7} style={cd.recCancelBtn}>
-            <Icon name="trash" size={14} color="#EF4444" strokeWidth={2.2} />
-            <Text style={cd.recCancelText}>İptal</Text>
+      {/* ── Voice: RECORDING state ───────────────────────────────── */}
+      {voiceMode === 'recording' && (
+        <View style={cd.voiceBar}>
+          {/* Cancel / discard */}
+          <TouchableOpacity onPress={discardRecording} activeOpacity={0.7} style={cd.voiceActionBtn}>
+            <Icon name="trash" size={20} color="#EF4444" strokeWidth={2} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={stopRecording} activeOpacity={0.7} style={cd.recStop}>
-            <Icon name="stop" size={14} color="#EF4444" strokeWidth={2.2} />
-            <Text style={cd.recStopText}>Durdur ve gönder</Text>
+
+          {/* Pulsing dot + timer + animated wave */}
+          <View style={cd.voiceWaveWrap}>
+            <View style={cd.recDot} />
+            <Text style={cd.voiceTimer}>{fmtSec(recSeconds)}</Text>
+            <RecordingWave color="#EF4444" />
+          </View>
+
+          {/* Stop → enters preview */}
+          <TouchableOpacity
+            onPress={stopRecording}
+            activeOpacity={0.85}
+            style={[cd.micBtn, { backgroundColor: '#EF4444' }]}
+          >
+            <Icon name="stop" size={16} color="#FFFFFF" strokeWidth={2} />
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Composer — flat, like ChatBox */}
-      <View style={cd.inputBar}>
-        {/* Attach menu — web only */}
-        {isWebPlatform ? (
-          <View style={{ position: 'relative' }}>
-            {attachOpen ? (
-              <>
-                {/* Backdrop */}
-                <Pressable style={cd.attachBackdrop} onPress={() => setAttachOpen(false)} />
-                {/* Menu — vertical stack of label + circle items */}
-                <View style={cd.attachMenu}>
-                  <TouchableOpacity
-                    style={cd.attachItem}
-                    onPress={() => { setAttachOpen(false); imageInputRef.current?.click(); }}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={cd.attachItemLabel}>Fotoğraf</Text>
-                    <View style={[cd.attachIconCircle, { backgroundColor: '#0F172A' }]}>
-                      <Icon name="image" size={20} color="#FFFFFF" strokeWidth={2} />
-                    </View>
-                  </TouchableOpacity>
+      {/* ── Voice: RECORDED / preview state ─────────────────────── */}
+      {voiceMode === 'recorded' && recordedUrl && (
+        <View style={cd.voiceBar}>
+          {/* Discard */}
+          <TouchableOpacity onPress={discardRecording} activeOpacity={0.7} style={cd.voiceActionBtn}>
+            <Icon name="trash" size={20} color="#EF4444" strokeWidth={2} />
+          </TouchableOpacity>
 
-                  <TouchableOpacity
-                    style={cd.attachItem}
-                    onPress={() => { setAttachOpen(false); scanInputRef.current?.click(); }}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={cd.attachItemLabel}>Dijital Tarama</Text>
-                    <View style={[cd.attachIconCircle, { backgroundColor: '#0891B2' }]}>
-                      <Icon name="scan" size={20} color="#FFFFFF" strokeWidth={2} />
-                    </View>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={cd.attachItem}
-                    onPress={() => { setAttachOpen(false); fileInputRef.current?.click(); }}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={cd.attachItemLabel}>Dosya</Text>
-                    <View style={[cd.attachIconCircle, { backgroundColor: '#7C3AED' }]}>
-                      <Icon name="file" size={20} color="#FFFFFF" strokeWidth={2} />
-                    </View>
-                  </TouchableOpacity>
-                </View>
-              </>
-            ) : null}
-
-            <TouchableOpacity
-              style={[cd.flatBtn, attachOpen && cd.flatBtnActive]}
-              onPress={() => setAttachOpen((v) => !v)}
-              disabled={uploading || chat.sending}
-              activeOpacity={0.7}
-            >
-              <Icon
-                name={attachOpen ? 'x' : 'paperclip'}
-                size={20}
-                color={attachOpen ? TEXT : SUBTLE}
-                strokeWidth={2}
-              />
-            </TouchableOpacity>
+          {/* AudioPlayer in preview mode */}
+          <View style={{ flex: 1, paddingHorizontal: 4 }}>
+            <AudioPlayer url={recordedUrl} isMine={false} accentColor={accentColor} />
           </View>
-        ) : null}
 
-        {/* Plain text input — Enter sends, Shift+Enter newline */}
-        <TextInput
-          style={cd.textInput}
-          value={text}
-          onChangeText={setText}
-          placeholder="Mesajınızı yazın..."
-          placeholderTextColor="#B0BAC9"
-          multiline
-          blurOnSubmit={false}
-          onKeyPress={(e: any) => {
-            if (Platform.OS === 'web' && e.nativeEvent?.key === 'Enter' && !e.nativeEvent?.shiftKey) {
-              e.preventDefault?.();
-              handleSend();
-            }
-          }}
-        />
-
-        {/* Primary action: text → send, empty → mic */}
-        {text.trim() ? (
+          {/* Send */}
           <TouchableOpacity
-            onPress={handleSend}
-            disabled={chat.sending || uploading}
+            onPress={sendRecorded}
+            disabled={uploading}
             activeOpacity={0.85}
-            style={[cd.micBtn, { backgroundColor: accentColor }]}
+            style={[cd.micBtn, { backgroundColor: accentColor, opacity: uploading ? 0.55 : 1 }]}
           >
-            {chat.sending || uploading
+            {uploading
               ? <ActivityIndicator color="#FFFFFF" size="small" />
               : <Icon name="send" size={18} color="#FFFFFF" strokeWidth={2.2} />}
           </TouchableOpacity>
-        ) : isWebPlatform ? (
-          <TouchableOpacity
-            onPress={startRecording}
-            disabled={uploading || chat.sending}
-            activeOpacity={0.85}
-            style={[cd.micBtn, { backgroundColor: accentColor }]}
-          >
-            <Icon name="mic" size={18} color="#FFFFFF" strokeWidth={2.2} />
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            onPress={handleSend}
-            disabled
-            activeOpacity={0.85}
-            style={[cd.micBtn, { backgroundColor: hexA(accentColor, 0.35) }]}
-          >
-            <Icon name="send" size={18} color="#FFFFFF" strokeWidth={2.2} />
-          </TouchableOpacity>
-        )}
-      </View>
+        </View>
+      )}
+
+      {/* ── Normal composer (idle) ────────────────────────────────── */}
+      {voiceMode === 'idle' && (
+        <View style={cd.inputBar}>
+          {/* Attach menu — web only */}
+          {isWebPlatform ? (
+            <View style={{ position: 'relative' }}>
+              {attachOpen ? (
+                <>
+                  <Pressable style={cd.attachBackdrop} onPress={() => setAttachOpen(false)} />
+                  <View style={cd.attachMenu}>
+                    <TouchableOpacity
+                      style={cd.attachItem}
+                      onPress={() => { setAttachOpen(false); imageInputRef.current?.click(); }}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={cd.attachItemLabel}>Fotoğraf</Text>
+                      <View style={[cd.attachIconCircle, { backgroundColor: '#0F172A' }]}>
+                        <Icon name="image" size={20} color="#FFFFFF" strokeWidth={2} />
+                      </View>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={cd.attachItem}
+                      onPress={() => { setAttachOpen(false); scanInputRef.current?.click(); }}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={cd.attachItemLabel}>Dijital Tarama</Text>
+                      <View style={[cd.attachIconCircle, { backgroundColor: '#0891B2' }]}>
+                        <Icon name="scan" size={20} color="#FFFFFF" strokeWidth={2} />
+                      </View>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={cd.attachItem}
+                      onPress={() => { setAttachOpen(false); fileInputRef.current?.click(); }}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={cd.attachItemLabel}>Dosya</Text>
+                      <View style={[cd.attachIconCircle, { backgroundColor: '#7C3AED' }]}>
+                        <Icon name="file" size={20} color="#FFFFFF" strokeWidth={2} />
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              ) : null}
+
+              <TouchableOpacity
+                style={[cd.flatBtn, attachOpen && cd.flatBtnActive]}
+                onPress={() => setAttachOpen((v) => !v)}
+                disabled={uploading || chat.sending}
+                activeOpacity={0.7}
+              >
+                <Icon
+                  name={attachOpen ? 'x' : 'paperclip'}
+                  size={20}
+                  color={attachOpen ? TEXT : SUBTLE}
+                  strokeWidth={2}
+                />
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
+          <TextInput
+            style={cd.textInput}
+            value={text}
+            onChangeText={setText}
+            placeholder="Mesajınızı yazın..."
+            placeholderTextColor="#B0BAC9"
+            multiline
+            blurOnSubmit={false}
+            onKeyPress={(e: any) => {
+              if (Platform.OS === 'web' && e.nativeEvent?.key === 'Enter' && !e.nativeEvent?.shiftKey) {
+                e.preventDefault?.();
+                handleSend();
+              }
+            }}
+          />
+
+          {/* Primary action: text → send, empty → mic */}
+          {text.trim() ? (
+            <TouchableOpacity
+              onPress={handleSend}
+              disabled={chat.sending || uploading}
+              activeOpacity={0.85}
+              style={[cd.micBtn, { backgroundColor: accentColor }]}
+            >
+              {chat.sending || uploading
+                ? <ActivityIndicator color="#FFFFFF" size="small" />
+                : <Icon name="send" size={18} color="#FFFFFF" strokeWidth={2.2} />}
+            </TouchableOpacity>
+          ) : isWebPlatform ? (
+            <TouchableOpacity
+              onPress={startRecording}
+              disabled={uploading || chat.sending}
+              activeOpacity={0.85}
+              style={[cd.micBtn, { backgroundColor: accentColor }]}
+            >
+              <Icon name="mic" size={18} color="#FFFFFF" strokeWidth={2.2} />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              onPress={handleSend}
+              disabled
+              activeOpacity={0.85}
+              style={[cd.micBtn, { backgroundColor: hexA(accentColor, 0.35) }]}
+            >
+              <Icon name="send" size={18} color="#FFFFFF" strokeWidth={2.2} />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
     </View>
   );
 }
+const GLASS_SURFACE  = Platform.OS === 'web' ? 'rgba(255,255,255,0.88)' : SURFACE;
+const GLASS_SOFT     = Platform.OS === 'web' ? 'rgba(247,249,251,0.82)' : BG_SOFT;
+
 const cd = StyleSheet.create({
-  wrap: { flex: 1, backgroundColor: BG_SOFT },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 10, backgroundColor: BG_SOFT },
+  wrap: { flex: 1, backgroundColor: GLASS_SOFT },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 10, backgroundColor: GLASS_SOFT },
   emptyIcon: { width: 72, height: 72, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   emptyTitle: { fontSize: 17, fontWeight: '800', color: TEXT, letterSpacing: -0.3 },
   emptySub:   { fontSize: 13, color: MUTED, textAlign: 'center', maxWidth: 320, lineHeight: 19 },
@@ -925,7 +1020,7 @@ const cd = StyleSheet.create({
   header: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingHorizontal: 16, paddingVertical: 12,
-    backgroundColor: SURFACE,
+    backgroundColor: GLASS_SURFACE,
     borderBottomWidth: 1, borderBottomColor: BORDER,
   },
   headerAvatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', position: 'relative' },
@@ -937,7 +1032,7 @@ const cd = StyleSheet.create({
 
   // ── Pinned summary card ──────────────────────────────────────────
   pinWrap: {
-    backgroundColor: SURFACE,
+    backgroundColor: GLASS_SURFACE,
     borderBottomWidth: 1, borderBottomColor: BORDER,
     borderLeftWidth: 3,
     paddingHorizontal: 14, paddingTop: 10, paddingBottom: 11,
@@ -966,7 +1061,7 @@ const cd = StyleSheet.create({
   inputBar: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 12, paddingVertical: 10,
-    backgroundColor: SURFACE,
+    backgroundColor: GLASS_SURFACE,
     borderTopWidth: 1, borderTopColor: BORDER,
   },
   flatBtn: {
@@ -1005,33 +1100,39 @@ const cd = StyleSheet.create({
   },
   sendBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
 
-  // ── Recording bar (above composer when recording) ────────────────
-  recordBar: {
+  // ── Voice bar — shared layout for recording + preview ────────────
+  voiceBar: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingHorizontal: 14, paddingVertical: 9,
-    backgroundColor: '#FFF5F5',
-    borderTopWidth: 1, borderTopColor: '#FCA5A5',
+    paddingHorizontal: 12, paddingVertical: 10,
+    backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.92)' : SURFACE,
+    borderTopWidth: 1, borderTopColor: BORDER,
+    minHeight: 64,
+  },
+  voiceActionBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(239,68,68,0.08)',
+  },
+  voiceWaveWrap: {
+    flex: 1,
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    overflow: 'hidden',
+  },
+  voiceTimer: {
+    fontSize: 13, fontWeight: '700', color: '#EF4444',
+    fontVariant: ['tabular-nums'], minWidth: 38,
   },
   recDot: {
     width: 9, height: 9, borderRadius: 5,
     backgroundColor: '#EF4444',
   },
-  recordText: {
-    flex: 1,
-    fontSize: 12.5, color: '#EF4444',
-    fontWeight: '600',
-    fontVariant: ['tabular-nums'],
-  },
-  recCancelBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 8, paddingVertical: 5,
-  },
-  recCancelText: { fontSize: 12, color: '#EF4444', fontWeight: '600' },
-  recStop: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 10, paddingVertical: 5,
-  },
-  recStopText: { fontSize: 12, color: '#EF4444', fontWeight: '700' },
+  // ── keep legacy aliases unused but present ───────────────────────
+  recordBar:     { flexDirection: 'row', alignItems: 'center' },
+  recordText:    { flex: 1, fontSize: 12, color: '#EF4444' },
+  recCancelBtn:  { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  recCancelText: { fontSize: 12, color: '#EF4444' },
+  recStop:       { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  recStopText:   { fontSize: 12, color: '#EF4444' },
 
   // ── Attachment popup menu (label-pill + 52px icon-circle) ────────
   attachBackdrop: {
@@ -1432,14 +1533,18 @@ export function MessagesPopup({ visible, onClose, accentColor }: MessagesPopupPr
 }
 
 // ── Popup styles ─────────────────────────────────────────────────────
+const GLASS_PANEL = Platform.OS === 'web'
+  ? 'rgba(255,255,255,0.82)'
+  : SURFACE;
+
 const p = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(15,23,42,0.45)',
-    // NOT: backdrop-filter: blur, opacity transition'larında her frame
-    // yeniden raster ediliyordu ve paneli açıp kapatırken ciddi jank
-    // yaratıyordu. Statik bir overlay daha akıcı; isteyen daha
-    // koyu/açık opacity ile algıyı koruyabilir.
+    // Lighter: more app content bleeds through, amplifying the glass effect
+    backgroundColor: 'rgba(15,23,42,0.32)',
+    ...(Platform.OS === 'web'
+      ? ({ backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' } as any)
+      : {}),
   },
   centerWrap: {
     ...StyleSheet.absoluteFillObject,
@@ -1447,11 +1552,17 @@ const p = StyleSheet.create({
     padding: 16,
   },
   panel: {
-    backgroundColor: SURFACE,
+    backgroundColor: GLASS_PANEL,
     borderRadius: 20,
     overflow: 'hidden',
     ...(Platform.OS === 'web'
-      ? ({ boxShadow: '0 24px 64px rgba(15,23,42,0.18), 0 8px 20px rgba(15,23,42,0.08)' } as any)
+      ? ({
+          backdropFilter: 'blur(28px) saturate(180%)',
+          WebkitBackdropFilter: 'blur(28px) saturate(180%)',
+          boxShadow: '0 24px 64px rgba(15,23,42,0.22), 0 2px 0 rgba(255,255,255,0.6) inset',
+          borderWidth: 1,
+          borderColor: 'rgba(255,255,255,0.45)',
+        } as any)
       : { shadowColor: '#0F172A', shadowOpacity: 0.22, shadowRadius: 32, shadowOffset: { width: 0, height: 16 }, elevation: 24 }),
   },
   panelDesktop: {
@@ -1462,19 +1573,35 @@ const p = StyleSheet.create({
   },
 
   split: { flex: 1, flexDirection: 'row' },
-  left:  { width: 320, backgroundColor: SURFACE, borderRightWidth: 1, borderRightColor: BORDER },
-  right: { flex: 1, backgroundColor: BG_SOFT },
+  left:  {
+    width: 320,
+    backgroundColor: Platform.OS === 'web' ? 'rgba(248,250,252,0.82)' : SURFACE,
+    borderRightWidth: 1, borderRightColor: 'rgba(241,245,249,0.7)',
+  },
+  right: {
+    flex: 1,
+    backgroundColor: Platform.OS === 'web' ? 'rgba(247,249,251,0.70)' : BG_SOFT,
+  },
 
-  listHeader: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: BORDER },
+  listHeader: {
+    paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10,
+    borderBottomWidth: 1, borderBottomColor: 'rgba(241,245,249,0.8)',
+    backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.86)' : SURFACE,
+  },
   listTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
   listTitle:   { fontSize: 18, fontWeight: '800', color: TEXT, letterSpacing: -0.4 },
   totalBadge:  { minWidth: 22, height: 22, paddingHorizontal: 7, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   totalBadgeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
-  closeBtn:    { width: 30, height: 30, borderRadius: 15, backgroundColor: BG_SOFT, alignItems: 'center', justifyContent: 'center' },
+  closeBtn:    {
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: Platform.OS === 'web' ? 'rgba(241,245,249,0.8)' : BG_SOFT,
+    alignItems: 'center', justifyContent: 'center',
+  },
 
   searchBar: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: BG_SOFT, borderRadius: 10,
+    backgroundColor: Platform.OS === 'web' ? 'rgba(241,245,249,0.75)' : BG_SOFT,
+    borderRadius: 10,
     paddingHorizontal: 12, paddingVertical: 7,
   },
   searchInput: {
@@ -1482,7 +1609,7 @@ const p = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
   },
 
-  divider: { height: 1, backgroundColor: BORDER, marginLeft: 72 },
+  divider: { height: 1, backgroundColor: 'rgba(241,245,249,0.9)', marginLeft: 72 },
 
   emptyList: { padding: 40, alignItems: 'center' },
   emptyListText: { fontSize: 12, color: SUBTLE, textAlign: 'center' },
