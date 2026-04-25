@@ -133,11 +133,11 @@ function Hero({
           </View>
 
           <Text style={hero.title} numberOfLines={2}>
-            {order.work_type || 'İş türü belirtilmemiş'}
+            {order.patient_name || 'Hasta belirtilmemiş'}
           </Text>
 
-          {order.patient_name && (
-            <Text style={hero.patient}>{order.patient_name}</Text>
+          {order.work_type && (
+            <Text style={hero.patient}>{order.work_type}</Text>
           )}
 
           <View style={hero.metaRow}>
