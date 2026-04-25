@@ -344,6 +344,73 @@ function AudioPlayer({ url, isMine, accentColor }: { url: string; isMine: boolea
   );
 }
 
+// ── Image Lightbox ───────────────────────────────────────────────────
+function ImageLightbox({ url, onClose }: { url: string; onClose: () => void }) {
+  const { width, height } = useWindowDimensions();
+  return (
+    <Modal
+      transparent
+      visible
+      statusBarTranslucent
+      onRequestClose={onClose}
+      animationType="fade"
+    >
+      {/* Backdrop — tap to close */}
+      <Pressable
+        style={[lb.overlay, { width, height }]}
+        onPress={onClose}
+      >
+        {/* Image — stop-propagation so tapping the image itself does NOT close */}
+        <Pressable
+          onPress={(e) => e.stopPropagation()}
+          style={lb.imageWrap}
+        >
+          <Image
+            source={{ uri: url }}
+            style={{ width: width * 0.92, height: height * 0.76, maxWidth: 900 }}
+            resizeMode="contain"
+          />
+        </Pressable>
+
+        {/* Close button */}
+        <TouchableOpacity
+          onPress={onClose}
+          activeOpacity={0.75}
+          style={lb.closeBtn}
+        >
+          <Icon name="x" size={20} color="#FFFFFF" strokeWidth={2.5} />
+        </TouchableOpacity>
+      </Pressable>
+    </Modal>
+  );
+}
+const lb = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(7,10,18,0.92)',
+    alignItems: 'center', justifyContent: 'center',
+    ...(Platform.OS === 'web'
+      ? ({ backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' } as any)
+      : {}),
+  },
+  imageWrap: {
+    borderRadius: 14, overflow: 'hidden',
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 32px 80px rgba(0,0,0,0.55)' } as any)
+      : { shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 40, shadowOffset: { width: 0, height: 16 }, elevation: 30 }),
+  },
+  closeBtn: {
+    position: 'absolute', top: 20, right: 20,
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
+    ...(Platform.OS === 'web'
+      ? ({ backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } as any)
+      : {}),
+  },
+});
+
 // ── Recording Wave (animated bars during live recording) ─────────────
 function RecordingWave({ color = '#EF4444' }: { color?: string }) {
   const [tick, setTick] = useState(0);
@@ -370,8 +437,9 @@ function RecordingWave({ color = '#EF4444' }: { color?: string }) {
 }
 
 // ── Message Bubble ───────────────────────────────────────────────────
-function MessageBubble({ msg, isMine, accentColor, showAvatar, senderColor }: {
+function MessageBubble({ msg, isMine, accentColor, showAvatar, senderColor, onImagePress }: {
   msg: any; isMine: boolean; accentColor: string; showAvatar: boolean; senderColor: string;
+  onImagePress?: (url: string) => void;
 }) {
   const hasImage = msg.attachment_type === 'image' && msg.attachment_url;
   const hasFile  = msg.attachment_type === 'file'  && msg.attachment_url;
@@ -393,11 +461,21 @@ function MessageBubble({ msg, isMine, accentColor, showAvatar, senderColor }: {
           : mb.bubbleOther,
       ]}>
         {hasImage && (
-          <Image
-            source={{ uri: msg.attachment_url }}
-            style={mb.image}
-            resizeMode="cover"
-          />
+          <TouchableOpacity
+            onPress={() => onImagePress?.(msg.attachment_url)}
+            activeOpacity={0.9}
+            style={mb.imageTouchable}
+          >
+            <Image
+              source={{ uri: msg.attachment_url }}
+              style={mb.image}
+              resizeMode="cover"
+            />
+            {/* Magnify hint on web */}
+            <View style={mb.imageHint}>
+              <Icon name="search" size={14} color="#FFFFFF" strokeWidth={2.5} />
+            </View>
+          </TouchableOpacity>
         )}
         {hasFile && (
           <View style={mb.fileBlock}>
@@ -457,7 +535,19 @@ const mb = StyleSheet.create({
       ? ({ boxShadow: '0 2px 6px rgba(15,23,42,0.06)' } as any)
       : { shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } }),
   },
-  image:    { width: 220, height: 180, borderRadius: 12, marginTop: -2, marginHorizontal: -6 },
+  imageTouchable: {
+    position: 'relative',
+    marginTop: -2, marginHorizontal: -6,
+    borderRadius: 12, overflow: 'hidden',
+    ...(Platform.OS === 'web' ? ({ cursor: 'zoom-in' } as any) : {}),
+  },
+  image:    { width: 220, height: 180 },
+  imageHint: {
+    position: 'absolute', bottom: 7, right: 7,
+    width: 24, height: 24, borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.42)',
+    alignItems: 'center', justifyContent: 'center',
+  },
   fileBlock:{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 2 },
   audioBlock:{ flexDirection: 'row', alignItems: 'center', gap: 8 },
   fileName: { fontSize: 12, fontWeight: '700', color: TEXT },
@@ -482,6 +572,9 @@ function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerType, onB
   // useChatMessages expects a workOrderId — call with '' when no selection (hook will return empty)
   const chat = useChatMessages(selectedOrder?.work_order_id ?? '');
   const workOrderId = selectedOrder?.work_order_id ?? '';
+
+  // ── Image lightbox ──────────────────────────────────────────────
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
   // ── Attachment state ─────────────────────────────────────────────
   const [attachOpen, setAttachOpen]       = useState(false);
@@ -767,6 +860,7 @@ function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerType, onB
                 accentColor={accentColor}
                 showAvatar={showAvatar}
                 senderColor={senderColor}
+                onImagePress={setPreviewImageUrl}
               />
             );
           })
@@ -840,6 +934,11 @@ function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerType, onB
             </Pressable>
           </Pressable>
         </Modal>
+      ) : null}
+
+      {/* Image lightbox */}
+      {previewImageUrl ? (
+        <ImageLightbox url={previewImageUrl} onClose={() => setPreviewImageUrl(null)} />
       ) : null}
 
       {/* ── Voice: RECORDING state ───────────────────────────────── */}
