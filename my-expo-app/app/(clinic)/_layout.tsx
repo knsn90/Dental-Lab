@@ -25,7 +25,6 @@ export default function ClinicLayout() {
     { label: 'Dashboard',    emoji: '📊', href: '/(clinic)',           iconName: 'grid',           iconSet: 'mdi' as const },
     { label: 'Hekimler',     emoji: '🩺', href: '/(clinic)/doctors',   iconName: 'activity',       iconSet: 'mdi' as const },
     { label: 'Siparişler',   emoji: '📋', href: '/(clinic)/orders',    iconName: 'file-text',      iconSet: 'mdi' as const },
-    { label: 'Mesajlar',     emoji: '💬', href: '__messages__',       iconName: 'message-circle', iconSet: 'mdi' as const, onPress: () => setMessagesOpen(true) },
     { label: 'Yeni İş Emri', emoji: '➕', href: '/(clinic)/new-order', iconName: 'plus-circle',    iconSet: 'mdi' as const },
     { label: 'Profil',       emoji: '👤', href: '/(clinic)/profile',   iconName: 'user',           iconSet: 'mdi' as const },
   ];
@@ -38,7 +37,11 @@ export default function ClinicLayout() {
   if (isDesktop) {
     return (
       <>
-        <DesktopShell navItems={CLINIC_NAV} accentColor={CLINIC_ACCENT} />
+        <DesktopShell
+          navItems={CLINIC_NAV}
+          accentColor={CLINIC_ACCENT}
+          onPressMessages={() => setMessagesOpen(true)}
+        />
         <MessagesPopup
           visible={messagesOpen}
           onClose={() => setMessagesOpen(false)}

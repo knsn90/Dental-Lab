@@ -23,7 +23,6 @@ export default function DoctorLayout() {
   const DOCTOR_NAV = [
     { label: 'Dashboard',    emoji: '📊', href: '/(doctor)',            iconName: 'grid',           iconSet: 'mdi' as const },
     { label: 'Siparişlerim', emoji: '📋', href: '/(doctor)/orders',    iconName: 'file-text',      iconSet: 'mdi' as const },
-    { label: 'Mesajlar',     emoji: '💬', href: '__messages__',       iconName: 'message-circle', iconSet: 'mdi' as const, onPress: () => setMessagesOpen(true) },
     { label: 'Yeni İş Emri', emoji: '➕', href: '/(doctor)/new-order', iconName: 'plus-circle',    iconSet: 'mdi' as const, subtitle: 'Formu adım adım doldurun' },
     { label: 'Profil',       emoji: '👤', href: '/(doctor)/profile',   iconName: 'user',           iconSet: 'mdi' as const },
   ];
@@ -36,7 +35,11 @@ export default function DoctorLayout() {
   if (isDesktop) {
     return (
       <>
-        <DesktopShell navItems={DOCTOR_NAV} accentColor={DOCTOR_ACCENT} />
+        <DesktopShell
+          navItems={DOCTOR_NAV}
+          accentColor={DOCTOR_ACCENT}
+          onPressMessages={() => setMessagesOpen(true)}
+        />
         <MessagesPopup
           visible={messagesOpen}
           onClose={() => setMessagesOpen(false)}

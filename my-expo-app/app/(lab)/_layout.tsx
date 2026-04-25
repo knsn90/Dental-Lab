@@ -33,7 +33,6 @@ export default function LabLayout() {
 
     // ── İş Yönetimi ────────────────────────────────────────────────────────
     { label: 'Siparişler',   emoji: '📋', href: '/(lab)/all-orders',   iconName: 'clipboard',      iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'İş Yönetimi' },
-    { label: 'Mesajlar',     emoji: '💬', href: '__messages__',       iconName: 'message-circle', iconSet: 'mdi' as const, onPress: () => setMessagesOpen(true) },
     { label: 'Yeni İş Emri', emoji: '➕', href: '/(lab)/new-order',   iconName: 'plus-circle',    iconSet: 'mdi' as const },
     { label: 'Onaylar',      emoji: '✅', href: '/(lab)/approvals',   iconName: 'check-circle',   iconSet: 'mdi' as const, badge: pendingCount > 0, matchPrefix: true },
 
@@ -67,7 +66,11 @@ export default function LabLayout() {
   if (isDesktop) {
     return (
       <>
-        <DesktopShell navItems={LAB_NAV} accentColor={Colors.primary} />
+        <DesktopShell
+          navItems={LAB_NAV}
+          accentColor={Colors.primary}
+          onPressMessages={() => setMessagesOpen(true)}
+        />
         <MessagesPopup
           visible={messagesOpen}
           onClose={() => setMessagesOpen(false)}

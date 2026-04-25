@@ -33,7 +33,6 @@ export default function AdminLayout() {
 
     // ── İş Yönetimi ────────────────────────────────────────────────────────
     { label: 'Siparişler',   emoji: '📋', href: '/(admin)/orders',       iconName: 'clipboard',      iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'İş Yönetimi' },
-    { label: 'Mesajlar',     emoji: '💬', href: '__messages__',        iconName: 'message-circle', iconSet: 'mdi' as const, onPress: () => setMessagesOpen(true) },
     { label: 'Yeni İş Emri', emoji: '➕', href: '/(admin)/new-order',   iconName: 'plus-circle',    iconSet: 'mdi' as const },
     { label: 'Onaylar',      emoji: '✅', href: '/(admin)/approvals',   iconName: 'check-circle',   iconSet: 'mdi' as const, badge: pendingCount > 0, matchPrefix: true },
 
@@ -66,7 +65,11 @@ export default function AdminLayout() {
   if (isDesktop) {
     return (
       <>
-        <DesktopShell navItems={ADMIN_NAV} accentColor="#0F172A" />
+        <DesktopShell
+          navItems={ADMIN_NAV}
+          accentColor="#0F172A"
+          onPressMessages={() => setMessagesOpen(true)}
+        />
         <MessagesPopup
           visible={messagesOpen}
           onClose={() => setMessagesOpen(false)}

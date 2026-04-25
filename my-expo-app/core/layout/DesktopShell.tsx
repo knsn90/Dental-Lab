@@ -66,6 +66,11 @@ export interface NavItem {
 interface Props {
   navItems: NavItem[];
   accentColor?: string;
+  /** Header'daki mesaj ikonuna basıldığında çağrılır (popup vs için).
+   *  Verilmezse mesaj ikonu gösterilmez. */
+  onPressMessages?: () => void;
+  /** Mesaj ikonunun üzerinde okunmamış sayısı / kırmızı dot göstermek için */
+  messagesUnreadCount?: number;
 }
 
 function getInitials(name?: string | null) {
@@ -536,7 +541,7 @@ const gs = StyleSheet.create({
 });
 
 // ─── Shell ────────────────────────────────────────────────────────────────────
-export function DesktopShell({ navItems, accentColor = C.primary }: Props) {
+export function DesktopShell({ navItems, accentColor = C.primary, onPressMessages, messagesUnreadCount = 0 }: Props) {
   const router   = useRouter();
   const pathname = usePathname();
   const { profile, signOut } = useAuthStore();
@@ -663,6 +668,27 @@ export function DesktopShell({ navItems, accentColor = C.primary }: Props) {
               {/* Notification red dot */}
               <View style={s.notifDot} />
             </TouchableOpacity>
+
+            {/* Mesajlar — popup tetikleyici */}
+            {onPressMessages && (
+              <TouchableOpacity
+                style={[s.headerIcon, hovered === '__msg' && { backgroundColor: C.navHover }]}
+                onPress={onPressMessages}
+                // @ts-ignore
+                onMouseEnter={() => setHovered('__msg')}
+                onMouseLeave={() => setHovered(null)}
+                accessibilityLabel="Mesajlar"
+              >
+                <Feather name="message-circle" size={18} color={hovered === '__msg' ? accentColor : C.textSecondary} />
+                {messagesUnreadCount > 0 && (
+                  <View style={[s.msgBadge, { backgroundColor: accentColor }]}>
+                    <Text style={s.msgBadgeText}>
+                      {messagesUnreadCount > 99 ? '99+' : messagesUnreadCount}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            )}
 
             <View style={s.headerDivider} />
 
@@ -934,6 +960,25 @@ const s = StyleSheet.create({
     backgroundColor: '#FF3B30',
     borderWidth: 2,
     borderColor: '#FFFFFF',
+  },
+  msgBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+  },
+  msgBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '800',
+    lineHeight: 11,
   },
   headerDivider: {
     width: 1,
