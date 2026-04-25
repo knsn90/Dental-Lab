@@ -41,6 +41,7 @@ export interface OrderChatInboxItem {
   status:        string;
   is_urgent:     boolean;
   doctor_name:   string | null;
+  clinic_name:   string | null;
   // ── Sticky pin info (chat detail başlığı altında gösterilir) ──────
   tooth_numbers: number[] | null;
   shade:         string | null;
@@ -95,14 +96,38 @@ export async function fetchOrderChatInbox(currentUserId: string): Promise<{
     .in('id', orderIds);
   if (ordErr) return { data: null, error: ordErr };
 
-  // 3) İlgili hekim profilleri (sipariş sahibi)
+  // 3) İlgili hekimler (polymorphic: profiles veya doctors tablosu)
+  //    + bağlı oldukları klinik adı
   const doctorIds = Array.from(new Set((orders ?? []).map(o => o.doctor_id))).filter(Boolean);
-  const { data: doctors } = await supabase
-    .from('profiles')
-    .select('id, full_name')
-    .in('id', doctorIds);
   const doctorName = new Map<string, string>();
-  (doctors ?? []).forEach((d: any) => doctorName.set(d.id, d.full_name));
+  const clinicName = new Map<string, string>();
+
+  if (doctorIds.length > 0) {
+    // 3a) profiles üzerinden (kendi user account'u olan hekimler)
+    const { data: profDocs } = await supabase
+      .from('profiles')
+      .select('id, full_name, clinic_name')
+      .in('id', doctorIds);
+    const matchedProfileIds = new Set<string>();
+    (profDocs ?? []).forEach((p: any) => {
+      matchedProfileIds.add(p.id);
+      if (p.full_name)   doctorName.set(p.id, p.full_name);
+      if (p.clinic_name) clinicName.set(p.id, p.clinic_name);
+    });
+
+    // 3b) Profile'da bulunmayan id'ler için doctors tablosu (klinik içi hekim)
+    const remaining = doctorIds.filter((id) => !matchedProfileIds.has(id));
+    if (remaining.length > 0) {
+      const { data: tableDocs } = await supabase
+        .from('doctors')
+        .select('id, full_name, clinic:clinics(name)')
+        .in('id', remaining);
+      (tableDocs ?? []).forEach((d: any) => {
+        if (d.full_name)    doctorName.set(d.id, d.full_name);
+        if (d.clinic?.name) clinicName.set(d.id, d.clinic.name);
+      });
+    }
+  }
 
   // 4) Inbox items
   const items: OrderChatInboxItem[] = (orders ?? []).map((o: any) => {
@@ -121,6 +146,7 @@ export async function fetchOrderChatInbox(currentUserId: string): Promise<{
       status:        o.status,
       is_urgent:     !!o.is_urgent,
       doctor_name:   doctorName.get(o.doctor_id) ?? null,
+      clinic_name:   clinicName.get(o.doctor_id) ?? null,
       tooth_numbers: o.tooth_numbers ?? null,
       shade:         o.shade ?? null,
       machine_type:  o.machine_type ?? null,

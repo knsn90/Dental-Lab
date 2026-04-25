@@ -170,9 +170,18 @@ interface ChatListItemProps {
   onPress: () => void;
 }
 function ChatListItem({ item, selected, currentUserId, accentColor, onPress }: ChatListItemProps) {
-  const title      = item.work_type || 'İş emri';
+  // Title — hasta adı (yoksa iş tipi, en sonda sipariş #)
+  const title      = item.patient_name || item.work_type || `#${item.order_number}`;
   const avatarBg   = colorFor(item.work_order_id);
   const statusCfg  = STATUS_CONFIG[item.status as WorkOrderStatus];
+
+  // Meta — klinik · hekim (yoksa fallback)
+  const metaParts: string[] = [];
+  if (item.clinic_name) metaParts.push(item.clinic_name);
+  if (item.doctor_name) metaParts.push(item.doctor_name);
+  const metaLine = metaParts.length > 0
+    ? metaParts.join(' · ')
+    : `#${item.order_number}`;
 
   return (
     <TouchableOpacity
@@ -202,7 +211,7 @@ function ChatListItem({ item, selected, currentUserId, accentColor, onPress }: C
           {lastPreview(item, currentUserId)}
         </Text>
         <Text style={cl.meta} numberOfLines={1}>
-          #{item.order_number}{item.patient_name ? ` · ${item.patient_name}` : ''}
+          {metaLine}
         </Text>
       </View>
     </TouchableOpacity>
