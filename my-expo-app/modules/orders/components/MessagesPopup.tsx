@@ -1106,12 +1106,9 @@ function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerType, onB
     </View>
   );
 }
-const GLASS_SURFACE  = Platform.OS === 'web' ? 'rgba(255,255,255,0.88)' : SURFACE;
-const GLASS_SOFT     = Platform.OS === 'web' ? 'rgba(247,249,251,0.82)' : BG_SOFT;
-
 const cd = StyleSheet.create({
-  wrap: { flex: 1, backgroundColor: GLASS_SOFT },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 10, backgroundColor: GLASS_SOFT },
+  wrap: { flex: 1, backgroundColor: BG_SOFT },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 10, backgroundColor: BG_SOFT },
   emptyIcon: { width: 72, height: 72, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   emptyTitle: { fontSize: 17, fontWeight: '800', color: TEXT, letterSpacing: -0.3 },
   emptySub:   { fontSize: 13, color: MUTED, textAlign: 'center', maxWidth: 320, lineHeight: 19 },
@@ -1119,7 +1116,7 @@ const cd = StyleSheet.create({
   header: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingHorizontal: 16, paddingVertical: 12,
-    backgroundColor: GLASS_SURFACE,
+    backgroundColor: SURFACE,
     borderBottomWidth: 1, borderBottomColor: BORDER,
   },
   headerAvatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', position: 'relative' },
@@ -1131,7 +1128,7 @@ const cd = StyleSheet.create({
 
   // ── Pinned summary card ──────────────────────────────────────────
   pinWrap: {
-    backgroundColor: GLASS_SURFACE,
+    backgroundColor: SURFACE,
     borderBottomWidth: 1, borderBottomColor: BORDER,
     borderLeftWidth: 3,
     paddingHorizontal: 14, paddingTop: 10, paddingBottom: 11,
@@ -1160,7 +1157,7 @@ const cd = StyleSheet.create({
   inputBar: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 12, paddingVertical: 10,
-    backgroundColor: GLASS_SURFACE,
+    backgroundColor: SURFACE,
     borderTopWidth: 1, borderTopColor: BORDER,
   },
   flatBtn: {
@@ -1203,7 +1200,7 @@ const cd = StyleSheet.create({
   voiceBar: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     paddingHorizontal: 12, paddingVertical: 10,
-    backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.92)' : SURFACE,
+    backgroundColor: SURFACE,
     borderTopWidth: 1, borderTopColor: BORDER,
     minHeight: 64,
   },
@@ -1632,17 +1629,24 @@ export function MessagesPopup({ visible, onClose, accentColor }: MessagesPopupPr
 }
 
 // ── Popup styles ─────────────────────────────────────────────────────
-const GLASS_PANEL = Platform.OS === 'web'
-  ? 'rgba(255,255,255,0.82)'
-  : SURFACE;
-
+// Strateji: blur SADECE backdrop'ta (tek GPU katmanı).
+// Panel semi-transparan beyaz → blur'lu bg şeffaf gösterir = buzlu cam.
+// İç elemanlar (header, liste, composer) tamamen opak = okunabilir + hızlı.
 const p = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    // Lighter: more app content bleeds through, amplifying the glass effect
-    backgroundColor: 'rgba(15,23,42,0.32)',
+    // Daha açık overlay → uygulama içeriği daha fazla görünür,
+    // blur efekti daha belirgin olur.
+    backgroundColor: 'rgba(15,23,42,0.28)',
     ...(Platform.OS === 'web'
-      ? ({ backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' } as any)
+      ? ({
+          // Tek backdrop-filter → tek GPU katmanı → performans sorunu yok.
+          // Opacity animasyonu ile birlikte modern tarayıcılar GPU'da
+          // compositor thread'de çalıştırır.
+          backdropFilter: 'blur(22px)',
+          WebkitBackdropFilter: 'blur(22px)',
+          willChange: 'opacity',
+        } as any)
       : {}),
   },
   centerWrap: {
@@ -1651,16 +1655,16 @@ const p = StyleSheet.create({
     padding: 16,
   },
   panel: {
-    backgroundColor: GLASS_PANEL,
+    // Semi-transparan beyaz → altındaki blur'lu backdrop görünür = buzlu cam.
+    // Panel kendisi BLUR UYGULAMAZ — iç içe blur yok, performans sorunsuz.
+    backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.88)' : SURFACE,
     borderRadius: 20,
     overflow: 'hidden',
     ...(Platform.OS === 'web'
       ? ({
-          backdropFilter: 'blur(28px) saturate(180%)',
-          WebkitBackdropFilter: 'blur(28px) saturate(180%)',
-          boxShadow: '0 24px 64px rgba(15,23,42,0.22), 0 2px 0 rgba(255,255,255,0.6) inset',
-          borderWidth: 1,
-          borderColor: 'rgba(255,255,255,0.45)',
+          boxShadow: '0 24px 64px rgba(15,23,42,0.22), 0 1px 0 rgba(255,255,255,0.7) inset',
+          // İnce beyaz kenarlık — glass efektini tamamlar
+          outline: '1px solid rgba(255,255,255,0.5)',
         } as any)
       : { shadowColor: '#0F172A', shadowOpacity: 0.22, shadowRadius: 32, shadowOffset: { width: 0, height: 16 }, elevation: 24 }),
   },
@@ -1671,36 +1675,25 @@ const p = StyleSheet.create({
     width: '100%', height: '92%',
   },
 
+  // İç elemanlar — tamamen opak (cam efekti yok, sadece panel'de)
   split: { flex: 1, flexDirection: 'row' },
-  left:  {
-    width: 320,
-    backgroundColor: Platform.OS === 'web' ? 'rgba(248,250,252,0.82)' : SURFACE,
-    borderRightWidth: 1, borderRightColor: 'rgba(241,245,249,0.7)',
-  },
-  right: {
-    flex: 1,
-    backgroundColor: Platform.OS === 'web' ? 'rgba(247,249,251,0.70)' : BG_SOFT,
-  },
+  left:  { width: 320, backgroundColor: SURFACE, borderRightWidth: 1, borderRightColor: BORDER },
+  right: { flex: 1, backgroundColor: BG_SOFT },
 
   listHeader: {
     paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10,
-    borderBottomWidth: 1, borderBottomColor: 'rgba(241,245,249,0.8)',
-    backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.86)' : SURFACE,
+    borderBottomWidth: 1, borderBottomColor: BORDER,
+    backgroundColor: SURFACE,
   },
   listTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
   listTitle:   { fontSize: 18, fontWeight: '800', color: TEXT, letterSpacing: -0.4 },
   totalBadge:  { minWidth: 22, height: 22, paddingHorizontal: 7, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   totalBadgeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
-  closeBtn:    {
-    width: 30, height: 30, borderRadius: 15,
-    backgroundColor: Platform.OS === 'web' ? 'rgba(241,245,249,0.8)' : BG_SOFT,
-    alignItems: 'center', justifyContent: 'center',
-  },
+  closeBtn:    { width: 30, height: 30, borderRadius: 15, backgroundColor: BG_SOFT, alignItems: 'center', justifyContent: 'center' },
 
   searchBar: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: Platform.OS === 'web' ? 'rgba(241,245,249,0.75)' : BG_SOFT,
-    borderRadius: 10,
+    backgroundColor: BG_SOFT, borderRadius: 10,
     paddingHorizontal: 12, paddingVertical: 7,
   },
   searchInput: {
@@ -1708,7 +1701,7 @@ const p = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
   },
 
-  divider: { height: 1, backgroundColor: 'rgba(241,245,249,0.9)', marginLeft: 72 },
+  divider: { height: 1, backgroundColor: BORDER, marginLeft: 72 },
 
   emptyList: { padding: 40, alignItems: 'center' },
   emptyListText: { fontSize: 12, color: SUBTLE, textAlign: 'center' },
