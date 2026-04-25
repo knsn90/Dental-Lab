@@ -589,44 +589,89 @@ export function MessagesPopup({ visible, onClose, accentColor }: MessagesPopupPr
   const [query,    setQuery]    = useState('');
   const [selected, setSelected] = useState<any | null>(null);
   const [mounted,  setMounted]  = useState(visible);
+  // "active" tek başına CSS transition'ı tetikler — mount'tan bir
+  // frame sonra true yapılır, böylece tarayıcı initial state'i basıp
+  // sonra GPU-accelerated geçişi oynar.
+  const [active, setActive] = useState(false);
 
-  // Entry / exit animations — tek bir progress değeri üzerinden
-  // interpolate edilen opacity / scale / translateY kullanıyoruz.
-  // Bu, üç ayrı animasyonun zamanlama farkından doğan "kayma" hissini
-  // ortadan kaldırır ve hareketin tamamen senkron akmasını sağlar.
+  // ── Native (iOS/Android) için Animated, web için CSS transitions ──
   const progress = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    let raf1: number | null = null;
+    let raf2: number | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
     if (visible) {
-      // Önce mount et, sonra bir frame sonra animasyonu başlat
-      // (böylece ilk render initial state ile basılır, sonra
-      // smooth bir geçiş oynanır)
       setMounted(true);
-      const id = requestAnimationFrame(() => {
-        Animated.timing(progress, {
-          toValue: 1,
-          duration: 260,
-          easing: Easing.bezier(0.16, 1, 0.3, 1), // smooth ease-out
-          useNativeDriver: true,
-        }).start();
+      // Çift rAF: ilk frame DOM'a basılır, ikinci frame'de active=true
+      // → tarayıcı transition'ı tetikler. Tek rAF bazı motorlarda
+      // ilk inline-style flush'tan önce çalışıp transition'ı kaçırıyordu.
+      raf1 = requestAnimationFrame(() => {
+        raf2 = requestAnimationFrame(() => {
+          setActive(true);
+          if (Platform.OS !== 'web') {
+            Animated.timing(progress, {
+              toValue: 1,
+              duration: 260,
+              easing: Easing.bezier(0.16, 1, 0.3, 1),
+              useNativeDriver: true,
+            }).start();
+          }
+        });
       });
-      return () => cancelAnimationFrame(id);
     } else if (mounted) {
-      Animated.timing(progress, {
-        toValue: 0,
-        duration: 180,
-        easing: Easing.bezier(0.4, 0, 1, 1), // hızlı ease-in
-        useNativeDriver: true,
-      }).start(({ finished }) => {
-        if (finished) setMounted(false);
-      });
+      setActive(false);
+      if (Platform.OS === 'web') {
+        timer = setTimeout(() => setMounted(false), 200);
+      } else {
+        Animated.timing(progress, {
+          toValue: 0,
+          duration: 180,
+          easing: Easing.bezier(0.4, 0, 1, 1),
+          useNativeDriver: true,
+        }).start(({ finished }) => {
+          if (finished) setMounted(false);
+        });
+      }
     }
+    return () => {
+      if (raf1 != null) cancelAnimationFrame(raf1);
+      if (raf2 != null) cancelAnimationFrame(raf2);
+      if (timer != null) clearTimeout(timer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
+  // Native interpolations
   const opacity    = progress;
-  const scale      = progress.interpolate({ inputRange: [0, 1], outputRange: [0.97, 1] });
-  const translateY = progress.interpolate({ inputRange: [0, 1], outputRange: [10, 0] });
+  const scale      = progress.interpolate({ inputRange: [0, 1], outputRange: [0.98, 1] });
+  const translateY = progress.interpolate({ inputRange: [0, 1], outputRange: [8, 0] });
+
+  // Web CSS transition stilleri — RN-web Animated.View bunları
+  // doğrudan inline style olarak DOM'a basar. Transform array'ini
+  // CSS transform string'ine çevirip transition ile yumuşatır.
+  const isWeb = Platform.OS === 'web';
+  const webBackdropStyle: any = isWeb ? {
+    opacity: active ? 1 : 0,
+    transitionProperty: 'opacity',
+    transitionDuration: '220ms',
+    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+    willChange: 'opacity',
+  } : null;
+  const webPanelStyle: any = isWeb ? {
+    opacity: active ? 1 : 0,
+    transform: [
+      { translateY: active ? 0 : 8 },
+      { scale:      active ? 1 : 0.985 },
+    ],
+    transitionProperty: 'opacity, transform',
+    transitionDuration: active ? '260ms, 260ms' : '180ms, 180ms',
+    transitionTimingFunction: active
+      ? 'cubic-bezier(0.16, 1, 0.3, 1)'
+      : 'cubic-bezier(0.4, 0, 1, 1)',
+    willChange: 'transform, opacity',
+    backfaceVisibility: 'hidden',
+  } : null;
 
   // Auto-select first chat on desktop when inbox loads
   useEffect(() => {
@@ -665,18 +710,31 @@ export function MessagesPopup({ visible, onClose, accentColor }: MessagesPopupPr
       onRequestClose={onClose}
       animationType="none"
     >
-      {/* Backdrop */}
-      <Animated.View style={[p.backdrop, { opacity }]}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-      </Animated.View>
+      {/* Backdrop — web'de plain View + CSS transition (GPU katmanı),
+          native'de Animated.View + opacity */}
+      {isWeb ? (
+        <View style={[p.backdrop, webBackdropStyle]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        </View>
+      ) : (
+        <Animated.View style={[p.backdrop, { opacity }]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        </Animated.View>
+      )}
 
       {/* Panel */}
       <View style={p.centerWrap} pointerEvents="box-none">
         <Animated.View
+          // Web'de Animated.View → RN-web View → div. Style objesi
+          // inline style olarak DOM'a basılır; transition/willChange
+          // doğrudan tarayıcıya gider. Native'de Animated zincirini
+          // kullanır. Tek bir wrapper, iki davranış.
           style={[
             p.panel,
             isDesktop ? p.panelDesktop : p.panelMobile,
-            { opacity, transform: [{ scale }, { translateY }] },
+            isWeb
+              ? webPanelStyle
+              : { opacity, transform: [{ scale }, { translateY }] },
           ]}
         >
           {/* Desktop: split pane */}
@@ -823,7 +881,10 @@ const p = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(15,23,42,0.45)',
-    ...(Platform.OS === 'web' ? ({ backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' } as any) : {}),
+    // NOT: backdrop-filter: blur, opacity transition'larında her frame
+    // yeniden raster ediliyordu ve paneli açıp kapatırken ciddi jank
+    // yaratıyordu. Statik bir overlay daha akıcı; isteyen daha
+    // koyu/açık opacity ile algıyı koruyabilir.
   },
   centerWrap: {
     ...StyleSheet.absoluteFillObject,
