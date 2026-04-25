@@ -9,8 +9,9 @@ import Svg, { Path, Circle, Line, Polyline } from 'react-native-svg';
 import { useAuthStore } from '../../../core/store/authStore';
 import { useOrderChatInbox } from '../hooks/useOrderChatInbox';
 import { useChatMessages } from '../hooks/useChatMessages';
+import { uploadChatAttachment } from '../chatApi';
 import { STATUS_CONFIG } from '../constants';
-import { WorkOrderStatus } from '../../../lib/types';
+import { UserType, WorkOrderStatus } from '../../../lib/types';
 
 // ── Design tokens ────────────────────────────────────────────────────
 const SURFACE = '#FFFFFF';
@@ -25,7 +26,8 @@ type IconName =
   | 'x' | 'search' | 'send' | 'paperclip' | 'smile' | 'mic'
   | 'message-circle' | 'video' | 'phone' | 'more-vertical'
   | 'image' | 'file' | 'arrow-left' | 'check' | 'check-check'
-  | 'pin' | 'calendar' | 'tooth' | 'palette' | 'cog';
+  | 'pin' | 'calendar' | 'tooth' | 'palette' | 'cog'
+  | 'play' | 'pause' | 'trash' | 'scan' | 'stop';
 function Icon({ name, size = 18, color = TEXT, strokeWidth = 1.8 }: {
   name: IconName; size?: number; color?: string; strokeWidth?: number;
 }) {
@@ -51,6 +53,11 @@ function Icon({ name, size = 18, color = TEXT, strokeWidth = 1.8 }: {
     case 'tooth':          return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M7 3c-2 0-3 1.5-3 4 0 2 .8 3.4 1.2 5.5.4 2 .3 4 .8 6 .5 1.7 1.5 3.5 2.6 3.5 1.2 0 1.4-2 1.6-3.6.2-1.5.5-3 1.8-3s1.6 1.5 1.8 3c.2 1.6.4 3.6 1.6 3.6 1.1 0 2.1-1.8 2.6-3.5.5-2 .4-4 .8-6C18.2 10.4 19 9 19 7c0-2.5-1-4-3-4-1.6 0-2.6 1-4 1s-2.4-1-4-1z" {...p}/></Svg>;
     case 'palette':        return <Svg width={size} height={size} viewBox="0 0 24 24"><Circle cx="13.5" cy="6.5" r="0.5" {...p} fill={color} /><Circle cx="17.5" cy="10.5" r="0.5" {...p} fill={color} /><Circle cx="8.5" cy="7.5" r="0.5" {...p} fill={color} /><Circle cx="6.5" cy="12.5" r="0.5" {...p} fill={color} /><Path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8z" {...p}/></Svg>;
     case 'cog':            return <Svg width={size} height={size} viewBox="0 0 24 24"><Circle cx="12" cy="12" r="3" {...p}/><Path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" {...p}/></Svg>;
+    case 'play':           return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M5 3l14 9-14 9V3z" {...p} fill={color}/></Svg>;
+    case 'pause':          return <Svg width={size} height={size} viewBox="0 0 24 24"><Line x1="6" y1="4" x2="6" y2="20" {...p} strokeWidth={3.5}/><Line x1="18" y1="4" x2="18" y2="20" {...p} strokeWidth={3.5}/></Svg>;
+    case 'trash':          return <Svg width={size} height={size} viewBox="0 0 24 24"><Polyline points="3 6 5 6 21 6" {...p}/><Path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" {...p}/></Svg>;
+    case 'scan':           return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2" {...p}/><Path d="M7 12h10M12 7v10" {...p}/></Svg>;
+    case 'stop':           return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M5 5h14v14H5z" {...p} fill={color} stroke={color}/></Svg>;
     default: return null;
   }
 }
@@ -111,6 +118,32 @@ function lastPreview(item: any, currentUserId: string | null): string {
   return `${prefix}${item.last_content ?? ''}`;
 }
 
+// İzleyenin user_type'ına göre title/alt-satır kompozisyonu:
+// • lab / admin → title: klinik · hekim, alt: "Hasta: ..."
+// • doctor / clinic_admin → title: "Hasta: ...", alt: klinik · hekim
+function composeChatLabels(item: {
+  patient_name?: string | null;
+  doctor_name?: string | null;
+  clinic_name?: string | null;
+  work_type?: string | null;
+  order_number: string;
+}, viewerType: UserType | null | undefined): { title: string; sub: string } {
+  const isLabSide = viewerType === 'lab' || viewerType === 'admin';
+  const clinicDoc = [item.clinic_name, item.doctor_name].filter(Boolean).join(' · ');
+  const patientLabel = item.patient_name ? `Hasta: ${item.patient_name}` : '';
+
+  if (isLabSide) {
+    return {
+      title: clinicDoc || item.work_type || `#${item.order_number}`,
+      sub:   patientLabel || `#${item.order_number}`,
+    };
+  }
+  return {
+    title: patientLabel || item.work_type || `#${item.order_number}`,
+    sub:   clinicDoc || `#${item.order_number}`,
+  };
+}
+
 // ── Avatar with unread badge overlay ─────────────────────────────────
 function Avatar({ name, color, unreadCount, size = 48, statusColor }: {
   name?: string | null; color: string; unreadCount?: number; size?: number; statusColor?: string;
@@ -166,22 +199,14 @@ interface ChatListItemProps {
   item: any;
   selected: boolean;
   currentUserId: string | null;
+  viewerType: UserType | null | undefined;
   accentColor: string;
   onPress: () => void;
 }
-function ChatListItem({ item, selected, currentUserId, accentColor, onPress }: ChatListItemProps) {
-  // Title — hasta adı (yoksa iş tipi, en sonda sipariş #)
-  const title      = item.patient_name || item.work_type || `#${item.order_number}`;
+function ChatListItem({ item, selected, currentUserId, viewerType, accentColor, onPress }: ChatListItemProps) {
+  const { title, sub: metaLine } = composeChatLabels(item, viewerType);
   const avatarBg   = colorFor(item.work_order_id);
   const statusCfg  = STATUS_CONFIG[item.status as WorkOrderStatus];
-
-  // Meta — klinik · hekim (yoksa fallback)
-  const metaParts: string[] = [];
-  if (item.clinic_name) metaParts.push(item.clinic_name);
-  if (item.doctor_name) metaParts.push(item.doctor_name);
-  const metaLine = metaParts.length > 0
-    ? metaParts.join(' · ')
-    : `#${item.order_number}`;
 
   return (
     <TouchableOpacity
@@ -227,6 +252,97 @@ const cl = StyleSheet.create({
   previewBold: { color: TEXT, fontWeight: '600' },
   meta:    { fontSize: 10, color: SUBTLE, fontWeight: '500' },
 });
+
+// ── Audio Player (web) ───────────────────────────────────────────────
+function AudioPlayer({ url, isMine, accentColor }: { url: string; isMine: boolean; accentColor: string }) {
+  const [playing, setPlaying]         = useState(false);
+  const [duration, setDuration]       = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const audioRef = useRef<any>(null);
+
+  // Stable pseudo-random waveform
+  const bars = useMemo(() => {
+    let h = 0;
+    for (let i = 0; i < url.length; i++) h = (h * 31 + url.charCodeAt(i)) & 0xffff;
+    return Array.from({ length: 28 }, () => {
+      h = (h * 1664525 + 1013904223) & 0xffff;
+      return 4 + (h % 18);
+    });
+  }, [url]);
+
+  const progress = duration > 0 ? currentTime / duration : 0;
+  const fmt = (s: number) => {
+    if (!isFinite(s)) return '00:00';
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  };
+
+  const toggle = () => {
+    const el = audioRef.current;
+    if (!el) return;
+    if (playing) { el.pause(); setPlaying(false); }
+    else         { el.play(); setPlaying(true); }
+  };
+
+  const playBg  = isMine ? 'rgba(255,255,255,0.22)' : accentColor;
+  const barOn   = isMine ? '#FFFFFF' : accentColor;
+  const barOff  = isMine ? 'rgba(255,255,255,0.35)' : '#CBD5E1';
+  const timeCol = isMine ? 'rgba(255,255,255,0.78)' : MUTED;
+
+  // Native fallback: just show a label
+  if (Platform.OS !== 'web') {
+    return (
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Icon name="mic" size={16} color={isMine ? '#FFFFFF' : accentColor} strokeWidth={2} />
+        <Text style={{ fontSize: 12, fontWeight: '700', color: isMine ? '#FFFFFF' : TEXT }}>
+          Sesli mesaj
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 2, minWidth: 200 }}>
+      {/* @ts-ignore web-only */}
+      <audio
+        ref={audioRef}
+        src={url}
+        onLoadedMetadata={(e: any) => setDuration(e.target.duration)}
+        onTimeUpdate={(e: any) => setCurrentTime(e.target.currentTime)}
+        onEnded={() => { setPlaying(false); setCurrentTime(0); }}
+        style={{ display: 'none' }}
+      />
+      <TouchableOpacity
+        onPress={toggle}
+        activeOpacity={0.7}
+        style={{
+          width: 30, height: 30, borderRadius: 15,
+          backgroundColor: playBg,
+          alignItems: 'center', justifyContent: 'center',
+        }}
+      >
+        <Icon name={playing ? 'pause' : 'play'} size={13} color="#FFFFFF" strokeWidth={2} />
+      </TouchableOpacity>
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, flex: 1, minHeight: 24 }}>
+        {bars.map((h, i) => (
+          <View
+            key={i}
+            style={{
+              width: 2.5, height: h, borderRadius: 1.5,
+              backgroundColor: (i / bars.length) < progress ? barOn : barOff,
+            }}
+          />
+        ))}
+      </View>
+
+      <Text style={{ fontSize: 10.5, fontWeight: '600', color: timeCol, minWidth: 32, textAlign: 'right' }}>
+        {duration > 0 ? fmt(playing ? currentTime : duration) : '--:--'}
+      </Text>
+    </View>
+  );
+}
 
 // ── Message Bubble ───────────────────────────────────────────────────
 function MessageBubble({ msg, isMine, accentColor, showAvatar, senderColor }: {
@@ -274,10 +390,7 @@ function MessageBubble({ msg, isMine, accentColor, showAvatar, senderColor }: {
           </View>
         )}
         {hasAudio && (
-          <View style={mb.audioBlock}>
-            <Icon name="mic" size={16} color={isMine ? '#FFFFFF' : accentColor} strokeWidth={2} />
-            <Text style={[mb.fileName, isMine && { color: '#FFFFFF' }]}>Sesli mesaj</Text>
-          </View>
+          <AudioPlayer url={msg.attachment_url} isMine={isMine} accentColor={accentColor} />
         )}
         {msg.content ? (
           <Text style={[mb.text, isMine && { color: '#FFFFFF' }]}>{msg.content}</Text>
@@ -295,22 +408,38 @@ function MessageBubble({ msg, isMine, accentColor, showAvatar, senderColor }: {
   );
 }
 const mb = StyleSheet.create({
-  row:      { flexDirection: 'row', alignItems: 'flex-end', gap: 6, marginVertical: 2, paddingHorizontal: 12 },
+  row:      { flexDirection: 'row', alignItems: 'flex-end', gap: 6, marginVertical: 3, paddingHorizontal: 12 },
   rowMine:  { justifyContent: 'flex-end' },
   rowOther: { justifyContent: 'flex-start' },
   avatar:   { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   avatarText:{ color: '#FFFFFF', fontSize: 10, fontWeight: '800' },
-  bubble:   { maxWidth: '75%', borderRadius: 16, paddingHorizontal: 12, paddingVertical: 8, gap: 4 },
-  bubbleMine:  { borderBottomRightRadius: 4 },
-  bubbleOther: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: BORDER, borderBottomLeftRadius: 4 },
-  image:    { width: 220, height: 180, borderRadius: 10, marginTop: -4, marginHorizontal: -4 },
+  bubble:   {
+    maxWidth: '78%',
+    borderRadius: 20,
+    paddingHorizontal: 14, paddingVertical: 10,
+    gap: 4,
+  },
+  bubbleMine: {
+    borderBottomRightRadius: 4,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 3px 10px rgba(15,23,42,0.14)' } as any)
+      : { shadowColor: '#0F172A', shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } }),
+  },
+  bubbleOther: {
+    backgroundColor: '#FFFFFF',
+    borderBottomLeftRadius: 4,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 2px 6px rgba(15,23,42,0.06)' } as any)
+      : { shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } }),
+  },
+  image:    { width: 220, height: 180, borderRadius: 12, marginTop: -2, marginHorizontal: -6 },
   fileBlock:{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 2 },
   audioBlock:{ flexDirection: 'row', alignItems: 'center', gap: 8 },
   fileName: { fontSize: 12, fontWeight: '700', color: TEXT },
   fileSize: { fontSize: 10, color: MUTED },
-  text:     { fontSize: 13, color: TEXT, lineHeight: 18 },
+  text:     { fontSize: 13, color: TEXT, lineHeight: 20 },
   bubbleFooter: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 4, marginTop: 2 },
-  time:     { fontSize: 9, color: SUBTLE, fontWeight: '600' },
+  time:     { fontSize: 9.5, color: SUBTLE, fontWeight: '600' },
 });
 
 // ── Chat Detail pane ─────────────────────────────────────────────────
@@ -318,14 +447,31 @@ interface ChatDetailProps {
   selectedOrder: any | null;
   accentColor: string;
   currentUserId: string | null;
+  viewerType: UserType | null | undefined;
   onBack?: () => void;
 }
-function ChatDetail({ selectedOrder, accentColor, currentUserId, onBack }: ChatDetailProps) {
+function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerType, onBack }: ChatDetailProps) {
   const scrollRef = useRef<ScrollView>(null);
   const [text, setText] = useState('');
 
   // useChatMessages expects a workOrderId — call with '' when no selection (hook will return empty)
   const chat = useChatMessages(selectedOrder?.work_order_id ?? '');
+  const workOrderId = selectedOrder?.work_order_id ?? '';
+
+  // ── Attachment & voice recording state (web) ────────────────────
+  const [attachOpen, setAttachOpen]       = useState(false);
+  const [uploading, setUploading]         = useState(false);
+  const [pendingFile, setPendingFile]     = useState<File | null>(null);
+  const [pendingCaption, setPendingCaption] = useState('');
+  const [isRecording, setIsRecording]     = useState(false);
+  const [recSeconds, setRecSeconds]       = useState(0);
+
+  const imageInputRef = useRef<any>(null);
+  const scanInputRef  = useRef<any>(null);
+  const fileInputRef  = useRef<any>(null);
+  const recorderRef   = useRef<any>(null);
+  const chunksRef     = useRef<Blob[]>([]);
+  const recTimerRef   = useRef<any>(null);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -333,6 +479,15 @@ function ChatDetail({ selectedOrder, accentColor, currentUserId, onBack }: ChatD
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
     }
   }, [chat.messages.length]);
+
+  // Reset attachment state when switching chats
+  useEffect(() => {
+    setAttachOpen(false);
+    setPendingFile(null);
+    setPendingCaption('');
+    if (isRecording) cancelRecording();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workOrderId]);
 
   if (!selectedOrder) {
     return (
@@ -348,7 +503,7 @@ function ChatDetail({ selectedOrder, accentColor, currentUserId, onBack }: ChatD
     );
   }
 
-  const patientName = selectedOrder.patient_name || 'Hasta belirtilmemiş';
+  const { title: headerTitle, sub: headerSub } = composeChatLabels(selectedOrder, viewerType);
   const workType    = selectedOrder.work_type || 'İş emri';
   const avatarBg    = colorFor(selectedOrder.work_order_id);
   const statusCfg   = STATUS_CONFIG[selectedOrder.status as WorkOrderStatus];
@@ -369,6 +524,93 @@ function ChatDetail({ selectedOrder, accentColor, currentUserId, onBack }: ChatD
     await chat.send(currentUserId, content);
   };
 
+  // ── File picker handlers ─────────────────────────────────────────
+  function handleFilePicked(e: any) {
+    const file: File | undefined = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setAttachOpen(false);
+    setPendingFile(file);
+    setPendingCaption('');
+  }
+
+  async function sendPendingFile() {
+    if (!pendingFile || !currentUserId || !workOrderId) return;
+    let type: 'image' | 'audio' | 'file' = 'file';
+    if (pendingFile.type.startsWith('image/'))      type = 'image';
+    else if (pendingFile.type.startsWith('audio/')) type = 'audio';
+
+    setUploading(true);
+    const { url, error } = await uploadChatAttachment(pendingFile, workOrderId, pendingFile.name);
+    if (error || !url) {
+      setUploading(false);
+      console.warn('[chat-popup] upload error:', error);
+      return;
+    }
+    await chat.sendWithAttachment(currentUserId, pendingCaption.trim(), {
+      url, type, name: pendingFile.name, size: pendingFile.size,
+    });
+    setUploading(false);
+    setPendingFile(null);
+    setPendingCaption('');
+  }
+
+  // ── Voice recording (web only via MediaRecorder) ─────────────────
+  async function startRecording() {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg';
+      const recorder = new MediaRecorder(stream, { mimeType });
+      chunksRef.current = [];
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        if (!currentUserId || !workOrderId) return;
+        const blob = new Blob(chunksRef.current, { type: mimeType });
+        const ext  = mimeType.includes('webm') ? 'webm' : 'ogg';
+        setUploading(true);
+        const { url, error } = await uploadChatAttachment(blob, workOrderId, `voice_${Date.now()}.${ext}`);
+        if (!error && url) {
+          await chat.sendWithAttachment(currentUserId, '', {
+            url, type: 'audio', name: 'Sesli Mesaj', size: blob.size,
+          });
+        }
+        setUploading(false);
+      };
+      recorder.start();
+      recorderRef.current = recorder;
+      setIsRecording(true);
+      setRecSeconds(0);
+      recTimerRef.current = setInterval(() => setRecSeconds((s) => s + 1), 1000);
+    } catch (err) {
+      console.warn('[chat-popup] mic permission denied:', err);
+    }
+  }
+
+  function stopRecording() {
+    recorderRef.current?.stop();
+    if (recTimerRef.current) clearInterval(recTimerRef.current);
+    setIsRecording(false);
+    setRecSeconds(0);
+  }
+
+  function cancelRecording() {
+    if (recorderRef.current) {
+      recorderRef.current.ondataavailable = null;
+      recorderRef.current.onstop = null;
+      try { recorderRef.current.stop(); } catch {}
+    }
+    if (recTimerRef.current) clearInterval(recTimerRef.current);
+    setIsRecording(false);
+    setRecSeconds(0);
+  }
+
+  const fmtSec = (s: number) =>
+    `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+
+  const isWebPlatform = Platform.OS === 'web';
+
   return (
     <View style={cd.wrap}>
       {/* Header */}
@@ -379,20 +621,19 @@ function ChatDetail({ selectedOrder, accentColor, currentUserId, onBack }: ChatD
           </TouchableOpacity>
         )}
         <View style={[cd.headerAvatar, { backgroundColor: avatarBg }]}>
-          <Text style={cd.headerAvatarText}>{initials(patientName)}</Text>
+          <Text style={cd.headerAvatarText}>{initials(headerTitle)}</Text>
           {statusCfg && (
             <View style={[cd.headerStatusDot, { backgroundColor: statusCfg.color }]} />
           )}
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={cd.headerTitle} numberOfLines={1}>
-            {patientName}
+            {headerTitle}
             {selectedOrder.is_urgent && <Text style={cd.headerUrgent}>  · ACİL</Text>}
           </Text>
           <Text style={cd.headerSub} numberOfLines={1}>
-            #{selectedOrder.order_number}
-            {selectedOrder.doctor_name ? ` · ${selectedOrder.doctor_name}` : ''}
-            {statusCfg ? ` · ${statusCfg.label}` : ''}
+            {headerSub}
+            {statusCfg ? `  ·  ${statusCfg.label}` : ''}
           </Text>
         </View>
       </View>
@@ -474,35 +715,202 @@ function ChatDetail({ selectedOrder, accentColor, currentUserId, onBack }: ChatD
         )}
       </ScrollView>
 
-      {/* Composer */}
-      <View style={cd.composer}>
-        <TouchableOpacity activeOpacity={0.7} style={cd.iconBtn}>
-          <Icon name="paperclip" size={18} color={MUTED} strokeWidth={2} />
-        </TouchableOpacity>
+      {/* Hidden file inputs (web only) */}
+      {isWebPlatform ? (
+        <>
+          {/* @ts-ignore web-only */}
+          <input ref={imageInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFilePicked} />
+          {/* @ts-ignore web-only */}
+          <input ref={scanInputRef}  type="file" accept=".stl,.ply,.obj,.step,.stp,.dcm" style={{ display: 'none' }} onChange={handleFilePicked} />
+          {/* @ts-ignore web-only */}
+          <input ref={fileInputRef}  type="file" style={{ display: 'none' }} onChange={handleFilePicked} />
+        </>
+      ) : null}
+
+      {/* Pending file preview modal */}
+      {pendingFile ? (
+        <Modal transparent animationType="fade" onRequestClose={() => setPendingFile(null)}>
+          <Pressable style={cd.previewOverlay} onPress={() => setPendingFile(null)}>
+            <Pressable style={cd.previewCard} onPress={(e) => e.stopPropagation()}>
+              <View style={cd.previewHeader}>
+                <Text style={cd.previewTitle}>Dosya Gönder</Text>
+                <TouchableOpacity onPress={() => setPendingFile(null)} activeOpacity={0.7}>
+                  <Icon name="x" size={18} color={MUTED} strokeWidth={2} />
+                </TouchableOpacity>
+              </View>
+              {pendingFile.type.startsWith('image/') ? (
+                <Image
+                  // @ts-ignore web blob URL
+                  source={{ uri: typeof URL !== 'undefined' ? URL.createObjectURL(pendingFile) : '' }}
+                  style={cd.previewImage}
+                  resizeMode="contain"
+                />
+              ) : (
+                <View style={cd.previewFileBox}>
+                  <Icon name="file" size={48} color={accentColor} strokeWidth={1.5} />
+                  <Text style={cd.previewFileName} numberOfLines={2}>{pendingFile.name}</Text>
+                  <Text style={cd.previewFileSize}>
+                    {pendingFile.size < 1024 * 1024
+                      ? `${(pendingFile.size / 1024).toFixed(1)} KB`
+                      : `${(pendingFile.size / (1024 * 1024)).toFixed(1)} MB`}
+                  </Text>
+                </View>
+              )}
+              <TextInput
+                style={cd.previewCaption}
+                placeholder="Başlık ekle (isteğe bağlı)..."
+                placeholderTextColor={SUBTLE}
+                value={pendingCaption}
+                onChangeText={setPendingCaption}
+              />
+              <View style={cd.previewActions}>
+                <TouchableOpacity style={cd.previewCancel} onPress={() => setPendingFile(null)} activeOpacity={0.7}>
+                  <Text style={cd.previewCancelText}>İptal</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[cd.previewSend, { backgroundColor: accentColor }, uploading && { opacity: 0.55 }]}
+                  onPress={sendPendingFile}
+                  disabled={uploading}
+                  activeOpacity={0.8}
+                >
+                  {uploading
+                    ? <ActivityIndicator color="#FFFFFF" size="small" />
+                    : <Icon name="send" size={14} color="#FFFFFF" strokeWidth={2.2} />}
+                  <Text style={cd.previewSendText}>{uploading ? 'Gönderiliyor...' : 'Gönder'}</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      ) : null}
+
+      {/* Recording indicator (above composer, like ChatBox) */}
+      {isRecording && (
+        <View style={cd.recordBar}>
+          <View style={cd.recDot} />
+          <Text style={cd.recordText}>Kaydediliyor  {fmtSec(recSeconds)}</Text>
+          <TouchableOpacity onPress={cancelRecording} activeOpacity={0.7} style={cd.recCancelBtn}>
+            <Icon name="trash" size={14} color="#EF4444" strokeWidth={2.2} />
+            <Text style={cd.recCancelText}>İptal</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={stopRecording} activeOpacity={0.7} style={cd.recStop}>
+            <Icon name="stop" size={14} color="#EF4444" strokeWidth={2.2} />
+            <Text style={cd.recStopText}>Durdur ve gönder</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Composer — flat, like ChatBox */}
+      <View style={cd.inputBar}>
+        {/* Attach menu — web only */}
+        {isWebPlatform ? (
+          <View style={{ position: 'relative' }}>
+            {attachOpen ? (
+              <>
+                {/* Backdrop */}
+                <Pressable style={cd.attachBackdrop} onPress={() => setAttachOpen(false)} />
+                {/* Menu — vertical stack of label + circle items */}
+                <View style={cd.attachMenu}>
+                  <TouchableOpacity
+                    style={cd.attachItem}
+                    onPress={() => { setAttachOpen(false); imageInputRef.current?.click(); }}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={cd.attachItemLabel}>Fotoğraf</Text>
+                    <View style={[cd.attachIconCircle, { backgroundColor: '#0F172A' }]}>
+                      <Icon name="image" size={20} color="#FFFFFF" strokeWidth={2} />
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={cd.attachItem}
+                    onPress={() => { setAttachOpen(false); scanInputRef.current?.click(); }}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={cd.attachItemLabel}>Dijital Tarama</Text>
+                    <View style={[cd.attachIconCircle, { backgroundColor: '#0891B2' }]}>
+                      <Icon name="scan" size={20} color="#FFFFFF" strokeWidth={2} />
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={cd.attachItem}
+                    onPress={() => { setAttachOpen(false); fileInputRef.current?.click(); }}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={cd.attachItemLabel}>Dosya</Text>
+                    <View style={[cd.attachIconCircle, { backgroundColor: '#7C3AED' }]}>
+                      <Icon name="file" size={20} color="#FFFFFF" strokeWidth={2} />
+                    </View>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : null}
+
+            <TouchableOpacity
+              style={[cd.flatBtn, attachOpen && cd.flatBtnActive]}
+              onPress={() => setAttachOpen((v) => !v)}
+              disabled={uploading || chat.sending}
+              activeOpacity={0.7}
+            >
+              <Icon
+                name={attachOpen ? 'x' : 'paperclip'}
+                size={20}
+                color={attachOpen ? TEXT : SUBTLE}
+                strokeWidth={2}
+              />
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
+        {/* Plain text input — Enter sends, Shift+Enter newline */}
         <TextInput
-          style={cd.input}
+          style={cd.textInput}
           value={text}
           onChangeText={setText}
-          placeholder="Mesaj yaz..."
-          placeholderTextColor={SUBTLE}
+          placeholder="Mesajınızı yazın..."
+          placeholderTextColor="#B0BAC9"
           multiline
-          onSubmitEditing={handleSend}
           blurOnSubmit={false}
+          onKeyPress={(e: any) => {
+            if (Platform.OS === 'web' && e.nativeEvent?.key === 'Enter' && !e.nativeEvent?.shiftKey) {
+              e.preventDefault?.();
+              handleSend();
+            }
+          }}
         />
-        <TouchableOpacity
-          onPress={handleSend}
-          disabled={!text.trim()}
-          activeOpacity={0.7}
-          style={[
-            cd.sendBtn,
-            { backgroundColor: text.trim() ? accentColor : hexA(accentColor, 0.25) },
-          ]}
-        >
-          {chat.sending
-            ? <ActivityIndicator color="#FFFFFF" size="small" />
-            : <Icon name="send" size={16} color="#FFFFFF" strokeWidth={2.2} />
-          }
-        </TouchableOpacity>
+
+        {/* Primary action: text → send, empty → mic */}
+        {text.trim() ? (
+          <TouchableOpacity
+            onPress={handleSend}
+            disabled={chat.sending || uploading}
+            activeOpacity={0.85}
+            style={[cd.micBtn, { backgroundColor: accentColor }]}
+          >
+            {chat.sending || uploading
+              ? <ActivityIndicator color="#FFFFFF" size="small" />
+              : <Icon name="send" size={18} color="#FFFFFF" strokeWidth={2.2} />}
+          </TouchableOpacity>
+        ) : isWebPlatform ? (
+          <TouchableOpacity
+            onPress={startRecording}
+            disabled={uploading || chat.sending}
+            activeOpacity={0.85}
+            style={[cd.micBtn, { backgroundColor: accentColor }]}
+          >
+            <Icon name="mic" size={18} color="#FFFFFF" strokeWidth={2.2} />
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            onPress={handleSend}
+            disabled
+            activeOpacity={0.85}
+            style={[cd.micBtn, { backgroundColor: hexA(accentColor, 0.35) }]}
+          >
+            <Icon name="send" size={18} color="#FFFFFF" strokeWidth={2.2} />
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -554,23 +962,166 @@ const cd = StyleSheet.create({
   noMsgs:   { padding: 40, alignItems: 'center' },
   noMsgsText: { fontSize: 13, color: SUBTLE, textAlign: 'center' },
 
-  composer: {
-    flexDirection: 'row', alignItems: 'flex-end', gap: 8,
+  // ── Composer (input bar) — flat & clean, ChatBox-aligned ─────────
+  inputBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 12, paddingVertical: 10,
     backgroundColor: SURFACE,
     borderTopWidth: 1, borderTopColor: BORDER,
   },
-  iconBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  input: {
+  flatBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  flatBtnActive: { backgroundColor: BG_SOFT },
+  textInput: {
     flex: 1,
-    backgroundColor: BG_SOFT,
-    borderRadius: 20,
-    paddingHorizontal: 14, paddingVertical: 10,
     fontSize: 13, color: TEXT,
-    maxHeight: 100,
+    maxHeight: 90,
+    paddingHorizontal: 4, paddingVertical: 6,
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
   },
-  sendBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  micBtn: {
+    width: 44, height: 44, borderRadius: 22,
+    alignItems: 'center', justifyContent: 'center',
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 4px 14px rgba(15,23,42,0.18)' } as any)
+      : { shadowColor: '#0F172A', shadowOpacity: 0.22, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } }),
+  },
+  // legacy keys (kept to satisfy any lingering refs)
+  iconBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  composer: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 12, paddingVertical: 10,
+    backgroundColor: SURFACE,
+    borderTopWidth: 1, borderTopColor: BORDER,
+  },
+  input: {
+    flex: 1,
+    fontSize: 13, color: TEXT,
+    maxHeight: 90,
+    paddingHorizontal: 4, paddingVertical: 6,
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
+  },
+  sendBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+
+  // ── Recording bar (above composer when recording) ────────────────
+  recordBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 14, paddingVertical: 9,
+    backgroundColor: '#FFF5F5',
+    borderTopWidth: 1, borderTopColor: '#FCA5A5',
+  },
+  recDot: {
+    width: 9, height: 9, borderRadius: 5,
+    backgroundColor: '#EF4444',
+  },
+  recordText: {
+    flex: 1,
+    fontSize: 12.5, color: '#EF4444',
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+  },
+  recCancelBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 8, paddingVertical: 5,
+  },
+  recCancelText: { fontSize: 12, color: '#EF4444', fontWeight: '600' },
+  recStop: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 10, paddingVertical: 5,
+  },
+  recStopText: { fontSize: 12, color: '#EF4444', fontWeight: '700' },
+
+  // ── Attachment popup menu (label-pill + 52px icon-circle) ────────
+  attachBackdrop: {
+    position: 'absolute',
+    top: -2000, left: -2000, right: -2000, bottom: -2000,
+    ...(Platform.OS === 'web' ? ({ cursor: 'default' } as any) : {}),
+    zIndex: 98,
+  },
+  attachMenu: {
+    position: 'absolute',
+    bottom: 46, left: 0,
+    flexDirection: 'column',
+    gap: 8,
+    zIndex: 99,
+  },
+  attachItem: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end',
+    gap: 10,
+  },
+  attachItemLabel: {
+    backgroundColor: '#1E293B', color: '#FFFFFF',
+    fontSize: 12, fontWeight: '600',
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 8, overflow: 'hidden',
+    ...(Platform.OS === 'web' ? ({ userSelect: 'none' } as any) : {}),
+  },
+  attachIconCircle: {
+    width: 52, height: 52, borderRadius: 26,
+    alignItems: 'center', justifyContent: 'center',
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 2px 10px rgba(0,0,0,0.18)' } as any)
+      : { shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 10, shadowOffset: { width: 0, height: 2 }, elevation: 6 }),
+  },
+
+  // ── File preview modal ───────────────────────────────────────────
+  previewOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center', justifyContent: 'center',
+    padding: 24,
+  },
+  previewCard: {
+    backgroundColor: SURFACE,
+    borderRadius: 20,
+    width: '100%', maxWidth: 420,
+    overflow: 'hidden',
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 24px 64px rgba(15,23,42,0.28)' } as any)
+      : { shadowColor: '#0F172A', shadowOpacity: 0.28, shadowRadius: 28, shadowOffset: { width: 0, height: 12 }, elevation: 18 }),
+  },
+  previewHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingVertical: 16,
+    borderBottomWidth: 1, borderBottomColor: BORDER,
+  },
+  previewTitle:  { fontSize: 16, fontWeight: '700', color: TEXT },
+  previewImage:  { width: '100%', height: 240, backgroundColor: '#F8FAFC' },
+  previewFileBox: {
+    alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 32, gap: 8,
+    backgroundColor: '#F8FAFC',
+  },
+  previewFileName: { fontSize: 14, fontWeight: '600', color: TEXT, textAlign: 'center', maxWidth: 280, paddingHorizontal: 12 },
+  previewFileSize: { fontSize: 12, color: SUBTLE },
+  previewCaption: {
+    fontSize: 14, color: TEXT,
+    paddingVertical: 8, paddingHorizontal: 12,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    borderWidth: 1, borderColor: BORDER,
+    marginHorizontal: 16, marginVertical: 12,
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
+  },
+  previewActions: {
+    flexDirection: 'row', gap: 10,
+    padding: 16,
+    justifyContent: 'flex-end',
+    borderTopWidth: 1, borderTopColor: BORDER,
+  },
+  previewCancel: {
+    paddingHorizontal: 18, paddingVertical: 10,
+    borderRadius: 10, backgroundColor: BG_SOFT,
+  },
+  previewCancelText: { fontSize: 14, fontWeight: '600', color: MUTED },
+  previewSend: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 20, paddingVertical: 10,
+    borderRadius: 10,
+  },
+  previewSendText: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
 });
 
 // ── Main Popup Component ─────────────────────────────────────────────
@@ -786,6 +1337,7 @@ export function MessagesPopup({ visible, onClose, accentColor }: MessagesPopupPr
                         item={item}
                         selected={selected?.work_order_id === item.work_order_id}
                         currentUserId={profile?.id ?? null}
+                        viewerType={profile?.user_type ?? null}
                         accentColor={accentColor}
                         onPress={() => setSelected(item)}
                       />
@@ -801,6 +1353,7 @@ export function MessagesPopup({ visible, onClose, accentColor }: MessagesPopupPr
                   selectedOrder={selected}
                   accentColor={accentColor}
                   currentUserId={profile?.id ?? null}
+                  viewerType={profile?.user_type ?? null}
                 />
               </View>
             </View>
@@ -852,6 +1405,7 @@ export function MessagesPopup({ visible, onClose, accentColor }: MessagesPopupPr
                           item={item}
                           selected={false}
                           currentUserId={profile?.id ?? null}
+                          viewerType={profile?.user_type ?? null}
                           accentColor={accentColor}
                           onPress={() => setSelected(item)}
                         />
@@ -865,6 +1419,7 @@ export function MessagesPopup({ visible, onClose, accentColor }: MessagesPopupPr
                   selectedOrder={selected}
                   accentColor={accentColor}
                   currentUserId={profile?.id ?? null}
+                  viewerType={profile?.user_type ?? null}
                   onBack={() => setSelected(null)}
                 />
               )}
