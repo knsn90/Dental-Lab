@@ -66,8 +66,8 @@ export const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
 };
 
 export const ACCOUNT_TYPE_ICONS: Record<AccountType, string> = {
-  kasa: 'safe',
-  banka: 'bank-outline',
+  kasa: 'archive',
+  banka: 'credit-card',
 };
 
 export const MOVEMENT_CATEGORY_LABELS: Record<MovementCategory, string> = {
@@ -81,13 +81,13 @@ export const MOVEMENT_CATEGORY_LABELS: Record<MovementCategory, string> = {
 };
 
 export const MOVEMENT_CATEGORY_ICONS: Record<MovementCategory, string> = {
-  tahsilat: 'cash-check',
-  odeme:    'cash-minus',
-  maas:     'account-cash-outline',
-  kira:     'home-city-outline',
-  malzeme:  'package-variant',
-  vergi:    'file-percent-outline',
-  diger:    'dots-horizontal',
+  tahsilat: 'check-circle',
+  odeme:    'minus-circle',
+  maas:     'user',
+  kira:     'home',
+  malzeme:  'package',
+  vergi:    'percent',
+  diger:    'more-horizontal',
 };
 
 // ─── API ──────────────────────────────────────────────────────────────────────

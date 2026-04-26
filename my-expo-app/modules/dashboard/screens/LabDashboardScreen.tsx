@@ -6,7 +6,6 @@ import {
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useAuthStore } from '../../../core/store/authStore';
 import { useTodayOrders } from '../../orders/hooks/useTodayOrders';
 import { isOrderOverdue } from '../../orders/constants';
@@ -76,7 +75,7 @@ function QuickAction({ icon, label, onPress, primary }: { icon: string; label: s
   return (
     <TouchableOpacity style={qa.card} onPress={onPress} activeOpacity={0.85}>
       <View style={[qa.iconCircle, primary && qa.iconCirclePrimary]}>
-        <MaterialCommunityIcons name={icon as any} size={22} color={primary ? '#FFFFFF' : P} />
+        <Feather name={icon as any} size={22} color={primary ? '#FFFFFF' : P} />
       </View>
       <Text style={qa.label}>{label}</Text>
     </TouchableOpacity>
@@ -111,7 +110,7 @@ function StatCard({ label, value, accent, delta, accentBar }: {
         <Text style={[sc.value, accent ? { color: accent } : null]}>{value}</Text>
         {delta && (
           <View style={sc.delta}>
-            <MaterialCommunityIcons name="arrow-up" size={10} color={P} />
+            <Feather name="arrow-up" size={10} color={P} />
             <Text style={sc.deltaText}>{delta}</Text>
           </View>
         )}
@@ -298,8 +297,8 @@ export function LabDashboardScreen() {
 
           {overdueOrders.length > 0 && (
             <View style={[s.alertCard, isDesktop && { width: 300 }]}>
-              <MaterialCommunityIcons
-                name="alert-outline"
+              <Feather
+                name="alert-triangle"
                 size={180}
                 color={CLR.red}
                 style={s.alertDecorIcon}
@@ -326,11 +325,11 @@ export function LabDashboardScreen() {
         {/* ── Quick Actions ─────────────────────────────────────── */}
         <SectionTitle text="Hızlı İşlemler" />
         <View style={s.quickRow}>
-          <QuickAction icon="plus"              label="Yeni İş"      primary onPress={() => router.push('/(lab)/new-order' as any)} />
-          <QuickAction icon="account-group-outline" label="Kullanıcılar"       onPress={() => router.push('/(lab)/approvals' as any)} />
-          <QuickAction icon="doctor"            label="Hekimler"             onPress={() => router.push('/(lab)/clinics' as any)} />
-          <QuickAction icon="receipt"           label="Siparişler"           onPress={() => router.push('/(lab)/all-orders' as any)} />
-          <QuickAction icon="account-circle-outline" label="Profil"          onPress={() => router.push('/(lab)/profile' as any)} />
+          <QuickAction icon="plus"       label="Yeni İş"      primary onPress={() => router.push('/(lab)/new-order' as any)} />
+          <QuickAction icon="users"      label="Kullanıcılar"       onPress={() => router.push('/(lab)/approvals' as any)} />
+          <QuickAction icon="user"       label="Hekimler"             onPress={() => router.push('/(lab)/clinics' as any)} />
+          <QuickAction icon="file-text"  label="Siparişler"           onPress={() => router.push('/(lab)/all-orders' as any)} />
+          <QuickAction icon="user"       label="Profil"          onPress={() => router.push('/(lab)/profile' as any)} />
         </View>
 
         {/* ── Genel Bakış + Sağ Kolon ───────────────────────────── */}

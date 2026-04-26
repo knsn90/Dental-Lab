@@ -1,6 +1,6 @@
 import React from 'react';
 import { Platform, View } from 'react-native';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import Feather from '@expo/vector-icons/Feather';
 
 interface DentistIconProps {
   size?: number;
@@ -9,7 +9,7 @@ interface DentistIconProps {
 
 /**
  * Custom dentist icon — doctor figure with medical cap + tooth.
- * Web: inline SVG  |  Native: MaterialCommunityIcons fallback
+ * Web: inline SVG  |  Native: Feather fallback
  */
 export function DentistIcon({ size = 24, color = '#000000' }: DentistIconProps) {
   if (Platform.OS === 'web') {
@@ -72,5 +72,5 @@ export function DentistIcon({ size = 24, color = '#000000' }: DentistIconProps) 
   }
 
   // Native fallback
-  return <MaterialCommunityIcons name="account-circle-outline" size={size} color={color} />;
+  return <Feather name="user" size={size} color={color} />;
 }

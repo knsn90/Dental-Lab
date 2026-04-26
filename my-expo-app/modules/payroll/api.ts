@@ -62,9 +62,9 @@ export interface PayrollItem {
 
 // ─── Config labels ────────────────────────────────────────────────────────────
 export const PAYROLL_STATUS_CFG: Record<PayrollStatus, { label: string; color: string; bg: string; icon: string }> = {
-  taslak:    { label: 'Taslak',    color: '#64748B', bg: '#F8FAFC', icon: 'file-outline'         },
-  onaylandi: { label: 'Onaylandı', color: '#2563EB', bg: '#EFF6FF', icon: 'check-circle-outline'  },
-  odendi:    { label: 'Ödendi',    color: '#059669', bg: '#ECFDF5', icon: 'cash-check'            },
+  taslak:    { label: 'Taslak',    color: '#64748B', bg: '#F8FAFC', icon: 'file'          },
+  onaylandi: { label: 'Onaylandı', color: '#2563EB', bg: '#EFF6FF', icon: 'check-circle'  },
+  odendi:    { label: 'Ödendi',    color: '#059669', bg: '#ECFDF5', icon: 'check-circle'  },
 };
 
 export const PAYROLL_ITEM_TYPE_CFG: Record<PayrollItemType, { label: string; color: string; sign: 1 | -1 }> = {

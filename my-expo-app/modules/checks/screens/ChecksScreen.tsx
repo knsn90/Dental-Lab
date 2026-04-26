@@ -4,7 +4,7 @@ import {
   TextInput, Modal, Alert, RefreshControl, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import Feather from '@expo/vector-icons/Feather';
 
 import { useChecks } from '../hooks/useChecks';
 import {
@@ -70,7 +70,7 @@ export function ChecksScreen() {
           <Text style={s.subtitle}>Bekleyen: {fmtMoney(totalPending)}</Text>
         </View>
         <TouchableOpacity style={s.addBtn} onPress={() => setAddOpen(true)} activeOpacity={0.85}>
-          <MaterialCommunityIcons name={'plus' as any} size={16} color="#fff" />
+          <Feather name={'plus' as any} size={16} color="#fff" />
           <Text style={s.addBtnText}>Çek Ekle</Text>
         </TouchableOpacity>
       </View>
@@ -102,7 +102,7 @@ export function ChecksScreen() {
       >
         {checks.length === 0 ? (
           <View style={s.empty}>
-            <MaterialCommunityIcons name={'file-document-remove-outline' as any} size={40} color="#CBD5E1" />
+            <Feather name={'file-minus' as any} size={40} color="#CBD5E1" />
             <Text style={s.emptyText}>Çek / senet kaydı yok</Text>
           </View>
         ) : (
@@ -135,7 +135,7 @@ function CheckCard({ check: ck, today, onStatusChange, onDelete }: {
       <View style={cc.top}>
         <View style={{ flex: 1, gap: 3 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <MaterialCommunityIcons name={'file-document-outline' as any} size={16} color={isOverdue ? '#EF4444' : '#64748B'} />
+            <Feather name={'file-text' as any} size={16} color={isOverdue ? '#EF4444' : '#64748B'} />
             <Text style={cc.amount}>{fmtMoney(Number(ck.amount))}</Text>
             <View style={[cc.badge, { backgroundColor: sc.bg }]}>
               <Text style={[cc.badgeText, { color: sc.fg }]}>{CHECK_STATUS_LABELS[ck.status]}</Text>
@@ -159,15 +159,15 @@ function CheckCard({ check: ck, today, onStatusChange, onDelete }: {
       {ck.status === 'beklemede' && (
         <View style={cc.actions}>
           <TouchableOpacity style={cc.actionBtn} onPress={() => onStatusChange('tahsil_edildi')} activeOpacity={0.8}>
-            <MaterialCommunityIcons name={'check-circle-outline' as any} size={14} color="#047857" />
+            <Feather name={'check-circle' as any} size={14} color="#047857" />
             <Text style={[cc.actionText, { color: '#047857' }]}>Tahsil Edildi</Text>
           </TouchableOpacity>
           <TouchableOpacity style={cc.actionBtn} onPress={() => onStatusChange('iade')} activeOpacity={0.8}>
-            <MaterialCommunityIcons name={'arrow-u-left-top' as any} size={14} color="#B45309" />
+            <Feather name={'corner-up-left' as any} size={14} color="#B45309" />
             <Text style={[cc.actionText, { color: '#B45309' }]}>İade</Text>
           </TouchableOpacity>
           <TouchableOpacity style={cc.actionBtn} onPress={onDelete} activeOpacity={0.8}>
-            <MaterialCommunityIcons name={'delete-outline' as any} size={14} color="#EF4444" />
+            <Feather name={'trash-2' as any} size={14} color="#EF4444" />
             <Text style={[cc.actionText, { color: '#EF4444' }]}>Sil</Text>
           </TouchableOpacity>
         </View>
@@ -221,7 +221,7 @@ function CheckFormModal({ visible, onClose, onSaved }: { visible: boolean; onClo
           <View style={mf.header}>
             <Text style={mf.title}>Çek / Senet Ekle</Text>
             <TouchableOpacity onPress={onClose} style={mf.closeBtn}>
-              <MaterialCommunityIcons name={'close' as any} size={20} color="#64748B" />
+              <Feather name={'x' as any} size={20} color="#64748B" />
             </TouchableOpacity>
           </View>
           <ScrollView contentContainerStyle={{ gap: 14, padding: 20 }} showsVerticalScrollIndicator={false}>

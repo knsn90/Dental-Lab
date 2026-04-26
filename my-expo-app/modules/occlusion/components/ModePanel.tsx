@@ -7,7 +7,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity,
   ScrollView, Platform, TextInput,
 } from 'react-native';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import Feather from '@expo/vector-icons/Feather';
 import { HeatmapLegend } from './HeatmapLegend';
 import type {
   Mode, HeatmapConfig, PaletteName, Severity,
@@ -98,7 +98,7 @@ export function ModePanel(p: Props) {
         <View style={s.badge}><Text style={s.badgeText}>{h.b}</Text></View>
         {p.isMobile && p.onClose && (
           <TouchableOpacity onPress={p.onClose} style={s.closeBtn} hitSlop={8}>
-            <MaterialCommunityIcons name="close" size={16} color="#64748B" />
+            <Feather name="x" size={16} color="#64748B" />
           </TouchableOpacity>
         )}
       </View>
@@ -202,7 +202,7 @@ function PenetrationControls({
             severityFilter[sev] && { backgroundColor: '#0F172A', borderColor: '#0F172A' },
           ]}>
             {severityFilter[sev] && (
-              <MaterialCommunityIcons name="check" size={12} color="#FFFFFF" />
+              <Feather name="check" size={12} color="#FFFFFF" />
             )}
           </View>
           <View style={[s.sevDot, { backgroundColor: sevColors[sev] }]} />
@@ -253,7 +253,7 @@ function MeasurementControls({
 
       {pendingPoint && (
         <TouchableOpacity style={s.btn} onPress={resetPending}>
-          <MaterialCommunityIcons name="close" size={14} color="#0F172A" />
+          <Feather name="x" size={14} color="#0F172A" />
           <Text style={s.btnText}>Seçimi İptal Et</Text>
         </TouchableOpacity>
       )}
@@ -271,7 +271,7 @@ function MeasurementControls({
             <View style={s.measureIdx}><Text style={s.measureIdxText}>{i + 1}</Text></View>
             <Text style={s.measureDist}>{m.distance.toFixed(2)} mm</Text>
             <TouchableOpacity onPress={() => removeMeasurement(m.id)} style={s.measureDel}>
-              <MaterialCommunityIcons name="trash-can-outline" size={14} color="#94A3B8" />
+              <Feather name="trash-2" size={14} color="#94A3B8" />
             </TouchableOpacity>
           </View>
         ))

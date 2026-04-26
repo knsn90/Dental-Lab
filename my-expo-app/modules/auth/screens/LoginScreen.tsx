@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import Feather from '@expo/vector-icons/Feather';
 import { DentistIcon } from '../../../components/icons/DentistIcon';
 import { signIn } from '../api';
 import { supabase } from '../../../lib/supabase';
@@ -30,10 +30,10 @@ const ACCENT2 = '#3B82F6';   // lighter blue (decorative)
 
 // ─── Feature list for desktop panel ──────────────────────────────────────────
 const FEATURES = [
-  { icon: 'clipboard-check-outline', text: 'Sipariş & İş Emri Yönetimi' },
-  { icon: 'package-variant-closed',  text: 'Stok & Malzeme Takibi'       },
-  { icon: 'file-document-outline',   text: 'Fatura & Cari Hesap'          },
-  { icon: 'account-group-outline',   text: 'Çalışan & İzin Yönetimi'      },
+  { icon: 'clipboard',  text: 'Sipariş & İş Emri Yönetimi' },
+  { icon: 'package',    text: 'Stok & Malzeme Takibi'       },
+  { icon: 'file-text',  text: 'Fatura & Cari Hesap'          },
+  { icon: 'users',      text: 'Çalışan & İzin Yönetimi'      },
 ];
 
 // ─── FloatingInput ────────────────────────────────────────────────────────────
@@ -119,7 +119,7 @@ function FloatingInput({
       </View>
       {error ? (
         <View style={fi.errorRow}>
-          <MaterialCommunityIcons name="alert-circle" size={11} color={C.danger} />
+          <Feather name="alert-circle" size={11} color={C.danger} />
           <Text style={fi.errorText}>{error}</Text>
         </View>
       ) : null}
@@ -396,7 +396,7 @@ function BrandPanel() {
         {FEATURES.map((f, i) => (
           <View key={i} style={bp.featureRow}>
             <View style={bp.featureIcon}>
-              <MaterialCommunityIcons name={f.icon as any} size={16} color={ACCENT2} />
+              <Feather name={f.icon as any} size={16} color={ACCENT2} />
             </View>
             <Text style={bp.featureText}>{f.text}</Text>
           </View>
@@ -536,8 +536,8 @@ function FormContent({
       {/* Segment switcher */}
       <View style={fc.segment}>
         <View style={[fc.segBtn, mode === 'lab' && fc.segBtnActive]}>
-          <MaterialCommunityIcons
-            name="flask-outline"
+          <Feather
+            name="droplet"
             size={13}
             color={mode === 'lab' ? accentColor : C.textMuted}
           />
@@ -550,8 +550,8 @@ function FormContent({
           onPress={onNavigateOther}
           activeOpacity={0.75}
         >
-          <MaterialCommunityIcons
-            name="shield-crown-outline"
+          <Feather
+            name="shield"
             size={13}
             color={mode === 'admin' ? accentColor : C.textMuted}
           />
@@ -564,7 +564,7 @@ function FormContent({
       {/* Error banner */}
       {errorMsg ? (
         <View style={fc.errorBanner}>
-          <MaterialCommunityIcons name="alert-circle" size={15} color={C.danger} />
+          <Feather name="alert-circle" size={15} color={C.danger} />
           <Text style={fc.errorBannerText}>{errorMsg}</Text>
         </View>
       ) : null}
@@ -592,8 +592,8 @@ function FormContent({
         error={errors.password}
         rightElement={
           <TouchableOpacity onPress={() => setShowPass(!showPass)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <MaterialCommunityIcons
-              name={showPass ? 'eye-off-outline' : 'eye-outline'}
+            <Feather
+              name={showPass ? 'eye-off' : 'eye'}
               size={18}
               color={C.textMuted}
             />
@@ -615,7 +615,7 @@ function FormContent({
           {forgotSent ? (
             <View style={fc.forgotSuccess}>
               <View style={fc.forgotSuccessIcon}>
-                <MaterialCommunityIcons name="check" size={16} color={C.success} />
+                <Feather name="check" size={16} color={C.success} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={fc.forgotSuccessTitle}>E-posta gönderildi</Text>
@@ -669,7 +669,7 @@ function FormContent({
           ) : (
             <>
               <Text style={fc.loginBtnText}>Giriş Yap</Text>
-              <MaterialCommunityIcons name="arrow-right" size={18} color="#FFFFFF" />
+              <Feather name="arrow-right" size={18} color="#FFFFFF" />
             </>
           )}
         </TouchableOpacity>

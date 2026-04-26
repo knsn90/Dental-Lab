@@ -4,7 +4,7 @@ import {
   Modal, TextInput, ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import Feather from '@expo/vector-icons/Feather';
 import { toast } from '../../../core/ui/Toast';
 
 import { useCashAccounts, useMovements } from '../hooks/useCash';
@@ -86,7 +86,7 @@ export function CashScreen() {
           <Text style={s.subtitle}>Nakit ve banka hesap takibi</Text>
         </View>
         <TouchableOpacity style={s.addBtn} onPress={() => setAddAccountOpen(true)} activeOpacity={0.85}>
-          <MaterialCommunityIcons name={'plus' as any} size={16} color="#fff" />
+          <Feather name={'plus' as any} size={16} color="#fff" />
           <Text style={s.addBtnText}>Hesap Ekle</Text>
         </TouchableOpacity>
       </View>
@@ -102,11 +102,11 @@ export function CashScreen() {
             {/* KPI özet */}
             <View style={[s.kpiRow, isDesktop && { paddingHorizontal: px }]}>
               <KpiBox label="Toplam Bakiye" value={fmtMoney(totalBalance)}
-                color="#2563EB" icon="cash-multiple" />
+                color="#2563EB" icon="dollar-sign" />
               <KpiBox label="Kasa" value={fmtMoney(totalKasa)}
-                color="#047857" icon="safe" />
+                color="#047857" icon="archive" />
               <KpiBox label="Banka" value={fmtMoney(totalBanka)}
-                color="#7C3AED" icon="bank-outline" />
+                color="#7C3AED" icon="credit-card" />
             </View>
 
             {/* Hesap kartları */}
@@ -117,7 +117,7 @@ export function CashScreen() {
             >
               {accounts.length === 0 ? (
                 <View style={s.empty}>
-                  <MaterialCommunityIcons name={'safe' as any} size={40} color="#CBD5E1" />
+                  <Feather name={'archive' as any} size={40} color="#CBD5E1" />
                   <Text style={s.emptyText}>Henüz hesap yok</Text>
                   <Text style={s.emptyHint}>+ Hesap Ekle butonuyla başlayın</Text>
                 </View>
@@ -147,7 +147,7 @@ export function CashScreen() {
                   onPress={() => setAddMovementOpen(true)}
                   activeOpacity={0.85}
                 >
-                  <MaterialCommunityIcons name={'plus' as any} size={14} color="#2563EB" />
+                  <Feather name={'plus' as any} size={14} color="#2563EB" />
                   <Text style={s.addMovBtnText}>Hareket Ekle</Text>
                 </TouchableOpacity>
               </View>
@@ -162,7 +162,7 @@ export function CashScreen() {
                 >
                   {movements.length === 0 ? (
                     <View style={s.empty}>
-                      <MaterialCommunityIcons name={'transfer' as any} size={36} color="#CBD5E1" />
+                      <Feather name={'repeat' as any} size={36} color="#CBD5E1" />
                       <Text style={s.emptyText}>Hareket yok</Text>
                     </View>
                   ) : movements.map(mv => (
@@ -206,7 +206,7 @@ function KpiBox({ label, value, color, icon }: { label: string; value: string; c
   return (
     <View style={[kpi.card, { flex: 1 }]}>
       <View style={[kpi.icon, { backgroundColor: color + '18' }]}>
-        <MaterialCommunityIcons name={icon as any} size={16} color={color} />
+        <Feather name={icon as any} size={16} color={color} />
       </View>
       <Text style={kpi.label}>{label}</Text>
       <Text style={[kpi.value, { color }]}>{value}</Text>
@@ -233,7 +233,7 @@ function AccountCard({
       activeOpacity={0.85}
     >
       <View style={[ac.iconWrap, { backgroundColor: bg }]}>
-        <MaterialCommunityIcons name={ACCOUNT_TYPE_ICONS[account.account_type] as any} size={20} color={color} />
+        <Feather name={ACCOUNT_TYPE_ICONS[account.account_type] as any} size={20} color={color} />
       </View>
       <View style={{ flex: 1 }}>
         <Text style={ac.name}>{account.name}</Text>
@@ -246,10 +246,10 @@ function AccountCard({
         </Text>
         <View style={{ flexDirection: 'row', gap: 6 }}>
           <TouchableOpacity onPress={onEdit} style={ac.iconBtn}>
-            <MaterialCommunityIcons name={'pencil-outline' as any} size={14} color="#64748B" />
+            <Feather name={'edit-2' as any} size={14} color="#64748B" />
           </TouchableOpacity>
           <TouchableOpacity onPress={onDelete} style={ac.iconBtn}>
-            <MaterialCommunityIcons name={'trash-can-outline' as any} size={14} color="#EF4444" />
+            <Feather name={'trash-2' as any} size={14} color="#EF4444" />
           </TouchableOpacity>
         </View>
       </View>
@@ -266,7 +266,7 @@ function MovementRow({ movement: mv, onDelete }: { movement: any; onDelete: () =
   return (
     <View style={mr.wrap}>
       <View style={[mr.iconWrap, { backgroundColor: color + '18' }]}>
-        <MaterialCommunityIcons name={catIcon as any} size={16} color={color} />
+        <Feather name={catIcon as any} size={16} color={color} />
       </View>
       <View style={{ flex: 1 }}>
         <Text style={mr.desc}>{mv.description}</Text>
@@ -279,7 +279,7 @@ function MovementRow({ movement: mv, onDelete }: { movement: any; onDelete: () =
           {isIn ? '+' : '−'}{fmtMoney(mv.amount)}
         </Text>
         <TouchableOpacity onPress={onDelete} style={mr.delBtn}>
-          <MaterialCommunityIcons name={'trash-can-outline' as any} size={13} color="#CBD5E1" />
+          <Feather name={'trash-2' as any} size={13} color="#CBD5E1" />
         </TouchableOpacity>
       </View>
     </View>
@@ -335,7 +335,7 @@ function AccountModal({
           <View style={fm.header}>
             <Text style={fm.title}>{account ? 'Hesabı Düzenle' : 'Yeni Hesap'}</Text>
             <TouchableOpacity onPress={onClose} style={fm.closeBtn}>
-              <MaterialCommunityIcons name={'close' as any} size={18} color="#94A3B8" />
+              <Feather name={'x' as any} size={18} color="#94A3B8" />
             </TouchableOpacity>
           </View>
 
@@ -349,7 +349,7 @@ function AccountModal({
                   style={[fm.chip, type === t && fm.chipActive]}
                   onPress={() => setType(t)}
                 >
-                  <MaterialCommunityIcons
+                  <Feather
                     name={ACCOUNT_TYPE_ICONS[t] as any}
                     size={14}
                     color={type === t ? '#2563EB' : '#94A3B8'}
@@ -456,7 +456,7 @@ function MovementModal({
             <Text style={fm.title}>Hareket Ekle</Text>
             <Text style={fm.headerSub}>{accountName}</Text>
             <TouchableOpacity onPress={onClose} style={fm.closeBtn}>
-              <MaterialCommunityIcons name={'close' as any} size={18} color="#94A3B8" />
+              <Feather name={'x' as any} size={18} color="#94A3B8" />
             </TouchableOpacity>
           </View>
 
@@ -468,7 +468,7 @@ function MovementModal({
                 style={[fm.dirBtn, direction === 'giris' && fm.dirBtnIn]}
                 onPress={() => setDirection('giris')}
               >
-                <MaterialCommunityIcons name={'arrow-down-circle-outline' as any} size={16}
+                <Feather name={'arrow-down-circle' as any} size={16}
                   color={direction === 'giris' ? '#047857' : '#94A3B8'} />
                 <Text style={[fm.dirText, direction === 'giris' && { color: '#047857', fontWeight: '700' }]}>
                   Para Girişi
@@ -478,7 +478,7 @@ function MovementModal({
                 style={[fm.dirBtn, direction === 'cikis' && fm.dirBtnOut]}
                 onPress={() => setDirection('cikis')}
               >
-                <MaterialCommunityIcons name={'arrow-up-circle-outline' as any} size={16}
+                <Feather name={'arrow-up-circle' as any} size={16}
                   color={direction === 'cikis' ? '#EF4444' : '#94A3B8'} />
                 <Text style={[fm.dirText, direction === 'cikis' && { color: '#EF4444', fontWeight: '700' }]}>
                   Para Çıkışı
@@ -500,7 +500,7 @@ function MovementModal({
                   style={[fm.chip, category === cat && fm.chipActive]}
                   onPress={() => setCategory(cat)}
                 >
-                  <MaterialCommunityIcons
+                  <Feather
                     name={MOVEMENT_CATEGORY_ICONS[cat] as any} size={12}
                     color={category === cat ? '#2563EB' : '#94A3B8'}
                   />

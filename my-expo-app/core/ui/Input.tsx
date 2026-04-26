@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   Animated,
 } from 'react-native';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import Feather from '@expo/vector-icons/Feather';
 import { C } from '../theme/colors';
 import { S } from '../theme/spacing';
 
@@ -19,8 +19,8 @@ interface InputProps extends TextInputProps {
   required?: boolean;       // Kırmızı * işareti ekler
   success?: boolean;        // Yeşil border + tik
   disabled?: boolean;
-  leftIcon?: string;        // MaterialCommunityIcons icon name
-  rightIcon?: string;       // MaterialCommunityIcons icon name
+  leftIcon?: string;        // Feather icon name
+  rightIcon?: string;       // Feather icon name
   onRightIconPress?: () => void;
 }
 
@@ -91,7 +91,7 @@ export function Input({
         >
           {/* Left icon */}
           {leftIcon && (
-            <MaterialCommunityIcons
+            <Feather
               name={leftIcon as any}
               size={18}
               color={error ? C.danger : focused ? C.primary : C.textMuted}
@@ -110,13 +110,13 @@ export function Input({
 
           {/* Success tick */}
           {success && !error && (
-            <MaterialCommunityIcons name="check-circle" size={18} color={C.success} style={styles.rightIcon} />
+            <Feather name="check-circle" size={18} color={C.success} style={styles.rightIcon} />
           )}
 
           {/* Right icon (custom) */}
           {rightIcon && !success && (
             <TouchableOpacity onPress={onRightIconPress} style={styles.rightIcon} disabled={!onRightIconPress}>
-              <MaterialCommunityIcons
+              <Feather
                 name={rightIcon as any}
                 size={18}
                 color={C.textMuted}
@@ -130,7 +130,7 @@ export function Input({
       {error ? (
         <Animated.View style={{ opacity: errorOpacity }}>
           <View style={styles.errorRow}>
-            <MaterialCommunityIcons name="alert-circle-outline" size={13} color={C.danger} />
+            <Feather name="alert-circle" size={13} color={C.danger} />
             <Text style={styles.error}> {error}</Text>
           </View>
         </Animated.View>

@@ -5,7 +5,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { supabase } from '../../../lib/supabase';
 import { SlideTabBar } from '../../../core/ui/SlideTabBar';
@@ -324,9 +323,9 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
 // ─── MovementModal ────────────────────────────────────────────────────────────
 
 const MOV_TYPES: { key: MovType; label: string; color: string; bg: string; icon: string }[] = [
-  { key: 'IN',    label: 'Giriş',  color: '#059669', bg: '#D1FAE5', icon: 'arrow-down-circle-outline' },
-  { key: 'OUT',   label: 'Çıkış',  color: '#2563EB', bg: '#DBEAFE', icon: 'arrow-up-circle-outline' },
-  { key: 'WASTE', label: 'Fire',   color: '#DC2626', bg: '#FEE2E2', icon: 'alert-circle-outline' },
+  { key: 'IN',    label: 'Giriş',  color: '#059669', bg: '#D1FAE5', icon: 'arrow-down-circle' },
+  { key: 'OUT',   label: 'Çıkış',  color: '#2563EB', bg: '#DBEAFE', icon: 'arrow-up-circle' },
+  { key: 'WASTE', label: 'Fire',   color: '#DC2626', bg: '#FEE2E2', icon: 'alert-circle' },
 ];
 
 interface MovementModalProps {
@@ -447,7 +446,7 @@ function MovementModal({ visible, item, items = [], accentColor, defaultType = '
                     onPress={() => setType(t.key)}
                     activeOpacity={0.8}
                   >
-                    <MaterialCommunityIcons name={t.icon as any} size={15} color={type === t.key ? t.color : '#94A3B8'} />
+                    <Feather name={t.icon as any} size={15} color={type === t.key ? t.color : '#94A3B8'} />
                     <Text style={[mv.typeBtnText, type === t.key && { color: t.color, fontWeight: '700' }]}>{t.label}</Text>
                   </TouchableOpacity>
                 ))}
@@ -645,7 +644,7 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
   if (total === 0) {
     return (
       <View style={db.emptyWrap}>
-        <MaterialCommunityIcons name="package-variant-closed" size={44} color="#E2E8F0" />
+        <Feather name="box" size={44} color="#E2E8F0" />
         <Text style={db.emptyTitle}>Henüz ürün yok</Text>
         <Text style={db.emptySub}>Stok yönetimine başlamak için ilk ürününüzü ekleyin.</Text>
         <TouchableOpacity style={[db.emptyBtn, { backgroundColor: accentColor }]} onPress={onAddProduct}>
@@ -1422,7 +1421,7 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
           <ActivityIndicator size="large" color={accentColor} style={{ marginTop: 60 }} />
         ) : !tableExists ? (
           <View style={s.empty}>
-            <MaterialCommunityIcons name="database-off-outline" size={40} color="#E5E7EB" />
+            <Feather name="database" size={40} color="#E5E7EB" />
             <Text style={s.emptyTitle}>Stok modülü kurulmadı</Text>
             <Text style={s.emptySub}>Supabase'de "stock_items" tablosu oluştuğunda veriler görünür.</Text>
           </View>
@@ -1456,7 +1455,7 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
               </IconBtn>
 
               <IconBtn active={activeFilterCount > 0} onPress={openFilter} style={{ position: 'relative' }}>
-                <MaterialCommunityIcons name={'tune-variant' as any} size={20} color={activeFilterCount > 0 ? accentColor : '#64748B'} />
+                <Feather name={'sliders' as any} size={20} color={activeFilterCount > 0 ? accentColor : '#64748B'} />
                 {activeFilterCount > 0 && (
                   <View style={[s.filterCount, { backgroundColor: accentColor, position: 'absolute', top: 4, right: 4, minWidth: 14, height: 14, borderRadius: 7, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 }]}>
                     <Text style={s.filterCountText}>{activeFilterCount}</Text>
@@ -1507,7 +1506,7 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
                         </View>
                         {groupCrit > 0 && (
                           <View style={tbl.groupAlert}>
-                            <MaterialCommunityIcons name="alert-outline" size={11} color="#D97706" />
+                            <Feather name="alert-triangle" size={11} color="#D97706" />
                             <Text style={tbl.groupAlertText}>{groupCrit} kritik</Text>
                           </View>
                         )}
@@ -1551,7 +1550,7 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
                             </View>
                             <View style={tbl.actions}>
                               <TouchableOpacity style={tbl.iconBtn} onPress={() => setMovModal({ visible: true, item })} activeOpacity={0.7}>
-                                <MaterialCommunityIcons name="swap-horizontal" size={14} color={accentColor} />
+                                <Feather name="repeat" size={14} color={accentColor} />
                               </TouchableOpacity>
                               <TouchableOpacity style={tbl.iconBtn} onPress={() => setProductModal({ visible: true, item })} activeOpacity={0.7}>
                                 <Feather name="edit-2" size={13} color="#6C6C70" />
@@ -1597,7 +1596,7 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
           <View style={fp.panel} onStartShouldSetResponder={() => true}>
             <View style={fp.header}>
               <View style={fp.headerLeft}>
-                <MaterialCommunityIcons name={'tune-variant' as any} size={15} color="#0F172A" />
+                <Feather name={'sliders' as any} size={15} color="#0F172A" />
                 <Text style={fp.headerTitle}>Filtrele</Text>
                 {activeFilterCount > 0 && (
                   <View style={fp.countBadge}><Text style={fp.countBadgeText}>{activeFilterCount}</Text></View>

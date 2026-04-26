@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { toast } from '../../../core/ui/Toast';
 import QRCode from 'react-native-qrcode-svg';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import Feather from '@expo/vector-icons/Feather';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useOrderDetail } from '../hooks/useOrderDetail';
@@ -42,14 +42,14 @@ import { createInvoiceFromOrder } from '../../invoices/api';
 type Section = 'details' | 'steps' | 'prova' | 'vaka' | 'billing' | 'doctor' | 'files' | 'chat';
 
 const SECTIONS: { key: Section; icon: string; label: string }[] = [
-  { key: 'details', icon: 'clipboard-list-outline',     label: 'Detaylar' },
-  { key: 'steps',   icon: 'timeline-clock-outline',     label: 'Adımlar'  },
-  { key: 'prova',   icon: '__tooth__',                   label: 'Prova'    },
-  { key: 'vaka',    icon: 'folder-account-outline',     label: 'Vaka'     },
-  { key: 'billing', icon: 'tag-outline',                label: 'Ücret'    },
-  { key: 'doctor',  icon: 'stethoscope',                label: 'Hekim'    },
-  { key: 'files',   icon: 'image-multiple-outline',     label: 'Dosyalar' },
-  { key: 'chat',    icon: 'message-outline',            label: 'Mesajlar' },
+  { key: 'details', icon: 'clipboard',      label: 'Detaylar' },
+  { key: 'steps',   icon: 'clock',          label: 'Adımlar'  },
+  { key: 'prova',   icon: '__tooth__',       label: 'Prova'    },
+  { key: 'vaka',    icon: 'folder',         label: 'Vaka'     },
+  { key: 'billing', icon: 'tag',            label: 'Ücret'    },
+  { key: 'doctor',  icon: 'user',           label: 'Hekim'    },
+  { key: 'files',   icon: 'image',          label: 'Dosyalar' },
+  { key: 'chat',    icon: 'message-square', label: 'Mesajlar' },
 ];
 
 // ── Print helper ──────────────────────────────────────────────────────────────
@@ -344,7 +344,7 @@ export function OrderDetailScreen() {
             style={styles.btnOcclusion}
             activeOpacity={0.8}
           >
-            <MaterialCommunityIcons name={'cube-scan' as any} size={14} color="#1E40AF" />
+            <Feather name={'box' as any} size={14} color="#1E40AF" />
             <Text style={styles.btnOcclusionText}>Oklüzyon</Text>
           </TouchableOpacity>
         )}
@@ -358,7 +358,7 @@ export function OrderDetailScreen() {
           style={styles.btnReceipt}
           activeOpacity={0.8}
         >
-          <MaterialCommunityIcons name={'receipt-text-outline' as any} size={14} color="#0F172A" />
+          <Feather name={'file-text' as any} size={14} color="#0F172A" />
           <Text style={styles.btnReceiptText}>Teslimat Fişi</Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -366,7 +366,7 @@ export function OrderDetailScreen() {
           style={styles.btnInvoice}
           activeOpacity={0.8}
         >
-          <MaterialCommunityIcons name={'file-document-outline' as any} size={14} color="#FFFFFF" />
+          <Feather name={'file-text' as any} size={14} color="#FFFFFF" />
           <Text style={styles.btnInvoiceText}>Fatura Oluştur</Text>
         </TouchableOpacity>
       </View>
@@ -389,7 +389,7 @@ export function OrderDetailScreen() {
                   {s.icon === '__tooth__' ? (
                     <ToothIcon size={18} color={active ? '#0F172A' : '#94A3B8'} />
                   ) : (
-                    <MaterialCommunityIcons
+                    <Feather
                       name={s.icon as any}
                       size={18}
                       color={active ? '#0F172A' : '#94A3B8'}
@@ -422,7 +422,7 @@ export function OrderDetailScreen() {
                     {s.icon === '__tooth__' ? (
                       <ToothIcon size={15} color={active ? '#0F172A' : '#94A3B8'} />
                     ) : (
-                      <MaterialCommunityIcons
+                      <Feather
                         name={s.icon as any}
                         size={15}
                         color={active ? '#0F172A' : '#94A3B8'}
@@ -606,7 +606,7 @@ function ToothJobCard({ tooth, order, isActive, onPress, onAddFile }: {
           onPress={onAddFile}
           activeOpacity={0.7}
         >
-          <MaterialCommunityIcons name={'paperclip' as any} size={11} color={photosCount > 0 ? '#0F172A' : '#94A3B8'} />
+          <Feather name={'paperclip' as any} size={11} color={photosCount > 0 ? '#0F172A' : '#94A3B8'} />
           <Text style={[tcStyles.badgeText, photosCount > 0 && tcStyles.badgeTextActive]}>
             {photosCount > 0 ? `${photosCount} dosya` : 'Dosya ekle'}
           </Text>
@@ -615,7 +615,7 @@ function ToothJobCard({ tooth, order, isActive, onPress, onAddFile }: {
         {/* Notes badge */}
         {notesCount > 0 && (
           <View style={tcStyles.badge}>
-            <MaterialCommunityIcons name={'message-text-outline' as any} size={11} color="#64748B" />
+            <Feather name={'message-square' as any} size={11} color="#64748B" />
             <Text style={tcStyles.badgeText}>Notlar ({notesCount})</Text>
           </View>
         )}
@@ -1131,7 +1131,7 @@ function AudioPlayer({ url, isMe }: { url: string; isMe: boolean }) {
         style={{ width: 34, height: 34, borderRadius: 17,
                  backgroundColor: playBg,
                  alignItems: 'center', justifyContent: 'center' }}>
-        <MaterialCommunityIcons
+        <Feather
           name={(playing ? 'pause' : 'play') as any}
           size={18}
           color="#FFFFFF"
@@ -1315,7 +1315,7 @@ function ChatSection({
           </View>
         ) : !hasContent ? (
           <View style={cs.emptyBox}>
-            <MaterialCommunityIcons name={'message-outline' as any} size={32} color="#CBD5E1" />
+            <Feather name={'message-square' as any} size={32} color="#CBD5E1" />
             <Text style={cs.emptyTitle}>Henüz mesaj yok</Text>
             <Text style={cs.emptyText}>Hekim veya lab mesaj gönderdiğinde burada görünür</Text>
           </View>
@@ -1325,7 +1325,7 @@ function ChatSection({
           {orderNotes ? (
             <View style={cs.msgRow}>
               <View style={[cs.avatar, cs.avatarDoctor]}>
-                <MaterialCommunityIcons name={'stethoscope' as any} size={14} color="#FFFFFF" />
+                <Feather name={'user' as any} size={14} color="#FFFFFF" />
               </View>
               <View style={[cs.bubble, cs.bubbleThem, cs.bubbleNote]}>
                 <Text style={cs.noteLabel}>İş Emri Notu · Hekim</Text>
@@ -1374,7 +1374,7 @@ function ChatSection({
                       onPress={() => { if (typeof window !== 'undefined') window.open(msg.attachment_url!, '_blank'); }}
                       activeOpacity={0.8}
                     >
-                      <MaterialCommunityIcons name={'file-document-outline' as any} size={20} color={isMe ? '#FFF' : '#0F172A'} />
+                      <Feather name={'file-text' as any} size={20} color={isMe ? '#FFF' : '#0F172A'} />
                       <View style={{ flex: 1 }}>
                         <Text style={[cs.fileChipName, isMe && { color: '#FFF' }]} numberOfLines={1}>
                           {msg.attachment_name ?? 'Dosya'}
@@ -1385,7 +1385,7 @@ function ChatSection({
                           </Text>
                         ) : null}
                       </View>
-                      <MaterialCommunityIcons name={'download-outline' as any} size={16} color={isMe ? 'rgba(255,255,255,0.7)' : '#94A3B8'} />
+                      <Feather name={'download' as any} size={16} color={isMe ? 'rgba(255,255,255,0.7)' : '#94A3B8'} />
                     </TouchableOpacity>
                   ) : null}
 
@@ -1424,7 +1424,7 @@ function ChatSection({
               <View style={cs.previewHeader}>
                 <Text style={cs.previewTitle}>Dosya Gönder</Text>
                 <TouchableOpacity onPress={() => setPendingFile(null)}>
-                  <MaterialCommunityIcons name={'close' as any} size={20} color="#64748B" />
+                  <Feather name={'x' as any} size={20} color="#64748B" />
                 </TouchableOpacity>
               </View>
 
@@ -1438,11 +1438,11 @@ function ChatSection({
                 />
               ) : (
                 <View style={cs.previewFileIcon}>
-                  <MaterialCommunityIcons
+                  <Feather
                     name={
                       pendingFile.name.match(/\.(stl|ply|obj|step|stp)$/i)
-                        ? ('cube-outline' as any)
-                        : ('file-document-outline' as any)
+                        ? ('box' as any)
+                        : ('file-text' as any)
                     }
                     size={48}
                     color="#0F172A"
@@ -1473,7 +1473,7 @@ function ChatSection({
                   onPress={handleSendPending}
                   disabled={uploading}
                 >
-                  <MaterialCommunityIcons name={uploading ? ('loading' as any) : ('send' as any)} size={16} color="#FFFFFF" />
+                  <Feather name={uploading ? ('loader' as any) : ('send' as any)} size={16} color="#FFFFFF" />
                   <Text style={cs.previewSendText}>{uploading ? 'Gönderiliyor...' : 'Gönder'}</Text>
                 </TouchableOpacity>
               </View>
@@ -1489,10 +1489,10 @@ function ChatSection({
           <Text style={cs.recTime}>{fmtSec(recSeconds)}</Text>
           <Text style={cs.recLabel}>Kayıt yapılıyor</Text>
           <TouchableOpacity style={cs.recCancelBtn} onPress={cancelRecording}>
-            <MaterialCommunityIcons name={'close' as any} size={18} color="#64748B" />
+            <Feather name={'x' as any} size={18} color="#64748B" />
           </TouchableOpacity>
           <TouchableOpacity style={cs.recSendBtn} onPress={stopRecording} disabled={uploading}>
-            <MaterialCommunityIcons name={'send' as any} size={16} color="#FFFFFF" />
+            <Feather name={'send' as any} size={16} color="#FFFFFF" />
             <Text style={cs.recSendText}>Gönder</Text>
           </TouchableOpacity>
         </View>
@@ -1517,7 +1517,7 @@ function ChatSection({
                     >
                       <Text style={cs.attachItemLabel}>Fotoğraf</Text>
                       <View style={[cs.attachIconCircle, { backgroundColor: '#0F172A' }]}>
-                        <MaterialCommunityIcons name={'image-outline' as any} size={22} color="#FFFFFF" />
+                        <Feather name={'image' as any} size={22} color="#FFFFFF" />
                       </View>
                     </TouchableOpacity>
 
@@ -1529,7 +1529,7 @@ function ChatSection({
                     >
                       <Text style={cs.attachItemLabel}>Dijital Tarama</Text>
                       <View style={[cs.attachIconCircle, { backgroundColor: '#0891B2' }]}>
-                        <MaterialCommunityIcons name={'cube-scan' as any} size={22} color="#FFFFFF" />
+                        <Feather name={'box' as any} size={22} color="#FFFFFF" />
                       </View>
                     </TouchableOpacity>
 
@@ -1541,7 +1541,7 @@ function ChatSection({
                     >
                       <Text style={cs.attachItemLabel}>Dosya</Text>
                       <View style={[cs.attachIconCircle, { backgroundColor: '#7C3AED' }]}>
-                        <MaterialCommunityIcons name={'file-document-outline' as any} size={22} color="#FFFFFF" />
+                        <Feather name={'file-text' as any} size={22} color="#FFFFFF" />
                       </View>
                     </TouchableOpacity>
                   </View>
@@ -1555,8 +1555,8 @@ function ChatSection({
                 disabled={uploading || sending}
                 activeOpacity={0.7}
               >
-                <MaterialCommunityIcons
-                  name={attachMenuOpen ? ('close' as any) : ('paperclip' as any)}
+                <Feather
+                  name={attachMenuOpen ? ('x' as any) : ('paperclip' as any)}
                   size={20}
                   color={attachMenuOpen ? '#0F172A' : uploading ? '#CBD5E1' : '#64748B'}
                 />
@@ -1582,7 +1582,7 @@ function ChatSection({
               disabled={uploading || sending}
               activeOpacity={0.7}
             >
-              <MaterialCommunityIcons name={'microphone-outline' as any} size={20} color="#64748B" />
+              <Feather name={'mic' as any} size={20} color="#64748B" />
             </TouchableOpacity>
           ) : null}
 
@@ -1592,8 +1592,8 @@ function ChatSection({
             disabled={!text.trim() || sending || uploading}
             activeOpacity={0.75}
           >
-            <MaterialCommunityIcons
-              name={uploading ? 'loading' : 'send'}
+            <Feather
+              name={uploading ? 'loader' : 'send'}
               size={18}
               color="#FFFFFF"
             />

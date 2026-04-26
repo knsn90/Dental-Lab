@@ -81,7 +81,7 @@ function KpiCard({ icon, label, value, color, bgColor, trend }: {
         </View>
         {trend && (
           <View style={[k.trendPill, { backgroundColor: trend.startsWith('+') ? CLR.greenBg : CLR.redBg }]}>
-            <MaterialCommunityIcons
+            <Feather
               name={trend.startsWith('+') ? 'trending-up' : 'trending-down' as any}
               size={12}
               color={trend.startsWith('+') ? CLR.green : CLR.red}
@@ -123,7 +123,7 @@ function SectionHeader({ title, action, onAction }: { title: string; action?: st
       {action && (
         <TouchableOpacity onPress={onAction} style={sh.actionBtn}>
           <Text style={sh.action}>{action}</Text>
-          <MaterialCommunityIcons name="chevron-right" size={14} color={CLR.blue} />
+          <Feather name="chevron-right" size={14} color={CLR.blue} />
         </TouchableOpacity>
       )}
     </View>
@@ -284,7 +284,7 @@ export default function AdminDashboard() {
             <Text style={s.dateText}>{fmtDate()}</Text>
           </View>
           <TouchableOpacity style={s.refreshBtn} onPress={refresh} activeOpacity={0.7}>
-            <MaterialCommunityIcons name="refresh" size={16} color={P} />
+            <Feather name="refresh-cw" size={16} color={P} />
           </TouchableOpacity>
         </View>
 
@@ -304,13 +304,13 @@ export default function AdminDashboard() {
                 activeOpacity={0.7}
               >
                 <View style={s.alertIcon}>
-                  <MaterialCommunityIcons name="alert-circle" size={20} color={CLR.red} />
+                  <Feather name="alert-circle" size={20} color={CLR.red} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={s.alertTitle}>{stats.overdueOrders} geciken sipariş</Text>
                   <Text style={s.alertSub}>Teslim tarihi geçmiş siparişler mevcut</Text>
                 </View>
-                <MaterialCommunityIcons name="chevron-right" size={18} color="#AEAEB2" />
+                <Feather name="chevron-right" size={18} color="#AEAEB2" />
               </TouchableOpacity>
             )}
 
@@ -329,12 +329,12 @@ export default function AdminDashboard() {
             {/* ── KPI Section ── */}
             <SectionHeader title="Genel Bakış" />
             <View style={s.kpiRow}>
-              <KpiCard icon="clipboard-list-outline" label="Toplam Sipariş"  value={stats.totalOrders}   color={CLR.indigo}  bgColor={CLR.indigoBg} />
-              <KpiCard icon="calendar-today"         label="Bugün Eklenen"   value={stats.todayOrders}   color={CLR.blue}    bgColor={CLR.blueBg}   />
-              <KpiCard icon="alert-circle-outline"   label="Geciken"         value={stats.overdueOrders} color={CLR.red}     bgColor={CLR.redBg}    />
-              <KpiCard icon="stethoscope"            label="Kayıtlı Hekim"   value={stats.totalDoctors}  color={CLR.green}   bgColor={CLR.greenBg}  />
+              <KpiCard icon="clipboard" label="Toplam Sipariş"  value={stats.totalOrders}   color={CLR.indigo}  bgColor={CLR.indigoBg} />
+              <KpiCard icon="calendar"  label="Bugün Eklenen"   value={stats.todayOrders}   color={CLR.blue}    bgColor={CLR.blueBg}   />
+              <KpiCard icon="alert-circle" label="Geciken"      value={stats.overdueOrders} color={CLR.red}     bgColor={CLR.redBg}    />
+              <KpiCard icon="activity"  label="Kayıtlı Hekim"   value={stats.totalDoctors}  color={CLR.green}   bgColor={CLR.greenBg}  />
               {isWide && (
-                <KpiCard icon="account-multiple-outline" label="Lab Kullanıcısı" value={stats.totalLabUsers} color={CLR.orange}  bgColor={CLR.orangeBg} />
+                <KpiCard icon="users"   label="Lab Kullanıcısı" value={stats.totalLabUsers} color={CLR.orange}  bgColor={CLR.orangeBg} />
               )}
             </View>
 

@@ -20,7 +20,7 @@ import {
   Platform,
   Dimensions,
 } from 'react-native';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import Feather from '@expo/vector-icons/Feather';
 import { C } from '../theme/colors';
 import { S } from '../theme/spacing';
 
@@ -61,8 +61,8 @@ function subscribe(fn: Listener) {
 const CFG: Record<ToastType, { bg: string; border: string; icon: string; iconColor: string; titleDefault: string }> = {
   success: { bg: C.successBg,  border: C.success,  icon: 'check-circle',       iconColor: C.success,  titleDefault: 'Başarılı' },
   error:   { bg: C.dangerBg,   border: C.danger,   icon: 'alert-circle',       iconColor: C.danger,   titleDefault: 'Hata' },
-  warning: { bg: C.warningBg,  border: C.warning,  icon: 'alert',              iconColor: C.warning,  titleDefault: 'Uyarı' },
-  info:    { bg: C.infoBg,     border: C.info,     icon: 'information-outline', iconColor: C.info,     titleDefault: 'Bilgi' },
+  warning: { bg: C.warningBg,  border: C.warning,  icon: 'alert-triangle',     iconColor: C.warning,  titleDefault: 'Uyarı' },
+  info:    { bg: C.infoBg,     border: C.info,     icon: 'info',               iconColor: C.info,     titleDefault: 'Bilgi' },
 };
 
 // ─── Single Toast Item ────────────────────────────────────────────────────────
@@ -100,7 +100,7 @@ function ToastItem({ msg, onDismiss }: { msg: ToastMessage; onDismiss: (id: stri
         { opacity: opac, transform: [{ translateY }] },
       ]}
     >
-      <MaterialCommunityIcons name={cfg.icon as any} size={20} color={cfg.iconColor} style={styles.icon} />
+      <Feather name={cfg.icon as any} size={20} color={cfg.iconColor} style={styles.icon} />
       <View style={styles.textBlock}>
         <Text style={[styles.title, { color: cfg.iconColor }]}>
           {msg.title ?? cfg.titleDefault}
@@ -110,7 +110,7 @@ function ToastItem({ msg, onDismiss }: { msg: ToastMessage; onDismiss: (id: stri
         )}
       </View>
       <Pressable onPress={dismiss} hitSlop={10} style={styles.close}>
-        <MaterialCommunityIcons name="close" size={16} color={C.textMuted} />
+        <Feather name="x" size={16} color={C.textMuted} />
       </Pressable>
     </Animated.View>
   );

@@ -7,7 +7,6 @@ import {
 import { toast } from '../../../core/ui/Toast';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { ClinicIcon } from '../../../core/ui/ClinicIcon';
 import { AppSwitch } from '../../../core/ui/AppSwitch';
 import { supabase } from '../../../core/api/supabase';
@@ -22,10 +21,10 @@ const ERR = '#EF4444';
 // ─── Category ─────────────────────────────────────────────────────────────────
 type ClinicCategory = 'klinik' | 'poliklinik' | 'hastane' | 'laboratuvar';
 const CLINIC_CATEGORIES: { value: ClinicCategory; label: string; icon: string; color: string; bg: string }[] = [
-  { value: 'klinik',      label: 'Klinik',      icon: 'tooth-outline',          color: '#2563EB', bg: '#EFF6FF' },
-  { value: 'poliklinik',  label: 'Poliklinik',  icon: 'stethoscope',            color: '#7C3AED', bg: '#EDE9FE' },
-  { value: 'hastane',     label: 'Hastane',     icon: 'hospital-box-outline',   color: '#059669', bg: '#D1FAE5' },
-  { value: 'laboratuvar', label: 'Laboratuvar', icon: 'flask-outline',          color: '#D97706', bg: '#FEF3C7' },
+  { value: 'klinik',      label: 'Klinik',      icon: 'smile',        color: '#2563EB', bg: '#EFF6FF' },
+  { value: 'poliklinik',  label: 'Poliklinik',  icon: 'activity',     color: '#7C3AED', bg: '#EDE9FE' },
+  { value: 'hastane',     label: 'Hastane',     icon: 'plus-square',  color: '#059669', bg: '#D1FAE5' },
+  { value: 'laboratuvar', label: 'Laboratuvar', icon: 'droplet',      color: '#D97706', bg: '#FEF3C7' },
 ];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -264,7 +263,7 @@ export default function ClinicsScreen({ accentColor = '#0F172A' }: Props) {
                 )}
                 {activeTab !== 'doctors' && (
                   <IconBtn active={activeFilterCount > 0} onPress={openFilter} style={{ position: 'relative' }}>
-                    <MaterialCommunityIcons name={'tune-variant' as any} size={20} color={activeFilterCount > 0 ? accentColor : '#64748B'} />
+                    <Feather name={'sliders' as any} size={20} color={activeFilterCount > 0 ? accentColor : '#64748B'} />
                     {activeFilterCount > 0 && (
                       <View style={[s.filterBadge, { backgroundColor: accentColor }]}>
                         <Text style={s.filterBadgeText}>{activeFilterCount}</Text>
@@ -430,7 +429,7 @@ export default function ClinicsScreen({ accentColor = '#0F172A' }: Props) {
                 <View style={sb.row}>
                   <View style={sb.rowLeft}>
                     <View style={[sb.circle, { backgroundColor: accentColor + '18' }]}>
-                      <MaterialCommunityIcons name={'office-building-outline' as any} size={18} color={accentColor} />
+                      <Feather name={'home' as any} size={18} color={accentColor} />
                     </View>
                     <Text style={sb.rowLabel}>Toplam Kurum</Text>
                   </View>
@@ -439,7 +438,7 @@ export default function ClinicsScreen({ accentColor = '#0F172A' }: Props) {
                 <View style={sb.row}>
                   <View style={sb.rowLeft}>
                     <View style={[sb.circle, { backgroundColor: '#D1FAE5' }]}>
-                      <MaterialCommunityIcons name={'check-decagram-outline' as any} size={18} color="#059669" />
+                      <Feather name={'award' as any} size={18} color="#059669" />
                     </View>
                     <Text style={sb.rowLabel}>Aktif Kurumlar</Text>
                   </View>
@@ -542,7 +541,7 @@ export default function ClinicsScreen({ accentColor = '#0F172A' }: Props) {
             {/* Header */}
             <View style={fp.header}>
               <View style={fp.headerLeft}>
-                <MaterialCommunityIcons name={'tune-variant' as any} size={16} color="#0F172A" />
+                <Feather name={'sliders' as any} size={16} color="#0F172A" />
                 <Text style={fp.headerTitle}>Filtrele</Text>
                 {activeFilterCount > 0 && (
                   <View style={fp.countBadge}>
@@ -643,7 +642,7 @@ function ClinicRow({
       <View style={cc.rowMain}>
         {/* Icon box */}
         <View style={[cc.iconBox, { backgroundColor: clinic.is_active ? cat.bg : '#F1F5F9' }]}>
-          <MaterialCommunityIcons
+          <Feather
             name={cat.icon as any}
             size={26}
             color={clinic.is_active ? cat.color : '#94A3B8'}
@@ -754,7 +753,7 @@ function ClinicRow({
               <Text style={[cc.addDoctorText, { color: accentColor }]}>Bu kliniğe hekim ekle</Text>
             </TouchableOpacity>
             <TouchableOpacity style={cc.discountBtn} onPress={onSetDiscount} activeOpacity={0.7}>
-              <MaterialCommunityIcons name={'percent' as any} size={13} color="#7C3AED" />
+              <Feather name={'percent' as any} size={13} color="#7C3AED" />
               <Text style={cc.discountBtnText}>
                 {discountPercent != null && discountPercent > 0 ? `%${discountPercent} İndirim` : 'İndirim Ekle'}
               </Text>
@@ -939,7 +938,7 @@ function ClinicModal({
                       onPress={() => set('category', cat.value)}
                       activeOpacity={0.7}
                     >
-                      <MaterialCommunityIcons name={cat.icon as any} size={18} color={active ? cat.color : '#AEAEB2'} />
+                      <Feather name={cat.icon as any} size={18} color={active ? cat.color : '#AEAEB2'} />
                       <Text style={[m.catChipText, active && { color: cat.color }]}>{cat.label}</Text>
                       {active && <Feather name="check" size={13} color={cat.color} />}
                     </TouchableOpacity>
@@ -982,7 +981,7 @@ function ClinicModal({
                           activeOpacity={0.7}
                         >
                           {cat && <View style={[m.suggestIcon, { backgroundColor: cat.color + '18' }]}>
-                            <MaterialCommunityIcons name={cat.icon as any} size={12} color={cat.color} />
+                            <Feather name={cat.icon as any} size={12} color={cat.color} />
                           </View>}
                           <Text style={m.suggestName} numberOfLines={1}>{c.name}</Text>
                           <View style={m.existsBadge}><Text style={m.existsBadgeText}>Kayıtlı</Text></View>
@@ -1989,7 +1988,7 @@ function DiscountModal({
         <View style={dsc.card}>
           <View style={dsc.header}>
             <View style={dsc.iconWrap}>
-              <MaterialCommunityIcons name={'percent' as any} size={18} color="#7C3AED" />
+              <Feather name={'percent' as any} size={18} color="#7C3AED" />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={dsc.title}>Klinik İndirimi</Text>

@@ -14,7 +14,6 @@ import {
 } from 'react-native';
 import { Slot, usePathname, useRouter } from 'expo-router';
 import { useAuthStore } from '../store/authStore';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import Feather from '@expo/vector-icons/Feather';
 import { useOrders } from '../../modules/orders/hooks/useOrders';
 import { supabase } from '../api/supabase';

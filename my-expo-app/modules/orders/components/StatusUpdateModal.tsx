@@ -10,7 +10,6 @@ import {
   TextInput,
 } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { WorkOrderStatus } from '../types';
 import { STATUS_CONFIG, getNextStatus } from '../constants';
 import { C } from '../../../core/theme/colors';
@@ -66,7 +65,7 @@ export function StatusUpdateModal({
             <View style={m.sectionCard}>
               <Text style={m.sectionTitle}>Yeni Durum</Text>
               <View style={[m.statusBadge, { backgroundColor: nextConfig.bgColor }]}>
-                <MaterialCommunityIcons name={nextConfig.ionIcon as any} size={18} color={nextConfig.color} />
+                <Feather name={nextConfig.ionIcon as any} size={18} color={nextConfig.color} />
                 <Text style={[m.statusBadgeText, { color: nextConfig.color }]}>{nextConfig.label}</Text>
               </View>
             </View>

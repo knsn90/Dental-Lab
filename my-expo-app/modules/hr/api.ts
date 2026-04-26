@@ -113,13 +113,13 @@ export const LEAVE_TYPE_LABELS: Record<LeaveType, string> = {
 };
 
 export const LEAVE_TYPE_ICONS: Record<LeaveType, string> = {
-  yillik:   'beach',
-  mazeret:  'account-clock',
-  hastalik: 'hospital-box',
-  ucretsiz: 'calendar-remove',
-  dogum:    'baby-carriage',
-  olum:     'flower',
-  evlilik:  'ring',
+  yillik:   'sun',
+  mazeret:  'clock',
+  hastalik: 'plus-square',
+  ucretsiz: 'calendar',
+  dogum:    'heart',
+  olum:     'feather',
+  evlilik:  'heart',
 };
 
 export const LEAVE_TYPE_COLORS: Record<LeaveType, { fg: string; bg: string }> = {
@@ -133,10 +133,10 @@ export const LEAVE_TYPE_COLORS: Record<LeaveType, { fg: string; bg: string }> = 
 };
 
 export const LEAVE_STATUS_CFG: Record<LeaveStatus, { label: string; fg: string; bg: string; icon: string }> = {
-  bekliyor:   { label: 'Bekliyor',   fg: '#D97706', bg: '#FEF3C7', icon: 'clock-outline' },
+  bekliyor:   { label: 'Bekliyor',   fg: '#D97706', bg: '#FEF3C7', icon: 'clock' },
   onaylandi:  { label: 'Onaylandı',  fg: '#059669', bg: '#D1FAE5', icon: 'check-circle' },
-  reddedildi: { label: 'Reddedildi', fg: '#DC2626', bg: '#FEE2E2', icon: 'close-circle' },
-  iptal:      { label: 'İptal',      fg: '#64748B', bg: '#F1F5F9', icon: 'cancel' },
+  reddedildi: { label: 'Reddedildi', fg: '#DC2626', bg: '#FEE2E2', icon: 'x-circle' },
+  iptal:      { label: 'İptal',      fg: '#64748B', bg: '#F1F5F9', icon: 'x' },
 };
 
 export const ATTENDANCE_STATUS_CFG: Record<AttendanceStatus, { label: string; fg: string; bg: string }> = {

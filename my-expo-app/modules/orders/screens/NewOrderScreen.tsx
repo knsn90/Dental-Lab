@@ -22,7 +22,7 @@ const WebPortal = ({ children }: { children: React.ReactNode }) =>
   _portal ? (_portal(children) as React.ReactElement) : <>{children}</>;
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import Feather from '@expo/vector-icons/Feather';
 import Svg, { Path as SvgPath } from 'react-native-svg';
 import { ClinicIcon } from '../../../core/ui/ClinicIcon';
 import QRCode from 'react-native-qrcode-svg';
@@ -1127,7 +1127,7 @@ ${form.notes ? `<div class="card">
             hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
             accessibilityLabel="Taslağı sil"
           >
-            <MaterialCommunityIcons name={'delete-outline' as any} size={14} color="#94A3B8" />
+            <Feather name={'trash-2' as any} size={14} color="#94A3B8" />
           </TouchableOpacity>
         </View>
       )}
@@ -1154,7 +1154,7 @@ ${form.notes ? `<div class="card">
                 backgroundColor: '#EFF6FF',
                 alignItems: 'center' as any, justifyContent: 'center' as any,
               }}>
-                <MaterialCommunityIcons name={'file-document-edit-outline' as any} size={18} color={P} />
+                <Feather name={'edit' as any} size={18} color={P} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 16, fontFamily: F.bold, color: '#0F172A' }}>
@@ -1257,7 +1257,7 @@ ${form.notes ? `<div class="card">
           </SectionCard>
 
           {/* Patient info */}
-          <SectionCard title="Hasta bilgileri" icon={'account-outline' as any}
+          <SectionCard title="Hasta bilgileri" icon={'user' as any}
             errorCount={stepAttempted[1] ? ['patient_first_name','patient_last_name','patient_gender','patient_dob','patient_id','patient_nationality'].filter(k => errors[k]).length : 0}
             accentColor={P}
           >
@@ -1366,7 +1366,7 @@ ${form.notes ? `<div class="card">
             alignItems: 'stretch',
           }}>
           <View style={{ flex: 1 }}>
-          <SectionCard title="Vaka detayları" icon={'tune-variant' as any} style={{ flex: 1, marginBottom: 0 }} accentColor={P}>
+          <SectionCard title="Vaka detayları" icon={'sliders' as any} style={{ flex: 1, marginBottom: 0 }} accentColor={P}>
 
             {/* Acil vaka + Tasarım onayı — yan yana (mobilde stacklenir) */}
             <View style={[s2.toggleRow, !isDesktop && { flexDirection: 'column', gap: 10 }]}>
@@ -1377,7 +1377,7 @@ ${form.notes ? `<div class="card">
                 onPress={() => set('is_urgent')(!form.is_urgent)}
                 activeOpacity={0.7}
               >
-                <MaterialCommunityIcons name={'alarm' as any} size={14} color={form.is_urgent ? P : '#94A3B8'} />
+                <Feather name={'bell' as any} size={14} color={form.is_urgent ? P : '#94A3B8'} />
                 <View style={{ flex: 1 }}>
                   <Text style={[s2.toggleItemLabel, form.is_urgent && s2.toggleItemLabelActive]}>Acil vaka</Text>
                   <Text style={s2.toggleItemDesc}>Öncelikli, ek ücretlidir.</Text>
@@ -1392,7 +1392,7 @@ ${form.notes ? `<div class="card">
                 onPress={() => set('doctor_approval_required')(!form.doctor_approval_required)}
                 activeOpacity={0.7}
               >
-                <MaterialCommunityIcons name={'check-decagram-outline' as any} size={14}
+                <Feather name={'award' as any} size={14}
                   color={form.doctor_approval_required ? P : '#94A3B8'} />
                 <View style={{ flex: 1 }}>
                   <Text style={[s2.toggleItemLabel, form.doctor_approval_required && s2.toggleItemLabelActive]}>Tasarım onayı</Text>
@@ -1489,7 +1489,7 @@ ${form.notes ? `<div class="card">
                   activeOpacity={0.75}
                 >
                   <View style={[fus.uploadTriggerIcon, { backgroundColor: P + '14' }]}>
-                    <MaterialCommunityIcons name={'cloud-upload-outline' as any} size={28} color={P} />
+                    <Feather name={'upload-cloud' as any} size={28} color={P} />
                   </View>
                   <Text style={[fus.uploadTriggerTitle, { color: P }]}>Dosya Yükleme</Text>
                   <Text style={[fus.uploadTriggerSub, { textAlign: 'center' }]}>
@@ -1521,16 +1521,16 @@ ${form.notes ? `<div class="card">
                 </View>
                 {form.attachments.length === 0 ? (
                   <View style={fus.emptyState}>
-                    <MaterialCommunityIcons name={'tray-outline' as any} size={28} color="#CBD5E1" />
+                    <Feather name={'inbox' as any} size={28} color="#CBD5E1" />
                     <Text style={fus.emptyStateText}>Henüz dosya eklenmedi</Text>
                     <Text style={fus.emptyStateHint}>Sol taraftaki butona tıklayarak{'\n'}dosya ve fotoğraf ekleyebilirsiniz</Text>
                   </View>
                 ) : (
                   <>
                     {([
-                      { label: 'Gülüş Tasarımı', icon: 'image-outline', prefixes: ['Ekartörlü Resim', 'Gülüş Resmi', 'Gülüş Videosu'] },
-                      { label: 'Tarama Verileri', icon: 'tooth-outline', prefixes: ['Alt Çene', 'Üst Çene', 'Bite (Kapanış)', 'Diş Eti Taraması'] },
-                      { label: 'İmplant Bilgileri', icon: 'screw-machine-flat-top', prefixes: ['Scan Body STL'] },
+                      { label: 'Gülüş Tasarımı', icon: 'image', prefixes: ['Ekartörlü Resim', 'Gülüş Resmi', 'Gülüş Videosu'] },
+                      { label: 'Tarama Verileri', icon: 'grid', prefixes: ['Alt Çene', 'Üst Çene', 'Bite (Kapanış)', 'Diş Eti Taraması'] },
+                      { label: 'İmplant Bilgileri', icon: 'tool', prefixes: ['Scan Body STL'] },
                       { label: 'Ek Dosyalar', icon: 'paperclip', prefixes: ['PDF Belgesi', 'Referans Fotoğraf'] },
                     ] as const).map(group => {
                       const groupFiles = form.attachments.filter(a =>
@@ -1540,7 +1540,7 @@ ${form.notes ? `<div class="card">
                       return (
                         <View key={group.label} style={fus.fileGroup}>
                           <View style={fus.fileGroupHeader}>
-                            <MaterialCommunityIcons name={group.icon as any} size={11} color="#94A3B8" />
+                            <Feather name={group.icon as any} size={11} color="#94A3B8" />
                             <Text style={fus.fileGroupLabel}>{group.label}</Text>
                           </View>
                           {groupFiles.map(a => (
@@ -1557,7 +1557,7 @@ ${form.notes ? `<div class="card">
                       return (
                         <View style={fus.fileGroup}>
                           <View style={fus.fileGroupHeader}>
-                            <MaterialCommunityIcons name={'folder-outline' as any} size={11} color="#94A3B8" />
+                            <Feather name={'folder' as any} size={11} color="#94A3B8" />
                             <Text style={fus.fileGroupLabel}>Diğer Dosyalar</Text>
                           </View>
                           {others.map(a => (
@@ -1567,7 +1567,7 @@ ${form.notes ? `<div class="card">
                       );
                     })()}
                     <View style={fus.totalRow}>
-                      <MaterialCommunityIcons name={'paperclip' as any} size={12} color="#64748B" />
+                      <Feather name={'paperclip' as any} size={12} color="#64748B" />
                       <Text style={fus.totalText}>Toplam {form.attachments.length} dosya</Text>
                     </View>
                   </>
@@ -1595,12 +1595,12 @@ ${form.notes ? `<div class="card">
                 <View style={[fus.umHeader, !isDesktop && { paddingHorizontal: 16, paddingVertical: 14 }]}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                     <View style={[fus.umHeaderIcon, { backgroundColor: P + '18' }]}>
-                      <MaterialCommunityIcons name={'cloud-upload-outline' as any} size={20} color={P} />
+                      <Feather name={'upload-cloud' as any} size={20} color={P} />
                     </View>
                     <Text style={fus.umHeaderTitle}>Dosya Yükleme</Text>
                   </View>
                   <TouchableOpacity onPress={() => setUploadModalOpen(false)} style={fus.umCloseBtn}>
-                    <MaterialCommunityIcons name={'close' as any} size={20} color="#64748B" />
+                    <Feather name={'x' as any} size={20} color="#64748B" />
                   </TouchableOpacity>
                 </View>
 
@@ -1632,13 +1632,13 @@ ${form.notes ? `<div class="card">
                                   <View style={fus.uploadCardThumbWrap}>
                                     <Image source={{ uri: existing.uri }} style={fus.uploadCardThumbImg} resizeMode="cover" />
                                     <View style={fus.uploadCardThumbOverlay}>
-                                      <MaterialCommunityIcons name={'eye-outline' as any} size={18} color="#FFFFFF" />
+                                      <Feather name={'eye' as any} size={18} color="#FFFFFF" />
                                     </View>
                                   </View>
                                 ) : (
                                   <View style={fus.uploadCardIcon}>
-                                    <MaterialCommunityIcons
-                                      name={'image-outline' as any}
+                                    <Feather
+                                      name={'image' as any}
                                       size={28} color={P}
                                     />
                                   </View>
@@ -1647,7 +1647,7 @@ ${form.notes ? `<div class="card">
                                 {existing && <Text style={fus.uploadCardFileName} numberOfLines={1}>{existing.name}</Text>}
                               </View>
                               <View style={[fus.uploadCardBtn, { backgroundColor: existing ? '#22C55E' : P }]}>
-                                <MaterialCommunityIcons name={existing ? 'check' : 'arrow-up'} size={16} color="#FFFFFF" />
+                                <Feather name={existing ? 'check' : 'arrow-up'} size={16} color="#FFFFFF" />
                               </View>
                               {existing && (
                                 <TouchableOpacity
@@ -1655,7 +1655,7 @@ ${form.notes ? `<div class="card">
                                   onPress={(e) => { e.stopPropagation?.(); removeAttachment(existing.id); }}
                                   activeOpacity={0.8}
                                 >
-                                  <MaterialCommunityIcons name={'close' as any} size={12} color="#EF4444" />
+                                  <Feather name={'x' as any} size={12} color="#EF4444" />
                                 </TouchableOpacity>
                               )}
                             </TouchableOpacity>
@@ -1680,8 +1680,8 @@ ${form.notes ? `<div class="card">
                             <View style={[fus.uploadCardTab, { backgroundColor: existing ? '#22C55E' : P }]} />
                             <View style={fus.uploadCardBody}>
                               <View style={fus.uploadCardIcon}>
-                                <MaterialCommunityIcons
-                                  name={'video-outline' as any}
+                                <Feather
+                                  name={'video' as any}
                                   size={28} color={existing ? '#22C55E' : P}
                                 />
                               </View>
@@ -1693,7 +1693,7 @@ ${form.notes ? `<div class="card">
                               )}
                             </View>
                             <View style={[fus.uploadCardBtn, { backgroundColor: existing ? '#22C55E' : P }]}>
-                              <MaterialCommunityIcons name={existing ? 'check' : 'arrow-up'} size={16} color="#FFFFFF" />
+                              <Feather name={existing ? 'check' : 'arrow-up'} size={16} color="#FFFFFF" />
                             </View>
                             {existing && (
                               <TouchableOpacity
@@ -1701,7 +1701,7 @@ ${form.notes ? `<div class="card">
                                 onPress={(e) => { (e as any).stopPropagation?.(); removeAttachment(existing.id); }}
                                 activeOpacity={0.8}
                               >
-                                <MaterialCommunityIcons name={'close' as any} size={12} color="#EF4444" />
+                                <Feather name={'x' as any} size={12} color="#EF4444" />
                               </TouchableOpacity>
                             )}
                           </TouchableOpacity>
@@ -1730,8 +1730,8 @@ ${form.notes ? `<div class="card">
                             <View style={[fus.uploadCardTab, { backgroundColor: existing ? '#22C55E' : '#0EA5E9' }]} />
                             <View style={fus.uploadCardBody}>
                               <View style={fus.uploadCardIcon}>
-                                <MaterialCommunityIcons
-                                  name={'cube-outline' as any}
+                                <Feather
+                                  name={'box' as any}
                                   size={28}
                                   color={existing ? '#22C55E' : '#0EA5E9'}
                                 />
@@ -1746,7 +1746,7 @@ ${form.notes ? `<div class="card">
                               )}
                             </View>
                             <View style={[fus.uploadCardBtn, { backgroundColor: existing ? '#22C55E' : '#0EA5E9' }]}>
-                              <MaterialCommunityIcons name={existing ? 'check' : 'arrow-up'} size={16} color="#FFFFFF" />
+                              <Feather name={existing ? 'check' : 'arrow-up'} size={16} color="#FFFFFF" />
                             </View>
                             {existing && (
                               <TouchableOpacity
@@ -1754,7 +1754,7 @@ ${form.notes ? `<div class="card">
                                 onPress={(e) => { (e as any).stopPropagation?.(); removeAttachment(existing.id); }}
                                 activeOpacity={0.8}
                               >
-                                <MaterialCommunityIcons name={'close' as any} size={12} color="#EF4444" />
+                                <Feather name={'x' as any} size={12} color="#EF4444" />
                               </TouchableOpacity>
                             )}
                           </TouchableOpacity>
@@ -1783,7 +1783,7 @@ ${form.notes ? `<div class="card">
                           activeOpacity={0.85}
                         >
                           <View style={fus.occlusionCtaIcon}>
-                            <MaterialCommunityIcons name={'cube-scan' as any} size={18} color="#FFFFFF" />
+                            <Feather name={'box' as any} size={18} color="#FFFFFF" />
                           </View>
                           <View style={{ flex: 1 }}>
                             <Text style={fus.occlusionCtaTitle}>
@@ -1796,8 +1796,8 @@ ${form.notes ? `<div class="card">
                                 : '3D ısı haritası, penetrasyon ve mesafe ölçümü'}
                             </Text>
                           </View>
-                          <MaterialCommunityIcons
-                            name={(occlusionResult ? 'refresh' : 'arrow-right') as any}
+                          <Feather
+                            name={(occlusionResult ? 'refresh-cw' : 'arrow-right') as any}
                             size={18}
                             color="#FFFFFF"
                           />
@@ -1827,8 +1827,8 @@ ${form.notes ? `<div class="card">
                             <View style={[fus.uploadCardTab, { backgroundColor: existing ? '#22C55E' : '#8B5CF6' }]} />
                             <View style={fus.uploadCardBody}>
                               <View style={fus.uploadCardIcon}>
-                                <MaterialCommunityIcons
-                                  name={'tooth-outline' as any}
+                                <Feather
+                                  name={'grid' as any}
                                   size={28}
                                   color={existing ? '#22C55E' : '#8B5CF6'}
                                 />
@@ -1843,7 +1843,7 @@ ${form.notes ? `<div class="card">
                               )}
                             </View>
                             <View style={[fus.uploadCardBtn, { backgroundColor: existing ? '#22C55E' : '#8B5CF6' }]}>
-                              <MaterialCommunityIcons name={existing ? 'check' : 'arrow-up'} size={16} color="#FFFFFF" />
+                              <Feather name={existing ? 'check' : 'arrow-up'} size={16} color="#FFFFFF" />
                             </View>
                             {existing && (
                               <TouchableOpacity
@@ -1851,7 +1851,7 @@ ${form.notes ? `<div class="card">
                                 onPress={(e) => { (e as any).stopPropagation?.(); removeAttachment(existing.id); }}
                                 activeOpacity={0.8}
                               >
-                                <MaterialCommunityIcons name={'close' as any} size={12} color="#EF4444" />
+                                <Feather name={'x' as any} size={12} color="#EF4444" />
                               </TouchableOpacity>
                             )}
                           </TouchableOpacity>
@@ -1868,14 +1868,14 @@ ${form.notes ? `<div class="card">
                             <View style={[fus.uploadCardTab, { backgroundColor: form.implant_brand ? '#22C55E' : '#8B5CF6', marginBottom: 12 }]} />
                             <View style={{ paddingHorizontal: 14, paddingBottom: 14 }}>
                               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                                <MaterialCommunityIcons name={'office-building-marker-outline' as any} size={20} color={form.implant_brand ? '#22C55E' : '#8B5CF6'} />
+                                <Feather name={'map-pin' as any} size={20} color={form.implant_brand ? '#22C55E' : '#8B5CF6'} />
                                 <Text style={[fus.uploadCardLabel, { color: form.implant_brand ? '#0F172A' : '#64748B', flex: 1 }]}>
                                   İmplant Marka{form.implant_brand ? ': ' : ''}
                                   {form.implant_brand ? <Text style={{ color: '#8B5CF6' }}>{form.implant_brand}</Text> : null}
                                 </Text>
                                 {form.implant_brand && (
                                   <TouchableOpacity onPress={() => { setForm(f => ({ ...f, implant_brand: '' })); setImplantBrandSearch(''); setImplantBrandDropOpen(false); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                                    <MaterialCommunityIcons name={'close-circle' as any} size={16} color="#CBD5E1" />
+                                    <Feather name={'x-circle' as any} size={16} color="#CBD5E1" />
                                   </TouchableOpacity>
                                 )}
                               </View>
@@ -1885,7 +1885,7 @@ ${form.notes ? `<div class="card">
                                 ref={implantInputRef}
                                 style={fus.implantSearchRow}
                               >
-                                <MaterialCommunityIcons name={'magnify' as any} size={16} color="#94A3B8" />
+                                <Feather name={'search' as any} size={16} color="#94A3B8" />
                                 <TextInput
                                   style={fus.implantSearchInput}
                                   placeholder="Marka ara..."
@@ -1924,7 +1924,7 @@ ${form.notes ? `<div class="card">
                                             {brand}
                                           </Text>
                                           {form.implant_brand === brand && (
-                                            <MaterialCommunityIcons name={'check' as any} size={14} color="#8B5CF6" />
+                                            <Feather name={'check' as any} size={14} color="#8B5CF6" />
                                           )}
                                         </TouchableOpacity>
                                       ))}
@@ -1981,14 +1981,14 @@ ${form.notes ? `<div class="card">
                             <View style={[fus.uploadCardTab, { backgroundColor: existing ? '#22C55E' : '#F59E0B' }]} />
                             <View style={fus.uploadCardBody}>
                               <View style={fus.uploadCardIcon}>
-                                <MaterialCommunityIcons name={'file-pdf-box' as any} size={28} color={existing ? '#22C55E' : '#F59E0B'} />
+                                <Feather name={'file-text' as any} size={28} color={existing ? '#22C55E' : '#F59E0B'} />
                               </View>
                               <Text style={[fus.uploadCardLabel, { color: existing ? '#0F172A' : '#64748B' }]} numberOfLines={2}>
                                 PDF (Reçete vb.)
                               </Text>
                             </View>
                             <View style={[fus.uploadCardBtn, { backgroundColor: existing ? '#22C55E' : '#F59E0B' }]}>
-                              <MaterialCommunityIcons name={existing ? 'check' : 'arrow-up'} size={16} color="#FFFFFF" />
+                              <Feather name={existing ? 'check' : 'arrow-up'} size={16} color="#FFFFFF" />
                             </View>
                             {existing && (
                               <TouchableOpacity
@@ -1996,7 +1996,7 @@ ${form.notes ? `<div class="card">
                                 onPress={(e) => { (e as any).stopPropagation?.(); removeAttachment(existing.id); }}
                                 activeOpacity={0.8}
                               >
-                                <MaterialCommunityIcons name={'close' as any} size={12} color="#EF4444" />
+                                <Feather name={'x' as any} size={12} color="#EF4444" />
                               </TouchableOpacity>
                             )}
                           </TouchableOpacity>
@@ -2020,12 +2020,12 @@ ${form.notes ? `<div class="card">
                                 <View style={fus.uploadCardThumbWrap}>
                                   <Image source={{ uri: existing.uri }} style={fus.uploadCardThumbImg} resizeMode="cover" />
                                   <View style={fus.uploadCardThumbOverlay}>
-                                    <MaterialCommunityIcons name={'eye-outline' as any} size={18} color="#FFFFFF" />
+                                    <Feather name={'eye' as any} size={18} color="#FFFFFF" />
                                   </View>
                                 </View>
                               ) : (
                                 <View style={fus.uploadCardIcon}>
-                                  <MaterialCommunityIcons name={'image-outline' as any} size={28} color={'#F59E0B'} />
+                                  <Feather name={'image' as any} size={28} color={'#F59E0B'} />
                                 </View>
                               )}
                               <Text style={[fus.uploadCardLabel, { color: existing ? '#0F172A' : '#64748B' }]} numberOfLines={2}>
@@ -2033,7 +2033,7 @@ ${form.notes ? `<div class="card">
                               </Text>
                             </View>
                             <View style={[fus.uploadCardBtn, { backgroundColor: existing ? '#22C55E' : '#F59E0B' }]}>
-                              <MaterialCommunityIcons name={existing ? 'check' : 'arrow-up'} size={16} color="#FFFFFF" />
+                              <Feather name={existing ? 'check' : 'arrow-up'} size={16} color="#FFFFFF" />
                             </View>
                             {existing && (
                               <TouchableOpacity
@@ -2041,7 +2041,7 @@ ${form.notes ? `<div class="card">
                                 onPress={(e) => { (e as any).stopPropagation?.(); removeAttachment(existing.id); }}
                                 activeOpacity={0.8}
                               >
-                                <MaterialCommunityIcons name={'close' as any} size={12} color="#EF4444" />
+                                <Feather name={'x' as any} size={12} color="#EF4444" />
                               </TouchableOpacity>
                             )}
                           </TouchableOpacity>
@@ -2066,7 +2066,7 @@ ${form.notes ? `<div class="card">
                     onPress={() => setUploadModalOpen(false)}
                     activeOpacity={0.85}
                   >
-                    <MaterialCommunityIcons name={'check' as any} size={18} color="#FFFFFF" />
+                    <Feather name={'check' as any} size={18} color="#FFFFFF" />
                     <Text style={fus.umOkBtnText}>Tamam</Text>
                   </TouchableOpacity>
                 </View>
@@ -2188,7 +2188,7 @@ ${form.notes ? `<div class="card">
                 const hasLastOp = lastConfirmedOpRef.current.work_type !== '';
 
                 return (
-                  <SectionCard title={groupLabel} icon={'cog-outline' as any} accentColor={P}>
+                  <SectionCard title={groupLabel} icon={'settings' as any} accentColor={P}>
                     {!validTooth ? (
                       <View style={{ paddingVertical: 16, alignItems: 'center', opacity: 0.45 }}>
                         <Svg width={28} height={28} viewBox="0 0 48 48" fill="none">
@@ -2238,7 +2238,7 @@ ${form.notes ? `<div class="card">
                               onPress={() => updateToothOp({ ...lastConfirmedOpRef.current })}
                               style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 9, borderRadius: 10, borderWidth: 1, borderColor: '#F1F5F9', backgroundColor: '#F8FAFC' }}
                             >
-                              <MaterialCommunityIcons name={'content-copy' as any} size={14} color="#64748B" />
+                              <Feather name={'copy' as any} size={14} color="#64748B" />
                               <Text style={{ fontSize: 12, fontFamily: F.medium, color: '#64748B' }}>Önceki dişi kopyala</Text>
                             </TouchableOpacity>
                           )}
@@ -2260,7 +2260,7 @@ ${form.notes ? `<div class="card">
                             disabled={!op.work_type}
                             style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 9, borderRadius: 10, backgroundColor: op.work_type ? P : '#F1F5F9' }}
                           >
-                            <MaterialCommunityIcons name={isAlreadyConfirmed ? 'check-circle' : 'plus-circle-outline' as any} size={14} color={op.work_type ? '#fff' : '#94A3B8'} />
+                            <Feather name={isAlreadyConfirmed ? 'check-circle' : 'plus-circle' as any} size={14} color={op.work_type ? '#fff' : '#94A3B8'} />
                             <Text style={{ fontSize: 12, fontFamily: F.semibold, color: op.work_type ? '#fff' : '#94A3B8' }}>
                               {isAlreadyConfirmed ? 'Güncelle' : selectedTeeth.length > 1 ? `${selectedTeeth.length} diş ekle` : 'Listeye ekle'}
                             </Text>
@@ -2279,13 +2279,13 @@ ${form.notes ? `<div class="card">
               return (
                 <SectionCard
                   title={`İş listesi${confirmed.length > 0 ? ` (${confirmed.length} diş)` : ''}`}
-                  icon={'format-list-bulleted-square' as any}
+                  icon={'list' as any}
                   style={{ overflow: 'visible' } as any}
                   accentColor={P}
                 >
                   {confirmed.length === 0 ? (
                     <View style={{ paddingVertical: 28, alignItems: 'center', gap: 6, opacity: 0.5 }}>
-                      <MaterialCommunityIcons name={'clipboard-list-outline' as any} size={28} color="#94A3B8" />
+                      <Feather name={'clipboard' as any} size={28} color="#94A3B8" />
                       <Text style={{ color: '#94A3B8', fontSize: 12, fontFamily: F.medium, textAlign: 'center' }}>
                         Diş seçin, işlemleri doldurun ve "Listeye ekle" butonuna basın
                       </Text>
@@ -2322,7 +2322,7 @@ ${form.notes ? `<div class="card">
                   backgroundColor: '#F1F5F9', borderRadius: 20,
                   borderWidth: 1, borderColor: '#CBD5E1',
                 }}>
-                  <MaterialCommunityIcons name={'printer-outline' as any} size={14} color={P} />
+                  <Feather name={'printer' as any} size={14} color={P} />
                   <Text style={{ fontSize: 12, color: P, fontFamily: F.medium }}>Çıktı Al</Text>
                 </TouchableOpacity>
               )}
@@ -2517,7 +2517,7 @@ ${form.notes ? `<div class="card">
             <View style={fpv.header}>
               <View style={fpv.headerLeft}>
                 <View style={[fpv.kindBadge, { backgroundColor: kindColor(previewFile?.kind ?? 'other') + '18' }]}>
-                  <MaterialCommunityIcons
+                  <Feather
                     name={kindIcon(previewFile?.kind ?? 'other') as any}
                     size={14}
                     color={kindColor(previewFile?.kind ?? 'other')}
@@ -2532,7 +2532,7 @@ ${form.notes ? `<div class="card">
                 </View>
               </View>
               <TouchableOpacity onPress={closePreview} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <MaterialCommunityIcons name={'close' as any} size={16} color="#64748B" />
+                <Feather name={'x' as any} size={16} color="#64748B" />
               </TouchableOpacity>
             </View>
 
@@ -2560,17 +2560,17 @@ ${form.notes ? `<div class="card">
             ) : previewFile?.kind === 'pdf' ? (
               <View style={fpv.fileInfo}>
                 <View style={fpv.fileIconBig}>
-                  <MaterialCommunityIcons name={'file-pdf-box' as any} size={52} color="#EF4444" />
+                  <Feather name={'file-text' as any} size={52} color="#EF4444" />
                 </View>
                 <Text style={fpv.fileInfoTitle}>PDF Belgesi</Text>
                 <View style={fpv.fileInfoMeta}>
                   <View style={fpv.fileMetaRow}>
-                    <MaterialCommunityIcons name={'file-outline' as any} size={13} color="#94A3B8" />
+                    <Feather name={'file' as any} size={13} color="#94A3B8" />
                     <Text style={fpv.fileMetaText}>{previewFile.name}</Text>
                   </View>
                   {previewFile.size > 0 && (
                     <View style={fpv.fileMetaRow}>
-                      <MaterialCommunityIcons name={'database-outline' as any} size={13} color="#94A3B8" />
+                      <Feather name={'database' as any} size={13} color="#94A3B8" />
                       <Text style={fpv.fileMetaText}>{formatBytes(previewFile.size)}</Text>
                     </View>
                   )}
@@ -2583,14 +2583,14 @@ ${form.notes ? `<div class="card">
                     }
                   }}
                 >
-                  <MaterialCommunityIcons name={'open-in-new' as any} size={14} color="#EF4444" />
+                  <Feather name={'external-link' as any} size={14} color="#EF4444" />
                   <Text style={[fpv.openBtnText, { color: '#EF4444' }]}>PDF'yi aç</Text>
                 </TouchableOpacity>
               </View>
             ) : (
               <View style={fpv.fileInfo}>
                 <View style={fpv.fileIconBig}>
-                  <MaterialCommunityIcons name={'file-outline' as any} size={52} color="#64748B" />
+                  <Feather name={'file' as any} size={52} color="#64748B" />
                 </View>
                 <Text style={fpv.fileInfoTitle}>{previewFile?.name ?? 'Dosya'}</Text>
                 {(previewFile?.size ?? 0) > 0 && (
@@ -2604,7 +2604,7 @@ ${form.notes ? `<div class="card">
                     }
                   }}
                 >
-                  <MaterialCommunityIcons name={'open-in-new' as any} size={14} color="#64748B" />
+                  <Feather name={'external-link' as any} size={14} color="#64748B" />
                   <Text style={[fpv.openBtnText, { color: '#64748B' }]}>Yeni sekmede aç</Text>
                 </TouchableOpacity>
               </View>
@@ -2625,14 +2625,14 @@ ${form.notes ? `<div class="card">
           <Pressable style={chatModal.sheet} onPress={(e: any) => e.stopPropagation()}>
             <View style={chatModal.header}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <MaterialCommunityIcons name={'forum' as any} size={18} color={P} />
+                <Feather name={'message-circle' as any} size={18} color={P} />
                 <View>
                   <Text style={chatModal.headerTitle}>Mesaj kutusu</Text>
                   <Text style={chatModal.headerSub}>Bu vakaya özel notlar, sesli mesajlar ve dosyalar</Text>
                 </View>
               </View>
               <TouchableOpacity onPress={() => setChatModalVisible(false)} style={chatModal.closeBtn}>
-                <MaterialCommunityIcons name={'close' as any} size={20} color="#64748B" />
+                <Feather name={'x' as any} size={20} color="#64748B" />
               </TouchableOpacity>
             </View>
             <ChatBox
@@ -2697,11 +2697,11 @@ function fileDisplayTitle(file: AttachedFile): string {
 
 function kindIcon(kind: FileKind): string {
   switch (kind) {
-    case 'photo': return 'image-outline';
-    case 'video': return 'video-outline';
-    case 'stl':   return 'cube-outline';
-    case 'ply':   return 'cube-scan';
-    case 'pdf':   return 'file-pdf-box';
+    case 'photo': return 'image';
+    case 'video': return 'video';
+    case 'stl':   return 'box';
+    case 'ply':   return 'box';
+    case 'pdf':   return 'file-text';
     default:      return 'paperclip';
   }
 }
@@ -2739,7 +2739,7 @@ function FileRow({ file, onRemove, onPreview }: { file: AttachedFile; onRemove: 
           activeOpacity={onPreview ? 0.7 : 1}
           style={[_fusStatic.fileIconWrap, { backgroundColor: color + '18' }]}
         >
-          <MaterialCommunityIcons name={kindIcon(file.kind) as any} size={16} color={color} />
+          <Feather name={kindIcon(file.kind) as any} size={16} color={color} />
         </TouchableOpacity>
       )}
       <View style={{ flex: 1 }}>
@@ -2750,11 +2750,11 @@ function FileRow({ file, onRemove, onPreview }: { file: AttachedFile; onRemove: 
       </View>
       {onPreview && (
         <TouchableOpacity onPress={onPreview} style={_fusStatic.filePreviewBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <MaterialCommunityIcons name={'eye-outline' as any} size={16} color="#64748B" />
+          <Feather name={'eye' as any} size={16} color="#64748B" />
         </TouchableOpacity>
       )}
       <TouchableOpacity onPress={onRemove} style={_fusStatic.fileRemove} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-        <MaterialCommunityIcons name={'close' as any} size={14} color="#94A3B8" />
+        <Feather name={'x' as any} size={14} color="#94A3B8" />
       </TouchableOpacity>
     </View>
   );
@@ -3234,7 +3234,7 @@ function LiveSummaryPanel({ form, selectedDoctor, selectedClinic, currentStep, o
             <View style={lsp.col}>
               <Text style={lsp.colLabel}>DOSYALAR</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 1 }}>
-                <MaterialCommunityIcons name={'paperclip' as any} size={12} color="#64748B" />
+                <Feather name={'paperclip' as any} size={12} color="#64748B" />
                 <Text style={lsp.colValue}>{form.attachments.length}</Text>
               </View>
             </View>
@@ -3246,7 +3246,7 @@ function LiveSummaryPanel({ form, selectedDoctor, selectedClinic, currentStep, o
       {/* ── Chat button ── */}
       <View style={lsp.chatBtnWrap}>
         <TouchableOpacity onPress={onOpenChat} style={lsp.chatBtn} activeOpacity={0.8}>
-          <MaterialCommunityIcons name={'forum' as any} size={15} color="#fff" />
+          <Feather name={'message-circle' as any} size={15} color="#fff" />
           <Text style={lsp.chatBtnLabel}>Mesaj kutusu</Text>
         </TouchableOpacity>
       </View>
@@ -3423,7 +3423,7 @@ function ClinicAddModal({
               <Text style={cm.subtitle}>Klinik bilgilerini doldurun</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={cm.closeBtn}>
-              <MaterialCommunityIcons name="close" size={20} color="#64748B" />
+              <Feather name="x" size={20} color="#64748B" />
             </TouchableOpacity>
           </View>
 
@@ -3631,7 +3631,7 @@ function DoctorAddModal({
                 <Text style={cm.subtitle}>Diş hekimi bilgilerini doldurun</Text>
               </View>
               <TouchableOpacity onPress={onClose} style={cm.closeBtn}>
-                <MaterialCommunityIcons name="close" size={20} color="#64748B" />
+                <Feather name="x" size={20} color="#64748B" />
               </TouchableOpacity>
             </View>
 
@@ -3787,7 +3787,7 @@ function InlinePicker({
         <Text style={[ip.val, !sel && ip.placeholder]} numberOfLines={1}>
           {sel?.label ?? placeholder}
         </Text>
-        <MaterialCommunityIcons name={'chevron-down' as any} size={11} color={disabled ? '#CBD5E1' : '#64748B'} />
+        <Feather name={'chevron-down' as any} size={11} color={disabled ? '#CBD5E1' : '#64748B'} />
       </TouchableOpacity>
 
       {open && dropRect && (
@@ -4114,7 +4114,7 @@ function WorkTypeSelector({
             activeOpacity={0.75}
           >
             <Text style={[wts.crumbChipText, !op.work_type && wts.crumbChipTextActive]}>{activeMain}</Text>
-            <MaterialCommunityIcons name={'chevron-down' as any} size={13} color={!op.work_type ? P : '#94A3B8'} />
+            <Feather name={'chevron-down' as any} size={13} color={!op.work_type ? P : '#94A3B8'} />
           </TouchableOpacity>
 
           {/* Sub tip chip — sadece seçildiyse göster, tıklayınca sub seçime döner */}
@@ -4129,7 +4129,7 @@ function WorkTypeSelector({
                 <Text style={[wts.crumbChipText, wts.crumbChipTextActive]}>
                   {activeNode?.subtypes.find(s => s.value === op.work_type)?.label ?? op.work_type}
                 </Text>
-                <MaterialCommunityIcons name={'chevron-down' as any} size={13} color={P} />
+                <Feather name={'chevron-down' as any} size={13} color={P} />
               </TouchableOpacity>
             </>
           )}
@@ -4386,7 +4386,7 @@ function VoicePlayer({ uri, duration, accentColor }: { uri: string; duration: nu
   return (
     <View style={cb.vpWrap}>
       <TouchableOpacity onPress={toggle} style={cb.vpPlayBtn} activeOpacity={0.8}>
-        <MaterialCommunityIcons name={playing ? ('pause' as any) : ('play' as any)} size={16} color="#fff" />
+        <Feather name={playing ? ('pause' as any) : ('play' as any)} size={16} color="#fff" />
       </TouchableOpacity>
       <View style={cb.vpBars}>
         {WAVE_BARS.map((h, i) => (
@@ -4427,7 +4427,7 @@ function MessageBubble({ msg, onDelete, accentColor }: { msg: ChatMessage; onDel
         {msg.type === 'file' && (
           <View style={cb.fileRow}>
             <View style={cb.fileIcon}>
-              <MaterialCommunityIcons name={'file-document-outline' as any} size={20} color="#fff" />
+              <Feather name={'file-text' as any} size={20} color="#fff" />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={cb.fileName} numberOfLines={1}>{msg.fileName}</Text>
@@ -4438,7 +4438,7 @@ function MessageBubble({ msg, onDelete, accentColor }: { msg: ChatMessage; onDel
         <View style={cb.bubbleMeta}>
           <Text style={[cb.bubbleTime, !isSelf && cb.bubbleTimeLeft]}>{time}</Text>
           <TouchableOpacity onPress={onDelete} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-            <MaterialCommunityIcons name={'close' as any} size={10} color={isSelf ? 'rgba(255,255,255,0.6)' : '#CBD5E1'} />
+            <Feather name={'x' as any} size={10} color={isSelf ? 'rgba(255,255,255,0.6)' : '#CBD5E1'} />
           </TouchableOpacity>
         </View>
       </View>
@@ -4539,7 +4539,7 @@ function ChatBox({ messages, onAdd, onDelete, hideHeader, accentColor }: {
       {!hideHeader && (
       <View style={cb.header}>
         <View style={cb.headerIcon}>
-          <MaterialCommunityIcons name={'forum' as any} size={16} color={P} />
+          <Feather name={'message-circle' as any} size={16} color={P} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={cb.headerTitle}>Mesaj kutusu</Text>
@@ -4560,7 +4560,7 @@ function ChatBox({ messages, onAdd, onDelete, hideHeader, accentColor }: {
       >
         {messages.length === 0 && (
           <View style={cb.emptyWrap}>
-            <MaterialCommunityIcons name={'message-outline' as any} size={28} color="#CBD5E1" />
+            <Feather name={'message-square' as any} size={28} color="#CBD5E1" />
             <Text style={cb.emptyTxt}>Henüz mesaj yok</Text>
           </View>
         )}
@@ -4575,7 +4575,7 @@ function ChatBox({ messages, onAdd, onDelete, hideHeader, accentColor }: {
           <View style={cb.recDot} />
           <Text style={cb.recTxt}>Kaydediliyor  {fmt(elapsed)}</Text>
           <TouchableOpacity onPress={stopRec} style={cb.recStop}>
-            <MaterialCommunityIcons name={'stop-circle-outline' as any} size={18} color="#EF4444" />
+            <Feather name={'stop-circle' as any} size={18} color="#EF4444" />
             <Text style={cb.recStopTxt}>Durdur ve gönder</Text>
           </TouchableOpacity>
         </View>
@@ -4602,7 +4602,7 @@ function ChatBox({ messages, onAdd, onDelete, hideHeader, accentColor }: {
               <View style={cb.previewHeader}>
                 <Text style={cb.previewTitle}>Dosya Gönder</Text>
                 <TouchableOpacity onPress={() => setPendingFile(null)}>
-                  <MaterialCommunityIcons name={'close' as any} size={20} color="#64748B" />
+                  <Feather name={'x' as any} size={20} color="#64748B" />
                 </TouchableOpacity>
               </View>
 
@@ -4616,11 +4616,11 @@ function ChatBox({ messages, onAdd, onDelete, hideHeader, accentColor }: {
                 />
               ) : (
                 <View style={cb.previewFileIcon}>
-                  <MaterialCommunityIcons
+                  <Feather
                     name={
                       pendingFile.name.match(/\.(stl|ply|obj|step|stp)$/i)
-                        ? ('cube-outline' as any)
-                        : ('file-document-outline' as any)
+                        ? ('box' as any)
+                        : ('file-text' as any)
                     }
                     size={48}
                     color="#0F172A"
@@ -4647,7 +4647,7 @@ function ChatBox({ messages, onAdd, onDelete, hideHeader, accentColor }: {
                   <Text style={cb.previewCancelTxt}>İptal</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={cb.previewSendBtn} onPress={handleSendFile}>
-                  <MaterialCommunityIcons name={'send' as any} size={16} color="#FFFFFF" />
+                  <Feather name={'send' as any} size={16} color="#FFFFFF" />
                   <Text style={cb.previewSendTxt}>Gönder</Text>
                 </TouchableOpacity>
               </View>
@@ -4674,7 +4674,7 @@ function ChatBox({ messages, onAdd, onDelete, hideHeader, accentColor }: {
                   >
                     <Text style={cb.attachItemLabel}>Fotoğraf</Text>
                     <View style={[cb.attachIconCircle, { backgroundColor: '#0F172A' }]}>
-                      <MaterialCommunityIcons name={'image-outline' as any} size={22} color="#FFFFFF" />
+                      <Feather name={'image' as any} size={22} color="#FFFFFF" />
                     </View>
                   </TouchableOpacity>
 
@@ -4685,7 +4685,7 @@ function ChatBox({ messages, onAdd, onDelete, hideHeader, accentColor }: {
                   >
                     <Text style={cb.attachItemLabel}>Dijital Tarama</Text>
                     <View style={[cb.attachIconCircle, { backgroundColor: '#0891B2' }]}>
-                      <MaterialCommunityIcons name={'cube-scan' as any} size={22} color="#FFFFFF" />
+                      <Feather name={'box' as any} size={22} color="#FFFFFF" />
                     </View>
                   </TouchableOpacity>
 
@@ -4696,7 +4696,7 @@ function ChatBox({ messages, onAdd, onDelete, hideHeader, accentColor }: {
                   >
                     <Text style={cb.attachItemLabel}>Dosya</Text>
                     <View style={[cb.attachIconCircle, { backgroundColor: '#7C3AED' }]}>
-                      <MaterialCommunityIcons name={'file-document-outline' as any} size={22} color="#FFFFFF" />
+                      <Feather name={'file-text' as any} size={22} color="#FFFFFF" />
                     </View>
                   </TouchableOpacity>
                 </View>
@@ -4709,8 +4709,8 @@ function ChatBox({ messages, onAdd, onDelete, hideHeader, accentColor }: {
               onPress={() => setAttachMenuOpen(v => !v)}
               activeOpacity={0.7}
             >
-              <MaterialCommunityIcons
-                name={attachMenuOpen ? ('close' as any) : ('paperclip' as any)}
+              <Feather
+                name={attachMenuOpen ? ('x' as any) : ('paperclip' as any)}
                 size={20}
                 color={attachMenuOpen ? '#0F172A' : '#94A3B8'}
               />
@@ -4742,8 +4742,8 @@ function ChatBox({ messages, onAdd, onDelete, hideHeader, accentColor }: {
           onPress={recording ? stopRec : startRec}
           activeOpacity={0.85}
         >
-          <MaterialCommunityIcons
-            name={recording ? ('stop' as any) : ('microphone' as any)}
+          <Feather
+            name={recording ? ('square' as any) : ('mic' as any)}
             size={20} color="#fff"
           />
         </TouchableOpacity>
@@ -4913,12 +4913,12 @@ function VoiceNotePill({
   return (
     <View style={vni.pill}>
       <TouchableOpacity onPress={onPress} style={[vni.pillPlayBtn, isPlaying && vni.pillPlayBtnActive]} activeOpacity={0.8}>
-        <MaterialCommunityIcons name={isPlaying ? ('pause' as any) : ('play' as any)} size={12} color="#fff" />
+        <Feather name={isPlaying ? ('pause' as any) : ('play' as any)} size={12} color="#fff" />
       </TouchableOpacity>
       <Text style={[vni.pillLabel, isPlaying && vni.pillLabelActive]}>{label}</Text>
       <Text style={vni.pillDur}>{fmt(note.duration)}</Text>
       <TouchableOpacity onPress={onDelete} style={vni.pillDel} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
-        <MaterialCommunityIcons name={'close' as any} size={10} color="#94A3B8" />
+        <Feather name={'x' as any} size={10} color="#94A3B8" />
       </TouchableOpacity>
     </View>
   );
@@ -5030,7 +5030,7 @@ function VoiceNoteInput({
             <View style={vni.stopIcon}><View style={vni.stopSquare} /></View>
           ) : (
             <View style={vni.micIcon}>
-              <MaterialCommunityIcons name={'microphone' as any} size={13} color="#fff" />
+              <Feather name={'mic' as any} size={13} color="#fff" />
             </View>
           )}
           <Text style={[vni.recTxt, recording && vni.recTxtActive]}>
@@ -5044,7 +5044,7 @@ function VoiceNoteInput({
       {activeIdx !== null && notes[activeIdx] && (
         <View style={vni.bubble}>
           <TouchableOpacity onPress={() => toggleNote(activeIdx)} style={vni.playBtn} activeOpacity={0.8}>
-            <MaterialCommunityIcons name={'pause' as any} size={18} color="#fff" />
+            <Feather name={'pause' as any} size={18} color="#fff" />
           </TouchableOpacity>
           <View style={vni.waveWrap}>
             <View style={vni.barsRow}>
@@ -5115,7 +5115,7 @@ const makeVniStyles = (P: string) => StyleSheet.create({
 });
 
 function SectionCard({ title, subtitle, icon, iconNode, children, errorCount, headerRight, style, accentColor }: {
-  title: string; subtitle?: string; icon?: React.ComponentProps<typeof MaterialCommunityIcons>['name']; iconNode?: React.ReactNode; children: React.ReactNode; errorCount?: number; headerRight?: React.ReactNode; style?: any; accentColor?: string;
+  title: string; subtitle?: string; icon?: React.ComponentProps<typeof Feather>['name']; iconNode?: React.ReactNode; children: React.ReactNode; errorCount?: number; headerRight?: React.ReactNode; style?: any; accentColor?: string;
 }) {
   const P = accentColor ?? C.primary;
   const sc = _staticStyles;
@@ -5125,7 +5125,7 @@ function SectionCard({ title, subtitle, icon, iconNode, children, errorCount, he
         <View style={[sc.sectionCardTitleRow, { flex: 1 }]}>
           {(icon || iconNode) && (
             <View style={sc.sectionCardIconWrap}>
-              {iconNode ?? <MaterialCommunityIcons name={icon!} size={14} color={errorCount ? '#EF4444' : P} />}
+              {iconNode ?? <Feather name={icon!} size={14} color={errorCount ? '#EF4444' : P} />}
             </View>
           )}
           <Text style={[sc.sectionCardTitle, errorCount ? { color: '#EF4444' } : undefined]}>{title}</Text>
@@ -5147,7 +5147,7 @@ function FieldError({ msg }: { msg?: string }) {
   if (!msg) return null;
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 5, marginBottom: 2 }}>
-      <MaterialCommunityIcons name={'alert-circle-outline' as any} size={12} color="#EF4444" />
+      <Feather name={'alert-circle' as any} size={12} color="#EF4444" />
       <Text style={{ fontSize: 11, fontFamily: F.medium, color: '#EF4444' }}>{msg}</Text>
     </View>
   );
@@ -5578,7 +5578,7 @@ function DateField({ label, value, onChange, minDate, maxDate, placeholder, flex
           maxLength={10}
         />
         <TouchableOpacity onPress={handleOpenPicker} style={_staticStyles.calIconBtn} activeOpacity={0.7}>
-          <MaterialCommunityIcons name="calendar-outline" size={16} color="#64748B" />
+          <Feather name="calendar" size={16} color="#64748B" />
         </TouchableOpacity>
       </View>
       <DateWheelPickerModal
@@ -5617,7 +5617,7 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 
 function InlineSelect({ label, icon, value, options, onSelect, error, accentColor }: {
   label: string;
-  icon: React.ComponentProps<typeof MaterialCommunityIcons>['name'];
+  icon: React.ComponentProps<typeof Feather>['name'];
   value: string;
   options: { value: string; label: string }[];
   onSelect: (v: string) => void;
@@ -5650,14 +5650,14 @@ function InlineSelect({ label, icon, value, options, onSelect, error, accentColo
         onPress={open ? () => setOpen(false) : handleOpen}
         activeOpacity={0.75}
       >
-        <MaterialCommunityIcons name={icon} size={14} color="#94A3B8" />
+        <Feather name={icon} size={14} color="#94A3B8" />
         <View style={{ flex: 1 }}>
           <Text style={[isel.cardLabel, !!error && isel.cardLabelError]}>{label}</Text>
           <Text style={[isel.cardValue, !hasValue && isel.cardPlaceholder]}>
             {selected ? selected.label : 'Seçiniz'}
           </Text>
         </View>
-        <MaterialCommunityIcons
+        <Feather
           name={open ? 'chevron-up' : 'chevron-down'}
           size={15} color="#94A3B8"
         />
@@ -5680,7 +5680,7 @@ function InlineSelect({ label, icon, value, options, onSelect, error, accentColo
                   activeOpacity={0.7}
                 >
                   <Text style={[isel.optionText, active && isel.optionTextActive]}>{opt.label}</Text>
-                  {active && <MaterialCommunityIcons name="check" size={13} color={P} />}
+                  {active && <Feather name="check" size={13} color={P} />}
                 </TouchableOpacity>
               );
             })}
@@ -5769,14 +5769,14 @@ function InlineDateSelect({ label, value, onChange, minDate, error, accentColor 
         onPress={open ? () => setOpen(false) : handleOpen}
         activeOpacity={0.75}
       >
-        <MaterialCommunityIcons name={'calendar-outline' as any} size={14} color="#94A3B8" />
+        <Feather name={'calendar' as any} size={14} color="#94A3B8" />
         <View style={{ flex: 1 }}>
           <Text style={[isel.cardLabel, !!error && isel.cardLabelError]}>{label}</Text>
           <Text style={[isel.cardValue, !formatted && isel.cardPlaceholder]}>
             {formatted ?? 'Tarih seçin'}
           </Text>
         </View>
-        <MaterialCommunityIcons name={open ? 'chevron-up' : 'chevron-down'} size={15} color="#94A3B8" />
+        <Feather name={open ? 'chevron-up' : 'chevron-down'} size={15} color="#94A3B8" />
       </TouchableOpacity>
       <DateWheelPickerModal
         visible={open}
@@ -5887,7 +5887,7 @@ function SearchableDropdown({
       <View style={[dd.wrap, { flex: 1 }]}>
         {label ? <Text style={dd.label}>{label}</Text> : null}
         <View style={[dd.inputWrap, { backgroundColor: '#F1F5F9', borderColor: '#F1F5F9' }]}>
-          <MaterialCommunityIcons name="lock-outline" size={14} color="#B0BAC9" />
+          <Feather name="lock" size={14} color="#B0BAC9" />
           <Text style={[dd.input, { color: '#B0BAC9' } as any]} numberOfLines={1}>
             {disabledHint ?? placeholder}
           </Text>
@@ -5905,7 +5905,7 @@ function SearchableDropdown({
 
       {/* Text input — always visible, acts as both search & display */}
       <View style={[dd.inputWrap, focused && dd.inputWrapFocused, error && { borderColor: 'rgba(239,68,68,0.5)', backgroundColor: 'rgba(239,68,68,0.05)' }]}>
-        <MaterialCommunityIcons name="magnify" size={15} color="#94A3B8" />
+        <Feather name="search" size={15} color="#94A3B8" />
         <TextInput
           style={dd.input}
           value={query}
@@ -5922,7 +5922,7 @@ function SearchableDropdown({
         />
         {selectedId ? (
           <TouchableOpacity onPress={handleClear} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <MaterialCommunityIcons name="close-circle-outline" size={16} color="#B0BAC9" />
+            <Feather name="x-circle" size={16} color="#B0BAC9" />
           </TouchableOpacity>
         ) : null}
       </View>
@@ -5960,7 +5960,7 @@ function SearchableDropdown({
                       <Text style={[dd.itemLabel, active && dd.itemLabelActive]}>{item.label}</Text>
                       {item.sublabel && <Text style={dd.itemSub}>{item.sublabel}</Text>}
                     </View>
-                    {active && <MaterialCommunityIcons name="check" size={16} color="#0F172A" />}
+                    {active && <Feather name="check" size={16} color="#0F172A" />}
                   </TouchableOpacity>
                 );
               })}
@@ -5969,7 +5969,7 @@ function SearchableDropdown({
             {showAdd && (
               <TouchableOpacity style={dd.addRow} onPress={handleAdd} disabled={adding}>
                 <View style={dd.addIcon}>
-                  <MaterialCommunityIcons name="plus" size={16} color="#0F172A" />
+                  <Feather name="plus" size={16} color="#0F172A" />
                 </View>
                 <Text style={dd.addText}>
                   {adding ? 'Ekleniyor...' : query.trim() ? `${addNewLabel ?? 'Ekle'}: "${query.trim()}"` : (addNewLabel ?? 'Yeni ekle')}

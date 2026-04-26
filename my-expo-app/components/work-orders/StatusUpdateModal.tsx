@@ -9,7 +9,7 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import Feather from '@expo/vector-icons/Feather';
 import { WorkOrderStatus } from '../../lib/types';
 import { STATUS_CONFIG, getNextStatus } from '../../constants/status';
 import { Button } from '../ui/Button';
@@ -57,7 +57,7 @@ export function StatusUpdateModal({
 
           <View style={[styles.nextBadge, { backgroundColor: nextConfig.bgColor }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <MaterialCommunityIcons name={nextConfig.ionIcon as any} size={16} color={nextConfig.color} />
+              <Feather name={nextConfig.ionIcon as any} size={16} color={nextConfig.color} />
               <Text style={[styles.nextBadgeText, { color: nextConfig.color }]}>{nextConfig.label}</Text>
             </View>
           </View>

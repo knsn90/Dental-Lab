@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import Feather from '@expo/vector-icons/Feather';
 import { WorkOrderStatus } from '../../lib/types';
 import { STATUS_CONFIG } from '../../constants/status';
 
@@ -21,7 +21,7 @@ export function StatusBadge({ status, size = 'md' }: StatusBadgeProps) {
       ]}
     >
       <View style={styles.inner}>
-        <MaterialCommunityIcons name={config.ionIcon as any} size={size === 'sm' ? 11 : 13} color={config.color} />
+        <Feather name={config.ionIcon as any} size={size === 'sm' ? 11 : 13} color={config.color} />
         <Text style={[styles.label, { color: config.color }, size === 'sm' && styles.labelSm]}>
           {config.label}
         </Text>

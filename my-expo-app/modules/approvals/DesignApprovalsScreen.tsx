@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, FlatList,
   ActivityIndicator, RefreshControl,
 } from 'react-native';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import Feather from '@expo/vector-icons/Feather';
 import { usePendingApprovals } from './hooks/usePendingApprovals';
 import { ApprovalCard } from './components/ApprovalCard';
 import { useAuthStore } from '../../core/store/authStore';
@@ -23,7 +23,7 @@ export function DesignApprovalsScreen() {
         </View>
       ) : approvals.length === 0 ? (
         <View style={s.empty}>
-          <MaterialCommunityIcons name="check-all" size={52} color={C.success} />
+          <Feather name="check-square" size={52} color={C.success} />
           <Text style={s.emptyTitle}>Bekleyen Onay Yok</Text>
           <Text style={s.emptySub}>
             Tasarım adımı tamamlandığında onay istekleri burada görünür.

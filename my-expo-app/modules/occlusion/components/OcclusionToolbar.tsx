@@ -4,7 +4,7 @@
 
 import React from 'react';
 import { View, TouchableOpacity, Text, StyleSheet, Platform } from 'react-native';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import Feather from '@expo/vector-icons/Feather';
 import type { Mode } from '../types/occlusion';
 
 interface Props {
@@ -14,10 +14,10 @@ interface Props {
 }
 
 const ITEMS: { id: Mode; icon: string; tip: string }[] = [
-  { id: 'view',        icon: 'rotate-3d-variant',    tip: 'Görüntüle' },
-  { id: 'heatmap',     icon: 'palette-swatch',        tip: 'Isı Haritası' },
-  { id: 'penetration', icon: 'alert-decagram-outline',tip: 'Penetrasyon' },
-  { id: 'measurement', icon: 'ruler',                 tip: 'Ölçüm' },
+  { id: 'view',        icon: 'eye',          tip: 'Görüntüle' },
+  { id: 'heatmap',     icon: 'thermometer',  tip: 'Isı Haritası' },
+  { id: 'penetration', icon: 'alert-circle', tip: 'Penetrasyon' },
+  { id: 'measurement', icon: 'ruler',        tip: 'Ölçüm' },
 ];
 
 export function OcclusionToolbar({ mode, onModeChange, position = 'left' }: Props) {
@@ -38,7 +38,7 @@ export function OcclusionToolbar({ mode, onModeChange, position = 'left' }: Prop
             // @ts-ignore — web-only tooltip
             title={Platform.OS === 'web' ? it.tip : undefined}
           >
-            <MaterialCommunityIcons
+            <Feather
               name={it.icon as any}
               size={18}
               color={active ? '#FFFFFF' : '#64748B'}

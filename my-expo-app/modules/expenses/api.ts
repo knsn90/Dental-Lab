@@ -36,12 +36,12 @@ export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
 };
 
 export const EXPENSE_CATEGORY_ICONS: Record<ExpenseCategory, string> = {
-  malzeme:  'package-variant',
-  kira:     'office-building',
-  personel: 'account-group',
-  ekipman:  'tools',
-  vergi:    'bank',
-  diger:    'dots-horizontal-circle',
+  malzeme:  'package',
+  kira:     'home',
+  personel: 'users',
+  ekipman:  'tool',
+  vergi:    'credit-card',
+  diger:    'more-horizontal',
 };
 
 export const EXPENSE_CATEGORY_COLORS: Record<ExpenseCategory, string> = {

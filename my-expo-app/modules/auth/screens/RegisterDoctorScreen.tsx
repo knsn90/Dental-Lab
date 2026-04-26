@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import Feather from '@expo/vector-icons/Feather';
 import { DentistIcon } from '../../../components/icons/DentistIcon';
 import { signUpDoctor } from '../api';
 import { supabase } from '../../../lib/supabase';
@@ -108,7 +108,7 @@ export function RegisterDoctorScreen() {
             {/* Card Header */}
             <View style={styles.cardHeader}>
               <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                <MaterialCommunityIcons name="chevron-left" size={18} color={C.textSecondary} />
+                <Feather name="chevron-left" size={18} color={C.textSecondary} />
                 <Text style={styles.backText}>Geri</Text>
               </TouchableOpacity>
               <View style={styles.headerCenter}>
@@ -125,20 +125,20 @@ export function RegisterDoctorScreen() {
             {/* Messages */}
             {errorMsg ? (
               <View style={styles.alertBox}>
-                <MaterialCommunityIcons name="alert-circle-outline" size={16} color={C.danger} />
+                <Feather name="alert-circle" size={16} color={C.danger} />
                 <Text style={styles.alertText}>{errorMsg}</Text>
               </View>
             ) : null}
 
             {successMsg ? (
               <View style={[styles.alertBox, styles.alertSuccess]}>
-                <MaterialCommunityIcons name="check-circle-outline" size={16} color={C.success} />
+                <Feather name="check-circle" size={16} color={C.success} />
                 <Text style={[styles.alertText, { color: C.success }]}>{successMsg}</Text>
               </View>
             ) : null}
 
             {/* ── Section: Kişisel Bilgiler ── */}
-            <SectionHeader icon="person-outline" title="Kişisel Bilgiler" />
+            <SectionHeader icon="user" title="Kişisel Bilgiler" />
 
             <FieldGroup label="Ad Soyad *" error={errors.full_name}>
               <TextInput
@@ -170,7 +170,7 @@ export function RegisterDoctorScreen() {
             </FieldGroup>
 
             {/* ── Section: Klinik Bilgisi ── */}
-            <SectionHeader icon="business-outline" title="Klinik Bilgisi" />
+            <SectionHeader icon="home" title="Klinik Bilgisi" />
 
             <FieldGroup label="Klinik / Muayenehane Adı *" error={errors.clinic_name}>
               <TextInput
@@ -203,7 +203,7 @@ export function RegisterDoctorScreen() {
             </FieldGroup>
 
             {/* ── Section: Hesap Bilgileri ── */}
-            <SectionHeader icon="lock-closed-outline" title="Hesap Bilgileri" />
+            <SectionHeader icon="lock" title="Hesap Bilgileri" />
 
             <FieldGroup label="E-posta *" error={errors.email}>
               <TextInput
@@ -240,7 +240,7 @@ export function RegisterDoctorScreen() {
                   style={[styles.eyeBtn, focused === 'password' && styles.eyeBtnFocused, !!errors.password && styles.eyeBtnError]}
                   onPress={() => setShowPassword(!showPassword)}
                 >
-                  <MaterialCommunityIcons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color={C.textMuted} />
+                  <Feather name={showPassword ? 'eye-off' : 'eye'} size={18} color={C.textMuted} />
                 </TouchableOpacity>
               </View>
             </FieldGroup>
@@ -263,7 +263,7 @@ export function RegisterDoctorScreen() {
                   style={[styles.eyeBtn, focused === 'passwordConfirm' && styles.eyeBtnFocused, !!errors.passwordConfirm && styles.eyeBtnError]}
                   onPress={() => setShowPasswordConfirm(!showPasswordConfirm)}
                 >
-                  <MaterialCommunityIcons name={showPasswordConfirm ? 'eye-off-outline' : 'eye-outline'} size={18} color={C.textMuted} />
+                  <Feather name={showPasswordConfirm ? 'eye-off' : 'eye'} size={18} color={C.textMuted} />
                 </TouchableOpacity>
               </View>
             </FieldGroup>
@@ -278,7 +278,7 @@ export function RegisterDoctorScreen() {
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
                 <>
-                  <MaterialCommunityIcons name="check" size={18} color="#FFFFFF" />
+                  <Feather name="check" size={18} color="#FFFFFF" />
                   <Text style={styles.submitText}>Kayıt Ol</Text>
                 </>
               )}
@@ -308,7 +308,7 @@ function SectionHeader({ icon, title }: { icon: string; title: string }) {
   return (
     <View style={sh.row}>
       <View style={sh.iconBox}>
-        <MaterialCommunityIcons name={icon as any} size={14} color={C.primary} />
+        <Feather name={icon as any} size={14} color={C.primary} />
       </View>
       <Text style={sh.title}>{title}</Text>
     </View>
@@ -330,7 +330,7 @@ function FieldGroup({
       {children}
       {error ? (
         <View style={fg.errorRow}>
-          <MaterialCommunityIcons name="alert-circle-outline" size={12} color={C.danger} />
+          <Feather name="alert-circle" size={12} color={C.danger} />
           <Text style={fg.errorText}>{error}</Text>
         </View>
       ) : null}

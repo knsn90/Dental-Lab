@@ -4,7 +4,7 @@ import {
   ActivityIndicator, RefreshControl, useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import Feather from '@expo/vector-icons/Feather';
 import { supabase } from '../../../lib/supabase';
 
 interface Movement {
@@ -18,16 +18,16 @@ interface Movement {
 }
 
 const TYPE_CFG = {
-  IN:    { label: 'Giriş',   color: '#059669', bg: '#D1FAE5', icon: 'arrow-down-circle-outline' },
-  OUT:   { label: 'Çıkış',   color: '#2563EB', bg: '#DBEAFE', icon: 'arrow-up-circle-outline'   },
-  WASTE: { label: 'Fire',    color: '#DC2626', bg: '#FEE2E2', icon: 'alert-circle-outline'       },
+  IN:    { label: 'Giriş',   color: '#059669', bg: '#D1FAE5', icon: 'arrow-down-circle' },
+  OUT:   { label: 'Çıkış',   color: '#2563EB', bg: '#DBEAFE', icon: 'arrow-up-circle'   },
+  WASTE: { label: 'Fire',    color: '#DC2626', bg: '#FEE2E2', icon: 'alert-circle'       },
 } as const;
 
 function TypeBadge({ type }: { type: Movement['type'] }) {
   const c = TYPE_CFG[type] ?? TYPE_CFG.OUT;
   return (
     <View style={[b.pill, { backgroundColor: c.bg }]}>
-      <MaterialCommunityIcons name={c.icon as any} size={13} color={c.color} />
+      <Feather name={c.icon as any} size={13} color={c.color} />
       <Text style={[b.text, { color: c.color }]}>{c.label}</Text>
     </View>
   );
@@ -106,7 +106,7 @@ export function StockMovementsScreen() {
       ) : !tableExists ? (
         <View style={s.center}>
           <View style={s.emptyIcon}>
-            <MaterialCommunityIcons name="database-off-outline" size={40} color="#94A3B8" />
+            <Feather name="database" size={40} color="#94A3B8" />
           </View>
           <Text style={s.emptyTitle}>Tablo bulunamadı</Text>
           <Text style={s.emptySub}>Supabase'de "stock_movements" tablosu oluşturulduğunda hareketler burada görünür.</Text>
@@ -114,7 +114,7 @@ export function StockMovementsScreen() {
       ) : items.length === 0 ? (
         <View style={s.center}>
           <View style={s.emptyIcon}>
-            <MaterialCommunityIcons name="swap-horizontal" size={40} color="#94A3B8" />
+            <Feather name="repeat" size={40} color="#94A3B8" />
           </View>
           <Text style={s.emptyTitle}>Hareket kaydı yok</Text>
           <Text style={s.emptySub}>Henüz stok girişi, çıkışı veya fire kaydı eklenmemiş.</Text>

@@ -4,7 +4,7 @@ import {
   ActivityIndicator, Modal, TextInput, Switch, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import Feather from '@expo/vector-icons/Feather';
 import { C } from '../../../core/theme/colors';
 import { F, FS } from '../../../core/theme/typography';
 import { useIsDesktop } from '../../../core/layout/DesktopShell';
@@ -162,11 +162,11 @@ function PeriodBar({ period, onShift, accentColor }: {
   return (
     <View style={pb.bar}>
       <TouchableOpacity style={pb.arrow} onPress={() => onShift(-1)}>
-        <MaterialCommunityIcons name="chevron-left" size={20} color={C.textSecondary} />
+        <Feather name="chevron-left" size={20} color={C.textSecondary} />
       </TouchableOpacity>
       <Text style={[pb.label, { color: accentColor }]}>{fmtPeriod(period)}</Text>
       <TouchableOpacity style={pb.arrow} onPress={() => onShift(1)}>
-        <MaterialCommunityIcons name="chevron-right" size={20} color={C.textSecondary} />
+        <Feather name="chevron-right" size={20} color={C.textSecondary} />
       </TouchableOpacity>
     </View>
   );
@@ -308,11 +308,11 @@ function PayrollDetail({
           <Text style={pd.empRole}>{employeeRole}</Text>
         </View>
         <TouchableOpacity style={pd.settingsBtn} onPress={onOpenSettings}>
-          <MaterialCommunityIcons name="tune-variant" size={18} color={C.textSecondary} />
+          <Feather name="sliders" size={18} color={C.textSecondary} />
         </TouchableOpacity>
         {cfg && (
           <View style={[pd.statusChip, { backgroundColor: cfg.bg }]}>
-            <MaterialCommunityIcons name={cfg.icon as any} size={13} color={cfg.color} />
+            <Feather name={cfg.icon as any} size={13} color={cfg.color} />
             <Text style={[pd.statusTxt, { color: cfg.color }]}>{cfg.label}</Text>
           </View>
         )}
@@ -329,11 +329,11 @@ function PayrollDetail({
           <View style={pd.section}>
             <Text style={pd.sectionTitle}>Devam Özeti</Text>
             <View style={pd.attGrid}>
-              <AttCell label="Çalışılan" value={`${payroll.actual_work_days} gün`} icon="briefcase-check-outline" color={C.success} />
-              <AttCell label="Devamsız"  value={`${payroll.absent_days} gün`}      icon="close-circle-outline"    color={payroll.absent_days > 0 ? C.danger : C.textMuted} />
-              <AttCell label="İzinli"    value={`${payroll.leave_days} gün`}       icon="calendar-check-outline"  color={C.info} />
-              <AttCell label="Geç Giriş" value={`${payroll.late_count} kez`}       icon="clock-alert-outline"     color={payroll.late_count > 0 ? C.warning : C.textMuted} />
-              <AttCell label="Mesai"     value={payroll.overtime_minutes > 0 ? fmtHours(payroll.overtime_minutes) : '—'} icon="clock-plus-outline" color={C.primary} />
+              <AttCell label="Çalışılan" value={`${payroll.actual_work_days} gün`} icon="briefcase" color={C.success} />
+              <AttCell label="Devamsız"  value={`${payroll.absent_days} gün`}      icon="x-circle"  color={payroll.absent_days > 0 ? C.danger : C.textMuted} />
+              <AttCell label="İzinli"    value={`${payroll.leave_days} gün`}       icon="calendar"  color={C.info} />
+              <AttCell label="Geç Giriş" value={`${payroll.late_count} kez`}       icon="clock"     color={payroll.late_count > 0 ? C.warning : C.textMuted} />
+              <AttCell label="Mesai"     value={payroll.overtime_minutes > 0 ? fmtHours(payroll.overtime_minutes) : '—'} icon="clock" color={C.primary} />
             </View>
           </View>
 
@@ -368,7 +368,7 @@ function PayrollDetail({
                     <Text style={[pd.itemAmt, { color: cfg2.color }]}>{sign}{fmtMoney(it.amount)}</Text>
                     {payroll.status === 'taslak' && (
                       <TouchableOpacity onPress={() => handleDeleteItem(it.id)} style={{ padding: 4, marginLeft: 4 }}>
-                        <MaterialCommunityIcons name="close" size={14} color={C.textMuted} />
+                        <Feather name="x" size={14} color={C.textMuted} />
                       </TouchableOpacity>
                     )}
                   </View>
@@ -392,11 +392,11 @@ function PayrollDetail({
               {payroll.status === 'taslak' && (
                 <>
                   <TouchableOpacity style={[pd.btn, pd.btnOutline]} onPress={() => setAddItemOpen?.(true)} activeOpacity={0.8}>
-                    <MaterialCommunityIcons name="plus" size={15} color={accentColor} />
+                    <Feather name="plus" size={15} color={accentColor} />
                     <Text style={[pd.btnTxt, { color: accentColor }]}>Kalem Ekle</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={[pd.btn, { backgroundColor: accentColor }]} onPress={handleApprove} activeOpacity={0.85}>
-                    <MaterialCommunityIcons name="check" size={15} color="#FFF" />
+                    <Feather name="check" size={15} color="#FFF" />
                     <Text style={[pd.btnTxt, { color: '#FFF' }]}>Onayla</Text>
                   </TouchableOpacity>
                 </>
@@ -407,14 +407,14 @@ function PayrollDetail({
                     <Text style={[pd.btnTxt, { color: C.textSecondary }]}>Taslağa Al</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={[pd.btn, { backgroundColor: C.success }]} onPress={handleMarkPaid} activeOpacity={0.85}>
-                    <MaterialCommunityIcons name="cash-check" size={15} color="#FFF" />
+                    <Feather name="check-circle" size={15} color="#FFF" />
                     <Text style={[pd.btnTxt, { color: '#FFF' }]}>Ödendi</Text>
                   </TouchableOpacity>
                 </>
               )}
               {payroll.status === 'odendi' && payroll.paid_at && (
                 <View style={pd.paidInfo}>
-                  <MaterialCommunityIcons name="check-circle" size={16} color={C.success} />
+                  <Feather name="check-circle" size={16} color={C.success} />
                   <Text style={pd.paidInfoTxt}>
                     {new Date(payroll.paid_at + 'T00:00:00').toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })} tarihinde ödendi
                   </Text>
@@ -425,7 +425,7 @@ function PayrollDetail({
         </>
       ) : (
         <View style={pd.noPayroll}>
-          <MaterialCommunityIcons name="calculator-variant-outline" size={40} color={C.textMuted} />
+          <Feather name="cpu" size={40} color={C.textMuted} />
           <Text style={pd.noPayrollTxt}>Bu dönem için bordro hesaplanmamış</Text>
           <Text style={pd.noPayrollSub}>Devam verilerinden otomatik hesaplamak için butona tıklayın</Text>
           <TouchableOpacity
@@ -437,7 +437,7 @@ function PayrollDetail({
             {calcLoading
               ? <ActivityIndicator size="small" color="#FFF" />
               : <>
-                  <MaterialCommunityIcons name="calculator-variant-outline" size={17} color="#FFF" />
+                  <Feather name="cpu" size={17} color="#FFF" />
                   <Text style={pd.calcBtnTxt}>Bordroyu Hesapla</Text>
                 </>
             }
@@ -448,7 +448,7 @@ function PayrollDetail({
       {/* Re-calculate button (when payroll exists and is draft) */}
       {payroll?.status === 'taslak' && !loading && (
         <TouchableOpacity style={pd.recalcRow} onPress={handleCalculate} disabled={calcLoading}>
-          <MaterialCommunityIcons name="refresh" size={14} color={C.textMuted} />
+          <Feather name="refresh-cw" size={14} color={C.textMuted} />
           <Text style={pd.recalcTxt}>Devam verisinden yeniden hesapla</Text>
         </TouchableOpacity>
       )}
@@ -520,7 +520,7 @@ const pd = StyleSheet.create({
 function AttCell({ label, value, icon, color }: { label: string; value: string; icon: string; color: string }) {
   return (
     <View style={ac.cell}>
-      <MaterialCommunityIcons name={icon as any} size={18} color={color} />
+      <Feather name={icon as any} size={18} color={color} />
       <Text style={[ac.val, { color }]}>{value}</Text>
       <Text style={ac.lbl}>{label}</Text>
     </View>
@@ -575,7 +575,7 @@ function SettingsModal({ employeeId, employeeName, onClose }: {
           <Text style={sm.title}>Bordro Ayarları</Text>
           <Text style={sm.sub}>{employeeName}</Text>
           <TouchableOpacity style={sm.closeBtn} onPress={onClose}>
-            <MaterialCommunityIcons name="close" size={20} color={C.textSecondary} />
+            <Feather name="x" size={20} color={C.textSecondary} />
           </TouchableOpacity>
         </View>
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, gap: 16 }}>
@@ -659,7 +659,7 @@ function AddItemModal({ employeeId, period, onClose, onAdded }: {
         <View style={ai.header}>
           <Text style={ai.title}>Kalem Ekle</Text>
           <TouchableOpacity style={ai.closeBtn} onPress={onClose}>
-            <MaterialCommunityIcons name="close" size={20} color={C.textSecondary} />
+            <Feather name="x" size={20} color={C.textSecondary} />
           </TouchableOpacity>
         </View>
         <View style={{ padding: 20, gap: 16 }}>
@@ -757,7 +757,7 @@ function MobileEmpCard({ emp, payroll, period, accentColor, canApprove, onRefres
             <Text style={[mc.badgeTxt, { color: cfg.color }]}>{cfg.label}</Text>
           </View>
         )}
-        <MaterialCommunityIcons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={C.textMuted} />
+        <Feather name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={C.textMuted} />
       </TouchableOpacity>
 
       {expanded && (
@@ -856,7 +856,7 @@ const mc = StyleSheet.create({
 function EmptyState() {
   return (
     <View style={es.root}>
-      <MaterialCommunityIcons name="cash-multiple" size={52} color={C.textMuted} style={{ opacity: 0.4 }} />
+      <Feather name="dollar-sign" size={52} color={C.textMuted} style={{ opacity: 0.4 }} />
       <Text style={es.title}>Çalışan Seçin</Text>
       <Text style={es.sub}>Sol panelden bir çalışan seçerek bordrosunu görüntüleyin veya hesaplayın</Text>
     </View>

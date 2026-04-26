@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import Feather from '@expo/vector-icons/Feather';
 
 import { useClinicBalances } from '../hooks/useInvoices';
 import { C } from '../../../core/theme/colors';
@@ -47,7 +47,7 @@ export function ClinicBalanceScreen() {
       {/* Header */}
       <View style={s.header}>
         <TouchableOpacity onPress={() => router.back()} style={s.iconOnlyBtn}>
-          <MaterialCommunityIcons name={'arrow-left' as any} size={20} color="#0F172A" />
+          <Feather name={'arrow-left' as any} size={20} color="#0F172A" />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={s.title}>Cari Hesap</Text>
@@ -80,7 +80,7 @@ export function ClinicBalanceScreen() {
       {/* Search + Filter */}
       <View style={s.searchRow}>
         <View style={s.searchWrap}>
-          <MaterialCommunityIcons name={'magnify' as any} size={17} color={C.textMuted} />
+          <Feather name={'search' as any} size={17} color={C.textMuted} />
           <TextInput
             style={s.searchInput}
             placeholder="Klinik ara..."
@@ -90,7 +90,7 @@ export function ClinicBalanceScreen() {
           />
           {search.length > 0 && (
             <TouchableOpacity onPress={() => setSearch('')}>
-              <MaterialCommunityIcons name={'close-circle' as any} size={16} color={C.textMuted} />
+              <Feather name={'x-circle' as any} size={16} color={C.textMuted} />
             </TouchableOpacity>
           )}
         </View>
@@ -98,8 +98,8 @@ export function ClinicBalanceScreen() {
           style={[s.filterChip, overdueOnly && s.filterChipActive]}
           onPress={() => setOverdueOnly(v => !v)}
         >
-          <MaterialCommunityIcons
-            name={'clock-alert-outline' as any}
+          <Feather
+            name={'clock' as any}
             size={13}
             color={overdueOnly ? '#DC2626' : C.textMuted}
           />
@@ -118,8 +118,8 @@ export function ClinicBalanceScreen() {
       >
         {filtered.length === 0 ? (
           <View style={s.empty}>
-            <MaterialCommunityIcons
-              name={(search || overdueOnly ? 'magnify-close' : 'chart-line-variant') as any}
+            <Feather
+              name={(search || overdueOnly ? 'search' : 'trending-up') as any}
               size={36}
               color={C.textMuted}
             />

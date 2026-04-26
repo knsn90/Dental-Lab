@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import Feather from '@expo/vector-icons/Feather';
 import { StatusHistory } from '../../../lib/types';
 import { STATUS_CONFIG } from '../constants';
 import { C } from '../../../core/theme/colors';
@@ -47,7 +47,7 @@ export function StatusTimeline({ history }: StatusTimelineProps) {
             <View style={[styles.content, !isLast && styles.contentMargin]}>
               <View style={[styles.badge, { backgroundColor: config.bgColor }]}>
                 <View style={styles.badgeInner}>
-                  <MaterialCommunityIcons name={config.ionIcon as any} size={12} color={config.color} />
+                  <Feather name={config.ionIcon as any} size={12} color={config.color} />
                   <Text style={[styles.badgeText, { color: config.color }]}>{config.label}</Text>
                 </View>
               </View>

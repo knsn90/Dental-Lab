@@ -13,7 +13,7 @@ import {
   Modal, View, Text, StyleSheet, TouchableOpacity, Platform, ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import Feather from '@expo/vector-icons/Feather';
 
 import { OcclusionViewer }       from './OcclusionViewer';
 import { OcclusionToolbar, ViewPresets } from './OcclusionToolbar';
@@ -179,7 +179,7 @@ export function OcclusionAnalysisModal({
         <View style={[s.topBar, isMobile && { paddingHorizontal: 12, paddingVertical: 10, gap: 8 }]}>
           <View style={s.titleRow}>
             <View style={s.titleIcon}>
-              <MaterialCommunityIcons name={'cube-scan' as any} size={18} color="#0F172A" />
+              <Feather name={'box' as any} size={18} color="#0F172A" />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={[s.title, isMobile && { fontSize: 13 }]} numberOfLines={1}>Kapanış Analizi</Text>
@@ -199,7 +199,7 @@ export function OcclusionAnalysisModal({
             onPress={handleClose}
             activeOpacity={0.8}
           >
-            <MaterialCommunityIcons name={'close' as any} size={16} color="#0F172A" />
+            <Feather name={'x' as any} size={16} color="#0F172A" />
             {!isMobile && <Text style={s.closeBtnText}>Kapat</Text>}
           </TouchableOpacity>
         </View>
@@ -232,7 +232,7 @@ export function OcclusionAnalysisModal({
           {/* Errors */}
           {(analysis.error || loadError) && (
             <View style={s.errorLayer}>
-              <MaterialCommunityIcons name={'alert-circle' as any} size={14} color="#DC2626" />
+              <Feather name={'alert-circle' as any} size={14} color="#DC2626" />
               <Text style={s.errorText}>{loadError ?? analysis.error}</Text>
             </View>
           )}
@@ -256,8 +256,8 @@ export function OcclusionAnalysisModal({
               onPress={() => setPanelOpen((v) => !v)}
               activeOpacity={0.85}
             >
-              <MaterialCommunityIcons
-                name={panelOpen ? 'chevron-down' : 'tune-vertical'}
+              <Feather
+                name={panelOpen ? 'chevron-down' : 'sliders'}
                 size={18}
                 color="#0F172A"
               />

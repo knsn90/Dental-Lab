@@ -6,7 +6,7 @@ import {
 import { toast } from '../../../core/ui/Toast';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import Feather from '@expo/vector-icons/Feather';
 
 import { useInvoices, useInvoiceStats, useUnbilledWorkOrders } from '../hooks/useInvoices';
 import { createBulkInvoice, bulkRecordPayment } from '../api';
@@ -140,7 +140,7 @@ export function InvoicesListScreen() {
   const searchSection = (
     <View style={isDesktop ? d.searchRow : s.searchRow}>
       <View style={isDesktop ? d.searchWrap : s.searchWrap}>
-        <MaterialCommunityIcons name={'magnify' as any} size={17} color={C.textMuted} />
+        <Feather name={'search' as any} size={17} color={C.textMuted} />
         <TextInput
           style={isDesktop ? d.searchInput : s.searchInput}
           placeholder="Fatura no, klinik, hekim, hasta..."
@@ -150,7 +150,7 @@ export function InvoicesListScreen() {
         />
         {search.length > 0 && (
           <TouchableOpacity onPress={() => setSearch('')}>
-            <MaterialCommunityIcons name={'close-circle' as any} size={16} color={C.textMuted} />
+            <Feather name={'x-circle' as any} size={16} color={C.textMuted} />
           </TouchableOpacity>
         )}
       </View>
@@ -218,15 +218,15 @@ export function InvoicesListScreen() {
                 </Text>
               </View>
               <TouchableOpacity style={d.outlineBtn} onPress={() => router.push('/(lab)/balance' as any)} activeOpacity={0.85}>
-                <MaterialCommunityIcons name={'chart-line' as any} size={16} color="#0F172A" />
+                <Feather name={'trending-up' as any} size={16} color="#0F172A" />
                 <Text style={d.outlineBtnText}>Cari Hesap</Text>
               </TouchableOpacity>
               <TouchableOpacity style={d.outlineBtn} onPress={() => setBulkPayOpen(true)} activeOpacity={0.85}>
-                <MaterialCommunityIcons name={'cash-multiple' as any} size={16} color="#047857" />
+                <Feather name={'dollar-sign' as any} size={16} color="#047857" />
                 <Text style={[d.outlineBtnText, { color: '#047857' }]}>Toplu Tahsilat</Text>
               </TouchableOpacity>
               <TouchableOpacity style={d.primaryBtn} onPress={() => setBulkOpen(true)} activeOpacity={0.85}>
-                <MaterialCommunityIcons name={'layers-plus' as any} size={16} color="#FFFFFF" />
+                <Feather name={'layers' as any} size={16} color="#FFFFFF" />
                 <Text style={d.primaryBtnText}>Toplu Fatura</Text>
               </TouchableOpacity>
             </View>
@@ -261,15 +261,15 @@ export function InvoicesListScreen() {
           </Text>
         </View>
         <TouchableOpacity style={s.newBtn} onPress={() => router.push('/(lab)/balance' as any)} activeOpacity={0.85}>
-          <MaterialCommunityIcons name={'chart-line' as any} size={15} color="#0F172A" />
+          <Feather name={'trending-up' as any} size={15} color="#0F172A" />
           <Text style={s.newBtnText}>Cari</Text>
         </TouchableOpacity>
         <TouchableOpacity style={s.newBtn} onPress={() => setBulkPayOpen(true)} activeOpacity={0.85}>
-          <MaterialCommunityIcons name={'cash-multiple' as any} size={15} color="#047857" />
+          <Feather name={'dollar-sign' as any} size={15} color="#047857" />
           <Text style={[s.newBtnText, { color: '#047857' }]}>Tahsilat</Text>
         </TouchableOpacity>
         <TouchableOpacity style={s.bulkBtn} onPress={() => setBulkOpen(true)} activeOpacity={0.85}>
-          <MaterialCommunityIcons name={'layers-plus' as any} size={15} color="#FFFFFF" />
+          <Feather name={'layers' as any} size={15} color="#FFFFFF" />
           <Text style={s.bulkBtnText}>Toplu Fatura</Text>
         </TouchableOpacity>
       </View>
@@ -387,14 +387,14 @@ function InvoiceCard({ invoice, onPress }: { invoice: Invoice; onPress: () => vo
 
         {/* Chevron */}
         <View style={[card.chevronWrap, isOverdue && card.chevronWrapDanger]}>
-          <MaterialCommunityIcons name={'chevron-right' as any} size={18} color={isOverdue ? '#EF4444' : '#94A3B8'} />
+          <Feather name={'chevron-right' as any} size={18} color={isOverdue ? '#EF4444' : '#94A3B8'} />
         </View>
       </View>
 
       {/* Bottom: vade bilgisi varsa */}
       {invoice.due_date && (
         <View style={[card.dueRow, isOverdue && { borderTopColor: '#FECACA' }]}>
-          <MaterialCommunityIcons name={'calendar-clock' as any} size={11} color={isOverdue ? '#DC2626' : '#94A3B8'} />
+          <Feather name={'clock' as any} size={11} color={isOverdue ? '#DC2626' : '#94A3B8'} />
           <Text style={[card.dueText, isOverdue && { color: '#DC2626', fontWeight: '700' }]}>
             Son ödeme: {fmtDate(invoice.due_date)}{isOverdue ? ' · gecikmiş' : ''}
           </Text>
@@ -416,8 +416,8 @@ function EmptyState({ hasFilter }: { hasFilter: boolean }) {
   return (
     <View style={s.empty}>
       <View style={s.emptyIconWrap}>
-        <MaterialCommunityIcons
-          name={(hasFilter ? 'magnify-close' : 'receipt-text-outline') as any}
+        <Feather
+          name={(hasFilter ? 'search' : 'file-text') as any}
           size={36}
           color={C.textMuted}
         />
@@ -665,7 +665,7 @@ function BulkInvoiceModal({
               <Text style={bm.subtitle}>Birden fazla siparişi tek faturada topla</Text>
             </View>
             <TouchableOpacity onPress={handleClose} style={bm.closeBtn}>
-              <MaterialCommunityIcons name={'close' as any} size={20} color={C.textMuted} />
+              <Feather name={'x' as any} size={20} color={C.textMuted} />
             </TouchableOpacity>
           </View>
 
@@ -677,15 +677,15 @@ function BulkInvoiceModal({
               onPress={() => setClinicPickerOpen(true)}
               activeOpacity={0.85}
             >
-              <MaterialCommunityIcons
-                name={'hospital-building' as any}
+              <Feather
+                name={'home' as any}
                 size={18}
                 color={selectedClinic ? '#2563EB' : C.textMuted}
               />
               <Text style={[bm.clinicPickerText, !selectedClinic && { color: C.textMuted }]} numberOfLines={1}>
                 {selectedClinic ? selectedClinic.name : 'Klinik seçin...'}
               </Text>
-              <MaterialCommunityIcons name={'chevron-down' as any} size={18} color={C.textMuted} />
+              <Feather name={'chevron-down' as any} size={18} color={C.textMuted} />
             </TouchableOpacity>
           </View>
 
@@ -693,7 +693,7 @@ function BulkInvoiceModal({
           <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
             {!selectedClinicId ? (
               <View style={bm.emptyHint}>
-                <MaterialCommunityIcons name={'gesture-tap' as any} size={32} color={C.textMuted} />
+                <Feather name={'mouse-pointer' as any} size={32} color={C.textMuted} />
                 <Text style={bm.emptyText}>Klinik seçerek başlayın</Text>
               </View>
             ) : loadingOrders ? (
@@ -705,7 +705,7 @@ function BulkInvoiceModal({
                 {/* Arama + seç tümü */}
                 <View style={bm.toolRow}>
                   <View style={bm.searchWrap}>
-                    <MaterialCommunityIcons name={'magnify' as any} size={15} color={C.textMuted} />
+                    <Feather name={'search' as any} size={15} color={C.textMuted} />
                     <TextInput
                       style={bm.searchInput}
                       placeholder="İş no, hasta..."
@@ -715,14 +715,14 @@ function BulkInvoiceModal({
                     />
                     {orderSearch.length > 0 && (
                       <TouchableOpacity onPress={() => setOrderSearch('')}>
-                        <MaterialCommunityIcons name={'close-circle' as any} size={14} color={C.textMuted} />
+                        <Feather name={'x-circle' as any} size={14} color={C.textMuted} />
                       </TouchableOpacity>
                     )}
                   </View>
                   {visibleOrders.length > 0 && (
                     <TouchableOpacity style={bm.selAllBtn} onPress={toggleAll} activeOpacity={0.8}>
-                      <MaterialCommunityIcons
-                        name={(allSel ? 'checkbox-multiple-marked' : 'checkbox-multiple-blank-outline') as any}
+                      <Feather
+                        name={(allSel ? 'check-square' : 'square') as any}
                         size={15}
                         color="#2563EB"
                       />
@@ -733,7 +733,7 @@ function BulkInvoiceModal({
 
                 {visibleOrders.length === 0 ? (
                   <View style={[bm.emptyHint, { marginTop: 0 }]}>
-                    <MaterialCommunityIcons name={'file-check-outline' as any} size={32} color="#10B981" />
+                    <Feather name={'file' as any} size={32} color="#10B981" />
                     <Text style={bm.emptyText}>
                       {orderSearch ? 'Sonuç yok' : 'Faturalanmamış sipariş yok'}
                     </Text>
@@ -805,7 +805,7 @@ function BulkInvoiceModal({
                 ? <ActivityIndicator color="#FFFFFF" />
                 : (
                   <>
-                    <MaterialCommunityIcons name={'receipt' as any} size={16} color="#FFFFFF" />
+                    <Feather name={'file-text' as any} size={16} color="#FFFFFF" />
                     <Text style={bm.createBtnText}>Fatura Oluştur</Text>
                   </>
                 )
@@ -827,7 +827,7 @@ function BulkInvoiceModal({
             <View style={bm.header}>
               <Text style={bm.title}>Klinik Seç</Text>
               <TouchableOpacity onPress={() => setClinicPickerOpen(false)} style={bm.closeBtn}>
-                <MaterialCommunityIcons name={'close' as any} size={20} color={C.textMuted} />
+                <Feather name={'x' as any} size={20} color={C.textMuted} />
               </TouchableOpacity>
             </View>
             {loadingClinics ? (
@@ -845,8 +845,8 @@ function BulkInvoiceModal({
                     }}
                     activeOpacity={0.85}
                   >
-                    <MaterialCommunityIcons
-                      name={'hospital-building' as any}
+                    <Feather
+                      name={'home' as any}
                       size={17}
                       color={selectedClinicId === cl.id ? '#2563EB' : C.textMuted}
                     />
@@ -854,7 +854,7 @@ function BulkInvoiceModal({
                       {cl.name}
                     </Text>
                     {selectedClinicId === cl.id && (
-                      <MaterialCommunityIcons name={'check' as any} size={17} color="#2563EB" />
+                      <Feather name={'check' as any} size={17} color="#2563EB" />
                     )}
                   </TouchableOpacity>
                 ))}
@@ -878,7 +878,7 @@ function BulkOrderRow({
       activeOpacity={0.85}
     >
       <View style={[brow.cb, selected && brow.cbActive]}>
-        {selected && <MaterialCommunityIcons name={'check' as any} size={12} color="#FFFFFF" />}
+        {selected && <Feather name={'check' as any} size={12} color="#FFFFFF" />}
       </View>
       <View style={{ flex: 1 }}>
         <Text style={brow.no}>{order.order_number}</Text>
@@ -1076,10 +1076,10 @@ const card = StyleSheet.create({
 
 // ─── Toplu Tahsilat Modal ──────────────────────────────────────────────────
 const PAYMENT_METHODS = [
-  { v: 'nakit',  l: 'Nakit',   icon: 'cash' },
-  { v: 'kart',   l: 'Kart',    icon: 'credit-card-outline' },
-  { v: 'havale', l: 'Havale',  icon: 'bank-outline' },
-  { v: 'cek',    l: 'Çek',     icon: 'file-document-outline' },
+  { v: 'nakit',  l: 'Nakit',   icon: 'dollar-sign' },
+  { v: 'kart',   l: 'Kart',    icon: 'credit-card' },
+  { v: 'havale', l: 'Havale',  icon: 'credit-card' },
+  { v: 'cek',    l: 'Çek',     icon: 'file-text' },
 ] as const;
 
 function BulkPaymentModal({
@@ -1152,14 +1152,14 @@ function BulkPaymentModal({
           {/* Header */}
           <View style={bp.header}>
             <View style={bp.headerIcon}>
-              <MaterialCommunityIcons name={'cash-multiple' as any} size={18} color="#047857" />
+              <Feather name={'dollar-sign' as any} size={18} color="#047857" />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={bp.title}>Toplu Tahsilat</Text>
               <Text style={bp.subtitle}>Birden fazla faturayı tek seferde tahsil et</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={bp.closeBtn}>
-              <MaterialCommunityIcons name={'close' as any} size={18} color="#94A3B8" />
+              <Feather name={'x' as any} size={18} color="#94A3B8" />
             </TouchableOpacity>
           </View>
 
@@ -1167,10 +1167,10 @@ function BulkPaymentModal({
           <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
             <View style={bp.listHeader}>
               <TouchableOpacity onPress={toggleAll} style={bp.selAllBtn} activeOpacity={0.8}>
-                <MaterialCommunityIcons
+                <Feather
                   name={(selected.size === sortedInvoices.length && sortedInvoices.length > 0
-                    ? 'checkbox-marked'
-                    : 'checkbox-blank-outline') as any}
+                    ? 'check-square'
+                    : 'square') as any}
                   size={16} color="#2563EB"
                 />
                 <Text style={bp.selAllText}>
@@ -1184,7 +1184,7 @@ function BulkPaymentModal({
             <View style={{ gap: 6, paddingHorizontal: 16, paddingBottom: 8 }}>
               {sortedInvoices.length === 0 ? (
                 <View style={{ alignItems: 'center', padding: 32 }}>
-                  <MaterialCommunityIcons name={'check-circle-outline' as any} size={36} color="#10B981" />
+                  <Feather name={'check-circle' as any} size={36} color="#10B981" />
                   <Text style={{ marginTop: 8, fontSize: 13, color: '#64748B' }}>Bekleyen fatura yok</Text>
                 </View>
               ) : sortedInvoices.map(inv => {
@@ -1204,7 +1204,7 @@ function BulkPaymentModal({
                     activeOpacity={0.85}
                   >
                     <View style={[bp.cb, sel && bp.cbActive]}>
-                      {sel && <MaterialCommunityIcons name={'check' as any} size={11} color="#fff" />}
+                      {sel && <Feather name={'check' as any} size={11} color="#fff" />}
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={bp.invNo}>{inv.invoice_number}</Text>
@@ -1252,7 +1252,7 @@ function BulkPaymentModal({
                       style={[bp.chip, method === m.v && bp.chipActive]}
                       onPress={() => setMethod(m.v)}
                     >
-                      <MaterialCommunityIcons name={m.icon as any} size={13} color={method === m.v ? '#047857' : '#94A3B8'} />
+                      <Feather name={m.icon as any} size={13} color={method === m.v ? '#047857' : '#94A3B8'} />
                       <Text style={[bp.chipText, method === m.v && bp.chipTextActive]}>{m.l}</Text>
                     </TouchableOpacity>
                   ))}
@@ -1286,7 +1286,7 @@ function BulkPaymentModal({
               {saving
                 ? <ActivityIndicator color="#fff" size="small" />
                 : <>
-                    <MaterialCommunityIcons name={'cash-check' as any} size={16} color="#fff" />
+                    <Feather name={'check-circle' as any} size={16} color="#fff" />
                     <Text style={bp.payBtnText}>Tahsil Et</Text>
                   </>
               }

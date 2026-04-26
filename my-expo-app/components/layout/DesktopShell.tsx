@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { Slot, usePathname, useRouter } from 'expo-router';
 import { useAuthStore } from '../../store/authStore';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import Feather from '@expo/vector-icons/Feather';
 import { DentistIcon } from '../icons/DentistIcon';
 import { ToothIcon } from '../icons/ToothIcon';
 
@@ -67,7 +67,7 @@ function NavIcon({ item, active }: { item: NavItem; active: boolean }) {
     return <ToothIcon size={size} color={iconColor} />;
   }
   if (item.iconName) {
-    return <MaterialCommunityIcons name={item.iconName as any} size={size} color={iconColor} />;
+    return <Feather name={item.iconName as any} size={size} color={iconColor} />;
   }
   return null;
 }
@@ -284,7 +284,7 @@ export function DesktopShell({ navItems, accentColor = C.primary, pageTitle }: P
             onMouseEnter={() => setHovered('__out')}
             onMouseLeave={() => setHovered(null)}
           >
-            <MaterialCommunityIcons name="logout" size={18} color={hovered === '__out' ? C.danger : C.textMuted} />
+            <Feather name="log-out" size={18} color={hovered === '__out' ? C.danger : C.textMuted} />
             <Text style={[s.navLabel, hovered === '__out' && { color: C.danger }]}>Çıkış Yap</Text>
           </TouchableOpacity>
         </ScrollView>
