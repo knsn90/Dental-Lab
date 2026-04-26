@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import Feather from '@expo/vector-icons/Feather';
 import { supabase } from '../../lib/supabase';
 import { BlurFade } from '../../core/ui/BlurFade';
 
@@ -69,7 +69,7 @@ function QuickAction({ icon, label, onPress, primary }: { icon: string; label: s
   return (
     <TouchableOpacity style={qa.card} onPress={onPress} activeOpacity={0.85}>
       <View style={[qa.iconCircle, primary && qa.iconCirclePrimary]}>
-        <MaterialCommunityIcons name={icon as any} size={22} color={primary ? '#FFFFFF' : K} />
+        <Feather name={icon as any} size={22} color={primary ? '#FFFFFF' : K} />
       </View>
       <Text style={qa.label}>{label}</Text>
     </TouchableOpacity>
@@ -104,7 +104,7 @@ function StatCard({ label, value, accent, delta, accentBar }: {
         <Text style={[sc.value, accent ? { color: accent } : null]}>{value}</Text>
         {delta && (
           <View style={sc.delta}>
-            <MaterialCommunityIcons name="arrow-up" size={10} color={K} />
+            <Feather name="arrow-up" size={10} color={K} />
             <Text style={sc.deltaText}>{delta}</Text>
           </View>
         )}
@@ -324,8 +324,8 @@ export default function AdminDashboard() {
 
           {overdueOrders > 0 && (
             <View style={[s.alertCard, isDesktop && { width: 300 }]}>
-              <MaterialCommunityIcons
-                name="alert-outline"
+              <Feather
+                name="alert-triangle"
                 size={180}
                 color={CLR.red}
                 style={s.alertDecorIcon}
@@ -352,11 +352,11 @@ export default function AdminDashboard() {
         {/* ── Quick Actions ─────────────────────────────────────── */}
         <SectionTitle text="Hızlı İşlemler" />
         <View style={s.quickRow}>
-          <QuickAction icon="plus"                    label="Yeni İş"      primary onPress={() => router.push('/(admin)/new-order' as any)} />
-          <QuickAction icon="account-group-outline"   label="Kullanıcılar"         onPress={() => router.push('/(admin)/users' as any)} />
-          <QuickAction icon="doctor"                  label="Hekimler"             onPress={() => router.push('/(admin)/doctors' as any)} />
-          <QuickAction icon="receipt"                 label="Siparişler"           onPress={() => router.push('/(admin)/orders' as any)} />
-          <QuickAction icon="account-circle-outline"  label="Profil"               onPress={() => router.push('/(admin)/profile' as any)} />
+          <QuickAction icon="plus"          label="Yeni İş"      primary onPress={() => router.push('/(admin)/new-order' as any)} />
+          <QuickAction icon="users"         label="Kullanıcılar"         onPress={() => router.push('/(admin)/users' as any)} />
+          <QuickAction icon="user"          label="Hekimler"             onPress={() => router.push('/(admin)/doctors' as any)} />
+          <QuickAction icon="file-text"     label="Siparişler"           onPress={() => router.push('/(admin)/orders' as any)} />
+          <QuickAction icon="user"          label="Profil"               onPress={() => router.push('/(admin)/profile' as any)} />
         </View>
 
         {loading ? (

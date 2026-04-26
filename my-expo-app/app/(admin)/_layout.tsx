@@ -41,7 +41,7 @@ export default function AdminLayout() {
     // ── Mali İşlemler ──────────────────────────────────────────────────────
     { label: 'Giderler',     emoji: '💸', href: '/(admin)/expenses',       iconName: 'trending-down', iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'Mali İşlemler' },
     { label: 'Çek/Senet',   emoji: '📝', href: '/(admin)/checks',         iconName: 'credit-card',  iconSet: 'mdi' as const, matchPrefix: true },
-    { label: 'Kasa/Banka',   emoji: '🏦', href: '/(admin)/cash',           iconName: 'archive',      iconSet: 'mdi' as const, matchPrefix: true },
+    { label: 'Kasa/Banka',   emoji: '🏦', href: '/(admin)/cash',           iconName: 'dollar-sign',  iconSet: 'mdi' as const, matchPrefix: true },
     { label: 'Gelir/Gider',  emoji: '📊', href: '/(admin)/finance-report', iconName: 'bar-chart-2',  iconSet: 'mdi' as const, matchPrefix: true },
 
     // ── İK & Depo ─────────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ export default function AdminLayout() {
     // ── Sistem ─────────────────────────────────────────────────────────────
     { label: 'QR Check-in',  emoji: '📷', href: '/(admin)/checkin-settings', iconName: 'camera',    iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'Sistem' },
     { label: 'Loglar',       emoji: '📜', href: '/(admin)/logs',             iconName: 'file-text', iconSet: 'mdi' as const, matchPrefix: true },
-    { label: 'Profil',       emoji: '⚙️', href: '/(admin)/profile',         iconName: 'settings',  iconSet: 'mdi' as const, matchPrefix: true },
+    { label: 'Profil',       emoji: '⚙️', href: '/(admin)/profile',         iconName: 'user',      iconSet: 'mdi' as const, matchPrefix: true },
   ];
 
   if (isDesktop) {
@@ -70,7 +70,7 @@ export default function AdminLayout() {
     { routeName: 'orders',    label: 'Sipariş',   icon: 'clipboard' },
     { routeName: 'new-order', label: 'Yeni',      icon: 'plus-circle', onPress: () => setNewOrderOpen(true) },
     { routeName: 'approvals', label: 'Onaylar',   icon: 'check-circle', badge: pendingCount > 0 },
-    { routeName: 'profile',   label: 'Profil',    icon: 'settings' },
+    { routeName: 'profile',   label: 'Profil',    icon: 'user' },
   ];
   void stockAlert;
 

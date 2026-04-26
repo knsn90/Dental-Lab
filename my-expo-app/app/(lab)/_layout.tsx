@@ -43,7 +43,7 @@ export default function LabLayout() {
     { label: 'Faturalar',    emoji: '🧾', href: '/(lab)/invoices',       iconName: 'file-text',    iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'Mali İşlemler' },
     { label: 'Giderler',     emoji: '💸', href: '/(lab)/expenses',       iconName: 'trending-down', iconSet: 'mdi' as const, matchPrefix: true },
     { label: 'Çek/Senet',   emoji: '📝', href: '/(lab)/checks',         iconName: 'credit-card',  iconSet: 'mdi' as const, matchPrefix: true },
-    { label: 'Kasa/Banka',   emoji: '🏦', href: '/(lab)/cash',           iconName: 'archive',      iconSet: 'mdi' as const, matchPrefix: true },
+    { label: 'Kasa/Banka',   emoji: '🏦', href: '/(lab)/cash',           iconName: 'dollar-sign',  iconSet: 'mdi' as const, matchPrefix: true },
     { label: 'Gelir/Gider',  emoji: '📊', href: '/(lab)/finance-report', iconName: 'bar-chart-2',  iconSet: 'mdi' as const, matchPrefix: true },
 
     // ── İnsan Kaynakları & Depo ────────────────────────────────────────────

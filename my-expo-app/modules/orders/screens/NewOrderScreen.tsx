@@ -41,8 +41,6 @@ import { GEO_COUNTRIES, GEO_BY_LABEL } from '../data/geo';
 import { C } from '../../../core/theme/colors';
 import { F } from '../../../core/theme/typography';
 import { AppSwitch } from '../../../core/ui/AppSwitch';
-import { EkartorluIcon } from '../../../components/icons/EkartorluIcon';
-import { GulushIcon } from '../../../components/icons/GulushIcon';
 import { ModelViewer } from '../../../src/components/viewer/ModelViewer';
 import { OcclusionAnalysisModal } from '../../occlusion/components/OcclusionAnalysisModal';
 import type { OcclusionAnalysisResult } from '../../occlusion/types/occlusion';

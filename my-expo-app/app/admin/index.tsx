@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import Feather from '@expo/vector-icons/Feather';
 import { useAdminDashboard } from '../../modules/admin/orders/hooks';
 
 // ─── Admin accent (black) ─────────────────────────────────────────────────────
@@ -77,12 +77,12 @@ function KpiCard({ icon, label, value, color, bgColor, trend }: {
     <View style={k.card}>
       <View style={k.top}>
         <View style={[k.iconBox, { backgroundColor: bgColor }]}>
-          <MaterialCommunityIcons name={icon as any} size={20} color={color} />
+          <Feather name={icon as any} size={20} color={color} />
         </View>
         {trend && (
           <View style={[k.trendPill, { backgroundColor: trend.startsWith('+') ? CLR.greenBg : CLR.redBg }]}>
             <MaterialCommunityIcons
-              name={trend.startsWith('+') ? 'trending-up' : 'trending-down'}
+              name={trend.startsWith('+') ? 'trending-up' : 'trending-down' as any}
               size={12}
               color={trend.startsWith('+') ? CLR.green : CLR.red}
             />
@@ -237,7 +237,7 @@ function QuickAction({ icon, label, onPress }: { icon: string; label: string; on
   return (
     <TouchableOpacity style={qa.btn} onPress={onPress} activeOpacity={0.7}>
       <View style={qa.iconWrap}>
-        <MaterialCommunityIcons name={icon as any} size={22} color={P} />
+        <Feather name={icon as any} size={22} color={P} />
       </View>
       <Text style={qa.label}>{label}</Text>
     </TouchableOpacity>
@@ -318,11 +318,11 @@ export default function AdminDashboard() {
             <Card style={{ marginBottom: 20 }}>
               <CardHeader title="Hızlı İşlemler" />
               <View style={{ flexDirection: 'row', paddingVertical: 20, paddingHorizontal: 16 }}>
-                <QuickAction icon="plus-circle-outline" label="Yeni Sipariş" onPress={() => router.push('/admin/orders' as any)} />
-                <QuickAction icon="account-group-outline" label="Kullanıcılar" onPress={() => router.push('/admin/users' as any)} />
-                <QuickAction icon="chart-bar" label="Raporlar" onPress={() => router.push('/admin/reports' as any)} />
-                <QuickAction icon="diamond-outline" label="Materyaller" onPress={() => router.push('/admin/materials' as any)} />
-                <QuickAction icon="cog-outline" label="Ayarlar" onPress={() => router.push('/admin/settings' as any)} />
+                <QuickAction icon="plus-circle" label="Yeni Sipariş" onPress={() => router.push('/admin/orders' as any)} />
+                <QuickAction icon="users" label="Kullanıcılar" onPress={() => router.push('/admin/users' as any)} />
+                <QuickAction icon="bar-chart-2" label="Raporlar" onPress={() => router.push('/admin/reports' as any)} />
+                <QuickAction icon="package" label="Materyaller" onPress={() => router.push('/admin/materials' as any)} />
+                <QuickAction icon="settings" label="Ayarlar" onPress={() => router.push('/admin/settings' as any)} />
               </View>
             </Card>
 

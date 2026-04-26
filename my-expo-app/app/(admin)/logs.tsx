@@ -5,7 +5,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { supabase } from '../../lib/supabase';
 import { IconBtn } from '../../core/ui/IconBtn';
 import { SlideTabBar } from '../../core/ui/SlideTabBar';
@@ -41,16 +40,16 @@ function timeAgo(dateStr: string): string {
 
 function actionMeta(action: string): { icon: string; color: string; bg: string } {
   if (action.includes('oluşturdu') || action.includes('oluşturuldu'))
-    return { icon: 'plus-circle-outline',   color: '#059669', bg: '#D1FAE5' };
+    return { icon: 'plus-circle',   color: '#059669', bg: '#D1FAE5' };
   if (action.includes('aktif edildi'))
-    return { icon: 'account-check-outline', color: '#059669', bg: '#D1FAE5' };
+    return { icon: 'user-check', color: '#059669', bg: '#D1FAE5' };
   if (action.includes('pasif edildi') || action.includes('silindi'))
-    return { icon: 'trash-can-outline',     color: '#DC2626', bg: '#FEF2F2' };
+    return { icon: 'trash-2',     color: '#DC2626', bg: '#FEF2F2' };
   if (action.includes('→') || action.includes('Durumu'))
-    return { icon: 'swap-horizontal',       color: '#7C3AED', bg: '#EDE9FE' };
+    return { icon: 'repeat',       color: '#7C3AED', bg: '#EDE9FE' };
   if (action.includes('güncelledi') || action.includes('güncellendi'))
-    return { icon: 'pencil-circle-outline', color: '#0F172A', bg: '#F1F5F9' };
-  return   { icon: 'information-outline',  color: '#64748B', bg: '#F1F5F9' };
+    return { icon: 'edit-2', color: '#0F172A', bg: '#F1F5F9' };
+  return   { icon: 'info',  color: '#64748B', bg: '#F1F5F9' };
 }
 
 // ─── Log Row ─────────────────────────────────────────────────────────────────
@@ -66,7 +65,7 @@ function LogRow({ log, isLast }: { log: ActivityLog; isLast: boolean }) {
     <View style={[lr.row, !isLast && lr.rowBorder]}>
       {/* Icon */}
       <View style={[lr.iconWrap, { backgroundColor: meta.bg }]}>
-        <MaterialCommunityIcons name={meta.icon as any} size={17} color={meta.color} />
+        <Feather name={meta.icon as any} size={17} color={meta.color} />
       </View>
 
       {/* Content */}
@@ -228,7 +227,7 @@ export default function AdminLogsScreen() {
         >
           {filtered.length === 0 ? (
             <View style={s.empty}>
-              <MaterialCommunityIcons name="clipboard-text-off-outline" size={44} color="#AEAEB2" />
+              <Feather name="clipboard" size={44} color="#AEAEB2" />
               <Text style={s.emptyTitle}>Henüz log yok</Text>
               <Text style={s.emptySub}>{q ? `"${q}" ile eşleşen kayıt yok` : 'Eylemler gerçekleştikçe burada görünecek'}</Text>
             </View>

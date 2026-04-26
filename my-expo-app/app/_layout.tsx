@@ -13,7 +13,7 @@ import {
   PlusJakartaSans_600SemiBold,
   PlusJakartaSans_700Bold,
 } from '@expo-google-fonts/plus-jakarta-sans';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import Feather from '@expo/vector-icons/Feather';
 
 // Inject web-only global CSS for the phone-shell layout
 function useWebStyles() {
@@ -139,7 +139,7 @@ export default function RootLayout() {
     PlusJakartaSans_500Medium,
     PlusJakartaSans_600SemiBold,
     PlusJakartaSans_700Bold,
-    ...MaterialCommunityIcons.font,
+    ...Feather.font,
   });
 
   const { session, profile, loading, setSession, setLoading, fetchProfile } = useAuthStore();
