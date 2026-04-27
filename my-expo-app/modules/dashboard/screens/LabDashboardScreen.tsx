@@ -1,3 +1,7 @@
+/**
+ * LabDashboardScreen — Bugün
+ * Tek bakışta üretim durumu, kritik uyarılar, hızlı kısa yollar, son siparişler.
+ */
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View, Text, ScrollView, StyleSheet,
@@ -6,7 +10,6 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Path, Circle, Line, Polyline } from 'react-native-svg';
 import { useAuthStore } from '../../../core/store/authStore';
 import { useTodayOrders } from '../../orders/hooks/useTodayOrders';
 import { isOrderOverdue } from '../../orders/constants';
@@ -14,18 +17,21 @@ import { fetchTodayProvas } from '../../provas/api';
 import { PROVA_TYPES } from '../../provas/types';
 import { supabase } from '../../../core/api/supabase';
 import { BlurFade } from '../../../core/ui/BlurFade';
+import { AppIcon } from '../../../core/ui/AppIcon';
 
-const P  = '#2563EB';
-const BG = '#F7F9FB';
-
+// ─── Colour palette ───────────────────────────────────────────────────────────
+const P   = '#2563EB';
+const BG  = '#F9F9FB';
 const CLR = {
   blue:   '#2563EB', blueBg:   '#EFF6FF',
   green:  '#16A34A', greenBg:  '#DCFCE7',
   orange: '#D97706', orangeBg: '#FEF3C7',
   red:    '#EF4444', redBg:    '#FEF2F2',
   purple: '#7C3AED', purpleBg: '#EDE9FE',
+  teal:   '#0891B2', tealBg:   '#ECFEFF',
 };
 
+// ─── Types ────────────────────────────────────────────────────────────────────
 interface TodayProva {
   id: string; prova_number: number; prova_type: string | null;
   scheduled_date: string | null; status: string; order_item_name: string | null;
@@ -34,18 +40,28 @@ interface TodayProva {
     doctor?: { full_name: string; clinic?: { name: string } | null };
   } | null;
 }
-interface MonthBar { month: string; count: number; }
+interface MonthBar  { month: string; count: number; }
+interface StationStat {
+  station_name: string; station_color: string | null;
+  avg_duration_hours: number; active_count: number; total_processed: number;
+}
+interface TechStat {
+  technician_name: string; approval_rate: number;
+  avg_work_duration_hours: number; total_assigned: number;
+}
 
+// ─── Status config ────────────────────────────────────────────────────────────
 const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
-  alindi:          { label: 'Alındı',         color: '#64748B', bg: '#F1F5F9' },
-  uretimde:        { label: 'Üretimde',        color: CLR.orange, bg: CLR.orangeBg },
-  kalite_kontrol:  { label: 'Kalite Kontrol',  color: '#7C3AED', bg: '#EDE9FE' },
+  alindi:          { label: 'Alındı',          color: '#64748B', bg: '#F1F5F9'   },
+  uretimde:        { label: 'Üretimde',         color: CLR.orange, bg: CLR.orangeBg },
+  kalite_kontrol:  { label: 'Kalite Kontrol',  color: '#7C3AED', bg: '#EDE9FE'   },
   teslimata_hazir: { label: 'Teslimata Hazır', color: CLR.green,  bg: CLR.greenBg },
-  teslim_edildi:   { label: 'Teslim Edildi',   color: '#94A3B8',  bg: '#F8FAFC' },
+  teslim_edildi:   { label: 'Teslim Edildi',   color: '#94A3B8',  bg: '#F8FAFC'  },
 };
 
 const MONTHS_TR = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
 
+// ─── Helper fns ───────────────────────────────────────────────────────────────
 function todayStr() { return new Date().toISOString().split('T')[0]; }
 function fmtDate(date: string) {
   const d = new Date(date);
@@ -53,17 +69,15 @@ function fmtDate(date: string) {
 }
 function getTodayLabel() {
   const d = new Date();
-  const days = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
+  const days   = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
   const months = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
   return `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]}`;
 }
 function initials(name?: string | null) {
   if (!name) return '—';
-  const parts = name.trim().split(/\s+/).slice(0, 2);
-  return parts.map(p => p[0]?.toUpperCase() ?? '').join('') || '—';
+  const p = name.trim().split(/\s+/).slice(0, 2);
+  return p.map(x => x[0]?.toUpperCase() ?? '').join('') || '—';
 }
-
-/** Convert 6-char hex + 0-1 alpha → rgba() string (safe for all platforms) */
 function hexA(hex: string, alpha: number) {
   try {
     const r = parseInt(hex.slice(1, 3), 16);
@@ -73,253 +87,46 @@ function hexA(hex: string, alpha: number) {
   } catch { return hex; }
 }
 
-// ── SVG Icons (Lucide-style) ──────────────────────────────────────────
-type IconName =
-  | 'arrow-up-right' | 'plus' | 'receipt' | 'activity'
-  | 'users' | 'user' | 'trending-up' | 'alert-triangle'
-  | 'check-square' | 'clock' | 'check-circle' | 'package';
+// ─────────────────────────────────────────────────────────────────────────────
+//  Shared UI Components
+// ─────────────────────────────────────────────────────────────────────────────
 
-function Icon({ name, size = 24, color = '#0F172A', strokeWidth = 1.75 }: {
-  name: IconName; size?: number; color?: string; strokeWidth?: number;
-}) {
-  const p = { stroke: color, strokeWidth, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, fill: 'none' };
-  switch (name) {
-    case 'arrow-up-right':
-      return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M7 17L17 7" {...p}/><Path d="M7 7H17V17" {...p}/></Svg>;
-    case 'plus':
-      return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M12 5v14M5 12h14" {...p}/></Svg>;
-    case 'receipt':
-      return (
-        <Svg width={size} height={size} viewBox="0 0 24 24">
-          <Path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1-2-1Z" {...p}/>
-          <Path d="M16 8H8M16 12H8M13 16H8" {...p}/>
-        </Svg>
-      );
-    case 'activity':
-      return <Svg width={size} height={size} viewBox="0 0 24 24"><Polyline points="22 12 18 12 15 21 9 3 6 12 2 12" {...p}/></Svg>;
-    case 'users':
-      return (
-        <Svg width={size} height={size} viewBox="0 0 24 24">
-          <Path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" {...p}/>
-          <Circle cx="9" cy="7" r="4" {...p}/>
-          <Path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" {...p}/>
-        </Svg>
-      );
-    case 'user':
-      return (
-        <Svg width={size} height={size} viewBox="0 0 24 24">
-          <Path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" {...p}/>
-          <Circle cx="12" cy="7" r="4" {...p}/>
-        </Svg>
-      );
-    case 'trending-up':
-      return (
-        <Svg width={size} height={size} viewBox="0 0 24 24">
-          <Polyline points="23 6 13.5 15.5 8.5 10.5 1 18" {...p}/>
-          <Polyline points="17 6 23 6 23 12" {...p}/>
-        </Svg>
-      );
-    case 'alert-triangle':
-      return (
-        <Svg width={size} height={size} viewBox="0 0 24 24">
-          <Path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" {...p}/>
-          <Line x1="12" y1="9" x2="12" y2="13" {...p}/>
-          <Line x1="12" y1="17" x2="12.01" y2="17" {...p}/>
-        </Svg>
-      );
-    case 'check-square':
-      return (
-        <Svg width={size} height={size} viewBox="0 0 24 24">
-          <Polyline points="9 11 12 14 22 4" {...p}/>
-          <Path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" {...p}/>
-        </Svg>
-      );
-    case 'clock':
-      return <Svg width={size} height={size} viewBox="0 0 24 24"><Circle cx="12" cy="12" r="10" {...p}/><Polyline points="12 6 12 12 16 14" {...p}/></Svg>;
-    case 'check-circle':
-      return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" {...p}/><Polyline points="22 4 12 14.01 9 11.01" {...p}/></Svg>;
-    case 'package':
-      return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M16.5 9.4l-9-5.19M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" {...p}/><Polyline points="3.27 6.96 12 12.01 20.73 6.96" {...p}/><Line x1="12" y1="22.08" x2="12" y2="12" {...p}/></Svg>;
-    default: return null;
-  }
+/** Generic card wrapper */
+function Card({ children, style }: { children: React.ReactNode; style?: any }) {
+  return <View style={[crd.wrap, style]}>{children}</View>;
 }
-
-// ── Quick Actions Bento ───────────────────────────────────────────────
-interface QAItem {
-  icon: IconName; label: string; onPress: () => void;
-  accent: string; accentBg: string; primary?: boolean;
-}
-
-function BentoCard({
-  item, style, iconSize = 24, showArrow = true,
-}: {
-  item: QAItem; style?: any; iconSize?: number; showArrow?: boolean;
+/** Card header — single source of section label, no duplication */
+function CardHeader({ title, subtitle, right }: {
+  title: string; subtitle?: string; right?: React.ReactNode;
 }) {
-  const scaleRef = useRef(new Animated.Value(1)).current;
-
-  const onPressIn = () =>
-    Animated.spring(scaleRef, { toValue: 0.95, useNativeDriver: true, damping: 15 }).start();
-  const onPressOut = () =>
-    Animated.spring(scaleRef, { toValue: 1, useNativeDriver: true, damping: 15 }).start();
-
   return (
-    <TouchableOpacity
-      onPress={item.onPress}
-      onPressIn={onPressIn}
-      onPressOut={onPressOut}
-      activeOpacity={1}
-      style={[{ flex: 1 }, style]}
-    >
-      <Animated.View
-        style={[
-          bento.card,
-          item.primary && bento.cardPrimary,
-          { transform: [{ scale: scaleRef }] },
-        ]}
-      >
-        {item.primary && <View style={bento.primarySheen} pointerEvents="none" />}
-
-        {showArrow && (
-          <View style={[bento.arrowBadge, item.primary && bento.arrowBadgePrimary]}>
-            <Icon
-              name="arrow-up-right"
-              size={11}
-              color={item.primary ? 'rgba(255,255,255,0.6)' : '#CBD5E1'}
-              strokeWidth={2.5}
-            />
-          </View>
-        )}
-
-        <View
-          style={[
-            bento.iconWrap,
-            { backgroundColor: item.primary ? 'rgba(255,255,255,0.14)' : item.accentBg },
-          ]}
-        >
-          <Icon
-            name={item.icon}
-            size={iconSize}
-            color={item.primary ? '#FFFFFF' : item.accent}
-            strokeWidth={1.75}
-          />
-        </View>
-
-        <Text style={[bento.label, item.primary && bento.labelPrimary]} numberOfLines={1}>
-          {item.label}
-        </Text>
-      </Animated.View>
-    </TouchableOpacity>
-  );
-}
-
-function QuickActionsSection({
-  onNewOrder, onApprovals, onClinics, onOrders, onProfile,
-}: {
-  onNewOrder: () => void; onApprovals: () => void; onClinics: () => void;
-  onOrders: () => void; onProfile: () => void;
-}) {
-  const items: QAItem[] = [
-    { icon: 'plus',        label: 'Yeni İş',    onPress: onNewOrder,  accent: '#FFFFFF', accentBg: 'rgba(255,255,255,0.14)', primary: true },
-    { icon: 'receipt',     label: 'Siparişler', onPress: onOrders,    accent: P,         accentBg: '#EFF6FF' },
-    { icon: 'activity',    label: 'Hekimler',   onPress: onClinics,   accent: '#059669', accentBg: '#ECFDF5' },
-    { icon: 'check-square',label: 'Onaylar',    onPress: onApprovals, accent: '#7C3AED', accentBg: '#F5F3FF' },
-    { icon: 'user',        label: 'Profil',     onPress: onProfile,   accent: '#D97706', accentBg: '#FFFBEB' },
-  ];
-
-  return (
-    <View style={bento.grid}>
-      <View style={bento.row}>
-        <BentoCard item={items[0]} style={{ flex: 3 }} iconSize={28} />
-        <View style={bento.col}>
-          <BentoCard item={items[1]} showArrow={false} />
-          <BentoCard item={items[2]} showArrow={false} />
-        </View>
+    <View style={crd.header}>
+      <View style={{ flex: 1 }}>
+        <Text style={crd.title}>{title}</Text>
+        {subtitle && <Text style={crd.subtitle}>{subtitle}</Text>}
       </View>
-      <View style={bento.row}>
-        <BentoCard item={items[3]} />
-        <BentoCard item={items[4]} />
-      </View>
+      {right}
     </View>
   );
 }
-
-const bento = StyleSheet.create({
-  grid: { gap: 10 },
-  row:  { flexDirection: 'row', gap: 10 },
-  col:  { flex: 2, gap: 10 },
-
-  card: {
+const crd = StyleSheet.create({
+  wrap: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 18,
-    gap: 12,
-    minHeight: 110,
-    justifyContent: 'space-between',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#EEF1F6',
     overflow: 'hidden',
-    position: 'relative',
     ...Platform.select({
-      web: { boxShadow: '0 1px 3px rgba(15,23,42,0.06), 0 4px 16px rgba(15,23,42,0.04)' } as any,
-      default: { shadowColor: '#0F172A', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
+      web:     { boxShadow: '0 1px 3px rgba(15,23,42,0.04), 0 6px 20px rgba(15,23,42,0.04)' } as any,
+      default: { shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 3 },
     }),
   },
-  cardPrimary: { backgroundColor: P, minHeight: 220 },
-
-  primarySheen: {
-    position: 'absolute', top: -40, right: -40,
-    width: 120, height: 120, borderRadius: 60,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  arrowBadge: {
-    position: 'absolute', top: 14, right: 14,
-    width: 22, height: 22, borderRadius: 11,
-    backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center',
-  },
-  arrowBadgePrimary: { backgroundColor: 'rgba(255,255,255,0.15)' },
-  iconWrap: {
-    width: 48, height: 48, borderRadius: 14,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  label: { fontSize: 13, fontWeight: '700', color: '#0F172A', letterSpacing: -0.2 },
-  labelPrimary: { color: '#FFFFFF', fontSize: 15 },
+  header:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16 },
+  title:    { fontSize: 15, fontWeight: '700', color: '#0F172A' },
+  subtitle: { fontSize: 11, color: '#94A3B8', marginTop: 1 },
 });
 
-// ── KPI Card ──────────────────────────────────────────────────────────
-function KPICard({ label, value, icon, accent, trend }: {
-  label: string; value: string | number; icon: IconName; accent: string; trend?: string;
-}) {
-  return (
-    <View style={kpi.card}>
-      <View style={[kpi.iconWrap, { backgroundColor: hexA(accent, 0.09) }]}>
-        <Icon name={icon} size={18} color={accent} strokeWidth={1.75} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={kpi.label} numberOfLines={1}>{label}</Text>
-        <Text style={[kpi.value, { color: accent }]}>{value}</Text>
-        {trend && (
-          <View style={kpi.trendRow}>
-            <Icon name="trending-up" size={9} color={CLR.green} strokeWidth={2.5} />
-            <Text style={kpi.trendText}>{trend}</Text>
-          </View>
-        )}
-      </View>
-    </View>
-  );
-}
-const kpi = StyleSheet.create({
-  card: {
-    flex: 1, minWidth: 140,
-    backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16,
-    borderWidth: 1, borderColor: '#F1F5F9',
-    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
-  },
-  iconWrap: { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  label:    { fontSize: 10, color: '#94A3B8', fontWeight: '600', letterSpacing: 0.3, marginBottom: 4 },
-  value:    { fontSize: 22, fontWeight: '800', letterSpacing: -0.6, lineHeight: 26 },
-  trendRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 3 },
-  trendText:{ fontSize: 9, color: CLR.green, fontWeight: '700' },
-});
-
-// ── Status Badge ──────────────────────────────────────────────────────
+/** Status badge with dot */
 function StatusBadge({ status }: { status: string }) {
   const c = STATUS_CFG[status] ?? { label: status, color: '#64748B', bg: '#F1F5F9' };
   return (
@@ -330,37 +137,373 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-// ── Card wrap ─────────────────────────────────────────────────────────
-function Card({ children, style }: { children: React.ReactNode; style?: any }) {
-  return <View style={[crd.wrap, style]}>{children}</View>;
-}
-function CardHeader({ title, right }: { title: string; right?: React.ReactNode }) {
+// ─────────────────────────────────────────────────────────────────────────────
+//  Production Pipeline
+// ─────────────────────────────────────────────────────────────────────────────
+const PIPELINE_STAGES = [
+  { key: 'alindi',          label: 'Alındı',    color: '#64748B', icon: 'inbox'        },
+  { key: 'uretimde',        label: 'Üretimde',  color: CLR.orange,icon: 'activity'     },
+  { key: 'kalite_kontrol',  label: 'KK',        color: '#7C3AED', icon: 'shield-check' },
+  { key: 'teslimata_hazir', label: 'Hazır',     color: CLR.green, icon: 'package'      },
+  { key: 'teslim_edildi',   label: 'Teslim',    color: '#94A3B8', icon: 'check-circle' },
+] as const;
+
+function ProductionPipeline({
+  counts, onStagePress,
+}: {
+  counts: Record<string, number>;
+  onStagePress: (status: string) => void;
+}) {
   return (
-    <View style={crd.header}>
-      <Text style={crd.title}>{title}</Text>
-      {right}
-    </View>
+    <Card>
+      <CardHeader title="Üretim Hattı" subtitle="Tüm aktif siparişler" />
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={pipe.row}
+      >
+        {PIPELINE_STAGES.map((stage, i) => {
+          const count = counts[stage.key] ?? 0;
+          const isLast = i === PIPELINE_STAGES.length - 1;
+          return (
+            <View key={stage.key} style={pipe.stageWrap}>
+              <TouchableOpacity
+                style={[
+                  pipe.stage,
+                  { borderTopColor: count > 0 ? stage.color : '#E2E8F0' },
+                  count > 0 && { backgroundColor: hexA(stage.color, 0.04) },
+                ]}
+                onPress={() => onStagePress(stage.key)}
+                activeOpacity={0.75}
+              >
+                <Text style={[pipe.stageCount, { color: count > 0 ? stage.color : '#CBD5E1' }]}>
+                  {count}
+                </Text>
+                <View style={[pipe.stageIconWrap, { backgroundColor: hexA(stage.color, count > 0 ? 0.12 : 0.05) }]}>
+                  <AppIcon name={stage.icon as any} size={14} color={count > 0 ? stage.color : '#CBD5E1'} strokeWidth={2} />
+                </View>
+                <Text style={[pipe.stageLabel, count > 0 && { color: '#475569' }]}>{stage.label}</Text>
+              </TouchableOpacity>
+              {!isLast && (
+                <AppIcon name="chevron-right" size={14} color="#CBD5E1" strokeWidth={2} style={pipe.arrow} />
+              )}
+            </View>
+          );
+        })}
+      </ScrollView>
+    </Card>
   );
 }
-const crd = StyleSheet.create({
-  wrap: { backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#F1F5F9', overflow: 'hidden' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16 },
-  title: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
-});
 
-// ── Section Title ─────────────────────────────────────────────────────
-function SectionTitle({ text }: { text: string }) {
-  return <Text style={sec.text}>{text}</Text>;
-}
-const sec = StyleSheet.create({
-  text: {
-    fontSize: 11, fontWeight: '700', color: '#64748B',
-    letterSpacing: 1.0, textTransform: 'uppercase',
-    marginBottom: 12, marginTop: 4, paddingHorizontal: 2,
+const pipe = StyleSheet.create({
+  row: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  stageWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  stage: {
+    alignItems: 'center',
+    gap: 8,
+    paddingTop: 14,
+    paddingHorizontal: 18,
+    paddingBottom: 12,
+    borderTopWidth: 3,
+    minWidth: 88,
+    borderRadius: 12,
+  },
+  stageCount: {
+    fontSize: 28,
+    fontWeight: '800',
+    letterSpacing: -1,
+    lineHeight: 32,
+  },
+  stageIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stageLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  arrow: {
+    opacity: 0.5,
   },
 });
 
-// ── Animated Bar ──────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+//  Attention Section
+// ─────────────────────────────────────────────────────────────────────────────
+function AttentionItem({
+  icon, iconColor, iconBg, label, count, onPress,
+}: {
+  icon: string; iconColor: string; iconBg: string;
+  label: string; count: number; onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity style={att.item} onPress={onPress} activeOpacity={0.8}>
+      <View style={[att.iconWrap, { backgroundColor: iconBg }]}>
+        <AppIcon name={icon as any} size={16} color={iconColor} strokeWidth={2} />
+      </View>
+      <View style={att.textWrap}>
+        <Text style={[att.count, { color: iconColor }]}>{count}</Text>
+        <Text style={att.label} numberOfLines={1}>{label}</Text>
+      </View>
+      <AppIcon name="chevron-right" size={13} color={iconColor} strokeWidth={2} />
+    </TouchableOpacity>
+  );
+}
+
+function AttentionSection({
+  items,
+}: {
+  items: { icon: string; iconColor: string; iconBg: string; label: string; count: number; onPress: () => void }[];
+}) {
+  if (items.length === 0) return null;
+  return (
+    <View style={att.section}>
+      <View style={att.header}>
+        <View style={att.headerLeft}>
+          <View style={att.dot} />
+          <Text style={att.headerTitle}>Hemen İlgilen</Text>
+        </View>
+        <Text style={att.headerSub}>{items.length} işlem bekliyor</Text>
+      </View>
+      <View style={att.list}>
+        {items.map((item, i) => <AttentionItem key={i} {...item} />)}
+      </View>
+    </View>
+  );
+}
+
+const att = StyleSheet.create({
+  section: {
+    backgroundColor: '#FFFBEB',
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: '#FCD34D',
+    padding: 16,
+    ...Platform.select({
+      web: { boxShadow: '0 4px 20px rgba(217,119,6,0.12), 0 1px 4px rgba(217,119,6,0.08)' } as any,
+      default: { shadowColor: '#D97706', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 3 },
+    }),
+  },
+  header: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', marginBottom: 12,
+  },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  dot:         { width: 10, height: 10, borderRadius: 5, backgroundColor: '#F59E0B' },
+  headerTitle: { fontSize: 13, fontWeight: '800', color: '#78350F' },
+  headerSub:   { fontSize: 11, color: '#B45309', fontWeight: '600', backgroundColor: '#FEF3C7', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 20 },
+  list:        { gap: 8 },
+  item:        {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: '#FFFFFF', borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 12,
+    borderWidth: 1, borderColor: '#FEF3C7',
+    ...Platform.select({
+      web: { boxShadow: '0 1px 4px rgba(217,119,6,0.08)' } as any,
+      default: {},
+    }),
+  },
+  iconWrap: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  textWrap: { flex: 1, flexDirection: 'row', alignItems: 'baseline', gap: 6 },
+  count:    { fontSize: 20, fontWeight: '800', lineHeight: 24 },
+  label:    { fontSize: 12, color: '#64748B', fontWeight: '500', flex: 1 },
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Quick Actions Bento
+// ─────────────────────────────────────────────────────────────────────────────
+interface QAItem {
+  icon: string; label: string; onPress: () => void;
+  accent: string; accentBg: string; primary?: boolean; badge?: number;
+}
+
+function BentoCard({
+  item, style, iconSize = 22,
+}: {
+  item: QAItem; style?: any; iconSize?: number;
+}) {
+  const scaleRef = useRef(new Animated.Value(1)).current;
+  const onPressIn  = () => Animated.spring(scaleRef, { toValue: 0.95, useNativeDriver: true, damping: 15 }).start();
+  const onPressOut = () => Animated.spring(scaleRef, { toValue: 1,    useNativeDriver: true, damping: 15 }).start();
+
+  return (
+    <TouchableOpacity
+      onPress={item.onPress}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
+      activeOpacity={1}
+      style={[{ flex: 1 }, style]}
+    >
+      <Animated.View style={[
+        bt.card,
+        item.primary && bt.cardPrimary,
+        { transform: [{ scale: scaleRef }] },
+      ]}>
+        {item.primary && <View style={bt.sheen} pointerEvents="none" />}
+        {item.primary && <View style={bt.sheen2} pointerEvents="none" />}
+
+        <View style={[bt.iconWrap, { backgroundColor: item.primary ? 'rgba(255,255,255,0.15)' : item.accentBg }]}>
+          <AppIcon name={item.icon as any} size={iconSize} color={item.primary ? '#FFFFFF' : item.accent} strokeWidth={1.75} />
+        </View>
+
+        <Text style={[bt.label, item.primary && bt.labelPrimary]} numberOfLines={1}>{item.label}</Text>
+
+        {/* Badge */}
+        {(item.badge ?? 0) > 0 && (
+          <View style={bt.badge}>
+            <Text style={bt.badgeText}>{item.badge}</Text>
+          </View>
+        )}
+
+        {/* Arrow */}
+        <View style={[bt.arrowBadge, item.primary && bt.arrowBadgePrimary]}>
+          <AppIcon name="arrow-up-right" size={10} color={item.primary ? 'rgba(255,255,255,0.6)' : '#CBD5E1'} strokeWidth={2.5} />
+        </View>
+      </Animated.View>
+    </TouchableOpacity>
+  );
+}
+
+function QuickActions({ actions }: { actions: QAItem[] }) {
+  // Layout: [big primary] [2×small right]
+  //         [small] [small] [small] [small]
+  const [primary, ...rest] = actions;
+  const top2 = rest.slice(0, 2);
+  const bot4 = rest.slice(2);
+
+  return (
+    <View style={bt.grid}>
+      <View style={bt.row}>
+        <BentoCard item={primary} style={{ flex: 3 }} iconSize={28} />
+        <View style={bt.col}>
+          {top2.map((item, i) => (
+            <BentoCard key={i} item={item} />
+          ))}
+        </View>
+      </View>
+      <View style={bt.row}>
+        {bot4.map((item, i) => (
+          <BentoCard key={i} item={item} />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+const bt = StyleSheet.create({
+  grid: { gap: 12 },
+  row:  { flexDirection: 'row', gap: 12 },
+  col:  { flex: 2, gap: 12 },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 16,
+    gap: 10,
+    minHeight: 100,
+    justifyContent: 'space-between',
+    overflow: 'hidden',
+    position: 'relative',
+    borderWidth: 1,
+    borderColor: '#EEF1F6',
+    ...Platform.select({
+      web:     { boxShadow: '0 1px 3px rgba(15,23,42,0.04), 0 6px 20px rgba(15,23,42,0.04)' } as any,
+      default: { shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 3 },
+    }),
+  },
+  cardPrimary: {
+    minHeight: 220,
+    borderWidth: 0,
+    ...Platform.select({
+      web: {
+        background: 'linear-gradient(145deg, #1D4ED8 0%, #2563EB 50%, #6D28D9 100%)',
+        boxShadow: '0 8px 32px rgba(37,99,235,0.35), 0 2px 8px rgba(37,99,235,0.2)',
+      } as any,
+      default: { backgroundColor: '#2563EB' },
+    }),
+  },
+  sheen: {
+    position: 'absolute', top: -50, right: -50,
+    width: 160, height: 160, borderRadius: 80,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+  },
+  sheen2: {
+    position: 'absolute', bottom: -30, left: -30,
+    width: 100, height: 100, borderRadius: 50,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+  },
+  iconWrap: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  label:        { fontSize: 13, fontWeight: '700', color: '#0F172A', letterSpacing: -0.2 },
+  labelPrimary: { color: '#FFFFFF', fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
+  badge: {
+    position: 'absolute', top: 12, left: 12,
+    backgroundColor: CLR.red, borderRadius: 999,
+    minWidth: 18, height: 18, paddingHorizontal: 5,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  badgeText: { fontSize: 10, fontWeight: '800', color: '#FFFFFF' },
+  arrowBadge: {
+    position: 'absolute', top: 12, right: 12,
+    width: 20, height: 20, borderRadius: 10,
+    backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center',
+  },
+  arrowBadgePrimary: { backgroundColor: 'rgba(255,255,255,0.15)' },
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  KPI Cards
+// ─────────────────────────────────────────────────────────────────────────────
+function KPICard({ label, value, icon, accent, sub }: {
+  label: string; value: string | number; icon: string; accent: string; sub?: string;
+}) {
+  return (
+    <View style={[kpi.card, { borderTopColor: accent }]}>
+      <View style={kpi.top}>
+        <View style={[kpi.iconWrap, { backgroundColor: hexA(accent, 0.1) }]}>
+          <AppIcon name={icon as any} size={16} color={accent} strokeWidth={2} />
+        </View>
+        <Text style={kpi.label} numberOfLines={1}>{label}</Text>
+      </View>
+      <Text style={[kpi.value, { color: accent }]}>{value}</Text>
+      {sub && <Text style={kpi.sub}>{sub}</Text>}
+    </View>
+  );
+}
+const kpi = StyleSheet.create({
+  card: {
+    flex: 1, minWidth: 130,
+    backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16,
+    borderWidth: 1, borderColor: '#EEF1F6',
+    borderTopWidth: 3,
+    gap: 10,
+    ...Platform.select({
+      web:     { boxShadow: '0 1px 3px rgba(15,23,42,0.04), 0 4px 16px rgba(15,23,42,0.04)' } as any,
+      default: { shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
+    }),
+  },
+  top:      { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  iconWrap: { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  label: { fontSize: 10, color: '#94A3B8', fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase', flex: 1 },
+  value: { fontSize: 28, fontWeight: '800', letterSpacing: -1, lineHeight: 32 },
+  sub:   { fontSize: 11, color: '#94A3B8', marginTop: -4 },
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Monthly Chart
+// ─────────────────────────────────────────────────────────────────────────────
 function AnimatedBar({
   pct, isActive, isHighest, count, label, delay,
 }: {
@@ -377,7 +520,7 @@ function AnimatedBar({
     ]).start();
   }, [pct]);
 
-  const animatedHeight = heightAnim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] });
+  const animH = heightAnim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] });
 
   return (
     <Animated.View style={{ flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end', opacity: opacityAnim }}>
@@ -393,7 +536,7 @@ function AnimatedBar({
         <Text style={[ch.barLabel, isActive && { color: P }]}>{count}</Text>
       )}
       <View style={ch.track}>
-        <Animated.View style={[ch.fill, { height: animatedHeight }, isActive ? ch.fillActive : ch.fillInactive]}>
+        <Animated.View style={[ch.fill, { height: animH }, isActive ? ch.fillActive : ch.fillInactive]}>
           <View style={ch.fillGloss} />
         </Animated.View>
       </View>
@@ -402,7 +545,6 @@ function AnimatedBar({
   );
 }
 
-// ── Monthly Chart ─────────────────────────────────────────────────────
 function MonthlyChart({ data }: { data: MonthBar[] }) {
   const max = Math.max(...data.map(d => d.count), 1);
   const highestIdx = data.reduce((best, d, i) => d.count > data[best].count ? i : best, 0);
@@ -411,11 +553,11 @@ function MonthlyChart({ data }: { data: MonthBar[] }) {
   useEffect(() => {
     if (Platform.OS !== 'web') return;
     const id = 'candy-stripe-lab';
-    if (document.getElementById(id)) return;
-    const el = document.createElement('style');
+    if ((document as any).getElementById(id)) return;
+    const el = (document as any).createElement('style');
     el.id = id;
-    el.textContent = `.candy-track-lab::before { content:''; position:absolute; inset:0; background-image:repeating-linear-gradient(135deg,rgba(37,99,235,0.06) 0px,rgba(37,99,235,0.06) 1px,transparent 1px,transparent 8px); border-radius:10px; pointer-events:none; }`;
-    document.head.appendChild(el);
+    el.textContent = `.candy-track-lab::before{content:'';position:absolute;inset:0;background-image:repeating-linear-gradient(135deg,rgba(37,99,235,0.06) 0px,rgba(37,99,235,0.06) 1px,transparent 1px,transparent 8px);border-radius:10px;pointer-events:none;}`;
+    (document as any).head.appendChild(el);
   }, []);
 
   return (
@@ -436,77 +578,163 @@ function MonthlyChart({ data }: { data: MonthBar[] }) {
 }
 
 const ch = StyleSheet.create({
-  container: { flexDirection: 'row', alignItems: 'flex-end', height: 180, gap: 8, paddingHorizontal: 20, paddingBottom: 20, paddingTop: 36 },
-  track: { width: '100%', flex: 1, justifyContent: 'flex-end', borderRadius: 10, overflow: 'hidden', backgroundColor: 'rgba(37,99,235,0.07)', position: 'relative' },
-  fill: { width: '100%', borderRadius: 10, overflow: 'hidden', position: 'relative' },
-  fillActive:   { backgroundColor: P },
-  fillInactive: { backgroundColor: `${P}30` },
-  fillGloss: { position: 'absolute', top: 0, left: 0, right: 0, height: 6, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.2)' },
-  barLabel:      { fontSize: 10, fontWeight: '700', color: '#94A3B8', marginBottom: 5 },
-  monthLabel:    { fontSize: 10, color: '#94A3B8', marginTop: 8, fontWeight: '500', textAlign: 'center' },
+  container: { flexDirection: 'row', alignItems: 'flex-end', height: 180, gap: 6, paddingHorizontal: 20, paddingBottom: 20, paddingTop: 32 },
+  track: { width: '100%', flex: 1, justifyContent: 'flex-end', borderRadius: 8, overflow: 'hidden', backgroundColor: hexA(P, 0.06), position: 'relative' },
+  fill:        { width: '100%', borderRadius: 8, overflow: 'hidden', position: 'relative' },
+  fillActive:  { backgroundColor: P },
+  fillInactive:{ backgroundColor: `${P}30` },
+  fillGloss:   { position: 'absolute', top: 0, left: 0, right: 0, height: 5, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.2)' },
+  barLabel:      { fontSize: 9, fontWeight: '700', color: '#94A3B8', marginBottom: 4 },
+  monthLabel:    { fontSize: 9, color: '#94A3B8', marginTop: 6, fontWeight: '500', textAlign: 'center' },
   monthLabelActive: { color: P, fontWeight: '800' },
-  tooltipWrap:   { alignItems: 'center', marginBottom: 6, position: 'absolute', top: -32, left: 0, right: 0 },
-  tooltipBubble: { backgroundColor: `${P}30`, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3 },
+  tooltipWrap:   { alignItems: 'center', marginBottom: 4, position: 'absolute', top: -28, left: 0, right: 0 },
+  tooltipBubble: { backgroundColor: `${P}30`, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
   tooltipBubbleActive: { backgroundColor: P },
-  tooltipText:   { fontSize: 10, fontWeight: '800', color: '#FFFFFF' },
-  tooltipArrow:  { width: 6, height: 6, borderRadius: 1, backgroundColor: `${P}30`, transform: [{ rotate: '45deg' }], marginTop: -3 },
+  tooltipText:   { fontSize: 9, fontWeight: '800', color: '#FFFFFF' },
+  tooltipArrow:  { width: 5, height: 5, borderRadius: 1, backgroundColor: `${P}30`, transform: [{ rotate: '45deg' }], marginTop: -2 },
   tooltipArrowActive: { backgroundColor: P },
 });
 
-// ── Status Distribution Card ──────────────────────────────────────────
-function StatusDistCard({ orders }: { orders: any[] }) {
-  const total = orders.length || 1;
-  return (
-    <Card>
-      <CardHeader title="Statü Dağılımı" />
-      <View style={{ paddingHorizontal: 20, paddingBottom: 20, gap: 14 }}>
-        {Object.entries(STATUS_CFG).map(([key, cfg]) => {
-          const count = orders.filter(o => o.status === key).length;
-          const pct   = Math.round((count / total) * 100);
-          return (
-            <View key={key}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
-                <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: cfg.color, marginRight: 8 }} />
-                <Text style={{ flex: 1, fontSize: 12, color: '#64748B', fontWeight: '500' }}>{cfg.label}</Text>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>{count}</Text>
-                <Text style={{ fontSize: 10, color: '#94A3B8', marginLeft: 6, width: 28, textAlign: 'right' }}>{pct}%</Text>
-              </View>
-              <View style={{ height: 4, backgroundColor: '#F1F5F9', borderRadius: 4, overflow: 'hidden' }}>
-                <View style={{ height: 4, borderRadius: 4, backgroundColor: cfg.color, width: `${pct}%` as any }} />
-              </View>
-            </View>
-          );
-        })}
+// ─────────────────────────────────────────────────────────────────────────────
+//  Station Bottleneck
+// ─────────────────────────────────────────────────────────────────────────────
+function StationBottleneck({ data }: { data: StationStat[] }) {
+  if (data.length === 0) {
+    return (
+      <View style={{ padding: 24, alignItems: 'center' }}>
+        <Text style={{ fontSize: 13, color: '#94A3B8' }}>İstasyon verisi yok</Text>
       </View>
-    </Card>
+    );
+  }
+  const maxVal = Math.max(...data.map(d => d.avg_duration_hours), 1);
+  return (
+    <View style={{ paddingHorizontal: 20, paddingBottom: 16, gap: 12 }}>
+      {data.map((st, i) => {
+        const pct   = (st.avg_duration_hours / maxVal) * 100;
+        const color = st.station_color ?? CLR.blue;
+        return (
+          <View key={i} style={{ gap: 5 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: '#1E293B', flex: 1 }} numberOfLines={1}>
+                {st.station_name}
+              </Text>
+              <Text style={{ fontSize: 11, color: '#64748B', marginLeft: 8 }}>
+                {st.avg_duration_hours.toFixed(1)}s
+              </Text>
+            </View>
+            <View style={{ height: 6, backgroundColor: '#F1F5F9', borderRadius: 4, overflow: 'hidden' }}>
+              <View style={{ height: 6, borderRadius: 4, backgroundColor: color, width: `${pct}%` as any }} />
+            </View>
+            <Text style={{ fontSize: 10, color: '#94A3B8' }}>
+              {st.active_count} aktif · {st.total_processed} işlendi
+            </Text>
+          </View>
+        );
+      })}
+    </View>
   );
 }
 
-// ── Main Screen ───────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+//  Top Technicians
+// ─────────────────────────────────────────────────────────────────────────────
+function TopTechnicians({ data }: { data: TechStat[] }) {
+  if (data.length === 0) {
+    return (
+      <View style={{ padding: 24, alignItems: 'center' }}>
+        <Text style={{ fontSize: 13, color: '#94A3B8' }}>Veri yok</Text>
+      </View>
+    );
+  }
+  const medals = ['🥇', '🥈', '🥉'];
+  return (
+    <View style={{ paddingHorizontal: 20, paddingBottom: 16 }}>
+      {data.map((tech, i) => {
+        const rate     = Math.round((tech.approval_rate ?? 0) * 100);
+        const barColor = rate >= 80 ? CLR.green : rate >= 60 ? CLR.orange : CLR.red;
+        return (
+          <View
+            key={i}
+            style={{
+              flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 10,
+              borderBottomWidth: i < data.length - 1 ? 1 : 0, borderBottomColor: '#F1F5F9',
+            }}
+          >
+            <Text style={{ fontSize: 18, width: 26, textAlign: 'center' }}>{medals[i] ?? ''}</Text>
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: '#0F172A' }} numberOfLines={1}>
+                {tech.technician_name}
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <View style={{ flex: 1, height: 5, backgroundColor: '#F1F5F9', borderRadius: 3, overflow: 'hidden' }}>
+                  <View style={{ height: 5, borderRadius: 3, backgroundColor: barColor, width: `${rate}%` as any }} />
+                </View>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: barColor, width: 30, textAlign: 'right' }}>
+                  {rate}%
+                </Text>
+              </View>
+              <Text style={{ fontSize: 10, color: '#94A3B8' }}>
+                {tech.total_assigned} atama · {(tech.avg_work_duration_hours ?? 0).toFixed(1)}s ort.
+              </Text>
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Main Screen
+// ─────────────────────────────────────────────────────────────────────────────
 export function LabDashboardScreen() {
-  const router  = useRouter();
-  const { profile } = useAuthStore();
+  const router       = useRouter();
+  const { profile }  = useAuthStore();
   const { orders, loading, refetch } = useTodayOrders();
-  const { width } = useWindowDimensions();
-  const isDesktop = width >= 900;
+  const { width }    = useWindowDimensions();
+  const isDesktop    = width >= 900;
 
-  const [provas,        setProvas]        = useState<TodayProva[]>([]);
-  const [provasLoading, setProvasLoading] = useState(true);
-  const [monthly,       setMonthly]       = useState<MonthBar[]>([]);
-  const [allOrders,     setAllOrders]     = useState<any[]>([]);
-  const [totalOrders,   setTotalOrders]   = useState(0);
-  const [todayNewCount, setTodayNewCount] = useState(0);
-  const [doctorCount,   setDoctorCount]   = useState(0);
-  const [userCount,     setUserCount]     = useState(0);
-  const [refreshing,    setRefreshing]    = useState(false);
-  const [hovered,       setHovered]       = useState<string | null>(null);
+  const [provas,          setProvas]         = useState<TodayProva[]>([]);
+  const [provasLoading,   setProvasLoading]  = useState(true);
+  const [monthly,         setMonthly]        = useState<MonthBar[]>([]);
+  const [recentOrders,    setRecentOrders]   = useState<any[]>([]);
+  const [todayNewCount,   setTodayNewCount]  = useState(0);
+  const [refreshing,      setRefreshing]     = useState(false);
+  const [hovered,         setHovered]        = useState<string | null>(null);
+  const [stationStats,    setStationStats]   = useState<StationStat[]>([]);
+  const [topTechs,        setTopTechs]       = useState<TechStat[]>([]);
+  const [pendingCount,    setPendingCount]   = useState(0);
 
-  const today         = todayStr();
-  const overdueOrders = orders.filter(o => isOrderOverdue(o.delivery_date, o.status));
+  // Pipeline counts
+  const [pipelineCounts, setPipelineCounts] = useState<Record<string, number>>({});
+
+  const isManager  = profile?.role === 'manager' || profile?.user_type === 'admin';
+  const today      = todayStr();
+  const firstName  = profile?.full_name?.split(' ')[0] ?? '';
+  const overdueOrders    = orders.filter(o => isOrderOverdue(o.delivery_date, o.status));
+  const todayDeliverable = orders.filter(o => o.delivery_date === today && o.status !== 'teslim_edildi');
+
+  const loadPipeline = useCallback(async () => {
+    try {
+      const statuses = ['alindi', 'uretimde', 'kalite_kontrol', 'teslimata_hazir', 'teslim_edildi'];
+      const results = await Promise.all(
+        statuses.map(st =>
+          supabase
+            .from('work_orders')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', st)
+        )
+      );
+      const counts: Record<string, number> = {};
+      statuses.forEach((st, i) => { counts[st] = results[i].count ?? 0; });
+      setPipelineCounts(counts);
+    } catch (_) {}
+  }, []);
 
   const loadExtra = useCallback(async () => {
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+
     const { data } = await supabase
       .from('work_orders')
       .select('id, order_number, work_type, status, delivery_date, created_at, doctor:doctor_id(full_name)')
@@ -514,7 +742,7 @@ export function LabDashboardScreen() {
       .order('created_at', { ascending: false });
 
     if (data) {
-      setAllOrders(data.slice(0, 8));
+      setRecentOrders(data.slice(0, 8));
       const bars: MonthBar[] = [];
       for (let i = 5; i >= 0; i--) {
         const d = new Date(); d.setMonth(d.getMonth() - i);
@@ -530,15 +758,42 @@ export function LabDashboardScreen() {
       setMonthly(bars);
     }
 
-    const { count: totalCount }   = await supabase.from('work_orders').select('id', { count: 'exact', head: true });
-    const { count: todayCount }   = await supabase.from('work_orders').select('id', { count: 'exact', head: true }).gte('created_at', `${today}T00:00:00`);
-    const { count: drCount }      = await supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('user_type', 'doctor');
-    const { count: labUserCount } = await supabase.from('profiles').select('id', { count: 'exact', head: true }).in('user_type', ['lab_user', 'mesul_mudur']);
-    setTotalOrders(totalCount ?? 0);
+    const { count: todayCount } = await supabase
+      .from('work_orders')
+      .select('id', { count: 'exact', head: true })
+      .gte('created_at', `${today}T00:00:00`);
     setTodayNewCount(todayCount ?? 0);
-    setDoctorCount(drCount ?? 0);
-    setUserCount(labUserCount ?? 0);
+
+    // Pending approvals
+    const { count: approvalCount } = await supabase
+      .from('work_orders')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'kalite_kontrol');
+    setPendingCount(approvalCount ?? 0);
   }, [today]);
+
+  const loadAnalytics = useCallback(async () => {
+    try {
+      const labId = profile?.lab_id;
+      if (!labId) return;
+      const [{ data: stations }, { data: techs }] = await Promise.all([
+        supabase
+          .from('v_station_analytics')
+          .select('station_name, station_color, avg_duration_hours, active_count, total_processed')
+          .eq('lab_id', labId)
+          .order('avg_duration_hours', { ascending: false })
+          .limit(4),
+        supabase
+          .from('v_technician_performance')
+          .select('technician_name, approval_rate, avg_work_duration_hours, total_assigned')
+          .eq('lab_id', labId)
+          .order('approval_rate', { ascending: false })
+          .limit(3),
+      ]);
+      setStationStats((stations ?? []) as StationStat[]);
+      setTopTechs((techs ?? []) as TechStat[]);
+    } catch (_) {}
+  }, [profile?.lab_id]);
 
   const loadProvas = useCallback(async () => {
     setProvasLoading(true);
@@ -549,132 +804,161 @@ export function LabDashboardScreen() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([refetch(), loadProvas(), loadExtra()]);
+    await Promise.all([refetch(), loadProvas(), loadExtra(), loadAnalytics(), loadPipeline()]);
     setRefreshing(false);
   };
 
-  useEffect(() => { loadProvas(); loadExtra(); }, []);
+  useEffect(() => { loadProvas(); loadExtra(); loadAnalytics(); loadPipeline(); }, []);
 
-  const firstName = profile?.full_name?.split(' ')[0] ?? '';
+  // ── Attention items (deduplicated, actionable) ──
+  const unassignedCount = pipelineCounts['alindi']
+    ? (pipelineCounts['alindi'] - (pipelineCounts['alindi'] || 0))
+    : 0;
+
+  const attentionItems = [
+    overdueOrders.length > 0 && {
+      icon: 'clock', iconColor: '#DC2626', iconBg: '#FEF2F2',
+      label: 'geciken sipariş', count: overdueOrders.length,
+      onPress: () => router.push('/(lab)/all-orders' as any),
+    },
+    todayDeliverable.length > 0 && {
+      icon: 'package', iconColor: '#D97706', iconBg: '#FFFBEB',
+      label: 'bugün teslim edilmesi gereken', count: todayDeliverable.length,
+      onPress: () => router.push('/(lab)/all-orders' as any),
+    },
+    pendingCount > 0 && isManager && {
+      icon: 'shield-check', iconColor: '#7C3AED', iconBg: '#EDE9FE',
+      label: 'kalite kontrol onayı bekliyor', count: pendingCount,
+      onPress: () => router.push('/(lab)/approvals' as any),
+    },
+  ].filter(Boolean) as Parameters<typeof AttentionSection>[0]['items'];
+
+  // ── Quick action shortcuts ──
+  const quickActions: QAItem[] = [
+    { icon: 'plus-circle',    label: 'Yeni İş Emri', onPress: () => router.push('/(lab)/new-order' as any),  accent: '#FFFFFF', accentBg: 'rgba(255,255,255,0.15)', primary: true },
+    { icon: 'clipboard-list', label: 'Siparişler',   onPress: () => router.push('/(lab)/all-orders' as any), accent: P,         accentBg: CLR.blueBg },
+    { icon: 'check-circle',   label: 'Onaylar',      onPress: () => router.push('/(lab)/approvals' as any),  accent: '#7C3AED', accentBg: '#F5F3FF', badge: pendingCount > 0 ? pendingCount : undefined },
+    { icon: 'building-2',     label: 'Klinikler',    onPress: () => router.push('/(lab)/clinics' as any),    accent: CLR.teal,  accentBg: CLR.tealBg },
+    { icon: 'landmark',       label: 'Finans',        onPress: () => router.push('/(lab)/finance' as any),    accent: CLR.green, accentBg: CLR.greenBg },
+    { icon: 'users',          label: 'İK',            onPress: () => router.push('/(lab)/ik-depo' as any),    accent: CLR.orange,accentBg: CLR.orangeBg },
+  ];
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={s.scroll}
+        contentContainerStyle={[s.scroll, isDesktop && s.scrollDesktop]}
         refreshControl={<RefreshControl refreshing={refreshing || loading} onRefresh={handleRefresh} tintColor={P} />}
       >
+        {/* ── Welcome ─────────────────────────────────────────────────── */}
+        <View style={s.welcome}>
+          <BlurFade duration={600} delay={0} yOffset={10}>
+            <Text style={s.welcomeDate}>{getTodayLabel()}</Text>
+          </BlurFade>
+          <BlurFade duration={600} delay={80} yOffset={10}>
+            <Text style={s.welcomeGreet}>
+              Hoş geldin{firstName ? `, ${firstName}` : ''} 👋
+            </Text>
+          </BlurFade>
+          <BlurFade duration={600} delay={160} yOffset={10}>
+            <Text style={s.welcomeSub}>
+              Bugün üretim hattında neler oluyor bir bakalım.
+            </Text>
+          </BlurFade>
+        </View>
 
-        {/* ── Hero Welcome + Critical Alert ──────────────────── */}
-        <View style={[s.heroRow, isDesktop && s.heroRowDesktop]}>
-          <View style={[s.welcomeCard, isDesktop && { flex: 1 }]}>
-            <BlurFade duration={600} delay={0} yOffset={8}>
-              <Text style={s.welcomeGreet}>Hoş geldin{firstName ? `, ${firstName}` : ''},</Text>
-            </BlurFade>
-            <BlurFade duration={600} delay={80} yOffset={8}>
-              <Text style={s.welcomeDate}>{getTodayLabel()}</Text>
-            </BlurFade>
-            <BlurFade duration={600} delay={160} yOffset={8}>
-              <Text style={s.welcomeSub}>Laboratuvar portalına hoş geldin. Günlük özetin hazır.</Text>
-            </BlurFade>
-          </View>
+        {/* ── Attention alerts ─────────────────────────────────────────── */}
+        {attentionItems.length > 0 && (
+          <AttentionSection items={attentionItems} />
+        )}
 
-          {overdueOrders.length > 0 && (
-            <View style={[s.alertCard, isDesktop && { width: 300 }]}>
-              <View style={s.alertDecorIcon} pointerEvents="none">
-                <Icon name="alert-triangle" size={180} color={CLR.red} strokeWidth={0.6} />
-              </View>
-              <View style={s.alertTop}>
-                <Text style={s.alertPill}>KRİTİK</Text>
-              </View>
-              <Text style={s.alertTitle}>
-                <Text style={s.alertCount}>{overdueOrders.length}</Text>
-                {' geciken sipariş'}
-              </Text>
-              <Text style={s.alertSub}>Acil müdahale gerektiren vakalar.</Text>
-              <TouchableOpacity
-                style={s.alertBtn}
-                onPress={() => router.push('/(lab)/all-orders' as any)}
-                activeOpacity={0.9}
-              >
-                <Text style={s.alertBtnText}>Detayları Gör</Text>
-              </TouchableOpacity>
-            </View>
+        {/* ── Production Pipeline ──────────────────────────────────────── */}
+        <ProductionPipeline
+          counts={pipelineCounts}
+          onStagePress={() => router.push('/(lab)/all-orders' as any)}
+        />
+
+        {/* ── KPI row (today's numbers) ────────────────────────────────── */}
+        <View style={[s.kpiRow, isDesktop && s.kpiRowDesktop]}>
+          <KPICard
+            label="BUGÜN YENİ"
+            value={todayNewCount}
+            icon="plus"
+            accent={CLR.green}
+            sub="sipariş alındı"
+          />
+          <KPICard
+            label="GECİKEN"
+            value={overdueOrders.length}
+            icon="clock"
+            accent={overdueOrders.length > 0 ? CLR.red : '#94A3B8'}
+            sub="sipariş"
+          />
+          <KPICard
+            label="BUGÜN TESLİMAT"
+            value={todayDeliverable.length}
+            icon="package"
+            accent={CLR.orange}
+            sub="teslim edilmeli"
+          />
+          {isDesktop && (
+            <KPICard
+              label="PROVA"
+              value={provas.length}
+              icon="calendar"
+              accent={CLR.purple}
+              sub="bugün planlandı"
+            />
           )}
         </View>
 
-        {/* ── KPI Strip ──────────────────────────────────────── */}
-        <View style={[s.kpiStrip, isDesktop && s.kpiStripDesktop]}>
-          <KPICard label="TOPLAM SİPARİŞ" value={totalOrders.toLocaleString('tr-TR')} icon="package" accent={P} trend="+12%" />
-          <KPICard label="BUGÜN YENİ"     value={todayNewCount}          icon="plus"           accent={CLR.green} />
-          <KPICard label="GECİKEN"        value={overdueOrders.length}   icon="clock"          accent={overdueOrders.length > 0 ? CLR.red : '#94A3B8'} />
-          <KPICard label="BUGÜN TESLİM"   value={orders.length}          icon="check-circle"   accent={CLR.orange} />
-          <KPICard label="KAYITLI HEKİM"  value={doctorCount}            icon="activity"       accent={CLR.blue} />
-          <KPICard label="LAB KULLANICI"  value={userCount}              icon="users"          accent={CLR.purple} />
+        {/* ── Quick Actions ────────────────────────────────────────────── */}
+        <View>
+          <Text style={s.sectionLabel}>Hızlı Erişim</Text>
+          <QuickActions actions={quickActions} />
         </View>
 
-        {/* ── 3-Column Main Grid ─────────────────────────────── */}
+        {/* ── Main content grid ────────────────────────────────────────── */}
         <View style={[s.mainGrid, isDesktop && s.mainGridDesktop]}>
 
-          {/* ── Col 1: Quick Actions + Status Distribution ───── */}
-          <View style={[s.col1, isDesktop && { flex: 1.1 }]}>
-            <SectionTitle text="Hızlı İşlemler" />
-            <QuickActionsSection
-              onNewOrder={() => router.push('/(lab)/new-order' as any)}
-              onApprovals={() => router.push('/(lab)/approvals' as any)}
-              onClinics={() => router.push('/(lab)/clinics' as any)}
-              onOrders={() => router.push('/(lab)/all-orders' as any)}
-              onProfile={() => router.push('/(lab)/profile' as any)}
-            />
-            <View style={{ height: 20 }} />
-            <SectionTitle text="Statü Dağılımı" />
-            <StatusDistCard orders={allOrders} />
-          </View>
-
-          {/* ── Col 2: Chart + Recent Orders ─────────────────── */}
-          <View style={[s.col2, isDesktop && { flex: 2 }]}>
-            <SectionTitle text="Sipariş Trendi" />
-            <Card style={{ marginBottom: 20 }}>
-              <CardHeader
-                title="Sipariş Trendi"
-                right={<View style={s.chip}><Text style={s.chipText}>Son 6 Ay</Text></View>}
-              />
-              {monthly.length > 0
-                ? <MonthlyChart data={monthly} />
-                : <View style={{ height: 160, alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ color: '#94A3B8', fontSize: 13 }}>Yükleniyor...</Text>
-                  </View>
-              }
-            </Card>
-
-            <SectionTitle text="Son Siparişler" />
+          {/* Son Siparişler */}
+          <View style={[s.col, isDesktop && { flex: 2 }]}>
             <Card>
               <CardHeader
                 title="Son Siparişler"
+                subtitle={`Son ${recentOrders.length} sipariş`}
                 right={
                   <TouchableOpacity onPress={() => router.push('/(lab)/all-orders' as any)}>
                     <Text style={s.linkBtn}>Tümünü Gör →</Text>
                   </TouchableOpacity>
                 }
               />
+
+              {/* Table header */}
               <View style={s.tableHead}>
-                <Text style={[s.thCell, { flex: 1.2 }]}>Sipariş No</Text>
-                <Text style={[s.thCell, { flex: 2 }]}>Hekim</Text>
-                {isDesktop && <Text style={[s.thCell, { flex: 2 }]}>İş Tipi</Text>}
-                <Text style={[s.thCell, { flex: 1.4 }]}>Statü</Text>
-                {isDesktop && <Text style={[s.thCell, { flex: 1, textAlign: 'right' }]}>Teslim</Text>}
+                <Text style={[s.th, { flex: 1.2 }]}>No</Text>
+                <Text style={[s.th, { flex: 2 }]}>Hekim</Text>
+                {isDesktop && <Text style={[s.th, { flex: 2 }]}>İş Tipi</Text>}
+                <Text style={[s.th, { flex: 1.4 }]}>Durum</Text>
+                {isDesktop && <Text style={[s.th, { flex: 1, textAlign: 'right' }]}>Teslim</Text>}
               </View>
 
-              {allOrders.length === 0
-                ? <Text style={s.loadingText}>Yükleniyor...</Text>
-                : allOrders.map((order, idx) => {
+              {recentOrders.length === 0
+                ? <Text style={s.loadingText}>Yükleniyor…</Text>
+                : recentOrders.map((order, idx) => {
                     const overdue = order.delivery_date < today && order.status !== 'teslim_edildi';
-                    const isLast  = idx === allOrders.length - 1;
+                    const isLast  = idx === recentOrders.length - 1;
                     const drName  = (order.doctor as any)?.full_name ?? '—';
                     return (
                       <TouchableOpacity
                         key={order.id}
-                        style={[s.tableRow, !isLast && s.rowBorder, overdue && s.tableRowOverdue, hovered === order.id && s.tableRowHover]}
+                        style={[
+                          s.tableRow,
+                          idx % 2 === 1 && s.tableRowEven,
+                          !isLast && s.rowBorder,
+                          overdue && s.rowOverdue,
+                          hovered === order.id && s.rowHover,
+                        ]}
                         onPress={() => router.push(`/(lab)/order/${order.id}` as any)}
                         activeOpacity={0.9}
                         // @ts-ignore
@@ -682,10 +966,8 @@ export function LabDashboardScreen() {
                         onMouseLeave={() => setHovered(null)}
                       >
                         <Text style={[s.orderNo, { flex: 1.2 }]} numberOfLines={1}>#{order.order_number}</Text>
-                        <View style={{ flex: 2, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                          <View style={s.avatar}>
-                            <Text style={s.avatarText}>{initials(drName)}</Text>
-                          </View>
+                        <View style={{ flex: 2, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <View style={s.avatar}><Text style={s.avatarText}>{initials(drName)}</Text></View>
                           <Text style={s.cellMain} numberOfLines={1}>{drName}</Text>
                         </View>
                         {isDesktop && (
@@ -706,62 +988,93 @@ export function LabDashboardScreen() {
             </Card>
           </View>
 
-          {/* ── Col 3: Today's Provas ─────────────────────────── */}
-          <View style={[s.col3, isDesktop && { flex: 1.1 }]}>
-            {(provas.length > 0 || provasLoading) && (
-              <>
-                <SectionTitle text="Bugünün Provaları" />
-                <Card>
-                  <CardHeader
-                    title="Bugünün Provaları"
-                    right={
-                      <View style={s.countChip}>
-                        <Text style={s.countChipText}>{provas.length}</Text>
-                      </View>
-                    }
-                  />
-                  {provasLoading
-                    ? <Text style={s.loadingText}>Yükleniyor...</Text>
-                    : provas.slice(0, 8).map((pv, idx) => {
-                        const typeCfg = PROVA_TYPES.find(t => t.value === pv.prova_type);
-                        const isLast  = idx === Math.min(provas.length, 8) - 1;
-                        return (
-                          <TouchableOpacity
-                            key={pv.id}
-                            style={[s.provaRow, !isLast && s.rowBorder]}
-                            onPress={() => pv.work_order && router.push(`/(lab)/order/${pv.work_order.id}` as any)}
-                            activeOpacity={0.7}
-                          >
-                            <View style={s.provaEmoji}>
-                              <Text style={{ fontSize: 16 }}>{typeCfg?.emoji ?? '🦷'}</Text>
-                            </View>
-                            <View style={{ flex: 1, gap: 2 }}>
-                              <Text style={s.cellMain} numberOfLines={1}>{pv.work_order?.order_number ?? '—'}</Text>
-                              <Text style={s.cellSub} numberOfLines={1}>{typeCfg?.label ?? 'Prova'} #{pv.prova_number}</Text>
-                            </View>
-                            <StatusBadge status={pv.status} />
-                          </TouchableOpacity>
-                        );
-                      })
-                  }
-                </Card>
-              </>
-            )}
-
-            {!provasLoading && provas.length === 0 && (
-              <>
-                <SectionTitle text="Bugünün Provaları" />
-                <Card>
-                  <View style={{ padding: 24, alignItems: 'center', gap: 8 }}>
-                    <Text style={{ fontSize: 24 }}>🦷</Text>
-                    <Text style={{ fontSize: 13, color: '#94A3B8', textAlign: 'center' }}>Bugün prova yok</Text>
+          {/* Bugünün Provaları */}
+          <View style={[s.col, isDesktop && { flex: 1 }]}>
+            <Card>
+              <CardHeader
+                title="Bugünün Provaları"
+                right={
+                  provas.length > 0
+                    ? <View style={s.countChip}><Text style={s.countChipText}>{provas.length}</Text></View>
+                    : null
+                }
+              />
+              {provasLoading
+                ? <Text style={s.loadingText}>Yükleniyor…</Text>
+                : provas.length === 0
+                ? (
+                  <View style={s.emptyBox}>
+                    <View style={s.emptyIconWrap}>
+                      <Text style={{ fontSize: 36 }}>🦷</Text>
+                    </View>
+                    <Text style={s.emptyTitle}>Bugün prova yok</Text>
+                    <Text style={s.emptyText}>Planlanan prova bulunmuyor.</Text>
                   </View>
-                </Card>
-              </>
+                )
+                : provas.slice(0, 8).map((pv, idx) => {
+                    const typeCfg = PROVA_TYPES.find(t => t.value === pv.prova_type);
+                    const isLast  = idx === Math.min(provas.length, 8) - 1;
+                    return (
+                      <TouchableOpacity
+                        key={pv.id}
+                        style={[s.provaRow, !isLast && s.rowBorder]}
+                        onPress={() => pv.work_order && router.push(`/(lab)/order/${pv.work_order.id}` as any)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={s.provaEmoji}>
+                          <Text style={{ fontSize: 15 }}>{typeCfg?.emoji ?? '🦷'}</Text>
+                        </View>
+                        <View style={{ flex: 1, gap: 2 }}>
+                          <Text style={s.cellMain} numberOfLines={1}>{pv.work_order?.order_number ?? '—'}</Text>
+                          <Text style={s.cellSub} numberOfLines={1}>{typeCfg?.label ?? 'Prova'} #{pv.prova_number}</Text>
+                        </View>
+                        <StatusBadge status={pv.status} />
+                      </TouchableOpacity>
+                    );
+                  })
+              }
+            </Card>
+          </View>
+        </View>
+
+        {/* ── Sipariş Trendi (monthly chart) ──────────────────────────── */}
+        <Card>
+          <CardHeader
+            title="Sipariş Trendi"
+            subtitle="Son 6 ay"
+            right={<View style={s.chip}><Text style={s.chipText}>Aylık</Text></View>}
+          />
+          {monthly.length > 0
+            ? <MonthlyChart data={monthly} />
+            : <View style={{ height: 140, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ color: '#94A3B8', fontSize: 13 }}>Yükleniyor…</Text>
+              </View>
+          }
+        </Card>
+
+        {/* ── İstasyon & Teknisyen stats ───────────────────────────────── */}
+        {(stationStats.length > 0 || topTechs.length > 0) && (
+          <View style={[s.analyticsGrid, isDesktop && s.analyticsGridDesktop]}>
+            {stationStats.length > 0 && (
+              <Card style={isDesktop ? { flex: 1 } : undefined}>
+                <CardHeader
+                  title="İstasyon Yoğunluğu"
+                  subtitle="Ortalama işlem süresi"
+                />
+                <StationBottleneck data={stationStats} />
+              </Card>
+            )}
+            {topTechs.length > 0 && (
+              <Card style={isDesktop ? { flex: 1 } : undefined}>
+                <CardHeader
+                  title="Teknisyen Performansı"
+                  subtitle="Onay oranına göre"
+                />
+                <TopTechnicians data={topTechs} />
+              </Card>
             )}
           </View>
-
-        </View>
+        )}
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -769,88 +1082,70 @@ export function LabDashboardScreen() {
   );
 }
 
+// ─── Screen styles ────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
-  safe:   { flex: 1, backgroundColor: BG },
-  scroll: { padding: 20, paddingBottom: 40, maxWidth: 1600, alignSelf: 'stretch' },
+  safe:          { flex: 1, backgroundColor: BG },
+  scroll:        { padding: 16, paddingBottom: 48, gap: 18 },
+  scrollDesktop: { padding: 28, paddingTop: 24, gap: 22, maxWidth: 1600, alignSelf: 'stretch' },
 
-  // ── Hero ──────────────────────────────────────────────────────────────
-  heroRow:        { gap: 16, marginBottom: 20 },
-  heroRowDesktop: { flexDirection: 'row' },
+  // Welcome
+  welcome:      { paddingTop: 8, paddingBottom: 8, paddingHorizontal: 4, gap: 4 },
+  welcomeDate:  { fontSize: 12, fontWeight: '600', color: '#94A3B8', letterSpacing: 0.5, textTransform: 'uppercase' },
+  welcomeGreet: { fontSize: 30, fontWeight: '800', color: '#0F172A', letterSpacing: -0.8, lineHeight: 36 },
+  welcomeSub:   { fontSize: 14, color: '#64748B', marginTop: 2 },
 
-  welcomeCard: {
-    backgroundColor: '#FFFFFF', borderRadius: 16,
-    padding: 28, borderWidth: 1, borderColor: '#F1F5F9', overflow: 'hidden',
-  },
-  welcomeGreet: { fontSize: 28, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
-  welcomeDate:  { fontSize: 28, fontWeight: '300', color: P, letterSpacing: -0.5, marginTop: 2 },
-  welcomeSub:   { fontSize: 13, color: '#64748B', marginTop: 10 },
+  // KPI row
+  kpiRow:        { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  kpiRowDesktop: { flexWrap: 'nowrap' },
 
-  alertCard: {
-    backgroundColor: '#FFF1F2', borderRadius: 16,
-    padding: 20, gap: 8, position: 'relative', overflow: 'hidden',
-  },
-  alertDecorIcon: { position: 'absolute', top: -30, left: -30, opacity: 0.1 } as any,
-  alertTop:  { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'flex-end' },
-  alertPill: {
-    fontSize: 10, fontWeight: '800', color: CLR.red,
-    backgroundColor: '#FEE2E2', paddingHorizontal: 8, paddingVertical: 4,
-    borderRadius: 6, letterSpacing: 0.8,
-  },
-  alertTitle: { fontSize: 20, fontWeight: '800', color: '#7F1D1D', marginTop: 6, letterSpacing: -0.4 },
-  alertCount: { fontSize: 36, fontWeight: '900', letterSpacing: -1 },
-  alertSub:   { fontSize: 12, color: '#B91C1C' },
-  alertBtn: {
-    marginTop: 6, backgroundColor: CLR.red, borderRadius: 10,
-    paddingVertical: 10, alignItems: 'center',
-  },
-  alertBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
-
-  // ── KPI Strip ─────────────────────────────────────────────────────────
-  kpiStrip:        { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 20 },
-  kpiStripDesktop: { flexWrap: 'nowrap' },
-
-  // ── 3-Column Grid ─────────────────────────────────────────────────────
-  mainGrid:        { gap: 20 },
+  // Content grid
+  mainGrid:        { gap: 16 },
   mainGridDesktop: { flexDirection: 'row', alignItems: 'flex-start' },
-  col1: { gap: 0 },
-  col2: { gap: 0 },
-  col3: { gap: 0 },
+  col:             { gap: 0 },
 
-  // ── Chips ─────────────────────────────────────────────────────────────
+  // Analytics row
+  analyticsGrid:        { gap: 16 },
+  analyticsGridDesktop: { flexDirection: 'row', gap: 16 },
+
+  // Chips
   chip:     { backgroundColor: '#F1F5F9', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
   chipText: { fontSize: 11, color: '#64748B', fontWeight: '600' },
-
   countChip:     { backgroundColor: P, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3, minWidth: 26, alignItems: 'center' },
   countChipText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
 
+  sectionLabel: { fontSize: 11, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 10, paddingHorizontal: 2 },
   linkBtn: { fontSize: 13, color: P, fontWeight: '700' },
 
-  // ── Table ─────────────────────────────────────────────────────────────
+  // Table
   tableHead: {
     flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 20, paddingVertical: 12,
-    borderTopWidth: 1, borderTopColor: '#F1F5F9',
-    backgroundColor: '#FAFBFC',
+    paddingHorizontal: 20, paddingVertical: 11,
+    borderTopWidth: 1, borderTopColor: '#EEF1F6',
+    backgroundColor: '#F8FAFC',
   },
-  thCell: { fontSize: 10, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.6 },
+  th:          { fontSize: 10, fontWeight: '800', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.6 },
+  tableRow:    { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 13, gap: 8, minHeight: 54 },
+  tableRowEven:{ backgroundColor: '#FAFBFC' },
+  rowBorder:   { borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  rowOverdue:  { backgroundColor: '#FEF2F2' },
+  rowHover:    { backgroundColor: '#EFF6FF' },
 
-  tableRow:        { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, gap: 10, minHeight: 56 },
-  tableRowHover:   { backgroundColor: '#FAFBFD' },
-  tableRowOverdue: { backgroundColor: '#FEF2F2' },
-  rowBorder:       { borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  // Prova
+  provaRow:   { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, gap: 12 },
+  provaEmoji: { width: 38, height: 38, borderRadius: 10, backgroundColor: CLR.blueBg, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#DBEAFE' },
 
-  provaRow:   { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, gap: 10 },
-  provaEmoji: { width: 36, height: 36, borderRadius: 10, backgroundColor: CLR.blueBg, alignItems: 'center', justifyContent: 'center' },
-
-  orderNo:    { fontSize: 12, fontWeight: '700', color: P },
-
-  avatar:     { width: 28, height: 28, borderRadius: 14, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
-  avatarText: { fontSize: 10, fontWeight: '700', color: '#64748B' },
-
+  // Cells
+  orderNo:         { fontSize: 12, fontWeight: '800', color: P },
+  avatar:          { width: 28, height: 28, borderRadius: 14, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#DBEAFE' },
+  avatarText:      { fontSize: 9, fontWeight: '800', color: P },
   cellMain:        { fontSize: 13, fontWeight: '600', color: '#0F172A' },
-  cellSub:         { fontSize: 12, color: '#64748B' },
-  cellDate:        { fontSize: 12, color: '#94A3B8', fontWeight: '500' },
+  cellSub:         { fontSize: 11, color: '#64748B' },
+  cellDate:        { fontSize: 11, color: '#94A3B8', fontWeight: '500' },
   cellDateOverdue: { color: CLR.red, fontWeight: '700' },
 
-  loadingText: { fontSize: 13, color: '#94A3B8', padding: 24, textAlign: 'center' },
+  loadingText:   { fontSize: 13, color: '#94A3B8', padding: 24, textAlign: 'center' },
+  emptyBox:      { padding: 32, alignItems: 'center', gap: 6 },
+  emptyIconWrap: { width: 72, height: 72, borderRadius: 36, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  emptyTitle:    { fontSize: 14, fontWeight: '700', color: '#334155', textAlign: 'center' },
+  emptyText:     { fontSize: 12, color: '#94A3B8', textAlign: 'center' },
 });

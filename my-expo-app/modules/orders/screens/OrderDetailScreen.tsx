@@ -15,7 +15,6 @@ import {
 } from 'react-native';
 import { toast } from '../../../core/ui/Toast';
 import { BrandedQR } from '../../../core/ui/BrandedQR';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useOrderDetail } from '../hooks/useOrderDetail';
@@ -38,6 +37,8 @@ import { StepTimeline } from '../../production/components/StepTimeline';
 import { useCaseSteps } from '../../production/hooks/useCaseSteps';
 import { printDeliveryReceipt } from '../../receipt/printReceipt';
 import { createInvoiceFromOrder } from '../../invoices/api';
+
+import { AppIcon } from '../../../core/ui/AppIcon';
 
 type Section = 'details' | 'steps' | 'prova' | 'vaka' | 'billing' | 'doctor' | 'files' | 'chat';
 
@@ -187,6 +188,7 @@ export function OrderDetailScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [showQR, setShowQR] = useState(false);
+  const [showMoreActions, setShowMoreActions] = useState(false);
 
   if (loading) {
     return (
@@ -230,9 +232,10 @@ export function OrderDetailScreen() {
     );
   }
 
-  const overdue = isOrderOverdue(order.delivery_date, order.status);
+  const overdue    = isOrderOverdue(order.delivery_date, order.status);
   const nextStatus = getNextStatus(order.status);
-  const cfg = STATUS_CONFIG[order.status];
+  const cfg        = STATUS_CONFIG[order.status];
+  const isManager  = profile?.role === 'manager' || profile?.user_type === 'admin';
 
   const qrUrl = Platform.OS === 'web' && typeof window !== 'undefined'
     ? `${window.location.origin}/order/${order.id}`
@@ -310,10 +313,12 @@ export function OrderDetailScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      {/* ── Top bar ── */}
-      <View style={[styles.topBar, overdue && styles.topBarOverdue]}>
+
+      {/* ── Header Card ── */}
+      <View style={styles.topBar}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>‹ Geri</Text>
+          <AppIcon name="arrow-left" size={16} color="#0F172A" strokeWidth={2.5} />
+          <Text style={styles.backText}>Geri</Text>
         </TouchableOpacity>
 
         <View style={styles.topMeta}>
@@ -323,16 +328,11 @@ export function OrderDetailScreen() {
           </View>
           <Text style={styles.topOrderNum}>{order.order_number}</Text>
           {order.doctor && (
-            <Text style={styles.topDoctor}>{order.doctor.full_name}</Text>
+            <Text style={styles.topDoctor}>· {order.doctor.full_name}</Text>
           )}
           {order.is_urgent && (
             <View style={styles.urgentTag}>
-              <Text style={styles.urgentTagText}>ACİL</Text>
-            </View>
-          )}
-          {overdue && (
-            <View style={styles.overdueTag}>
-              <Text style={styles.overdueTagText}>GECİKEN</Text>
+              <Text style={styles.urgentTagText}>⚡ ACİL</Text>
             </View>
           )}
         </View>
@@ -350,57 +350,107 @@ export function OrderDetailScreen() {
         )}
       </View>
 
-      {/* ── Info bar ── */}
+      {/* ── Overdue Banner Card ── */}
+      {overdue && (
+        <View style={styles.overdueBanner}>
+          <View style={styles.overdueBannerDot} />
+          <Text style={styles.overdueBannerText}>
+            {Math.abs(daysLeft)} gün geçti — teslimat süresi doldu
+          </Text>
+          <AppIcon name="alert-circle" size={15} color="#DC2626" strokeWidth={2} />
+        </View>
+      )}
+
+      {/* ── Meta + Actions Card ── */}
       <View style={styles.infoBar}>
-        <InfoPill label="Durum" value={cfg.label} color={cfg.color} />
-        <InfoPill label="Oluşturulma" value={createdDate} />
-        <InfoPill
-          label="Kalan Gün"
-          value={
-            order.status === 'teslim_edildi'
-              ? 'Teslim Edildi'
-              : daysLeft < 0
-              ? `${Math.abs(daysLeft)}g geçti`
-              : `${daysLeft} gün`
-          }
-          color={daysLeft < 0 && order.status !== 'teslim_edildi' ? '#EF4444' : undefined}
-        />
-        <InfoPill label="Teslim" value={formatDeliveryDate(order.delivery_date)} />
-        <View style={styles.infoBarSpacer} />
-        <TouchableOpacity onPress={() => setShowQR(true)} style={styles.btnQR}>
-          <Text style={styles.btnQRText}>QR</Text>
-        </TouchableOpacity>
-        {Platform.OS === 'web' && (
+        {/* Left: 2×2 meta grid */}
+        <View style={styles.infoMetaGrid}>
+          <InfoPill label="Durum" value={cfg.label} color={cfg.color} />
+          <InfoPill
+            label="Kalan Gün"
+            value={
+              order.status === 'teslim_edildi'
+                ? 'Teslim Edildi'
+                : daysLeft < 0
+                ? `${Math.abs(daysLeft)}g geçti`
+                : `${daysLeft} gün`
+            }
+            color={daysLeft < 0 && order.status !== 'teslim_edildi' ? '#EF4444' : undefined}
+          />
+          <InfoPill label="Teslim" value={formatDeliveryDate(order.delivery_date)} />
+          <InfoPill label="Oluşturulma" value={createdDate} />
+        </View>
+
+        {/* Divider */}
+        <View style={styles.infoBarDivider} />
+
+        {/* Right: Primary actions + more */}
+        <View style={styles.infoActions}>
           <TouchableOpacity
-            onPress={() => router.push(`/order/occlusion/${order.id}` as any)}
-            style={styles.btnOcclusion}
+            onPress={handleCreateInvoice}
+            style={styles.btnInvoice}
             activeOpacity={0.8}
           >
-            <MaterialCommunityIcons name={'cube-scan' as any} size={14} color="#1E40AF" />
-            <Text style={styles.btnOcclusionText}>Oklüzyon</Text>
+            <AppIcon name={'file-document-outline' as any} size={14} color="#FFFFFF" />
+            <Text style={styles.btnInvoiceText}>Fatura</Text>
           </TouchableOpacity>
-        )}
-        {Platform.OS === 'web' && (
-          <TouchableOpacity onPress={() => handlePrint(order, qrUrl)} style={styles.btnPrint}>
-            <Text style={styles.btnPrintText}>Yazdır</Text>
-          </TouchableOpacity>
-        )}
-        <TouchableOpacity
-          onPress={handlePrintReceipt}
-          style={styles.btnReceipt}
-          activeOpacity={0.8}
-        >
-          <MaterialCommunityIcons name={'receipt-text-outline' as any} size={14} color="#0F172A" />
-          <Text style={styles.btnReceiptText}>Teslimat Fişi</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={handleCreateInvoice}
-          style={styles.btnInvoice}
-          activeOpacity={0.8}
-        >
-          <MaterialCommunityIcons name={'file-document-outline' as any} size={14} color="#FFFFFF" />
-          <Text style={styles.btnInvoiceText}>Fatura Oluştur</Text>
-        </TouchableOpacity>
+
+          {/* More actions button */}
+          <View style={{ position: 'relative' }}>
+            <TouchableOpacity
+              style={styles.btnMore}
+              onPress={() => setShowMoreActions(v => !v)}
+              activeOpacity={0.8}
+            >
+              <AppIcon name="more-horizontal" size={16} color="#475569" strokeWidth={2} />
+            </TouchableOpacity>
+
+            {/* Dropdown */}
+            {showMoreActions && (
+              <>
+                {/* Backdrop */}
+                <Pressable
+                  style={styles.moreBackdrop}
+                  onPress={() => setShowMoreActions(false)}
+                />
+                <View style={styles.moreDropdown}>
+                  <TouchableOpacity style={styles.moreItem} onPress={() => { setShowQR(true); setShowMoreActions(false); }}>
+                    <AppIcon name="qr-code" size={14} color="#475569" strokeWidth={1.75} />
+                    <Text style={styles.moreItemText}>QR Kod</Text>
+                  </TouchableOpacity>
+                  {Platform.OS === 'web' && (
+                    <TouchableOpacity style={styles.moreItem} onPress={() => { router.push(`/order/occlusion/${order.id}` as any); setShowMoreActions(false); }}>
+                      <AppIcon name={'cube-scan' as any} size={14} color="#475569" strokeWidth={1.75} />
+                      <Text style={styles.moreItemText}>Oklüzyon</Text>
+                    </TouchableOpacity>
+                  )}
+                  {Platform.OS === 'web' && (
+                    <TouchableOpacity style={styles.moreItem} onPress={() => { handlePrint(order, qrUrl); setShowMoreActions(false); }}>
+                      <AppIcon name="printer" size={14} color="#475569" strokeWidth={1.75} />
+                      <Text style={styles.moreItemText}>Yazdır</Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity style={styles.moreItem} onPress={() => { handlePrintReceipt(); setShowMoreActions(false); }}>
+                    <AppIcon name={'receipt-text-outline' as any} size={14} color="#475569" strokeWidth={1.75} />
+                    <Text style={styles.moreItemText}>Teslimat Fişi</Text>
+                  </TouchableOpacity>
+                  {isManager && (
+                    <TouchableOpacity style={styles.moreItem} onPress={() => { router.push(`/(lab)/order/route/${order.id}` as any); setShowMoreActions(false); }}>
+                      <AppIcon name={'sitemap-outline' as any} size={14} color="#475569" strokeWidth={1.75} />
+                      <Text style={styles.moreItemText}>Rota Ata</Text>
+                    </TouchableOpacity>
+                  )}
+                  {isManager && (
+                    <TouchableOpacity style={styles.moreItem} onPress={() => { router.push(`/(lab)/deliveries` as any); setShowMoreActions(false); }}>
+                      <AppIcon name={'truck-fast-outline' as any} size={14} color="#7C3AED" strokeWidth={1.75} />
+                      <Text style={[styles.moreItemText, { color: '#7C3AED' }]}>Teslimat</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </>
+            )}
+          </View>
+        </View>
       </View>
 
       {/* ── Body ── */}
@@ -421,7 +471,7 @@ export function OrderDetailScreen() {
                   {s.icon === '__tooth__' ? (
                     <ToothIcon size={18} color={active ? '#0F172A' : '#94A3B8'} />
                   ) : (
-                    <MaterialCommunityIcons
+                    <AppIcon
                       name={s.icon as any}
                       size={18}
                       color={active ? '#0F172A' : '#94A3B8'}
@@ -454,7 +504,7 @@ export function OrderDetailScreen() {
                     {s.icon === '__tooth__' ? (
                       <ToothIcon size={15} color={active ? '#0F172A' : '#94A3B8'} />
                     ) : (
-                      <MaterialCommunityIcons
+                      <AppIcon
                         name={s.icon as any}
                         size={15}
                         color={active ? '#0F172A' : '#94A3B8'}
@@ -638,7 +688,7 @@ function ToothJobCard({ tooth, order, isActive, onPress, onAddFile }: {
           onPress={onAddFile}
           activeOpacity={0.7}
         >
-          <MaterialCommunityIcons name={'paperclip' as any} size={11} color={photosCount > 0 ? '#0F172A' : '#94A3B8'} />
+          <AppIcon name={'paperclip' as any} size={11} color={photosCount > 0 ? '#0F172A' : '#94A3B8'} />
           <Text style={[tcStyles.badgeText, photosCount > 0 && tcStyles.badgeTextActive]}>
             {photosCount > 0 ? `${photosCount} dosya` : 'Dosya ekle'}
           </Text>
@@ -647,7 +697,7 @@ function ToothJobCard({ tooth, order, isActive, onPress, onAddFile }: {
         {/* Notes badge */}
         {notesCount > 0 && (
           <View style={tcStyles.badge}>
-            <MaterialCommunityIcons name={'message-text-outline' as any} size={11} color="#64748B" />
+            <AppIcon name={'message-text-outline' as any} size={11} color="#64748B" />
             <Text style={tcStyles.badgeText}>Notlar ({notesCount})</Text>
           </View>
         )}
@@ -796,6 +846,7 @@ function DetailsSection({ order, qrUrl, onAddFile }: {
                   }
                 }}
                 toothInfo={toothInfo}
+                hideEmptyJaw
               />
             </View>
           ) : (
@@ -1163,7 +1214,7 @@ function AudioPlayer({ url, isMe }: { url: string; isMe: boolean }) {
         style={{ width: 34, height: 34, borderRadius: 17,
                  backgroundColor: playBg,
                  alignItems: 'center', justifyContent: 'center' }}>
-        <MaterialCommunityIcons
+        <AppIcon
           name={(playing ? 'pause' : 'play') as any}
           size={18}
           color="#FFFFFF"
@@ -1347,7 +1398,7 @@ function ChatSection({
           </View>
         ) : !hasContent ? (
           <View style={cs.emptyBox}>
-            <MaterialCommunityIcons name={'message-outline' as any} size={32} color="#CBD5E1" />
+            <AppIcon name={'message-outline' as any} size={32} color="#CBD5E1" />
             <Text style={cs.emptyTitle}>Henüz mesaj yok</Text>
             <Text style={cs.emptyText}>Hekim veya lab mesaj gönderdiğinde burada görünür</Text>
           </View>
@@ -1357,7 +1408,7 @@ function ChatSection({
           {orderNotes ? (
             <View style={cs.msgRow}>
               <View style={[cs.avatar, cs.avatarDoctor]}>
-                <MaterialCommunityIcons name={'stethoscope' as any} size={14} color="#FFFFFF" />
+                <AppIcon name={'stethoscope' as any} size={14} color="#FFFFFF" />
               </View>
               <View style={[cs.bubble, cs.bubbleThem, cs.bubbleNote]}>
                 <Text style={cs.noteLabel}>İş Emri Notu · Hekim</Text>
@@ -1406,7 +1457,7 @@ function ChatSection({
                       onPress={() => { if (typeof window !== 'undefined') window.open(msg.attachment_url!, '_blank'); }}
                       activeOpacity={0.8}
                     >
-                      <MaterialCommunityIcons name={'file-document-outline' as any} size={20} color={isMe ? '#FFF' : '#0F172A'} />
+                      <AppIcon name={'file-document-outline' as any} size={20} color={isMe ? '#FFF' : '#0F172A'} />
                       <View style={{ flex: 1 }}>
                         <Text style={[cs.fileChipName, isMe && { color: '#FFF' }]} numberOfLines={1}>
                           {msg.attachment_name ?? 'Dosya'}
@@ -1417,7 +1468,7 @@ function ChatSection({
                           </Text>
                         ) : null}
                       </View>
-                      <MaterialCommunityIcons name={'download-outline' as any} size={16} color={isMe ? 'rgba(255,255,255,0.7)' : '#94A3B8'} />
+                      <AppIcon name={'download-outline' as any} size={16} color={isMe ? 'rgba(255,255,255,0.7)' : '#94A3B8'} />
                     </TouchableOpacity>
                   ) : null}
 
@@ -1456,7 +1507,7 @@ function ChatSection({
               <View style={cs.previewHeader}>
                 <Text style={cs.previewTitle}>Dosya Gönder</Text>
                 <TouchableOpacity onPress={() => setPendingFile(null)}>
-                  <MaterialCommunityIcons name={'close' as any} size={20} color="#64748B" />
+                  <AppIcon name={'close' as any} size={20} color="#64748B" />
                 </TouchableOpacity>
               </View>
 
@@ -1470,7 +1521,7 @@ function ChatSection({
                 />
               ) : (
                 <View style={cs.previewFileIcon}>
-                  <MaterialCommunityIcons
+                  <AppIcon
                     name={
                       pendingFile.name.match(/\.(stl|ply|obj|step|stp)$/i)
                         ? ('cube-outline' as any)
@@ -1505,7 +1556,7 @@ function ChatSection({
                   onPress={handleSendPending}
                   disabled={uploading}
                 >
-                  <MaterialCommunityIcons name={uploading ? ('loading' as any) : ('send' as any)} size={16} color="#FFFFFF" />
+                  <AppIcon name={uploading ? ('loading' as any) : ('send' as any)} size={16} color="#FFFFFF" />
                   <Text style={cs.previewSendText}>{uploading ? 'Gönderiliyor...' : 'Gönder'}</Text>
                 </TouchableOpacity>
               </View>
@@ -1521,10 +1572,10 @@ function ChatSection({
           <Text style={cs.recTime}>{fmtSec(recSeconds)}</Text>
           <Text style={cs.recLabel}>Kayıt yapılıyor</Text>
           <TouchableOpacity style={cs.recCancelBtn} onPress={cancelRecording}>
-            <MaterialCommunityIcons name={'close' as any} size={18} color="#64748B" />
+            <AppIcon name={'close' as any} size={18} color="#64748B" />
           </TouchableOpacity>
           <TouchableOpacity style={cs.recSendBtn} onPress={stopRecording} disabled={uploading}>
-            <MaterialCommunityIcons name={'send' as any} size={16} color="#FFFFFF" />
+            <AppIcon name={'send' as any} size={16} color="#FFFFFF" />
             <Text style={cs.recSendText}>Gönder</Text>
           </TouchableOpacity>
         </View>
@@ -1549,7 +1600,7 @@ function ChatSection({
                     >
                       <Text style={cs.attachItemLabel}>Fotoğraf</Text>
                       <View style={[cs.attachIconCircle, { backgroundColor: '#0F172A' }]}>
-                        <MaterialCommunityIcons name={'image-outline' as any} size={22} color="#FFFFFF" />
+                        <AppIcon name={'image-outline' as any} size={22} color="#FFFFFF" />
                       </View>
                     </TouchableOpacity>
 
@@ -1561,7 +1612,7 @@ function ChatSection({
                     >
                       <Text style={cs.attachItemLabel}>Dijital Tarama</Text>
                       <View style={[cs.attachIconCircle, { backgroundColor: '#0891B2' }]}>
-                        <MaterialCommunityIcons name={'cube-scan' as any} size={22} color="#FFFFFF" />
+                        <AppIcon name={'cube-scan' as any} size={22} color="#FFFFFF" />
                       </View>
                     </TouchableOpacity>
 
@@ -1573,7 +1624,7 @@ function ChatSection({
                     >
                       <Text style={cs.attachItemLabel}>Dosya</Text>
                       <View style={[cs.attachIconCircle, { backgroundColor: '#7C3AED' }]}>
-                        <MaterialCommunityIcons name={'file-document-outline' as any} size={22} color="#FFFFFF" />
+                        <AppIcon name={'file-document-outline' as any} size={22} color="#FFFFFF" />
                       </View>
                     </TouchableOpacity>
                   </View>
@@ -1587,7 +1638,7 @@ function ChatSection({
                 disabled={uploading || sending}
                 activeOpacity={0.7}
               >
-                <MaterialCommunityIcons
+                <AppIcon
                   name={attachMenuOpen ? ('close' as any) : ('paperclip' as any)}
                   size={20}
                   color={attachMenuOpen ? '#0F172A' : uploading ? '#CBD5E1' : '#64748B'}
@@ -1614,7 +1665,7 @@ function ChatSection({
               disabled={uploading || sending}
               activeOpacity={0.7}
             >
-              <MaterialCommunityIcons name={'microphone-outline' as any} size={20} color="#64748B" />
+              <AppIcon name={'microphone-outline' as any} size={20} color="#64748B" />
             </TouchableOpacity>
           ) : null}
 
@@ -1624,7 +1675,7 @@ function ChatSection({
             disabled={!text.trim() || sending || uploading}
             activeOpacity={0.75}
           >
-            <MaterialCommunityIcons
+            <AppIcon
               name={uploading ? 'loading' : 'send'}
               size={18}
               color="#FFFFFF"
@@ -2043,23 +2094,31 @@ const sectionStyles = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#FFFFFF' },
+  safe: { flex: 1, backgroundColor: '#F9F9FB' },
 
-  // ── Top bar ──
+  // ── Top bar card ──
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
     backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderRadius: 18,
     gap: 10,
+    margin: 12,
+    marginBottom: 6,
+    shadowColor: '#1E293B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 10,
+    elevation: 2,
+    // @ts-ignore
+    boxShadow: '0 2px 10px rgba(15,23,42,0.07)',
   },
-  topBarOverdue: { backgroundColor: '#FEF2F2' },
+  topBarOverdue: {}, // overdue is now a separate banner card
 
-  backBtn: { paddingRight: 4 },
-  backText: { fontSize: 16, color: '#0F172A', fontWeight: '600', letterSpacing: -0.2 },
+  backBtn: { paddingRight: 4, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  backText: { fontSize: 15, color: '#0F172A', fontWeight: '600', letterSpacing: -0.2 },
 
   topMeta: { flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 7 },
   stagePill: {
@@ -2097,28 +2156,83 @@ const styles = StyleSheet.create({
   },
   btnAdvanceText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF', letterSpacing: 0.1 },
 
-  // ── Info bar ──
+  // ── Overdue banner card ──
+  overdueBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 12,
+    marginBottom: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: '#FEF2F2',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    shadowColor: '#EF4444',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  overdueBannerDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#DC2626',
+  },
+  overdueBannerText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#DC2626',
+  },
+
+  // ── Info bar card ──
   infoBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    marginHorizontal: 12,
+    marginBottom: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-    gap: 0,
+    borderRadius: 18,
+    shadowColor: '#1E293B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 10,
+    elevation: 2,
+    // @ts-ignore
+    boxShadow: '0 2px 10px rgba(15,23,42,0.07)',
+  },
+  infoMetaGrid: {
+    flex: 1,
+    flexDirection: 'row',
     flexWrap: 'wrap',
   },
+  infoBarDivider: {
+    width: 1,
+    height: 52,
+    backgroundColor: '#F1F5F9',
+    marginHorizontal: 12,
+  },
+  infoActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   infoPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRightWidth: 1,
-    borderRightColor: '#F1F5F9',
-    gap: 1,
+    width: '50%',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    gap: 2,
   },
   infoPillLabel: { fontSize: 10, fontWeight: '600', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.4 },
   infoPillValue: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
   infoBarSpacer: { flex: 1 },
+
+  // Legacy button styles (kept for any remaining references)
   btnQR: {
     paddingHorizontal: 12,
     paddingVertical: 7,
@@ -2126,7 +2240,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#F1F5F9',
     backgroundColor: '#FFFFFF',
-    marginLeft: 4,
   },
   btnQRText: { fontSize: 12, fontWeight: '600', color: '#475569' },
   btnPrint: {
@@ -2136,7 +2249,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#D1FAE5',
     backgroundColor: '#F0FDF4',
-    marginLeft: 6,
   },
   btnPrintText: { fontSize: 12, fontWeight: '600', color: '#065F46' },
   btnReceipt: {
@@ -2149,16 +2261,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E2E8F0',
     backgroundColor: '#FFFFFF',
-    marginLeft: 6,
   },
   btnReceiptText: { fontSize: 12, fontWeight: '600', color: '#0F172A' },
   btnInvoice: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12,
     backgroundColor: '#2563EB',
-    marginLeft: 6,
   },
   btnInvoiceText: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
+  btnRoute: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
+    backgroundColor: '#16A34A',
+  },
+  btnRouteText: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
+  btnDelivery: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
+    backgroundColor: '#7C3AED',
+  },
+  btnDeliveryText: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
   btnOcclusion: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2169,19 +2291,64 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#DBEAFE',
     backgroundColor: '#EFF6FF',
-    marginLeft: 6,
   },
   btnOcclusionText: { fontSize: 12, fontWeight: '600', color: '#1E40AF' },
 
+  // ── More actions ──
+  btnMore: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  moreBackdrop: {
+    position: 'fixed' as any,
+    top: 0, left: 0, right: 0, bottom: 0,
+    zIndex: 50,
+  },
+  moreDropdown: {
+    position: 'absolute',
+    right: 0,
+    top: 44,
+    zIndex: 51,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    paddingVertical: 6,
+    minWidth: 170,
+    shadowColor: '#1E293B',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 8,
+    // @ts-ignore
+    boxShadow: '0 4px 24px rgba(15,23,42,0.12)',
+  },
+  moreItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  moreItemText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#0F172A',
+  },
+
   // ── Body ──
-  body: { flex: 1, flexDirection: 'column' },
+  body: { flex: 1, flexDirection: 'column', backgroundColor: '#F9F9FB' },
   bodyDesktop: { flexDirection: 'row' },
 
   // ── Section navigation — mobile pill tabs ──
   sectionTabsScroll: {
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    backgroundColor: '#F9F9FB',
     flexGrow: 0,
   },
   sectionTabsContent: {
@@ -2192,7 +2359,7 @@ const styles = StyleSheet.create({
   sectionTabBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#ECEEF2',
     borderRadius: 12,
     padding: 3,
     gap: 2,
@@ -2213,14 +2380,22 @@ const styles = StyleSheet.create({
   sectionTabLabel: { fontSize: 12, fontWeight: '500', color: '#64748B' },
   sectionTabLabelActive: { fontSize: 12, fontWeight: '700', color: '#0F172A' },
 
-  // ── Section navigation — desktop sidebar ──
+  // ── Section navigation — desktop sidebar card ──
   sectionSidebarDesktop: {
-    width: 130,
+    width: 138,
     backgroundColor: '#FFFFFF',
-    borderRightWidth: 1,
-    borderRightColor: '#F1F5F9',
+    borderRadius: 18,
+    margin: 8,
+    marginRight: 4,
     paddingTop: 10,
     paddingHorizontal: 8,
+    shadowColor: '#1E293B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 10,
+    elevation: 2,
+    // @ts-ignore
+    boxShadow: '0 2px 10px rgba(15,23,42,0.07)',
   },
   sectionItemDesktop: {
     flexDirection: 'row',
@@ -2237,8 +2412,8 @@ const styles = StyleSheet.create({
   sectionLabel: { flex: 1, fontSize: 13, color: '#64748B', fontWeight: '500' },
   sectionLabelActive: { color: '#0F172A', fontWeight: '700' },
 
-  // ── Content ──
-  contentArea: { flex: 1, backgroundColor: '#FFFFFF' },
+  // ── Content area ──
+  contentArea: { flex: 1, backgroundColor: '#F9F9FB', margin: 8, marginLeft: 4, borderRadius: 18, overflow: 'hidden' },
   contentPad: { padding: 16, paddingBottom: 40 },
 
   // ── Desktop chat panel ──

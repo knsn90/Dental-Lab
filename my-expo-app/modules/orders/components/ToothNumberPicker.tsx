@@ -11,13 +11,19 @@ const Q2 = [21, 22, 23, 24, 25, 26, 27, 28]; // upper-left
 const Q3 = [31, 32, 33, 34, 35, 36, 37, 38]; // lower-left
 const Q4 = [48, 47, 46, 45, 44, 43, 42, 41]; // lower-right
 
+const UPPER_SET = new Set([11,12,13,14,15,16,17,18,21,22,23,24,25,26,27,28]);
+const LOWER_SET = new Set([31,32,33,34,35,36,37,38,41,42,43,44,45,46,47,48]);
+
 // ── SVG viewport ────────────────────────────────────────────────────
-const VB_X      = -320;
-const VB_Y      = 200;
-const VB_W      = 3720;
-const VB_H      = 4380;
-const VIEW_BOX  = `${VB_X} ${VB_Y} ${VB_W} ${VB_H}`;
-const VB_ASPECT = VB_H / VB_W;
+const VB_X = -320;
+const VB_W = 3720;
+
+// Full chart  Y: 200 → 4580
+const FULL_VB  = { y: 200,  h: 4380 }; // both jaws
+// Upper jaw   Y: 200 → 2420  (teeth 11-28 max-Y≈2145 + padding)
+const UPPER_VB = { y: 200,  h: 2320 };
+// Lower jaw   Y: 2460 → 4580 (teeth 31-48 min-Y≈2725 − padding)
+const LOWER_VB = { y: 2460, h: 2120 };
 
 // ── Props ────────────────────────────────────────────────────────────
 interface Props {
@@ -39,6 +45,11 @@ interface Props {
   colorMap?: Record<number, string>;
   /** Override the primary accent color (default: theme PRIMARY). */
   accentColor?: string;
+  /**
+   * When true: eğer seçili dişler yalnızca üst ya da yalnızca alt çenedeyse,
+   * boş çeneyi gizler ve SVG'yi yarıya küçültür.
+   */
+  hideEmptyJaw?: boolean;
 }
 
 // ── Component ────────────────────────────────────────────────────────
@@ -52,6 +63,7 @@ export function ToothNumberPicker({
   toothInfo,
   colorMap,
   accentColor,
+  hideEmptyJaw = false,
 }: Props) {
   const PRIMARY = accentColor ?? C.primary;
   const { width: screenWidth } = useWindowDimensions();
@@ -59,7 +71,22 @@ export function ToothNumberPicker({
   const dW = containerWidth
     ? Math.max(Math.round((containerWidth - 16) * 0.96), 160)
     : Math.min(Math.max(screenWidth - 80, 160), 340);
-  const dH = Math.round(dW * VB_ASPECT);
+
+  // ── Çene tespiti ─────────────────────────────────────────────────
+  const hasUpper = selected.some(t => UPPER_SET.has(t));
+  const hasLower = selected.some(t => LOWER_SET.has(t));
+
+  const jawMode: 'both' | 'upper' | 'lower' =
+    hideEmptyJaw && selected.length > 0 && !(hasUpper && hasLower)
+      ? hasUpper ? 'upper' : 'lower'
+      : 'both';
+
+  const activeVB = jawMode === 'upper' ? UPPER_VB
+                 : jawMode === 'lower' ? LOWER_VB
+                 : FULL_VB;
+
+  const viewBox = `${VB_X} ${activeVB.y} ${VB_W} ${activeVB.h}`;
+  const dH = Math.round(dW * (activeVB.h / VB_W));
 
   // Web-only hover state
   const [hoverTooth, setHoverTooth] = useState<number | null>(null);
@@ -266,10 +293,11 @@ export function ToothNumberPicker({
 
   return (
     <View style={{ alignItems: 'center' }}>
-      <Svg width={dW} height={dH} viewBox={VIEW_BOX}>
-        {/* Teeth — render tooltip last so it's on top */}
-        {[...Q1, ...Q2].map(renderTooth)}
-        {[...Q4, ...Q3].map(renderTooth)}
+      <Svg width={dW} height={dH} viewBox={viewBox}>
+        {/* Üst çene: jawMode lower değilse göster */}
+        {jawMode !== 'lower' && [...Q1, ...Q2].map(renderTooth)}
+        {/* Alt çene: jawMode upper değilse göster */}
+        {jawMode !== 'upper' && [...Q4, ...Q3].map(renderTooth)}
         {renderHoverTooltip()}
       </Svg>
 

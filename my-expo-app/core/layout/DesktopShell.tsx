@@ -14,11 +14,11 @@ import {
 } from 'react-native';
 import { Slot, usePathname, useRouter } from 'expo-router';
 import { useAuthStore } from '../store/authStore';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import Feather from '@expo/vector-icons/Feather';
 import { useOrders } from '../../modules/orders/hooks/useOrders';
 import { supabase } from '../api/supabase';
 import { BlurFade } from '../ui/BlurFade';
+
+import { AppIcon } from '../ui/AppIcon';
 
 // ─── Tokens ───────────────────────────────────────────────────────────────────
 const C = {
@@ -54,12 +54,11 @@ export interface NavItem {
   href: string;
   matchPrefix?: boolean;
   badge?: boolean;
-  badgeCount?: number; // shows a numeric count badge (e.g. low-stock count)
+  badgeCount?: number;
+  /** Lucide ikon adı (kebab-case). Örn: "home", "clipboard-list" */
   iconName?: string;
-  iconSet?: 'ionicons' | 'mci' | 'mdi' | string;
   subtitle?: string;
-  sectionLabel?: string; // renders a section divider + label before this item
-  /** Navigasyon yerine modal açmak için override. Verildiğinde router.push atlanır. */
+  sectionLabel?: string;
   onPress?: () => void;
 }
 
@@ -69,8 +68,20 @@ interface Props {
   /** Header'daki mesaj ikonuna basıldığında çağrılır (popup vs için).
    *  Verilmezse mesaj ikonu gösterilmez. */
   onPressMessages?: () => void;
-  /** Mesaj ikonunun üzerinde okunmamış sayısı / kırmızı dot göstermek için */
+  /** Mesaj ikonundaki okunmamış badge sayısı */
   messagesUnreadCount?: number;
+  /** Bildirim (zil) ikonundaki badge sayısı */
+  notificationsCount?: number;
+}
+
+// ─── Shared icon badge ────────────────────────────────────────────────────────
+function IconBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <View style={s.iconBadge}>
+      <Text style={s.iconBadgeText}>{count > 99 ? '99+' : count}</Text>
+    </View>
+  );
 }
 
 function getInitials(name?: string | null) {
@@ -79,11 +90,11 @@ function getInitials(name?: string | null) {
 }
 
 function NavIcon({ item, active, accentColor }: { item: NavItem; active: boolean; accentColor: string }) {
-  const iconColor = active ? accentColor : '#64748B';
+  const iconColor = active ? accentColor : '#94A3B8';
   if (item.iconName) {
-    return <Feather name={item.iconName as any} size={18} color={iconColor} />;
+    return <AppIcon name={item.iconName} size={20} color={iconColor} strokeWidth={1.75} />;
   }
-  return <Text style={{ fontSize: 17, opacity: active ? 1 : 0.55, width: 22, textAlign: 'center' }}>{item.emoji}</Text>;
+  return <Text style={{ fontSize: 17, opacity: active ? 1 : 0.5, width: 22, textAlign: 'center' }}>{item.emoji}</Text>;
 }
 
 // ─── Right panel ──────────────────────────────────────────────────────────────
@@ -152,7 +163,7 @@ function RightPanel({ accentColor, profile, open, onToggle }: {
     <View style={[rp.panel, open ? rp.panelOpen : rp.panelClosed]}>
       {/* Toggle strip */}
       <TouchableOpacity onPress={onToggle} style={rp.toggleStrip} activeOpacity={0.7}>
-        <Feather
+        <AppIcon
           name={open ? 'chevron-right' : 'chevron-left' as any}
           size={14}
           color="#AEAEB2"
@@ -230,10 +241,9 @@ function RightPanel({ accentColor, profile, open, onToggle }: {
 
 const rp = StyleSheet.create({
   panel: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F9F9FB',
     flexDirection: 'row',
-    borderLeftWidth: 1,
-    borderLeftColor: '#F1F5F9',
+    borderLeftWidth: 0,
   },
   panelOpen:   { width: RIGHT_W + TOGGLE_W },
   panelClosed: { width: TOGGLE_W },
@@ -242,8 +252,7 @@ const rp = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 20,
     gap: 10,
-    borderRightWidth: 1,
-    borderRightColor: '#EDEFF4',
+    borderRightWidth: 0,
   },
   toggleHint: {
     fontSize: 9, fontWeight: '700', color: '#AEAEB2',
@@ -411,7 +420,7 @@ function GlobalSearch({
 
           {/* Input row */}
           <View style={gs.inputRow}>
-            <Feather name="search" size={18} color="#AEAEB2" />
+            <AppIcon name="search" size={18} color="#AEAEB2" />
             <TextInput
               ref={inputRef}
               style={gs.input}
@@ -427,7 +436,7 @@ function GlobalSearch({
               : query.length > 0
                 ? (
                   <TouchableOpacity onPress={() => setQuery('')}>
-                    <Feather name="x-circle" size={17} color="#AEAEB2" />
+                    <AppIcon name="x-circle" size={17} color="#AEAEB2" />
                   </TouchableOpacity>
                 ) : null
             }
@@ -449,7 +458,7 @@ function GlobalSearch({
                     activeOpacity={0.7}
                   >
                     <View style={[gs.rowIcon, { backgroundColor: meta.bg }]}>
-                      <Feather name={r.icon as any} size={15} color={meta.color} />
+                      <AppIcon name={r.icon as any} size={15} color={meta.color} />
                     </View>
                     <View style={{ flex: 1, gap: 2 }}>
                       <Text style={gs.rowTitle} numberOfLines={1}>{r.title}</Text>
@@ -464,7 +473,7 @@ function GlobalSearch({
             </ScrollView>
           ) : query.trim().length > 0 && !loading ? (
             <View style={gs.empty}>
-              <Feather name="search" size={32} color="#E5E7EB" />
+              <AppIcon name="search" size={32} color="#E5E7EB" />
               <Text style={gs.emptyText}>Sonuç bulunamadı</Text>
             </View>
           ) : (
@@ -541,7 +550,7 @@ const gs = StyleSheet.create({
 });
 
 // ─── Shell ────────────────────────────────────────────────────────────────────
-export function DesktopShell({ navItems, accentColor = C.primary, onPressMessages, messagesUnreadCount = 0 }: Props) {
+export function DesktopShell({ navItems, accentColor = C.primary, onPressMessages, messagesUnreadCount = 0, notificationsCount = 0 }: Props) {
   const router   = useRouter();
   const pathname = usePathname();
   const { profile, signOut } = useAuthStore();
@@ -553,6 +562,23 @@ export function DesktopShell({ navItems, accentColor = C.primary, onPressMessage
   const isAutoHide = AUTO_HIDE_PATHS.some(p => pathname.startsWith(p));
   const [rightOpen, setRightOpen] = useState(!isAutoHide);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+
+  // ── Nav items'ı gruplara ayır ────────────────────────────────────────
+  type NavGroup = { label: string | null; items: NavItem[] };
+  const navGroups = React.useMemo((): NavGroup[] => {
+    const groups: NavGroup[] = [];
+    let current: NavGroup = { label: null, items: [] };
+    for (const item of navItems) {
+      if (item.sectionLabel) {
+        if (current.items.length > 0 || current.label !== null) groups.push(current);
+        current = { label: item.sectionLabel, items: [item] };
+      } else {
+        current.items.push(item);
+      }
+    }
+    if (current.items.length > 0 || current.label !== null) groups.push(current);
+    return groups;
+  }, [navItems]);
 
   const initials  = getInitials(profile?.full_name);
   const firstName = profile?.full_name?.split(' ')[0] ?? 'Kullanıcı';
@@ -590,46 +616,54 @@ export function DesktopShell({ navItems, accentColor = C.primary, onPressMessage
           )}
         </View>
 
-        {/* Nav items */}
+        {/* Nav items — grouped & collapsible */}
         <ScrollView style={s.navScroll} showsVerticalScrollIndicator={false}>
-          {navItems.map(item => {
-            const active = isActive(item);
-            const hover  = hovered === item.href;
+          {navGroups.map((group, gi) => {
             return (
-              <React.Fragment key={item.href}>
-              {item.sectionLabel && (
-                <View style={s.navSectionRow}>
-                  {sidebarCollapsed
-                    ? <View style={s.navSectionLine} />
-                    : <Text style={s.navSectionLabel}>{item.sectionLabel}</Text>
-                  }
-                </View>
-              )}
-              <TouchableOpacity
-                style={[
-                  s.navItem,
-                  sidebarCollapsed && s.navItemCollapsed,
-                  active && [s.navItemActive, { backgroundColor: accentColor + '14' }],
-                  !active && hover && s.navItemHover,
-                ]}
-                onPress={() => item.onPress ? item.onPress() : router.push(item.href as any)}
-                // @ts-ignore
-                onMouseEnter={(e: any) => { setHovered(item.href); if (sidebarCollapsed) setNavTooltip({ label: item.label, y: e.nativeEvent.pageY }); }}
-                onMouseLeave={() => { setHovered(null); setNavTooltip(null); }}
-                accessibilityLabel={item.label}
-              >
-                <NavIcon item={item} active={active} accentColor={accentColor} />
-                {!sidebarCollapsed && (
-                  <>
-                    <Text style={[s.navLabel, active && { color: accentColor, fontWeight: '600' }]}>{item.label}</Text>
-                    {item.badgeCount !== undefined && item.badgeCount > 0
-                      ? <View style={s.navBadgeCount}><Text style={s.navBadgeCountText}>{item.badgeCount}</Text></View>
-                      : item.badge && <View style={[s.navBadgeDot, { backgroundColor: active ? accentColor : C.danger }]} />
-                    }
-                  </>
-                )}
-              </TouchableOpacity>
-              </React.Fragment>
+              <View key={gi}>
+                {group.items.map(item => {
+                  const active = isActive(item);
+                  const hover  = hovered === item.href;
+                  return (
+                    <TouchableOpacity
+                      key={item.href}
+                      style={[
+                        s.navItem,
+                        sidebarCollapsed && s.navItemCollapsed,
+                        active && [s.navItemActive, { backgroundColor: accentColor + '15' }],
+                        !active && hover && s.navItemHover,
+                      ]}
+                      onPress={() => item.onPress ? item.onPress() : router.push(item.href as any)}
+                      // @ts-ignore
+                      onMouseEnter={(e: any) => { setHovered(item.href); if (sidebarCollapsed) setNavTooltip({ label: item.label, y: e.nativeEvent.pageY }); }}
+                      onMouseLeave={() => { setHovered(null); setNavTooltip(null); }}
+                      accessibilityLabel={item.label}
+                    >
+                      {/* Active left accent bar */}
+                      {active && !sidebarCollapsed && (
+                        <View style={[s.navAccentBar, { backgroundColor: accentColor }]} />
+                      )}
+                      <NavIcon item={item} active={active} accentColor={accentColor} />
+                      {!sidebarCollapsed && (
+                        <>
+                          <Text style={[s.navLabel, active && { color: accentColor, fontWeight: '700' }]}>
+                            {item.label}
+                          </Text>
+                          {item.badgeCount !== undefined && item.badgeCount > 0 ? (
+                            <View style={s.navBadgeCount}>
+                              <Text style={s.navBadgeCountText}>{item.badgeCount}</Text>
+                            </View>
+                          ) : item.badge ? (
+                            <View style={s.navBadgeCount}>
+                              <Text style={s.navBadgeCountText}>!</Text>
+                            </View>
+                          ) : null}
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             );
           })}
         </ScrollView>
@@ -642,7 +676,7 @@ export function DesktopShell({ navItems, accentColor = C.primary, onPressMessage
             style={[s.collapseRow, sidebarCollapsed && s.collapseRowCollapsed]}
             activeOpacity={0.7}
           >
-            <Feather
+            <AppIcon
               name={sidebarCollapsed ? 'chevrons-right' : 'chevrons-left' as any}
               size={15}
               color="#94A3B8"
@@ -661,12 +695,17 @@ export function DesktopShell({ navItems, accentColor = C.primary, onPressMessage
           </BlurFade>
           <View style={s.headerRight}>
             <TouchableOpacity style={s.headerIcon} onPress={() => setShowSearch(true)}>
-              <Feather name="search" size={18} color={C.textSecondary} />
+              <AppIcon name="search" size={18} color={C.textSecondary} />
             </TouchableOpacity>
-            <TouchableOpacity style={s.headerIcon}>
-              <Feather name="bell" size={18} color={C.textSecondary} />
-              {/* Notification red dot */}
-              <View style={s.notifDot} />
+            {/* Bildirim zili */}
+            <TouchableOpacity
+              style={[s.headerIcon, hovered === '__notif' && { backgroundColor: C.navHover }]}
+              // @ts-ignore
+              onMouseEnter={() => setHovered('__notif')}
+              onMouseLeave={() => setHovered(null)}
+            >
+              <AppIcon name="bell" size={18} color={hovered === '__notif' ? accentColor : C.textSecondary} />
+              <IconBadge count={notificationsCount} />
             </TouchableOpacity>
 
             {/* Mesajlar — popup tetikleyici */}
@@ -679,14 +718,8 @@ export function DesktopShell({ navItems, accentColor = C.primary, onPressMessage
                 onMouseLeave={() => setHovered(null)}
                 accessibilityLabel="Mesajlar"
               >
-                <Feather name="message-circle" size={18} color={hovered === '__msg' ? accentColor : C.textSecondary} />
-                {messagesUnreadCount > 0 && (
-                  <View style={[s.msgBadge, { backgroundColor: accentColor }]}>
-                    <Text style={s.msgBadgeText}>
-                      {messagesUnreadCount > 99 ? '99+' : messagesUnreadCount}
-                    </Text>
-                  </View>
-                )}
+                <AppIcon name="message-circle" size={18} color={hovered === '__msg' ? accentColor : C.textSecondary} />
+                <IconBadge count={messagesUnreadCount} />
               </TouchableOpacity>
             )}
 
@@ -732,7 +765,7 @@ export function DesktopShell({ navItems, accentColor = C.primary, onPressMessage
               onMouseLeave={() => setHovered(null)}
               accessibilityLabel="Çıkış Yap"
             >
-              <Feather name="log-out" size={18} color={hovered === '__out' ? C.danger : C.textSecondary} />
+              <AppIcon name="log-out" size={18} color={hovered === '__out' ? C.danger : C.textSecondary} />
             </TouchableOpacity>
           </View>
         </View>
@@ -784,18 +817,23 @@ const s = StyleSheet.create({
   shell: {
     flex: 1,
     flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F9F9FB',
   },
 
-  /* ── Sidebar (Stitch) ── */
+  /* ── Sidebar ── floating card */
   sidebar: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#FFFFFF',
     flexDirection: 'column',
-    paddingTop: 22,
-    borderRightWidth: 1,
-    borderRightColor: '#E2E8F0',
+    paddingTop: 16,
+    borderRightWidth: 0,
     zIndex: 100,
     overflow: 'visible' as any,
+    margin: 12,
+    borderRadius: 20,
+    ...Platform.select({
+      web: { boxShadow: '0 2px 16px rgba(15,23,42,0.07), 0 0 0 1px rgba(15,23,42,0.04)' } as any,
+      default: { shadowColor: '#0F172A', shadowOpacity: 0.08, shadowRadius: 20, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
+    }),
   },
   sidebarExpanded:  { width: SIDEBAR_W },
   sidebarCollapsed: { width: SIDEBAR_COLLAPSED_W },
@@ -819,12 +857,6 @@ const s = StyleSheet.create({
 
   // Nav
   navScroll: { flex: 1, paddingHorizontal: 10 },
-  navSectionRow: {
-    paddingHorizontal: 14, paddingTop: 18, paddingBottom: 4,
-  },
-  navSectionLine:  { height: 1, backgroundColor: '#E2E8F0', marginVertical: 8 },
-  navSectionLabel: { fontSize: 9, fontWeight: '800' as const, color: '#94A3B8', letterSpacing: 1.4,
-                     textTransform: 'uppercase' as const },
 
   navDivider: {
     height: 1,
@@ -854,23 +886,29 @@ const s = StyleSheet.create({
     marginBottom: 4,
   },
   navItemActive: {
-    backgroundColor: '#FFFFFF',
-    // @ts-ignore
-    boxShadow: '0 1px 3px rgba(15,23,42,0.06), 0 0 0 1px rgba(15,23,42,0.04)',
+    borderRadius: 10,
   },
-  navItemHover:   { backgroundColor: 'rgba(255,255,255,0.6)' },
+  navItemHover:   { backgroundColor: 'rgba(0,0,0,0.04)' },
   navItemLogout:  { backgroundColor: '#FEF2F2' },
   navLabel:       { flex: 1, fontSize: 13, fontWeight: '500', color: '#64748B', letterSpacing: -0.1 },
   navLabelActive: { fontWeight: '600' },
+  navAccentBar: {
+    position: 'absolute',
+    left: 0,
+    top: 8,
+    bottom: 8,
+    width: 3,
+    borderRadius: 2,
+  },
   navBadgeDot:       { width: 7, height: 7, borderRadius: 4 },
-  navBadgeCount:     { minWidth: 18, height: 18, borderRadius: 9, backgroundColor: C.danger, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
+  navBadgeCount:     { minWidth: 18, height: 18, borderRadius: 9, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
   navBadgeCountText: { fontSize: 10, fontWeight: '800', color: '#FFFFFF' },
 
   // Tooltip — appears to the right when collapsed
   tooltip: {
     // @ts-ignore
     position: 'fixed',
-    left: SIDEBAR_COLLAPSED_W + 8,
+    left: SIDEBAR_COLLAPSED_W + 12 + 12, // card margin (12) + collapsed width + gap
     backgroundColor: '#1C1C1E',
     borderRadius: 8,
     paddingHorizontal: 10,
@@ -886,7 +924,7 @@ const s = StyleSheet.create({
   tooltipText: { fontSize: 12, fontWeight: '600', color: '#FFFFFF' },
 
   // Bottom section
-  sidebarBottom: { paddingHorizontal: 10, paddingBottom: 16 },
+  sidebarBottom: { paddingHorizontal: 10, paddingBottom: 12 },
 
   // Collapse toggle row
   collapseRow: {
@@ -896,9 +934,8 @@ const s = StyleSheet.create({
     gap: 8,
     paddingVertical: 10,
     borderRadius: 10,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    backgroundColor: 'rgba(0,0,0,0.04)',
+    borderWidth: 0,
   },
   collapseRowCollapsed: {
     paddingVertical: 8,
@@ -914,27 +951,26 @@ const s = StyleSheet.create({
   main: {
     flex: 1,
     flexDirection: 'column',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F9F9FB',
     overflow: 'hidden',
   },
 
-  /* ── Header bar (Stitch style — big extrabold title) ── */
+  /* ── Header bar — seamless, no divider ── */
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 32,
-    paddingVertical: 24,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    paddingVertical: 20,
+    backgroundColor: '#F9F9FB',
+    borderBottomWidth: 0,
   },
   headerTitle: {
-    fontSize: 34,
+    fontSize: 28,
     fontWeight: '800',
     color: '#0F172A',
-    letterSpacing: -0.9,
-    lineHeight: 38,
+    letterSpacing: -0.7,
+    lineHeight: 34,
   },
   headerRight: {
     flexDirection: 'row',
@@ -950,35 +986,26 @@ const s = StyleSheet.create({
     position: 'relative',
   },
   headerIconLogout: { backgroundColor: '#FEF2F2' },
-  notifDot: {
+  // Hem bildirim (zil) hem mesaj ikonu için paylaşılan badge
+  iconBadge: {
     position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#FF3B30',
+    top: 2,
+    right: 2,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 5,
     borderWidth: 2,
     borderColor: '#FFFFFF',
   },
-  msgBadge: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    minWidth: 16,
-    height: 16,
-    paddingHorizontal: 4,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: '#FFFFFF',
-  },
-  msgBadgeText: {
+  iconBadgeText: {
     color: '#FFFFFF',
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '800',
-    lineHeight: 11,
+    lineHeight: 14,
   },
   headerDivider: {
     width: 1,
@@ -1014,5 +1041,5 @@ const s = StyleSheet.create({
   headerRole:       { fontSize: 11, color: '#94A3B8', marginTop: 1 },
 
   /* ── Page ── */
-  page: { flex: 1, backgroundColor: '#FFFFFF' },
+  page: { flex: 1, backgroundColor: '#F9F9FB' },
 });

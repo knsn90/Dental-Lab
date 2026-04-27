@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Modal } from 'react-native';
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
 import { C as Colors } from '../../core/theme/colors';
 import { DesktopShell, useIsDesktop } from '../../core/layout/DesktopShell';
 import { usePendingApprovals as useDesignPending } from '../../modules/approvals/hooks/usePendingApprovals';
@@ -10,57 +10,63 @@ import { NewOrderScreen } from '../../modules/orders/screens/NewOrderScreen';
 import { MessagesPopup } from '../../modules/orders/components/MessagesPopup';
 import { usePendingLeaveCount } from '../../modules/hr/hooks/useHR';
 import { useAuthStore } from '../../core/store/authStore';
+import { useOrderChatInbox } from '../../modules/orders/hooks/useOrderChatInbox';
+import { useColorThemeStore, applyColorThemeWeb } from '../../core/store/colorThemeStore';
+import { CommandPalette, CommandPaletteFAB } from '../../core/ui/CommandPalette';
 
 // NOT: Desktop'ta "Yeni İş Emri" tıklanınca route navigate eder (/(lab)/new-order),
 // böylece DesktopShell sidebar kaybolmaz. Modal SADECE mobil için.
 
+const LAB_DEFAULT_ACCENT = Colors.primary; // #2563EB
+
 export default function LabLayout() {
+  const router = useRouter();
   const { approvals: pendingDesign } = useDesignPending();
   const pendingCount = pendingDesign.length;
   const stockAlert      = useStockAlert();
   const isDesktop       = useIsDesktop();
   const { profile }     = useAuthStore();
   const pendingLeaveCount = usePendingLeaveCount();
-  // Badge sadece mesul müdür ve admin için görünür
+  const { totalUnread: chatUnread } = useOrderChatInbox();
   const isManager = profile?.role === 'manager' || profile?.user_type === 'admin';
 
   const [newOrderOpen, setNewOrderOpen] = useState(false);
   const [messagesOpen, setMessagesOpen] = useState(false);
 
+  // Load saved color theme
+  const { getTheme, loadTheme } = useColorThemeStore();
+  useEffect(() => {
+    const theme = loadTheme('lab');
+    applyColorThemeWeb(theme, LAB_DEFAULT_ACCENT);
+  }, []);
+  const accentColor = getTheme('lab').primary;
+
   const LAB_NAV = [
     // ── Ana ekran ──────────────────────────────────────────────────────────
-    { label: 'Bugün',        emoji: '📅', href: '/(lab)',              iconName: 'home',          iconSet: 'mdi' as const },
+    { label: 'Bugün',         emoji: '📅', href: '/(lab)',                iconName: 'home' },
 
     // ── İş Yönetimi ────────────────────────────────────────────────────────
-    { label: 'Siparişler',   emoji: '📋', href: '/(lab)/all-orders',   iconName: 'clipboard',      iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'İş Yönetimi' },
-    { label: 'Yeni İş Emri', emoji: '➕', href: '/(lab)/new-order',   iconName: 'plus-circle',    iconSet: 'mdi' as const },
-    { label: 'Onaylar',      emoji: '✅', href: '/(lab)/approvals',   iconName: 'check-circle',   iconSet: 'mdi' as const, badge: pendingCount > 0, matchPrefix: true },
+    // Siparişler: Liste / Durum / Üretim / Teslimat / Analitik görünümleri dahili toggle ile
+    { label: 'Siparişler',    emoji: '📋', href: '/(lab)/all-orders',     iconName: 'clipboard-list',   matchPrefix: true, sectionLabel: 'İş Yönetimi' },
+    { label: 'Yeni İş Emri', emoji: '➕', href: '/(lab)/new-order',      iconName: 'plus-circle' },
+    { label: 'Onaylar',       emoji: '✅', href: '/(lab)/approvals',      iconName: 'check-circle',     badge: pendingCount > 0, matchPrefix: true },
 
     // ── Müşteriler ─────────────────────────────────────────────────────────
-    { label: 'Klinikler',    emoji: '🏥', href: '/(lab)/clinics',      iconName: 'briefcase',     iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'Müşteriler' },
-    { label: 'Kullanıcılar', emoji: '👥', href: '/(lab)/users',        iconName: 'users',         iconSet: 'mdi' as const, matchPrefix: true },
-    { label: 'Hizmetler',    emoji: '💰', href: '/(lab)/lab-services', iconName: 'tag',           iconSet: 'mdi' as const, matchPrefix: true },
+    { label: 'Klinikler',     emoji: '🏥', href: '/(lab)/clinics',        iconName: 'building-2',       matchPrefix: true, sectionLabel: 'Müşteriler' },
 
-    // ── Mali İşlemler ──────────────────────────────────────────────────────
-    { label: 'Faturalar',    emoji: '🧾', href: '/(lab)/invoices',       iconName: 'file-text',    iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'Mali İşlemler' },
-    { label: 'Giderler',     emoji: '💸', href: '/(lab)/expenses',       iconName: 'trending-down', iconSet: 'mdi' as const, matchPrefix: true },
-    { label: 'Çek/Senet',   emoji: '📝', href: '/(lab)/checks',         iconName: 'credit-card',  iconSet: 'mdi' as const, matchPrefix: true },
-    { label: 'Kasa/Banka',   emoji: '🏦', href: '/(lab)/cash',           iconName: 'archive',      iconSet: 'mdi' as const, matchPrefix: true },
-    { label: 'Gelir/Gider',  emoji: '📊', href: '/(lab)/finance-report', iconName: 'bar-chart-2',  iconSet: 'mdi' as const, matchPrefix: true },
+    // ── Mali İşlemler — tek hub (Faturalar · Giderler · Çek · Kasa · Fiyat Listesi · Rapor)
+    { label: 'Mali İşlemler', emoji: '💰', href: '/(lab)/finance',        iconName: 'landmark',         matchPrefix: false, sectionLabel: 'Mali İşlemler' },
 
-    // ── İnsan Kaynakları & Depo ────────────────────────────────────────────
-    { label: 'Çalışanlar',  emoji: '👨‍💼', href: '/(lab)/employees',      iconName: 'users',           iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'İK & Depo' },
-    { label: 'İzin & Devam', emoji: '📅', href: '/(lab)/hr',             iconName: 'calendar',         iconSet: 'mdi' as const, matchPrefix: true,
+    // ── İnsan Kaynakları — tek hub ────────────────────────────────────────
+    { label: 'İnsan Kaynakları', emoji: '👨‍💼', href: '/(lab)/ik-depo',     iconName: 'users',            matchPrefix: false, sectionLabel: 'İnsan Kaynakları',
       badgeCount: isManager && pendingLeaveCount > 0 ? pendingLeaveCount : undefined },
-    { label: 'Bordro',        emoji: '💰', href: '/(lab)/payroll',        iconName: 'dollar-sign',      iconSet: 'mdi' as const, matchPrefix: true },
-    { label: 'SGK',           emoji: '🏛️', href: '/(lab)/sgk',           iconName: 'shield',           iconSet: 'mdi' as const, matchPrefix: true },
-    { label: 'Performans',    emoji: '🏆', href: '/(lab)/performance',    iconName: 'award',            iconSet: 'mdi' as const, matchPrefix: true },
-    { label: 'Dosyalar',      emoji: '📁', href: '/(lab)/documents',      iconName: 'folder',           iconSet: 'mdi' as const, matchPrefix: true },
-    { label: 'Stok',         emoji: '📦', href: '/(lab)/stock',          iconName: 'package',          iconSet: 'mdi' as const, matchPrefix: true, badgeCount: stockAlert },
 
-    // ── Hesap ──────────────────────────────────────────────────────────────
-    { label: 'QR Check-in',  emoji: '📷', href: '/(lab)/checkin-settings',  iconName: 'camera',      iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'Hesap' },
-    { label: 'Profil',       emoji: '👤', href: '/(lab)/profile',            iconName: 'user',        iconSet: 'mdi' as const, matchPrefix: true },
+    // ── Stok & Depo ───────────────────────────────────────────────────────
+    { label: 'Stok & Depo',   emoji: '📦', href: '/(lab)/stock',          iconName: 'package',          matchPrefix: true, sectionLabel: 'Stok & Depo',
+      badgeCount: stockAlert },
+
+    // ── Ayarlar (Kullanıcılar + QR Check-in + Genel Ayarlar tek hub) ──────
+    { label: 'Ayarlar',       emoji: '⚙️', href: '/(lab)/settings',         iconName: 'settings',       matchPrefix: true },
   ];
 
   if (isDesktop) {
@@ -68,26 +74,32 @@ export default function LabLayout() {
       <>
         <DesktopShell
           navItems={LAB_NAV}
-          accentColor={Colors.primary}
+          accentColor={accentColor}
           onPressMessages={() => setMessagesOpen(true)}
+          messagesUnreadCount={chatUnread}
+          notificationsCount={pendingCount}
         />
         <MessagesPopup
           visible={messagesOpen}
           onClose={() => setMessagesOpen(false)}
-          accentColor={Colors.primary}
+          accentColor={accentColor}
+        />
+        <CommandPalette
+          navItems={LAB_NAV}
+          onNavigate={(href) => router.push(href as any)}
+          accentColor={accentColor}
         />
       </>
     );
   }
 
   const MOBILE_TABS: MobileTabItem[] = [
-    { routeName: 'index',      label: 'Bugün',     icon: 'home' },
-    { routeName: 'all-orders', label: 'İşler',     icon: 'clipboard' },
-    { routeName: 'new-order',  label: 'Yeni',      icon: 'plus-circle', onPress: () => setNewOrderOpen(true) },
-    { routeName: 'approvals',  label: 'Onaylar',   icon: 'check-circle', badge: pendingCount > 0 },
-    { routeName: 'profile',    label: 'Profil',    icon: 'user' },
+    { routeName: 'index',      label: 'Bugün',   icon: 'home'                                       },
+    { routeName: 'all-orders', label: 'İşler',   icon: 'clipboard-list'                             },
+    { routeName: 'new-order',  label: 'Yeni',    icon: 'plus-circle',  onPress: () => setNewOrderOpen(true) },
+    { routeName: 'approvals',  label: 'Onaylar', icon: 'check-circle', badge: pendingCount > 0       },
+    { routeName: 'settings',   label: 'Ayarlar', icon: 'settings'                                   },
   ];
-  void stockAlert;
 
   return (
     <>
@@ -97,7 +109,7 @@ export default function LabLayout() {
             state={props.state}
             navigation={props.navigation}
             items={MOBILE_TABS}
-            accentColor={Colors.primary}
+            accentColor={accentColor}
           />
         )}
         screenOptions={{
@@ -106,16 +118,27 @@ export default function LabLayout() {
       >
         <Tabs.Screen name="index" options={{ title: 'Bugün' }} />
         <Tabs.Screen name="all-orders" options={{ title: 'Tüm İşler' }} />
-        <Tabs.Screen name="stock" options={{ title: 'Stok' }} />
-        <Tabs.Screen name="new-order" options={{ title: 'Yeni İş' }} />
-        <Tabs.Screen name="users" options={{ title: 'Kullanıcılar' }} />
-        <Tabs.Screen name="clinics" options={{ title: 'Klinikler' }} />
-        <Tabs.Screen name="lab-services" options={{ title: 'Hizmetler' }} />
-        <Tabs.Screen name="invoices" options={{ title: 'Faturalar' }} />
-        <Tabs.Screen name="expenses" options={{ title: 'Giderler', tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="checks" options={{ title: 'Çek/Senet', tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="cash" options={{ title: 'Kasa/Banka', tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="finance-report" options={{ title: 'Gelir/Gider', tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="production"  options={{ title: 'Üretim Panosu', tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="deliveries"    options={{ title: 'Teslimatlar',  tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="courier"       options={{ title: 'Kurye Paneli', tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="delivery/[id]" options={{ tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="analytics"     options={{ title: 'Analitik',     tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="stock"        options={{ title: 'Stok & Depo',  tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="new-order"    options={{ title: 'Yeni İş' }} />
+        <Tabs.Screen name="users"        options={{ title: 'Kullanıcılar' }} />
+        <Tabs.Screen name="clinics"      options={{ title: 'Klinikler' }} />
+        <Tabs.Screen name="lab-services" options={{ title: 'Hizmetler',    tabBarStyle: { display: 'none' } }} />
+        {/* Mali İşlemler hub — tüm finans sekmelerini içerir */}
+        <Tabs.Screen name="finance"        options={{ title: 'Mali İşlemler',  tabBarStyle: { display: 'none' } }} />
+        {/* Bireysel finans rotaları — deep link / geriye compat için korunuyor */}
+        <Tabs.Screen name="invoices"       options={{ title: 'Faturalar',      tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="expenses"       options={{ title: 'Giderler',       tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="checks"         options={{ title: 'Çek/Senet',      tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="cash"           options={{ title: 'Kasa/Banka',     tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="finance-report" options={{ title: 'Gelir/Gider',    tabBarStyle: { display: 'none' } }} />
+        {/* İK & Depo hub — tüm İK sekmelerini içerir */}
+        <Tabs.Screen name="ik-depo"     options={{ title: 'İK & Depo',    tabBarStyle: { display: 'none' } }} />
+        {/* Bireysel İK rotaları — deep link / geriye compat için korunuyor */}
         <Tabs.Screen name="employees" options={{ title: 'Çalışanlar', tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="hr" options={{ title: 'İzin & Devam', tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="payroll" options={{ title: 'Bordro', tabBarStyle: { display: 'none' } }} />
@@ -126,7 +149,9 @@ export default function LabLayout() {
         <Tabs.Screen name="checkin-settings" options={{ title: 'QR Check-in', tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="approvals" options={{ title: 'Onaylar' }} />
         <Tabs.Screen name="profile" options={{ title: 'Profil' }} />
+        <Tabs.Screen name="settings" options={{ title: 'Ayarlar', tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="order/[id]" options={{ tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="order/route/[id]" options={{ tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="order/occlusion/[id]" options={{ tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="invoice/[id]" options={{ tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="occlusion-test" options={{ tabBarStyle: { display: 'none' } }} />
@@ -146,8 +171,18 @@ export default function LabLayout() {
       <MessagesPopup
         visible={messagesOpen}
         onClose={() => setMessagesOpen(false)}
-        accentColor={Colors.primary}
+        accentColor={accentColor}
       />
+
+      {/* Command Palette — modal, tüm sayfalarda erişilebilir */}
+      <CommandPalette
+        navItems={LAB_NAV}
+        onNavigate={(href) => router.push(href as any)}
+        accentColor={accentColor}
+      />
+
+      {/* FAB — mobilde arama/komut butonu */}
+      <CommandPaletteFAB accentColor={accentColor} />
     </>
   );
 }
