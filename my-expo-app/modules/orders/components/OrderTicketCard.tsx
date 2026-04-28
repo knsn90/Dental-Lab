@@ -125,19 +125,19 @@ export function OrderTicketCard({
     >
 
       {/* ─────────── DİŞ ŞEMASI — kendi kartı (sol) ─────────── */}
-      <View
-        style={[s.card, { alignItems: 'center', justifyContent: 'center', padding: 0, overflow: 'hidden' }]}
-      >
-        <ToothNumberPicker
-          selected={order.tooth_numbers ?? []}
-          onChange={() => {}}
-          containerWidth={toothPickerW}
-          hideEmptyJaw
-          accentColor={accentColor}
-          colorMap={toothColorMap}
-          activeTooth={effectiveDetailTooth ?? activeTooth}
-          onToothPress={handleChartToothPress}
-        />
+      <View style={[s.card, { padding: 0, overflow: 'hidden' }]}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 12 }}>
+          <ToothNumberPicker
+            selected={order.tooth_numbers ?? []}
+            onChange={() => {}}
+            containerWidth={toothPickerW}
+            hideEmptyJaw
+            accentColor={accentColor}
+            colorMap={toothColorMap}
+            activeTooth={effectiveDetailTooth ?? activeTooth}
+            onToothPress={handleChartToothPress}
+          />
+        </View>
       </View>
 
       {/* ─────────── DETAYLAR KARTI — header + meta + notlar (sağ) ─────────── */}
