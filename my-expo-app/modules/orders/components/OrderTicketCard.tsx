@@ -161,7 +161,7 @@ export function OrderTicketCard({
 
         {/* ─────────── META: işlem listesi + QR ─────────── */}
         <View style={s.topSection}>
-          {width >= 1600 ? (
+          {(rowW ?? 0) >= 900 ? (
             // 17"+ geniş ekran: operasyonlar SOLDA, QR + açıklama SAĞDA
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 16, flex: 1 }}>
               <View style={{ flex: 1, minWidth: 0 }}>
