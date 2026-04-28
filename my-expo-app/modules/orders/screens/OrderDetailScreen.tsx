@@ -3606,11 +3606,11 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   heroProdType: {
-    fontSize: 17,
-    fontWeight: '800',
+    fontSize: 32,
+    fontWeight: '900',
     color: '#FFFFFF',
-    letterSpacing: -0.3,
-    lineHeight: 22,
+    letterSpacing: -0.6,
+    lineHeight: 38,
   },
   heroProdSubType: {
     fontSize: 12,
