@@ -53,21 +53,15 @@ export default function AdminLayout() {
     { label: 'Klinikler',    emoji: '🏥', href: '/(admin)/clinics',      iconName: 'briefcase',     iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'Müşteriler' },
     { label: 'Kullanıcılar', emoji: '👥', href: '/(admin)/users',        iconName: 'users',         iconSet: 'mdi' as const, matchPrefix: true },
 
-    // ── Mali İşlemler ──────────────────────────────────────────────────────
-    { label: 'Giderler',     emoji: '💸', href: '/(admin)/expenses',       iconName: 'trending-down', iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'Mali İşlemler' },
-    { label: 'Çek/Senet',   emoji: '📝', href: '/(admin)/checks',         iconName: 'credit-card',  iconSet: 'mdi' as const, matchPrefix: true },
-    { label: 'Kasa/Banka',   emoji: '🏦', href: '/(admin)/cash',           iconName: 'archive',      iconSet: 'mdi' as const, matchPrefix: true },
-    { label: 'Gelir/Gider',  emoji: '📊', href: '/(admin)/finance-report', iconName: 'bar-chart-2',  iconSet: 'mdi' as const, matchPrefix: true },
+    // ── Mali İşlemler — tek hub (Faturalar · Giderler · Çek · Kasa · Fiyat · Rapor)
+    { label: 'Mali İşlemler', emoji: '💰', href: '/(admin)/finance',       iconName: 'landmark',         iconSet: 'mdi' as const, matchPrefix: false, sectionLabel: 'Mali İşlemler' },
 
-    // ── İK & Depo ─────────────────────────────────────────────────────────
-    { label: 'Çalışanlar',  emoji: '👨‍💼', href: '/(admin)/employees',     iconName: 'users',           iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'İK & Depo' },
-    { label: 'İzin & Devam', emoji: '📅', href: '/(admin)/hr',            iconName: 'calendar',         iconSet: 'mdi' as const, matchPrefix: true,
+    // ── İnsan Kaynakları — tek hub ────────────────────────────────────────
+    { label: 'İnsan Kaynakları', emoji: '👨‍💼', href: '/(admin)/ik-depo', iconName: 'users',            iconSet: 'mdi' as const, matchPrefix: false, sectionLabel: 'İnsan Kaynakları',
       badgeCount: pendingLeaveCount > 0 ? pendingLeaveCount : undefined },
-    { label: 'Bordro',        emoji: '💰', href: '/(admin)/payroll',       iconName: 'dollar-sign',      iconSet: 'mdi' as const, matchPrefix: true },
-    { label: 'SGK',           emoji: '🏛️', href: '/(admin)/sgk',          iconName: 'shield',           iconSet: 'mdi' as const, matchPrefix: true },
-    { label: 'Performans',    emoji: '🏆', href: '/(admin)/performance',   iconName: 'award',            iconSet: 'mdi' as const, matchPrefix: true },
-    { label: 'Dosyalar',      emoji: '📁', href: '/(admin)/documents',     iconName: 'folder',           iconSet: 'mdi' as const, matchPrefix: true },
-    { label: 'Stok',         emoji: '📦', href: '/(admin)/stock',         iconName: 'package',          iconSet: 'mdi' as const, matchPrefix: true, badgeCount: stockAlert },
+
+    // ── Stok & Depo ───────────────────────────────────────────────────────
+    { label: 'Stok & Depo',  emoji: '📦', href: '/(admin)/stock',         iconName: 'package',          iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'Stok & Depo', badgeCount: stockAlert },
 
     // ── Sistem ─────────────────────────────────────────────────────────────
     { label: 'QR Check-in',  emoji: '📷', href: '/(admin)/checkin-settings', iconName: 'camera',    iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'Sistem' },
