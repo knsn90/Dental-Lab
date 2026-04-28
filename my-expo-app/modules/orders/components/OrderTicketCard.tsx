@@ -53,9 +53,9 @@ export function OrderTicketCard({
   // Chart kartı satırın en fazla %42'sini kaplasın; sağ karta yeterli alan kalsın.
   const toothPickerW = useMemo(() => {
     if (!rowW || rowW <= 0) {
-      return Math.min(Math.max(Math.round((width - 320) * 0.36), 240), 380);
+      return Math.min(Math.max(Math.round((width - 320) * 0.36), 220), 340);
     }
-    return Math.max(220, Math.min(Math.round(rowW * 0.42), 460));
+    return Math.max(200, Math.min(Math.round(rowW * 0.36), 400));
   }, [width, rowW]);
 
   const sortedTeeth = [...(order.tooth_numbers ?? [])].sort((a, b) => a - b);
@@ -126,7 +126,7 @@ export function OrderTicketCard({
 
       {/* ─────────── DİŞ ŞEMASI — kendi kartı (sol) ─────────── */}
       <View style={[s.card, { padding: 0, overflow: 'hidden' }]}>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 12 }}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 24 }}>
           <ToothNumberPicker
             selected={order.tooth_numbers ?? []}
             onChange={() => {}}
