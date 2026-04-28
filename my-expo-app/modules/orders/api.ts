@@ -1,6 +1,6 @@
 import { supabase } from '../../core/api/supabase';
 import { WorkOrderStatus, MachineType, CreateWorkOrderParams } from './types';
-import { createWorkflow } from '../workflow/engine';
+import { createCaseSteps } from '../workflow/engine';
 
 export async function createWorkOrder(params: CreateWorkOrderParams & { measurement_type?: string; doctor_approval_required?: boolean }) {
   // Strip columns that do not yet exist in the production DB schema.
@@ -24,7 +24,7 @@ export async function createWorkOrder(params: CreateWorkOrderParams & { measurem
 
   if (!error && data) {
     const measurementType = (params.measurement_type ?? 'manual') as 'manual' | 'digital';
-    await createWorkflow(data.id, measurementType);
+    await createCaseSteps(data.id, measurementType);
   }
 
   return { data, error };
@@ -39,9 +39,14 @@ export async function fetchWorkOrdersForDoctor(doctorId: string) {
 }
 
 export async function fetchAllWorkOrders() {
+  // NOTE: work_orders.doctor_id is polymorphic (profiles.id OR doctors.id).
+  // Migration 037 intentionally dropped the FK constraint, so PostgREST
+  // embedded resource joins using !work_orders_doctor_id_fkey no longer work.
+  // Doctor info is resolved manually in fetchWorkOrderById; for the list view
+  // we select * and let the detail screen handle the polymorphic lookup.
   return supabase
     .from('work_orders')
-    .select('*, doctor:doctors!work_orders_doctor_id_fkey(full_name, clinic:clinics(name))')
+    .select('*')
     .order('delivery_date', { ascending: true });
 }
 
@@ -128,9 +133,10 @@ export async function assignTechnician(workOrderId: string, technicianId: string
 
 export async function fetchTodayAndOverdueOrders() {
   const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  // FK constraint dropped (migration 037) — use plain select, no embedded join
   return supabase
     .from('work_orders')
-    .select('*, doctor:doctors!work_orders_doctor_id_fkey(full_name, clinic:clinics(name))')
+    .select('*')
     .lte('delivery_date', today)
     .neq('status', 'teslim_edildi')
     .order('delivery_date', { ascending: true });

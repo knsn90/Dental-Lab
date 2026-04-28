@@ -6,11 +6,12 @@ import {
 } from 'react-native';
 import { toast } from '../../../core/ui/Toast';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Feather from '@expo/vector-icons/Feather';
 import * as ImagePicker from 'expo-image-picker';
 import { AppSwitch } from '../../../core/ui/AppSwitch';
 import { useAuthStore } from '../../../core/store/authStore';
 import { supabase } from '../../../lib/supabase';
+
+import { AppIcon } from '../../../core/ui/AppIcon';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -67,7 +68,7 @@ function InfoItem({
 }: { icon: string; label: string; value: string; accent: string }) {
   return (
     <View style={c.infoItem}>
-      <Feather name={icon as any} size={14} color="#94A3B8" />
+      <AppIcon name={icon as any} size={14} color="#94A3B8" />
       <Text style={c.infoLabel}>{label}</Text>
       <Text style={c.infoValue}>{value}</Text>
     </View>
@@ -110,6 +111,7 @@ export function ProfileScreen() {
 
   // ── Prefs
   const [notifEnabled, setNotifEnabled] = useState(true);
+
 
   useEffect(() => {
     setFullName(profile?.full_name ?? '');
@@ -267,7 +269,7 @@ export function ProfileScreen() {
                     <View style={[s.avatarEditBadge, { backgroundColor: accent }]}>
                       {uploadingAvatar
                         ? <ActivityIndicator size="small" color="#FFF" />
-                        : <Feather name="camera" size={11} color="#FFF" />}
+                        : <AppIcon name="camera" size={11} color="#FFF" />}
                     </View>
                   </TouchableOpacity>
                   <View style={{ flex: 1 }}>
@@ -337,7 +339,7 @@ export function ProfileScreen() {
                   <View style={[s.avatarEditBadge, { backgroundColor: accent }]}>
                     {uploadingAvatar
                       ? <ActivityIndicator size="small" color="#FFF" />
-                      : <Feather name="camera" size={11} color="#FFF" />}
+                      : <AppIcon name="camera" size={11} color="#FFF" />}
                   </View>
                 </TouchableOpacity>
                 <View style={{ flex: 1 }}>
@@ -351,7 +353,7 @@ export function ProfileScreen() {
                   onPress={() => setEditing(true)}
                   activeOpacity={0.75}
                 >
-                  <Feather name="edit-2" size={13} color={accent} />
+                  <AppIcon name="edit-2" size={13} color={accent} />
                   <Text style={[s.editBtnText, { color: accent }]}>Düzenle</Text>
                 </TouchableOpacity>
               </View>
@@ -370,13 +372,13 @@ export function ProfileScreen() {
 
                 {/* E-posta satırı */}
                 <View style={s.itemRow}>
-                  <Feather name="mail" size={14} color="#94A3B8" style={{ marginRight: 8 }} />
+                  <AppIcon name="mail" size={14} color="#94A3B8" style={{ marginRight: 8 }} />
                   <View style={{ flex: 1 }}>
                     <Text style={s.itemLabel}>E-posta</Text>
                     <Text style={s.itemText} numberOfLines={1}>{profile?.email ?? '—'}</Text>
                   </View>
                   <TouchableOpacity onPress={() => setEditEmail(v => !v)} style={s.dotBtn}>
-                    <Feather name={editEmail ? 'x' : 'edit-2'} size={14} color="#94A3B8" />
+                    <AppIcon name={editEmail ? 'x' : 'edit-2'} size={14} color="#94A3B8" />
                   </TouchableOpacity>
                 </View>
 
@@ -414,7 +416,7 @@ export function ProfileScreen() {
 
                 {/* Telefon satırı */}
                 <View style={s.itemRow}>
-                  <Feather name="phone" size={14} color="#94A3B8" style={{ marginRight: 8 }} />
+                  <AppIcon name="phone" size={14} color="#94A3B8" style={{ marginRight: 8 }} />
                   <View style={{ flex: 1 }}>
                     <Text style={s.itemLabel}>Telefon</Text>
                     <Text style={[s.itemText, !profile?.phone && { color: '#C0C0C8' }]}>
@@ -422,7 +424,7 @@ export function ProfileScreen() {
                     </Text>
                   </View>
                   <TouchableOpacity onPress={() => setEditing(true)} style={s.dotBtn}>
-                    <Feather name="edit-2" size={14} color="#94A3B8" />
+                    <AppIcon name="edit-2" size={14} color="#94A3B8" />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -435,9 +437,9 @@ export function ProfileScreen() {
                   onPress={() => setShowPassSection(v => !v)}
                   activeOpacity={0.75}
                 >
-                  <Feather name="lock" size={15} color="#64748B" />
+                  <AppIcon name="lock" size={15} color="#64748B" />
                   <Text style={s.navRowText}>Şifre Değiştir</Text>
-                  <Feather
+                  <AppIcon
                     name={showPassSection ? 'chevron-up' : 'chevron-right'}
                     size={16} color="#CBD5E1"
                     style={{ marginLeft: 'auto' as any }}
@@ -455,7 +457,7 @@ export function ProfileScreen() {
                           secureTextEntry={!showNew} returnKeyType="next"
                         />
                         <TouchableOpacity onPress={() => setShowNew(v => !v)} style={s.eyeBtn}>
-                          <Feather name={showNew ? 'eye-off' : 'eye'} size={15} color="#C0C0C8" />
+                          <AppIcon name={showNew ? 'eye-off' : 'eye'} size={15} color="#C0C0C8" />
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -469,7 +471,7 @@ export function ProfileScreen() {
                           secureTextEntry={!showConfirm} returnKeyType="done"
                         />
                         <TouchableOpacity onPress={() => setShowConfirm(v => !v)} style={s.eyeBtn}>
-                          <Feather name={showConfirm ? 'eye-off' : 'eye'} size={15} color="#C0C0C8" />
+                          <AppIcon name={showConfirm ? 'eye-off' : 'eye'} size={15} color="#C0C0C8" />
                         </TouchableOpacity>
                       </View>
                       {passNoMatch && <Text style={s.errorHint}>Şifreler eşleşmiyor</Text>}
@@ -494,14 +496,17 @@ export function ProfileScreen() {
               {/* Tercihler Kartı */}
               <View style={[s.card, isMobile && { padding: 14, borderRadius: 14 }]}>
                 <CardTitle title="Tercihler" />
+
+                {/* Bildirimler */}
                 <View style={s.toggleRow}>
-                  <Feather name="bell" size={15} color="#64748B" />
+                  <AppIcon name="bell" size={15} color="#64748B" />
                   <View style={{ flex: 1 }}>
                     <Text style={s.toggleLabel}>Bildirimler</Text>
                     <Text style={s.toggleSub}>Sipariş ve durum güncellemeleri</Text>
                   </View>
                   <AppSwitch value={notifEnabled} onValueChange={setNotifEnabled} accentColor={accent} />
                 </View>
+
               </View>
 
               {/* Hesap Seçenekleri Kartı */}
@@ -512,9 +517,9 @@ export function ProfileScreen() {
                 <InfoItem icon="calendar" label="Katılım Tarihi" value={joinedDate(profile) || '—'} accent={accent} />
                 <View style={s.itemDivider} />
                 <TouchableOpacity style={s.dangerRow} onPress={handleSignOut} activeOpacity={0.75}>
-                  <Feather name="log-out" size={15} color="#EF4444" />
+                  <AppIcon name="log-out" size={15} color="#EF4444" />
                   <Text style={s.dangerText}>Hesaptan Çıkış Yap</Text>
-                  <Feather name="chevron-right" size={16} color="#FCA5A5" style={{ marginLeft: 'auto' as any }} />
+                  <AppIcon name="chevron-right" size={16} color="#FCA5A5" style={{ marginLeft: 'auto' as any }} />
                 </TouchableOpacity>
               </View>
 

@@ -13,11 +13,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useAdminOrders, useAssignTechnician } from '../../../modules/admin/orders/hooks';
 import { AdminOrder, Technician } from '../../../modules/admin/orders/service';
 import { C as Colors } from '../../../core/theme/colors';
 import { F } from '../../../core/theme/typography';
+
+import { AppIcon } from '../../../core/ui/AppIcon';
 
 const C = Colors;
 
@@ -82,7 +83,7 @@ function AssignModal({
           <View style={am.header}>
             <View style={am.headerLeft}>
               <View style={am.headerIcon}>
-                <MaterialCommunityIcons name={'account-hard-hat-outline' as any} size={20} color={C.primary} />
+                <AppIcon name={'account-hard-hat-outline' as any} size={20} color={C.primary} />
               </View>
               <View>
                 <Text style={am.title}>Teknisyen Ata</Text>
@@ -90,7 +91,7 @@ function AssignModal({
               </View>
             </View>
             <TouchableOpacity onPress={onClose} style={am.closeBtn}>
-              <MaterialCommunityIcons name={'close' as any} size={18} color={C.textMuted} />
+              <AppIcon name={'close' as any} size={18} color={C.textMuted} />
             </TouchableOpacity>
           </View>
 
@@ -102,7 +103,7 @@ function AssignModal({
             </View>
           ) : technicians.length === 0 ? (
             <View style={am.emptyWrap}>
-              <MaterialCommunityIcons name={'account-off-outline' as any} size={32} color={C.textMuted} />
+              <AppIcon name={'account-off-outline' as any} size={32} color={C.textMuted} />
               <Text style={am.emptyText}>Aktif teknisyen bulunamadı</Text>
             </View>
           ) : (
@@ -129,7 +130,7 @@ function AssignModal({
                     </Text>
                   </View>
                   {order.assigned_to === t.id && (
-                    <MaterialCommunityIcons name={'check-circle' as any} size={20} color={C.primary} />
+                    <AppIcon name={'check-circle' as any} size={20} color={C.primary} />
                   )}
                   {assigning && (
                     <ActivityIndicator size="small" color={C.primary} />
@@ -157,7 +158,7 @@ function UnassignedBanner({
     <View style={ub.card}>
       <View style={ub.titleRow}>
         <View style={ub.titleLeft}>
-          <MaterialCommunityIcons name={'account-clock-outline' as any} size={18} color="#D97706" />
+          <AppIcon name={'account-clock-outline' as any} size={18} color="#D97706" />
           <Text style={ub.title}>Teknisyen Atanmayan İşler</Text>
         </View>
         <View style={ub.badge}>
@@ -176,7 +177,7 @@ function UnassignedBanner({
             onPress={() => onAssignPress(o)}
             activeOpacity={0.8}
           >
-            <MaterialCommunityIcons name={'account-plus-outline' as any} size={14} color="#FFFFFF" />
+            <AppIcon name={'account-plus-outline' as any} size={14} color="#FFFFFF" />
             <Text style={ub.assignBtnText}>Ata</Text>
           </TouchableOpacity>
         </View>
@@ -254,7 +255,7 @@ export default function AdminOrdersScreen() {
             </View>
           </View>
           <TouchableOpacity style={s.refreshBtn} onPress={refresh}>
-            <MaterialCommunityIcons name={'refresh' as any} size={16} color="#FFFFFF" />
+            <AppIcon name={'refresh' as any} size={16} color="#FFFFFF" />
             <Text style={s.refreshBtnText}>Yenile</Text>
           </TouchableOpacity>
         </View>
@@ -264,7 +265,7 @@ export default function AdminOrdersScreen() {
 
         {/* Search */}
         <View style={[s.searchWrap, searchFocused && s.searchWrapFocused]}>
-          <MaterialCommunityIcons name={'magnify' as any} size={17} color={searchFocused ? C.primary : C.textMuted} />
+          <AppIcon name={'magnify' as any} size={17} color={searchFocused ? C.primary : C.textMuted} />
           <TextInput
             style={s.searchInput}
             placeholder="Sipariş no, hekim, iş türü..."
@@ -276,7 +277,7 @@ export default function AdminOrdersScreen() {
           />
           {search.length > 0 && (
             <TouchableOpacity onPress={() => setSearch('')}>
-              <MaterialCommunityIcons name={'close-circle' as any} size={16} color={C.textMuted} />
+              <AppIcon name={'close-circle' as any} size={16} color={C.textMuted} />
             </TouchableOpacity>
           )}
         </View>
@@ -319,7 +320,7 @@ export default function AdminOrdersScreen() {
               onPress={() => setOverdueOnly((v) => !v)}
               activeOpacity={0.7}
             >
-              <MaterialCommunityIcons
+              <AppIcon
                 name={'clock-alert-outline' as any}
                 size={13}
                 color={overdueOnly ? C.danger : C.textMuted}
@@ -379,7 +380,7 @@ export default function AdminOrdersScreen() {
                     <View style={[s.td, { flex: 1.5 }]}>
                       {order.assignee_name ? (
                         <View style={s.assigneeChip}>
-                          <MaterialCommunityIcons name={'account-outline' as any} size={12} color={C.primary} />
+                          <AppIcon name={'account-outline' as any} size={12} color={C.primary} />
                           <Text style={s.assigneeName} numberOfLines={1}>{order.assignee_name}</Text>
                         </View>
                       ) : unassigned ? (
@@ -387,7 +388,7 @@ export default function AdminOrdersScreen() {
                           style={s.assignNowBtn}
                           onPress={(e) => { e.stopPropagation?.(); openAssignModal(order); }}
                         >
-                          <MaterialCommunityIcons name={'account-plus-outline' as any} size={13} color="#D97706" />
+                          <AppIcon name={'account-plus-outline' as any} size={13} color="#D97706" />
                           <Text style={s.assignNowText}>Ata</Text>
                         </TouchableOpacity>
                       ) : (
@@ -406,7 +407,7 @@ export default function AdminOrdersScreen() {
                         onPress={() => router.push(`/admin/orders/${order.id}` as any)}
                       >
                         <Text style={s.detailBtnText}>Detay</Text>
-                        <MaterialCommunityIcons name={'chevron-right' as any} size={14} color={C.primary} />
+                        <AppIcon name={'chevron-right' as any} size={14} color={C.primary} />
                       </TouchableOpacity>
                     </View>
                   </TouchableOpacity>
@@ -442,7 +443,7 @@ export default function AdminOrdersScreen() {
                     <View style={s.cardFooter}>
                       {order.assignee_name ? (
                         <View style={s.assigneeChip}>
-                          <MaterialCommunityIcons name={'account-outline' as any} size={12} color={C.primary} />
+                          <AppIcon name={'account-outline' as any} size={12} color={C.primary} />
                           <Text style={s.assigneeName}>{order.assignee_name}</Text>
                         </View>
                       ) : unassigned ? (
@@ -451,7 +452,7 @@ export default function AdminOrdersScreen() {
                           onPress={(e) => { e.stopPropagation?.(); openAssignModal(order); }}
                           activeOpacity={0.8}
                         >
-                          <MaterialCommunityIcons name={'account-plus-outline' as any} size={14} color="#FFFFFF" />
+                          <AppIcon name={'account-plus-outline' as any} size={14} color="#FFFFFF" />
                           <Text style={s.assignNowBtnCardText}>Teknisyen Ata</Text>
                         </TouchableOpacity>
                       ) : (

@@ -6,7 +6,6 @@ import {
 import { toast } from '../../../core/ui/Toast';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import { useInvoice } from '../hooks/useInvoices';
 import {
@@ -20,6 +19,8 @@ import {
 import { printInvoice } from '../printInvoice';
 import { C } from '../../../core/theme/colors';
 import { F } from '../../../core/theme/typography';
+
+import { AppIcon } from '../../../core/ui/AppIcon';
 
 function fmtMoney(n: number | string | null | undefined): string {
   const v = typeof n === 'string' ? Number(n) : (n ?? 0);
@@ -53,7 +54,7 @@ export function InvoiceDetailScreen() {
     return (
       <SafeAreaView style={s.safe}>
         <View style={s.emptyWrap}>
-          <MaterialCommunityIcons name={'alert-circle-outline' as any} size={48} color={C.textMuted} />
+          <AppIcon name={'alert-circle-outline' as any} size={48} color={C.textMuted} />
           <Text style={s.emptyTitle}>Fatura bulunamadı</Text>
           <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
             <Text style={s.backBtnText}>Geri dön</Text>
@@ -127,7 +128,7 @@ export function InvoiceDetailScreen() {
       {/* Header bar */}
       <View style={s.topBar}>
         <TouchableOpacity onPress={() => router.back()} style={s.iconOnlyBtn}>
-          <MaterialCommunityIcons name={'arrow-left' as any} size={20} color="#0F172A" />
+          <AppIcon name={'arrow-left' as any} size={20} color="#0F172A" />
         </TouchableOpacity>
         <View style={{ flex: 1, alignItems: 'center' }}>
           <Text style={s.topTitle} numberOfLines={1}>{invoice.invoice_number}</Text>
@@ -138,7 +139,7 @@ export function InvoiceDetailScreen() {
           </View>
         </View>
         <TouchableOpacity onPress={handlePrint} style={s.iconOnlyBtn}>
-          <MaterialCommunityIcons name={'printer-outline' as any} size={20} color="#0F172A" />
+          <AppIcon name={'printer-outline' as any} size={20} color="#0F172A" />
         </TouchableOpacity>
       </View>
 
@@ -170,7 +171,7 @@ export function InvoiceDetailScreen() {
               activeOpacity={0.85}
               onPress={() => setPaymentModalVisible(true)}
             >
-              <MaterialCommunityIcons name={'cash-plus' as any} size={16} color="#FFF" />
+              <AppIcon name={'cash-plus' as any} size={16} color="#FFF" />
               <Text style={s.payBtnText}>Tahsilat Ekle</Text>
             </TouchableOpacity>
           )}
@@ -225,7 +226,7 @@ export function InvoiceDetailScreen() {
           <Text style={s.sectionLabel}>Kalemler ({invoice.items?.length ?? 0})</Text>
           {invoice.status === 'taslak' && (
             <TouchableOpacity onPress={() => setAddItemModalVisible(true)} style={s.smallBtn}>
-              <MaterialCommunityIcons name={'plus' as any} size={14} color="#2563EB" />
+              <AppIcon name={'plus' as any} size={14} color="#2563EB" />
               <Text style={s.smallBtnText}>Ekle</Text>
             </TouchableOpacity>
           )}
@@ -252,7 +253,7 @@ export function InvoiceDetailScreen() {
                     }}
                     style={s.itemDelBtn}
                   >
-                    <MaterialCommunityIcons name={'trash-can-outline' as any} size={15} color="#DC2626" />
+                    <AppIcon name={'trash-can-outline' as any} size={15} color="#DC2626" />
                   </TouchableOpacity>
                 )}
               </View>
@@ -282,7 +283,7 @@ export function InvoiceDetailScreen() {
               {invoice.payments!.map((p, idx) => (
                 <View key={p.id} style={[s.paymentRow, idx > 0 && s.itemRowBordered]}>
                   <View style={s.paymentIcon}>
-                    <MaterialCommunityIcons name={'cash-check' as any} size={15} color="#047857" />
+                    <AppIcon name={'cash-check' as any} size={15} color="#047857" />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={s.paymentAmount}>{fmtMoney(p.amount)}</Text>
@@ -314,19 +315,19 @@ export function InvoiceDetailScreen() {
         <View style={s.actionsRow}>
           {invoice.status === 'taslak' && (
             <TouchableOpacity style={s.actionBtn} onPress={handleMarkSent} disabled={busy}>
-              <MaterialCommunityIcons name={'send-outline' as any} size={16} color="#2563EB" />
+              <AppIcon name={'send-outline' as any} size={16} color="#2563EB" />
               <Text style={[s.actionBtnText, { color: '#2563EB' }]}>Kesildi Olarak İşaretle</Text>
             </TouchableOpacity>
           )}
           {invoice.status !== 'iptal' && invoice.status !== 'odendi' && (
             <TouchableOpacity style={[s.actionBtn, s.actionBtnDanger]} onPress={handleCancel} disabled={busy}>
-              <MaterialCommunityIcons name={'cancel' as any} size={16} color="#DC2626" />
+              <AppIcon name={'cancel' as any} size={16} color="#DC2626" />
               <Text style={[s.actionBtnText, { color: '#DC2626' }]}>İptal Et</Text>
             </TouchableOpacity>
           )}
           {invoice.status === 'taslak' && (
             <TouchableOpacity style={[s.actionBtn, s.actionBtnDanger]} onPress={handleDelete} disabled={busy}>
-              <MaterialCommunityIcons name={'trash-can-outline' as any} size={16} color="#DC2626" />
+              <AppIcon name={'trash-can-outline' as any} size={16} color="#DC2626" />
               <Text style={[s.actionBtnText, { color: '#DC2626' }]}>Taslağı Sil</Text>
             </TouchableOpacity>
           )}
@@ -367,7 +368,7 @@ function InfoRow({
       onPress={onPress}
       activeOpacity={link ? 0.7 : 1}
     >
-      <MaterialCommunityIcons name={icon as any} size={15} color={C.textMuted} />
+      <AppIcon name={icon as any} size={15} color={C.textMuted} />
       <Text style={s.infoLabel}>{label}</Text>
       <Text style={[s.infoValue, valueColor ? { color: valueColor, fontWeight: '700' } : null, link ? { color: '#2563EB' } : null]} numberOfLines={2}>
         {value}
@@ -427,7 +428,7 @@ function PaymentModal({
           <View style={m.header}>
             <Text style={m.title}>Tahsilat Ekle</Text>
             <TouchableOpacity onPress={onClose}>
-              <MaterialCommunityIcons name={'close' as any} size={22} color={C.textMuted} />
+              <AppIcon name={'close' as any} size={22} color={C.textMuted} />
             </TouchableOpacity>
           </View>
 
@@ -454,7 +455,7 @@ function PaymentModal({
                   style={[m.chip, active && m.chipActive]}
                   onPress={() => setMethod(opt.v)}
                 >
-                  <MaterialCommunityIcons name={opt.icon as any} size={12} color={active ? '#0F172A' : '#94A3B8'} />
+                  <AppIcon name={opt.icon as any} size={12} color={active ? '#0F172A' : '#94A3B8'} />
                   <Text style={[m.chipText, active && m.chipTextActive]}>{opt.l}</Text>
                 </TouchableOpacity>
               );
@@ -533,7 +534,7 @@ function AddItemModal({
           <View style={m.header}>
             <Text style={m.title}>Kalem Ekle</Text>
             <TouchableOpacity onPress={onClose}>
-              <MaterialCommunityIcons name={'close' as any} size={22} color={C.textMuted} />
+              <AppIcon name={'close' as any} size={22} color={C.textMuted} />
             </TouchableOpacity>
           </View>
 

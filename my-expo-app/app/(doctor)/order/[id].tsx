@@ -1,1 +1,1 @@
-export { DoctorOrderDetailScreen as default } from '../../../modules/orders/screens/DoctorOrderDetailScreen';
+export { OrderDetailScreen as default } from '../../../modules/orders/screens/OrderDetailScreen';

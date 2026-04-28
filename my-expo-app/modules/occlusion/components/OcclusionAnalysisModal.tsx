@@ -13,7 +13,6 @@ import {
   Modal, View, Text, StyleSheet, TouchableOpacity, Platform, ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import { OcclusionViewer }       from './OcclusionViewer';
 import { OcclusionToolbar, ViewPresets } from './OcclusionToolbar';
@@ -25,6 +24,8 @@ import { OcclusionReport }       from './OcclusionReport';
 import { useOcclusionAnalysis }  from '../hooks/useOcclusionAnalysis';
 import { useMeasurement }        from '../hooks/useMeasurement';
 import { captureSnapshot }       from '../utils/heatmapGenerator';
+
+import { AppIcon } from '../../../core/ui/AppIcon';
 
 import type {
   OcclusionAnalysisResult,
@@ -179,7 +180,7 @@ export function OcclusionAnalysisModal({
         <View style={[s.topBar, isMobile && { paddingHorizontal: 12, paddingVertical: 10, gap: 8 }]}>
           <View style={s.titleRow}>
             <View style={s.titleIcon}>
-              <MaterialCommunityIcons name={'cube-scan' as any} size={18} color="#0F172A" />
+              <AppIcon name={'cube-scan' as any} size={18} color="#0F172A" />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={[s.title, isMobile && { fontSize: 13 }]} numberOfLines={1}>Kapanış Analizi</Text>
@@ -199,7 +200,7 @@ export function OcclusionAnalysisModal({
             onPress={handleClose}
             activeOpacity={0.8}
           >
-            <MaterialCommunityIcons name={'close' as any} size={16} color="#0F172A" />
+            <AppIcon name={'close' as any} size={16} color="#0F172A" />
             {!isMobile && <Text style={s.closeBtnText}>Kapat</Text>}
           </TouchableOpacity>
         </View>
@@ -232,7 +233,7 @@ export function OcclusionAnalysisModal({
           {/* Errors */}
           {(analysis.error || loadError) && (
             <View style={s.errorLayer}>
-              <MaterialCommunityIcons name={'alert-circle' as any} size={14} color="#DC2626" />
+              <AppIcon name={'alert-circle' as any} size={14} color="#DC2626" />
               <Text style={s.errorText}>{loadError ?? analysis.error}</Text>
             </View>
           )}
@@ -256,7 +257,7 @@ export function OcclusionAnalysisModal({
               onPress={() => setPanelOpen((v) => !v)}
               activeOpacity={0.85}
             >
-              <MaterialCommunityIcons
+              <AppIcon
                 name={panelOpen ? 'chevron-down' : 'tune-vertical'}
                 size={18}
                 color="#0F172A"

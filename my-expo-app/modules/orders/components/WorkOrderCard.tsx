@@ -1,10 +1,11 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { WorkOrder, WorkOrderStatus } from '../types';
 import { isOrderOverdue, STATUS_CONFIG } from '../constants';
 import { C } from '../../../core/theme/colors';
 import { F } from '../../../core/theme/typography';
+
+import { AppIcon } from '../../../core/ui/AppIcon';
 
 interface WorkOrderCardProps {
   order: WorkOrder;
@@ -115,7 +116,7 @@ export function WorkOrderCard({ order, onPress, showDoctor = false, onAssign }: 
               onPress={(e) => { e.stopPropagation?.(); onAssign(); }}
               activeOpacity={0.75}
             >
-              <MaterialCommunityIcons name={'account-plus-outline' as any} size={12} color="#FFFFFF" />
+              <AppIcon name={'account-plus-outline' as any} size={12} color="#FFFFFF" />
               <Text style={styles.assignBtnText}>Teknisyen Ata</Text>
             </TouchableOpacity>
           )}

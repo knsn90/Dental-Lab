@@ -3,12 +3,13 @@ import {
   View, Text, StyleSheet, FlatList,
   ActivityIndicator, RefreshControl,
 } from 'react-native';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { usePendingApprovals } from './hooks/usePendingApprovals';
 import { ApprovalCard } from './components/ApprovalCard';
 import { useAuthStore } from '../../core/store/authStore';
 import { C } from '../../core/theme/colors';
 import { F } from '../../core/theme/typography';
+
+import { AppIcon } from '../../core/ui/AppIcon';
 
 export function DesignApprovalsScreen() {
   const { profile } = useAuthStore();
@@ -23,7 +24,7 @@ export function DesignApprovalsScreen() {
         </View>
       ) : approvals.length === 0 ? (
         <View style={s.empty}>
-          <MaterialCommunityIcons name="check-all" size={52} color={C.success} />
+          <AppIcon name="check-all" size={52} color={C.success} />
           <Text style={s.emptyTitle}>Bekleyen Onay Yok</Text>
           <Text style={s.emptySub}>
             Tasarım adımı tamamlandığında onay istekleri burada görünür.

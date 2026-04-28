@@ -2,16 +2,16 @@ import { Platform } from 'react-native';
 import { C } from './colors';
 
 /**
- * Zilla Slab font families (slab serif).
- * - On web: CSS weight axis handles variants, single family string suffices.
- * - On native: each weight is a separate loaded font file.
+ * Outfit font families (geometric sans-serif).
+ * - On web: tek string yeterli, CSS weight axis tüm varyantları sağlıyor (Google Fonts CDN).
+ * - On native: her weight ayrı yüklenmiş font dosyası (@expo-google-fonts/outfit).
  */
 export const F = {
-  light:    Platform.OS === 'web' ? "'Zilla Slab', serif" : 'ZillaSlab_300Light',
-  regular:  Platform.OS === 'web' ? "'Zilla Slab', serif" : 'ZillaSlab_400Regular',
-  medium:   Platform.OS === 'web' ? "'Zilla Slab', serif" : 'ZillaSlab_500Medium',
-  semibold: Platform.OS === 'web' ? "'Zilla Slab', serif" : 'ZillaSlab_600SemiBold',
-  bold:     Platform.OS === 'web' ? "'Zilla Slab', serif" : 'ZillaSlab_700Bold',
+  light:    Platform.OS === 'web' ? "'Outfit', system-ui, sans-serif" : 'Outfit_300Light',
+  regular:  Platform.OS === 'web' ? "'Outfit', system-ui, sans-serif" : 'Outfit_400Regular',
+  medium:   Platform.OS === 'web' ? "'Outfit', system-ui, sans-serif" : 'Outfit_500Medium',
+  semibold: Platform.OS === 'web' ? "'Outfit', system-ui, sans-serif" : 'Outfit_600SemiBold',
+  bold:     Platform.OS === 'web' ? "'Outfit', system-ui, sans-serif" : 'Outfit_700Bold',
 };
 
 // ─── Font size scale ──────────────────────────────────────────────────────────

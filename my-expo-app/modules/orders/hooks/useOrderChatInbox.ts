@@ -27,12 +27,17 @@ export function useOrderChatInbox() {
   useEffect(() => {
     load();
 
-    // Realtime — herhangi bir chat'e yeni mesaj gelirse listeyi yenile
+    // Realtime — yeni mesaj veya okundu işareti (read_at UPDATE) gelirse yenile
     const channel = supabase
       .channel('order_chat_inbox_realtime')
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'order_messages' },
+        () => { load(); },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'order_messages' },
         () => { load(); },
       )
       .subscribe();

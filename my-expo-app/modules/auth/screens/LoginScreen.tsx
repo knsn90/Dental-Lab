@@ -15,13 +15,14 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { DentistIcon } from '../../../components/icons/DentistIcon';
 import { signIn } from '../api';
 import { supabase } from '../../../lib/supabase';
 import { C } from '../../../core/theme/colors';
 import { F, FS } from '../../../core/theme/typography';
 import { useIsDesktop } from '../../../core/layout/DesktopShell';
+
+import { AppIcon } from '../../../core/ui/AppIcon';
+import { CustomIcon } from '../../../core/ui/CustomIcon';
 
 // ─── Brand palette ────────────────────────────────────────────────────────────
 const BRAND   = '#1E40AF';   // deep blue panel
@@ -29,11 +30,12 @@ const ACCENT  = '#2563EB';   // primary blue (buttons, focus)
 const ACCENT2 = '#3B82F6';   // lighter blue (decorative)
 
 // ─── Feature list for desktop panel ──────────────────────────────────────────
+// customIcon: assets/icons/custom/ klasöründeki SVG numarası (22-25)
 const FEATURES = [
-  { icon: 'clipboard-check-outline', text: 'Sipariş & İş Emri Yönetimi' },
-  { icon: 'package-variant-closed',  text: 'Stok & Malzeme Takibi'       },
-  { icon: 'file-document-outline',   text: 'Fatura & Cari Hesap'          },
-  { icon: 'account-group-outline',   text: 'Çalışan & İzin Yönetimi'      },
+  { customIcon: 22, text: 'Sipariş & İş Emri Yönetimi' },
+  { customIcon: 23, text: 'Stok & Malzeme Takibi'       },
+  { customIcon: 24, text: 'Fatura & Cari Hesap'          },
+  { customIcon: 25, text: 'Çalışan & İzin Yönetimi'      },
 ];
 
 // ─── FloatingInput ────────────────────────────────────────────────────────────
@@ -122,7 +124,7 @@ function FloatingInput({
       </View>
       {error ? (
         <View style={fi.errorRow}>
-          <MaterialCommunityIcons name="alert-circle" size={11} color={C.danger} />
+          <AppIcon name="alert-circle" size={11} color={C.danger} />
           <Text style={fi.errorText}>{error}</Text>
         </View>
       ) : null}
@@ -399,7 +401,7 @@ function BrandPanel() {
         {FEATURES.map((f, i) => (
           <View key={i} style={bp.featureRow}>
             <View style={bp.featureIcon}>
-              <MaterialCommunityIcons name={f.icon as any} size={16} color={ACCENT2} />
+              <CustomIcon n={f.customIcon} size={20} color="rgba(255,255,255,0.85)" />
             </View>
             <Text style={bp.featureText}>{f.text}</Text>
           </View>
@@ -539,9 +541,9 @@ function FormContent({
       {/* Segment switcher */}
       <View style={fc.segment}>
         <View style={[fc.segBtn, mode === 'lab' && fc.segBtnActive]}>
-          <MaterialCommunityIcons
-            name="flask-outline"
-            size={13}
+          <CustomIcon
+            n={81}
+            size={15}
             color={mode === 'lab' ? accentColor : C.textMuted}
           />
           <Text style={[fc.segText, mode === 'lab' && { color: accentColor, fontFamily: F.semibold }]}>
@@ -553,7 +555,7 @@ function FormContent({
           onPress={onNavigateOther}
           activeOpacity={0.75}
         >
-          <MaterialCommunityIcons
+          <AppIcon
             name="shield-crown-outline"
             size={13}
             color={mode === 'admin' ? accentColor : C.textMuted}
@@ -567,7 +569,7 @@ function FormContent({
       {/* Error banner */}
       {errorMsg ? (
         <View style={fc.errorBanner}>
-          <MaterialCommunityIcons name="alert-circle" size={15} color={C.danger} />
+          <AppIcon name="alert-circle" size={15} color={C.danger} />
           <Text style={fc.errorBannerText}>{errorMsg}</Text>
         </View>
       ) : null}
@@ -595,7 +597,7 @@ function FormContent({
         error={errors.password}
         rightElement={
           <TouchableOpacity onPress={() => setShowPass(!showPass)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <MaterialCommunityIcons
+            <AppIcon
               name={showPass ? 'eye-off-outline' : 'eye-outline'}
               size={18}
               color={C.textMuted}
@@ -618,7 +620,7 @@ function FormContent({
           {forgotSent ? (
             <View style={fc.forgotSuccess}>
               <View style={fc.forgotSuccessIcon}>
-                <MaterialCommunityIcons name="check" size={16} color={C.success} />
+                <AppIcon name="check" size={16} color={C.success} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={fc.forgotSuccessTitle}>E-posta gönderildi</Text>
@@ -672,7 +674,7 @@ function FormContent({
           ) : (
             <>
               <Text style={fc.loginBtnText}>Giriş Yap</Text>
-              <MaterialCommunityIcons name="arrow-right" size={18} color="#FFFFFF" />
+              <AppIcon name="arrow-right" size={18} color="#FFFFFF" />
             </>
           )}
         </TouchableOpacity>
@@ -692,7 +694,7 @@ function FormContent({
             activeOpacity={0.8}
           >
             <View style={[fc.registerIcon, { backgroundColor: `${accentColor}15` }]}>
-              <DentistIcon size={16} color={accentColor} />
+              <CustomIcon n={26} size={18} color={accentColor} />
             </View>
             <Text style={[fc.registerText, { color: accentColor }]}>Hekim olarak kayıt ol</Text>
           </TouchableOpacity>

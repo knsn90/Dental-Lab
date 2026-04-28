@@ -5,11 +5,12 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import { useClinicBalances } from '../hooks/useInvoices';
 import { C } from '../../../core/theme/colors';
 import { F } from '../../../core/theme/typography';
+
+import { AppIcon } from '../../../core/ui/AppIcon';
 
 function fmtMoney(n: number | string | null | undefined): string {
   const v = typeof n === 'string' ? Number(n) : (n ?? 0);
@@ -47,7 +48,7 @@ export function ClinicBalanceScreen() {
       {/* Header */}
       <View style={s.header}>
         <TouchableOpacity onPress={() => router.back()} style={s.iconOnlyBtn}>
-          <MaterialCommunityIcons name={'arrow-left' as any} size={20} color="#0F172A" />
+          <AppIcon name={'arrow-left' as any} size={20} color="#0F172A" />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={s.title}>Cari Hesap</Text>
@@ -80,7 +81,7 @@ export function ClinicBalanceScreen() {
       {/* Search + Filter */}
       <View style={s.searchRow}>
         <View style={s.searchWrap}>
-          <MaterialCommunityIcons name={'magnify' as any} size={17} color={C.textMuted} />
+          <AppIcon name={'magnify' as any} size={17} color={C.textMuted} />
           <TextInput
             style={s.searchInput}
             placeholder="Klinik ara..."
@@ -90,7 +91,7 @@ export function ClinicBalanceScreen() {
           />
           {search.length > 0 && (
             <TouchableOpacity onPress={() => setSearch('')}>
-              <MaterialCommunityIcons name={'close-circle' as any} size={16} color={C.textMuted} />
+              <AppIcon name={'close-circle' as any} size={16} color={C.textMuted} />
             </TouchableOpacity>
           )}
         </View>
@@ -98,7 +99,7 @@ export function ClinicBalanceScreen() {
           style={[s.filterChip, overdueOnly && s.filterChipActive]}
           onPress={() => setOverdueOnly(v => !v)}
         >
-          <MaterialCommunityIcons
+          <AppIcon
             name={'clock-alert-outline' as any}
             size={13}
             color={overdueOnly ? '#DC2626' : C.textMuted}
@@ -118,7 +119,7 @@ export function ClinicBalanceScreen() {
       >
         {filtered.length === 0 ? (
           <View style={s.empty}>
-            <MaterialCommunityIcons
+            <AppIcon
               name={(search || overdueOnly ? 'magnify-close' : 'chart-line-variant') as any}
               size={36}
               color={C.textMuted}

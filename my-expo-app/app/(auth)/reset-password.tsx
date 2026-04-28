@@ -5,8 +5,9 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { supabase } from '../../lib/supabase';
+
+import { AppIcon } from '../../core/ui/AppIcon';
 
 export default function ResetPasswordScreen() {
   const router = useRouter();
@@ -49,7 +50,7 @@ export default function ResetPasswordScreen() {
 
             {/* Icon */}
             <View style={s.iconWrap}>
-              <MaterialCommunityIcons
+              <AppIcon
                 name={done ? 'check-circle-outline' : 'lock-reset'}
                 size={32}
                 color={done ? '#16A34A' : '#0F172A'}
@@ -67,7 +68,7 @@ export default function ResetPasswordScreen() {
               <>
                 {error ? (
                   <View style={s.errorBox}>
-                    <MaterialCommunityIcons name="alert-circle-outline" size={14} color="#EF4444" />
+                    <AppIcon name="alert-circle-outline" size={14} color="#EF4444" />
                     <Text style={s.errorText}>{error}</Text>
                   </View>
                 ) : null}
@@ -86,7 +87,7 @@ export default function ResetPasswordScreen() {
                     outlineStyle="none"
                   />
                   <TouchableOpacity style={s.eyeBtn} onPress={() => setShowPass(v => !v)}>
-                    <MaterialCommunityIcons name={showPass ? 'eye-off-outline' : 'eye-outline'} size={18} color="#94A3B8" />
+                    <AppIcon name={showPass ? 'eye-off-outline' : 'eye-outline'} size={18} color="#94A3B8" />
                   </TouchableOpacity>
                 </View>
 
@@ -118,13 +119,13 @@ export default function ResetPasswordScreen() {
 
             {!done && !hasSession && (
               <View style={s.errorBox}>
-                <MaterialCommunityIcons name="alert-circle-outline" size={14} color="#EF4444" />
+                <AppIcon name="alert-circle-outline" size={14} color="#EF4444" />
                 <Text style={s.errorText}>Geçersiz veya süresi dolmuş link. Tekrar şifre sıfırlama talep edin.</Text>
               </View>
             )}
 
             <TouchableOpacity style={s.backLink} onPress={() => router.replace('/(auth)/login')}>
-              <MaterialCommunityIcons name="arrow-left" size={14} color="#64748B" />
+              <AppIcon name="arrow-left" size={14} color="#64748B" />
               <Text style={s.backText}>Giriş sayfasına dön</Text>
             </TouchableOpacity>
 

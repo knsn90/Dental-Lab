@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Modal } from 'react-native';
 import { Slot, Tabs } from 'expo-router';
 import { DesktopShell, useIsDesktop } from '../../core/layout/DesktopShell';
@@ -9,6 +9,10 @@ import { MobileTabBar, type MobileTabItem } from '../../core/ui/MobileTabBar';
 import { NewOrderScreen } from '../../modules/orders/screens/NewOrderScreen';
 import { MessagesPopup } from '../../modules/orders/components/MessagesPopup';
 import { usePendingLeaveCount } from '../../modules/hr/hooks/useHR';
+import { useOrderChatInbox } from '../../modules/orders/hooks/useOrderChatInbox';
+import { useColorThemeStore, applyColorThemeWeb } from '../../core/store/colorThemeStore';
+
+const ADMIN_DEFAULT_ACCENT = '#0F172A';
 
 // NOT: Desktop'ta "Yeni İş Emri" → route navigate eder (/(admin)/new-order),
 // sidebar kaybolmaz. Modal SADECE mobil için.
@@ -18,9 +22,18 @@ export default function AdminLayout() {
   const pendingCount      = usePendingApprovals();
   const stockAlert        = useStockAlert();
   const isDesktop         = useIsDesktop();
-  const pendingLeaveCount = usePendingLeaveCount(); // Admin her zaman görebilir
+  const pendingLeaveCount = usePendingLeaveCount();
+  const { totalUnread: chatUnread } = useOrderChatInbox();
   const [newOrderOpen, setNewOrderOpen] = useState(false);
   const [messagesOpen, setMessagesOpen] = useState(false);
+
+  // Load saved color theme
+  const { getTheme, loadTheme } = useColorThemeStore();
+  useEffect(() => {
+    const theme = loadTheme('admin');
+    applyColorThemeWeb(theme, ADMIN_DEFAULT_ACCENT);
+  }, []);
+  const accentColor = getTheme('admin').primary;
 
   // Yükleme tamamlandı ve kesinlikle admin değil → sidebar gösterme
   if (!loading && profile && profile.user_type !== 'admin') {
@@ -59,7 +72,7 @@ export default function AdminLayout() {
     // ── Sistem ─────────────────────────────────────────────────────────────
     { label: 'QR Check-in',  emoji: '📷', href: '/(admin)/checkin-settings', iconName: 'camera',    iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'Sistem' },
     { label: 'Loglar',       emoji: '📜', href: '/(admin)/logs',             iconName: 'file-text', iconSet: 'mdi' as const, matchPrefix: true },
-    { label: 'Profil',       emoji: '⚙️', href: '/(admin)/profile',         iconName: 'settings',  iconSet: 'mdi' as const, matchPrefix: true },
+    { label: 'Ayarlar',      emoji: '⚙️', href: '/(admin)/settings',        iconName: 'settings',  iconSet: 'mdi' as const, matchPrefix: true },
   ];
 
   if (isDesktop) {
@@ -67,13 +80,15 @@ export default function AdminLayout() {
       <>
         <DesktopShell
           navItems={ADMIN_NAV}
-          accentColor="#0F172A"
+          accentColor={accentColor}
           onPressMessages={() => setMessagesOpen(true)}
+          messagesUnreadCount={chatUnread}
+          notificationsCount={pendingCount}
         />
         <MessagesPopup
           visible={messagesOpen}
           onClose={() => setMessagesOpen(false)}
-          accentColor="#0F172A"
+          accentColor={accentColor}
         />
       </>
     );
@@ -84,7 +99,7 @@ export default function AdminLayout() {
     { routeName: 'orders',    label: 'Sipariş',   icon: 'clipboard' },
     { routeName: 'new-order', label: 'Yeni',      icon: 'plus-circle', onPress: () => setNewOrderOpen(true) },
     { routeName: 'approvals', label: 'Onaylar',   icon: 'check-circle', badge: pendingCount > 0 },
-    { routeName: 'profile',   label: 'Profil',    icon: 'settings' },
+    { routeName: 'settings',  label: 'Ayarlar',   icon: 'settings' },
   ];
   void stockAlert;
 
@@ -96,7 +111,7 @@ export default function AdminLayout() {
             state={props.state}
             navigation={props.navigation}
             items={MOBILE_TABS}
-            accentColor="#0F172A"
+            accentColor={accentColor}
           />
         )}
         screenOptions={{
@@ -124,8 +139,9 @@ export default function AdminLayout() {
         <Tabs.Screen name="approvals" options={{ title: 'Onaylar' }} />
         <Tabs.Screen name="logs" options={{ title: 'Loglar' }} />
         <Tabs.Screen name="profile" options={{ title: 'Profil' }} />
-        <Tabs.Screen name="order/[id]" options={{ tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="order/occlusion/[id]" options={{ tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="settings" options={{ title: 'Ayarlar', tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="order/[id]" options={{ title: 'İş Emri', tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="order/occlusion/[id]" options={{ title: 'Oklüzyon', tabBarStyle: { display: 'none' } }} />
       </Tabs>
 
       {/* Yeni İş Emri — SADECE mobilde modal olarak açılır */}
@@ -135,14 +151,14 @@ export default function AdminLayout() {
         presentationStyle="pageSheet"
         onRequestClose={() => setNewOrderOpen(false)}
       >
-        <NewOrderScreen accentColor="#0F172A" onClose={() => setNewOrderOpen(false)} />
+        <NewOrderScreen accentColor={accentColor} onClose={() => setNewOrderOpen(false)} />
       </Modal>
 
       {/* Mesajlar Popup */}
       <MessagesPopup
         visible={messagesOpen}
         onClose={() => setMessagesOpen(false)}
-        accentColor="#0F172A"
+        accentColor={accentColor}
       />
     </>
   );

@@ -4,13 +4,14 @@ import {
   TextInput, Modal, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Feather from '@expo/vector-icons/Feather';
 import { fetchAllLabServices, createLabService, updateLabService } from '../api';
 import { LabService } from '../types';
 import { C } from '../../../core/theme/colors';
 import { AppSwitch } from '../../../core/ui/AppSwitch';
 import { SlideTabBar } from '../../../core/ui/SlideTabBar';
 import { IconBtn } from '../../../core/ui/IconBtn';
+
+import { AppIcon } from '../../../core/ui/AppIcon';
 
 const CATEGORIES = ['Sabit Protez', 'Hareketli Protez', 'İmplant', 'Ortodonti', 'CAD/CAM', 'Seramik', 'Diğer'];
 
@@ -97,7 +98,7 @@ export function ServicesScreen() {
           active={searchExpanded || search.length > 0}
           onPress={() => setSearchExpanded(!searchExpanded)}
         >
-          <Feather
+          <AppIcon
             name="search"
             size={20}
             color={(searchExpanded || search.length > 0) ? C.primary : '#64748B'}
@@ -112,7 +113,7 @@ export function ServicesScreen() {
       {(searchExpanded || search.length > 0) && (
         <View style={styles.searchRow}>
           <View style={[styles.searchWrap, searchFocused && styles.searchWrapFocused]}>
-            <Feather name="search" size={16} color={searchFocused ? C.primary : '#AEAEB2'} />
+            <AppIcon name="search" size={16} color={searchFocused ? C.primary : '#AEAEB2'} />
             <TextInput
               style={styles.searchInput}
               value={search}
@@ -126,7 +127,7 @@ export function ServicesScreen() {
             />
             {search.length > 0 && (
               <TouchableOpacity onPress={() => { setSearch(''); setSearchExpanded(false); }}>
-                <Feather name="x-circle" size={15} color="#AEAEB2" />
+                <AppIcon name="x-circle" size={15} color="#AEAEB2" />
               </TouchableOpacity>
             )}
           </View>
@@ -167,7 +168,7 @@ export function ServicesScreen() {
             <View style={m.header}>
               <Text style={m.title}>{edit ? 'Hizmeti Düzenle' : 'Hizmet Ekle'}</Text>
               <TouchableOpacity style={m.closeBtn} onPress={() => setModal(false)}>
-                <Feather name="x" size={16} color="#64748B" />
+                <AppIcon name="x" size={16} color="#64748B" />
               </TouchableOpacity>
             </View>
 

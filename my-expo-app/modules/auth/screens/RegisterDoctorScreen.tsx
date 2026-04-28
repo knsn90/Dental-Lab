@@ -12,12 +12,13 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { DentistIcon } from '../../../components/icons/DentistIcon';
 import { signUpDoctor } from '../api';
 import { supabase } from '../../../lib/supabase';
 import { C } from '../../../core/theme/colors';
 import { F } from '../../../core/theme/typography';
+
+import { AppIcon } from '../../../core/ui/AppIcon';
+import { CustomIcon } from '../../../core/ui/CustomIcon';
 
 export function RegisterDoctorScreen() {
   const router = useRouter();
@@ -108,12 +109,12 @@ export function RegisterDoctorScreen() {
             {/* Card Header */}
             <View style={styles.cardHeader}>
               <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                <MaterialCommunityIcons name="chevron-left" size={18} color={C.textSecondary} />
+                <AppIcon name="chevron-left" size={18} color={C.textSecondary} />
                 <Text style={styles.backText}>Geri</Text>
               </TouchableOpacity>
               <View style={styles.headerCenter}>
                 <View style={styles.iconWrap}>
-                  <DentistIcon size={22} color="#FFFFFF" />
+                  <CustomIcon n={26} size={22} color="#FFFFFF" />
                 </View>
                 <View>
                   <Text style={styles.cardTitle}>Hekim Kaydı</Text>
@@ -125,14 +126,14 @@ export function RegisterDoctorScreen() {
             {/* Messages */}
             {errorMsg ? (
               <View style={styles.alertBox}>
-                <MaterialCommunityIcons name="alert-circle-outline" size={16} color={C.danger} />
+                <AppIcon name="alert-circle-outline" size={16} color={C.danger} />
                 <Text style={styles.alertText}>{errorMsg}</Text>
               </View>
             ) : null}
 
             {successMsg ? (
               <View style={[styles.alertBox, styles.alertSuccess]}>
-                <MaterialCommunityIcons name="check-circle-outline" size={16} color={C.success} />
+                <AppIcon name="check-circle-outline" size={16} color={C.success} />
                 <Text style={[styles.alertText, { color: C.success }]}>{successMsg}</Text>
               </View>
             ) : null}
@@ -240,7 +241,7 @@ export function RegisterDoctorScreen() {
                   style={[styles.eyeBtn, focused === 'password' && styles.eyeBtnFocused, !!errors.password && styles.eyeBtnError]}
                   onPress={() => setShowPassword(!showPassword)}
                 >
-                  <MaterialCommunityIcons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color={C.textMuted} />
+                  <AppIcon name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color={C.textMuted} />
                 </TouchableOpacity>
               </View>
             </FieldGroup>
@@ -263,7 +264,7 @@ export function RegisterDoctorScreen() {
                   style={[styles.eyeBtn, focused === 'passwordConfirm' && styles.eyeBtnFocused, !!errors.passwordConfirm && styles.eyeBtnError]}
                   onPress={() => setShowPasswordConfirm(!showPasswordConfirm)}
                 >
-                  <MaterialCommunityIcons name={showPasswordConfirm ? 'eye-off-outline' : 'eye-outline'} size={18} color={C.textMuted} />
+                  <AppIcon name={showPasswordConfirm ? 'eye-off-outline' : 'eye-outline'} size={18} color={C.textMuted} />
                 </TouchableOpacity>
               </View>
             </FieldGroup>
@@ -278,7 +279,7 @@ export function RegisterDoctorScreen() {
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
                 <>
-                  <MaterialCommunityIcons name="check" size={18} color="#FFFFFF" />
+                  <AppIcon name="check" size={18} color="#FFFFFF" />
                   <Text style={styles.submitText}>Kayıt Ol</Text>
                 </>
               )}
@@ -308,7 +309,7 @@ function SectionHeader({ icon, title }: { icon: string; title: string }) {
   return (
     <View style={sh.row}>
       <View style={sh.iconBox}>
-        <MaterialCommunityIcons name={icon as any} size={14} color={C.primary} />
+        <AppIcon name={icon as any} size={14} color={C.primary} />
       </View>
       <Text style={sh.title}>{title}</Text>
     </View>
@@ -330,7 +331,7 @@ function FieldGroup({
       {children}
       {error ? (
         <View style={fg.errorRow}>
-          <MaterialCommunityIcons name="alert-circle-outline" size={12} color={C.danger} />
+          <AppIcon name="alert-circle-outline" size={12} color={C.danger} />
           <Text style={fg.errorText}>{error}</Text>
         </View>
       ) : null}

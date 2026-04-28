@@ -1,11 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useContext } from 'react';
+import { HubContext } from '../../../core/ui/HubContext';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   Modal, TextInput, ActivityIndicator, Alert, Platform,
 } from 'react-native';
 import { SkeletonCardList } from '../../../core/ui/Skeleton';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { toast } from '../../../core/ui/Toast';
 
 import { useEmployees, useEmployeeDetail } from '../hooks/useEmployees';
@@ -17,6 +17,8 @@ import {
   type Employee, type EmployeeRole, type SalaryPaymentMethod,
 } from '../api';
 import { useBreakpoint } from '../../../core/layout/Responsive';
+
+import { AppIcon } from '../../../core/ui/AppIcon';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmtMoney(n: number | null | undefined) {
@@ -40,6 +42,8 @@ const CUR_MONTH = NOW.getMonth() + 1;
 // ─── Screen ───────────────────────────────────────────────────────────────────
 export function EmployeesScreen() {
   const { isDesktop, px, gap } = useBreakpoint();
+  const isEmbedded = useContext(HubContext);
+  const safeEdges  = isEmbedded ? ([] as any) : (['top'] as any);
   const { employees, loading, refetch } = useEmployees();
 
   const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null);
@@ -75,7 +79,7 @@ export function EmployeesScreen() {
   };
 
   return (
-    <SafeAreaView style={s.safe} edges={['top']}>
+    <SafeAreaView style={s.safe} edges={safeEdges}>
       {/* Header */}
       <View style={[s.header, { paddingHorizontal: px }]}>
         <View style={{ flex: 1 }}>
@@ -83,7 +87,7 @@ export function EmployeesScreen() {
           <Text style={s.subtitle}>Personel, maaş ve avans yönetimi</Text>
         </View>
         <TouchableOpacity style={s.addBtn} onPress={() => { setEditEmp(null); setFormOpen(true); }} activeOpacity={0.85}>
-          <MaterialCommunityIcons name={'account-plus' as any} size={16} color="#fff" />
+          <AppIcon name={'account-plus' as any} size={16} color="#fff" />
           <Text style={s.addBtnText}>Çalışan Ekle</Text>
         </TouchableOpacity>
       </View>
@@ -125,7 +129,7 @@ export function EmployeesScreen() {
             >
               {filtered.length === 0 ? (
                 <View style={s.empty}>
-                  <MaterialCommunityIcons name={'account-off-outline' as any} size={40} color="#CBD5E1" />
+                  <AppIcon name={'account-off-outline' as any} size={40} color="#CBD5E1" />
                   <Text style={s.emptyText}>Çalışan bulunamadı</Text>
                 </View>
               ) : filtered.map(emp => (
@@ -192,7 +196,7 @@ function KpiCard({ label, value, icon, color }: { label: string; value: string; 
   return (
     <View style={kpi.card}>
       <View style={[kpi.icon, { backgroundColor: color + '18' }]}>
-        <MaterialCommunityIcons name={icon as any} size={16} color={color} />
+        <AppIcon name={icon as any} size={16} color={color} />
       </View>
       <Text style={kpi.label}>{label}</Text>
       <Text style={[kpi.value, { color }]}>{value}</Text>
@@ -240,7 +244,7 @@ function EmployeeCard({ employee: emp, selected, onPress, onEdit, onDelete, onDe
           <Text style={ec.salary}>{fmtMoney(emp.base_salary)}<Text style={ec.salaryPer}>/ay</Text></Text>
           {pendAdv > 0 && (
             <View style={ec.advBadge}>
-              <MaterialCommunityIcons name={'currency-usd' as any} size={10} color="#B45309" />
+              <AppIcon name={'currency-usd' as any} size={10} color="#B45309" />
               <Text style={ec.advText}>{fmtMoney(pendAdv)} avans</Text>
             </View>
           )}
@@ -251,7 +255,7 @@ function EmployeeCard({ employee: emp, selected, onPress, onEdit, onDelete, onDe
       <View style={{ alignItems: 'flex-end', gap: 8 }}>
         <View style={[ec.payStatus,
           { backgroundColor: emp.current_month_paid ? '#ECFDF5' : '#FEF9C3' }]}>
-          <MaterialCommunityIcons
+          <AppIcon
             name={(emp.current_month_paid ? 'check-circle' : 'clock-outline') as any}
             size={12}
             color={emp.current_month_paid ? '#047857' : '#B45309'}
@@ -262,15 +266,15 @@ function EmployeeCard({ employee: emp, selected, onPress, onEdit, onDelete, onDe
         </View>
         <View style={{ flexDirection: 'row', gap: 4 }}>
           <TouchableOpacity style={ec.iconBtn} onPress={onEdit}>
-            <MaterialCommunityIcons name={'pencil-outline' as any} size={14} color="#64748B" />
+            <AppIcon name={'pencil-outline' as any} size={14} color="#64748B" />
           </TouchableOpacity>
           {emp.is_active && (
             <TouchableOpacity style={ec.iconBtn} onPress={onDeactivate}>
-              <MaterialCommunityIcons name={'account-off-outline' as any} size={14} color="#B45309" />
+              <AppIcon name={'account-off-outline' as any} size={14} color="#B45309" />
             </TouchableOpacity>
           )}
           <TouchableOpacity style={ec.iconBtn} onPress={onDelete}>
-            <MaterialCommunityIcons name={'trash-can-outline' as any} size={14} color="#EF4444" />
+            <AppIcon name={'trash-can-outline' as any} size={14} color="#EF4444" />
           </TouchableOpacity>
         </View>
       </View>
@@ -341,7 +345,7 @@ function EmployeeDetailPanel({ employee, isDesktop, px, onSalaryAdd, onAdvAdd, o
               <View style={dp.sectionHeader}>
                 <Text style={dp.sectionTitle}>Maaş Ödemeleri</Text>
                 <TouchableOpacity style={dp.sectionBtn} onPress={onSalaryAdd}>
-                  <MaterialCommunityIcons name={'plus' as any} size={13} color="#2563EB" />
+                  <AppIcon name={'plus' as any} size={13} color="#2563EB" />
                   <Text style={dp.sectionBtnText}>Ödeme Ekle</Text>
                 </TouchableOpacity>
               </View>
@@ -350,7 +354,7 @@ function EmployeeDetailPanel({ employee, isDesktop, px, onSalaryAdd, onAdvAdd, o
               ) : salaries.map(sal => (
                 <View key={sal.id} style={dp.row}>
                   <View style={dp.rowIcon}>
-                    <MaterialCommunityIcons name={'cash-check' as any} size={15} color="#047857" />
+                    <AppIcon name={'cash-check' as any} size={15} color="#047857" />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={dp.rowTitle}>
@@ -363,7 +367,7 @@ function EmployeeDetailPanel({ employee, isDesktop, px, onSalaryAdd, onAdvAdd, o
                   </View>
                   <Text style={dp.rowAmount}>{fmtMoney(sal.net_amount)}</Text>
                   <TouchableOpacity onPress={() => handleDelSalary(sal.id)} style={dp.delBtn}>
-                    <MaterialCommunityIcons name={'trash-can-outline' as any} size={14} color="#CBD5E1" />
+                    <AppIcon name={'trash-can-outline' as any} size={14} color="#CBD5E1" />
                   </TouchableOpacity>
                 </View>
               ))}
@@ -374,7 +378,7 @@ function EmployeeDetailPanel({ employee, isDesktop, px, onSalaryAdd, onAdvAdd, o
               <View style={dp.sectionHeader}>
                 <Text style={dp.sectionTitle}>Avanslar</Text>
                 <TouchableOpacity style={dp.sectionBtn} onPress={onAdvAdd}>
-                  <MaterialCommunityIcons name={'plus' as any} size={13} color="#B45309" />
+                  <AppIcon name={'plus' as any} size={13} color="#B45309" />
                   <Text style={[dp.sectionBtnText, { color: '#B45309' }]}>Avans Ver</Text>
                 </TouchableOpacity>
               </View>
@@ -383,7 +387,7 @@ function EmployeeDetailPanel({ employee, isDesktop, px, onSalaryAdd, onAdvAdd, o
               ) : advances.map(adv => (
                 <View key={adv.id} style={[dp.row, adv.is_deducted && dp.rowDeducted]}>
                   <View style={[dp.rowIcon, { backgroundColor: adv.is_deducted ? '#F1F5F9' : '#FEF3C7' }]}>
-                    <MaterialCommunityIcons
+                    <AppIcon
                       name={'currency-usd' as any} size={15}
                       color={adv.is_deducted ? '#94A3B8' : '#B45309'}
                     />
@@ -408,7 +412,7 @@ function EmployeeDetailPanel({ employee, isDesktop, px, onSalaryAdd, onAdvAdd, o
                     </TouchableOpacity>
                   )}
                   <TouchableOpacity onPress={() => handleDelAdv(adv.id)} style={dp.delBtn}>
-                    <MaterialCommunityIcons name={'trash-can-outline' as any} size={14} color="#CBD5E1" />
+                    <AppIcon name={'trash-can-outline' as any} size={14} color="#CBD5E1" />
                   </TouchableOpacity>
                 </View>
               ))}
@@ -484,7 +488,7 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
           <View style={fm.header}>
             <Text style={fm.title}>{employee ? 'Çalışanı Düzenle' : 'Yeni Çalışan'}</Text>
             <TouchableOpacity onPress={onClose} style={fm.closeBtn}>
-              <MaterialCommunityIcons name={'close' as any} size={18} color="#94A3B8" />
+              <AppIcon name={'close' as any} size={18} color="#94A3B8" />
             </TouchableOpacity>
           </View>
 
@@ -608,7 +612,7 @@ function SalaryModal({ visible, employee, onClose, onSaved }: {
               <Text style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>{employee.full_name}</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={fm.closeBtn}>
-              <MaterialCommunityIcons name={'close' as any} size={18} color="#94A3B8" />
+              <AppIcon name={'close' as any} size={18} color="#94A3B8" />
             </TouchableOpacity>
           </View>
 
@@ -657,7 +661,7 @@ function SalaryModal({ visible, employee, onClose, onSaved }: {
                 <TouchableOpacity key={m.v}
                   style={[fm.chip, method === m.v && fm.chipActive]}
                   onPress={() => setMethod(m.v)}>
-                  <MaterialCommunityIcons name={m.icon as any} size={13}
+                  <AppIcon name={m.icon as any} size={13}
                     color={method === m.v ? '#2563EB' : '#94A3B8'} />
                   <Text style={[fm.chipText, method === m.v && fm.chipTextActive]}>{m.l}</Text>
                 </TouchableOpacity>
@@ -723,7 +727,7 @@ function AdvanceModal({ visible, employee, onClose, onSaved }: {
               <Text style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>{employee.full_name}</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={fm.closeBtn}>
-              <MaterialCommunityIcons name={'close' as any} size={18} color="#94A3B8" />
+              <AppIcon name={'close' as any} size={18} color="#94A3B8" />
             </TouchableOpacity>
           </View>
           <View style={fm.body}>

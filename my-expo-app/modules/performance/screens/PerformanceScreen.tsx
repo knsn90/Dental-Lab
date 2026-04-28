@@ -3,13 +3,14 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   ActivityIndicator, Modal, TextInput, Switch, Alert,
 } from 'react-native';
-import Feather from '@expo/vector-icons/Feather';
 import { C } from '../../../core/theme/colors';
 import { F } from '../../../core/theme/typography';
 import { useIsDesktop } from '../../../core/layout/DesktopShell';
 import { useAuthStore } from '../../../core/store/authStore';
 import { toast } from '../../../core/ui/Toast';
 import { useEmployees } from '../../employees/hooks/useEmployees';
+import { AppIcon } from '../../../core/ui/AppIcon';
+
 import {
   fetchPerformanceList, fetchPerformance, calculatePerformance,
   calculateBonuses, fetchBonuses, lockPerformance, fetchRules,
@@ -68,11 +69,11 @@ export function PerformanceScreen({ accentColor = C.primary }: { accentColor?: s
         {/* Period selector */}
         <View style={s.periodBar}>
           <TouchableOpacity onPress={() => { setPeriod(p => shiftPeriod(p, -1)); setSelected(null); }} style={s.arrow}>
-            <Feather name="chevron-left" size={20} color={C.textSecondary} />
+            <AppIcon name="chevron-left" size={20} color={C.textSecondary} />
           </TouchableOpacity>
           <Text style={[s.periodLabel, { color: accentColor }]}>{fmtPeriod(period)}</Text>
           <TouchableOpacity onPress={() => { setPeriod(p => shiftPeriod(p, 1)); setSelected(null); }} style={s.arrow}>
-            <Feather name="chevron-right" size={20} color={C.textSecondary} />
+            <AppIcon name="chevron-right" size={20} color={C.textSecondary} />
           </TouchableOpacity>
         </View>
 
@@ -86,7 +87,7 @@ export function PerformanceScreen({ accentColor = C.primary }: { accentColor?: s
         {/* Rules button */}
         {canManage && (
           <TouchableOpacity style={[s.rulesBtn, { borderColor: accentColor }]} onPress={() => setRulesOpen(true)}>
-            <Feather name="sliders" size={14} color={accentColor} />
+            <AppIcon name="sliders" size={14} color={accentColor} />
             <Text style={[s.rulesBtnTxt, { color: accentColor }]}>Prim Kuralları</Text>
           </TouchableOpacity>
         )}
@@ -254,7 +255,7 @@ function DetailPanel({ employeeId, employeeName, employeeRole, period, accentCol
         </View>
         {perf?.is_locked && (
           <View style={dp.lockedBadge}>
-            <Feather name="lock" size={12} color={C.success} />
+            <AppIcon name="lock" size={12} color={C.success} />
             <Text style={dp.lockedTxt}>Onaylandı</Text>
           </View>
         )}
@@ -275,7 +276,7 @@ function DetailPanel({ employeeId, employeeName, employeeRole, period, accentCol
             </View>
             <View style={dp.scoreMid}>
               <View style={[dp.scoreLevelBadge, { backgroundColor: `${lvl!.color}18` }]}>
-                <Feather name={lvl!.icon as any} size={14} color={lvl!.color} />
+                <AppIcon name={lvl!.icon as any} size={14} color={lvl!.color} />
                 <Text style={[dp.scoreLevelTxt, { color: lvl!.color }]}>{lvl!.label}</Text>
               </View>
               {/* Score bar */}
@@ -346,7 +347,7 @@ function DetailPanel({ employeeId, employeeName, employeeRole, period, accentCol
           {perf.revenue_generated > 0 && (
             <View style={dp.section}>
               <View style={dp.revenueCard}>
-                <Feather name="trending-up" size={18} color={C.success} />
+                <AppIcon name="trending-up" size={18} color={C.success} />
                 <View style={{ flex: 1 }}>
                   <Text style={dp.revenueLabel}>Üretilen Ciro</Text>
                   <Text style={dp.revenueValue}>{fmtMoney(perf.revenue_generated)}</Text>
@@ -365,18 +366,18 @@ function DetailPanel({ employeeId, employeeName, employeeRole, period, accentCol
                     onPress={handleCalc}
                     disabled={calcLoading}
                   >
-                    <Feather name="refresh-cw" size={14} color={accentColor} />
+                    <AppIcon name="refresh-cw" size={14} color={accentColor} />
                     <Text style={[dp.btnTxt, { color: accentColor }]}>Yeniden Hesapla</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={[dp.btn, { backgroundColor: accentColor }]} onPress={handleLock}>
-                    <Feather name="lock" size={14} color="#FFF" />
+                    <AppIcon name="lock" size={14} color="#FFF" />
                     <Text style={[dp.btnTxt, { color: '#FFF' }]}>Onayla & Kilitle</Text>
                   </TouchableOpacity>
                 </>
               )}
               {perf.is_locked && (
                 <View style={dp.lockedInfo}>
-                  <Feather name="check-circle" size={16} color={C.success} />
+                  <AppIcon name="check-circle" size={16} color={C.success} />
                   <Text style={dp.lockedInfoTxt}>Bu dönem performansı onaylandı</Text>
                 </View>
               )}
@@ -385,13 +386,13 @@ function DetailPanel({ employeeId, employeeName, employeeRole, period, accentCol
         </>
       ) : (
         <View style={dp.noData}>
-          <Feather name="bar-chart-2" size={40} color={C.textMuted} />
+          <AppIcon name="bar-chart-2" size={40} color={C.textMuted} />
           <Text style={dp.noDataTxt}>Bu dönem için performans hesaplanmamış</Text>
           {canManage && (
             <TouchableOpacity style={[dp.calcBtn, { backgroundColor: accentColor }]} onPress={handleCalc} disabled={calcLoading}>
               {calcLoading
                 ? <ActivityIndicator size="small" color="#FFF" />
-                : <><Feather name="zap" size={16} color="#FFF" /><Text style={dp.calcBtnTxt}>Hesapla</Text></>
+                : <><AppIcon name="zap" size={16} color="#FFF" /><Text style={dp.calcBtnTxt}>Hesapla</Text></>
               }
             </TouchableOpacity>
           )}
@@ -462,7 +463,7 @@ function MetricCard({ label, value, sub, icon, color, rate }: {
   return (
     <View style={mc.card}>
       <View style={[mc.iconBox, { backgroundColor: `${color}12` }]}>
-        <Feather name={icon as any} size={16} color={color} />
+        <AppIcon name={icon as any} size={16} color={color} />
       </View>
       <Text style={[mc.value, { color }]}>{value}</Text>
       <Text style={mc.label}>{label}</Text>
@@ -526,12 +527,12 @@ function RulesModal({ accentColor, onClose }: { accentColor: string; onClose: ()
             <Text style={rm.sub}>Performans kriterlerini ve prim miktarlarını ayarlayın</Text>
           </View>
           <TouchableOpacity onPress={onClose} style={rm.closeBtn}>
-            <Feather name="x" size={20} color={C.textSecondary} />
+            <AppIcon name="x" size={20} color={C.textSecondary} />
           </TouchableOpacity>
         </View>
 
         <TouchableOpacity style={[rm.addBtn, { borderColor: accentColor }]} onPress={() => setAdd(true)}>
-          <Feather name="plus" size={14} color={accentColor} />
+          <AppIcon name="plus" size={14} color={accentColor} />
           <Text style={[rm.addBtnTxt, { color: accentColor }]}>Yeni Kural Ekle</Text>
         </TouchableOpacity>
 
@@ -540,7 +541,7 @@ function RulesModal({ accentColor, onClose }: { accentColor: string; onClose: ()
             <ActivityIndicator color={accentColor} style={{ marginTop: 40 }} />
           ) : rules.length === 0 ? (
             <View style={rm.empty}>
-              <Feather name="sliders" size={32} color={C.textMuted} />
+              <AppIcon name="sliders" size={32} color={C.textMuted} />
               <Text style={rm.emptyTxt}>Henüz prim kuralı tanımlanmamış</Text>
             </View>
           ) : rules.map(rule => {
@@ -549,7 +550,7 @@ function RulesModal({ accentColor, onClose }: { accentColor: string; onClose: ()
               <View key={rule.id} style={[rm.ruleCard, !rule.is_active && { opacity: 0.5 }]}>
                 <View style={rm.ruleTop}>
                   <View style={[rm.ruleIcon, { backgroundColor: `${accentColor}12` }]}>
-                    <Feather name={metCfg.icon as any} size={14} color={accentColor} />
+                    <AppIcon name={metCfg.icon as any} size={14} color={accentColor} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={rm.ruleName}>{rule.name}</Text>
@@ -573,11 +574,11 @@ function RulesModal({ accentColor, onClose }: { accentColor: string; onClose: ()
                 </View>
                 <View style={rm.ruleActions}>
                   <TouchableOpacity onPress={() => setEdit(rule)} style={rm.ruleActionBtn}>
-                    <Feather name="edit-2" size={13} color={accentColor} />
+                    <AppIcon name="edit-2" size={13} color={accentColor} />
                     <Text style={[rm.ruleActionTxt, { color: accentColor }]}>Düzenle</Text>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => handleDelete(rule)} style={rm.ruleActionBtn}>
-                    <Feather name="trash-2" size={13} color={C.danger} />
+                    <AppIcon name="trash-2" size={13} color={C.danger} />
                     <Text style={[rm.ruleActionTxt, { color: C.danger }]}>Sil</Text>
                   </TouchableOpacity>
                 </View>
@@ -661,7 +662,7 @@ function RuleFormModal({ rule, accentColor, onClose, onSaved }: {
       <View style={rf.root}>
         <View style={rf.header}>
           <Text style={rf.title}>{rule ? 'Kuralı Düzenle' : 'Yeni Prim Kuralı'}</Text>
-          <TouchableOpacity onPress={onClose}><Feather name="x" size={20} color={C.textSecondary} /></TouchableOpacity>
+          <TouchableOpacity onPress={onClose}><AppIcon name="x" size={20} color={C.textSecondary} /></TouchableOpacity>
         </View>
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, gap: 18 }}>
           <FieldGroup label="Kural Adı">
@@ -671,7 +672,7 @@ function RuleFormModal({ rule, accentColor, onClose, onSaved }: {
             <View style={rf.optionGrid}>
               {metrics.map(m => (
                 <TouchableOpacity key={m} style={[rf.option, metric === m && { backgroundColor: accentColor, borderColor: accentColor }]} onPress={() => setMetric(m)}>
-                  <Feather name={METRIC_LABELS[m].icon as any} size={12} color={metric === m ? '#FFF' : C.textSecondary} />
+                  <AppIcon name={METRIC_LABELS[m].icon as any} size={12} color={metric === m ? '#FFF' : C.textSecondary} />
                   <Text style={[rf.optionTxt, metric === m && { color: '#FFF' }]}>{METRIC_LABELS[m].label}</Text>
                 </TouchableOpacity>
               ))}
@@ -744,7 +745,7 @@ const rf = StyleSheet.create({
 function EmptyState({ accentColor }: { accentColor: string }) {
   return (
     <View style={es.root}>
-      <Feather name="bar-chart-2" size={48} color={C.textMuted} />
+      <AppIcon name="bar-chart-2" size={48} color={C.textMuted} />
       <Text style={es.title}>Çalışan Seçin</Text>
       <Text style={es.sub}>Sol panelden bir çalışan seçerek performansını görüntüleyin</Text>
     </View>

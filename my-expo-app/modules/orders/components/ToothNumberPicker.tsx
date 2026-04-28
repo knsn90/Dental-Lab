@@ -1,6 +1,46 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Platform, View, Text, useWindowDimensions } from 'react-native';
-import Svg, { G, Path, Text as SvgText, Rect } from 'react-native-svg';
+import Svg, { G, Path, Text as SvgText, Rect, Circle } from 'react-native-svg';
+
+// Web tarafında "tooth-active-pulse" keyframes — bir kez document.head'e enjekte
+function injectToothPulseKeyframes() {
+  if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+  const id = 'tooth-active-pulse-keyframes';
+  if (document.getElementById(id)) return;
+  const style = document.createElement('style');
+  style.id = id;
+  style.textContent = `
+    @keyframes tooth-active-pulse {
+      0%, 100% { transform: scale(1);    opacity: 0.40; }
+      50%      { transform: scale(1.18); opacity: 0.10; }
+    }
+    .tooth-active-halo {
+      animation: tooth-active-pulse 2s ease-in-out infinite;
+      transform-box: fill-box;
+      transform-origin: center;
+      will-change: transform, opacity;
+    }
+    @keyframes tooth-selected-working {
+      0%, 100% { opacity: 0.00; transform: scale(1.00); }
+      50%      { opacity: 0.55; transform: scale(1.08); }
+    }
+    .tooth-selected-halo {
+      animation: tooth-selected-working 2.4s ease-in-out infinite;
+      transform-box: fill-box;
+      transform-origin: center;
+      will-change: transform, opacity;
+    }
+    @keyframes tooth-selected-breathe {
+      0%, 100% { opacity: 1.00; }
+      50%      { opacity: 0.85; }
+    }
+    .tooth-selected-breathe {
+      animation: tooth-selected-breathe 2.4s ease-in-out infinite;
+      will-change: opacity;
+    }
+  `;
+  document.head.appendChild(style);
+}
 import { C } from '../../../core/theme/colors';
 import { F } from '../../../core/theme/typography';
 import { TOOTH_PATHS, TOOTH_LABEL_POS } from '../assets/toothPaths';
@@ -19,11 +59,11 @@ const VB_X = -320;
 const VB_W = 3720;
 
 // Full chart  Y: 200 → 4580
-const FULL_VB  = { y: 200,  h: 4380 }; // both jaws
-// Upper jaw   Y: 200 → 2420  (teeth 11-28 max-Y≈2145 + padding)
-const UPPER_VB = { y: 200,  h: 2320 };
-// Lower jaw   Y: 2460 → 4580 (teeth 31-48 min-Y≈2725 − padding)
-const LOWER_VB = { y: 2460, h: 2120 };
+// ViewBox'lar dişleri sıkı çevreler — etrafta görünmez boşluk yok.
+// Çene etiketleri için tutarlı dar padding (≈80 unit)
+const FULL_VB  = { y: 200,  h: 4200 };   // 200 → 4400, kırpık padding
+const UPPER_VB = { y: 200,  h: 2080 };   // 200 → 2280: teeth max-Y≈2145 + ÜST ÇENE label
+const LOWER_VB = { y: 2400, h: 2000 };   // 2400 → 4400: ALT ÇENE label + teeth
 
 // ── Props ────────────────────────────────────────────────────────────
 interface Props {
@@ -68,6 +108,9 @@ export function ToothNumberPicker({
   const PRIMARY = accentColor ?? C.primary;
   const { width: screenWidth } = useWindowDimensions();
 
+  // Web: keyframes (active + selected pulse) bir kez document.head'e enjekte et
+  useEffect(() => { injectToothPulseKeyframes(); }, []);
+
   const dW = containerWidth
     ? Math.max(Math.round((containerWidth - 16) * 0.96), 160)
     : Math.min(Math.max(screenWidth - 80, 160), 340);
@@ -81,20 +124,68 @@ export function ToothNumberPicker({
       ? hasUpper ? 'upper' : 'lower'
       : 'both';
 
+  // ── Yatay tightening: sadece bir kadran seçiliyse boş tarafı kırp ──
+  // SVG GÖRSEL düzeni (hasta karşımızdaymış gibi):
+  //   Q1 (11-18, hasta sağ) → VIEWER SOL  ← x küçük
+  //   Q2 (21-28, hasta sol) → VIEWER SAĞ  ← x büyük
+  //   Q3 (31-38, hasta sol) → VIEWER SAĞ
+  //   Q4 (41-48, hasta sağ) → VIEWER SOL
+  const hasQ1 = selected.some(t => t >= 11 && t <= 18);
+  const hasQ2 = selected.some(t => t >= 21 && t <= 28);
+  const hasQ3 = selected.some(t => t >= 31 && t <= 38);
+  const hasQ4 = selected.some(t => t >= 41 && t <= 48);
+
+  // SOL tarafa kırp = Q1 (upper) veya Q4 (lower) seçili
+  // SAĞ tarafa kırp = Q2 (upper) veya Q3 (lower) seçili
+  const onlyLeft =
+    hideEmptyJaw && (
+      (jawMode === 'upper' && hasQ1 && !hasQ2) ||
+      (jawMode === 'lower' && hasQ4 && !hasQ3)
+    );
+  const onlyRight =
+    hideEmptyJaw && (
+      (jawMode === 'upper' && !hasQ1 && hasQ2) ||
+      (jawMode === 'lower' && !hasQ4 && hasQ3)
+    );
+
   const activeVB = jawMode === 'upper' ? UPPER_VB
                  : jawMode === 'lower' ? LOWER_VB
                  : FULL_VB;
 
-  const viewBox = `${VB_X} ${activeVB.y} ${VB_W} ${activeVB.h}`;
-  const dH = Math.round(dW * (activeVB.h / VB_W));
+  // Çeyrek çene viewBox — tek kadranda seçim varsa orta hattan (11/21 veya 31/41) kes
+  // VB_X=-320, VB_W=3720 → merkez x=1540, sağ uç=3400, sol uç=-320
+  // Sol çeyrek (Q1/Q4):  -320 → 1540, width = 1860
+  // Sağ çeyrek (Q2/Q3):  1540 → 3400, width = 1860
+  const CENTER_X       = -320 + 3720 / 2;            // 1540
+  const QUARTER_WIDTH  = 3720 / 2;                   // 1860
+
+  // Çeyrek modda viewBox margin yok — label diş şemasının İÇİNDE durur
+  const isQuarter = onlyLeft || onlyRight;
+
+  const vbX = onlyRight ? CENTER_X : VB_X;
+  const vbW = isQuarter ? QUARTER_WIDTH : VB_W;
+
+  // Label POSITION — U-arch INTERIOR (iç kenara yakın, dişlerin iç oyuğunda)
+  //   Q1 (onlyLeft, upper):  iç kenar = SAĞ taraf (midline yakın), interior y=middle
+  //   Q2 (onlyRight, upper): iç kenar = SOL taraf (midline yakın), interior y=middle
+  //   Q3/Q4 (lower): aynı mantık
+  const LABEL_INSET_FROM_INNER = 180;
+  const quarterLabelX =
+    onlyLeft  ? vbX + vbW - LABEL_INSET_FROM_INNER :   // Q1/Q4: SAĞ iç kenar
+    onlyRight ? vbX + LABEL_INSET_FROM_INNER :         // Q2/Q3: SOL iç kenar
+    0;
+  const quarterLabelY = activeVB.y + activeVB.h * 0.55;  // U-arch ortası (interior)
+
+  const viewBox = `${vbX} ${activeVB.y} ${vbW} ${activeVB.h}`;
+  const dH = Math.round(dW * (activeVB.h / vbW));
 
   // Web-only hover state
   const [hoverTooth, setHoverTooth] = useState<number | null>(null);
 
-  // Scale factors
-  const svgPx     = VB_W / dW;
-  const SW_MAIN   = svgPx * 2;
-  const SW_DETAIL = svgPx * 1.3;
+  // Scale factors — aktif viewBox genişliği kullan (kırpma uygulanmışsa daha küçük)
+  const svgPx     = vbW / dW;
+  const SW_MAIN   = svgPx * 1.1;     // ana hat — incelendi (2 → 1.1)
+  const SW_DETAIL = svgPx * 0.7;     // detay (oluk vs.) — incelendi (1.3 → 0.7)
   const FONT_SZ   = svgPx * 10.5;
   const FONT_OUT  = svgPx * 2;
 
@@ -133,7 +224,7 @@ export function ToothNumberPicker({
     const isHovered  = fdi === hoverTooth;
     const confirmedColor = colorMap?.[fdi]; // color assigned when tooth is confirmed
 
-    // Fill: confirmed=assigned color, selected=primary, active=light, hovered=very light, default=white
+    // Fill: confirmed=assigned color, selected=primary, active=light, hovered=very light, default=TRANSPARENT
     const fillColor = confirmedColor
       ? confirmedColor
       : isSelected
@@ -142,16 +233,16 @@ export function ToothNumberPicker({
       ? '#F1F5F9'
       : isHovered
       ? '#F1F5F9'
-      : '#FFFFFF';
+      : 'transparent';                          // seçili olmayan: transparan
 
-    // Stroke: confirmed=assigned color (lighter if also active), selected/active=primary, default=gray
+    // Stroke: confirmed/selected/active = canlı renk, default = SOLUK gri (transparan hissi)
     const strokeColor = confirmedColor
       ? confirmedColor
       : isSelected || isActive
       ? PRIMARY
       : isHovered
       ? '#93C5FD'
-      : '#94A3B8';
+      : 'rgba(148,163,184,0.35)';                // slate-400 alpha 35% — soluk
 
     const strokeWidth = isActive && !isSelected && !confirmedColor ? SW_MAIN * 2.2 : SW_MAIN;
 
@@ -159,19 +250,33 @@ export function ToothNumberPicker({
       ? 'rgba(255,255,255,0.38)'
       : isActive
       ? 'rgba(15,23,42,0.12)'
-      : '#94A3B8';
+      : 'rgba(148,163,184,0.35)';                // detay çizgileri de soluk
 
-    const textColor = (confirmedColor || isSelected) ? '#FFFFFF' : isActive ? '#0F172A' : '#475569';
-    const haloColor = confirmedColor ?? (isSelected ? PRIMARY : isActive ? '#F1F5F9' : '#FFFFFF');
+    const textColor = (confirmedColor || isSelected)
+      ? '#FFFFFF'
+      : isActive
+      ? '#0F172A'
+      : 'rgba(71,85,105,0.45)';                  // numaraları da soluk
 
-    const gProps: any = {
-      onPress: () => handlePress(fdi),
-    };
+    const haloColor = confirmedColor ?? (isSelected ? PRIMARY : isActive ? '#F1F5F9' : 'transparent');
 
-    // Web-only hover handlers
-    if (Platform.OS === 'web') {
+    // Sadece SEÇİLİ dişler tıklanabilir (popup için).
+    // onToothPress yoksa (seçim modu): hepsi tıklanabilir.
+    const isInteractive = onToothPress ? isSelected : true;
+
+    const gProps: any = isInteractive
+      ? { onPress: () => handlePress(fdi) }
+      : { pointerEvents: 'none' };       // tıklamayı/hover'ı engelle
+
+    // Web-only hover handlers — sadece interactive dişlerde
+    if (Platform.OS === 'web' && isInteractive) {
       gProps.onMouseEnter = () => handleHoverEnter(fdi);
       gProps.onMouseLeave = handleHoverLeave;
+      // @ts-ignore — RN-Web cursor passthrough
+      gProps.style = { cursor: 'pointer' };
+    } else if (Platform.OS === 'web' && !isInteractive) {
+      // @ts-ignore
+      gProps.style = { cursor: 'default' };
     }
 
     return (
@@ -189,8 +294,25 @@ export function ToothNumberPicker({
           />
         )}
 
+        {/* "Üzerinde çalışılıyor" — seçili dişler için yumuşak pulse halo (web) */}
+        {Platform.OS === 'web' && (isSelected || !!confirmedColor) && (
+          <Path
+            // @ts-ignore — RN-Web SVG className passthrough
+            className="tooth-selected-halo"
+            d={paths[0]}
+            fill="none"
+            stroke={confirmedColor ?? PRIMARY}
+            strokeWidth={SW_MAIN * 4}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            opacity={0}
+          />
+        )}
+
         {/* Tooth outline */}
         <Path
+          // @ts-ignore — seçili dişlerde fill nefes alır gibi (web only)
+          className={Platform.OS === 'web' && (isSelected || !!confirmedColor) ? 'tooth-selected-breathe' : undefined}
           d={paths[0]}
           fill={fillColor}
           stroke={strokeColor}
@@ -212,10 +334,11 @@ export function ToothNumberPicker({
           />
         ))}
 
-        {/* Number label — halo + fill */}
+        {/* Number label — halo + fill (Outfit fontu) */}
         <SvgText
           x={cx} y={cy}
           fontSize={FONT_SZ} fontWeight="700"
+          fontFamily={F.bold}
           fill={haloColor} stroke={haloColor}
           strokeWidth={FONT_OUT} strokeLinejoin="round"
           textAnchor="middle"
@@ -227,6 +350,7 @@ export function ToothNumberPicker({
         <SvgText
           x={cx} y={cy}
           fontSize={FONT_SZ} fontWeight="700"
+          fontFamily={F.bold}
           fill={textColor}
           textAnchor="middle"
           // @ts-ignore
@@ -280,6 +404,7 @@ export function ToothNumberPicker({
         <SvgText
           x={cx} y={ty + TH / 2}
           fontSize={FS} fontWeight="600"
+          fontFamily={F.semibold}
           fill="#FFFFFF"
           textAnchor="middle"
           // @ts-ignore
@@ -291,6 +416,11 @@ export function ToothNumberPicker({
     );
   };
 
+  // Çene label pozisyonları (viewBox koordinatlarında, x merkezde)
+  const JAW_LABEL_CX = vbX + vbW / 2;              // aktif viewBox merkezi (kırpılmış olabilir)
+  const JAW_LABEL_FS = 140;                         // viewBox-relative font size
+  const JAW_LABEL_FILL = 'rgba(148,163,184,0.55)';  // slate-400 alpha
+
   return (
     <View style={{ alignItems: 'center' }}>
       <Svg width={dW} height={dH} viewBox={viewBox}>
@@ -298,25 +428,67 @@ export function ToothNumberPicker({
         {jawMode !== 'lower' && [...Q1, ...Q2].map(renderTooth)}
         {/* Alt çene: jawMode upper değilse göster */}
         {jawMode !== 'upper' && [...Q4, ...Q3].map(renderTooth)}
+
+        {/* ── Çene etiketleri — full modda yatay (orta), çeyrek modda dikey (dış kenar) ── */}
+        {jawMode !== 'lower' && !isQuarter && (
+          <SvgText
+            x={JAW_LABEL_CX}
+            y={2120}
+            fontSize={JAW_LABEL_FS}
+            fontWeight="700"
+            fontFamily={F.bold}
+            fill={JAW_LABEL_FILL}
+            textAnchor="middle"
+            // @ts-ignore
+            dominantBaseline="central"
+            // @ts-ignore
+            pointerEvents="none"
+          >
+            ÜST ÇENE
+          </SvgText>
+        )}
+        {jawMode !== 'upper' && !isQuarter && (
+          <SvgText
+            x={JAW_LABEL_CX}
+            y={2460}
+            fontSize={JAW_LABEL_FS}
+            fontWeight="700"
+            fontFamily={F.bold}
+            fill={JAW_LABEL_FILL}
+            textAnchor="middle"
+            // @ts-ignore
+            dominantBaseline="central"
+            // @ts-ignore
+            pointerEvents="none"
+          >
+            ALT ÇENE
+          </SvgText>
+        )}
+
+        {/* Çeyrek mod: dış kenarda dikey küçük etiket (dişlere binmez) */}
+        {isQuarter && (
+          <SvgText
+            x={quarterLabelX}
+            y={quarterLabelY}
+            fontSize={90}
+            fontWeight="700"
+            fontFamily={F.bold}
+            fill={JAW_LABEL_FILL}
+            textAnchor="middle"
+            // @ts-ignore
+            dominantBaseline="central"
+            // @ts-ignore
+            pointerEvents="none"
+            transform={`rotate(${onlyLeft ? -90 : 90}, ${quarterLabelX}, ${quarterLabelY})`}
+          >
+            {jawMode === 'upper' ? 'ÜST ÇENE' : 'ALT ÇENE'}
+          </SvgText>
+        )}
+
         {renderHoverTooltip()}
       </Svg>
 
-      {/* Selection summary strip */}
-      {selected.length > 0 && (
-        <View style={{
-          flexDirection: 'row', flexWrap: 'wrap',
-          marginTop: 8, padding: 8,
-          backgroundColor: '#F1F5F9',
-          borderRadius: 10, alignSelf: 'stretch',
-        }}>
-          <Text style={{ fontSize: 11, color: '#64748B', fontFamily: F.medium }}>
-            Seçili:{' '}
-          </Text>
-          <Text style={{ fontSize: 11, color: PRIMARY, fontFamily: F.semibold, flex: 1 }}>
-            {[...selected].sort((a, b) => a - b).join(', ')}
-          </Text>
-        </View>
-      )}
+      {/* "Seçili: ..." özet satırı kaldırıldı */}
     </View>
   );
 }

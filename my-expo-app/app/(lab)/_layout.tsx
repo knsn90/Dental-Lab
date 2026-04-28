@@ -150,9 +150,9 @@ export default function LabLayout() {
         <Tabs.Screen name="approvals" options={{ title: 'Onaylar' }} />
         <Tabs.Screen name="profile" options={{ title: 'Profil' }} />
         <Tabs.Screen name="settings" options={{ title: 'Ayarlar', tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="order/[id]" options={{ tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="order/route/[id]" options={{ tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="order/occlusion/[id]" options={{ tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="order/[id]" options={{ title: 'İş Emri', tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="order/route/[id]" options={{ title: 'Rota', tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="order/occlusion/[id]" options={{ title: 'Oklüzyon', tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="invoice/[id]" options={{ tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="occlusion-test" options={{ tabBarStyle: { display: 'none' } }} />
       </Tabs>

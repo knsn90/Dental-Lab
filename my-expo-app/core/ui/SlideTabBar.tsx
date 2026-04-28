@@ -97,8 +97,8 @@ export function SlideTabBar<K extends string>({
 
       {/* Tab pill'leri */}
       {items.map((item) => {
-        // Yalnızca hover edilen (cursor'un geçici olarak kaydığı) tab beyaz.
-        // Aktif tab dahil diğerleri gri — ayrım cursor'un kendisiyle sağlanır.
+        // Aktif tab ve hover edilen tab beyaz metin gösterir; diğerleri gri.
+        const isActive  = item.key === activeKey;
         const isHovered = item.key === hoveredKey;
         return (
           <Pressable
@@ -113,7 +113,7 @@ export function SlideTabBar<K extends string>({
             <Text
               style={[
                 styles.pillText,
-                { color: isHovered ? '#FFFFFF' : '#64748B' },
+                { color: (isActive || isHovered) ? '#FFFFFF' : '#64748B' },
               ]}
             >
               {item.label}

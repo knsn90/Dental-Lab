@@ -4,7 +4,7 @@
  * Kullanıcı rolüne göre doğru panele yönlendirir.
  */
 import { useEffect } from 'react';
-import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuthStore } from '../../core/store/authStore';
 
@@ -25,6 +25,7 @@ export default function OrderRedirect() {
     if (!profile) return;
 
     // Role göre doğru panele yönlendir
+    // Tüm roller aynı OrderDetailScreen'e gider, tema role'e göre değişir.
     switch (profile.user_type) {
       case 'lab':
         router.replace(`/(lab)/order/${id}` as any);
@@ -33,7 +34,10 @@ export default function OrderRedirect() {
         router.replace(`/(doctor)/order/${id}` as any);
         break;
       case 'admin':
-        router.replace(`/admin/orders/${id}` as any);
+        router.replace(`/(admin)/order/${id}` as any);
+        break;
+      case 'clinic_admin':
+        router.replace(`/(clinic)/order/${id}` as any);
         break;
       default:
         router.replace('/' as any);
@@ -50,5 +54,5 @@ export default function OrderRedirect() {
 
 const s = StyleSheet.create({
   container: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8FAFC', gap: 12 },
-  text:      { fontSize: 14, color: '#64748B', fontFamily: 'ZillaSlab_400Regular' },
+  text:      { fontSize: 14, color: '#64748B', fontFamily: Platform.OS === 'web' ? "'Outfit', system-ui, sans-serif" : 'Outfit_400Regular' },
 });

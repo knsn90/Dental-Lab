@@ -4,9 +4,10 @@
 
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { OcclusionStatistics, PenetrationPoint, Severity } from '../types/occlusion';
 import { clinicalSummary } from '../utils/penetrationDetector';
+
+import { AppIcon } from '../../../core/ui/AppIcon';
 
 interface Props {
   stats:          OcclusionStatistics | null;
@@ -41,7 +42,7 @@ export function OcclusionReport({
             <Text style={s.summaryMobileTitle}>Özet</Text>
             <View style={s.toggle}>
               <Text style={s.toggleText}>{expanded ? 'Gizle' : 'Detay'}</Text>
-              <MaterialCommunityIcons
+              <AppIcon
                 name={expanded ? 'chevron-down' : 'chevron-up'}
                 size={14} color="#64748B"
               />
@@ -80,7 +81,7 @@ export function OcclusionReport({
           <Stat label="Toplam Pen. Alanı" value={stats.totalPenetrationArea.toFixed(1)} unit="mm²" />
           <View style={s.toggle}>
             <Text style={s.toggleText}>{expanded ? 'Gizle' : 'Detay'}</Text>
-            <MaterialCommunityIcons
+            <AppIcon
               name={expanded ? 'chevron-down' : 'chevron-up'}
               size={14} color="#64748B"
             />
@@ -126,13 +127,13 @@ export function OcclusionReport({
             <View style={s.actionRow}>
               {onExportPDF && (
                 <TouchableOpacity style={s.btnGhost} onPress={onExportPDF} activeOpacity={0.85}>
-                  <MaterialCommunityIcons name="download" size={14} color="#0F172A" />
+                  <AppIcon name="download" size={14} color="#0F172A" />
                   <Text style={s.btnGhostText}>PDF</Text>
                 </TouchableOpacity>
               )}
               {onSaveToOrder && (
                 <TouchableOpacity style={s.btnPrimary} onPress={onSaveToOrder} activeOpacity={0.85}>
-                  <MaterialCommunityIcons name="link-variant" size={14} color="#FFFFFF" />
+                  <AppIcon name="link-variant" size={14} color="#FFFFFF" />
                   <Text style={s.btnPrimaryText}>İş Emrine Ekle</Text>
                 </TouchableOpacity>
               )}

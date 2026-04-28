@@ -15,8 +15,6 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Feather from '@expo/vector-icons/Feather';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { AppSwitch } from '../../core/ui/AppSwitch';
 import { SlideTabBar } from '../../core/ui/SlideTabBar';
 import { IconBtn } from '../../core/ui/IconBtn';
@@ -25,6 +23,8 @@ const K   = '#0F172A';
 const ERR = '#FF3B30';
 const BG  = '#F7F9FB';
 import { Profile } from '../../lib/types';
+
+import { AppIcon } from '../../core/ui/AppIcon';
 
 type FilterType = 'all' | 'admin' | 'lab' | 'doctor';
 type StatusFilter = 'all' | 'active' | 'inactive';
@@ -210,21 +210,21 @@ export default function AdminUsersScreen() {
           <View style={{ flex: 1 }} />
 
           <IconBtn active={searchExpanded || search.length > 0} onPress={() => setSearchExpanded(!searchExpanded)}>
-            <Feather name="search" size={20} color={(searchExpanded || search.length > 0) ? K : '#64748B'} />
+            <AppIcon name="search" size={20} color={(searchExpanded || search.length > 0) ? K : '#64748B'} />
           </IconBtn>
           <TouchableOpacity
             style={[styles.headerBtn, activeFilterCount > 0 && styles.headerBtnActive]}
             onPress={() => { setDraftStatus(statusFilter); setShowFilter(true); }}
             activeOpacity={0.75}
           >
-            <MaterialCommunityIcons name={'tune-variant' as any} size={16} color={K} />
+            <AppIcon name={'tune-variant' as any} size={16} color={K} />
             <Text style={styles.headerBtnText}>Filtrele</Text>
             {activeFilterCount > 0 && (
               <View style={styles.headerBtnBadge}><Text style={styles.headerBtnBadgeText}>{activeFilterCount}</Text></View>
             )}
           </TouchableOpacity>
           <TouchableOpacity style={styles.addBtn} onPress={() => setShowAddModal(true)} activeOpacity={0.85}>
-            <Feather name="user-plus" size={15} color="#FFFFFF" />
+            <AppIcon name="user-plus" size={15} color="#FFFFFF" />
             <Text style={styles.addBtnText}>Yeni Kullanıcı</Text>
           </TouchableOpacity>
         </View>
@@ -232,7 +232,7 @@ export default function AdminUsersScreen() {
         {(searchExpanded || search.length > 0) && (
           <View style={styles.searchRow}>
             <View style={[styles.searchWrap, searchFocused && styles.searchWrapFocused]}>
-              <Feather name="search" size={16} color={searchFocused ? K : '#AEAEB2'} />
+              <AppIcon name="search" size={16} color={searchFocused ? K : '#AEAEB2'} />
               <TextInput
                 style={styles.searchInput}
                 value={search}
@@ -246,7 +246,7 @@ export default function AdminUsersScreen() {
               />
               {search.length > 0 && (
                 <TouchableOpacity onPress={() => { setSearch(''); setSearchExpanded(false); }}>
-                  <Feather name="x-circle" size={15} color="#AEAEB2" />
+                  <AppIcon name="x-circle" size={15} color="#AEAEB2" />
                 </TouchableOpacity>
               )}
             </View>
@@ -261,7 +261,7 @@ export default function AdminUsersScreen() {
               <ActivityIndicator size="large" color={K} style={{ marginTop: 60 }} />
             ) : filtered.length === 0 ? (
               <View style={styles.empty}>
-                <MaterialCommunityIcons name="account-off-outline" size={40} color="#AEAEB2" />
+                <AppIcon name="account-off-outline" size={40} color="#AEAEB2" />
                 <Text style={styles.emptyTitle}>{q ? 'Sonuç bulunamadı' : 'Kullanıcı bulunamadı'}</Text>
                 {q && <Text style={styles.emptySub}>"{q}" ile eşleşen kullanıcı yok</Text>}
               </View>
@@ -311,10 +311,10 @@ export default function AdminUsersScreen() {
                         </View>
                         <View style={styles.actionCluster}>
                           <TouchableOpacity style={styles.actionBtn} onPress={() => setEditingProfile(profile)} activeOpacity={0.7}>
-                            <Feather name="edit-2" size={14} color="#64748B" />
+                            <AppIcon name="edit-2" size={14} color="#64748B" />
                           </TouchableOpacity>
                           <TouchableOpacity style={styles.actionBtn} onPress={() => handleDeleteUser(profile)} activeOpacity={0.7}>
-                            <Feather name="trash-2" size={14} color={ERR} />
+                            <AppIcon name="trash-2" size={14} color={ERR} />
                           </TouchableOpacity>
                         </View>
                       </View>
@@ -349,7 +349,7 @@ export default function AdminUsersScreen() {
           <View style={fp.panel} onStartShouldSetResponder={() => true}>
             <View style={fp.header}>
               <View style={fp.headerLeft}>
-                <MaterialCommunityIcons name={'tune-variant' as any} size={16} color={K} />
+                <AppIcon name={'tune-variant' as any} size={16} color={K} />
                 <Text style={fp.headerTitle}>Filtrele</Text>
                 {activeFilterCount > 0 && (
                   <View style={fp.countBadge}>
@@ -423,7 +423,7 @@ function DetailPanel({
   return (
     <View style={dp.card}>
       <TouchableOpacity style={dp.closeBtn} onPress={onClose} activeOpacity={0.7} hitSlop={10}>
-        <Feather name="x" size={14} color="#64748B" />
+        <AppIcon name="x" size={14} color="#64748B" />
       </TouchableOpacity>
 
       <View style={dp.hero}>
@@ -462,7 +462,7 @@ function DetailPanel({
                   <Text style={dp.orderNo}>{o.order_number}</Text>
                   <Text style={dp.orderItem} numberOfLines={1}>{o.item}</Text>
                 </View>
-                <Feather name="chevron-right" size={14} color="#CBD5E1" />
+                <AppIcon name="chevron-right" size={14} color="#CBD5E1" />
               </View>
             ))}
           </View>
@@ -478,7 +478,7 @@ function MetricCell({ label, value, icon, tint, accent }: {
   return (
     <View style={dp.metric}>
       <View style={dp.metricIconWrap}>
-        <MaterialCommunityIcons name={icon as any} size={64} color={tint} style={{ opacity: 0.1 }} />
+        <AppIcon name={icon as any} size={64} color={tint} style={{ opacity: 0.1 }} />
       </View>
       <Text style={dp.metricLabel}>{label}</Text>
       <Text style={[dp.metricValue, accent && { color: tint }]}>{value}</Text>
@@ -590,7 +590,7 @@ function EditUserModal({
               )}
             </View>
             <TouchableOpacity onPress={onClose} style={m.closeBtn}>
-              <Feather name="x" size={16} color={K} />
+              <AppIcon name="x" size={16} color={K} />
             </TouchableOpacity>
           </View>
 
@@ -628,7 +628,7 @@ function EditUserModal({
                         style={[m.roleCard, active && m.roleCardActive]}
                         onPress={() => setRole(r)}
                       >
-                        <MaterialCommunityIcons name={icon as any} size={20} color={active ? '#FFF' : '#374151'} />
+                        <AppIcon name={icon as any} size={20} color={active ? '#FFF' : '#374151'} />
                         <Text style={[m.roleLabel, active && m.roleLabelActive]}>{label}</Text>
                       </TouchableOpacity>
                     );
@@ -655,7 +655,7 @@ function EditUserModal({
                 secureTextEntry={!showPass}
               />
               <TouchableOpacity style={m.eyeBtn} onPress={() => setShowPass(v => !v)}>
-                <MaterialCommunityIcons
+                <AppIcon
                   name={showPass ? 'eye-off-outline' : 'eye-outline'}
                   size={18} color={'#AEAEB2'}
                 />
@@ -679,14 +679,14 @@ function EditUserModal({
 
             {error ? (
               <View style={m.errorBox}>
-                <MaterialCommunityIcons name="alert-circle-outline" size={14} color={ERR} />
+                <AppIcon name="alert-circle-outline" size={14} color={ERR} />
                 <Text style={m.errorText}>{error}</Text>
               </View>
             ) : null}
 
             {successMsg ? (
               <View style={m.successBox}>
-                <MaterialCommunityIcons name="check-circle-outline" size={14} color="#16A34A" />
+                <AppIcon name="check-circle-outline" size={14} color="#16A34A" />
                 <Text style={m.successText}>{successMsg}</Text>
               </View>
             ) : null}
@@ -706,7 +706,7 @@ function EditUserModal({
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
                 <>
-                  <MaterialCommunityIcons name="content-save-outline" size={16} color="#FFFFFF" />
+                  <AppIcon name="content-save-outline" size={16} color="#FFFFFF" />
                   <Text style={m.saveText}>Kaydet</Text>
                 </>
               )}
@@ -780,7 +780,7 @@ function AddUserModal({
           <View style={m.header}>
             <Text style={m.title}>Yeni Kullanıcı</Text>
             <TouchableOpacity onPress={handleClose}>
-              <MaterialCommunityIcons name="close" size={22} color={'#6C6C70'} />
+              <AppIcon name="close" size={22} color={'#6C6C70'} />
             </TouchableOpacity>
           </View>
 
@@ -795,7 +795,7 @@ function AddUserModal({
                     style={[m.roleCard, active && m.roleCardActive]}
                     onPress={() => setSelectedRole(opt.key)}
                   >
-                    <MaterialCommunityIcons name={opt.icon as any} size={20} color={active ? '#FFFFFF' : '#374151'} />
+                    <AppIcon name={opt.icon as any} size={20} color={active ? '#FFFFFF' : '#374151'} />
                     <Text style={[m.roleLabel, active && m.roleLabelActive]}>{opt.label}</Text>
                     <Text style={[m.roleSub, active && m.roleSubActive]}>{opt.sub}</Text>
                   </TouchableOpacity>
@@ -821,7 +821,7 @@ function AddUserModal({
 
             {error ? (
               <View style={m.errorBox}>
-                <MaterialCommunityIcons name="alert-circle-outline" size={14} color={ERR} />
+                <AppIcon name="alert-circle-outline" size={14} color={ERR} />
                 <Text style={m.errorText}>{error}</Text>
               </View>
             ) : null}
@@ -840,7 +840,7 @@ function AddUserModal({
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
                 <>
-                  <MaterialCommunityIcons name="check" size={16} color="#FFFFFF" />
+                  <AppIcon name="check" size={16} color="#FFFFFF" />
                   <Text style={m.saveText}>Kullanıcı Ekle</Text>
                 </>
               )}

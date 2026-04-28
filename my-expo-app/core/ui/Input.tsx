@@ -8,9 +8,10 @@ import {
   TouchableOpacity,
   Animated,
 } from 'react-native';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { C } from '../theme/colors';
 import { S } from '../theme/spacing';
+
+import { AppIcon } from './AppIcon';
 
 interface InputProps extends TextInputProps {
   label?: string;
@@ -91,7 +92,7 @@ export function Input({
         >
           {/* Left icon */}
           {leftIcon && (
-            <MaterialCommunityIcons
+            <AppIcon
               name={leftIcon as any}
               size={18}
               color={error ? C.danger : focused ? C.primary : C.textMuted}
@@ -110,13 +111,13 @@ export function Input({
 
           {/* Success tick */}
           {success && !error && (
-            <MaterialCommunityIcons name="check-circle" size={18} color={C.success} style={styles.rightIcon} />
+            <AppIcon name="check-circle" size={18} color={C.success} style={styles.rightIcon} />
           )}
 
           {/* Right icon (custom) */}
           {rightIcon && !success && (
             <TouchableOpacity onPress={onRightIconPress} style={styles.rightIcon} disabled={!onRightIconPress}>
-              <MaterialCommunityIcons
+              <AppIcon
                 name={rightIcon as any}
                 size={18}
                 color={C.textMuted}
@@ -130,7 +131,7 @@ export function Input({
       {error ? (
         <Animated.View style={{ opacity: errorOpacity }}>
           <View style={styles.errorRow}>
-            <MaterialCommunityIcons name="alert-circle-outline" size={13} color={C.danger} />
+            <AppIcon name="alert-circle-outline" size={13} color={C.danger} />
             <Text style={styles.error}> {error}</Text>
           </View>
         </Animated.View>

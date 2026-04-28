@@ -1,0 +1,318 @@
+/**
+ * AppIcon — Evrensel ikon bileşeni (lucide-react-native)
+ *
+ * Tek kaynak: lucide-react-native (1 400+ minimal stroke icon)
+ * Eski MCI / Feather isimleri geriye dönük compat için harita üzerinden çözülür.
+ * `set` prop'u artık gerekmiyor ama eski kodlar kırmamak için kabul edilir (yok sayılır).
+ */
+import React from 'react';
+import {
+  Activity, AlertCircle, AlertTriangle,
+  ArrowLeft, ArrowLeftRight, ArrowRight, ArrowUpRight,
+  Atom, Award,
+  BarChart2, BarChart3,
+  Bell, Box, Briefcase, Building2,
+  Calculator, Calendar, CalendarCheck, CalendarDays, Camera,
+  Check, CheckCheck, CheckCircle, CheckSquare,
+  ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
+  CircleDot, ClipboardCheck, ClipboardList, ClipboardX,
+  Clock, CreditCard, Crosshair,
+  DatabaseZap, DollarSign, Download,
+  ExternalLink, Eye, EyeOff,
+  FileCheck, FileMinus, FileText, FileX,
+  FlaskConical, Folder, FolderOpen,
+  Gauge, Globe, Grid3x3,
+  Hash, Heart, HelpCircle, Home, Hourglass,
+  Image, Inbox, Info,
+  Landmark, LayoutDashboard, Link, List, Lock, LogIn, LogOut,
+  Mail, MapPin, MapPinOff, MessageCircle, MinusCircle, MoreHorizontal,
+  Network,
+  Package, PackageOpen, Palette, PanelLeft, Paperclip, Pencil,
+  Percent, Phone, PlayCircle, Plus, PlusCircle, Printer,
+  QrCode, Receipt, RefreshCw,
+  Save, Search, Send, Settings, Share2, Shield, ShieldAlert, ShieldCheck,
+  SlidersHorizontal, Smile, Star, Stethoscope,
+  Tag, Timer, Trash2, TrendingDown, TrendingUp, Trophy, Truck,
+  Undo2, Upload, User, UserCheck, UserCircle, UserPlus, UserX, Users,
+  WifiOff, X, XCircle, Zap,
+} from 'lucide-react-native';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type LucideFC = React.ComponentType<any>;
+
+// ── Tam isim → Lucide bileşeni ───────────────────────────────────────────────
+const ICONS: Record<string, LucideFC> = {
+
+  // ── Navigasyon & UI ──────────────────────────────────────────────────────
+  'home':                Home,
+  'settings':            Settings,
+  'search':              Search,
+  'bell':                Bell,
+  'inbox':               Inbox,
+  'mail':                Mail,
+  'message-circle':      MessageCircle,
+  'more-horizontal':     MoreHorizontal,
+  'panel-left':          PanelLeft,
+  'info':                Info,
+  'help-circle':         HelpCircle,
+  'globe':               Globe,
+  'star':                Star,
+  'heart':               Heart,
+  'smile':               Smile,
+
+  // ── Yönler & Gezinti ─────────────────────────────────────────────────────
+  'arrow-left':          ArrowLeft,
+  'arrow-right':         ArrowRight,
+  'arrow-up-right':      ArrowUpRight,
+  'arrow-left-right':    ArrowLeftRight,
+  'chevron-left':        ChevronLeft,
+  'chevron-right':       ChevronRight,
+  'chevron-up':          ChevronUp,
+  'chevron-down':        ChevronDown,
+  'external-link':       ExternalLink,
+
+  // ── Kişi & Kullanıcı ─────────────────────────────────────────────────────
+  'user':                User,
+  'user-circle':         UserCircle,
+  'user-check':          UserCheck,
+  'user-plus':           UserPlus,
+  'user-x':              UserX,
+  'users':               Users,
+  'briefcase':           Briefcase,
+  'stethoscope':         Stethoscope,
+  'building-2':          Building2,
+
+  // ── Siparişler & Belgeler ─────────────────────────────────────────────────
+  'clipboard-list':      ClipboardList,
+  'clipboard-x':         ClipboardX,
+  'clipboard-check':     ClipboardCheck,
+  'file-text':           FileText,
+  'file-check':          FileCheck,
+  'file-minus':          FileMinus,
+  'file-x':              FileX,
+  'receipt':             Receipt,
+
+  // ── Aksiyonlar ───────────────────────────────────────────────────────────
+  'plus':                Plus,
+  'plus-circle':         PlusCircle,
+  'minus-circle':        MinusCircle,
+  'check':               Check,
+  'check-check':         CheckCheck,
+  'check-circle':        CheckCircle,
+  'check-square':        CheckSquare,
+  'x':                   X,
+  'x-circle':            XCircle,
+  'trash-2':             Trash2,
+  'pencil':              Pencil,
+  'save':                Save,
+  'download':            Download,
+  'upload':              Upload,
+  'share-2':             Share2,
+  'link':                Link,
+  'refresh-cw':          RefreshCw,
+  'log-in':              LogIn,
+  'log-out':             LogOut,
+  'send':                Send,
+  'print':               Printer,
+  'undo-2':              Undo2,
+
+  // ── Finans ───────────────────────────────────────────────────────────────
+  'dollar-sign':         DollarSign,
+  'credit-card':         CreditCard,
+  'landmark':            Landmark,
+  'percent':             Percent,
+  'trending-up':         TrendingUp,
+  'trending-down':       TrendingDown,
+  'tag':                 Tag,
+
+  // ── Grafik & Analitik ─────────────────────────────────────────────────────
+  'bar-chart-2':         BarChart2,
+  'bar-chart-3':         BarChart3,
+  'activity':            Activity,
+  'gauge':               Gauge,
+  'award':               Award,
+  'trophy':              Trophy,
+
+  // ── Konum & Teslimat ─────────────────────────────────────────────────────
+  'map-pin':             MapPin,
+  'map-pin-off':         MapPinOff,
+  'truck':               Truck,
+  'package':             Package,
+  'package-open':        PackageOpen,
+  'qr-code':             QrCode,
+
+  // ── Takvim & Zaman ───────────────────────────────────────────────────────
+  'calendar':            Calendar,
+  'calendar-days':       CalendarDays,
+  'calendar-check':      CalendarCheck,
+  'clock':               Clock,
+  'timer':               Timer,
+  'hourglass':           Hourglass,
+
+  // ── Güvenlik & Uyarı ─────────────────────────────────────────────────────
+  'shield':              Shield,
+  'shield-check':        ShieldCheck,
+  'shield-alert':        ShieldAlert,
+  'lock':                Lock,
+  'alert-circle':        AlertCircle,
+  'alert-triangle':      AlertTriangle,
+  'zap':                 Zap,
+
+  // ── Medya & Diğer ────────────────────────────────────────────────────────
+  'camera':              Camera,
+  'image':               Image,
+  'eye':                 Eye,
+  'eye-off':             EyeOff,
+  'palette':             Palette,
+  'paperclip':           Paperclip,
+  'phone':               Phone,
+  'play-circle':         PlayCircle,
+  'atom':                Atom,
+  'flask-conical':       FlaskConical,
+  'crosshair':           Crosshair,
+  'sliders-horizontal':  SlidersHorizontal,
+  'network':             Network,
+  'calculator':          Calculator,
+  'box':                 Box,
+  'folder':              Folder,
+  'folder-open':         FolderOpen,
+  'database-zap':        DatabaseZap,
+  'circle-dot':          CircleDot,
+  'grid-3x3':            Grid3x3,
+  'hash':                Hash,
+  'layout-dashboard':    LayoutDashboard,
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Eski MCI / Feather isimleri — geriye dönük uyumluluk
+  // ═══════════════════════════════════════════════════════════════════════
+  'account-circle-outline':      UserCircle,
+  'account-check-outline':       UserCheck,
+  'account-off-outline':         UserX,
+  'account-outline':             User,
+  'account-tie-outline':         Briefcase,
+  'alert-circle-outline':        AlertCircle,
+  'alert-outline':               AlertTriangle,
+  'archive':                     Package,
+  'calculator-variant-outline':  Calculator,
+  'calendar-outline':            Calendar,
+  'cash-check':                  CheckSquare,
+  'cash-multiple':               Receipt,
+  'chart-bar':                   BarChart2,
+  'chart-bar-stacked':           BarChart3,
+  'chart-line':                  Activity,
+  'check-all':                   CheckCheck,
+  'check-circle-outline':        CheckCircle,
+  'clipboard':                   ClipboardList,
+  'clipboard-list-outline':      ClipboardList,
+  'clipboard-text-off-outline':  ClipboardX,
+  'clock-outline':               Clock,
+  'close':                       X,
+  'close-circle-outline':        XCircle,
+  'content-save-outline':        Save,
+  'content-save':                Save,
+  'cog':                         Settings,
+  'crosshairs':                  Crosshair,
+  'cube-outline':                Box,
+  'currency-usd':                DollarSign,
+  'database-off-outline':        DatabaseZap,
+  'edit-2':                      Pencil,
+  'email':                       Mail,
+  'eye-off-outline':             EyeOff,
+  'eye-outline':                 Eye,
+  'flask-outline':               FlaskConical,
+  'format-list-bulleted':        List,
+  'grid':                        Grid3x3,
+  'information':                 Info,
+  'lightning-bolt':              Zap,
+  'link-variant':                Link,
+  'list':                        List,
+  'lock-outline':                Lock,
+  'login':                       LogIn,
+  'logout':                      LogOut,
+  'magnify':                     Search,
+  'map-marker-off-outline':      MapPinOff,
+  'map-marker-radius-outline':   MapPin,
+  'molecule':                    Atom,
+  'numeric':                     Hash,
+  'open-in-new':                 ExternalLink,
+  'package-up':                  PackageOpen,
+  'package-variant':             Package,
+  'package-variant-closed':      Package,
+  'palette-outline':             Palette,
+  'phone-outline':               Phone,
+  'plus-circle-outline':         PlusCircle,
+  'pound':                       Hash,
+  'qrcode':                      QrCode,
+  'refresh':                     RefreshCw,
+  'ruler':                       SlidersHorizontal,
+  'shield-crown-outline':        ShieldCheck,
+  'sitemap-outline':             Network,
+  'sliders':                     SlidersHorizontal,
+  'smartphone':                  Phone,
+  'swap-horizontal':             ArrowLeftRight,
+  'tooth-outline':               CircleDot,
+  'trash-can':                   Trash2,
+  'trash-can-outline':           Trash2,
+  'truck-delivery':              Truck,
+  'truck-fast-outline':          Truck,
+  'truck-outline':               Truck,
+  'tune':                        SlidersHorizontal,
+  'tune-variant':                SlidersHorizontal,
+  'undo-variant':                Undo2,
+  'view-column':                 LayoutDashboard,
+  'view-grid':                   Grid3x3,
+  'web':                         Globe,
+  'wifi-off':                    WifiOff,
+
+  // ── Ek MCI / karışık isimler ─────────────────────────────────────────
+  'account-edit':                Pencil,
+  'account-multiple-outline':    Users,
+  'alert-decagram-outline':      ShieldAlert,
+  'arrow-down-circle-outline':   ChevronDown,
+  'arrow-up-circle-outline':     ChevronUp,
+  'bank-outline':                Landmark,
+  'calendar-clock':              Clock,
+  'calendar-plus':               CalendarCheck,
+  'cash':                        Receipt,
+  'clipboard-text-outline':      ClipboardList,
+  'cog-outline':                 Settings,
+  'credit-card-outline':         CreditCard,
+  'dots-horizontal':             MoreHorizontal,
+  'file-document-outline':       FileText,
+  'folder-account-outline':      FolderOpen,
+  'hospital-box-outline':        Building2,
+  'image-multiple-outline':      Image,
+  'image-outline':               Image,
+  'map-marker-check':            MapPin,
+  'message-outline':             MessageCircle,
+  'palette-swatch':              Palette,
+  'printer-3d':                  Printer,
+  'rotate-3d-variant':           RefreshCw,
+  'screw-machine-flat-top':      SlidersHorizontal,
+  'send-check-outline':          Send,
+  'tag-outline':                 Tag,
+  'timeline-clock-outline':      Clock,
+};
+
+// ── Bileşen ───────────────────────────────────────────────────────────────────
+export interface AppIconProps {
+  name: string;
+  size?: number;
+  color?: string;
+  strokeWidth?: number;
+  /** Artık kullanılmıyor — compat için kabul edilir */
+  set?: string;
+  style?: any;
+}
+
+export function AppIcon({
+  name,
+  size = 20,
+  color = '#000000',
+  strokeWidth = 1.75,
+  set: _set,
+  style: _style,
+}: AppIconProps) {
+  const Icon: LucideFC = ICONS[name] ?? HelpCircle;
+  return <Icon size={size} color={color} strokeWidth={strokeWidth} />;
+}

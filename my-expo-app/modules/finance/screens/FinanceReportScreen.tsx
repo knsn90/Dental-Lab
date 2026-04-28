@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
+import { HubContext } from '../../../core/ui/HubContext';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { supabase } from '../../../core/api/supabase';
 import { useBreakpoint } from '../../../core/layout/Responsive';
+
+import { AppIcon } from '../../../core/ui/AppIcon';
 
 interface MonthlySummary {
   month: string;
@@ -34,6 +36,8 @@ function fmtMonth(iso: string): string {
 
 export function FinanceReportScreen() {
   const { px, isDesktop } = useBreakpoint();
+  const isEmbedded = useContext(HubContext);
+  const safeEdges = isEmbedded ? ([] as any) : (['top'] as any);
   const [summary, setSummary] = useState<MonthlySummary[]>([]);
   const [upcoming, setUpcoming] = useState<UpcomingDue[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,7 +67,7 @@ export function FinanceReportScreen() {
   );
 
   return (
-    <SafeAreaView style={s.safe} edges={['top']}>
+    <SafeAreaView style={s.safe} edges={safeEdges}>
       {/* Header */}
       <View style={[s.header, { paddingHorizontal: px }]}>
         <View style={{ flex: 1 }}>
@@ -107,7 +111,7 @@ export function FinanceReportScreen() {
           <Text style={s.sectionTitle}>Aylık Döküm</Text>
           {summary.length === 0 ? (
             <View style={s.empty}>
-              <MaterialCommunityIcons name={'chart-bar' as any} size={40} color="#CBD5E1" />
+              <AppIcon name={'chart-bar' as any} size={40} color="#CBD5E1" />
               <Text style={s.emptyText}>Veri bulunamadı</Text>
             </View>
           ) : (
@@ -122,7 +126,7 @@ export function FinanceReportScreen() {
 
           {upcoming.length === 0 ? (
             <View style={s.empty}>
-              <MaterialCommunityIcons name={'bell-check-outline' as any} size={40} color="#CBD5E1" />
+              <AppIcon name={'bell-check-outline' as any} size={40} color="#CBD5E1" />
               <Text style={s.emptyText}>14 gün içinde vadesi dolan fatura yok 🎉</Text>
             </View>
           ) : (
@@ -139,7 +143,7 @@ function KpiCard({ label, value, color, icon }: { label: string; value: string; 
   return (
     <View style={[kpi.card, { flex: 1 }]}>
       <View style={[kpi.iconWrap, { backgroundColor: color + '15' }]}>
-        <MaterialCommunityIcons name={icon as any} size={20} color={color} />
+        <AppIcon name={icon as any} size={20} color={color} />
       </View>
       <Text style={kpi.label}>{label}</Text>
       <Text style={[kpi.value, { color }]}>{value}</Text>

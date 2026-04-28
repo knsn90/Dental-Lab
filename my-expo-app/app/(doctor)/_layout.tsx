@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Modal, Text } from 'react-native';
 import { Slot, Tabs } from 'expo-router';
 import { C as Colors } from '../../core/theme/colors';
@@ -6,9 +6,10 @@ import { DesktopShell, useIsDesktop } from '../../core/layout/DesktopShell';
 import { useAuthStore } from '../../core/store/authStore';
 import { NewOrderScreen } from '../../modules/orders/screens/NewOrderScreen';
 import { MessagesPopup } from '../../modules/orders/components/MessagesPopup';
+import { useColorThemeStore, applyColorThemeWeb } from '../../core/store/colorThemeStore';
 
 // Doktor paneli teması (lab #2563EB / admin #0F172A'dan ayrıştırılmış sky blue)
-const DOCTOR_ACCENT = '#0EA5E9';
+const DOCTOR_DEFAULT_ACCENT = '#0EA5E9';
 
 function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
   return <Text style={{ fontSize: focused ? 24 : 22, opacity: focused ? 1 : 0.6 }}>{emoji}</Text>;
@@ -20,11 +21,19 @@ export default function DoctorLayout() {
   const [newOrderOpen, setNewOrderOpen] = useState(false);
   const [messagesOpen, setMessagesOpen] = useState(false);
 
+  // Load saved color theme
+  const { getTheme, loadTheme } = useColorThemeStore();
+  useEffect(() => {
+    const theme = loadTheme('doctor');
+    applyColorThemeWeb(theme, DOCTOR_DEFAULT_ACCENT);
+  }, []);
+  const accentColor = getTheme('doctor').primary;
+
   const DOCTOR_NAV = [
-    { label: 'Dashboard',    emoji: '📊', href: '/(doctor)',            iconName: 'grid',           iconSet: 'mdi' as const },
-    { label: 'Siparişlerim', emoji: '📋', href: '/(doctor)/orders',    iconName: 'file-text',      iconSet: 'mdi' as const },
-    { label: 'Yeni İş Emri', emoji: '➕', href: '/(doctor)/new-order', iconName: 'plus-circle',    iconSet: 'mdi' as const, subtitle: 'Formu adım adım doldurun' },
-    { label: 'Profil',       emoji: '👤', href: '/(doctor)/profile',   iconName: 'user',           iconSet: 'mdi' as const },
+    { label: 'Dashboard',    emoji: '📊', href: '/(doctor)',             iconName: 'grid',           iconSet: 'mdi' as const },
+    { label: 'Siparişlerim', emoji: '📋', href: '/(doctor)/orders',     iconName: 'file-text',      iconSet: 'mdi' as const },
+    { label: 'Yeni İş Emri', emoji: '➕', href: '/(doctor)/new-order',  iconName: 'plus-circle',    iconSet: 'mdi' as const, subtitle: 'Formu adım adım doldurun' },
+    { label: 'Ayarlar',      emoji: '⚙️', href: '/(doctor)/settings',  iconName: 'settings',       iconSet: 'mdi' as const, matchPrefix: true },
   ];
 
   // Hekim olmayan kullanıcı bu layout'a düştüyse sidebar gösterme
@@ -37,13 +46,13 @@ export default function DoctorLayout() {
       <>
         <DesktopShell
           navItems={DOCTOR_NAV}
-          accentColor={DOCTOR_ACCENT}
+          accentColor={accentColor}
           onPressMessages={() => setMessagesOpen(true)}
         />
         <MessagesPopup
           visible={messagesOpen}
           onClose={() => setMessagesOpen(false)}
-          accentColor={DOCTOR_ACCENT}
+          accentColor={accentColor}
         />
       </>
     );
@@ -54,7 +63,7 @@ export default function DoctorLayout() {
       <Tabs
         screenOptions={{
           headerShown: false,
-          tabBarActiveTintColor: DOCTOR_ACCENT,
+          tabBarActiveTintColor: accentColor,
           tabBarInactiveTintColor: Colors.textSecondary,
           tabBarStyle: {
             backgroundColor: Colors.surface,
@@ -100,16 +109,14 @@ export default function DoctorLayout() {
           }}
         />
         <Tabs.Screen
-          name="profile"
+          name="settings"
           options={{
-            title: 'Profil',
-            tabBarIcon: ({ focused }) => <TabIcon emoji="👤" focused={focused} />,
+            title: 'Ayarlar',
+            tabBarIcon: ({ focused }) => <TabIcon emoji="⚙️" focused={focused} />,
           }}
         />
-        <Tabs.Screen
-          name="order/[id]"
-          options={{ href: null } as any}
-        />
+        <Tabs.Screen name="profile"   options={{ href: null } as any} />
+        <Tabs.Screen name="order/[id]" options={{ href: null, title: 'İş Emri' } as any} />
       </Tabs>
 
       {/* Yeni İş Emri — SADECE mobilde modal olarak açılır */}
@@ -119,14 +126,14 @@ export default function DoctorLayout() {
         presentationStyle="pageSheet"
         onRequestClose={() => setNewOrderOpen(false)}
       >
-        <NewOrderScreen doctorMode accentColor={DOCTOR_ACCENT} onClose={() => setNewOrderOpen(false)} />
+        <NewOrderScreen doctorMode accentColor={accentColor} onClose={() => setNewOrderOpen(false)} />
       </Modal>
 
       {/* Mesajlar Popup — her ekran boyutunda */}
       <MessagesPopup
         visible={messagesOpen}
         onClose={() => setMessagesOpen(false)}
-        accentColor={DOCTOR_ACCENT}
+        accentColor={accentColor}
       />
     </>
   );

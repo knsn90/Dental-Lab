@@ -347,6 +347,33 @@ function AudioPlayer({ url, isMine, accentColor }: { url: string; isMine: boolea
 // ── Image Lightbox ───────────────────────────────────────────────────
 function ImageLightbox({ url, onClose }: { url: string; onClose: () => void }) {
   const { width, height } = useWindowDimensions();
+  const [imgSize, setImgSize] = useState<{ w: number; h: number } | null>(null);
+
+  useEffect(() => {
+    Image.getSize(url, (w, h) => setImgSize({ w, h }), () => {});
+  }, [url]);
+
+  // Max bounds — generous but not full-screen
+  const maxW = Math.min(width * 0.88, 620);
+  const maxH = Math.min(height * 0.70, 520);
+
+  // Compute display size: use natural size if it fits, otherwise shrink to fit bounds
+  let displayW = maxW;
+  let displayH = maxH;
+  if (imgSize) {
+    const ratio = imgSize.w / imgSize.h;
+    if (imgSize.w <= maxW && imgSize.h <= maxH) {
+      displayW = imgSize.w;
+      displayH = imgSize.h;
+    } else if (ratio > maxW / maxH) {
+      displayW = maxW;
+      displayH = maxW / ratio;
+    } else {
+      displayH = maxH;
+      displayW = maxH * ratio;
+    }
+  }
+
   return (
     <Modal
       transparent
@@ -360,16 +387,22 @@ function ImageLightbox({ url, onClose }: { url: string; onClose: () => void }) {
         style={[lb.overlay, { width, height }]}
         onPress={onClose}
       >
-        {/* Image — stop-propagation so tapping the image itself does NOT close */}
+        {/* Image box — stop-propagation so tapping the image does NOT close */}
         <Pressable
           onPress={(e) => e.stopPropagation()}
           style={lb.imageWrap}
         >
-          <Image
-            source={{ uri: url }}
-            style={{ width: width * 0.92, height: height * 0.76, maxWidth: 900 }}
-            resizeMode="contain"
-          />
+          {imgSize ? (
+            <Image
+              source={{ uri: url }}
+              style={{ width: displayW, height: displayH }}
+              resizeMode="contain"
+            />
+          ) : (
+            <View style={{ width: 100, height: 100, alignItems: 'center', justifyContent: 'center' }}>
+              <ActivityIndicator color="#FFFFFF" size="large" />
+            </View>
+          )}
         </Pressable>
 
         {/* Close button */}
@@ -503,7 +536,13 @@ function MessageBubble({ msg, isMine, accentColor, showAvatar, senderColor, onIm
             {formatTimeFull(msg.created_at)}
           </Text>
           {isMine && (
-            <Icon name="check-check" size={12} color="rgba(255,255,255,0.85)" strokeWidth={2.2} />
+            // Çift tık: okunmadı → beyaz (görünür), okundu → açık mavi
+            <Icon
+              name="check-check"
+              size={12}
+              color={msg.read_at ? '#7DD3FC' : 'rgba(255,255,255,0.70)'}
+              strokeWidth={2.2}
+            />
           )}
         </View>
       </View>
@@ -565,12 +604,12 @@ interface ChatDetailProps {
   viewerType: UserType | null | undefined;
   onBack?: () => void;
 }
-function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerType, onBack }: ChatDetailProps) {
+export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerType, onBack }: ChatDetailProps) {
   const scrollRef = useRef<ScrollView>(null);
   const [text, setText] = useState('');
 
-  // useChatMessages expects a workOrderId — call with '' when no selection (hook will return empty)
-  const chat = useChatMessages(selectedOrder?.work_order_id ?? '');
+  // useChatMessages: pass currentUserId so hook auto-marks incoming messages as read
+  const chat = useChatMessages(selectedOrder?.work_order_id ?? '', currentUserId);
   const workOrderId = selectedOrder?.work_order_id ?? '';
 
   // ── Image lightbox ──────────────────────────────────────────────
@@ -943,162 +982,160 @@ function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerType, onB
 
       {/* ── Voice: RECORDING state ───────────────────────────────── */}
       {voiceMode === 'recording' && (
-        <View style={cd.voiceBar}>
-          {/* Cancel / discard */}
-          <TouchableOpacity onPress={discardRecording} activeOpacity={0.7} style={cd.voiceActionBtn}>
-            <Icon name="trash" size={20} color="#EF4444" strokeWidth={2} />
-          </TouchableOpacity>
-
-          {/* Pulsing dot + timer + animated wave */}
-          <View style={cd.voiceWaveWrap}>
+        <View style={cd.inputBar}>
+          {/* Island pill: trash + red dot + timer + wave */}
+          <View style={cd.voicePill}>
+            <TouchableOpacity onPress={discardRecording} activeOpacity={0.7} style={cd.pillVoiceBtn}>
+              <Icon name="trash" size={17} color="#EF4444" strokeWidth={2} />
+            </TouchableOpacity>
             <View style={cd.recDot} />
             <Text style={cd.voiceTimer}>{fmtSec(recSeconds)}</Text>
             <RecordingWave color="#EF4444" />
           </View>
-
-          {/* Stop → enters preview */}
+          {/* Stop — red circle */}
           <TouchableOpacity
             onPress={stopRecording}
             activeOpacity={0.85}
-            style={[cd.micBtn, { backgroundColor: '#EF4444' }]}
+            style={[cd.sendCircleBtn, { backgroundColor: '#EF4444' }]}
           >
-            <Icon name="stop" size={16} color="#FFFFFF" strokeWidth={2} />
+            <Icon name="stop" size={14} color="#FFFFFF" strokeWidth={2} />
           </TouchableOpacity>
         </View>
       )}
 
       {/* ── Voice: RECORDED / preview state ─────────────────────── */}
       {voiceMode === 'recorded' && recordedUrl && (
-        <View style={cd.voiceBar}>
-          {/* Discard */}
-          <TouchableOpacity onPress={discardRecording} activeOpacity={0.7} style={cd.voiceActionBtn}>
-            <Icon name="trash" size={20} color="#EF4444" strokeWidth={2} />
-          </TouchableOpacity>
-
-          {/* AudioPlayer in preview mode */}
-          <View style={{ flex: 1, paddingHorizontal: 4 }}>
-            <AudioPlayer url={recordedUrl} isMine={false} accentColor={accentColor} />
+        <View style={cd.inputBar}>
+          {/* Island pill: trash + audio player */}
+          <View style={cd.voicePill}>
+            <TouchableOpacity onPress={discardRecording} activeOpacity={0.7} style={cd.pillVoiceBtn}>
+              <Icon name="trash" size={17} color="#EF4444" strokeWidth={2} />
+            </TouchableOpacity>
+            <View style={{ flex: 1, paddingHorizontal: 4 }}>
+              <AudioPlayer url={recordedUrl} isMine={false} accentColor={accentColor} />
+            </View>
           </View>
-
-          {/* Send */}
+          {/* Send — dark circle */}
           <TouchableOpacity
             onPress={sendRecorded}
             disabled={uploading}
             activeOpacity={0.85}
-            style={[cd.micBtn, { backgroundColor: accentColor, opacity: uploading ? 0.55 : 1 }]}
+            style={[cd.sendCircleBtn, { opacity: uploading ? 0.55 : 1 }]}
           >
             {uploading
               ? <ActivityIndicator color="#FFFFFF" size="small" />
-              : <Icon name="send" size={18} color="#FFFFFF" strokeWidth={2.2} />}
+              : <Icon name="send" size={17} color="#FFFFFF" strokeWidth={2.2} />}
           </TouchableOpacity>
         </View>
       )}
 
-      {/* ── Normal composer (idle) ────────────────────────────────── */}
+      {/* ── Normal composer (idle) — pill design ─────────────────── */}
       {voiceMode === 'idle' && (
         <View style={cd.inputBar}>
-          {/* Attach menu — web only */}
-          {isWebPlatform ? (
-            <View style={{ position: 'relative' }}>
-              {attachOpen ? (
-                <>
-                  <Pressable style={cd.attachBackdrop} onPress={() => setAttachOpen(false)} />
-                  <View style={cd.attachMenu}>
-                    <TouchableOpacity
-                      style={cd.attachItem}
-                      onPress={() => { setAttachOpen(false); imageInputRef.current?.click(); }}
-                      activeOpacity={0.85}
-                    >
-                      <Text style={cd.attachItemLabel}>Fotoğraf</Text>
-                      <View style={[cd.attachIconCircle, { backgroundColor: '#0F172A' }]}>
-                        <Icon name="image" size={20} color="#FFFFFF" strokeWidth={2} />
-                      </View>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={cd.attachItem}
-                      onPress={() => { setAttachOpen(false); scanInputRef.current?.click(); }}
-                      activeOpacity={0.85}
-                    >
-                      <Text style={cd.attachItemLabel}>Dijital Tarama</Text>
-                      <View style={[cd.attachIconCircle, { backgroundColor: '#0891B2' }]}>
-                        <Icon name="scan" size={20} color="#FFFFFF" strokeWidth={2} />
-                      </View>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={cd.attachItem}
-                      onPress={() => { setAttachOpen(false); fileInputRef.current?.click(); }}
-                      activeOpacity={0.85}
-                    >
-                      <Text style={cd.attachItemLabel}>Dosya</Text>
-                      <View style={[cd.attachIconCircle, { backgroundColor: '#7C3AED' }]}>
-                        <Icon name="file" size={20} color="#FFFFFF" strokeWidth={2} />
-                      </View>
-                    </TouchableOpacity>
-                  </View>
-                </>
-              ) : null}
+          {/* ── Pill: attach button + text field ─────────────────── */}
+          <View style={cd.inputPill}>
+            {/* Attach menu — web only */}
+            {isWebPlatform ? (
+              <View style={{ position: 'relative' }}>
+                {attachOpen ? (
+                  <>
+                    <Pressable style={cd.attachBackdrop} onPress={() => setAttachOpen(false)} />
+                    <View style={cd.attachMenu}>
+                      <TouchableOpacity
+                        style={cd.attachItem}
+                        onPress={() => { setAttachOpen(false); imageInputRef.current?.click(); }}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={cd.attachItemLabel}>Fotoğraf</Text>
+                        <View style={[cd.attachIconCircle, { backgroundColor: '#0F172A' }]}>
+                          <Icon name="image" size={20} color="#FFFFFF" strokeWidth={2} />
+                        </View>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={cd.attachItem}
+                        onPress={() => { setAttachOpen(false); scanInputRef.current?.click(); }}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={cd.attachItemLabel}>Dijital Tarama</Text>
+                        <View style={[cd.attachIconCircle, { backgroundColor: '#0891B2' }]}>
+                          <Icon name="scan" size={20} color="#FFFFFF" strokeWidth={2} />
+                        </View>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={cd.attachItem}
+                        onPress={() => { setAttachOpen(false); fileInputRef.current?.click(); }}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={cd.attachItemLabel}>Dosya</Text>
+                        <View style={[cd.attachIconCircle, { backgroundColor: '#7C3AED' }]}>
+                          <Icon name="file" size={20} color="#FFFFFF" strokeWidth={2} />
+                        </View>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                ) : null}
 
-              <TouchableOpacity
-                style={[cd.flatBtn, attachOpen && cd.flatBtnActive]}
-                onPress={() => setAttachOpen((v) => !v)}
-                disabled={uploading || chat.sending}
-                activeOpacity={0.7}
-              >
-                <Icon
-                  name={attachOpen ? 'x' : 'paperclip'}
-                  size={20}
-                  color={attachOpen ? TEXT : SUBTLE}
-                  strokeWidth={2}
-                />
-              </TouchableOpacity>
-            </View>
-          ) : null}
+                <TouchableOpacity
+                  style={[cd.pillAttachBtn, attachOpen && cd.pillAttachBtnActive]}
+                  onPress={() => setAttachOpen((v) => !v)}
+                  disabled={uploading || chat.sending}
+                  activeOpacity={0.7}
+                >
+                  <Icon
+                    name={attachOpen ? 'x' : 'paperclip'}
+                    size={18}
+                    color={attachOpen ? TEXT : SUBTLE}
+                    strokeWidth={2}
+                  />
+                </TouchableOpacity>
+              </View>
+            ) : null}
 
-          <TextInput
-            style={cd.textInput}
-            value={text}
-            onChangeText={setText}
-            placeholder="Mesajınızı yazın..."
-            placeholderTextColor="#B0BAC9"
-            multiline
-            blurOnSubmit={false}
-            onKeyPress={(e: any) => {
-              if (Platform.OS === 'web' && e.nativeEvent?.key === 'Enter' && !e.nativeEvent?.shiftKey) {
-                e.preventDefault?.();
-                handleSend();
-              }
-            }}
-          />
+            <TextInput
+              style={cd.pillInput}
+              value={text}
+              onChangeText={setText}
+              placeholder="Mesaj yaz..."
+              placeholderTextColor={SUBTLE}
+              blurOnSubmit={false}
+              onKeyPress={(e: any) => {
+                if (Platform.OS === 'web' && e.nativeEvent?.key === 'Enter' && !e.nativeEvent?.shiftKey) {
+                  e.preventDefault?.();
+                  handleSend();
+                }
+              }}
+            />
+          </View>
 
-          {/* Primary action: text → send, empty → mic */}
+          {/* ── Send / Mic — dark circle button ──────────────────── */}
           {text.trim() ? (
             <TouchableOpacity
               onPress={handleSend}
               disabled={chat.sending || uploading}
-              activeOpacity={0.85}
-              style={[cd.micBtn, { backgroundColor: accentColor }]}
+              activeOpacity={0.82}
+              style={cd.sendCircleBtn}
             >
               {chat.sending || uploading
                 ? <ActivityIndicator color="#FFFFFF" size="small" />
-                : <Icon name="send" size={18} color="#FFFFFF" strokeWidth={2.2} />}
+                : <Icon name="send" size={17} color="#FFFFFF" strokeWidth={2.2} />}
             </TouchableOpacity>
           ) : isWebPlatform ? (
             <TouchableOpacity
               onPress={startRecording}
               disabled={uploading || chat.sending}
-              activeOpacity={0.85}
-              style={[cd.micBtn, { backgroundColor: accentColor }]}
+              activeOpacity={0.82}
+              style={cd.sendCircleBtn}
             >
-              <Icon name="mic" size={18} color="#FFFFFF" strokeWidth={2.2} />
+              <Icon name="mic" size={17} color="#FFFFFF" strokeWidth={2.2} />
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
               onPress={handleSend}
               disabled
-              activeOpacity={0.85}
-              style={[cd.micBtn, { backgroundColor: hexA(accentColor, 0.35) }]}
+              activeOpacity={0.82}
+              style={[cd.sendCircleBtn, { opacity: 0.35 }]}
             >
-              <Icon name="send" size={18} color="#FFFFFF" strokeWidth={2.2} />
+              <Icon name="send" size={17} color="#FFFFFF" strokeWidth={2.2} />
             </TouchableOpacity>
           )}
         </View>
@@ -1153,67 +1190,83 @@ const cd = StyleSheet.create({
   noMsgs:   { padding: 40, alignItems: 'center' },
   noMsgsText: { fontSize: 13, color: SUBTLE, textAlign: 'center' },
 
-  // ── Composer (input bar) — flat & clean, ChatBox-aligned ─────────
+  // ── Composer bar — seamless with chat bg (no border/divider) ────────
   inputBar: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 12, paddingVertical: 10,
-    backgroundColor: SURFACE,
-    borderTopWidth: 1, borderTopColor: BORDER,
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 10, paddingTop: 4, paddingBottom: 6,
+    backgroundColor: BG_SOFT, // same as chat bg → flows continuously
+    // no borderTop → chat bg feels uninterrupted to the bottom
   },
-  flatBtn: {
-    width: 36, height: 36, borderRadius: 18,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  flatBtnActive: { backgroundColor: BG_SOFT },
-  textInput: {
+  // ── Pill island: attach icon + text input ────────────────────────
+  inputPill: {
     flex: 1,
-    fontSize: 13, color: TEXT,
-    maxHeight: 90,
-    paddingHorizontal: 4, paddingVertical: 6,
-    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
-  },
-  micBtn: {
-    width: 44, height: 44, borderRadius: 22,
-    alignItems: 'center', justifyContent: 'center',
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: SURFACE,
+    borderRadius: 16,
+    paddingHorizontal: 2, paddingVertical: 0,
+    borderWidth: 1, borderColor: BORDER,
+    minHeight: 32,
     ...(Platform.OS === 'web'
-      ? ({ boxShadow: '0 4px 14px rgba(15,23,42,0.18)' } as any)
-      : { shadowColor: '#0F172A', shadowOpacity: 0.22, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } }),
+      ? ({ boxShadow: '0 1px 4px rgba(15,23,42,0.05)' } as any)
+      : { shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 4, shadowOffset: { width: 0, height: 1 } }),
   },
-  // legacy keys (kept to satisfy any lingering refs)
-  iconBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  composer: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 12, paddingVertical: 10,
-    backgroundColor: SURFACE,
-    borderTopWidth: 1, borderTopColor: BORDER,
+  pillAttachBtn: {
+    width: 26, height: 26, borderRadius: 13,
+    alignItems: 'center', justifyContent: 'center',
+    marginHorizontal: 2,
   },
-  input: {
+  pillAttachBtnActive: { backgroundColor: BG_SOFT },
+  pillInput: {
     flex: 1,
     fontSize: 13, color: TEXT,
-    maxHeight: 90,
-    paddingHorizontal: 4, paddingVertical: 6,
+    height: 30,
+    maxHeight: 30,
+    paddingHorizontal: 6,
+    paddingVertical: 0,
+    textAlignVertical: 'center',
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
   },
-  sendBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-
-  // ── Voice bar — shared layout for recording + preview ────────────
-  voiceBar: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingHorizontal: 12, paddingVertical: 10,
-    backgroundColor: SURFACE,
-    borderTopWidth: 1, borderTopColor: BORDER,
-    minHeight: 64,
-  },
-  voiceActionBtn: {
-    width: 36, height: 36, borderRadius: 18,
+  // ── Dark circle: send / mic / stop button ────────────────────────
+  sendCircleBtn: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: '#0F172A',
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(239,68,68,0.08)',
+    flexShrink: 0,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 2px 8px rgba(15,23,42,0.20)' } as any)
+      : { shadowColor: '#0F172A', shadowOpacity: 0.22, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } }),
   },
-  voiceWaveWrap: {
+  // ── Voice pill island (recording + recorded states) ───────────────
+  voicePill: {
     flex: 1,
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    overflow: 'hidden',
+    backgroundColor: SURFACE,
+    borderRadius: 16,
+    paddingHorizontal: 6, paddingVertical: 2,
+    borderWidth: 1, borderColor: BORDER,
+    minHeight: 32,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 2px 10px rgba(15,23,42,0.07)' } as any)
+      : { shadowColor: '#0F172A', shadowOpacity: 0.07, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } }),
   },
+  pillVoiceBtn: {
+    width: 30, height: 30, borderRadius: 15,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  // ── Legacy aliases (keep so unused refs don't error) ─────────────
+  flatBtn:   { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' } as any,
+  flatBtnActive: { backgroundColor: BG_SOFT } as any,
+  textInput: { flex: 1, fontSize: 13, color: TEXT, maxHeight: 90, paddingHorizontal: 4, paddingVertical: 6, ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}) } as any,
+  micBtn:    { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' } as any,
+  iconBtn:   { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  composer:  { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: SURFACE } as any,
+  input:     { flex: 1, fontSize: 13, color: TEXT, maxHeight: 90, paddingHorizontal: 4, paddingVertical: 6, ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}) } as any,
+  sendBtn:   { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+
+  // ── Voice (legacy — no longer used as wrapper) ───────────────────
+  voiceBar:      { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: BG_SOFT } as any,
+  voiceActionBtn:{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' } as any,
+  voiceWaveWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, overflow: 'hidden' } as any,
   voiceTimer: {
     fontSize: 13, fontWeight: '700', color: '#EF4444',
     fontVariant: ['tabular-nums'], minWidth: 38,
@@ -1326,9 +1379,10 @@ interface MessagesPopupProps {
   visible: boolean;
   onClose: () => void;
   accentColor: string;
+  initialOrderId?: string;
 }
 
-export function MessagesPopup({ visible, onClose, accentColor }: MessagesPopupProps) {
+export function MessagesPopup({ visible, onClose, accentColor, initialOrderId }: MessagesPopupProps) {
   const { profile } = useAuthStore();
   const { items, loading, totalUnread } = useOrderChatInbox();
   const { width } = useWindowDimensions();
@@ -1399,34 +1453,39 @@ export function MessagesPopup({ visible, onClose, accentColor }: MessagesPopupPr
   // doğrudan inline style olarak DOM'a basar. Transform array'ini
   // CSS transform string'ine çevirip transition ile yumuşatır.
   const isWeb = Platform.OS === 'web';
-  const webBackdropStyle: any = isWeb ? {
-    opacity: active ? 1 : 0,
-    transitionProperty: 'opacity',
-    transitionDuration: '220ms',
-    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
-    willChange: 'opacity',
-  } : null;
+  // Backdrop artık tamamen şeffaf — sadece dışarıya tıklama alanı.
+  // Opacity animasyonu kaldırıldı (görsel etkisi yok, şeffaf olduğu için).
+  const webBackdropStyle: any = isWeb ? {} : null;
   const webPanelStyle: any = isWeb ? {
     opacity: active ? 1 : 0,
     transform: [
-      { translateY: active ? 0 : 8 },
-      { scale:      active ? 1 : 0.985 },
+      { translateY: active ? 0 : 10 },
+      { scale:      active ? 1 : 0.982 },
     ],
     transitionProperty: 'opacity, transform',
-    transitionDuration: active ? '260ms, 260ms' : '180ms, 180ms',
+    transitionDuration: active ? '280ms, 280ms' : '180ms, 180ms',
     transitionTimingFunction: active
       ? 'cubic-bezier(0.16, 1, 0.3, 1)'
       : 'cubic-bezier(0.4, 0, 1, 1)',
-    willChange: 'transform, opacity',
+    // NOT: willChange kaldırıldı — backdropFilter ile aynı element'te
+    // willChange:transform kullanmak bazı tarayıcılarda blur'u bozar
+    // (farklı compositing katmanları). Animasyon CSS transform GPU
+    // hızlandırmasından yine de faydalanır.
     backfaceVisibility: 'hidden',
   } : null;
 
-  // Auto-select first chat on desktop when inbox loads
+  // Auto-select: if initialOrderId is given, prefer it; else first on desktop
   useEffect(() => {
-    if (visible && isDesktop && !selected && items.length > 0) {
-      setSelected(items[0]);
+    if (!visible || items.length === 0) return;
+    if (initialOrderId) {
+      const match = items.find(i => i.work_order_id === initialOrderId);
+      if (match && (!selected || selected.work_order_id !== initialOrderId)) {
+        setSelected(match);
+        return;
+      }
     }
-  }, [visible, isDesktop, items, selected]);
+    if (isDesktop && !selected) setSelected(items[0]);
+  }, [visible, isDesktop, items, selected, initialOrderId]);
 
   // Reset selection on close
   useEffect(() => {
@@ -1498,10 +1557,6 @@ export function MessagesPopup({ visible, onClose, accentColor }: MessagesPopupPr
                         <Text style={p.totalBadgeText}>{totalUnread > 99 ? '99+' : totalUnread}</Text>
                       </View>
                     )}
-                    <View style={{ flex: 1 }} />
-                    <TouchableOpacity onPress={onClose} activeOpacity={0.7} style={p.closeBtn}>
-                      <Icon name="x" size={16} color={MUTED} strokeWidth={2} />
-                    </TouchableOpacity>
                   </View>
                   <View style={p.searchBar}>
                     <Icon name="search" size={14} color={SUBTLE} strokeWidth={2} />
@@ -1567,10 +1622,6 @@ export function MessagesPopup({ visible, onClose, accentColor }: MessagesPopupPr
                           <Text style={p.totalBadgeText}>{totalUnread > 99 ? '99+' : totalUnread}</Text>
                         </View>
                       )}
-                      <View style={{ flex: 1 }} />
-                      <TouchableOpacity onPress={onClose} activeOpacity={0.7} style={p.closeBtn}>
-                        <Icon name="x" size={16} color={MUTED} strokeWidth={2} />
-                      </TouchableOpacity>
                     </View>
                     <View style={p.searchBar}>
                       <Icon name="search" size={14} color={SUBTLE} strokeWidth={2} />
@@ -1622,6 +1673,15 @@ export function MessagesPopup({ visible, onClose, accentColor }: MessagesPopupPr
               )}
             </View>
           )}
+
+          {/* X — panel'in sağ üst köşesinde sabit */}
+          <TouchableOpacity
+            onPress={onClose}
+            activeOpacity={0.7}
+            style={p.panelCloseBtn}
+          >
+            <Icon name="x" size={17} color={MUTED} strokeWidth={2.5} />
+          </TouchableOpacity>
         </Animated.View>
       </View>
     </Modal>
@@ -1629,25 +1689,16 @@ export function MessagesPopup({ visible, onClose, accentColor }: MessagesPopupPr
 }
 
 // ── Popup styles ─────────────────────────────────────────────────────
-// Strateji: blur SADECE backdrop'ta (tek GPU katmanı).
-// Panel semi-transparan beyaz → blur'lu bg şeffaf gösterir = buzlu cam.
-// İç elemanlar (header, liste, composer) tamamen opak = okunabilir + hızlı.
+// Strateji: backdrop tamamen şeffaf (uygulama arka planda tam görünür),
+// blur SADECE panel'in arkasında (backdropFilter panel'de).
+// Panel = gerçek frosted-glass: çok az beyaz + güçlü blur.
+// İç bölümler = okunabilirlik için yarı-saydam beyaz.
 const p = StyleSheet.create({
   backdrop: {
+    // Tamamen şeffaf — sadece dışarı-tıklama alanı, karartma YOK.
+    // Uygulama arka planda hiç solmadan görünür.
     ...StyleSheet.absoluteFillObject,
-    // Daha açık overlay → uygulama içeriği daha fazla görünür,
-    // blur efekti daha belirgin olur.
-    backgroundColor: 'rgba(15,23,42,0.28)',
-    ...(Platform.OS === 'web'
-      ? ({
-          // Tek backdrop-filter → tek GPU katmanı → performans sorunu yok.
-          // Opacity animasyonu ile birlikte modern tarayıcılar GPU'da
-          // compositor thread'de çalıştırır.
-          backdropFilter: 'blur(22px)',
-          WebkitBackdropFilter: 'blur(22px)',
-          willChange: 'opacity',
-        } as any)
-      : {}),
+    backgroundColor: 'transparent',
   },
   centerWrap: {
     ...StyleSheet.absoluteFillObject,
@@ -1655,18 +1706,26 @@ const p = StyleSheet.create({
     padding: 16,
   },
   panel: {
-    // Semi-transparan beyaz → altındaki blur'lu backdrop görünür = buzlu cam.
-    // Panel kendisi BLUR UYGULAMAZ — iç içe blur yok, performans sorunsuz.
-    backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.88)' : SURFACE,
+    // Gerçek frosted-glass: blur SADECE panel arkasını etkiler.
+    // backdrop'ta artık blur yok → tek GPU katmanı, yüksek performans.
     borderRadius: 20,
     overflow: 'hidden',
     ...(Platform.OS === 'web'
       ? ({
-          boxShadow: '0 24px 64px rgba(15,23,42,0.22), 0 1px 0 rgba(255,255,255,0.7) inset',
-          // İnce beyaz kenarlık — glass efektini tamamlar
-          outline: '1px solid rgba(255,255,255,0.5)',
+          backgroundColor: 'rgba(255,255,255,0.18)',
+          backdropFilter: 'blur(28px)',
+          WebkitBackdropFilter: 'blur(28px)',
+          boxShadow: '0 24px 72px rgba(15,23,42,0.28), 0 1px 0 rgba(255,255,255,0.6) inset',
+          outline: '1px solid rgba(255,255,255,0.38)',
         } as any)
-      : { shadowColor: '#0F172A', shadowOpacity: 0.22, shadowRadius: 32, shadowOffset: { width: 0, height: 16 }, elevation: 24 }),
+      : {
+          backgroundColor: 'rgba(255,255,255,0.94)',
+          shadowColor: '#0F172A',
+          shadowOpacity: 0.24,
+          shadowRadius: 36,
+          shadowOffset: { width: 0, height: 18 },
+          elevation: 26,
+        }),
   },
   panelDesktop: {
     width: '95%', maxWidth: 1000, height: '85%', maxHeight: 720,
@@ -1675,25 +1734,50 @@ const p = StyleSheet.create({
     width: '100%', height: '92%',
   },
 
-  // İç elemanlar — tamamen opak (cam efekti yok, sadece panel'de)
+  // İç bölümler — yarı-saydam beyaz: glass blur panel arkasından geçer
   split: { flex: 1, flexDirection: 'row' },
-  left:  { width: 320, backgroundColor: SURFACE, borderRightWidth: 1, borderRightColor: BORDER },
-  right: { flex: 1, backgroundColor: BG_SOFT },
+  left:  {
+    width: 320,
+    backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.80)' : SURFACE,
+    borderRightWidth: 1,
+    borderRightColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.30)' : BORDER,
+  },
+  right: {
+    flex: 1,
+    backgroundColor: Platform.OS === 'web' ? 'rgba(247,249,251,0.76)' : BG_SOFT,
+  },
 
   listHeader: {
     paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10,
-    borderBottomWidth: 1, borderBottomColor: BORDER,
-    backgroundColor: SURFACE,
+    borderBottomWidth: 1,
+    borderBottomColor: Platform.OS === 'web' ? 'rgba(241,245,249,0.65)' : BORDER,
+    backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.80)' : SURFACE,
   },
   listTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
   listTitle:   { fontSize: 18, fontWeight: '800', color: TEXT, letterSpacing: -0.4 },
   totalBadge:  { minWidth: 22, height: 22, paddingHorizontal: 7, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   totalBadgeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
-  closeBtn:    { width: 30, height: 30, borderRadius: 15, backgroundColor: BG_SOFT, alignItems: 'center', justifyContent: 'center' },
+  // Panel sağ üst köşe kapat butonu (absolute)
+  panelCloseBtn: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Platform.OS === 'web' ? 'rgba(247,249,251,0.82)' : BG_SOFT,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+    ...(Platform.OS === 'web'
+      ? ({ backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' } as any)
+      : {}),
+  },
 
   searchBar: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: BG_SOFT, borderRadius: 10,
+    backgroundColor: Platform.OS === 'web' ? 'rgba(247,249,251,0.75)' : BG_SOFT,
+    borderRadius: 10,
     paddingHorizontal: 12, paddingVertical: 7,
   },
   searchInput: {
@@ -1701,7 +1785,11 @@ const p = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
   },
 
-  divider: { height: 1, backgroundColor: BORDER, marginLeft: 72 },
+  divider: {
+    height: 1,
+    backgroundColor: Platform.OS === 'web' ? 'rgba(241,245,249,0.55)' : BORDER,
+    marginLeft: 72,
+  },
 
   emptyList: { padding: 40, alignItems: 'center' },
   emptyListText: { fontSize: 12, color: SUBTLE, textAlign: 'center' },

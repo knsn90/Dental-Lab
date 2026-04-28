@@ -11,14 +11,16 @@ import {
   Platform,
   Animated,
 } from 'react-native';
-import Feather from '@expo/vector-icons/Feather';
 import { BlurView } from 'expo-blur';
+
+import { AppIcon } from './AppIcon';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface MobileTabItem {
   routeName: string;
   label: string;
+  /** Lucide ikon adı (kebab-case). Örn: "home", "clipboard-list" */
   icon: string;
   badge?: boolean;
   badgeCount?: number;
@@ -175,11 +177,7 @@ function TabCell({
 
         {/* ── Icon ────────────────────────────────────────── */}
         <View style={s.iconWrap}>
-          <Feather
-            name={item.icon as any}
-            size={active ? 22 : 21}
-            color={tint}
-          />
+          <AppIcon name={item.icon} size={active ? 22 : 21} color={tint} strokeWidth={active ? 2.25 : 1.75} />
           {item.badge && <View style={s.dotBadge} />}
           {typeof item.badgeCount === 'number' && item.badgeCount > 0 && (
             <View style={s.countBadge}>
@@ -373,8 +371,8 @@ const s = StyleSheet.create({
 
   // ── Icon & label ───────────────────────────────────────────────────────────
   iconWrap: {
-    width:  28,
-    height: 28,
+    width:  34,
+    height: 34,
     alignItems:     'center',
     justifyContent: 'center',
   },

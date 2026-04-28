@@ -12,14 +12,16 @@ import { HubContext } from '../../../core/ui/HubContext';
 import { LabUsersManagement } from '../../admin/users/LabUsersManagement';
 import { LabCheckinSettings } from '../../hr/screens/LabCheckinSettings';
 import { SettingsScreen } from '../SettingsScreen';
+import { StationsSection } from '../sections/StationsSection';
 
 // ─── Tab definitions ──────────────────────────────────────────────────────────
-type TabKey = 'users' | 'checkin' | 'settings';
+type TabKey = 'users' | 'checkin' | 'stations' | 'settings';
 
 const TABS: { key: TabKey; label: string; icon: string; accent: string; bg: string }[] = [
-  { key: 'users',    label: 'Kullanıcılar', icon: 'users',     accent: '#2563EB', bg: '#EFF6FF' },
-  { key: 'checkin',  label: 'QR Check-in',  icon: 'qr-code',   accent: '#059669', bg: '#ECFDF5' },
-  { key: 'settings', label: 'Genel Ayarlar',icon: 'settings',  accent: '#7C3AED', bg: '#EDE9FE' },
+  { key: 'users',    label: 'Kullanıcılar', icon: 'users',             accent: '#2563EB', bg: '#EFF6FF' },
+  { key: 'checkin',  label: 'QR Check-in',  icon: 'qr-code',           accent: '#059669', bg: '#ECFDF5' },
+  { key: 'stations', label: 'İstasyonlar',  icon: 'sitemap-outline',   accent: '#D97706', bg: '#FEF3C7' },
+  { key: 'settings', label: 'Genel Ayarlar',icon: 'settings',          accent: '#7C3AED', bg: '#EDE9FE' },
 ];
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -73,6 +75,9 @@ export function SettingsHubScreen() {
           {activeKey === 'users' && <LabUsersManagement />}
           {activeKey === 'checkin' && (
             <LabCheckinSettings accentColor={tab.accent} />
+          )}
+          {activeKey === 'stations' && (
+            <StationsSection />
           )}
           {activeKey === 'settings' && (
             <SettingsScreen

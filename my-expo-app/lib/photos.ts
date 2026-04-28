@@ -38,6 +38,7 @@ export async function uploadPhoto(
   workOrderId: string,
   uploadedBy: string,
   toothNumber?: number | null,
+  caption?: string | null,
 ): Promise<{ storagePath: string; error: string | null }> {
   // Check file size
   const info = await FileSystem.getInfoAsync(uri, { size: true });
@@ -69,6 +70,7 @@ export async function uploadPhoto(
     uploaded_by: uploadedBy,
   };
   if (toothNumber != null) row.tooth_number = toothNumber;
+  if (caption)             row.caption      = caption;
 
   const { error: dbError } = await supabase.from('work_order_photos').insert(row);
 

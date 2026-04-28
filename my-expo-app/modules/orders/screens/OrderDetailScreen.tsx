@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -12,13 +12,16 @@ import {
   Alert,
   Platform,
   useWindowDimensions,
+  Animated,
+  Easing,
 } from 'react-native';
 import { toast } from '../../../core/ui/Toast';
 import { BrandedQR } from '../../../core/ui/BrandedQR';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, useNavigation, useSegments } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useOrderDetail } from '../hooks/useOrderDetail';
 import { useAuthStore } from '../../../core/store/authStore';
+import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 import { advanceOrderStatus } from '../api';
 import { uploadPhoto, pickPhoto, takePhoto } from '../../../lib/photos';
 import { StatusTimeline } from '../components/StatusTimeline';
@@ -26,7 +29,7 @@ import { StatusUpdateModal } from '../components/StatusUpdateModal';
 import { ProvaSection } from '../components/ProvaSection';
 import { OrderItemsSection } from '../components/OrderItemsSection';
 import { ToothNumberPicker } from '../components/ToothNumberPicker';
-import { STATUS_CONFIG, isOrderOverdue, formatDeliveryDate, getNextStatus } from '../constants';
+import { STATUS_CONFIG, STATUS_ORDER, isOrderOverdue, formatDeliveryDate, getNextStatus } from '../constants';
 import { WorkOrder, WorkOrderStatus } from '../types';
 import { fetchPatientOrders } from '../../provas/api';
 import { C } from '../../../core/theme/colors';
@@ -37,25 +40,455 @@ import { StepTimeline } from '../../production/components/StepTimeline';
 import { useCaseSteps } from '../../production/hooks/useCaseSteps';
 import { printDeliveryReceipt } from '../../receipt/printReceipt';
 import { createInvoiceFromOrder } from '../../invoices/api';
+import { WorkflowCard } from '../components/WorkflowCard';
+import { StageActionPanel } from '../components/StageActionPanel';
+import { LivingToothChart } from '../components/LivingToothChart';
+import { OrderTicketCard } from '../components/OrderTicketCard';
+import { QuickStartModal } from '../components/QuickStartModal';
+import { ChatDetail } from '../components/MessagesPopup';
+import { FilesUploadModal, UploadAttachment } from '../components/FilesUploadModal';
+import { supabase } from '../../../lib/supabase';
 
 import { AppIcon } from '../../../core/ui/AppIcon';
+import { SpotlightBackground } from '../../../core/ui/SpotlightBackground';
+import Svg, { Circle as SvgCircle } from 'react-native-svg';
 
 type Section = 'details' | 'steps' | 'prova' | 'vaka' | 'billing' | 'doctor' | 'files' | 'chat';
 
-const SECTIONS: { key: Section; icon: string; label: string }[] = [
-  { key: 'details', icon: 'clipboard-list-outline',     label: 'Detaylar' },
-  { key: 'steps',   icon: 'timeline-clock-outline',     label: 'Adımlar'  },
-  { key: 'prova',   icon: '__tooth__',                   label: 'Prova'    },
-  { key: 'vaka',    icon: 'folder-account-outline',     label: 'Vaka'     },
-  { key: 'billing', icon: 'tag-outline',                label: 'Ücret'    },
-  { key: 'doctor',  icon: 'stethoscope',                label: 'Hekim'    },
-  { key: 'files',   icon: 'image-multiple-outline',     label: 'Dosyalar' },
-  { key: 'chat',    icon: 'message-outline',            label: 'Mesajlar' },
-];
+const SECTIONS: { key: Section; icon: string; label: string }[] = [];
+
+// ── Panel temasına göre hero card ─────────────────────────────────────────────
+// backgroundImage overlay pattern (HeatmapLegend.tsx'te çalışan yöntem)
+
+interface HeroTheme {
+  baseBg:           string;                       // solid backgroundColor — tüm platformlar
+  gradientCss:      string;                       // CSS backgroundImage — web overlay View'e uygulanır
+  shadowColor:      string;
+  glowColor:        string;                       // native glow View rengi
+  discBg:           string;
+  accent:           string;
+  spotlightColors:  [string, string, string];    // SpotlightBackground için 3 farklı ton
+}
+
+function getHeroPanelTheme(
+  userType?: string | null,
+  _role?: string | null,
+): HeroTheme {
+  switch (userType) {
+
+    case 'admin':
+      return {
+        baseBg:      '#06060A',
+        gradientCss: 'radial-gradient(ellipse 100% 260px at 50% 100%, rgba(99,102,241,0.55), transparent)',
+        shadowColor: '#000',
+        glowColor:   'rgba(99,102,241,0.28)',
+        discBg:      '#0C0D18',
+        accent:      '#A78BFA',
+        // Mor + fuşya — admin paneli güçlü, otoriter ton
+        spotlightColors: [
+          'rgba(167,139,250,0.85)',  // violet-400 — canlı mor
+          'rgba(217,70,239,0.70)',   // fuchsia-500 — neon fuşya
+          'rgba(124,58,237,0.75)',   // violet-600 — derin mor
+        ],
+      };
+
+    case 'doctor':
+      return {
+        baseBg:      '#020F0A',
+        gradientCss: 'radial-gradient(ellipse 100% 260px at 50% 100%, rgba(16,185,129,0.52), transparent)',
+        shadowColor: '#064E3B',
+        glowColor:   'rgba(16,185,129,0.26)',
+        discBg:      '#041F14',
+        accent:      '#34D399',
+        // Emerald + teal — sağlık/şifa hissi, canlı yeşil tonları
+        spotlightColors: [
+          'rgba(52,211,153,0.85)',   // emerald-400 — canlı yeşil
+          'rgba(20,184,166,0.70)',   // teal-500 — turkuaza yakın
+          'rgba(34,197,94,0.75)',    // green-500 — saf yeşil
+        ],
+      };
+
+    case 'clinic_admin':
+      return {
+        baseBg:      '#08020F',
+        gradientCss: 'radial-gradient(ellipse 100% 260px at 50% 100%, rgba(139,92,246,0.55), transparent)',
+        shadowColor: '#4C1D95',
+        glowColor:   'rgba(139,92,246,0.28)',
+        discBg:      '#130828',
+        accent:      '#C4B5FD',
+        // Lavanta + pembe — klinik paneli, sıcak ve davetkar tonlar
+        spotlightColors: [
+          'rgba(196,181,253,0.85)',  // violet-300 — açık lavanta
+          'rgba(244,114,182,0.75)',  // pink-400 — canlı pembe
+          'rgba(139,92,246,0.75)',   // violet-500 — orta mor
+        ],
+      };
+
+    case 'lab':
+    default:
+      return {
+        baseBg:      '#050C1A',
+        gradientCss: 'radial-gradient(ellipse 100% 260px at 50% 100%, rgba(37,99,235,0.58), transparent)',
+        shadowColor: '#1E40AF',
+        glowColor:   'rgba(37,99,235,0.30)',
+        discBg:      '#081428',
+        accent:      '#60A5FA',
+        // Saf mavi paleti — cyan/yeşil ton yok
+        spotlightColors: [
+          'rgba(96,165,250,0.85)',   // blue-400 — açık mavi (sol)
+          'rgba(59,130,246,0.80)',   // blue-500 — orta mavi
+          'rgba(37,99,235,0.75)',    // blue-600 — derin mavi (sağ)
+        ],
+      };
+  }
+}
+
+// ── Step short labels (for hero card stepper) ────────────────────────────────
+const STEP_SHORT: Record<string, string> = {
+  alindi:          'Alındı',
+  uretimde:        'Üretim',
+  kalite_kontrol:  'Kalite',
+  teslimata_hazir: 'Hazır',
+  teslim_edildi:   'Teslim',
+};
+
+// ── Aksiyon butonu ve adım göstergeleri için sabit mavi renk ─────────────────
+// Kullanıcı tipinden bağımsız: hangi panel olursa olsun bu öğeler hep mavi
+const ACTION_BLUE       = '#3B82F6';   // Buton arka planı (deeper blue)
+const ACTION_BLUE_LIGHT = '#60A5FA';   // Step nokta / pulse / aktif label
+
+// ── Hero progress disc ────────────────────────────────────────────────────────
+// Animated: yüzde değeri değiştikçe yumuşak bir geçişle yeni değere doğru
+// "akar". Hem web (rAF) hem native (rAF) tarafında çalışır.
+// Halka animasyonları:
+//   1) Dönen kuyruklu yıldız (comet): dış halkada devamlı 360° döner
+//   2) Nefes alan dış glow ring: opacity 0.3 ↔ 0.85, 1.1s döngü
+function HeroDisc({
+  percent,
+  accent = '#60A5FA',
+  discBg = '#081428',
+  size = 96,
+  duration = 900,
+}: {
+  percent: number;
+  accent?: string;
+  discBg?: string;
+  size?: number;
+  duration?: number;
+}) {
+  const SIZE      = size;
+  const CX        = SIZE / 2;
+  const OUTER_R   = SIZE / 2 - 3;
+  const TRACK_R   = SIZE / 2 - Math.max(8, Math.round(SIZE * 0.115));
+  const STROKE    = Math.max(6, Math.round(SIZE * 0.105));
+  const INNER_R   = TRACK_R - STROKE / 2 - 2;
+  const FONT_NUM  = Math.max(13, Math.round(SIZE * 0.22));
+  const FONT_PCT  = Math.max(7,  Math.round(SIZE * 0.105));
+  const THUMB_R   = Math.max(4,  Math.round(SIZE * 0.075));
+
+  const target = Math.max(0, Math.min(100, percent));
+
+  // ── Sayım animasyonu (mevcut) ─────────────────────────────────────────────
+  const [animPct, setAnimPct] = useState(0);
+  const animRef  = useRef(0);
+  const frameRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (frameRef.current != null) {
+      const cancel = (typeof cancelAnimationFrame !== 'undefined')
+        ? cancelAnimationFrame
+        : (id: number) => clearTimeout(id);
+      cancel(frameRef.current);
+      frameRef.current = null;
+    }
+
+    const from = animRef.current;
+    const to   = target;
+    const t0   = (typeof performance !== 'undefined' && performance.now)
+      ? performance.now()
+      : Date.now();
+
+    const raf = (typeof requestAnimationFrame !== 'undefined')
+      ? requestAnimationFrame
+      : ((cb: (t: number) => void) => setTimeout(() => cb(Date.now()), 16) as unknown as number);
+
+    const tick = (now: number) => {
+      const t = Math.min(Math.max((now - t0) / duration, 0), 1);
+      // ease-out cubic
+      const eased = 1 - Math.pow(1 - t, 3);
+      const v = from + (to - from) * eased;
+      animRef.current = v;
+      setAnimPct(v);
+      if (t < 1) {
+        frameRef.current = raf(tick) as number;
+      } else {
+        frameRef.current = null;
+      }
+    };
+    frameRef.current = raf(tick) as number;
+
+    return () => {
+      if (frameRef.current != null) {
+        const cancel = (typeof cancelAnimationFrame !== 'undefined')
+          ? cancelAnimationFrame
+          : (id: number) => clearTimeout(id);
+        cancel(frameRef.current);
+        frameRef.current = null;
+      }
+    };
+  }, [target, duration]);
+
+  // ── Buton ikon halo: CSS keyframes (web) — JS overhead yok
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const id = 'hero-btn-icon-halo-keyframes';
+    if (document.getElementById(id)) return;
+    const style = document.createElement('style');
+    style.id = id;
+    style.textContent = `
+      @keyframes hero-btn-icon-halo {
+        0%   { transform: scale(0.7); opacity: 0.70; }
+        100% { transform: scale(1.7); opacity: 0;    }
+      }
+    `;
+    document.head.appendChild(style);
+  }, []);
+
+  // Native için: Animated.Value + loop (useNativeDriver:true → GPU thread)
+  const haloScale   = useRef(new Animated.Value(0.7)).current;
+  const haloOpacity = useRef(new Animated.Value(0.70)).current;
+  useEffect(() => {
+    if (Platform.OS === 'web') return;     // web'de CSS keyframes kullanıyoruz
+    const HALO_DURATION = 2200;
+    const loop = Animated.loop(
+      Animated.parallel([
+        Animated.timing(haloScale,   { toValue: 1.7, duration: HALO_DURATION, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+        Animated.timing(haloOpacity, { toValue: 0,   duration: HALO_DURATION, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+      ]),
+    );
+    const reset = () => {
+      haloScale.setValue(0.7);
+      haloOpacity.setValue(0.70);
+    };
+    const startLoop = () => {
+      reset();
+      loop.start(() => startLoop());
+    };
+    startLoop();
+    return () => loop.stop();
+  }, [haloScale, haloOpacity]);
+
+  // ── Display değerleri animasyon değerinden türetilir ──────────────────────
+  const pct         = animPct;
+  const displayInt  = Math.round(pct);
+  const circ        = 2 * Math.PI * TRACK_R;
+  const filled      = (pct / 100) * circ;
+  const outerCirc   = 2 * Math.PI * OUTER_R;
+  const outerFilled = (pct / 100) * outerCirc;
+
+  const θ      = ((pct / 100) * 360 - 90) * (Math.PI / 180);
+  const thumbX = CX + TRACK_R * Math.cos(θ);
+  const thumbY = CX + TRACK_R * Math.sin(θ);
+
+  const accentGlow = accent + '55';
+
+  return (
+    <View style={{ width: SIZE, height: SIZE }}>
+
+      {/* Ana SVG: track + ilerleme yayı + iç dolgu (statik, animasyon yok) */}
+      <Svg width={SIZE} height={SIZE}>
+        {/* Outer dim ring */}
+        <SvgCircle cx={CX} cy={CX} r={OUTER_R}
+          fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={2} />
+
+        {/* Outer glow arc (ilerlemeye bağlı) */}
+        <SvgCircle cx={CX} cy={CX} r={OUTER_R}
+          fill="none" stroke={accentGlow} strokeWidth={2.5}
+          strokeDasharray={`${outerFilled} ${outerCirc}`}
+          strokeLinecap="round"
+          transform={`rotate(-90, ${CX}, ${CX})`}
+        />
+
+        {/* Track */}
+        <SvgCircle cx={CX} cy={CX} r={TRACK_R}
+          fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={STROKE} />
+
+        {/* Progress arc */}
+        <SvgCircle cx={CX} cy={CX} r={TRACK_R}
+          fill="none" stroke={accent} strokeWidth={STROKE}
+          strokeDasharray={`${filled} ${circ}`}
+          strokeLinecap="round"
+          transform={`rotate(-90, ${CX}, ${CX})`}
+        />
+
+        {/* Inner disc fill — transparan: arka plan spotlight'ı görünür */}
+        {/* <SvgCircle cx={CX} cy={CX} r={INNER_R} fill={discBg} /> */}
+
+        {/* Thumb — solid beyaz nokta (statik) */}
+        {pct > 2 && (
+          <SvgCircle cx={thumbX} cy={thumbY} r={THUMB_R} fill="#FFFFFF" />
+        )}
+      </Svg>
+
+      {/* Disc thumb halo kaldırıldı — animasyon Başlat butonu ikonuna taşındı */}
+
+      {/* Percentage text — sayım animasyonu */}
+      <View style={{
+        position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+        alignItems: 'center', justifyContent: 'center',
+        flexDirection: 'row',
+      }}>
+        <Text style={{
+          fontSize: FONT_NUM, fontWeight: '800', color: '#FFFFFF',
+          letterSpacing: -0.5, lineHeight: FONT_NUM + 2,
+          fontVariant: ['tabular-nums'],
+        }}>
+          {displayInt}
+        </Text>
+        <Text style={{
+          fontSize: FONT_PCT, fontWeight: '600',
+          color: 'rgba(255,255,255,0.55)', letterSpacing: 0.5,
+          marginLeft: 1, marginTop: Math.round(FONT_NUM * 0.18),
+        }}>
+          %
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+// ── Step pulse: aktif adım için iki katmanlı dalga animasyonu ────────────────
+// İç dot da hafifçe nefes alır (scale 1 ↔ 1.18) gibi pulsasyon yapar.
+function StepPulse({ color, size = 20 }: { color: string; size?: number }) {
+  // Faz 0: 0–1500ms büyür ve solar
+  // Faz 1: 750ms gecikmeli ikinci dalga (radar etkisi)
+  const ring1Scale   = useRef(new Animated.Value(1)).current;
+  const ring1Opacity = useRef(new Animated.Value(0.55)).current;
+  const ring2Scale   = useRef(new Animated.Value(1)).current;
+  const ring2Opacity = useRef(new Animated.Value(0.55)).current;
+  const innerScale   = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const makeRing = (sv: Animated.Value, ov: Animated.Value, delay: number) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.parallel([
+            Animated.timing(sv, {
+              toValue:         3.0,                      // 2.0 → 3.0 (daha geniş radar dalgası)
+              duration:        1700,
+              easing:          Easing.out(Easing.ease),
+              useNativeDriver: true,
+            }),
+            Animated.timing(ov, {
+              toValue:         0,
+              duration:        1700,
+              easing:          Easing.out(Easing.ease),
+              useNativeDriver: true,
+            }),
+          ]),
+        ]),
+      );
+
+    const inner = Animated.loop(
+      Animated.sequence([
+        Animated.timing(innerScale, {
+          toValue: 1.18,
+          duration: 750,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(innerScale, {
+          toValue: 1.0,
+          duration: 750,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+
+    const r1 = makeRing(ring1Scale, ring1Opacity, 0);
+    const r2 = makeRing(ring2Scale, ring2Opacity, 850);     // 750 → 850 (yeni süreyle uyumlu)
+
+    r1.start();
+    r2.start();
+    inner.start();
+
+    return () => {
+      r1.stop();
+      r2.stop();
+      inner.stop();
+    };
+  }, [ring1Scale, ring1Opacity, ring2Scale, ring2Opacity, innerScale]);
+
+  const ringStyle = (sv: Animated.Value, ov: Animated.Value) => ({
+    position: 'absolute' as const,
+    width:        size,
+    height:       size,
+    borderRadius: size / 2,
+    borderWidth:  2,
+    borderColor:  color,
+    opacity:      ov,
+    transform:    [{ scale: sv }],
+  });
+
+  return (
+    <>
+      <Animated.View pointerEvents="none" style={ringStyle(ring1Scale, ring1Opacity)} />
+      <Animated.View pointerEvents="none" style={ringStyle(ring2Scale, ring2Opacity)} />
+      <Animated.View
+        pointerEvents="none"
+        style={{
+          width: 8, height: 8, borderRadius: 4,
+          backgroundColor: '#FFFFFF',          // aktif step iç noktası: beyaz
+          transform: [{ scale: innerScale }],
+        }}
+      />
+    </>
+  );
+}
+
+// ── Hafif "davet" pulse'u — Başlat butonunu sarmalayan animasyonlu container ──
+// Native driver ile transform: scale loop. Re-render yok, GPU'da çalışır.
+function HeroBtnPulse({
+  children,
+  style,
+}: {
+  children: React.ReactNode;
+  style?: any;
+}) {
+  const scale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(scale, {
+          toValue:         1.04,
+          duration:        1100,
+          easing:          Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(scale, {
+          toValue:         1.0,
+          duration:        1100,
+          easing:          Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [scale]);
+
+  return (
+    <Animated.View style={[{ transform: [{ scale }] }, style]}>
+      {children}
+    </Animated.View>
+  );
+}
 
 // ── Print helper ──────────────────────────────────────────────────────────────
-function handlePrint(order: WorkOrder, qrUrl: string) {
-  if (typeof window === 'undefined') return;
+function buildPrintHtml(order: WorkOrder, qrUrl: string): string {
 
   const cfg = STATUS_CONFIG[order.status];
   const qrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(qrUrl)}&margin=6&bgcolor=ffffff&color=0f172a`;
@@ -164,31 +597,96 @@ function handlePrint(order: WorkOrder, qrUrl: string) {
     <span>${order.order_number} · Yazdırma tarihi: ${new Date().toLocaleDateString('tr-TR')}</span>
   </div>
 
-  <script>window.onload = () => setTimeout(() => window.print(), 400);</script>
+
 </body>
 </html>`;
 
+  return html;
+}
+
+function handlePrint(order: WorkOrder, qrUrl: string) {
+  if (typeof window === 'undefined') return;
   const w = window.open('', '_blank');
   if (w) {
-    w.document.write(html);
+    w.document.write(buildPrintHtml(order, qrUrl) + '<script>window.onload = () => setTimeout(() => window.print(), 400);</script>');
     w.document.close();
   }
 }
 
 
 export function OrderDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const router = useRouter();
+  const { id }    = useLocalSearchParams<{ id: string }>();
+  const router    = useRouter();
   const { profile } = useAuthStore();
   const { order, signedUrls, loading, error, refetch } = useOrderDetail(id);
   const { width } = useWindowDimensions();
   const isDesktop = width >= 769;
+
+  // Route group'dan panel tipini tespit et (early return'den ÖNCE)
+  // Hook'lar her render'da aynı sırada çağrılmalı.
+  const segments   = useSegments() as string[];
+  const panelGroup = segments?.[0] ?? '';
+  const panelType  =
+    panelGroup === '(lab)'    ? 'lab' :
+    panelGroup === '(doctor)' ? 'doctor' :
+    panelGroup === '(admin)'  ? 'admin' :
+    panelGroup === '(clinic)' ? 'clinic_admin' :
+    profile?.user_type;
+
+  // Üretim aşamasındaki üretim istasyonları (case_steps tablosu) — hero altında ek satır
+  const { steps: productionSteps } = useCaseSteps(id ?? '');
+
+  // Sayfa başlığı:
+  //   Title    → "LAB-2026-0031"             (üst, büyük)
+  //   Subtitle → "Dr. Kaan Esen · Klinik X"  (altta, küçük gri)
+  // - DesktopShell üst başlığı (pageTitleStore: title + subtitle)
+  // - Browser tab (tek string olarak birleştirilir)
+  // - Native header (navigation.setOptions)
+  const navigation     = useNavigation();
+  const setPageTitle   = usePageTitleStore(s => s.setTitle);
+  const clearPageTitle = usePageTitleStore(s => s.clear);
+  useEffect(() => {
+    if (!order?.order_number) return;
+    const doctorName    = order.doctor?.full_name?.trim();
+    const clinicName    = (order.doctor?.clinic_name ?? order.doctor?.clinic?.name)?.trim();
+    const title         = order.order_number;
+    const subtitle      = [doctorName, clinicName].filter(Boolean).join(' · ');
+    const combinedTitle = subtitle ? `${title} · ${subtitle}` : title;
+
+    navigation.setOptions({ title: combinedTitle });
+    setPageTitle(title, subtitle || null);
+    if (typeof document !== 'undefined') {
+      document.title = combinedTitle;
+    }
+  }, [
+    navigation,
+    setPageTitle,
+    order?.order_number,
+    order?.doctor?.full_name,
+    order?.doctor?.clinic_name,
+    order?.doctor?.clinic?.name,
+  ]);
+
+  // Unmount: shell başlığı tekrar default'a dönsün
+  useEffect(() => {
+    return () => clearPageTitle();
+  }, [clearPageTitle]);
 
   const [activeSection, setActiveSection] = useState<Section>('details');
   const [modalVisible, setModalVisible] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [showMoreActions, setShowMoreActions] = useState(false);
+  const [toothPopup, setToothPopup] = useState<number | null>(null);
+  const [showQuickStart, setShowQuickStart] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [filesOpen, setFilesOpen] = useState(false);
+  const [billingOpen, setBillingOpen] = useState(false);
+  const [provaOpen, setProvaOpen] = useState(false);
+  const [vakaOpen, setVakaOpen] = useState(false);
+  const [printOpen, setPrintOpen] = useState(false);
+  const printIframeRef = React.useRef<any>(null);
+  const [btnHovered, setBtnHovered]         = useState(false);   // hero Başlat butonu hover
 
   if (loading) {
     return (
@@ -237,6 +735,14 @@ export function OrderDetailScreen() {
   const cfg        = STATUS_CONFIG[order.status];
   const isManager  = profile?.role === 'manager' || profile?.user_type === 'admin';
 
+  // ── Panel temasına göre hero card gradient ──────────────────────────────
+  // panelType en üstte, useSegments ile hesaplandı (hook ordering için).
+  const heroTheme = getHeroPanelTheme(panelType, profile?.role);
+
+  // Beyaz kartlar (Row 2) — marka rengi mavi (panel role'undan bağımsız)
+  // Hero card kendi panel temasını kullanır; Row 2 her zaman mavi (tutarlı CTA rengi)
+  const accentColor = '#2563EB';   // blue-600
+
   const qrUrl = Platform.OS === 'web' && typeof window !== 'undefined'
     ? `${window.location.origin}/order/${order.id}`
     : `https://dental-lab-steel.vercel.app/order/${order.id}`;
@@ -266,13 +772,13 @@ export function OrderDetailScreen() {
     router.push(`/(lab)/invoice/${data.id}` as any);
   };
 
-  const handleAddPhoto = async (toothNumber?: number | null) => {
+  const handleAddPhoto = async (toothNumber?: number | null, caption?: string | null) => {
     if (!profile) return;
     if (typeof window !== 'undefined') {
       const uri = await pickPhoto();
       if (!uri) return;
       setUploadingPhoto(true);
-      const { error } = await uploadPhoto(uri, order.id, profile.id, toothNumber);
+      const { error } = await uploadPhoto(uri, order.id, profile.id, toothNumber, caption);
       setUploadingPhoto(false);
       if (error) toast.error(error);
       else refetch();
@@ -307,224 +813,464 @@ export function OrderDetailScreen() {
     ]);
   };
 
+  // Web-uyumlu kategorili upload — native <input type="file"> + doğrudan blob upload.
+  // FilesUploadModal pick callback'leri buradan çağrılır; caption=label.
+  const handleUploadWithCaption = async (label: string, accept: string) => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined' || !profile) {
+      console.warn('[upload] aborted — platform/profile guard', { platform: Platform.OS, hasProfile: !!profile });
+      return;
+    }
+    const input = document.createElement('input');
+    input.type   = 'file';
+    input.accept = accept;
+    input.style.display = 'none';
+    document.body.appendChild(input);
+
+    input.onchange = async (e: any) => {
+      const file: File | undefined = e.target.files?.[0];
+      console.log('[upload] file picked', { label, name: file?.name, type: file?.type, size: file?.size });
+      try { document.body.removeChild(input); } catch {}
+      if (!file) return;
+      setUploadingPhoto(true);
+      try {
+        // RLS auth.uid() ile uploaded_by'ı eşleştirir — supabase auth user'ını al
+        const { data: authData } = await supabase.auth.getUser();
+        const authUid = authData?.user?.id ?? profile.id;
+        console.log('[upload] auth user id', authUid, 'profile.id', profile.id);
+
+        const ext         = file.name.split('.').pop()?.toLowerCase() ?? 'bin';
+        const fileName    = `${Date.now()}.${ext}`;
+        const storagePath = `orders/${order.id}/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('work-order-photos')
+          .upload(storagePath, file, { contentType: file.type || `application/${ext}`, upsert: false });
+
+        if (uploadError) {
+          console.error('[upload] storage error', uploadError);
+          toast.error(`Upload: ${uploadError.message}`);
+          return;
+        }
+
+        const { error: dbError } = await supabase.from('work_order_photos').insert({
+          work_order_id: order.id,
+          storage_path:  storagePath,
+          uploaded_by:   authUid,
+          caption:       label,
+        });
+        if (dbError) {
+          console.error('[upload] db error', dbError);
+          toast.error(`DB: ${dbError.message}`);
+        } else {
+          toast.success(`${label} yüklendi`);
+          refetch();
+        }
+      } catch (err: any) {
+        console.error('[upload] exception', err);
+        toast.error(err?.message ?? 'Bilinmeyen hata');
+      } finally {
+        setUploadingPhoto(false);
+      }
+    };
+
+    // Fallback: bazı tarayıcılarda input DOM'da olmadan click() çalışmaz
+    setTimeout(() => input.click(), 0);
+    // Kullanıcı iptal ederse temizle
+    setTimeout(() => { try { document.body.removeChild(input); } catch {} }, 60_000);
+  };
+
   const createdDate = new Date(order.created_at).toLocaleDateString('tr-TR', {
     day: 'numeric', month: 'short', year: 'numeric',
   });
 
+  // Workflow progress percentage (10%→100%)
+  const statusIndex = STATUS_ORDER.indexOf(order.status);
+  const progressPercent = statusIndex >= 0
+    ? Math.round(((statusIndex + 1) / STATUS_ORDER.length) * 100)
+    : 10;
+
+  // Up to 2 photo thumbnails for hero card
+  const heroPhotos = (order.photos ?? []).slice(0, 2);
+
+  // Tooth card dimensions — responsive, capped
+  const TOOTH_CARD_W   = Math.min(Math.max(Math.round((width - 40) * 0.33), 130), 200);
+  const TOOTH_PICKER_W = TOOTH_CARD_W - 16;
+
+  // Hero başlat butonu — responsive KARE: width = height
+  const ACTION_BTN_W = Math.min(Math.max(Math.round((width - 40) * 0.16), 124), 152);
+  // Hero disc boyutu — kart içine sığsın (pulse ring + 12px boşluk dahil)
+  const DISC_SIZE    = Math.min(Math.max(Math.round((width - 40) * 0.10), 88), 112);
+  const hasTeeth       = (order.tooth_numbers ?? []).length > 0;
+
+  // Tooth sub-row: şema büyük kalır, kart picker etrafında eşit boşluk (16px) bırakır
+  const TOOTH_SUB_PAD = 16;                                                // tüm kenarlardaki eşit boşluk
+  const TOOTH_SUB_PW  = Math.min(Math.round((width - 48) * 0.40), 440);   // picker width (orijinal)
+  const TOOTH_SUB_CW  = TOOTH_SUB_PW + TOOTH_SUB_PAD * 2;                  // card width = picker + 16+16
+
   return (
     <SafeAreaView style={styles.safe}>
 
-      {/* ── Header Card ── */}
-      <View style={styles.topBar}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <AppIcon name="arrow-left" size={16} color="#0F172A" strokeWidth={2.5} />
-          <Text style={styles.backText}>Geri</Text>
-        </TouchableOpacity>
+      {/* OUTER SCROLL — tüm sayfa içeriği tek scroll yüzeyi olur */}
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 12 }}
+        showsVerticalScrollIndicator={true}
+      >
 
-        <View style={styles.topMeta}>
-          <View style={[styles.stagePill, { backgroundColor: cfg.bgColor }]}>
-            <View style={[styles.stageDot, { backgroundColor: cfg.color }]} />
-            <Text style={[styles.stageLabel, { color: cfg.color }]}>{cfg.label}</Text>
-          </View>
-          <Text style={styles.topOrderNum}>{order.order_number}</Text>
-          {order.doctor && (
-            <Text style={styles.topDoctor}>· {order.doctor.full_name}</Text>
-          )}
+      <View style={styles.pageGrid}>
+
+      {/* ══════════════════════════════════════════
+           Header row: Hero Card + Tooth Chart Card
+           (same height via alignItems: stretch)
+           ══════════════════════════════════════════ */}
+      <View style={styles.headerRow}>
+
+        {/* ── Hero Card ── */}
+        <View style={[
+          styles.heroCard,
+          {
+            flex: 1,
+            shadowColor:     heroTheme.shadowColor,
+            backgroundColor: heroTheme.baseBg,    // solid base — spotlight üstüne eklenir
+          },
+        ]}>
+
+          {/* Hareketli spotlight blob'ları — panel rengine göre 3 farklı ton */}
+          <SpotlightBackground colors={heroTheme.spotlightColors} />
+
+          {/* ── Top row: yalnızca acil rozeti (varsa) ── */}
           {order.is_urgent && (
-            <View style={styles.urgentTag}>
-              <Text style={styles.urgentTagText}>⚡ ACİL</Text>
+            <View style={styles.heroTopRow}>
+              <View style={styles.heroUrgentTag}>
+                <Text style={styles.heroUrgentText}>⚡ ACİL</Text>
+              </View>
             </View>
           )}
-        </View>
 
-        {nextStatus && (
-          <TouchableOpacity
-            onPress={() => setModalVisible(true)}
-            style={styles.btnAdvance}
-            activeOpacity={0.75}
-          >
-            <Text style={styles.btnAdvanceText}>
-              {order.status === 'alindi' ? 'Başlat' : 'Tamamla'}
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
+          {/* ── Ana içerik: 2 sütun ── SOL: [info + disc içeride] | SAĞ: başlat ── */}
+          <View style={styles.heroMainRow}>
 
-      {/* ── Overdue Banner Card ── */}
-      {overdue && (
-        <View style={styles.overdueBanner}>
-          <View style={styles.overdueBannerDot} />
-          <Text style={styles.overdueBannerText}>
-            {Math.abs(daysLeft)} gün geçti — teslimat süresi doldu
-          </Text>
-          <AppIcon name="alert-circle" size={15} color="#DC2626" strokeWidth={2} />
-        </View>
-      )}
-
-      {/* ── Meta + Actions Card ── */}
-      <View style={styles.infoBar}>
-        {/* Left: 2×2 meta grid */}
-        <View style={styles.infoMetaGrid}>
-          <InfoPill label="Durum" value={cfg.label} color={cfg.color} />
-          <InfoPill
-            label="Kalan Gün"
-            value={
-              order.status === 'teslim_edildi'
-                ? 'Teslim Edildi'
-                : daysLeft < 0
-                ? `${Math.abs(daysLeft)}g geçti`
-                : `${daysLeft} gün`
-            }
-            color={daysLeft < 0 && order.status !== 'teslim_edildi' ? '#EF4444' : undefined}
-          />
-          <InfoPill label="Teslim" value={formatDeliveryDate(order.delivery_date)} />
-          <InfoPill label="Oluşturulma" value={createdDate} />
-        </View>
-
-        {/* Divider */}
-        <View style={styles.infoBarDivider} />
-
-        {/* Right: Primary actions + more */}
-        <View style={styles.infoActions}>
-          <TouchableOpacity
-            onPress={handleCreateInvoice}
-            style={styles.btnInvoice}
-            activeOpacity={0.8}
-          >
-            <AppIcon name={'file-document-outline' as any} size={14} color="#FFFFFF" />
-            <Text style={styles.btnInvoiceText}>Fatura</Text>
-          </TouchableOpacity>
-
-          {/* More actions button */}
-          <View style={{ position: 'relative' }}>
-            <TouchableOpacity
-              style={styles.btnMore}
-              onPress={() => setShowMoreActions(v => !v)}
-              activeOpacity={0.8}
+            {/* SOL kolon: heroProdBlock kendi içinde flex-row → info (flex:1) + disc */}
+            <View
+              style={[
+                styles.heroProdBlock,
+                {
+                  flex:           1,
+                  minWidth:       0,
+                  flexDirection:  'row',
+                  alignItems:     'center',
+                  gap:            12,
+                },
+              ]}
             >
-              <AppIcon name="more-horizontal" size={16} color="#475569" strokeWidth={2} />
-            </TouchableOpacity>
+              {/* SUB-LEFT: hasta info (shrinkable) */}
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.heroProdTypeLabel}>HASTA</Text>
+                <Text style={styles.heroProdType} numberOfLines={2}>
+                  {order.patient_name ?? '—'}
+                </Text>
+                {order.work_type ? (
+                  <Text style={styles.heroProdSubType} numberOfLines={1}>
+                    {order.work_type}
+                  </Text>
+                ) : null}
 
-            {/* Dropdown */}
-            {showMoreActions && (
-              <>
-                {/* Backdrop */}
-                <Pressable
-                  style={styles.moreBackdrop}
-                  onPress={() => setShowMoreActions(false)}
-                />
-                <View style={styles.moreDropdown}>
-                  <TouchableOpacity style={styles.moreItem} onPress={() => { setShowQR(true); setShowMoreActions(false); }}>
-                    <AppIcon name="qr-code" size={14} color="#475569" strokeWidth={1.75} />
-                    <Text style={styles.moreItemText}>QR Kod</Text>
-                  </TouchableOpacity>
-                  {Platform.OS === 'web' && (
-                    <TouchableOpacity style={styles.moreItem} onPress={() => { router.push(`/order/occlusion/${order.id}` as any); setShowMoreActions(false); }}>
-                      <AppIcon name={'cube-scan' as any} size={14} color="#475569" strokeWidth={1.75} />
-                      <Text style={styles.moreItemText}>Oklüzyon</Text>
-                    </TouchableOpacity>
-                  )}
-                  {Platform.OS === 'web' && (
-                    <TouchableOpacity style={styles.moreItem} onPress={() => { handlePrint(order, qrUrl); setShowMoreActions(false); }}>
-                      <AppIcon name="printer" size={14} color="#475569" strokeWidth={1.75} />
-                      <Text style={styles.moreItemText}>Yazdır</Text>
-                    </TouchableOpacity>
-                  )}
-                  <TouchableOpacity style={styles.moreItem} onPress={() => { handlePrintReceipt(); setShowMoreActions(false); }}>
-                    <AppIcon name={'receipt-text-outline' as any} size={14} color="#475569" strokeWidth={1.75} />
-                    <Text style={styles.moreItemText}>Teslimat Fişi</Text>
-                  </TouchableOpacity>
-                  {isManager && (
-                    <TouchableOpacity style={styles.moreItem} onPress={() => { router.push(`/(lab)/order/route/${order.id}` as any); setShowMoreActions(false); }}>
-                      <AppIcon name={'sitemap-outline' as any} size={14} color="#475569" strokeWidth={1.75} />
-                      <Text style={styles.moreItemText}>Rota Ata</Text>
-                    </TouchableOpacity>
-                  )}
-                  {isManager && (
-                    <TouchableOpacity style={styles.moreItem} onPress={() => { router.push(`/(lab)/deliveries` as any); setShowMoreActions(false); }}>
-                      <AppIcon name={'truck-fast-outline' as any} size={14} color="#7C3AED" strokeWidth={1.75} />
-                      <Text style={[styles.moreItemText, { color: '#7C3AED' }]}>Teslimat</Text>
-                    </TouchableOpacity>
+                <View style={styles.heroProdMetaRow}>
+                  {order.shade ? (
+                    <View style={[styles.heroProdChip, { backgroundColor: 'rgba(96,165,250,0.18)' }]}>
+                      <Text style={styles.heroProdChipLabel}>Renk</Text>
+                      <Text style={[styles.heroProdChipValue, { color: '#60A5FA' }]}>
+                        {order.shade}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {(order.tooth_numbers ?? []).length > 0
+                    ? [...(order.tooth_numbers ?? [])].sort((a, b) => a - b).map(tooth => (
+                      <TouchableOpacity
+                        key={tooth}
+                        onPress={() => setToothPopup(tooth)}
+                        activeOpacity={0.7}
+                        style={styles.heroProdChip}
+                      >
+                        <Text style={styles.heroProdChipLabel}>Diş</Text>
+                        <Text style={styles.heroProdChipValue}>{tooth}</Text>
+                      </TouchableOpacity>
+                    ))
+                    : null}
+
+                  {overdue && (
+                    <View style={[styles.heroProdChip, { backgroundColor: 'rgba(239,68,68,0.18)' }]}>
+                      <Text style={styles.heroProdChipLabel}>Gecikme</Text>
+                      <Text style={[styles.heroProdChipValue, { color: '#FCA5A5' }]}>
+                        {Math.abs(daysLeft)} gün
+                      </Text>
+                    </View>
                   )}
                 </View>
-              </>
+
+                {/* Tarih satırı */}
+                <View style={{ flexDirection: 'row', gap: 16, marginTop: 8 }}>
+                  <View>
+                    <Text style={styles.heroTimelineLabel}>Başlangıç</Text>
+                    <Text style={styles.heroTimelineValue}>{createdDate}</Text>
+                  </View>
+                  <View>
+                    <Text style={styles.heroTimelineLabel}>Teslim</Text>
+                    <Text style={[styles.heroTimelineValue, overdue && { color: '#FCA5A5' }]}>
+                      {order.status === 'teslim_edildi'
+                        ? '✓ Teslim'
+                        : daysLeft < 0
+                          ? `${Math.abs(daysLeft)}g geçti`
+                          : `${daysLeft} gün`}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* SUB-RIGHT: yüzde dairesi (QR Detaylar sekmesinde, hero'da kaldırıldı) */}
+              <View style={{ flexShrink: 0 }}>
+                <HeroDisc
+                  percent={progressPercent}
+                  accent={ACTION_BLUE_LIGHT}
+                  discBg={heroTheme.discBg}
+                  size={DISC_SIZE}
+                />
+              </View>
+            </View>
+
+            {/* SAĞ: BÜYÜK responsive aksiyon butonu — hover efektli, info kartı yüksekliği */}
+            {nextStatus ? (
+              <TouchableOpacity
+                onPress={() => {
+                  const rawStatus = order.status as string;
+                  const isStartAction = rawStatus === 'alindi' || rawStatus === 'atama_bekleniyor';
+                  if (isStartAction && isManager) {
+                    setShowQuickStart(true);
+                  } else {
+                    setModalVisible(true);
+                  }
+                }}
+                activeOpacity={0.85}
+                // @ts-ignore — RN-Web mouse event'leri
+                onMouseEnter={() => setBtnHovered(true)}
+                // @ts-ignore
+                onMouseLeave={() => setBtnHovered(false)}
+                style={[
+                  styles.heroBigActionBtn,
+                  {
+                    width:      ACTION_BTN_W,
+                    flexShrink: 0,                  // küçülmesin
+                    alignSelf:  'stretch',          // info kartının yüksekliğini al
+                    // @ts-ignore — hızlı hover geçişi (web only, native'de yoksayılır)
+                    transition: 'background-image 80ms ease-out',
+                  },
+                  btnHovered && {
+                    // Sadece renk değişir — boyut/scale yok
+                    // @ts-ignore — hover'da daha açık + parlak gradient
+                    backgroundImage:
+                      'linear-gradient(135deg,' +
+                      ' #93C5FD 0%,' +     // blue-300 — daha açık üst sol
+                      ' #60A5FA 45%,' +    // blue-400
+                      ' #3B82F6 100%)',    // blue-500
+                  },
+                ]}
+              >
+                <View style={styles.heroBigActionIconCircle}>
+                  {/* İkon halo — disc'ten taşınan animasyon, GPU-accelerated */}
+                  {Platform.OS === 'web' ? (
+                    <View
+                      pointerEvents="none"
+                      // @ts-ignore — CSS keyframes
+                      style={{
+                        position:     'absolute',
+                        top:          -8,
+                        left:         -8,
+                        right:        -8,
+                        bottom:       -8,
+                        borderRadius: 36,                // (56+16)/2
+                        borderWidth:  1.5,
+                        borderColor:  '#FFFFFF',
+                        animationName:           'hero-btn-icon-halo',
+                        animationDuration:       '2.2s',
+                        animationTimingFunction: 'ease-out',
+                        animationIterationCount: 'infinite',
+                      }}
+                    />
+                  ) : (
+                    <Animated.View
+                      pointerEvents="none"
+                      style={{
+                        position:     'absolute',
+                        top:          -8,
+                        left:         -8,
+                        right:        -8,
+                        bottom:       -8,
+                        borderRadius: 36,
+                        borderWidth:  1.5,
+                        borderColor:  '#FFFFFF',
+                        opacity:      haloOpacity,
+                        transform:    [{ scale: haloScale }],
+                      }}
+                    />
+                  )}
+                  {(order.status as string) === 'alindi' || (order.status as string) === 'atama_bekleniyor' ? (
+                    <AppIcon name="zap" size={30} color="#FFFFFF" />
+                  ) : (
+                    <AppIcon name="check-circle" size={30} color="#FFFFFF" />
+                  )}
+                </View>
+                <Text style={styles.heroBigActionText}>
+                  {(order.status as string) === 'alindi' || (order.status as string) === 'atama_bekleniyor'
+                    ? 'Başlat' : 'Tamamla'}
+                </Text>
+                <Text style={styles.heroBigActionSub}>
+                  {nextStatus ? STATUS_CONFIG[nextStatus].label : ''}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <View
+                style={[
+                  styles.heroBigActionBtn,
+                  {
+                    width:           ACTION_BTN_W,
+                    flexShrink:      0,              // küçülmesin
+                    alignSelf:       'stretch',      // info kartı yüksekliği
+                    backgroundColor: 'rgba(16,185,129,0.18)',
+                    shadowOpacity:   0,
+                  },
+                ]}
+              >
+                <View style={[styles.heroBigActionIconCircle, { backgroundColor: 'rgba(16,185,129,0.25)' }]}>
+                  <Text style={{ fontSize: 24, color: '#10B981', fontWeight: '800' }}>✓</Text>
+                </View>
+                <Text style={[styles.heroBigActionText, { color: '#34D399' }]}>Teslim</Text>
+                <Text style={styles.heroBigActionSub}>Tamamlandı</Text>
+              </View>
             )}
+
           </View>
-        </View>
-      </View>
+
+          {/* ── Steps row ── */}
+          <View style={styles.heroStepsRow}>
+            {STATUS_ORDER.map((status, i) => {
+              const isDone    = statusIndex > i;
+              const isCurrent = statusIndex === i;
+              return (
+                <React.Fragment key={status}>
+                  {i > 0 && (
+                    <View style={[
+                      styles.heroStepConnector,
+                      isDone && { backgroundColor: ACTION_BLUE_LIGHT, opacity: 0.7 },
+                    ]} />
+                  )}
+                  <View style={styles.heroStepItem}>
+                    <View style={[
+                      styles.heroStepDot,
+                      isDone    && { backgroundColor: ACTION_BLUE_LIGHT, borderColor: ACTION_BLUE_LIGHT },
+                      isCurrent && { borderColor: ACTION_BLUE_LIGHT, backgroundColor: 'transparent' },
+                    ]}>
+                      {isDone    && <Text style={{ fontSize: 9, color: '#FFFFFF', fontWeight: '700' }}>✓</Text>}
+                      {isCurrent && <StepPulse color={ACTION_BLUE_LIGHT} size={20} />}
+                    </View>
+                    <Text style={[
+                      styles.heroStepLabel,
+                      isDone    && styles.heroStepLabelDone,
+                      isCurrent && { color: ACTION_BLUE_LIGHT, fontWeight: '700' },
+                    ]} numberOfLines={1}>
+                      {STEP_SHORT[status]}
+                    </Text>
+                  </View>
+                </React.Fragment>
+              );
+            })}
+          </View>
+
+          {/* ── Üretim İstasyonları (sadece "Üretim" aşamasında, ana steps'in altında) ── */}
+          {order.status === 'uretimde' && productionSteps.length > 0 && (
+            <View style={styles.heroProdStationsWrap}>
+              <Text style={styles.heroProdStationsTitle}>ÜRETİM İSTASYONLARI</Text>
+              <View style={styles.heroProdStationsRow}>
+                {productionSteps
+                  .slice()
+                  .sort((a, b) => a.step_order - b.step_order)
+                  .map((step, i) => {
+                    const isDone    = step.status === 'done';
+                    const isCurrent = step.status === 'active';
+                    const isBlocked = step.status === 'blocked';
+                    return (
+                      <React.Fragment key={step.id}>
+                        {i > 0 && (
+                          <View style={[
+                            styles.heroProdStationConnector,
+                            isDone && { backgroundColor: ACTION_BLUE_LIGHT, opacity: 0.7 },
+                          ]} />
+                        )}
+                        <View style={styles.heroProdStationItem}>
+                          <View style={[
+                            styles.heroProdStationDot,
+                            isDone    && { backgroundColor: ACTION_BLUE_LIGHT, borderColor: ACTION_BLUE_LIGHT },
+                            isCurrent && { borderColor: ACTION_BLUE_LIGHT, backgroundColor: 'transparent' },
+                            isBlocked && { borderColor: '#EF4444', backgroundColor: 'rgba(239,68,68,0.18)' },
+                          ]}>
+                            {isDone    && <Text style={{ fontSize: 8, color: '#FFFFFF', fontWeight: '700' }}>✓</Text>}
+                            {isCurrent && <StepPulse color={ACTION_BLUE_LIGHT} size={16} />}
+                            {isBlocked && <Text style={{ fontSize: 8, color: '#EF4444', fontWeight: '800' }}>!</Text>}
+                          </View>
+                          <Text
+                            style={[
+                              styles.heroProdStationLabel,
+                              isDone    && styles.heroProdStationLabelDone,
+                              isCurrent && { color: ACTION_BLUE_LIGHT, fontWeight: '700' },
+                              isBlocked && { color: '#FCA5A5', fontWeight: '700' },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {step.step_name}
+                          </Text>
+                        </View>
+                      </React.Fragment>
+                    );
+                  })}
+              </View>
+            </View>
+          )}
+
+          {/* heroBottom kaldırıldı — heroStepsRow zaten aynı bilgiyi gösteriyor */}
+
+        </View>{/* /heroCard */}
+
+      </View>{/* /headerRow */}
+
+      {/* ── Row 2: Boarding-pass tarzı iş emri kartı (full width) ── */}
+      <OrderTicketCard
+        order={order}
+        qrUrl={qrUrl}
+        pageBg="#F9F9FB"          // body backgroundColor — notch ile birebir uyum
+        accentColor={accentColor}
+        qrSize={96}                // QR daha büyük
+        activeTooth={toothPopup}
+        onToothPress={(fdi) => setToothPopup(prev => prev === fdi ? null : fdi)}
+        onPrint={Platform.OS === 'web' ? () => handlePrint(order, qrUrl) : undefined}
+        dockItems={[
+          ...(Platform.OS === 'web'
+            ? [{ iconName: 'print', label: 'Yazdır', onPress: () => setPrintOpen(true) }]
+            : []),
+          { iconName: 'message-circle', label: 'Sohbet',        onPress: () => setChatOpen(true) },
+          { iconName: 'paperclip',      label: 'Dosyalar',      onPress: () => setFilesOpen(true) },
+          { iconName: 'receipt',        label: 'Ücret Bilgisi', onPress: () => setBillingOpen(true) },
+          { iconName: 'check-circle',   label: 'Prova',         onPress: () => setProvaOpen(true) },
+          { iconName: 'folder-account-outline', label: 'Vaka',  onPress: () => setVakaOpen(true) },
+        ]}
+      />
+
+      {/* StageActionPanel kaldırıldı — Yazdır/QR dock'ta, Rota Yönet ayrı sayfa */}
 
       {/* ── Body ── */}
       <View style={[styles.body, isDesktop && styles.bodyDesktop]}>
 
-        {/* Section navigation */}
-        {isDesktop ? (
-          <View style={styles.sectionSidebarDesktop}>
-            {SECTIONS.map((s) => {
-              const active = activeSection === s.key;
-              return (
-                <TouchableOpacity
-                  key={s.key}
-                  onPress={() => setActiveSection(s.key)}
-                  style={[styles.sectionItemDesktop, active && styles.sectionItemDesktopActive]}
-                  activeOpacity={0.75}
-                >
-                  {s.icon === '__tooth__' ? (
-                    <ToothIcon size={18} color={active ? '#0F172A' : '#94A3B8'} />
-                  ) : (
-                    <AppIcon
-                      name={s.icon as any}
-                      size={18}
-                      color={active ? '#0F172A' : '#94A3B8'}
-                    />
-                  )}
-                  <Text style={[styles.sectionLabel, active && styles.sectionLabelActive]}>
-                    {s.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        ) : (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.sectionTabsScroll}
-            contentContainerStyle={styles.sectionTabsContent}
-          >
-            <View style={styles.sectionTabBar}>
-              {SECTIONS.map((s) => {
-                const active = activeSection === s.key;
-                return (
-                  <TouchableOpacity
-                    key={s.key}
-                    onPress={() => setActiveSection(s.key)}
-                    style={[styles.sectionTab, active && styles.sectionTabActive]}
-                    activeOpacity={0.75}
-                  >
-                    {s.icon === '__tooth__' ? (
-                      <ToothIcon size={15} color={active ? '#0F172A' : '#94A3B8'} />
-                    ) : (
-                      <AppIcon
-                        name={s.icon as any}
-                        size={15}
-                        color={active ? '#0F172A' : '#94A3B8'}
-                      />
-                    )}
-                    <Text style={[styles.sectionTabLabel, active && styles.sectionTabLabelActive]}>
-                      {s.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </ScrollView>
-        )}
-
-        {/* Content */}
-        <ScrollView style={styles.contentArea} contentContainerStyle={styles.contentPad}>
-          {activeSection === 'details' && (
-            <DetailsSection order={order} qrUrl={qrUrl} onAddFile={handleAddPhoto} />
-          )}
+        {/* Content — outer ScrollView var, burada View yeterli (nested scroll yok) */}
+        <View style={[styles.contentArea, styles.contentPad]}>
           {activeSection === 'steps' && (
             <StepsSection workOrderId={order.id} history={order.status_history ?? []} />
           )}
@@ -553,11 +1299,45 @@ export function OrderDetailScreen() {
             />
           )}
           {activeSection === 'chat' && (
-            <ChatSection workOrderId={order.id} orderNotes={order.notes} />
+            <View style={{ height: 600, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#E5E9F0' }}>
+              <ChatDetail
+                selectedOrder={{
+                  work_order_id:    order.id,
+                  order_number:     order.order_number,
+                  patient_name:     order.patient_name,
+                  doctor_name:      order.doctor?.full_name ?? null,
+                  clinic_name:      order.doctor?.clinic_name ?? order.doctor?.clinic?.name ?? null,
+                  work_type:        order.work_type,
+                  status:           order.status,
+                  tooth_numbers:    order.tooth_numbers,
+                  shade:            order.shade,
+                  machine_type:     (order as any).machine_type,
+                  delivery_date:    order.delivery_date,
+                  notes:            order.notes,
+                  is_urgent:        order.is_urgent,
+                }}
+                accentColor={accentColor}
+                currentUserId={profile?.id ?? null}
+                viewerType={profile?.user_type ?? null}
+              />
+            </View>
           )}
-        </ScrollView>
+        </View>
 
       </View>
+
+      </View>{/* /pageGrid */}
+
+      </ScrollView>{/* /OUTER SCROLL */}
+
+      {/* ── Hızlı Başlatma Modalı (Başlat butonu — müdür/admin) ── */}
+      <QuickStartModal
+        visible={showQuickStart}
+        order={order}
+        profile={profile}
+        onClose={() => setShowQuickStart(false)}
+        onSuccess={refetch}
+      />
 
       <StatusUpdateModal
         visible={modalVisible}
@@ -565,6 +1345,308 @@ export function OrderDetailScreen() {
         onConfirm={handleStatusUpdate}
         onClose={() => setModalVisible(false)}
       />
+
+      {/* ── Sohbet Popup (sadece bu işe özel) — main chat box ile aynı görünüm ── */}
+      <Modal
+        visible={chatOpen}
+        transparent
+        animationType="none"
+        onRequestClose={() => setChatOpen(false)}
+      >
+        <Pressable style={filesPopup.overlay} onPress={() => setChatOpen(false)}>
+          <Pressable style={[filesPopup.card, { width: '100%', maxWidth: 560, height: 560, maxHeight: '85%' as any, padding: 0 }]} onPress={(e) => e.stopPropagation?.()}>
+            <ChatDetail
+              selectedOrder={{
+                work_order_id:    order.id,
+                order_number:     order.order_number,
+                patient_name:     order.patient_name,
+                doctor_name:      order.doctor?.full_name ?? null,
+                clinic_name:      order.doctor?.clinic_name ?? order.doctor?.clinic?.name ?? null,
+                work_type:        order.work_type,
+                status:           order.status,
+                tooth_numbers:    order.tooth_numbers,
+                shade:            order.shade,
+                machine_type:     (order as any).machine_type,
+                delivery_date:    order.delivery_date,
+                notes:            order.notes,
+                is_urgent:        order.is_urgent,
+              }}
+              accentColor={accentColor}
+              currentUserId={profile?.id ?? null}
+              viewerType={profile?.user_type ?? null}
+            />
+            <TouchableOpacity
+              onPress={() => setChatOpen(false)}
+              style={chatCloseBtn}
+              accessibilityLabel="Sohbeti kapat"
+              activeOpacity={0.8}
+            >
+              <AppIcon name={'close' as any} size={18} color="#64748B" />
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* ── Dosyalar Popup — NewOrder ile aynı kategorili upload modal ── */}
+      <FilesUploadModal
+        visible={filesOpen}
+        onClose={() => setFilesOpen(false)}
+        accentColor={accentColor}
+        attachments={(order.photos ?? [])
+          .filter(p => !!p.caption && !!p.signed_url)
+          .map<UploadAttachment>(p => ({
+            id:   p.id,
+            name: p.caption ?? '',
+            uri:  p.signed_url!,
+            kind: 'image',
+          }))}
+        onPickPhoto={(label) => handleUploadWithCaption(label, 'image/*')}
+        onPickVideo={(label) => handleUploadWithCaption(label, 'video/*')}
+        onPickScan={(label)  => handleUploadWithCaption(label, '.stl,.ply,.obj,model/stl,model/obj')}
+        onPickPdf={(label)   => handleUploadWithCaption(label, '.pdf,application/pdf')}
+        onPreview={(att) => {
+          if (Platform.OS === 'web' && typeof window !== 'undefined') {
+            window.open(att.uri, '_blank');
+          }
+        }}
+        onRemove={async (id) => {
+          const photo = (order.photos ?? []).find(p => p.id === id);
+          if (!photo) return;
+          await supabase.storage.from('work-order-photos').remove([photo.storage_path]).catch(() => {});
+          await supabase.from('work_order_photos').delete().eq('id', id);
+          refetch();
+        }}
+      />
+
+      {/* ── Prova Popup ── */}
+      <Modal visible={provaOpen} transparent animationType="none" onRequestClose={() => setProvaOpen(false)}>
+        <Pressable style={filesPopup.overlay} onPress={() => setProvaOpen(false)}>
+          <Pressable style={filesPopup.card} onPress={(e) => e.stopPropagation?.()}>
+            <View style={filesPopup.header}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={[filesPopup.headerIcon, { backgroundColor: accentColor + '18' }]}>
+                  <AppIcon name={'check-circle' as any} size={18} color={accentColor} />
+                </View>
+                <Text style={filesPopup.title}>Prova</Text>
+              </View>
+              <TouchableOpacity onPress={() => setProvaOpen(false)} style={filesPopup.closeBtn}>
+                <AppIcon name={'close' as any} size={20} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20 }} showsVerticalScrollIndicator={false}>
+              <ProvaSection workOrderId={order.id} />
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* ── Vaka Popup ── */}
+      <Modal visible={vakaOpen} transparent animationType="none" onRequestClose={() => setVakaOpen(false)}>
+        <Pressable style={filesPopup.overlay} onPress={() => setVakaOpen(false)}>
+          <Pressable style={filesPopup.card} onPress={(e) => e.stopPropagation?.()}>
+            <View style={filesPopup.header}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={[filesPopup.headerIcon, { backgroundColor: accentColor + '18' }]}>
+                  <AppIcon name={'folder-account-outline' as any} size={18} color={accentColor} />
+                </View>
+                <Text style={filesPopup.title}>Vaka</Text>
+              </View>
+              <TouchableOpacity onPress={() => setVakaOpen(false)} style={filesPopup.closeBtn}>
+                <AppIcon name={'close' as any} size={20} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20 }} showsVerticalScrollIndicator={false}>
+              <VakaSection patientId={order.patient_id} patientName={order.patient_name} orderId={order.id} />
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* ── Ücret Bilgisi Popup ── */}
+      <Modal
+        visible={billingOpen}
+        transparent
+        animationType="none"
+        onRequestClose={() => setBillingOpen(false)}
+      >
+        <Pressable style={filesPopup.overlay} onPress={() => setBillingOpen(false)}>
+          <Pressable style={filesPopup.card} onPress={(e) => e.stopPropagation?.()}>
+            <View style={filesPopup.header}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={[filesPopup.headerIcon, { backgroundColor: accentColor + '18' }]}>
+                  <AppIcon name={'receipt' as any} size={18} color={accentColor} />
+                </View>
+                <Text style={filesPopup.title}>Ücret Bilgisi</Text>
+              </View>
+              <TouchableOpacity onPress={() => setBillingOpen(false)} style={filesPopup.closeBtn}>
+                <AppIcon name={'close' as any} size={20} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              style={{ flex: 1 }}
+              contentContainerStyle={{ padding: 20 }}
+              showsVerticalScrollIndicator={false}
+            >
+              <OrderItemsSection workOrderId={order.id} />
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* ── Yazdır Popup ── */}
+      {Platform.OS === 'web' && (
+        <Modal
+          visible={printOpen}
+          transparent
+          animationType="none"
+          onRequestClose={() => setPrintOpen(false)}
+        >
+          <Pressable style={filesPopup.overlay} onPress={() => setPrintOpen(false)}>
+            <Pressable style={filesPopup.card} onPress={(e) => e.stopPropagation?.()}>
+              <View style={filesPopup.header}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <View style={[filesPopup.headerIcon, { backgroundColor: accentColor + '18' }]}>
+                    <AppIcon name={'print' as any} size={18} color={accentColor} />
+                  </View>
+                  <Text style={filesPopup.title}>Yazdır — Önizleme</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      try { printIframeRef.current?.contentWindow?.focus(); printIframeRef.current?.contentWindow?.print(); } catch {}
+                    }}
+                    style={[filesPopup.closeBtn, { backgroundColor: accentColor, paddingHorizontal: 14, width: 'auto' as any, flexDirection: 'row', gap: 6 }]}
+                  >
+                    <AppIcon name={'print' as any} size={16} color="#FFFFFF" />
+                    <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 12 }}>Yazdır</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setPrintOpen(false)} style={filesPopup.closeBtn}>
+                    <AppIcon name={'close' as any} size={20} color="#64748B" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <View style={{ height: 720, maxHeight: '80vh' as any, backgroundColor: '#F8FAFC' }}>
+                {React.createElement('iframe', {
+                  ref: printIframeRef,
+                  srcDoc: buildPrintHtml(order, qrUrl),
+                  title: 'Yazdırma Önizleme',
+                  style: { width: '100%', height: '100%', border: 0, backgroundColor: '#FFFFFF' },
+                })}
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      )}
+
+      {/* ── Tooth Popup ── */}
+      {toothPopup !== null && (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setToothPopup(null)}>
+          <Pressable style={toothMs.backdrop} onPress={() => setToothPopup(null)}>
+            <Pressable style={toothMs.sheet} onPress={() => {}}>
+              {/* Handle */}
+              <View style={toothMs.handle} />
+
+              {/* Header: hasta adı (title) + diş numarası + kapat */}
+              <View style={toothMs.header}>
+                <View style={toothMs.toothBadge}>
+                  <ToothIcon size={17} color="#6366F1" />
+                  <Text style={toothMs.toothNum}>{toothPopup}</Text>
+                </View>
+                <View style={{ flex: 1, gap: 2 }}>
+                  {/* Hasta adı = başlık */}
+                  <Text style={toothMs.patientTitle} numberOfLines={1}>
+                    {order.patient_name ?? '—'}
+                  </Text>
+                  <Text style={toothMs.toothSubLabel}>Diş {toothPopup} — İşlem Detayı</Text>
+                </View>
+                <TouchableOpacity onPress={() => setToothPopup(null)} style={toothMs.closeBtn} activeOpacity={0.7}>
+                  <AppIcon name="close" size={17} color="#64748B" />
+                </TouchableOpacity>
+              </View>
+
+              {/* Diş-özel tooth_op varsa göster, yoksa genel bilgi */}
+              {(() => {
+                const op = ((order as any).tooth_ops ?? []).find((o: any) => o.tooth === toothPopup);
+                return (
+                  <View style={toothMs.metaRow}>
+                    <View style={toothMs.metaChip}>
+                      <Text style={toothMs.metaLabel}>İş Tipi</Text>
+                      <Text style={toothMs.metaValue} numberOfLines={2}>
+                        {op?.work_type ?? order.work_type ?? '—'}
+                      </Text>
+                    </View>
+                    <View style={toothMs.metaChip}>
+                      <Text style={toothMs.metaLabel}>Renk / Shade</Text>
+                      <Text style={toothMs.metaValue}>{op?.shade ?? order.shade ?? '—'}</Text>
+                    </View>
+                    <View style={toothMs.metaChip}>
+                      <Text style={toothMs.metaLabel}>Üretim</Text>
+                      <Text style={toothMs.metaValue}>
+                        {order.machine_type === 'milling' ? 'Frezeleme' : '3D Baskı'}
+                      </Text>
+                    </View>
+                    <View style={[toothMs.metaChip, { backgroundColor: `${STATUS_CONFIG[order.status].color}15` }]}>
+                      <Text style={toothMs.metaLabel}>Durum</Text>
+                      <Text style={[toothMs.metaValue, { color: STATUS_CONFIG[order.status].color }]}>
+                        {STATUS_CONFIG[order.status].label}
+                      </Text>
+                    </View>
+                    {op?.notes ? (
+                      <View style={[toothMs.metaChip, { flexBasis: '100%' }]}>
+                        <Text style={toothMs.metaLabel}>Not</Text>
+                        <Text style={toothMs.metaValue}>{op.notes}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              })()}
+
+              {/* Teslim tarihi */}
+              <View style={toothMs.deliveryRow}>
+                <AppIcon name={'calendar-outline' as any} size={14} color={overdue ? '#EF4444' : '#94A3B8'} />
+                <Text style={[toothMs.deliveryText, overdue && { color: '#EF4444' }]}>
+                  Teslim: {formatDeliveryDate(order.delivery_date)}
+                  {overdue ? `  ·  ${Math.abs(daysLeft)} gün gecikti` : daysLeft <= 3 ? `  ·  ${daysLeft} gün kaldı` : ''}
+                </Text>
+              </View>
+
+              {/* Notes */}
+              {(order.notes || (order.lab_notes_visible && order.lab_notes)) ? (
+                <View style={toothMs.notesBox}>
+                  <Text style={toothMs.notesLabel}>📋 Not</Text>
+                  {order.notes ? (
+                    <Text style={toothMs.notesText}>{order.notes}</Text>
+                  ) : null}
+                  {order.lab_notes_visible && order.lab_notes ? (
+                    <Text style={[toothMs.notesText, { color: '#6366F1', marginTop: 4 }]}>
+                      Lab: {order.lab_notes}
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
+
+              {/* Actions */}
+              <View style={toothMs.actions}>
+                <TouchableOpacity
+                  style={toothMs.primaryBtn}
+                  onPress={() => { const t = toothPopup; setToothPopup(null); handleAddPhoto(t); }}
+                  activeOpacity={0.8}
+                >
+                  <AppIcon name={'paperclip' as any} size={15} color="#FFFFFF" />
+                  <Text style={toothMs.primaryBtnText}>
+                    {(order.photos ?? []).filter(p => p.tooth_number === toothPopup).length > 0
+                      ? `${(order.photos ?? []).filter(p => p.tooth_number === toothPopup).length} Dosya Var · Ekle`
+                      : 'Dosya Ekle'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setToothPopup(null)} style={toothMs.dismissBtn} activeOpacity={0.7}>
+                  <Text style={toothMs.dismissText}>Kapat</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      )}
 
       {/* ── QR Modal ── */}
       <Modal visible={showQR} transparent animationType="fade" onRequestClose={() => setShowQR(false)}>
@@ -620,6 +1702,130 @@ const qrs = StyleSheet.create({
   url:      { fontSize: 9, color: '#CBD5E1', marginTop: 10, textAlign: 'center' },
   closeBtn: { marginTop: 20, paddingHorizontal: 32, paddingVertical: 10, borderRadius: 20, backgroundColor: '#F1F5F9' },
   closeBtnText: { fontSize: 13, color: '#0F172A', fontWeight: '600' },
+});
+
+// ── Tooth popup sheet styles ───────────────────────────────────────────────────
+const toothMs = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: 'rgba(15,23,42,0.5)',
+  },
+  sheet: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 20,
+    gap: 14,
+    width: '100%',
+    maxWidth: 480,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.18,
+    shadowRadius: 32,
+    elevation: 20,
+  },
+  handle: {
+    display: 'none',
+    width: 0, height: 0,
+  },
+  header: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+  },
+  toothBadge: {
+    width: 52, height: 52, borderRadius: 16,
+    backgroundColor: '#EEF2FF',
+    borderWidth: 1.5, borderColor: '#C7D2FE',
+    alignItems: 'center', justifyContent: 'center',
+    gap: 2,
+  },
+  toothNum: {
+    fontSize: 14, fontWeight: '800', color: '#4338CA', lineHeight: 15,
+  },
+  // Hasta adı — popup başlığı
+  patientTitle: {
+    fontSize: 17, fontWeight: '800', color: '#0F172A', letterSpacing: -0.3, lineHeight: 21,
+  },
+  toothSubLabel: {
+    fontSize: 11, color: '#94A3B8', fontWeight: '500',
+  },
+  toothWorkType: {
+    fontSize: 16, fontWeight: '800', color: '#0F172A', letterSpacing: -0.3, lineHeight: 21,
+  },
+  closeBtn: {
+    width: 34, height: 34, borderRadius: 10,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  metaRow: {
+    flexDirection: 'row', gap: 8, flexWrap: 'wrap',
+  },
+  metaChip: {
+    flex: 1, minWidth: 80,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1, borderColor: '#F1F5F9',
+    gap: 4,
+  },
+  metaLabel: {
+    fontSize: 10, color: '#94A3B8', fontWeight: '600',
+    textTransform: 'uppercase', letterSpacing: 0.5,
+  },
+  metaValue: {
+    fontSize: 14, fontWeight: '700', color: '#0F172A',
+  },
+  deliveryRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10, padding: 10,
+    borderWidth: 1, borderColor: '#F1F5F9',
+  },
+  deliveryText: {
+    fontSize: 12, fontWeight: '600', color: '#64748B', flex: 1,
+  },
+  notesBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1, borderColor: '#F1F5F9',
+    borderLeftWidth: 3, borderLeftColor: '#6366F1',
+    gap: 5,
+  },
+  notesLabel: {
+    fontSize: 11, color: '#6366F1', fontWeight: '700',
+  },
+  notesText: {
+    fontSize: 13, color: '#334155', lineHeight: 20,
+  },
+  actions: {
+    flexDirection: 'row', gap: 10,
+  },
+  primaryBtn: {
+    flex: 1,
+    backgroundColor: '#0F172A',
+    borderRadius: 16,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  primaryBtnText: {
+    fontSize: 14, fontWeight: '700', color: '#FFFFFF',
+  },
+  dismissBtn: {
+    paddingHorizontal: 20, paddingVertical: 14,
+    borderRadius: 16,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  dismissText: {
+    fontSize: 14, fontWeight: '600', color: '#64748B',
+  },
 });
 
 // ── Section components ──
@@ -782,92 +1988,28 @@ function DetailsSection({ order, qrUrl, onAddFile }: {
   qrUrl: string;
   onAddFile?: (tooth: number) => void;
 }) {
-  const [toothColW, setToothColW]     = useState(0);
   const sorted = React.useMemo(
     () => [...(order.tooth_numbers ?? [])].sort((a, b) => a - b),
     [order.tooth_numbers],
   );
-  const [activeTooth, setActiveTooth] = useState<number | null>(sorted[0] ?? null);
-
-  // Tooltip text per tooth for diagram hover
-  const machine = order.machine_type === 'milling' ? 'Frezeleme' : '3D Baskı';
-  const toothInfo = React.useMemo(() => {
-    const info: Record<number, string> = {};
-    sorted.forEach(t => {
-      const parts = [order.work_type, order.shade, machine].filter(Boolean);
-      info[t] = parts.join(' · ');
-    });
-    return info;
-  }, [sorted, order.work_type, order.shade, machine]);
 
   return (
-    <View>
-      {/* ── Side-by-side row: Diş Kartları  |  Diş Haritası ── */}
-      <View style={detailRowStyles.row}>
-
-        {/* Left column — per-tooth job cards */}
-        <View style={detailRowStyles.col}>
-          {sorted.length > 0 ? (
-            <>
-              {sorted.map(tooth => (
-                <ToothJobCard
-                  key={tooth}
-                  tooth={tooth}
-                  order={order}
-                  isActive={tooth === activeTooth}
-                  onPress={() => setActiveTooth(tooth)}
-                  onAddFile={onAddFile ? () => onAddFile(tooth) : undefined}
-                />
-              ))}
-            </>
-          ) : (
-            <View style={tcStyles.card}>
-              <Text style={{ fontSize: 13, color: '#94A3B8' }}>Diş seçilmemiş</Text>
-            </View>
-          )}
+    <View style={{ gap: 10 }}>
+      {/* Tooth job cards — full width (chart is in hero row) */}
+      {sorted.length > 0 ? (
+        sorted.map(tooth => (
+          <ToothJobCard
+            key={tooth}
+            tooth={tooth}
+            order={order}
+            onAddFile={onAddFile ? () => onAddFile(tooth) : undefined}
+          />
+        ))
+      ) : (
+        <View style={tcStyles.card}>
+          <Text style={{ fontSize: 13, color: '#94A3B8' }}>Diş seçilmemiş</Text>
         </View>
-
-        {/* Right column — interactive tooth map */}
-        <View
-          style={detailRowStyles.col}
-          onLayout={e => setToothColW(e.nativeEvent.layout.width)}
-        >
-          <Text style={sectionStyles.heading}>Diş Numaraları</Text>
-          {sorted.length > 0 ? (
-            <View style={toothDiagramStyles.card}>
-              <ToothNumberPicker
-                selected={order.tooth_numbers ?? []}
-                onChange={() => {/* selection is fixed in detail view */}}
-                containerWidth={toothColW || undefined}
-                activeTooth={activeTooth}
-                onToothPress={fdi => {
-                  if ((order.tooth_numbers ?? []).includes(fdi)) {
-                    setActiveTooth(fdi);
-                  }
-                }}
-                toothInfo={toothInfo}
-                hideEmptyJaw
-              />
-            </View>
-          ) : (
-            <Text style={toothDiagramStyles.empty}>Diş seçilmemiş</Text>
-          )}
-        </View>
-
-      </View>
-
-      {/* QR — full width below */}
-      <View style={sectionStyles.qrCard}>
-        <View style={sectionStyles.qrLeft}>
-          <Text style={sectionStyles.qrTitle}>İş Emri QR Kodu</Text>
-          <Text style={sectionStyles.qrSub}>Tarayarak kendi panelinde aç</Text>
-          <Text style={sectionStyles.qrRoles}>🧑‍⚕️ Hekim · 🔬 Teknisyen · 🛡️ Admin</Text>
-          <Text style={sectionStyles.qrUrl} numberOfLines={1}>{qrUrl}</Text>
-        </View>
-        <View style={sectionStyles.qrCodeWrap}>
-          <BrandedQR value={qrUrl} size={90} color="#0F172A" backgroundColor="#FFFFFF" />
-        </View>
-      </View>
+      )}
     </View>
   );
 }
@@ -2096,17 +3238,29 @@ const sectionStyles = StyleSheet.create({
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F9F9FB' },
 
-  // ── Top bar card ──
-  topBar: {
+  // ── Header row (hero + tooth chart, same height) ──
+  // Tüm row'ları saran outer container — tutarlı 12px padding + 12px gap her yerde
+  pageGrid: {
+    padding: 12,
+    gap:     12,
+  },
+  headerRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    alignItems:    'stretch',
+    gap:           12,
+    zIndex:        10,
+  },
+
+  // ── QR hero card (next to hero, same height) ──
+  qrHeroCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    gap: 10,
-    margin: 12,
-    marginBottom: 6,
+    borderRadius: 20,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#EEF1F6',
     shadowColor: '#1E293B',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.07,
@@ -2114,122 +3268,631 @@ const styles = StyleSheet.create({
     elevation: 2,
     // @ts-ignore
     boxShadow: '0 2px 10px rgba(15,23,42,0.07)',
+    overflow: 'hidden',
   },
-  topBarOverdue: {}, // overdue is now a separate banner card
+  qrHeroNum: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: '#94A3B8',
+    letterSpacing: 0.3,
+    textAlign: 'center',
+    paddingBottom: 8,
+  },
 
-  backBtn: { paddingRight: 4, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  backText: { fontSize: 15, color: '#0F172A', fontWeight: '600', letterSpacing: -0.2 },
-
-  topMeta: { flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 7 },
-  stagePill: {
+  // ── QR card inner elements ──
+  qrTopRow: {
+    width: '100%',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 9,
+    justifyContent: 'center',
+    gap: 6,
+  },
+  qrOrderNum: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0F172A',
+    letterSpacing: 0.4,
+    textAlign: 'center',
+    flex: 1,
+  },
+  qrUrgentDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#EF4444',
+    flexShrink: 0,
+  },
+  qrDoctorRow: {
+    width: '100%',
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    backgroundColor: '#FAFAFA',
+  },
+  qrDoctorName: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0F172A',
+    letterSpacing: -0.2,
+  },
+  qrClinicName: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#64748B',
+    marginTop: 1,
+  },
+
+  // ── Tooth chart — second row, full width ──
+  toothSubRow: {
+    marginHorizontal: 12,
+    marginBottom: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    paddingVertical: 6,
+    alignItems: 'center',
+    alignSelf: 'center',
+    borderWidth: 1,
+    borderColor: '#EEF1F6',
+    shadowColor: '#1E293B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 10,
+    elevation: 2,
+    // @ts-ignore
+    boxShadow: '0 2px 10px rgba(15,23,42,0.07)',
+    overflow: 'hidden',
+  },
+
+  // ── Row 2 wrapper: tooth chart + actions card ──
+  subRow: {
+    flexDirection: 'row',
+    alignItems:    'stretch',
+    gap:           12,           // kartlar arası — outer pageGrid kenar/üst boşluğunu sağlıyor
+  },
+
+  // ── Actions card (right of tooth chart in row 2) ──
+  actionsCard: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
     paddingVertical: 4,
-    borderRadius: 20,
-    gap: 5,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: '#EEF1F6',
+    shadowColor: '#1E293B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 10,
+    elevation: 2,
+    // @ts-ignore
+    boxShadow: '0 2px 10px rgba(15,23,42,0.07)',
+    justifyContent: 'center',
   },
-  stageDot: { width: 6, height: 6, borderRadius: 3 },
-  stageLabel: { fontSize: 11, fontWeight: '700' },
-  topOrderNum: { fontSize: 14, fontWeight: '800', color: '#0F172A', letterSpacing: -0.2 },
-  topDoctor: { fontSize: 12, fontWeight: '500', color: '#64748B' },
-  urgentTag: {
-    backgroundColor: '#FEF2F2',
-    borderRadius: 6,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
+  actionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 9,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    // @ts-ignore
+    outline: 'none',
+    cursor: 'pointer',
   },
-  urgentTagText: { fontSize: 10, fontWeight: '700', color: '#EF4444', letterSpacing: 0.3 },
-  overdueTag: {
-    backgroundColor: '#FEF2F2',
-    borderRadius: 6,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
+  actionItemText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1E293B',
+    flex: 1,
   },
-  overdueTagText: { fontSize: 10, fontWeight: '700', color: '#EF4444', letterSpacing: 0.3 },
 
-  btnAdvance: {
-    backgroundColor: '#0F172A',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+  // ── Tooth chart card (legacy stub) ──
+  toothChartCard: { backgroundColor: '#FFFFFF', borderRadius: 20 },
+  // ══════════════════════════════════════════════════
+  // ── Hero Card — stage-light radial glow, panel temasıyla override edilir ──
+  heroCard: {
+    borderRadius:  26,
+    overflow:      'hidden',                              // kritik: içeriği kart sınırına kırp
+    // backgroundColor: inline Platform.select ile kontrol ediliyor
+    padding:       18,
+    paddingBottom: 16,
+    // Cam kenarı (border)
+    borderWidth:   1.5,
+    borderColor:   'rgba(255,255,255,0.18)',
+    // Native gölge (derin cam gölgesi)
+    shadowOffset:  { width: 0, height: 16 },
+    shadowOpacity: 0.6,
+    shadowRadius:  40,
+    elevation:     16,
+    // NOT: backdrop-filter overflow:hidden ile çakışıp child'ları
+    // kart dışına sızdırıyordu → kaldırıldı. Cam efekti inset gölgeler
+    // ve gradient overlay ile korunuyor.
+    // @ts-ignore
+    boxShadow:
+      // Dış derinlik gölgeleri
+      '0 16px 48px rgba(0,0,0,0.55),' +
+      ' 0 4px 16px rgba(0,0,0,0.30),' +
+      // Üst kenar parlak gloss çizgisi (cam yansıması)
+      ' inset 0 1.5px 0 rgba(255,255,255,0.35),' +
+      // Sol-üst köşe parlaklığı (specular)
+      ' inset 1.5px 0 0 rgba(255,255,255,0.18),' +
+      // Alt iç gölge
+      ' inset 0 -2px 0 rgba(255,255,255,0.08),' +
+      // İç çevresel mavi cam tini
+      ' inset 0 0 60px rgba(59,130,246,0.12)',
   },
-  btnAdvanceText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF', letterSpacing: 0.1 },
 
-  // ── Overdue banner card ──
-  overdueBanner: {
+  // Top row
+  heroTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 18,
+  },
+  heroBackBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    // @ts-ignore
+    outline: 'none',
+  },
+  heroTopMeta: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginHorizontal: 12,
-    marginBottom: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    backgroundColor: '#FEF2F2',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#FECACA',
-    shadowColor: '#EF4444',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 1,
+    flexWrap: 'wrap',
   },
-  overdueBannerDot: {
+  heroOrderNum: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.9)',
+    letterSpacing: -0.2,
+  },
+  heroUrgentTag: {
+    backgroundColor: 'rgba(239,68,68,0.2)',
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.35)',
+  },
+  heroUrgentText: { fontSize: 10, fontWeight: '700', color: '#FCA5A5', letterSpacing: 0.3 },
+  heroDoctor: { fontSize: 12, color: 'rgba(255,255,255,0.4)', fontWeight: '500' },
+  heroAdvanceBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    // @ts-ignore
+    outline: 'none',
+  },
+  heroAdvanceBtnText: { fontSize: 13, fontWeight: '600', color: '#FFFFFF' },
+  heroDoneTag: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: 'rgba(5,150,105,0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(5,150,105,0.4)',
+  },
+  heroDoneText: { fontSize: 12, fontWeight: '600', color: '#34D399' },
+
+  // Big metrics
+  heroMetrics: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  heroMetricLabel: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.45)',
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  heroMetricValue: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
+  },
+
+  // ── Main two-column row (info+disc left + büyük aksiyon sağ) ──
+  heroMainRow: {
+    flexDirection: 'row',
+    alignItems:    'stretch',
+    gap:           12,
+    marginBottom:  14,
+    overflow:      'hidden',     // child taşmasını da kart içinde kırp
+  },
+
+  // ── Prod block header row (iş tipi + sağda büyük disc) ──
+  heroProdHeaderRow: {
+    flexDirection:  'row',
+    alignItems:     'center',
+    gap:            12,
+    marginBottom:   12,
+    overflow:       'visible',   // dış halka ring'in kırpılmaması için
+  },
+
+  // ── Sağ taraftaki büyük aksiyon butonu (mavi gradient — neon kaldırıldı) ──
+  // Genişlik artık inline'da useWindowDimensions ile responsive set ediliyor
+  heroBigActionBtn: {
+    borderRadius:      18,
+    paddingVertical:   16,
+    paddingHorizontal: 10,
+    alignItems:        'center',
+    justifyContent:    'center',
+    gap:               8,
+    borderWidth:       1,
+    borderColor:       'rgba(255,255,255,0.20)',
+    // Solid mavi (native fallback)
+    backgroundColor: '#3B82F6',
+    // Yumuşak gölge (neon değil, normal drop shadow)
+    shadowColor:   '#1E3A8A',
+    shadowOpacity: 0.35,
+    shadowRadius:  14,
+    shadowOffset:  { width: 0, height: 6 },
+    elevation:     8,
+    // Web: diyagonal mavi gradient
+    // @ts-ignore
+    backgroundImage:
+      'linear-gradient(135deg,' +
+      ' #60A5FA 0%,' +    // blue-400 — açık üst sol
+      ' #3B82F6 45%,' +   // blue-500 — orta
+      ' #2563EB 100%)',   // blue-600 — koyu sağ alt
+    // @ts-ignore
+    boxShadow:
+      // Tek katman yumuşak gölge
+      '0 6px 16px rgba(30,58,138,0.35),' +
+      // İnce üst gloss çizgisi (gradient'ı vurgular)
+      ' inset 0 1px 0 rgba(255,255,255,0.30)',
+  },
+  heroBigActionIconCircle: {
+    width:           56,
+    height:          56,
+    borderRadius:    28,
+    backgroundColor: 'rgba(255,255,255,0.18)',  // şeffaf beyaz, gradient üstüne otursun
+    borderWidth:     1,
+    borderColor:     'rgba(255,255,255,0.32)',
+    alignItems:      'center',
+    justifyContent:  'center',
+    overflow:        'visible',                  // halo dışa taşabilsin
+  },
+  heroBigActionText: {
+    fontSize:      18,
+    fontWeight:    '800',
+    color:         '#FFFFFF',
+    letterSpacing: 0.3,
+    marginTop:     2,
+    // @ts-ignore — hafif okunaklılık gölgesi
+    textShadow:    '0 1px 2px rgba(30,58,138,0.45)',
+  },
+  heroBigActionSub: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: 'rgba(191,219,254,0.85)',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    textAlign: 'center',
+  },
+
+  // ── Production focus block ──
+  heroProdBlock: {
+    backgroundColor: 'rgba(255,255,255,0.055)',
+    borderRadius: 14,
+    padding: 13,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.07)',
+  },
+  heroProdTypeLabel: {
+    fontSize: 9,
+    color: 'rgba(255,255,255,0.32)',
+    fontWeight: '600',
+    letterSpacing: 1,
+    marginBottom: 5,
+  },
+  heroProdType: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.3,
+    lineHeight: 22,
+  },
+  heroProdSubType: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.55)',
+    letterSpacing: 0.2,
+    marginTop: 3,
+    marginBottom: 8,
+  },
+  heroProdMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  heroProdChip: {
+    gap: 2,
+    backgroundColor: 'rgba(255,255,255,0.09)',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  // Tıklanabilir diş numarası rozeti (hero card)
+  heroProdToothBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  heroProdChipLabel: {
+    fontSize: 8,
+    color: 'rgba(255,255,255,0.35)',
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  heroProdChipValue: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.9)',
+  },
+  heroProdSep: {
+    width: 1,
+    height: 22,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    marginHorizontal: 8,
+  },
+
+  // ── Hero status pills (bottom) ──
+  heroStatusNow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  heroStatusNowText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  heroStatusNext: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  heroStatusNextText: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.38)',
+    fontWeight: '500',
+  },
+
+  // Disc is rendered by HeroDisc (SVG component) — no stylesheet entries needed
+
+  // ── Steps row ──
+  heroStepsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 14,
+  },
+  heroStepItem: {
+    alignItems: 'center',
+    gap: 4,
+    minWidth: 38,
+  },
+  heroStepConnector: {
+    flex: 1,
+    height: 1.5,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignSelf: 'flex-start',
+    marginTop: 10,   // vertically center with 20px dot
+  },
+  heroStepDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    // pulse ring'lerin dot dışına taşması için clip yok
+    overflow: 'visible',
+  },
+  // heroStepDotDone / heroStepDotCurrent — inline heroTheme.accent ile override edilir
+  heroStepDotInner: {
     width: 7,
     height: 7,
     borderRadius: 3.5,
-    backgroundColor: '#DC2626',
+    // backgroundColor inline heroTheme.accent ile set edilir
   },
-  overdueBannerText: {
-    flex: 1,
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#DC2626',
+  heroStepLabel: {
+    fontSize:      11.5,                       // 8.5 → 11.5
+    fontWeight:    '600',                      // 500 → 600
+    color:         'rgba(255,255,255,0.45)',   // 0.22 → 0.45 (pasif step de okunsun)
+    textAlign:     'center',
+    letterSpacing: 0.2,
+    marginTop:     2,
+  },
+  heroStepLabelDone: {
+    color:      'rgba(255,255,255,0.78)',      // 0.5 → 0.78
+    fontWeight: '700',
+  },
+  heroStepLabelCurrent: {
+    color:         '#FFFFFF',
+    fontWeight:    '800',
+    letterSpacing: 0.3,
   },
 
-  // ── Info bar card ──
-  infoBar: {
+  // ── Üretim istasyonları satırı (heroStepsRow'un altında, sadece üretim'de) ──
+  heroProdStationsWrap: {
+    marginTop:    10,
+    paddingTop:   10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.08)',
+  },
+  heroProdStationsTitle: {
+    fontSize:      9,
+    fontWeight:    '700',
+    color:         'rgba(255,255,255,0.45)',
+    letterSpacing: 1,
+    textAlign:     'center',
+    marginBottom:  8,
+  },
+  heroProdStationsRow: {
+    flexDirection: 'row',
+    alignItems:    'flex-start',
+  },
+  heroProdStationItem: {
+    alignItems: 'center',
+    gap:        4,
+    minWidth:   34,
+  },
+  heroProdStationConnector: {
+    flex:           1,
+    height:         1,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    alignSelf:      'flex-start',
+    marginTop:      8,    // 16px dot ortası
+  },
+  heroProdStationDot: {
+    width:           16,
+    height:          16,
+    borderRadius:    8,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth:     1.2,
+    borderColor:     'rgba(255,255,255,0.18)',
+    alignItems:      'center',
+    justifyContent:  'center',
+    overflow:        'visible',
+  },
+  heroProdStationLabel: {
+    fontSize:    9.5,
+    fontWeight:  '600',
+    color:       'rgba(255,255,255,0.45)',
+    textAlign:   'center',
+    marginTop:   1,
+    maxWidth:    72,
+  },
+  heroProdStationLabelDone: {
+    color:      'rgba(255,255,255,0.78)',
+    fontWeight: '700',
+  },
+
+  // Timeline row (başlangıç · disc · kalan)
+  heroTimeline: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  heroTimelineLabel: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.38)',
+    fontWeight: '500',
+    marginBottom: 3,
+  },
+  heroTimelineValue: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.82)',
+  },
+
+  heroDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    marginBottom: 14,
+  },
+
+  // Bottom status pills
+  heroBottom: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: 12,
-    marginBottom: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    shadowColor: '#1E293B',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 10,
-    elevation: 2,
-    // @ts-ignore
-    boxShadow: '0 2px 10px rgba(15,23,42,0.07)',
+    gap: 10,
   },
-  infoMetaGrid: {
+  heroStops: {
     flex: 1,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  infoBarDivider: {
-    width: 1,
-    height: 52,
-    backgroundColor: '#F1F5F9',
-    marginHorizontal: 12,
-  },
-  infoActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    flexWrap: 'wrap',
   },
-  infoPill: {
-    width: '50%',
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    gap: 2,
+  heroStopAccent: { width: 3, borderRadius: 2, backgroundColor: '#6366F1' },
+  heroStopLabel: { fontSize: 10, color: 'rgba(255,255,255,0.38)', fontWeight: '600', width: 34 },
+  heroStopValue: { fontSize: 13, color: 'rgba(255,255,255,0.88)', fontWeight: '600' },
+  heroActionBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    // @ts-ignore
+    outline: 'none',
   },
-  infoPillLabel: { fontSize: 10, fontWeight: '600', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.4 },
-  infoPillValue: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
+  heroThumb: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+
+  // ── Legacy stubs (used by InfoPill or kept for safety) ──
+  topBar: { flexDirection: 'row' },
+  topBarOverdue: {},
+  backBtn: { flexDirection: 'row', alignItems: 'center' },
+  backText: { fontSize: 15, color: '#0F172A' },
+  topMeta: { flex: 1, flexDirection: 'row' },
+  stagePill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20, gap: 5 },
+  stageDot: { width: 6, height: 6, borderRadius: 3 },
+  stageLabel: { fontSize: 11, fontWeight: '700' },
+  topOrderNum: { fontSize: 14, fontWeight: '800', color: '#0F172A' },
+  topDoctor: { fontSize: 12, color: '#64748B' },
+  urgentTag: { backgroundColor: '#FEF2F2', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 },
+  urgentTagText: { fontSize: 10, fontWeight: '700', color: '#EF4444' },
+  overdueTag: { backgroundColor: '#FEF2F2', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 },
+  overdueTagText: { fontSize: 10, fontWeight: '700', color: '#EF4444' },
+  btnAdvance: { backgroundColor: '#0F172A', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
+  btnAdvanceText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
+  overdueBanner: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 12, borderRadius: 14 },
+  overdueBannerDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#DC2626' },
+  overdueBannerText: { flex: 1, fontSize: 12, fontWeight: '600', color: '#FCA5A5' },
+  metaRow: { flexDirection: 'row' },
+  metaCard: { flex: 1 },
+  metaCardLabel: { fontSize: 9, color: '#94A3B8' },
+  metaCardValue: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
+  actionRow: { flexDirection: 'row' },
+  infoBar: { flexDirection: 'row' },
+  infoMetaGrid: { flex: 1 },
+  infoBarDivider: { width: 1 },
+  infoActions: { flexDirection: 'row' },
+  infoPill: { paddingHorizontal: 8, paddingVertical: 5 },
+  infoPillLabel: { fontSize: 10, color: '#94A3B8' },
+  infoPillValue: { fontSize: 13, color: '#0F172A' },
   infoBarSpacer: { flex: 1 },
 
   // Legacy button styles (kept for any remaining references)
@@ -2264,9 +3927,12 @@ const styles = StyleSheet.create({
   },
   btnReceiptText: { fontSize: 12, fontWeight: '600', color: '#0F172A' },
   btnInvoice: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12,
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    paddingHorizontal: 16, paddingVertical: 13, borderRadius: 12,
     backgroundColor: '#2563EB',
+    // @ts-ignore
+    outline: 'none',
+    cursor: 'pointer',
   },
   btnInvoiceText: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
   btnRoute: {
@@ -2296,14 +3962,17 @@ const styles = StyleSheet.create({
 
   // ── More actions ──
   btnMore: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E2E8F0',
+    // @ts-ignore
+    outline: 'none',
+    cursor: 'pointer',
   },
   moreBackdrop: {
     position: 'fixed' as any,
@@ -2313,7 +3982,7 @@ const styles = StyleSheet.create({
   moreDropdown: {
     position: 'absolute',
     right: 0,
-    top: 44,
+    top: 52,
     zIndex: 51,
     backgroundColor: '#FFFFFF',
     borderRadius: 14,
@@ -2335,6 +4004,9 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 14,
     paddingVertical: 10,
+    // @ts-ignore
+    outline: 'none',
+    cursor: 'pointer',
   },
   moreItemText: {
     fontSize: 13,
@@ -2343,8 +4015,8 @@ const styles = StyleSheet.create({
   },
 
   // ── Body ──
-  body: { flex: 1, flexDirection: 'column', backgroundColor: '#F9F9FB' },
-  bodyDesktop: { flexDirection: 'row' },
+  body: { flex: 1, flexDirection: 'column', backgroundColor: '#F9F9FB', gap: 12 },
+  bodyDesktop: { flexDirection: 'row', gap: 12 },
 
   // ── Section navigation — mobile pill tabs ──
   sectionTabsScroll: {
@@ -2382,12 +4054,11 @@ const styles = StyleSheet.create({
 
   // ── Section navigation — desktop sidebar card ──
   sectionSidebarDesktop: {
-    width: 138,
+    width:           138,
     backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    margin: 8,
-    marginRight: 4,
-    paddingTop: 10,
+    borderRadius:    18,
+    margin:          0,         // gap outer body row'da yönetilir
+    paddingTop:      10,
     paddingHorizontal: 8,
     shadowColor: '#1E293B',
     shadowOffset: { width: 0, height: 2 },
@@ -2413,7 +4084,7 @@ const styles = StyleSheet.create({
   sectionLabelActive: { color: '#0F172A', fontWeight: '700' },
 
   // ── Content area ──
-  contentArea: { flex: 1, backgroundColor: '#F9F9FB', margin: 8, marginLeft: 4, borderRadius: 18, overflow: 'hidden' },
+  contentArea: { flex: 1, backgroundColor: '#F9F9FB', margin: 0, borderRadius: 18, overflow: 'hidden' },
   contentPad: { padding: 16, paddingBottom: 40 },
 
   // ── Desktop chat panel ──
@@ -2439,5 +4110,85 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#0F172A',
     letterSpacing: 0.1,
+  },
+});
+
+// ── Chat popup close button (absolute top-right) ────────────────────────────
+const chatCloseBtn = {
+  position:        'absolute' as const,
+  top:             10,
+  right:           10,
+  width:           32,
+  height:          32,
+  borderRadius:    16,
+  alignItems:      'center' as const,
+  justifyContent:  'center' as const,
+  backgroundColor: 'rgba(241,245,249,0.9)',
+  borderWidth:     1,
+  borderColor:     '#E5E9F0',
+  zIndex:          10,
+};
+
+// ── Files Popup styles ──────────────────────────────────────────────────────
+const filesPopup = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  card: {
+    width: '100%',
+    maxWidth: 880,
+    maxHeight: '90%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E5E9F0',
+    ...Platform.select({
+      web: {
+        // @ts-ignore
+        boxShadow: '0 20px 60px rgba(15,23,42,0.25)',
+      },
+      default: {
+        shadowColor: '#0F172A',
+        shadowOpacity: 0.25,
+        shadowRadius: 20,
+        shadowOffset: { width: 0, height: 12 },
+        elevation: 12,
+      },
+    }),
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  headerIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0F172A',
+    letterSpacing: -0.2,
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F1F5F9',
   },
 });

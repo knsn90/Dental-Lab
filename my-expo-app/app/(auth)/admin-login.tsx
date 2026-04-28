@@ -13,12 +13,13 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { supabase } from '../../lib/supabase';
 import { signIn, signOut } from '../../modules/auth/api';
 import { C } from '../../core/theme/colors';
 import { F } from '../../core/theme/typography';
 import { useIsDesktop } from '../../core/layout/DesktopShell';
+
+import { AppIcon } from '../../core/ui/AppIcon';
 
 // ─── Admin palette ────────────────────────────────────────────────────────────
 const BRAND  = '#0F172A';  // dark navy
@@ -111,7 +112,7 @@ function FloatingInput({
       </View>
       {error ? (
         <View style={fi.errorRow}>
-          <MaterialCommunityIcons name="alert-circle" size={11} color={C.danger} />
+          <AppIcon name="alert-circle" size={11} color={C.danger} />
           <Text style={fi.errorText}>{error}</Text>
         </View>
       ) : null}
@@ -265,11 +266,11 @@ export default function AdminLoginScreen() {
           onPress={() => router.replace('/(auth)/login')}
           activeOpacity={0.75}
         >
-          <MaterialCommunityIcons name="flask-outline" size={13} color={C.textMuted} />
+          <AppIcon name="flask-outline" size={13} color={C.textMuted} />
           <Text style={fc.segText}>Laboratuvar</Text>
         </TouchableOpacity>
         <View style={[fc.segBtn, fc.segBtnActive]}>
-          <MaterialCommunityIcons name="shield-crown-outline" size={13} color={BRAND} />
+          <AppIcon name="shield-crown-outline" size={13} color={BRAND} />
           <Text style={[fc.segText, { color: BRAND, fontFamily: F.semibold }]}>Yönetici</Text>
         </View>
       </View>
@@ -277,7 +278,7 @@ export default function AdminLoginScreen() {
       {/* Error banner */}
       {errorMsg ? (
         <View style={fc.errorBanner}>
-          <MaterialCommunityIcons name="alert-circle" size={15} color={C.danger} />
+          <AppIcon name="alert-circle" size={15} color={C.danger} />
           <Text style={fc.errorBannerText}>{errorMsg}</Text>
         </View>
       ) : null}
@@ -304,7 +305,7 @@ export default function AdminLoginScreen() {
         error={errors.password}
         rightElement={
           <TouchableOpacity onPress={() => setShowPass(!showPass)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <MaterialCommunityIcons
+            <AppIcon
               name={showPass ? 'eye-off-outline' : 'eye-outline'}
               size={18} color={C.textMuted}
             />
@@ -324,7 +325,7 @@ export default function AdminLoginScreen() {
           {forgotSent ? (
             <View style={fc.forgotSuccess}>
               <View style={fc.forgotSuccessIcon}>
-                <MaterialCommunityIcons name="check" size={16} color={C.success} />
+                <AppIcon name="check" size={16} color={C.success} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={fc.forgotSuccessTitle}>E-posta gönderildi</Text>
@@ -375,7 +376,7 @@ export default function AdminLoginScreen() {
           ) : (
             <>
               <Text style={fc.loginBtnText}>Yönetici Girişi</Text>
-              <MaterialCommunityIcons name="arrow-right" size={18} color="#FFFFFF" />
+              <AppIcon name="arrow-right" size={18} color="#FFFFFF" />
             </>
           )}
         </TouchableOpacity>
@@ -392,7 +393,7 @@ export default function AdminLoginScreen() {
         onPress={() => router.replace('/(auth)/login')}
         activeOpacity={0.8}
       >
-        <MaterialCommunityIcons name="arrow-left" size={16} color={C.textSecondary} />
+        <AppIcon name="arrow-left" size={16} color={C.textSecondary} />
         <Text style={fc.backBtnText}>Laboratuvar girişine dön</Text>
       </TouchableOpacity>
     </Animated.View>
@@ -407,7 +408,7 @@ export default function AdminLoginScreen() {
           <DecoCircles />
           <View style={dsk.brandContent}>
             <View style={dsk.logoRing}>
-              <MaterialCommunityIcons name="shield-crown-outline" size={30} color="#FFFFFF" />
+              <AppIcon name="shield-crown-outline" size={30} color="#FFFFFF" />
             </View>
             <Text style={dsk.appName}>YÖNETİCİ PANELİ</Text>
             <Text style={dsk.tagline}>Güvenli Yönetici Erişimi</Text>
@@ -415,7 +416,7 @@ export default function AdminLoginScreen() {
             {FEATURES.map((f, i) => (
               <View key={i} style={dsk.featureRow}>
                 <View style={dsk.featureIcon}>
-                  <MaterialCommunityIcons name={f.icon as any} size={15} color="rgba(255,255,255,0.7)" />
+                  <AppIcon name={f.icon as any} size={15} color="rgba(255,255,255,0.7)" />
                 </View>
                 <Text style={dsk.featureText}>{f.text}</Text>
               </View>
@@ -445,7 +446,7 @@ export default function AdminLoginScreen() {
         <DecoCircles />
         <View style={[mob.headerContent, { paddingTop: insets.top + 24 }]}>
           <View style={mob.logoRing}>
-            <MaterialCommunityIcons name="shield-crown-outline" size={28} color="#FFFFFF" />
+            <AppIcon name="shield-crown-outline" size={28} color="#FFFFFF" />
           </View>
           <Text style={mob.appName}>YÖNETİCİ PANELİ</Text>
           <Text style={mob.tagline}>Güvenli Yönetici Erişimi</Text>

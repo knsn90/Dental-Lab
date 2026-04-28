@@ -1,16 +1,20 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../../core/api/supabase';
-import { fetchMessages, sendMessage, OrderMessage, ChatAttachment } from '../chatApi';
+import { fetchMessages, markMessagesAsRead, sendMessage, OrderMessage, ChatAttachment } from '../chatApi';
 
-export function useChatMessages(workOrderId: string) {
+export function useChatMessages(workOrderId: string, currentUserId?: string | null) {
   const [messages, setMessages] = useState<OrderMessage[]>([]);
   const [loading, setLoading]   = useState(true);
   const [sending, setSending]   = useState(false);
 
   const load = useCallback(async () => {
+    if (!workOrderId) {
+      setMessages([]);
+      setLoading(false);
+      return;
+    }
     try {
       const { data, error } = await fetchMessages(workOrderId);
-      // If table doesn't exist yet, silently show empty list
       if (error) {
         console.warn('[chat] fetchMessages error:', error.message);
         setMessages([]);
@@ -25,10 +29,27 @@ export function useChatMessages(workOrderId: string) {
     }
   }, [workOrderId]);
 
-  useEffect(() => {
-    load();
+  // Mesajları otomatik "okundu" işaretle
+  const markRead = useCallback(async () => {
+    if (!workOrderId || !currentUserId) return;
+    try {
+      await markMessagesAsRead(workOrderId, currentUserId);
+    } catch (e) {
+      // Tablo henüz yoksa sessizce geç (migration uygulanmamış olabilir)
+    }
+  }, [workOrderId, currentUserId]);
 
-    // Only subscribe if table likely exists (avoid crash on missing table)
+  useEffect(() => {
+    if (!workOrderId) {
+      setMessages([]);
+      setLoading(false);
+      return;
+    }
+
+    load();
+    // Chat açıldığında karşı tarafın mesajlarını okundu yap
+    markRead();
+
     let channel: ReturnType<typeof supabase.channel> | null = null;
     try {
       channel = supabase
@@ -41,6 +62,22 @@ export function useChatMessages(workOrderId: string) {
             table: 'order_messages',
             filter: `work_order_id=eq.${workOrderId}`,
           },
+          () => {
+            load();
+            // Yeni gelen mesajı hemen okundu işaretle
+            markRead();
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            // UPDATE: karşı taraf bizim mesajlarımızı okudu → read_at set edildi
+            // Bu event bize tick'leri güncelleme sinyali verir.
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'order_messages',
+            filter: `work_order_id=eq.${workOrderId}`,
+          },
           () => { load(); }
         )
         .subscribe();
@@ -49,7 +86,7 @@ export function useChatMessages(workOrderId: string) {
     }
 
     return () => { if (channel) supabase.removeChannel(channel); };
-  }, [workOrderId, load]);
+  }, [workOrderId, load, markRead]);
 
   const send = async (senderId: string, content: string): Promise<string | null> => {
     if (!content.trim()) return null;

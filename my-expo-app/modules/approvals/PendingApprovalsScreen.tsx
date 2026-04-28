@@ -4,12 +4,13 @@ import {
   ActivityIndicator, RefreshControl, Alert,
 } from 'react-native';
 import { toast } from '../../core/ui/Toast';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { ClinicIcon } from '../../core/ui/ClinicIcon';
 import { supabase } from '../../lib/supabase';
 import { Profile } from '../../lib/types';
 import { C } from '../../core/theme/colors';
 import { F } from '../../core/theme/typography';
+
+import { AppIcon } from '../../core/ui/AppIcon';
 
 interface PendingDoctor extends Profile {
   email?: string | null;
@@ -96,7 +97,7 @@ export function PendingApprovalsScreen() {
     <View style={styles.safe}>
       {doctors.length === 0 ? (
         <View style={styles.emptyWrap}>
-          <MaterialCommunityIcons name="check-circle-outline" size={56} color={C.success} />
+          <AppIcon name="check-circle-outline" size={56} color={C.success} />
           <Text style={styles.emptyTitle}>Bekleyen kayıt yok</Text>
           <Text style={styles.emptySub}>Yeni hekim kaydı geldiğinde burada görünecek</Text>
         </View>
@@ -127,12 +128,12 @@ export function PendingApprovalsScreen() {
                   ) : null}
                   {item.phone ? (
                     <View style={styles.row}>
-                      <MaterialCommunityIcons name="phone-outline" size={13} color={C.textMuted} />
+                      <AppIcon name="phone-outline" size={13} color={C.textMuted} />
                       <Text style={styles.meta}>{item.phone}</Text>
                     </View>
                   ) : null}
                   <View style={styles.row}>
-                    <MaterialCommunityIcons name="clock-outline" size={13} color={C.textMuted} />
+                    <AppIcon name="clock-outline" size={13} color={C.textMuted} />
                     <Text style={styles.meta}>
                       {new Date(item.created_at).toLocaleDateString('tr-TR', {
                         day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit'
@@ -144,7 +145,7 @@ export function PendingApprovalsScreen() {
 
               {/* Pending badge */}
               <View style={styles.pendingBadge}>
-                <MaterialCommunityIcons name="clock-outline" size={12} color="#D97706" />
+                <AppIcon name="clock-outline" size={12} color="#D97706" />
                 <Text style={styles.pendingText}>Onay bekliyor</Text>
               </View>
 
@@ -159,7 +160,7 @@ export function PendingApprovalsScreen() {
                     <ActivityIndicator size="small" color={C.danger} />
                   ) : (
                     <>
-                      <MaterialCommunityIcons name="close" size={16} color={C.danger} />
+                      <AppIcon name="close" size={16} color={C.danger} />
                       <Text style={styles.rejectText}>Reddet</Text>
                     </>
                   )}
@@ -173,7 +174,7 @@ export function PendingApprovalsScreen() {
                     <ActivityIndicator size="small" color="#FFFFFF" />
                   ) : (
                     <>
-                      <MaterialCommunityIcons name="check" size={16} color="#FFFFFF" />
+                      <AppIcon name="check" size={16} color="#FFFFFF" />
                       <Text style={styles.approveText}>Onayla</Text>
                     </>
                   )}

@@ -5,40 +5,30 @@ import { Platform, View } from 'react-native';
 import { ToastContainer } from '../core/ui/Toast';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../core/store/authStore';
+import { useFonts } from 'expo-font';
 import {
-  useFonts,
-  ZillaSlab_300Light,
-  ZillaSlab_400Regular,
-  ZillaSlab_500Medium,
-  ZillaSlab_600SemiBold,
-  ZillaSlab_700Bold,
-} from '@expo-google-fonts/zilla-slab';
+  Outfit_300Light,
+  Outfit_400Regular,
+  Outfit_500Medium,
+  Outfit_600SemiBold,
+  Outfit_700Bold,
+} from '@expo-google-fonts/outfit';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { useFontStore, applyFontSizeWeb } from '../core/store/fontStore';
 
 // Inject web-only global CSS for the phone-shell layout
+// NOTE: Fonts (Outfit + Material Symbols) are loaded in web/index.html.
+//       This hook only injects layout/zoom CSS that depends on runtime state.
 function useWebStyles() {
+  const { fontSize } = useFontStore();
+
   useEffect(() => {
     if (Platform.OS !== 'web') return;
 
-    // Preconnect to Google Fonts
-    const preconnect1 = document.createElement('link');
-    preconnect1.rel = 'preconnect';
-    preconnect1.href = 'https://fonts.googleapis.com';
-    document.head.appendChild(preconnect1);
+    // Apply saved font size (CSS zoom on <html>)
+    applyFontSizeWeb(fontSize);
 
-    const preconnect2 = document.createElement('link');
-    preconnect2.rel = 'preconnect';
-    preconnect2.href = 'https://fonts.gstatic.com';
-    preconnect2.crossOrigin = 'anonymous';
-    document.head.appendChild(preconnect2);
-
-    // Load Zilla Slab
-    const fontLink = document.createElement('link');
-    fontLink.rel = 'stylesheet';
-    fontLink.href =
-      'https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@300;400;500;600;700&display=swap';
-    document.head.appendChild(fontLink);
-
+    // ── Global layout styles ───────────────────────────────────────────────
     const id = 'dental-lab-global-styles';
     if (document.getElementById(id)) return;
 
@@ -51,7 +41,6 @@ function useWebStyles() {
         margin: 0; padding: 0;
         height: 100%;
         background-color: #FFFFFF;
-        font-family: 'Zilla Slab', Georgia, 'Times New Roman', serif;
         font-weight: 400;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
@@ -110,7 +99,6 @@ function useWebStyles() {
       ::-webkit-scrollbar-thumb:hover { background: #93C5FD; }
 
       input, textarea, select {
-        font-family: 'Zilla Slab', Georgia, 'Times New Roman', serif;
         outline: none;
       }
 
@@ -133,13 +121,15 @@ function useWebStyles() {
 export default function RootLayout() {
   useWebStyles();
 
+  // Web: Outfit Google Fonts CDN ile geliyor.
+  // Native: 5 ağırlığı .ttf olarak yüklüyoruz + Material icons.
   const [fontsLoaded] = useFonts({
-    ZillaSlab_300Light,
-    ZillaSlab_400Regular,
-    ZillaSlab_500Medium,
-    ZillaSlab_600SemiBold,
-    ZillaSlab_700Bold,
     ...MaterialCommunityIcons.font,
+    Outfit_300Light,
+    Outfit_400Regular,
+    Outfit_500Medium,
+    Outfit_600SemiBold,
+    Outfit_700Bold,
   });
 
   const { session, profile, loading, setSession, setLoading, fetchProfile } = useAuthStore();
@@ -176,12 +166,17 @@ export default function RootLayout() {
     }
 
     const userType = profile?.user_type ?? (session.user.user_metadata?.user_type as string | undefined);
+    const userRole = profile?.role;
     if (!userType) return;
+
+    // Teknisyen → istasyon paneli, diğer lab kullanıcıları → lab paneli
+    const isTechnician = userType === 'lab' && userRole === 'technician';
 
     // Kullanıcı tipine göre doğru panel grubu
     const expectedGroup = userType === 'doctor'       ? '(doctor)'
                         : userType === 'admin'        ? '(admin)'
                         : userType === 'clinic_admin' ? '(clinic)'
+                        : isTechnician                ? '(station)'
                         : '(lab)';
     const currentGroup  = segments[0];
 
@@ -191,11 +186,14 @@ export default function RootLayout() {
         if (userType === 'doctor')            router.replace('/(doctor)');
         else if (userType === 'admin')        router.replace('/(admin)');
         else if (userType === 'clinic_admin') router.replace('/(clinic)' as any);
+        else if (isTechnician)                router.replace('/(station)' as any);
         else                                  router.replace('/(lab)');
       }
     } else if (currentGroup !== expectedGroup) {
       // Admin kullanıcılar lab panelini de görüntüleyebilir (çoklu sekme desteği)
       if (userType === 'admin' && currentGroup === '(lab)') return;
+      // Teknisyenler istasyon panelinde kalabilir
+      if (isTechnician && currentGroup === '(station)') return;
 
       // Yanlış panel grubundaysa (ör. lab kullanıcısı (doctor)/new-order içinde)
       // Aynı alt sayfayı doğru grup içinde aç: ['(doctor)', 'new-order'] → '/(lab)/new-order'
@@ -203,6 +201,7 @@ export default function RootLayout() {
       const base     = userType === 'doctor'       ? '/(doctor)'
                      : userType === 'admin'        ? '/(admin)'
                      : userType === 'clinic_admin' ? '/(clinic)'
+                     : isTechnician                ? '/(station)'
                      : '/(lab)';
       const target   = subPath ? `${base}/${subPath}` : base;
       router.replace(target as any);

@@ -15,6 +15,7 @@ export interface OrderMessage {
   sender_id: string;
   content: string;
   created_at: string;
+  read_at?: string | null;         // null = not yet read by recipient
   attachment_url?: string | null;
   attachment_type?: AttachmentType | null;
   attachment_name?: string | null;
@@ -28,6 +29,24 @@ export async function fetchMessages(workOrderId: string) {
     .select('*, sender:profiles(id, full_name, user_type)')
     .eq('work_order_id', workOrderId)
     .order('created_at', { ascending: true });
+}
+
+/**
+ * Karşı taraftan gelen tüm okunmamış mesajları "okundu" olarak işaretler.
+ * Chat açıldığında çağrılır — currentUserId'nin kendi gönderdiği
+ * mesajlar dokunulmaz.
+ *
+ * Gerekli migration (Supabase SQL Editor'da bir kez çalıştır):
+ *   ALTER TABLE order_messages
+ *   ADD COLUMN IF NOT EXISTS read_at timestamptz DEFAULT NULL;
+ */
+export async function markMessagesAsRead(workOrderId: string, currentUserId: string) {
+  return supabase
+    .from('order_messages')
+    .update({ read_at: new Date().toISOString() })
+    .eq('work_order_id', workOrderId)
+    .neq('sender_id', currentUserId)
+    .is('read_at', null);
 }
 
 // ── Inbox (chat list) ────────────────────────────────────────────────
@@ -69,10 +88,10 @@ export interface OrderChatInboxItem {
 export async function fetchOrderChatInbox(currentUserId: string): Promise<{
   data: OrderChatInboxItem[] | null; error: any;
 }> {
-  // 1) Tüm mesajlar (RLS otomatik filter)
+  // 1) Tüm mesajlar (RLS otomatik filter) — read_at dahil
   const { data: msgs, error: msgErr } = await supabase
     .from('order_messages')
-    .select('id, work_order_id, sender_id, content, attachment_type, attachment_name, created_at, sender:profiles(id, full_name, user_type)')
+    .select('id, work_order_id, sender_id, content, attachment_type, attachment_name, created_at, read_at, sender:profiles(id, full_name, user_type)')
     .order('created_at', { ascending: false })
     .limit(2000);
   if (msgErr) return { data: null, error: msgErr };
@@ -133,8 +152,9 @@ export async function fetchOrderChatInbox(currentUserId: string): Promise<{
   const items: OrderChatInboxItem[] = (orders ?? []).map((o: any) => {
     const list = byOrder.get(o.id) ?? [];
     const last = list[0]; // en yeni (descending order)
+    // Sadece karşı taraftan gelen VE henüz okunmamış (read_at = null) mesajlar
     const unread_for_me = list.filter(
-      m => m.sender_id !== currentUserId,
+      m => m.sender_id !== currentUserId && !m.read_at,
     ).length;
 
     return {

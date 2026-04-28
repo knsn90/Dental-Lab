@@ -4,8 +4,9 @@
 
 import React from 'react';
 import { View, TouchableOpacity, Text, StyleSheet, Platform } from 'react-native';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { Mode } from '../types/occlusion';
+
+import { AppIcon } from '../../../core/ui/AppIcon';
 
 interface Props {
   mode:         Mode;
@@ -38,7 +39,7 @@ export function OcclusionToolbar({ mode, onModeChange, position = 'left' }: Prop
             // @ts-ignore — web-only tooltip
             title={Platform.OS === 'web' ? it.tip : undefined}
           >
-            <MaterialCommunityIcons
+            <AppIcon
               name={it.icon as any}
               size={18}
               color={active ? '#FFFFFF' : '#64748B'}

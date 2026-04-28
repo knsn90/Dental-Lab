@@ -4,11 +4,11 @@ import {
   ActivityIndicator, RefreshControl, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Feather from '@expo/vector-icons/Feather';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { supabase } from '../../lib/supabase';
 import { IconBtn } from '../../core/ui/IconBtn';
 import { SlideTabBar } from '../../core/ui/SlideTabBar';
+
+import { AppIcon } from '../../core/ui/AppIcon';
 
 type LogTab = 'all' | 'users' | 'doctors';
 
@@ -66,7 +66,7 @@ function LogRow({ log, isLast }: { log: ActivityLog; isLast: boolean }) {
     <View style={[lr.row, !isLast && lr.rowBorder]}>
       {/* Icon */}
       <View style={[lr.iconWrap, { backgroundColor: meta.bg }]}>
-        <MaterialCommunityIcons name={meta.icon as any} size={17} color={meta.color} />
+        <AppIcon name={meta.icon as any} size={17} color={meta.color} />
       </View>
 
       {/* Content */}
@@ -169,12 +169,12 @@ export default function AdminLogsScreen() {
         <View style={s.toolbarRow}>
           <View style={s.rightGroup}>
             <IconBtn active={searchExpanded || search.length > 0} onPress={() => setSearchExpanded(!searchExpanded)}>
-              <Feather name="search" size={20} color={(searchExpanded || search.length > 0) ? '#0F172A' : '#64748B'} />
+              <AppIcon name="search" size={20} color={(searchExpanded || search.length > 0) ? '#0F172A' : '#64748B'} />
             </IconBtn>
             <IconBtn onPress={() => loadLogs(true)}>
               {refreshing
                 ? <ActivityIndicator size="small" color="#64748B" />
-                : <Feather name="refresh-cw" size={20} color="#64748B" />}
+                : <AppIcon name="refresh-cw" size={20} color="#64748B" />}
             </IconBtn>
           </View>
         </View>
@@ -191,7 +191,7 @@ export default function AdminLogsScreen() {
         {(searchExpanded || search.length > 0) && (
           <View style={s.searchRow}>
             <View style={[s.searchWrap, searchFocused && s.searchWrapFocused]}>
-              <Feather name="search" size={16} color={searchFocused ? '#0F172A' : '#AEAEB2'} />
+              <AppIcon name="search" size={16} color={searchFocused ? '#0F172A' : '#AEAEB2'} />
               <TextInput
                 style={s.searchInput}
                 value={search}
@@ -205,7 +205,7 @@ export default function AdminLogsScreen() {
               />
               {search.length > 0 && (
                 <TouchableOpacity onPress={() => { setSearch(''); setSearchExpanded(false); }}>
-                  <Feather name="x-circle" size={15} color="#AEAEB2" />
+                  <AppIcon name="x-circle" size={15} color="#AEAEB2" />
                 </TouchableOpacity>
               )}
             </View>
@@ -228,7 +228,7 @@ export default function AdminLogsScreen() {
         >
           {filtered.length === 0 ? (
             <View style={s.empty}>
-              <MaterialCommunityIcons name="clipboard-text-off-outline" size={44} color="#AEAEB2" />
+              <AppIcon name="clipboard-text-off-outline" size={44} color="#AEAEB2" />
               <Text style={s.emptyTitle}>Henüz log yok</Text>
               <Text style={s.emptySub}>{q ? `"${q}" ile eşleşen kayıt yok` : 'Eylemler gerçekleştikçe burada görünecek'}</Text>
             </View>

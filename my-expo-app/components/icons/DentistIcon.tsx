@@ -1,6 +1,7 @@
 import React from 'react';
 import { Platform, View } from 'react-native';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+
+import { AppIcon } from '../../core/ui/AppIcon';
 
 interface DentistIconProps {
   size?: number;
@@ -72,5 +73,5 @@ export function DentistIcon({ size = 24, color = '#000000' }: DentistIconProps) 
   }
 
   // Native fallback
-  return <MaterialCommunityIcons name="account-circle-outline" size={size} color={color} />;
+  return <AppIcon name="account-circle-outline" size={size} color={color} />;
 }

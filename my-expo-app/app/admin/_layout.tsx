@@ -4,17 +4,28 @@ import { Slot, usePathname, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { DesktopShell, useIsDesktop } from '../../core/layout/DesktopShell';
 import { useAuthStore } from '../../core/store/authStore';
-import Feather from '@expo/vector-icons/Feather';
+
+import { AppIcon } from '../../core/ui/AppIcon';
 
 const ADMIN_ACCENT = '#0F172A';
 
+// Lab/(admin) ile aynı bölümlü yapı: sectionLabel'lar ile gruplandı
 const NAV_ITEMS = [
-  { label: 'Özet',         emoji: '📊', href: '/admin',            iconName: 'grid',         iconSet: 'mdi' as const },
-  { label: 'Siparişler',   emoji: '📋', href: '/admin/orders',     iconName: 'clipboard',    iconSet: 'mdi' as const, matchPrefix: true },
-  { label: 'Kullanıcılar', emoji: '👥', href: '/admin/users',      iconName: 'users',        iconSet: 'mdi' as const, matchPrefix: true },
-  { label: 'Materyaller',  emoji: '💎', href: '/admin/materials',  iconName: 'package',      iconSet: 'mdi' as const, matchPrefix: true },
-  { label: 'Raporlar',     emoji: '📈', href: '/admin/reports',    iconName: 'bar-chart-2',  iconSet: 'mdi' as const, matchPrefix: true },
-  { label: 'Ayarlar',      emoji: '⚙️', href: '/admin/settings',   iconName: 'settings',     iconSet: 'mdi' as const, matchPrefix: true },
+  // ── Ana ekran ────────────────────────────────────────────────────────────
+  { label: 'Özet',         emoji: '📊', href: '/admin',           iconName: 'grid',          iconSet: 'mdi' as const },
+
+  // ── İş Yönetimi ──────────────────────────────────────────────────────────
+  { label: 'Siparişler',   emoji: '📋', href: '/admin/orders',    iconName: 'clipboard',     iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'İş Yönetimi' },
+
+  // ── Müşteriler ───────────────────────────────────────────────────────────
+  { label: 'Kullanıcılar', emoji: '👥', href: '/admin/users',     iconName: 'users',         iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'Müşteriler' },
+
+  // ── Stok & Depo ──────────────────────────────────────────────────────────
+  { label: 'Materyaller',  emoji: '💎', href: '/admin/materials', iconName: 'package',       iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'Stok & Depo' },
+
+  // ── Sistem ───────────────────────────────────────────────────────────────
+  { label: 'Raporlar',     emoji: '📈', href: '/admin/reports',   iconName: 'bar-chart-2',   iconSet: 'mdi' as const, matchPrefix: true, sectionLabel: 'Sistem' },
+  { label: 'Ayarlar',      emoji: '⚙️', href: '/admin/settings',  iconName: 'settings',      iconSet: 'mdi' as const, matchPrefix: true },
 ];
 
 export default function AdminLayout() {
@@ -54,7 +65,7 @@ function AdminMobileLayout() {
               style={mob.tabItem}
               onPress={() => router.push(item.href as any)}
             >
-              <Feather
+              <AppIcon
                 name={item.iconName as any}
                 size={20}
                 color={active ? ADMIN_ACCENT : '#94A3B8'}

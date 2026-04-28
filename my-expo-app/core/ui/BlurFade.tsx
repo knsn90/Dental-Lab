@@ -30,8 +30,8 @@ export function BlurFade({
   }, [progress, duration, delay]);
 
   const translateY = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [yOffset, -yOffset],
+    inputRange:  [0, 1],
+    outputRange: [yOffset, 0],   // başlangıç: yOffset aşağıda → bitiş: doğal pozisyon (ortalı)
   });
 
   const animatedStyle: any = {

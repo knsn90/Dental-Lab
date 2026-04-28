@@ -14,11 +14,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import Feather from '@expo/vector-icons/Feather';
 import * as Location from 'expo-location';
 
 import { qrCheckin, type QrCheckinResult } from '../modules/hr/api';
 import { useAuthStore } from '../core/store/authStore';
+
+import { AppIcon } from '../core/ui/AppIcon';
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
 const PRIMARY = '#2563EB';
@@ -129,7 +130,7 @@ export default function CheckinPage() {
         {/* Logo area */}
         <View style={s.logoBox}>
           <View style={[s.logoCircle, { backgroundColor: PRIMARY }]}>
-            <Feather name="clock" size={36} color="#fff" />
+            <AppIcon name="clock" size={36} color="#fff" />
           </View>
           <Text style={s.logoTitle}>Dental Lab</Text>
           <Text style={s.logoSub}>Giriş / Çıkış Sistemi</Text>
@@ -207,7 +208,7 @@ function SuccessCard({
   return (
     <View style={s.card}>
       <View style={[s.iconCircle, { backgroundColor: '#D1FAE5' }]}>
-        <Feather name={isIn ? 'log-in' : 'log-out'} size={32} color="#059669" />
+        <AppIcon name={isIn ? 'log-in' : 'log-out'} size={32} color="#059669" />
       </View>
 
       <Text style={[s.resultTitle, { color: '#059669' }]}>
@@ -217,13 +218,13 @@ function SuccessCard({
       <Text style={s.employeeName}>{name}</Text>
 
       <View style={s.timeBox}>
-        <Feather name="clock" size={16} color="#64748B" />
+        <AppIcon name="clock" size={16} color="#64748B" />
         <Text style={s.timeText}>{time}</Text>
       </View>
 
       {!isIn && workMinutes != null && (
         <View style={s.statRow}>
-          <Feather name="activity" size={14} color="#2563EB" />
+          <AppIcon name="activity" size={14} color="#2563EB" />
           <Text style={s.statText}>
             {Math.floor(workMinutes / 60)}s {workMinutes % 60}dk çalışıldı
           </Text>
@@ -232,7 +233,7 @@ function SuccessCard({
 
       {gpsSkipped && (
         <View style={s.warnRow}>
-          <Feather name="alert-circle" size={13} color="#D97706" />
+          <AppIcon name="alert-circle" size={13} color="#D97706" />
           <Text style={s.warnText}>GPS kullanılmadı (QR-only mod)</Text>
         </View>
       )}
@@ -255,7 +256,7 @@ function ErrorCard({
   return (
     <View style={s.card}>
       <View style={[s.iconCircle, { backgroundColor: '#FEE2E2' }]}>
-        <Feather name="x-circle" size={32} color="#DC2626" />
+        <AppIcon name="x-circle" size={32} color="#DC2626" />
       </View>
 
       <Text style={[s.resultTitle, { color: '#DC2626' }]}>İşlem Başarısız</Text>
@@ -263,7 +264,7 @@ function ErrorCard({
 
       {isOutOfRange && (
         <TouchableOpacity style={[s.btn, { backgroundColor: '#F59E0B' }]} onPress={onRetryWithoutGps}>
-          <Feather name="wifi-off" size={16} color="#fff" style={{ marginRight: 6 }} />
+          <AppIcon name="wifi-off" size={16} color="#fff" style={{ marginRight: 6 }} />
           <Text style={s.btnText}>GPS Olmadan Dene</Text>
         </TouchableOpacity>
       )}

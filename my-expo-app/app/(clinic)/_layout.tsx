@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Modal, Text } from 'react-native';
 import { Slot, Tabs } from 'expo-router';
 import { C as Colors } from '../../core/theme/colors';
@@ -6,10 +6,11 @@ import { DesktopShell, useIsDesktop } from '../../core/layout/DesktopShell';
 import { useAuthStore } from '../../core/store/authStore';
 import { NewOrderScreen } from '../../modules/orders/screens/NewOrderScreen';
 import { MessagesPopup } from '../../modules/orders/components/MessagesPopup';
+import { useColorThemeStore, applyColorThemeWeb } from '../../core/store/colorThemeStore';
 
 // Klinik paneli teması — daha koyu sky blue (otorite/yönetici hissi)
 // Hekim     #0EA5E9 · Klinik müdürü #0369A1 · Lab #2563EB · Admin #0F172A
-const CLINIC_ACCENT = '#0369A1';
+const CLINIC_DEFAULT_ACCENT = '#0369A1';
 
 function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
   return <Text style={{ fontSize: focused ? 24 : 22, opacity: focused ? 1 : 0.6 }}>{emoji}</Text>;
@@ -21,12 +22,20 @@ export default function ClinicLayout() {
   const [newOrderOpen, setNewOrderOpen] = useState(false);
   const [messagesOpen, setMessagesOpen] = useState(false);
 
+  // Load saved color theme
+  const { getTheme, loadTheme } = useColorThemeStore();
+  useEffect(() => {
+    const theme = loadTheme('clinic_admin');
+    applyColorThemeWeb(theme, CLINIC_DEFAULT_ACCENT);
+  }, []);
+  const accentColor = getTheme('clinic_admin').primary;
+
   const CLINIC_NAV = [
-    { label: 'Dashboard',    emoji: '📊', href: '/(clinic)',           iconName: 'grid',           iconSet: 'mdi' as const },
+    { label: 'Dashboard',    emoji: '📊', href: '/(clinic)',            iconName: 'grid',           iconSet: 'mdi' as const },
     { label: 'Hekimler',     emoji: '🩺', href: '/(clinic)/doctors',   iconName: 'activity',       iconSet: 'mdi' as const },
     { label: 'Siparişler',   emoji: '📋', href: '/(clinic)/orders',    iconName: 'file-text',      iconSet: 'mdi' as const },
     { label: 'Yeni İş Emri', emoji: '➕', href: '/(clinic)/new-order', iconName: 'plus-circle',    iconSet: 'mdi' as const },
-    { label: 'Profil',       emoji: '👤', href: '/(clinic)/profile',   iconName: 'user',           iconSet: 'mdi' as const },
+    { label: 'Ayarlar',      emoji: '⚙️', href: '/(clinic)/settings', iconName: 'settings',       iconSet: 'mdi' as const, matchPrefix: true },
   ];
 
   // Klinik müdürü olmayan kullanıcı bu layout'a düştüyse sidebar gösterme
@@ -39,13 +48,13 @@ export default function ClinicLayout() {
       <>
         <DesktopShell
           navItems={CLINIC_NAV}
-          accentColor={CLINIC_ACCENT}
+          accentColor={accentColor}
           onPressMessages={() => setMessagesOpen(true)}
         />
         <MessagesPopup
           visible={messagesOpen}
           onClose={() => setMessagesOpen(false)}
-          accentColor={CLINIC_ACCENT}
+          accentColor={accentColor}
         />
       </>
     );
@@ -56,7 +65,7 @@ export default function ClinicLayout() {
       <Tabs
         screenOptions={{
           headerShown: false,
-          tabBarActiveTintColor: CLINIC_ACCENT,
+          tabBarActiveTintColor: accentColor,
           tabBarInactiveTintColor: Colors.textSecondary,
           tabBarStyle: {
             backgroundColor: Colors.surface,
@@ -109,16 +118,14 @@ export default function ClinicLayout() {
           }}
         />
         <Tabs.Screen
-          name="profile"
+          name="settings"
           options={{
-            title: 'Profil',
-            tabBarIcon: ({ focused }) => <TabIcon emoji="👤" focused={focused} />,
+            title: 'Ayarlar',
+            tabBarIcon: ({ focused }) => <TabIcon emoji="⚙️" focused={focused} />,
           }}
         />
-        <Tabs.Screen
-          name="order/[id]"
-          options={{ href: null } as any}
-        />
+        <Tabs.Screen name="profile"    options={{ href: null } as any} />
+        <Tabs.Screen name="order/[id]" options={{ href: null, title: 'İş Emri' } as any} />
       </Tabs>
 
       {/* Mobilde sayfa üstü modal yeni iş emri (opsiyonel kullanım) */}
@@ -130,7 +137,7 @@ export default function ClinicLayout() {
       >
         <NewOrderScreen
           clinicMode
-          accentColor={CLINIC_ACCENT}
+          accentColor={accentColor}
           onClose={() => setNewOrderOpen(false)}
         />
       </Modal>
@@ -139,7 +146,7 @@ export default function ClinicLayout() {
       <MessagesPopup
         visible={messagesOpen}
         onClose={() => setMessagesOpen(false)}
-        accentColor={CLINIC_ACCENT}
+        accentColor={accentColor}
       />
     </>
   );

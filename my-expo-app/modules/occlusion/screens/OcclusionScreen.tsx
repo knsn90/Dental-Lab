@@ -7,7 +7,6 @@ import {
   View, Text, StyleSheet, TouchableOpacity, Platform, ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -22,6 +21,8 @@ import { useOcclusionAnalysis }  from '../hooks/useOcclusionAnalysis';
 import { useMeasurement }        from '../hooks/useMeasurement';
 
 import type { PenetrationPoint, Severity, SceneClickEvent } from '../types/occlusion';
+
+import { AppIcon } from '../../../core/ui/AppIcon';
 
 export default function OcclusionScreen() {
   const router = useRouter();
@@ -111,7 +112,7 @@ export default function OcclusionScreen() {
 
         <View style={[s.empty, isMobile && { padding: 20, gap: 12 }]}>
           <View style={s.emptyIcon}>
-            <MaterialCommunityIcons name="molecule" size={48} color="#94A3B8" />
+            <AppIcon name="molecule" size={48} color="#94A3B8" />
           </View>
           <Text style={[s.emptyTitle, isMobile && { fontSize: 18, textAlign: 'center' }]}>Oklüzyon Analizi Başlat</Text>
           <Text style={s.emptySub}>
@@ -137,7 +138,7 @@ export default function OcclusionScreen() {
             onPress={startAnalysis}
             activeOpacity={0.85}
           >
-            <MaterialCommunityIcons name="play-circle" size={16} color="#FFFFFF" />
+            <AppIcon name="play-circle" size={16} color="#FFFFFF" />
             <Text style={s.analyzeBtnText}>Analizi Başlat</Text>
           </TouchableOpacity>
 
@@ -230,7 +231,7 @@ export default function OcclusionScreen() {
             onPress={() => setPanelOpen((v) => !v)}
             activeOpacity={0.85}
           >
-            <MaterialCommunityIcons
+            <AppIcon
               name={panelOpen ? 'chevron-down' : 'tune-vertical'}
               size={18}
               color="#0F172A"
@@ -316,7 +317,7 @@ function TopBar({
   return (
     <View style={[tb.bar, isMobile && { paddingHorizontal: 12, paddingVertical: 10, gap: 8 }]}>
       <TouchableOpacity onPress={onBack} style={tb.back}>
-        <MaterialCommunityIcons name="arrow-left" size={18} color="#0F172A" />
+        <AppIcon name="arrow-left" size={18} color="#0F172A" />
       </TouchableOpacity>
       <View style={tb.titleWrap}>
         <Text style={[tb.title, isMobile && { fontSize: 14 }]} numberOfLines={1}>Oklüzyon Analizi</Text>
@@ -336,7 +337,7 @@ function TopBar({
           onPress={onSave}
           activeOpacity={0.85}
         >
-          <MaterialCommunityIcons name="link-variant" size={14} color="#FFFFFF" />
+          <AppIcon name="link-variant" size={14} color="#FFFFFF" />
           {!isMobile && <Text style={tb.primaryText}>İş Emrine Ekle</Text>}
         </TouchableOpacity>
       )}
@@ -351,7 +352,7 @@ function UploadCard({ label, file, onPick }: {
   return (
     <TouchableOpacity style={[uc.card, file && uc.cardFilled]} onPress={onPick} activeOpacity={0.85}>
       <View style={uc.iconWrap}>
-        <MaterialCommunityIcons
+        <AppIcon
           name={file ? 'check-circle' : 'tooth-outline'}
           size={28}
           color={file ? '#22C55E' : '#94A3B8'}

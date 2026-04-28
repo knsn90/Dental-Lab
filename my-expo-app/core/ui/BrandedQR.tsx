@@ -14,8 +14,10 @@ import QRCodeStyled from 'react-native-qrcode-styled';
 export interface BrandedQRProps {
   /** QR içeriği (URL, JSON string, vs.) */
   value: string;
-  /** Toplam piksel boyutu (kare) */
+  /** Toplam piksel boyutu (kare) — pieceSize verilmezse buradan hesaplanır */
   size?: number;
+  /** Doğrudan modül başına piksel — verilirse size yoksayılır */
+  pieceSize?: number;
   /** Modül rengi — default siyah; panel temalı kullanım için accent verilebilir */
   color?: string;
   /** Arkaplan rengi — default beyaz */
@@ -36,6 +38,7 @@ export interface BrandedQRProps {
 export function BrandedQR({
   value,
   size = 200,
+  pieceSize: pieceSizeOverride,
   color = '#0F172A',
   backgroundColor = '#FFFFFF',
   errorCorrectionLevel = 'M',
@@ -43,12 +46,11 @@ export function BrandedQR({
   pieceShape = 'dot',
   borderRadius = 14,
 }: BrandedQRProps) {
-  // QR matrix tipik 25-37 modül arasında değişir; orta nokta 33 alıp
-  // toplam size'a göre piece başına piksel hesapla.
-  const pieceSize = Math.max(2, Math.floor((size - padding * 2) / 33));
+  // pieceSize override varsa onu kullan, yoksa size'dan hesapla
+  const pieceSize = pieceSizeOverride ?? Math.max(1, Math.floor((size - padding * 2) / 33));
 
   const isDot = pieceShape === 'dot';
-  const liquidRadius = isDot ? Math.max(2, Math.floor(pieceSize / 2)) : 1;
+  const liquidRadius = isDot ? Math.max(1, Math.floor(pieceSize / 2)) : 1;
 
   return (
     <View style={[styles.wrap, { backgroundColor, padding, borderRadius }]}>

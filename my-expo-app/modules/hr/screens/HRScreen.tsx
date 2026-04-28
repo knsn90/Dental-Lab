@@ -1,10 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useContext } from 'react';
+import { HubContext } from '../../../core/ui/HubContext';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   Modal, TextInput, ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useBreakpoint } from '../../../core/layout/Responsive';
 import { toast } from '../../../core/ui/Toast';
 import { C } from '../../../core/theme/colors';
@@ -21,6 +21,8 @@ import {
 import { useLeaveSummaries, useEmployeeLeaves, useAttendance, usePendingLeaves } from '../hooks/useHR';
 import { useAuthStore } from '../../../core/store/authStore';
 import { ROLE_LABELS, ROLE_COLORS } from '../../employees/api';
+
+import { AppIcon } from '../../../core/ui/AppIcon';
 
 // ─── Turkish month helpers ────────────────────────────────────────────────────
 const TR_MONTHS = ['', 'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
@@ -51,6 +53,8 @@ const ATT_WITH_TIME: AttendanceStatus[] = ['normal', 'gec', 'erken_cikis', 'yari
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export function HRScreen() {
   const { isDesktop, px, gap } = useBreakpoint();
+  const isEmbedded = useContext(HubContext);
+  const safeEdges  = isEmbedded ? ([] as any) : (['top'] as any);
   const { profile } = useAuthStore();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -195,13 +199,13 @@ export function HRScreen() {
     />
   ) : (
     <View style={s.emptyRight}>
-      <MaterialCommunityIcons name={'account-arrow-left-outline' as any} size={40} color={C.textDisabled} />
+      <AppIcon name={'account-arrow-left-outline' as any} size={40} color={C.textDisabled} />
       <Text style={s.emptyRightText}>Sol panelden çalışan seçin</Text>
     </View>
   );
 
   return (
-    <SafeAreaView style={s.safe} edges={['top']}>
+    <SafeAreaView style={s.safe} edges={safeEdges}>
       {/* Header */}
       <View style={[s.header, { paddingHorizontal: px }]}>
         <View style={{ flex: 1 }}>
@@ -224,7 +228,7 @@ export function HRScreen() {
             </TouchableOpacity>
           )}
           <TouchableOpacity style={s.addBtn} onPress={() => setLeaveOpen(true)} activeOpacity={0.85}>
-            <MaterialCommunityIcons name={'calendar-plus' as any} size={16} color="#fff" />
+            <AppIcon name={'calendar-plus' as any} size={16} color="#fff" />
             <Text style={s.addBtnText}>İzin Talebi</Text>
           </TouchableOpacity>
         </View>
@@ -249,7 +253,7 @@ export function HRScreen() {
               {/* Mobile back header */}
               <View style={[s.mobileBackBar, { paddingHorizontal: px }]}>
                 <TouchableOpacity style={s.backBtn} onPress={() => setSelectedId(null)}>
-                  <MaterialCommunityIcons name={'chevron-left' as any} size={20} color={C.primary} />
+                  <AppIcon name={'chevron-left' as any} size={20} color={C.primary} />
                   <Text style={s.backBtnText}>Geri</Text>
                 </TouchableOpacity>
                 <Text style={s.mobileEmpName} numberOfLines={1}>{selectedSummary.full_name}</Text>
@@ -308,7 +312,7 @@ function EmployeeListPanel({ summaries, selectedId, onSelect, px, gap }: {
   if (summaries.length === 0) {
     return (
       <View style={s.emptyList}>
-        <MaterialCommunityIcons name={'account-off-outline' as any} size={40} color={C.textDisabled} />
+        <AppIcon name={'account-off-outline' as any} size={40} color={C.textDisabled} />
         <Text style={s.emptyListText}>Çalışan bulunamadı</Text>
       </View>
     );
@@ -391,7 +395,7 @@ function EmployeeRow({ summary, selected, onPress }: {
         </View>
       </View>
 
-      <MaterialCommunityIcons name={'chevron-right' as any} size={18} color={C.textMuted} />
+      <AppIcon name={'chevron-right' as any} size={18} color={C.textMuted} />
     </TouchableOpacity>
   );
 }
@@ -543,7 +547,7 @@ function LeavesTab({ summary, leaves, leaveFilter, setLeaveFilter, loading, canA
         </View>
       ) : leaves.length === 0 ? (
         <View style={s.emptyState}>
-          <MaterialCommunityIcons name={'calendar-blank-outline' as any} size={36} color={C.textDisabled} />
+          <AppIcon name={'calendar-blank-outline' as any} size={36} color={C.textDisabled} />
           <Text style={s.emptyStateText}>İzin kaydı bulunamadı</Text>
         </View>
       ) : (
@@ -561,7 +565,7 @@ function LeavesTab({ summary, leaves, leaveFilter, setLeaveFilter, loading, canA
       )}
 
       <TouchableOpacity style={s.footerAddBtn} onPress={onAdd} activeOpacity={0.85}>
-        <MaterialCommunityIcons name={'calendar-plus' as any} size={15} color={C.primary} />
+        <AppIcon name={'calendar-plus' as any} size={15} color={C.primary} />
         <Text style={s.footerAddBtnText}>İzin Talebi Ekle</Text>
       </TouchableOpacity>
     </>
@@ -587,7 +591,7 @@ function LeaveCard({ leave, canApprove, onApprove, onReject, onCancel, onDelete 
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
         {/* Type icon */}
         <View style={[lc.typeIcon, { backgroundColor: tc.bg }]}>
-          <MaterialCommunityIcons name={icon as any} size={18} color={tc.fg} />
+          <AppIcon name={icon as any} size={18} color={tc.fg} />
         </View>
 
         {/* Info */}
@@ -601,11 +605,11 @@ function LeaveCard({ leave, canApprove, onApprove, onReject, onCancel, onDelete 
         {/* Status + delete */}
         <View style={{ alignItems: 'flex-end', gap: 8 }}>
           <View style={[lc.statusPill, { backgroundColor: sc2.bg }]}>
-            <MaterialCommunityIcons name={sc2.icon as any} size={11} color={sc2.fg} />
+            <AppIcon name={sc2.icon as any} size={11} color={sc2.fg} />
             <Text style={[lc.statusText, { color: sc2.fg }]}>{sc2.label}</Text>
           </View>
           <TouchableOpacity style={lc.delBtn} onPress={() => onDelete(leave.id)}>
-            <MaterialCommunityIcons name={'trash-can-outline' as any} size={14} color={C.textDisabled} />
+            <AppIcon name={'trash-can-outline' as any} size={14} color={C.textDisabled} />
           </TouchableOpacity>
         </View>
       </View>
@@ -617,14 +621,14 @@ function LeaveCard({ leave, canApprove, onApprove, onReject, onCancel, onDelete 
             style={[lc.actionBtn, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]}
             onPress={() => onApprove(leave.id)}
           >
-            <MaterialCommunityIcons name={'check' as any} size={13} color={C.success} />
+            <AppIcon name={'check' as any} size={13} color={C.success} />
             <Text style={[lc.actionBtnText, { color: C.success }]}>Onayla</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[lc.actionBtn, { backgroundColor: C.dangerBg, borderColor: C.dangerBorder }]}
             onPress={() => onReject(leave.id)}
           >
-            <MaterialCommunityIcons name={'close' as any} size={13} color={C.danger} />
+            <AppIcon name={'close' as any} size={13} color={C.danger} />
             <Text style={[lc.actionBtnText, { color: C.danger }]}>Reddet</Text>
           </TouchableOpacity>
         </View>
@@ -632,7 +636,7 @@ function LeaveCard({ leave, canApprove, onApprove, onReject, onCancel, onDelete 
       {/* Onay yetkisi olmayan kullanıcıya bilgi mesajı */}
       {leave.status === 'bekliyor' && !canApprove && (
         <View style={lc.pendingInfo}>
-          <MaterialCommunityIcons name={'clock-outline' as any} size={13} color={C.warning} />
+          <AppIcon name={'clock-outline' as any} size={13} color={C.warning} />
           <Text style={lc.pendingInfoText}>Mesul müdür / yönetici onayı bekleniyor</Text>
         </View>
       )}
@@ -642,7 +646,7 @@ function LeaveCard({ leave, canApprove, onApprove, onReject, onCancel, onDelete 
             style={[lc.actionBtn, { backgroundColor: C.border, borderColor: C.borderMid }]}
             onPress={() => onCancel(leave.id)}
           >
-            <MaterialCommunityIcons name={'cancel' as any} size={13} color={C.textSecondary} />
+            <AppIcon name={'cancel' as any} size={13} color={C.textSecondary} />
             <Text style={[lc.actionBtnText, { color: C.textSecondary }]}>İptal</Text>
           </TouchableOpacity>
         </View>
@@ -693,11 +697,11 @@ function DevamTab({ currentMonth, monthLabel, prevMonth, nextMonth, records, att
       {/* Month selector */}
       <View style={dt.monthRow}>
         <TouchableOpacity style={dt.monthArrow} onPress={prevMonth}>
-          <MaterialCommunityIcons name={'chevron-left' as any} size={20} color={C.textSecondary} />
+          <AppIcon name={'chevron-left' as any} size={20} color={C.textSecondary} />
         </TouchableOpacity>
         <Text style={dt.monthLabel}>{monthLabel}</Text>
         <TouchableOpacity style={dt.monthArrow} onPress={nextMonth}>
-          <MaterialCommunityIcons name={'chevron-right' as any} size={20} color={C.textSecondary} />
+          <AppIcon name={'chevron-right' as any} size={20} color={C.textSecondary} />
         </TouchableOpacity>
       </View>
 
@@ -752,7 +756,7 @@ function DevamTab({ currentMonth, monthLabel, prevMonth, nextMonth, records, att
         </View>
       ) : records.length === 0 ? (
         <View style={s.emptyState}>
-          <MaterialCommunityIcons name={'calendar-blank' as any} size={36} color={C.textDisabled} />
+          <AppIcon name={'calendar-blank' as any} size={36} color={C.textDisabled} />
           <Text style={s.emptyStateText}>Bu ay için devam kaydı yok</Text>
         </View>
       ) : (
@@ -762,7 +766,7 @@ function DevamTab({ currentMonth, monthLabel, prevMonth, nextMonth, records, att
       )}
 
       <TouchableOpacity style={s.footerAddBtn} onPress={onAdd} activeOpacity={0.85}>
-        <MaterialCommunityIcons name={'calendar-check' as any} size={15} color={C.primary} />
+        <AppIcon name={'calendar-check' as any} size={15} color={C.primary} />
         <Text style={s.footerAddBtnText}>Devam Kaydı Ekle</Text>
       </TouchableOpacity>
     </>
@@ -803,7 +807,7 @@ function AttendanceRow({ record: r, onDelete }: {
         </Text>
         {method && (
           <View style={[ac.methodPill, { backgroundColor: method.bg }]}>
-            <MaterialCommunityIcons name={method.icon as any} size={10} color={method.fg} />
+            <AppIcon name={method.icon as any} size={10} color={method.fg} />
             <Text style={[ac.methodText, { color: method.fg }]}>{method.label}</Text>
           </View>
         )}
@@ -813,7 +817,7 @@ function AttendanceRow({ record: r, onDelete }: {
         <Text style={[ac.statusText, { color: cfg.fg }]}>{cfg.label}</Text>
       </View>
       <TouchableOpacity style={ac.delBtn} onPress={() => onDelete(r.id)}>
-        <MaterialCommunityIcons name={'trash-can-outline' as any} size={14} color={C.textDisabled} />
+        <AppIcon name={'trash-can-outline' as any} size={14} color={C.textDisabled} />
       </TouchableOpacity>
     </View>
   );
@@ -833,7 +837,7 @@ function OzetTab({ summary, attSummary }: {
       {/* Bu Yıl İzin */}
       <View style={oz.card}>
         <View style={oz.cardHeader}>
-          <MaterialCommunityIcons name={'beach' as any} size={16} color={C.primary} />
+          <AppIcon name={'beach' as any} size={16} color={C.primary} />
           <Text style={oz.cardTitle}>Bu Yıl İzin</Text>
         </View>
         <View style={{ gap: 6 }}>
@@ -860,7 +864,7 @@ function OzetTab({ summary, attSummary }: {
       {attSummary && (
         <View style={oz.card}>
           <View style={oz.cardHeader}>
-            <MaterialCommunityIcons name={'calendar-check-outline' as any} size={16} color={C.primary} />
+            <AppIcon name={'calendar-check-outline' as any} size={16} color={C.primary} />
             <Text style={oz.cardTitle}>Bu Ay Devam</Text>
           </View>
           <View style={oz.statGrid}>
@@ -876,7 +880,7 @@ function OzetTab({ summary, attSummary }: {
       {attSummary && (
         <View style={oz.card}>
           <View style={oz.cardHeader}>
-            <MaterialCommunityIcons name={'clock-outline' as any} size={16} color={C.primary} />
+            <AppIcon name={'clock-outline' as any} size={16} color={C.primary} />
             <Text style={oz.cardTitle}>Toplam Çalışma (Bu Ay)</Text>
           </View>
           <View style={{ gap: 8 }}>
@@ -895,7 +899,7 @@ function OzetTab({ summary, attSummary }: {
       {/* İzin Bakiyesi */}
       <View style={oz.card}>
         <View style={oz.cardHeader}>
-          <MaterialCommunityIcons name={'calendar-star' as any} size={16} color={C.primary} />
+          <AppIcon name={'calendar-star' as any} size={16} color={C.primary} />
           <Text style={oz.cardTitle}>İzin Bakiyesi</Text>
         </View>
         <View style={{ alignItems: 'center', paddingVertical: 12 }}>
@@ -988,7 +992,7 @@ function LeaveFormModal({ visible, summaries, preselectedId, onClose, onSaved }:
           <View style={fm.header}>
             <Text style={fm.title}>İzin Talebi</Text>
             <TouchableOpacity style={fm.closeBtn} onPress={onClose}>
-              <MaterialCommunityIcons name={'close' as any} size={18} color={C.textMuted} />
+              <AppIcon name={'close' as any} size={18} color={C.textMuted} />
             </TouchableOpacity>
           </View>
 
@@ -997,7 +1001,7 @@ function LeaveFormModal({ visible, summaries, preselectedId, onClose, onSaved }:
             {/* Employee */}
             {preselectedId && selectedEmp ? (
               <View style={fm.readonlyEmp}>
-                <MaterialCommunityIcons name={'account' as any} size={15} color={C.primary} />
+                <AppIcon name={'account' as any} size={15} color={C.primary} />
                 <Text style={fm.readonlyEmpText}>{selectedEmp.full_name}</Text>
               </View>
             ) : (
@@ -1034,7 +1038,7 @@ function LeaveFormModal({ visible, summaries, preselectedId, onClose, onSaved }:
                       style={[fm.typeChip, { borderColor: isActive ? tc.fg : C.borderMid, backgroundColor: isActive ? tc.bg : '#fff' }]}
                       onPress={() => setLeaveType(lt)}
                     >
-                      <MaterialCommunityIcons name={LEAVE_TYPE_ICONS[lt] as any} size={14} color={isActive ? tc.fg : C.textMuted} />
+                      <AppIcon name={LEAVE_TYPE_ICONS[lt] as any} size={14} color={isActive ? tc.fg : C.textMuted} />
                       <Text style={[fm.typeChipText, { color: isActive ? tc.fg : C.textMuted, fontWeight: isActive ? '700' : '500' }]}>
                         {LEAVE_TYPE_LABELS[lt]}
                       </Text>
@@ -1070,7 +1074,7 @@ function LeaveFormModal({ visible, summaries, preselectedId, onClose, onSaved }:
 
             {days > 0 && (
               <View style={fm.daysHint}>
-                <MaterialCommunityIcons name={'information-outline' as any} size={13} color={C.primary} />
+                <AppIcon name={'information-outline' as any} size={13} color={C.primary} />
                 <Text style={fm.daysHintText}>{days} iş günü</Text>
               </View>
             )}
@@ -1183,7 +1187,7 @@ function AttendanceModal({ visible, employeeId, employeeName, onClose, onSaved }
               {employeeName ? <Text style={{ fontSize: 12, color: C.textSecondary, marginTop: 2 }}>{employeeName}</Text> : null}
             </View>
             <TouchableOpacity style={fm.closeBtn} onPress={onClose}>
-              <MaterialCommunityIcons name={'close' as any} size={18} color={C.textMuted} />
+              <AppIcon name={'close' as any} size={18} color={C.textMuted} />
             </TouchableOpacity>
           </View>
 
@@ -1320,7 +1324,7 @@ function RejectModal({ visible, onClose, onConfirm }: {
           <View style={fm.header}>
             <Text style={fm.title}>İzni Reddet</Text>
             <TouchableOpacity style={fm.closeBtn} onPress={onClose}>
-              <MaterialCommunityIcons name={'close' as any} size={18} color={C.textMuted} />
+              <AppIcon name={'close' as any} size={18} color={C.textMuted} />
             </TouchableOpacity>
           </View>
           <ScrollView style={{ flex: 1 }} contentContainerStyle={fm.body} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>

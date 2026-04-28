@@ -4,13 +4,14 @@ import {
   ActivityIndicator, Modal, TextInput, Alert, Platform,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
-import Feather from '@expo/vector-icons/Feather';
 import { C } from '../../../core/theme/colors';
 import { F, FS } from '../../../core/theme/typography';
 import { useIsDesktop } from '../../../core/layout/DesktopShell';
 import { useAuthStore } from '../../../core/store/authStore';
 import { toast } from '../../../core/ui/Toast';
 import { useEmployees } from '../../employees/hooks/useEmployees';
+import { AppIcon } from '../../../core/ui/AppIcon';
+
 import {
   fetchDocuments, fetchExpiringDocuments, addDocument, updateDocument,
   deleteDocument, uploadDocument, getDocumentUrl,
@@ -25,7 +26,7 @@ function ExpiryBadge({ days }: { days: number | null }) {
   const label = days <= 0 ? 'Süresi doldu' : `${days} gün`;
   return (
     <View style={[xb.badge, { backgroundColor: color + '18', borderColor: color + '40' }]}>
-      <Feather name="clock" size={10} color={color} />
+      <AppIcon name="clock" size={10} color={color} />
       <Text style={[xb.badgeText, { color }]}>{label}</Text>
     </View>
   );
@@ -52,7 +53,7 @@ function DocCard({
   return (
     <View style={[dc.card, isExp && dc.expired]}>
       <View style={[dc.iconBox, { backgroundColor: cfg.color + '18' }]}>
-        <Feather name={cfg.icon as any} size={20} color={cfg.color} />
+        <AppIcon name={cfg.icon as any} size={20} color={cfg.color} />
       </View>
       <View style={dc.info}>
         <Text style={dc.title} numberOfLines={1}>{doc.title}</Text>
@@ -65,13 +66,13 @@ function DocCard({
       </View>
       <View style={dc.actions}>
         <TouchableOpacity style={dc.iconBtn} onPress={onOpen}>
-          <Feather name="external-link" size={15} color={accentColor} />
+          <AppIcon name="external-link" size={15} color={accentColor} />
         </TouchableOpacity>
         <TouchableOpacity style={dc.iconBtn} onPress={onEdit}>
-          <Feather name="edit-2" size={15} color={C.textSecondary} />
+          <AppIcon name="edit-2" size={15} color={C.textSecondary} />
         </TouchableOpacity>
         <TouchableOpacity style={dc.iconBtn} onPress={onDelete}>
-          <Feather name="trash-2" size={15} color="#DC2626" />
+          <AppIcon name="trash-2" size={15} color="#DC2626" />
         </TouchableOpacity>
       </View>
     </View>
@@ -101,7 +102,7 @@ function DocTypeGrid({ selected, onChange }: { selected: DocType; onChange: (t: 
             style={[tg.btn, { borderColor: sel ? cfg.color : '#E2E8F0' }, sel && { backgroundColor: cfg.color }]}
             onPress={() => onChange(t)}
           >
-            <Feather name={cfg.icon as any} size={12} color={sel ? '#fff' : cfg.color} />
+            <AppIcon name={cfg.icon as any} size={12} color={sel ? '#fff' : cfg.color} />
             <Text style={[tg.btnText, { color: sel ? '#fff' : cfg.color }]}>{cfg.label}</Text>
           </TouchableOpacity>
         );
@@ -169,12 +170,12 @@ function UploadModal({
         <View style={um.sheet}>
           <View style={um.header}>
             <Text style={um.headerTitle}>Belge Yükle</Text>
-            <TouchableOpacity onPress={onClose}><Feather name="x" size={22} color={C.textSecondary} /></TouchableOpacity>
+            <TouchableOpacity onPress={onClose}><AppIcon name="x" size={22} color={C.textSecondary} /></TouchableOpacity>
           </View>
           <ScrollView style={um.body} showsVerticalScrollIndicator={false}>
 
             <TouchableOpacity style={[um.filePicker, file && um.filePicked]} onPress={pickFile}>
-              <Feather name={file ? 'check-circle' : 'upload'} size={22} color={file ? '#059669' : accentColor} />
+              <AppIcon name={file ? 'check-circle' : 'upload'} size={22} color={file ? '#059669' : accentColor} />
               <Text style={[um.filePickerText, file && { color: '#059669' }]}>
                 {file ? file.name : 'Dosya seç (PDF, görsel, Word vb.)'}
               </Text>
@@ -217,7 +218,7 @@ function UploadModal({
             >
               {uploading
                 ? <ActivityIndicator color="#fff" size="small" />
-                : <><Feather name="upload" size={15} color="#fff" /><Text style={um.uploadBtnText}>Yükle</Text></>
+                : <><AppIcon name="upload" size={15} color="#fff" /><Text style={um.uploadBtnText}>Yükle</Text></>
               }
             </TouchableOpacity>
           </View>
@@ -278,7 +279,7 @@ function EditModal({
         <View style={um.sheet}>
           <View style={um.header}>
             <Text style={um.headerTitle}>Belgeyi Düzenle</Text>
-            <TouchableOpacity onPress={onClose}><Feather name="x" size={22} color={C.textSecondary} /></TouchableOpacity>
+            <TouchableOpacity onPress={onClose}><AppIcon name="x" size={22} color={C.textSecondary} /></TouchableOpacity>
           </View>
           <ScrollView style={um.body}>
             <Text style={um.label}>Başlık *</Text>
@@ -326,7 +327,7 @@ function ExpiryPanel() {
   if (loading) return null;
   if (docs.length === 0) return (
     <View style={ep.emptyCard}>
-      <Feather name="shield" size={16} color="#059669" />
+      <AppIcon name="shield" size={16} color="#059669" />
       <Text style={ep.emptyText}>Süresi dolmak üzere belge yok</Text>
     </View>
   );
@@ -334,7 +335,7 @@ function ExpiryPanel() {
   return (
     <View style={ep.card}>
       <View style={ep.cardHeader}>
-        <Feather name="alert-triangle" size={14} color="#D97706" />
+        <AppIcon name="alert-triangle" size={14} color="#D97706" />
         <Text style={ep.cardTitle}>Dolmak Üzere ({docs.length})</Text>
       </View>
       {docs.map((d: any) => (
@@ -373,7 +374,7 @@ function EmployeeList({
   return (
     <View style={el.container}>
       <View style={el.searchWrap}>
-        <Feather name="search" size={14} color={C.textSecondary} />
+        <AppIcon name="search" size={14} color={C.textSecondary} />
         <TextInput style={el.searchInput} placeholder="Çalışan ara…" value={search} onChangeText={setSearch} placeholderTextColor={C.textMuted} />
       </View>
       <ScrollView showsVerticalScrollIndicator={false}>
@@ -478,7 +479,7 @@ function DocumentsDetail({
           <Text style={dd.headerMeta}>{employee.role ?? 'Çalışan'}  •  {docs.length} belge</Text>
         </View>
         <TouchableOpacity style={[dd.uploadBtn, { backgroundColor: accentColor }]} onPress={() => setUpload(true)}>
-          <Feather name="upload" size={14} color="#fff" />
+          <AppIcon name="upload" size={14} color="#fff" />
           <Text style={dd.uploadBtnText}>Belge Yükle</Text>
         </TouchableOpacity>
       </View>
@@ -486,7 +487,7 @@ function DocumentsDetail({
       {/* Expiry warning */}
       {expiring.length > 0 && (
         <View style={dd.warnStrip}>
-          <Feather name="alert-triangle" size={14} color="#D97706" />
+          <AppIcon name="alert-triangle" size={14} color="#D97706" />
           <Text style={dd.warnText}>{expiring.length} belge 30 gün içinde sona eriyor</Text>
         </View>
       )}
@@ -504,7 +505,7 @@ function DocumentsDetail({
               style={[dd.filterTab, sel && { backgroundColor: color, borderColor: color }]}
               onPress={() => setFilter(t as any)}
             >
-              {t !== 'all' && <Feather name={DOC_TYPE_CFG[t as DocType]?.icon as any} size={11} color={sel ? '#fff' : color} />}
+              {t !== 'all' && <AppIcon name={DOC_TYPE_CFG[t as DocType]?.icon as any} size={11} color={sel ? '#fff' : color} />}
               <Text style={[dd.filterText, { color: sel ? '#fff' : (t === 'all' ? C.textSecondary : color) }]}>
                 {label} ({count})
               </Text>
@@ -518,7 +519,7 @@ function DocumentsDetail({
         {loading && <ActivityIndicator color={accentColor} style={{ marginTop: 40 }} />}
         {!loading && filtered.length === 0 && (
           <View style={dd.empty}>
-            <Feather name="folder" size={32} color={C.textMuted} />
+            <AppIcon name="folder" size={32} color={C.textMuted} />
             <Text style={dd.emptyTitle}>Henüz belge yok</Text>
             <Text style={dd.emptyHint}>Yukarıdan belge yükleyebilirsiniz</Text>
           </View>
@@ -569,7 +570,7 @@ function SelectEmployeePlaceholder({ accentColor }: { accentColor: string }) {
   return (
     <View style={ph.root}>
       <View style={[ph.iconWrap, { backgroundColor: accentColor + '12' }]}>
-        <Feather name="folder" size={40} color={accentColor} />
+        <AppIcon name="folder" size={40} color={accentColor} />
       </View>
       <Text style={ph.title}>Personel Dosyaları</Text>
       <Text style={ph.sub}>Sol taraftan bir çalışan seçerek belgelerini görüntüleyin veya yeni belge yükleyin.</Text>
@@ -620,7 +621,7 @@ export function DocumentsScreen({ accentColor = C.primary }: { accentColor?: str
         {/* LEFT */}
         <View style={s.left}>
           <View style={s.leftHeader}>
-            <Feather name="folder" size={16} color={accentColor} />
+            <AppIcon name="folder" size={16} color={accentColor} />
             <Text style={[s.leftTitle, { color: accentColor }]}>Personel Dosyaları</Text>
           </View>
           <View style={{ flex: 1 }}>
@@ -656,7 +657,7 @@ export function DocumentsScreen({ accentColor = C.primary }: { accentColor?: str
     return (
       <View style={s.mobileRoot}>
         <TouchableOpacity style={s.backBtn} onPress={() => setSelectedId(null)}>
-          <Feather name="arrow-left" size={17} color={accentColor} />
+          <AppIcon name="arrow-left" size={17} color={accentColor} />
           <Text style={[s.backText, { color: accentColor }]}>Geri</Text>
         </TouchableOpacity>
         <DocumentsDetail employee={selectedEmployee} accentColor={accentColor} userId={userId} labId={labId} />

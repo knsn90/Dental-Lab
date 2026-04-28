@@ -7,18 +7,20 @@
  *    3. Kıdem/İhbar — tazminat hesaplayıcı
  *    4. Bilgi — çalışanın SGK/TC no, işyeri SGK no düzenleme
  */
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useContext } from 'react';
+import { HubContext } from '../../../core/ui/HubContext';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   Modal, TextInput, ActivityIndicator, Alert, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Feather from '@expo/vector-icons/Feather';
 
 import { C } from '../../../core/theme/colors';
 import { F, FS } from '../../../core/theme/typography';
 import { toast } from '../../../core/ui/Toast';
 import { useBreakpoint } from '../../../core/layout/Responsive';
+
+import { AppIcon } from '../../../core/ui/AppIcon';
 
 import {
   useSgkEmployees, useBildirge, useLabSgk, useSgkPrimRaporu,
@@ -85,6 +87,8 @@ interface Props { accentColor?: string }
 
 export function SGKScreen({ accentColor = '#2563EB' }: Props) {
   const { isDesktop, px } = useBreakpoint();
+  const isEmbedded = useContext(HubContext);
+  const safeEdges  = isEmbedded ? ([] as any) : (['top'] as any);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab] = useState<'bildirge' | 'prim' | 'tazminat' | 'bilgi'>('bildirge');
   const [period, setPeriod] = useState(currentPeriod);
@@ -150,7 +154,7 @@ export function SGKScreen({ accentColor = '#2563EB' }: Props) {
     />
   ) : (
     <View style={s.emptyRight}>
-      <Feather name="user" size={40} color={C.textDisabled} />
+      <AppIcon name="user" size={40} color={C.textDisabled} />
       <Text style={s.emptyRightText}>Sol panelden çalışan seçin</Text>
     </View>
   );
@@ -174,7 +178,7 @@ export function SGKScreen({ accentColor = '#2563EB' }: Props) {
   }
 
   return (
-    <SafeAreaView style={s.safe} edges={['top']}>
+    <SafeAreaView style={s.safe} edges={safeEdges}>
       {/* Header */}
       <View style={[s.header, { paddingHorizontal: px }]}>
         <View style={{ flex: 1 }}>
@@ -182,14 +186,14 @@ export function SGKScreen({ accentColor = '#2563EB' }: Props) {
           <Text style={s.subtitle}>{employees.filter(e => e.is_active).length} aktif çalışan</Text>
         </View>
         <TouchableOpacity style={[s.csvBtn, { borderColor: accentColor }]} onPress={handleCsvExport}>
-          <Feather name="download" size={14} color={accentColor} />
+          <AppIcon name="download" size={14} color={accentColor} />
           <Text style={[s.csvBtnText, { color: accentColor }]}>CSV İndir</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[s.addBtn, { backgroundColor: accentColor }]}
           onPress={() => { if (!selectedId) { toast.warning('Önce çalışan seçin.'); return; } setBildirgeOpen(true); }}
         >
-          <Feather name="plus" size={14} color="#fff" />
+          <AppIcon name="plus" size={14} color="#fff" />
           <Text style={s.addBtnText}>Bildirge Ekle</Text>
         </TouchableOpacity>
       </View>
@@ -206,7 +210,7 @@ export function SGKScreen({ accentColor = '#2563EB' }: Props) {
             <View style={{ flex: 1 }}>
               <View style={[s.mobileBack, { paddingHorizontal: px }]}>
                 <TouchableOpacity style={s.backBtn} onPress={() => setSelectedId(null)}>
-                  <Feather name="chevron-left" size={20} color={accentColor} />
+                  <AppIcon name="chevron-left" size={20} color={accentColor} />
                   <Text style={[s.backText, { color: accentColor }]}>Geri</Text>
                 </TouchableOpacity>
                 <Text style={s.mobileEmpName} numberOfLines={1}>{selected.full_name}</Text>
@@ -302,7 +306,7 @@ function EmpRow({ emp, selected, onPress, accentColor }: {
         {!hasTc && <Text style={el.warn}>⚠ TC kimlik eksik</Text>}
         {hasTc && !hasSgk && <Text style={el.warn}>⚠ SGK sicil eksik</Text>}
       </View>
-      <Feather name="chevron-right" size={16} color={C.textMuted} />
+      <AppIcon name="chevron-right" size={16} color={C.textMuted} />
     </TouchableOpacity>
   );
 }
@@ -348,7 +352,7 @@ function RightPanel({
             style={[rp.tabBtn, tab === t.key && { borderBottomColor: accentColor, borderBottomWidth: 2 }]}
             onPress={() => setTab(t.key)}
           >
-            <Feather name={t.icon} size={14} color={tab === t.key ? accentColor : C.textMuted} />
+            <AppIcon name={t.icon} size={14} color={tab === t.key ? accentColor : C.textMuted} />
             <Text style={[rp.tabText, tab === t.key && { color: accentColor, fontFamily: F.bold }]}>
               {t.label}
             </Text>
@@ -416,7 +420,7 @@ function BildirgeTab({ bildirge, loading, onAdd, onUpdateDurum, onDelete, accent
       {/* İşe Giriş */}
       <View style={card.box}>
         <View style={card.titleRow}>
-          <Feather name="log-in" size={15} color="#059669" />
+          <AppIcon name="log-in" size={15} color="#059669" />
           <Text style={card.title}>İşe Giriş Bildirgeleri</Text>
         </View>
         {giris.length === 0 ? (
@@ -427,7 +431,7 @@ function BildirgeTab({ bildirge, loading, onAdd, onUpdateDurum, onDelete, accent
       {/* İşten Çıkış */}
       <View style={card.box}>
         <View style={card.titleRow}>
-          <Feather name="log-out" size={15} color="#DC2626" />
+          <AppIcon name="log-out" size={15} color="#DC2626" />
           <Text style={card.title}>İşten Çıkış Bildirgeleri</Text>
         </View>
         {cikis.length === 0 ? (
@@ -437,7 +441,7 @@ function BildirgeTab({ bildirge, loading, onAdd, onUpdateDurum, onDelete, accent
 
       {/* Info card */}
       <View style={card.infoBox}>
-        <Feather name="info" size={14} color={accentColor} />
+        <AppIcon name="info" size={14} color={accentColor} />
         <Text style={[card.infoText, { color: accentColor + 'CC' }]}>
           SGK e-Bildirge sistemine giriş yaparak bildirgeyi yükledikten sonra durumu
           "Gönderildi" olarak işaretleyin.
@@ -445,7 +449,7 @@ function BildirgeTab({ bildirge, loading, onAdd, onUpdateDurum, onDelete, accent
       </View>
 
       <TouchableOpacity style={[s.footerBtn, { borderColor: accentColor, backgroundColor: accentColor + '0C' }]} onPress={onAdd}>
-        <Feather name="plus" size={14} color={accentColor} />
+        <AppIcon name="plus" size={14} color={accentColor} />
         <Text style={[s.footerBtnText, { color: accentColor }]}>Bildirge Ekle</Text>
       </TouchableOpacity>
     </>
@@ -463,7 +467,7 @@ function BildirgeRow({ b, onUpdateDurum, onDelete }: {
   return (
     <View style={br.row}>
       <View style={br.dateCol}>
-        <Feather name={isGiris ? 'log-in' : 'log-out'} size={13} color={isGiris ? '#059669' : '#DC2626'} />
+        <AppIcon name={isGiris ? 'log-in' : 'log-out'} size={13} color={isGiris ? '#059669' : '#DC2626'} />
         <View>
           <Text style={br.date}>{fmtDate(isGiris ? b.ise_baslama : b.ayrilma_tarihi)}</Text>
           <Text style={br.type}>{isGiris ? 'Giriş' : 'Çıkış'}</Text>
@@ -492,7 +496,7 @@ function BildirgeRow({ b, onUpdateDurum, onDelete }: {
           </TouchableOpacity>
         ))}
         <TouchableOpacity style={br.delBtn} onPress={() => onDelete(b.id)}>
-          <Feather name="trash-2" size={12} color={C.textDisabled} />
+          <AppIcon name="trash-2" size={12} color={C.textDisabled} />
         </TouchableOpacity>
       </View>
     </View>
@@ -528,11 +532,11 @@ function PrimTab({ employee, period, onPrev, onNext, accentColor }: {
       {/* Dönem seçici */}
       <View style={pr.monthRow}>
         <TouchableOpacity style={pr.arrow} onPress={onPrev}>
-          <Feather name="chevron-left" size={18} color={C.textSecondary} />
+          <AppIcon name="chevron-left" size={18} color={C.textSecondary} />
         </TouchableOpacity>
         <Text style={pr.monthLabel}>{fmtPeriod(period)}</Text>
         <TouchableOpacity style={pr.arrow} onPress={onNext}>
-          <Feather name="chevron-right" size={18} color={C.textSecondary} />
+          <AppIcon name="chevron-right" size={18} color={C.textSecondary} />
         </TouchableOpacity>
       </View>
 
@@ -558,7 +562,7 @@ function PrimTab({ employee, period, onPrev, onNext, accentColor }: {
 
       {isTavanUstunde && (
         <View style={pr.tavanUyari}>
-          <Feather name="alert-circle" size={13} color="#D97706" />
+          <AppIcon name="alert-circle" size={13} color="#D97706" />
           <Text style={pr.tavanUyariText}>
             Maaş SGK tavanını ({formatTL(SGK_TAVAN)}) aşıyor. SGK primi tavan üzerinden hesaplanır.
           </Text>
@@ -611,7 +615,7 @@ function SectionCard({ title, icon, iconColor, children }: {
   return (
     <View style={card.box}>
       <View style={card.titleRow}>
-        <Feather name={icon} size={15} color={iconColor} />
+        <AppIcon name={icon} size={15} color={iconColor} />
         <Text style={card.title}>{title}</Text>
       </View>
       <View style={{ gap: 6 }}>{children}</View>
@@ -648,7 +652,7 @@ function TazminatTab({ employee, accentColor }: { employee: SgkEmployee; accentC
     <>
       <View style={card.box}>
         <View style={card.titleRow}>
-          <Feather name="clock" size={15} color={accentColor} />
+          <AppIcon name="clock" size={15} color={accentColor} />
           <Text style={card.title}>Tazminat Hesaplayıcı</Text>
         </View>
         <Text style={tz.sub}>
@@ -672,7 +676,7 @@ function TazminatTab({ employee, accentColor }: { employee: SgkEmployee; accentC
             setCalculated(true);
           }}
         >
-          <Feather name="hash" size={15} color="#fff" />
+          <AppIcon name="hash" size={15} color="#fff" />
           <Text style={tz.calcBtnText}>Hesapla</Text>
         </TouchableOpacity>
       </View>
@@ -682,7 +686,7 @@ function TazminatTab({ employee, accentColor }: { employee: SgkEmployee; accentC
           {/* Çalışma süresi */}
           <View style={card.box}>
             <View style={card.titleRow}>
-              <Feather name="briefcase" size={15} color={accentColor} />
+              <AppIcon name="briefcase" size={15} color={accentColor} />
               <Text style={card.title}>Çalışma Süresi</Text>
             </View>
             <View style={tz.statRow}>
@@ -695,13 +699,13 @@ function TazminatTab({ employee, accentColor }: { employee: SgkEmployee; accentC
           {/* Kıdem Tazminatı */}
           <View style={card.box}>
             <View style={card.titleRow}>
-              <Feather name="award" size={15} color="#059669" />
+              <AppIcon name="award" size={15} color="#059669" />
               <Text style={card.title}>Kıdem Tazminatı</Text>
             </View>
             <TazminatRow label="Tazminat tutarı" value={result.kidemBrut} />
             <TazminatRow label="Net (SGK+Vergi muaf)" value={result.kidemNet} isNet />
             <View style={tz.tavan}>
-              <Feather name="info" size={11} color={C.textMuted} />
+              <AppIcon name="info" size={11} color={C.textMuted} />
               <Text style={tz.tavanText}>
                 Tavan: {formatTL(SGK_PARAMS.kidemTavani)}/yıl · Kıdem tazminatı vergiden muaftır.
               </Text>
@@ -711,7 +715,7 @@ function TazminatTab({ employee, accentColor }: { employee: SgkEmployee; accentC
           {/* İhbar Tazminatı */}
           <View style={card.box}>
             <View style={card.titleRow}>
-              <Feather name="bell" size={15} color="#D97706" />
+              <AppIcon name="bell" size={15} color="#D97706" />
               <Text style={card.title}>İhbar Tazminatı</Text>
             </View>
             <TazminatRow label={`İhbar süresi: ${result.ihbarHaftasi} hafta`} value={result.ihbarBrut} />
@@ -799,7 +803,7 @@ function BilgiTab({ employee, lab, onSave, onSaveLabSgk, accentColor }: {
     <>
       <View style={card.box}>
         <View style={card.titleRow}>
-          <Feather name="user" size={15} color={accentColor} />
+          <AppIcon name="user" size={15} color={accentColor} />
           <Text style={card.title}>Çalışan SGK Bilgileri</Text>
         </View>
 
@@ -816,14 +820,14 @@ function BilgiTab({ employee, lab, onSave, onSaveLabSgk, accentColor }: {
         >
           {saving
             ? <ActivityIndicator size="small" color="#fff" />
-            : <Feather name="save" size={15} color="#fff" />}
+            : <AppIcon name="save" size={15} color="#fff" />}
           <Text style={bi.saveBtnText}>Çalışan Bilgilerini Kaydet</Text>
         </TouchableOpacity>
       </View>
 
       <View style={card.box}>
         <View style={card.titleRow}>
-          <Feather name="briefcase" size={15} color={accentColor} />
+          <AppIcon name="briefcase" size={15} color={accentColor} />
           <Text style={card.title}>İşyeri SGK Bilgileri</Text>
         </View>
         <FormField label="İşyeri SGK Sicil Numarası" value={isyeri} onChange={setIsyeri}
@@ -832,7 +836,7 @@ function BilgiTab({ employee, lab, onSave, onSaveLabSgk, accentColor }: {
           style={[bi.saveBtn, { backgroundColor: '#475569' }, saving && { opacity: 0.6 }]}
           onPress={handleSaveLabSgk} disabled={saving}
         >
-          <Feather name="save" size={15} color="#fff" />
+          <AppIcon name="save" size={15} color="#fff" />
           <Text style={bi.saveBtnText}>İşyeri Numarasını Kaydet</Text>
         </TouchableOpacity>
       </View>
@@ -840,7 +844,7 @@ function BilgiTab({ employee, lab, onSave, onSaveLabSgk, accentColor }: {
       {/* Oranlar referans kartı */}
       <View style={card.box}>
         <View style={card.titleRow}>
-          <Feather name="percent" size={15} color={C.textSecondary} />
+          <AppIcon name="percent" size={15} color={C.textSecondary} />
           <Text style={card.title}>2025 SGK Oranları (Referans)</Text>
         </View>
         {[
@@ -926,7 +930,7 @@ function BildirgeModal({ visible, employeeId, employeeName, onClose, onSaved, ac
             <Text style={bm.title}>Bildirge Ekle</Text>
             <Text style={bm.sub}>{employeeName}</Text>
             <TouchableOpacity style={bm.closeBtn} onPress={onClose}>
-              <Feather name="x" size={18} color={C.textMuted} />
+              <AppIcon name="x" size={18} color={C.textMuted} />
             </TouchableOpacity>
           </View>
 
@@ -940,7 +944,7 @@ function BildirgeModal({ visible, employeeId, employeeName, onClose, onSaved, ac
                   style={[bm.tipBtn, tip === t && { backgroundColor: accentColor, borderColor: accentColor }]}
                   onPress={() => setTip(t)}
                 >
-                  <Feather name={t === 'giris' ? 'log-in' : 'log-out'} size={14}
+                  <AppIcon name={t === 'giris' ? 'log-in' : 'log-out'} size={14}
                     color={tip === t ? '#fff' : C.textSecondary} />
                   <Text style={[bm.tipBtnText, tip === t && { color: '#fff' }]}>
                     {t === 'giris' ? 'İşe Giriş' : 'İşten Çıkış'}

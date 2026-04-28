@@ -4,13 +4,13 @@ import {
   TextInput, ActivityIndicator, Modal, useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Feather from '@expo/vector-icons/Feather';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { supabase } from '../../../lib/supabase';
 import { SlideTabBar } from '../../../core/ui/SlideTabBar';
 import { IconBtn } from '../../../core/ui/IconBtn';
 import { StockMovementsScreen } from './StockMovementsScreen';
+
+import { AppIcon } from '../../../core/ui/AppIcon';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -155,7 +155,7 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
           <View style={m.header}>
             <Text style={m.title}>{isEdit ? 'Ürünü Düzenle' : 'Yeni Ürün Ekle'}</Text>
             <TouchableOpacity style={m.closeBtn} onPress={onClose}>
-              <Feather name="x" size={16} color="#64748B" />
+              <AppIcon name="x" size={16} color="#64748B" />
             </TouchableOpacity>
           </View>
 
@@ -178,7 +178,7 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                   <Text style={category ? { fontSize: 14, color: '#0F172A' } : { fontSize: 14, color: '#C7C7CC' }}>
                     {category || 'Kategori seçin veya yazın…'}
                   </Text>
-                  <Feather name={catDropOpen ? 'chevron-up' : 'chevron-down'} size={14} color="#94A3B8" />
+                  <AppIcon name={catDropOpen ? 'chevron-up' : 'chevron-down'} size={14} color="#94A3B8" />
                 </TouchableOpacity>
                 {catDropOpen && (
                   <View style={m.dropPanel}>
@@ -196,12 +196,12 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                         .map(c => (
                           <TouchableOpacity key={c} style={[m.dropItem, category === c && m.dropItemActive]} onPress={() => { setCategory(c); setCatSearch(''); setCatDropOpen(false); }} activeOpacity={0.7}>
                             <Text style={[m.dropItemText, category === c && { color: accentColor, fontWeight: '700' }]}>{c}</Text>
-                            {category === c && <Feather name="check" size={13} color={accentColor} />}
+                            {category === c && <AppIcon name="check" size={13} color={accentColor} />}
                           </TouchableOpacity>
                         ))}
                       {catSearch.trim() && !existingCategories.some(c => c.toLowerCase() === catSearch.trim().toLowerCase()) && (
                         <TouchableOpacity style={m.dropAddItem} onPress={() => { setCategory(catSearch.trim()); setCatSearch(''); setCatDropOpen(false); }} activeOpacity={0.7}>
-                          <Feather name="plus-circle" size={14} color={accentColor} />
+                          <AppIcon name="plus-circle" size={14} color={accentColor} />
                           <Text style={[m.dropAddText, { color: accentColor }]}>"{catSearch.trim()}" ekle</Text>
                         </TouchableOpacity>
                       )}
@@ -229,7 +229,7 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                   <Text style={brand ? { fontSize: 14, color: '#0F172A' } : { fontSize: 14, color: '#C7C7CC' }}>
                     {brand || 'Marka seçin veya yazın…'}
                   </Text>
-                  <Feather name={brandDropOpen ? 'chevron-up' : 'chevron-down'} size={14} color="#94A3B8" />
+                  <AppIcon name={brandDropOpen ? 'chevron-up' : 'chevron-down'} size={14} color="#94A3B8" />
                 </TouchableOpacity>
                 {brandDropOpen && (
                   <View style={m.dropPanel}>
@@ -247,12 +247,12 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                         .map(b => (
                           <TouchableOpacity key={b} style={[m.dropItem, brand === b && m.dropItemActive]} onPress={() => { setBrand(b); setBrandSearch(''); setBrandDropOpen(false); }} activeOpacity={0.7}>
                             <Text style={[m.dropItemText, brand === b && { color: accentColor, fontWeight: '700' }]}>{b}</Text>
-                            {brand === b && <Feather name="check" size={13} color={accentColor} />}
+                            {brand === b && <AppIcon name="check" size={13} color={accentColor} />}
                           </TouchableOpacity>
                         ))}
                       {brandSearch.trim() && !existingBrands.some(b => b.toLowerCase() === brandSearch.trim().toLowerCase()) && (
                         <TouchableOpacity style={m.dropAddItem} onPress={() => { setBrand(brandSearch.trim()); setBrandSearch(''); setBrandDropOpen(false); }} activeOpacity={0.7}>
-                          <Feather name="plus-circle" size={14} color={accentColor} />
+                          <AppIcon name="plus-circle" size={14} color={accentColor} />
                           <Text style={[m.dropAddText, { color: accentColor }]}>"{brandSearch.trim()}" ekle</Text>
                         </TouchableOpacity>
                       )}
@@ -293,7 +293,7 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
               </View>
               {error ? (
                 <View style={m.errorBox}>
-                  <Feather name="alert-circle" size={14} color="#DC2626" />
+                  <AppIcon name="alert-circle" size={14} color="#DC2626" />
                   <Text style={m.errorText}>{error}</Text>
                 </View>
               ) : null}
@@ -303,7 +303,7 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
           <View style={m.footer}>
             {isEdit && (
               <TouchableOpacity style={m.deleteBtn} onPress={handleDelete} disabled={deleting}>
-                {deleting ? <ActivityIndicator size="small" color="#DC2626" /> : <Feather name="trash-2" size={14} color="#DC2626" />}
+                {deleting ? <ActivityIndicator size="small" color="#DC2626" /> : <AppIcon name="trash-2" size={14} color="#DC2626" />}
                 <Text style={m.deleteBtnText}>Sil</Text>
               </TouchableOpacity>
             )}
@@ -387,7 +387,7 @@ function MovementModal({ visible, item, items = [], accentColor, defaultType = '
               {resolvedItem && <Text style={{ fontSize: 12, color: '#94A3B8', marginTop: 2 }}>{resolvedItem.name}</Text>}
             </View>
             <TouchableOpacity style={m.closeBtn} onPress={onClose}>
-              <Feather name="x" size={16} color="#64748B" />
+              <AppIcon name="x" size={16} color="#64748B" />
             </TouchableOpacity>
           </View>
 
@@ -404,12 +404,12 @@ function MovementModal({ visible, item, items = [], accentColor, defaultType = '
                   <Text style={resolvedItem ? { fontSize: 14, color: '#0F172A' } : { fontSize: 14, color: '#C7C7CC' }}>
                     {resolvedItem ? resolvedItem.name : 'Ürün seçin…'}
                   </Text>
-                  <Feather name={pickerOpen ? 'chevron-up' : 'chevron-down'} size={15} color="#94A3B8" />
+                  <AppIcon name={pickerOpen ? 'chevron-up' : 'chevron-down'} size={15} color="#94A3B8" />
                 </TouchableOpacity>
                 {pickerOpen && (
                   <View style={{ borderWidth: 1, borderColor: '#E9EEF4', borderRadius: 10, backgroundColor: '#FAFAFA', marginTop: 4, overflow: 'hidden' }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
-                      <Feather name="search" size={13} color="#AEAEB2" />
+                      <AppIcon name="search" size={13} color="#AEAEB2" />
                       <TextInput
                         style={{ flex: 1, fontSize: 13, color: '#0F172A', outlineStyle: 'none' } as any}
                         value={pickerSearch}
@@ -428,7 +428,7 @@ function MovementModal({ visible, item, items = [], accentColor, defaultType = '
                           activeOpacity={0.7}
                         >
                           <Text style={{ fontSize: 14, color: '#0F172A', fontWeight: selectedId === i.id ? '600' : '400' }}>{i.name}</Text>
-                          {selectedId === i.id && <Feather name="check" size={14} color="#0F172A" />}
+                          {selectedId === i.id && <AppIcon name="check" size={14} color="#0F172A" />}
                         </TouchableOpacity>
                       ))}
                     </ScrollView>
@@ -447,7 +447,7 @@ function MovementModal({ visible, item, items = [], accentColor, defaultType = '
                     onPress={() => setType(t.key)}
                     activeOpacity={0.8}
                   >
-                    <MaterialCommunityIcons name={t.icon as any} size={15} color={type === t.key ? t.color : '#94A3B8'} />
+                    <AppIcon name={t.icon as any} size={15} color={type === t.key ? t.color : '#94A3B8'} />
                     <Text style={[mv.typeBtnText, type === t.key && { color: t.color, fontWeight: '700' }]}>{t.label}</Text>
                   </TouchableOpacity>
                 ))}
@@ -469,7 +469,7 @@ function MovementModal({ visible, item, items = [], accentColor, defaultType = '
               </View>
               {error ? (
                 <View style={[m.errorBox, { marginTop: 10 }]}>
-                  <Feather name="alert-circle" size={14} color="#DC2626" />
+                  <AppIcon name="alert-circle" size={14} color="#DC2626" />
                   <Text style={m.errorText}>{error}</Text>
                 </View>
               ) : null}
@@ -645,11 +645,11 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
   if (total === 0) {
     return (
       <View style={db.emptyWrap}>
-        <MaterialCommunityIcons name="package-variant-closed" size={44} color="#E2E8F0" />
+        <AppIcon name="package-variant-closed" size={44} color="#E2E8F0" />
         <Text style={db.emptyTitle}>Henüz ürün yok</Text>
         <Text style={db.emptySub}>Stok yönetimine başlamak için ilk ürününüzü ekleyin.</Text>
         <TouchableOpacity style={[db.emptyBtn, { backgroundColor: accentColor }]} onPress={onAddProduct}>
-          <Feather name="plus" size={14} color="#FFFFFF" />
+          <AppIcon name="plus" size={14} color="#FFFFFF" />
           <Text style={db.emptyBtnText}>İlk Ürünü Ekle</Text>
         </TouchableOpacity>
       </View>
@@ -675,7 +675,7 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
               <View style={db.statCardTop}>
                 <Text style={[db.statLabel, isAlert && { color: '#DC2626' }]}>{stat.label}</Text>
                 <View style={[db.statIcon, { backgroundColor: iconBgMap[stat.tone] }]}>
-                  <Feather name={stat.icon} size={18} color={iconColMap[stat.tone]} />
+                  <AppIcon name={stat.icon} size={18} color={iconColMap[stat.tone]} />
                 </View>
               </View>
               <Text style={[db.statValue, isAlert && { color: '#DC2626' }]}>{stat.value}</Text>
@@ -765,7 +765,7 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
             return (
               <View key={item.id} style={[db.urgRow, !isLast && db.urgDivider]}>
                 <View style={[db.urgIconBox, { backgroundColor: bg }]}>
-                  <Feather name={isEmpty ? 'alert-circle' : 'alert-triangle'} size={22} color={clr} />
+                  <AppIcon name={isEmpty ? 'alert-circle' : 'alert-triangle'} size={22} color={clr} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={db.urgName} numberOfLines={1}>{item.name}</Text>
@@ -958,7 +958,7 @@ function BrandModal({ visible, brand, accentColor, onClose, onSaved }: {
           <View style={m.header}>
             <Text style={m.title}>{isEdit ? 'Markayı Düzenle' : 'Yeni Marka Ekle'}</Text>
             <TouchableOpacity style={m.closeBtn} onPress={onClose}>
-              <Feather name="x" size={16} color="#64748B" />
+              <AppIcon name="x" size={16} color="#64748B" />
             </TouchableOpacity>
           </View>
 
@@ -1004,7 +1004,7 @@ function BrandModal({ visible, brand, accentColor, onClose, onSaved }: {
 
             {error ? (
               <View style={[m.errorBox, { marginTop: 12 }]}>
-                <Feather name="alert-circle" size={14} color="#DC2626" />
+                <AppIcon name="alert-circle" size={14} color="#DC2626" />
                 <Text style={m.errorText}>{error}</Text>
               </View>
             ) : null}
@@ -1052,14 +1052,14 @@ function BrandsList({ accentColor, onReload }: { accentColor: string; onReload: 
         <View style={ss.cardHead}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <View style={[ss.headIcon, { backgroundColor: accentColor + '12' }]}>
-              <Feather name="tag" size={14} color={accentColor} />
+              <AppIcon name="tag" size={14} color={accentColor} />
             </View>
             <Text style={ss.cardTitle}>Markalar</Text>
             <View style={ss.countBadge}><Text style={ss.countText}>{brands.length}</Text></View>
           </View>
           <TouchableOpacity style={[ss.addBtn, { backgroundColor: accentColor }]}
             onPress={() => setModal({ visible: true, brand: null })} activeOpacity={0.85}>
-            <Feather name="plus" size={13} color="#FFFFFF" />
+            <AppIcon name="plus" size={13} color="#FFFFFF" />
             <Text style={ss.addBtnText}>Ekle</Text>
           </TouchableOpacity>
         </View>
@@ -1074,7 +1074,7 @@ function BrandsList({ accentColor, onReload }: { accentColor: string; onReload: 
             return (
               <View key={b.id} style={[ss.row, !isLast && ss.rowBorder]}>
                 <View style={ss.brandIconBox}>
-                  <Feather name="tag" size={13} color="#64748B" />
+                  <AppIcon name="tag" size={13} color="#64748B" />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={ss.rowName} numberOfLines={1}>{b.name}</Text>
@@ -1085,10 +1085,10 @@ function BrandsList({ accentColor, onReload }: { accentColor: string; onReload: 
                   )}
                 </View>
                 <TouchableOpacity style={ss.iconBtn} onPress={() => setModal({ visible: true, brand: b })} activeOpacity={0.7}>
-                  <Feather name="edit-2" size={13} color="#64748B" />
+                  <AppIcon name="edit-2" size={13} color="#64748B" />
                 </TouchableOpacity>
                 <TouchableOpacity style={[ss.iconBtn, { backgroundColor: '#FFF1F2' }]} onPress={() => handleDelete(b.id, b.name)} activeOpacity={0.7}>
-                  <Feather name="trash-2" size={13} color="#DC2626" />
+                  <AppIcon name="trash-2" size={13} color="#DC2626" />
                 </TouchableOpacity>
               </View>
             );
@@ -1163,14 +1163,14 @@ function CategoryList({ accentColor, onReload }: { accentColor: string; onReload
       <View style={ss.cardHead}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <View style={[ss.headIcon, { backgroundColor: accentColor + '12' }]}>
-            <Feather name="grid" size={14} color={accentColor} />
+            <AppIcon name="grid" size={14} color={accentColor} />
           </View>
           <Text style={ss.cardTitle}>Kategoriler</Text>
           <View style={ss.countBadge}><Text style={ss.countText}>{rows.length}</Text></View>
         </View>
         <TouchableOpacity style={[ss.addBtn, { backgroundColor: accentColor }]}
           onPress={() => { setAddMode(true); setAddText(''); setError(''); setEditName(null); }} activeOpacity={0.85}>
-          <Feather name="plus" size={13} color="#FFFFFF" />
+          <AppIcon name="plus" size={13} color="#FFFFFF" />
           <Text style={ss.addBtnText}>Ekle</Text>
         </TouchableOpacity>
       </View>
@@ -1180,10 +1180,10 @@ function CategoryList({ accentColor, onReload }: { accentColor: string; onReload
           <TextInput style={ss.rowInput} value={addText} onChangeText={t => { setAddText(t); setError(''); }}
             placeholder="Kategori adı…" placeholderTextColor="#C7C7CC" autoFocus onSubmitEditing={handleAdd} />
           <TouchableOpacity style={[ss.rowActionBtn, { backgroundColor: accentColor }]} onPress={handleAdd} disabled={saving} activeOpacity={0.8}>
-            {saving ? <ActivityIndicator size="small" color="#FFF" /> : <Feather name="check" size={14} color="#FFFFFF" />}
+            {saving ? <ActivityIndicator size="small" color="#FFF" /> : <AppIcon name="check" size={14} color="#FFFFFF" />}
           </TouchableOpacity>
           <TouchableOpacity style={ss.rowCancelBtn} onPress={() => { setAddMode(false); setError(''); }} activeOpacity={0.8}>
-            <Feather name="x" size={14} color="#94A3B8" />
+            <AppIcon name="x" size={14} color="#94A3B8" />
           </TouchableOpacity>
         </View>
       )}
@@ -1205,20 +1205,20 @@ function CategoryList({ accentColor, onReload }: { accentColor: string; onReload
                   <TextInput style={[ss.rowInput, { flex: 1 }]} value={editText}
                     onChangeText={t => { setEditText(t); setError(''); }} autoFocus onSubmitEditing={handleEdit} />
                   <TouchableOpacity style={[ss.rowActionBtn, { backgroundColor: accentColor }]} onPress={handleEdit} disabled={saving} activeOpacity={0.8}>
-                    {saving ? <ActivityIndicator size="small" color="#FFF" /> : <Feather name="check" size={14} color="#FFFFFF" />}
+                    {saving ? <ActivityIndicator size="small" color="#FFF" /> : <AppIcon name="check" size={14} color="#FFFFFF" />}
                   </TouchableOpacity>
                   <TouchableOpacity style={ss.rowCancelBtn} onPress={() => { setEditName(null); setError(''); }} activeOpacity={0.8}>
-                    <Feather name="x" size={14} color="#94A3B8" />
+                    <AppIcon name="x" size={14} color="#94A3B8" />
                   </TouchableOpacity>
                 </>
               ) : (
                 <>
                   <Text style={ss.rowName} numberOfLines={1}>{name}</Text>
                   <TouchableOpacity style={ss.iconBtn} onPress={() => { setEditName(name); setEditText(name); setError(''); setAddMode(false); }} activeOpacity={0.7}>
-                    <Feather name="edit-2" size={13} color="#64748B" />
+                    <AppIcon name="edit-2" size={13} color="#64748B" />
                   </TouchableOpacity>
                   <TouchableOpacity style={[ss.iconBtn, { backgroundColor: '#FFF1F2' }]} onPress={() => handleDelete(name)} activeOpacity={0.7}>
-                    <Feather name="trash-2" size={13} color="#DC2626" />
+                    <AppIcon name="trash-2" size={13} color="#DC2626" />
                   </TouchableOpacity>
                 </>
               )}
@@ -1396,7 +1396,7 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
               }}
               activeOpacity={0.85}
             >
-              <Feather name="plus" size={15} color="#FFFFFF" />
+              <AppIcon name="plus" size={15} color="#FFFFFF" />
               <Text style={s.pageCtaText}>{tab === 'movements' ? 'Yeni Hareket' : 'Yeni Ürün'}</Text>
             </TouchableOpacity>
           )}
@@ -1422,7 +1422,7 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
           <ActivityIndicator size="large" color={accentColor} style={{ marginTop: 60 }} />
         ) : !tableExists ? (
           <View style={s.empty}>
-            <MaterialCommunityIcons name="database-off-outline" size={40} color="#E5E7EB" />
+            <AppIcon name="database-off-outline" size={40} color="#E5E7EB" />
             <Text style={s.emptyTitle}>Stok modülü kurulmadı</Text>
             <Text style={s.emptySub}>Supabase'de "stock_items" tablosu oluştuğunda veriler görünür.</Text>
           </View>
@@ -1432,7 +1432,7 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
             <View style={s.toolbar}>
               {searchExpanded || search.length > 0 ? (
                 <View style={[s.searchWrap, searchFocused && s.searchWrapFocused]}>
-                  <Feather name="search" size={15} color={searchFocused ? accentColor : '#94A3B8'} />
+                  <AppIcon name="search" size={15} color={searchFocused ? accentColor : '#94A3B8'} />
                   <TextInput
                     autoFocus
                     style={s.searchInput}
@@ -1444,7 +1444,7 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
                     placeholderTextColor="#AEAEB2"
                   />
                   <TouchableOpacity onPress={() => { setSearch(''); setSearchExpanded(false); }} hitSlop={8}>
-                    <Feather name="x" size={14} color="#94A3B8" />
+                    <AppIcon name="x" size={14} color="#94A3B8" />
                   </TouchableOpacity>
                 </View>
               ) : (
@@ -1452,11 +1452,11 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
               )}
 
               <IconBtn active={searchExpanded || search.length > 0} onPress={() => setSearchExpanded(true)}>
-                <Feather name="search" size={20} color={searchExpanded || search.length > 0 ? accentColor : '#64748B'} />
+                <AppIcon name="search" size={20} color={searchExpanded || search.length > 0 ? accentColor : '#64748B'} />
               </IconBtn>
 
               <IconBtn active={activeFilterCount > 0} onPress={openFilter} style={{ position: 'relative' }}>
-                <MaterialCommunityIcons name={'tune-variant' as any} size={20} color={activeFilterCount > 0 ? accentColor : '#64748B'} />
+                <AppIcon name={'tune-variant' as any} size={20} color={activeFilterCount > 0 ? accentColor : '#64748B'} />
                 {activeFilterCount > 0 && (
                   <View style={[s.filterCount, { backgroundColor: accentColor, position: 'absolute', top: 4, right: 4, minWidth: 14, height: 14, borderRadius: 7, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 }]}>
                     <Text style={s.filterCountText}>{activeFilterCount}</Text>
@@ -1468,7 +1468,7 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
             {/* ── Table ── */}
             {filtered.length === 0 ? (
               <View style={s.empty}>
-                <Feather name={total === 0 ? 'package' : 'search'} size={36} color="#E5E7EB" />
+                <AppIcon name={total === 0 ? 'package' : 'search'} size={36} color="#E5E7EB" />
                 <Text style={s.emptyTitle}>{total === 0 ? 'Henüz ürün eklenmemiş' : 'Sonuç bulunamadı'}</Text>
                 <Text style={s.emptySub}>{total === 0 ? '"Yeni Ürün" butonuna tıklayın' : 'Arama veya filtre kriterlerini değiştirin'}</Text>
               </View>
@@ -1496,7 +1496,7 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
                         onPress={() => toggleGroup(groupKey)}
                         activeOpacity={0.75}
                       >
-                        <Feather
+                        <AppIcon
                           name={collapsed ? 'chevron-right' : 'chevron-down'}
                           size={15}
                           color="#94A3B8"
@@ -1507,7 +1507,7 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
                         </View>
                         {groupCrit > 0 && (
                           <View style={tbl.groupAlert}>
-                            <MaterialCommunityIcons name="alert-outline" size={11} color="#D97706" />
+                            <AppIcon name="alert-outline" size={11} color="#D97706" />
                             <Text style={tbl.groupAlertText}>{groupCrit} kritik</Text>
                           </View>
                         )}
@@ -1551,10 +1551,10 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
                             </View>
                             <View style={tbl.actions}>
                               <TouchableOpacity style={tbl.iconBtn} onPress={() => setMovModal({ visible: true, item })} activeOpacity={0.7}>
-                                <MaterialCommunityIcons name="swap-horizontal" size={14} color={accentColor} />
+                                <AppIcon name="swap-horizontal" size={14} color={accentColor} />
                               </TouchableOpacity>
                               <TouchableOpacity style={tbl.iconBtn} onPress={() => setProductModal({ visible: true, item })} activeOpacity={0.7}>
-                                <Feather name="edit-2" size={13} color="#6C6C70" />
+                                <AppIcon name="edit-2" size={13} color="#6C6C70" />
                               </TouchableOpacity>
                             </View>
                           </View>
@@ -1597,7 +1597,7 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
           <View style={fp.panel} onStartShouldSetResponder={() => true}>
             <View style={fp.header}>
               <View style={fp.headerLeft}>
-                <MaterialCommunityIcons name={'tune-variant' as any} size={15} color="#0F172A" />
+                <AppIcon name={'tune-variant' as any} size={15} color="#0F172A" />
                 <Text style={fp.headerTitle}>Filtrele</Text>
                 {activeFilterCount > 0 && (
                   <View style={fp.countBadge}><Text style={fp.countBadgeText}>{activeFilterCount}</Text></View>

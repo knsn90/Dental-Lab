@@ -6,8 +6,6 @@ import {
 } from 'react-native';
 import { toast } from '../../../core/ui/Toast';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Feather from '@expo/vector-icons/Feather';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { ClinicIcon } from '../../../core/ui/ClinicIcon';
 import { AppSwitch } from '../../../core/ui/AppSwitch';
 import { supabase } from '../../../core/api/supabase';
@@ -16,6 +14,8 @@ import { ILLER, ILCELER } from '../data/turkey';
 import { useIsDesktop } from '../../../core/layout/DesktopShell';
 import { SlideTabBar } from '../../../core/ui/SlideTabBar';
 import { IconBtn } from '../../../core/ui/IconBtn';
+
+import { AppIcon } from '../../../core/ui/AppIcon';
 
 const ERR = '#EF4444';
 
@@ -235,7 +235,7 @@ export default function ClinicsScreen({ accentColor = '#0F172A' }: Props) {
               <View style={s.tabsRight}>
                 {searchOpen ? (
                   <View style={[s.searchInline, searchFocused && { borderColor: accentColor }]}>
-                    <Feather name="search" size={15} color={searchFocused ? accentColor : '#94A3B8'} />
+                    <AppIcon name="search" size={15} color={searchFocused ? accentColor : '#94A3B8'} />
                     <TextInput
                       autoFocus
                       style={s.searchInlineInput}
@@ -254,17 +254,17 @@ export default function ClinicsScreen({ accentColor = '#0F172A' }: Props) {
                       onPress={() => { setSearch(''); setSearchOpen(false); }}
                       hitSlop={8}
                     >
-                      <Feather name="x" size={14} color="#94A3B8" />
+                      <AppIcon name="x" size={14} color="#94A3B8" />
                     </TouchableOpacity>
                   </View>
                 ) : (
                   <IconBtn onPress={() => setSearchOpen(true)}>
-                    <Feather name="search" size={20} color="#64748B" />
+                    <AppIcon name="search" size={20} color="#64748B" />
                   </IconBtn>
                 )}
                 {activeTab !== 'doctors' && (
                   <IconBtn active={activeFilterCount > 0} onPress={openFilter} style={{ position: 'relative' }}>
-                    <MaterialCommunityIcons name={'tune-variant' as any} size={20} color={activeFilterCount > 0 ? accentColor : '#64748B'} />
+                    <AppIcon name={'tune-variant' as any} size={20} color={activeFilterCount > 0 ? accentColor : '#64748B'} />
                     {activeFilterCount > 0 && (
                       <View style={[s.filterBadge, { backgroundColor: accentColor }]}>
                         <Text style={s.filterBadgeText}>{activeFilterCount}</Text>
@@ -286,7 +286,7 @@ export default function ClinicsScreen({ accentColor = '#0F172A' }: Props) {
             });
             if (filteredDoctors.length === 0) return (
               <View style={s.empty}>
-                <Feather name="search" size={36} color="#E5E7EB" />
+                <AppIcon name="search" size={36} color="#E5E7EB" />
                 <Text style={s.emptyTitle}>{q ? 'Sonuç bulunamadı' : 'Henüz hekim eklenmemiş'}</Text>
                 <Text style={s.emptySub}>{q ? `"${q}" ile eşleşen hekim yok` : 'İlk hekimi ekleyerek başlayın'}</Text>
               </View>
@@ -345,10 +345,10 @@ export default function ClinicsScreen({ accentColor = '#0F172A' }: Props) {
                       {/* ACTIONS */}
                       <View style={tbl.actions}>
                         <TouchableOpacity style={tbl.iconBtn} onPress={() => openEditDoctor(d)} activeOpacity={0.7}>
-                          <Feather name="edit-2" size={14} color="#6C6C70" />
+                          <AppIcon name="edit-2" size={14} color="#6C6C70" />
                         </TouchableOpacity>
                         <TouchableOpacity style={tbl.iconBtn} onPress={() => handleDeleteDoctor(d)} activeOpacity={0.7}>
-                          <Feather name="trash-2" size={14} color={ERR} />
+                          <AppIcon name="trash-2" size={14} color={ERR} />
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -365,7 +365,7 @@ export default function ClinicsScreen({ accentColor = '#0F172A' }: Props) {
               </View>
             ) : filteredClinics.length === 0 ? (
               <View style={s.empty}>
-                <Feather name="search" size={36} color="#E5E7EB" />
+                <AppIcon name="search" size={36} color="#E5E7EB" />
                 <Text style={s.emptyTitle}>Sonuç bulunamadı</Text>
                 <Text style={s.emptySub}>"{search}" ile eşleşen kayıt yok</Text>
               </View>
@@ -394,7 +394,7 @@ export default function ClinicsScreen({ accentColor = '#0F172A' }: Props) {
                 {unassigned.length > 0 && (
                   <View style={s.unassignedSection}>
                     <View style={s.unassignedHeader}>
-                      <Feather name="user-x" size={13} color="#AEAEB2" />
+                      <AppIcon name="user-x" size={13} color="#AEAEB2" />
                       <Text style={s.unassignedLabel}>Kliniksiz Hekimler</Text>
                       <View style={s.countBadge}>
                         <Text style={s.countBadgeText}>{unassigned.length}</Text>
@@ -430,7 +430,7 @@ export default function ClinicsScreen({ accentColor = '#0F172A' }: Props) {
                 <View style={sb.row}>
                   <View style={sb.rowLeft}>
                     <View style={[sb.circle, { backgroundColor: accentColor + '18' }]}>
-                      <MaterialCommunityIcons name={'office-building-outline' as any} size={18} color={accentColor} />
+                      <AppIcon name={'office-building-outline' as any} size={18} color={accentColor} />
                     </View>
                     <Text style={sb.rowLabel}>Toplam Kurum</Text>
                   </View>
@@ -439,7 +439,7 @@ export default function ClinicsScreen({ accentColor = '#0F172A' }: Props) {
                 <View style={sb.row}>
                   <View style={sb.rowLeft}>
                     <View style={[sb.circle, { backgroundColor: '#D1FAE5' }]}>
-                      <MaterialCommunityIcons name={'check-decagram-outline' as any} size={18} color="#059669" />
+                      <AppIcon name={'check-decagram-outline' as any} size={18} color="#059669" />
                     </View>
                     <Text style={sb.rowLabel}>Aktif Kurumlar</Text>
                   </View>
@@ -448,7 +448,7 @@ export default function ClinicsScreen({ accentColor = '#0F172A' }: Props) {
                 <View style={sb.row}>
                   <View style={sb.rowLeft}>
                     <View style={[sb.circle, { backgroundColor: accentColor + '12' }]}>
-                      <Feather name="users" size={18} color={accentColor} />
+                      <AppIcon name="users" size={18} color={accentColor} />
                     </View>
                     <Text style={sb.rowLabel}>Toplam Hekim</Text>
                   </View>
@@ -458,7 +458,7 @@ export default function ClinicsScreen({ accentColor = '#0F172A' }: Props) {
                   <View style={[sb.row, sb.rowDivider]}>
                     <View style={sb.rowLeft}>
                       <View style={[sb.circle, { backgroundColor: '#FEF2F2' }]}>
-                        <Feather name="alert-circle" size={18} color={ERR} />
+                        <AppIcon name="alert-circle" size={18} color={ERR} />
                       </View>
                       <Text style={sb.rowLabel}>Pasif Kurumlar</Text>
                     </View>
@@ -477,7 +477,7 @@ export default function ClinicsScreen({ accentColor = '#0F172A' }: Props) {
                   onPress={() => { setEditingClinic(null); setShowClinicModal(true); }}
                   activeOpacity={0.7}
                 >
-                  <Feather name="plus-circle" size={16} color="#64748B" />
+                  <AppIcon name="plus-circle" size={16} color="#64748B" />
                   <Text style={sb.actionText}>Yeni Kurum Ekle</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -485,7 +485,7 @@ export default function ClinicsScreen({ accentColor = '#0F172A' }: Props) {
                   onPress={() => { setEditingDoctor(null); setDefaultClinicId(''); setShowDoctorModal(true); }}
                   activeOpacity={0.7}
                 >
-                  <Feather name="user-plus" size={16} color="#64748B" />
+                  <AppIcon name="user-plus" size={16} color="#64748B" />
                   <Text style={sb.actionText}>Hekim Ekle</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -493,7 +493,7 @@ export default function ClinicsScreen({ accentColor = '#0F172A' }: Props) {
                   onPress={() => { setActiveTab('doctors'); }}
                   activeOpacity={0.7}
                 >
-                  <Feather name="list" size={16} color="#64748B" />
+                  <AppIcon name="list" size={16} color="#64748B" />
                   <Text style={sb.actionText}>Tüm Hekimleri Görüntüle</Text>
                 </TouchableOpacity>
               </View>
@@ -542,7 +542,7 @@ export default function ClinicsScreen({ accentColor = '#0F172A' }: Props) {
             {/* Header */}
             <View style={fp.header}>
               <View style={fp.headerLeft}>
-                <MaterialCommunityIcons name={'tune-variant' as any} size={16} color="#0F172A" />
+                <AppIcon name={'tune-variant' as any} size={16} color="#0F172A" />
                 <Text style={fp.headerTitle}>Filtrele</Text>
                 {activeFilterCount > 0 && (
                   <View style={fp.countBadge}>
@@ -643,7 +643,7 @@ function ClinicRow({
       <View style={cc.rowMain}>
         {/* Icon box */}
         <View style={[cc.iconBox, { backgroundColor: clinic.is_active ? cat.bg : '#F1F5F9' }]}>
-          <MaterialCommunityIcons
+          <AppIcon
             name={cat.icon as any}
             size={26}
             color={clinic.is_active ? cat.color : '#94A3B8'}
@@ -666,7 +666,7 @@ function ClinicRow({
           </View>
           <Text style={cc.name} numberOfLines={1}>{clinic.name}</Text>
           <View style={cc.subRow}>
-            <Feather
+            <AppIcon
               name={extraDoctors > 0 ? 'users' : 'user'}
               size={14}
               color="#94A3B8"
@@ -685,17 +685,17 @@ function ClinicRow({
         {clinic.is_active ? (
           <View style={cc.actions}>
             <TouchableOpacity style={cc.iconBtn} onPress={onEditClinic} activeOpacity={0.7}>
-              <Feather name="edit-2" size={16} color="#64748B" />
+              <AppIcon name="edit-2" size={16} color="#64748B" />
             </TouchableOpacity>
             <TouchableOpacity style={cc.iconBtn} onPress={onDeleteClinic} activeOpacity={0.7}>
-              <Feather name="trash-2" size={16} color={ERR} />
+              <AppIcon name="trash-2" size={16} color={ERR} />
             </TouchableOpacity>
             <TouchableOpacity
               style={[cc.chevronBtn, isExpanded && { backgroundColor: accentColor + '14' }]}
               onPress={onToggleExpand}
               activeOpacity={0.7}
             >
-              <Feather
+              <AppIcon
                 name={isExpanded ? 'chevron-up' : 'chevron-right'}
                 size={18}
                 color={isExpanded ? accentColor : '#475569'}
@@ -708,7 +708,7 @@ function ClinicRow({
             onPress={onToggleClinic}
             activeOpacity={0.75}
           >
-            <Feather name="refresh-cw" size={13} color={accentColor} />
+            <AppIcon name="refresh-cw" size={13} color={accentColor} />
             <Text style={[cc.reactivateText, { color: accentColor }]}>Aktif Et</Text>
           </TouchableOpacity>
         )}
@@ -750,11 +750,11 @@ function ClinicRow({
 
           <View style={cc.expandedFooter}>
             <TouchableOpacity style={cc.addDoctorBtn} onPress={onAddDoctor} activeOpacity={0.7}>
-              <Feather name="user-plus" size={14} color={accentColor} />
+              <AppIcon name="user-plus" size={14} color={accentColor} />
               <Text style={[cc.addDoctorText, { color: accentColor }]}>Bu kliniğe hekim ekle</Text>
             </TouchableOpacity>
             <TouchableOpacity style={cc.discountBtn} onPress={onSetDiscount} activeOpacity={0.7}>
-              <MaterialCommunityIcons name={'percent' as any} size={13} color="#7C3AED" />
+              <AppIcon name={'percent' as any} size={13} color="#7C3AED" />
               <Text style={cc.discountBtnText}>
                 {discountPercent != null && discountPercent > 0 ? `%${discountPercent} İndirim` : 'İndirim Ekle'}
               </Text>
@@ -801,10 +801,10 @@ function DoctorRow({
         accentColor={accentColor}
       />
       <TouchableOpacity style={dr.iconBtn} onPress={onEdit} activeOpacity={0.7}>
-        <Feather name="edit-2" size={14} color="#6C6C70" />
+        <AppIcon name="edit-2" size={14} color="#6C6C70" />
       </TouchableOpacity>
       <TouchableOpacity style={dr.iconBtn} onPress={onDelete} activeOpacity={0.7}>
-        <Feather name="trash-2" size={14} color={ERR} />
+        <AppIcon name="trash-2" size={14} color={ERR} />
       </TouchableOpacity>
     </View>
   );
@@ -814,7 +814,7 @@ function DoctorRow({
 function InfoRow({ icon, text }: { icon: any; text: string }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-      <Feather name={icon} size={12} color="#AEAEB2" />
+      <AppIcon name={icon} size={12} color="#AEAEB2" />
       <Text style={{ fontSize: 12, color: '#6C6C70', flex: 1 }} numberOfLines={1}>{text}</Text>
     </View>
   );
@@ -917,7 +917,7 @@ function ClinicModal({
           <View style={m.header}>
             <Text style={m.title}>{editingClinic ? 'Sağlık Kurumu Düzenle' : 'Sağlık Kurumu Ekle'}</Text>
             <TouchableOpacity onPress={onClose} style={m.closeBtn}>
-              <Feather name="x" size={18} color="#6C6C70" />
+              <AppIcon name="x" size={18} color="#6C6C70" />
             </TouchableOpacity>
           </View>
 
@@ -939,9 +939,9 @@ function ClinicModal({
                       onPress={() => set('category', cat.value)}
                       activeOpacity={0.7}
                     >
-                      <MaterialCommunityIcons name={cat.icon as any} size={18} color={active ? cat.color : '#AEAEB2'} />
+                      <AppIcon name={cat.icon as any} size={18} color={active ? cat.color : '#AEAEB2'} />
                       <Text style={[m.catChipText, active && { color: cat.color }]}>{cat.label}</Text>
-                      {active && <Feather name="check" size={13} color={cat.color} />}
+                      {active && <AppIcon name="check" size={13} color={cat.color} />}
                     </TouchableOpacity>
                   );
                 })}
@@ -969,7 +969,7 @@ function ClinicModal({
                   <View style={m.suggestBox}>
                     {isDuplicate ? (
                       <View style={m.dupRow}>
-                        <Feather name="alert-circle" size={13} color="#DC2626" />
+                        <AppIcon name="alert-circle" size={13} color="#DC2626" />
                         <Text style={m.dupText}>Bu kurum zaten eklenmiş</Text>
                       </View>
                     ) : suggestions.slice(0, 5).map((c, i) => {
@@ -982,7 +982,7 @@ function ClinicModal({
                           activeOpacity={0.7}
                         >
                           {cat && <View style={[m.suggestIcon, { backgroundColor: cat.color + '18' }]}>
-                            <MaterialCommunityIcons name={cat.icon as any} size={12} color={cat.color} />
+                            <AppIcon name={cat.icon as any} size={12} color={cat.color} />
                           </View>}
                           <Text style={m.suggestName} numberOfLines={1}>{c.name}</Text>
                           <View style={m.existsBadge}><Text style={m.existsBadgeText}>Kayıtlı</Text></View>
@@ -1028,12 +1028,12 @@ function ClinicModal({
                   <Text style={[m.fieldDropdownText, !form.il && m.fieldPlaceholder]}>
                     {form.il || 'Seçiniz'}
                   </Text>
-                  <Feather name={ilOpen ? 'chevron-up' : 'chevron-down'} size={15} color="#C7C7CC" />
+                  <AppIcon name={ilOpen ? 'chevron-up' : 'chevron-down'} size={15} color="#C7C7CC" />
                 </TouchableOpacity>
                 {ilOpen && (
                   <View style={m.dropBox}>
                     <View style={m.dropSearch}>
-                      <Feather name="search" size={14} color="#AEAEB2" />
+                      <AppIcon name="search" size={14} color="#AEAEB2" />
                       <TextInput
                         style={m.dropSearchInput}
                         value={ilSearch}
@@ -1052,7 +1052,7 @@ function ClinicModal({
                           activeOpacity={0.7}
                         >
                           <Text style={[m.dropItemText, form.il === il && { color: accentColor, fontWeight: '600' }]}>{il}</Text>
-                          {form.il === il && <Feather name="check" size={14} color={accentColor} />}
+                          {form.il === il && <AppIcon name="check" size={14} color={accentColor} />}
                         </TouchableOpacity>
                       ))}
                     </ScrollView>
@@ -1071,12 +1071,12 @@ function ClinicModal({
                   <Text style={[m.fieldDropdownText, !form.ilce && m.fieldPlaceholder]}>
                     {form.ilce || (form.il ? 'Seçiniz' : 'Önce il seçin')}
                   </Text>
-                  <Feather name={ilceOpen ? 'chevron-up' : 'chevron-down'} size={15} color="#C7C7CC" />
+                  <AppIcon name={ilceOpen ? 'chevron-up' : 'chevron-down'} size={15} color="#C7C7CC" />
                 </TouchableOpacity>
                 {ilceOpen && (
                   <View style={m.dropBox}>
                     <View style={m.dropSearch}>
-                      <Feather name="search" size={14} color="#AEAEB2" />
+                      <AppIcon name="search" size={14} color="#AEAEB2" />
                       <TextInput
                         style={m.dropSearchInput}
                         value={ilceSearch}
@@ -1095,7 +1095,7 @@ function ClinicModal({
                           activeOpacity={0.7}
                         >
                           <Text style={[m.dropItemText, form.ilce === ilce && { color: accentColor, fontWeight: '600' }]}>{ilce}</Text>
-                          {form.ilce === ilce && <Feather name="check" size={14} color={accentColor} />}
+                          {form.ilce === ilce && <AppIcon name="check" size={14} color={accentColor} />}
                         </TouchableOpacity>
                       ))}
                     </ScrollView>
@@ -1136,7 +1136,7 @@ function ClinicModal({
 
             {error ? (
               <View style={m.errorBox}>
-                <Feather name="alert-circle" size={13} color="#DC2626" />
+                <AppIcon name="alert-circle" size={13} color="#DC2626" />
                 <Text style={m.errorText}>{error}</Text>
               </View>
             ) : null}
@@ -1220,7 +1220,7 @@ function DoctorModal({
           <View style={dm.header}>
             <Text style={dm.title}>{editingDoctor ? 'Hekim Düzenle' : 'Yeni Hekim'}</Text>
             <TouchableOpacity onPress={onClose} style={dm.closeBtn}>
-              <Feather name="x" size={16} color="#64748B" />
+              <AppIcon name="x" size={16} color="#64748B" />
             </TouchableOpacity>
           </View>
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={dm.body} keyboardShouldPersistTaps="handled">
@@ -1263,7 +1263,7 @@ function DoctorModal({
             <TouchableOpacity style={[dm.saveBtn, { backgroundColor: accentColor }, saving && dm.saveBtnOff]} onPress={handleSave} disabled={saving}>
               {saving ? <ActivityIndicator size="small" color="#FFFFFF" /> : (
                 <>
-                  <Feather name="check" size={15} color="#FFFFFF" />
+                  <AppIcon name="check" size={15} color="#FFFFFF" />
                   <Text style={dm.saveText}>{editingDoctor ? 'Güncelle' : 'Hekim Ekle'}</Text>
                 </>
               )}
@@ -1290,19 +1290,19 @@ function ClinicDropdown({ value, clinics, accentColor, onChange }: {
         activeOpacity={0.8}
       >
         <View style={dd.triggerLeft}>
-          <Feather name="briefcase" size={15} color={selected ? accentColor : '#AEAEB2'} />
+          <AppIcon name="briefcase" size={15} color={selected ? accentColor : '#AEAEB2'} />
           <Text style={[dd.triggerText, !selected && dd.triggerPlaceholder]} numberOfLines={1}>
             {selected ? selected.name : 'Klinik seçin...'}
           </Text>
         </View>
-        <Feather name={open ? 'chevron-up' : 'chevron-down'} size={16} color="#AEAEB2" />
+        <AppIcon name={open ? 'chevron-up' : 'chevron-down'} size={16} color="#AEAEB2" />
       </TouchableOpacity>
       {open && (
         <View style={dd.list}>
           <TouchableOpacity style={[dd.item, dd.itemBorder]} onPress={() => { onChange(''); setOpen(false); }} activeOpacity={0.7}>
-            <Feather name="minus-circle" size={14} color="#AEAEB2" />
+            <AppIcon name="minus-circle" size={14} color="#AEAEB2" />
             <Text style={[dd.itemText, !value && { color: accentColor, fontWeight: '600' }]}>Seçilmedi</Text>
-            {!value && <Feather name="check" size={14} color={accentColor} />}
+            {!value && <AppIcon name="check" size={14} color={accentColor} />}
           </TouchableOpacity>
           {clinics.map((c, i) => {
             const isSelected = value === c.id;
@@ -1317,7 +1317,7 @@ function ClinicDropdown({ value, clinics, accentColor, onChange }: {
                 <Text style={[dd.itemText, isSelected && { color: accentColor, fontWeight: '600' }]} numberOfLines={1}>
                   {c.name}
                 </Text>
-                {isSelected && <Feather name="check" size={14} color={accentColor} />}
+                {isSelected && <AppIcon name="check" size={14} color={accentColor} />}
               </TouchableOpacity>
             );
           })}
@@ -1340,7 +1340,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function ErrorBox({ msg }: { msg: string }) {
   return (
     <View style={dm.errorBox}>
-      <Feather name="alert-circle" size={13} color={ERR} />
+      <AppIcon name="alert-circle" size={13} color={ERR} />
       <Text style={dm.errorText}>{msg}</Text>
     </View>
   );
@@ -1989,14 +1989,14 @@ function DiscountModal({
         <View style={dsc.card}>
           <View style={dsc.header}>
             <View style={dsc.iconWrap}>
-              <MaterialCommunityIcons name={'percent' as any} size={18} color="#7C3AED" />
+              <AppIcon name={'percent' as any} size={18} color="#7C3AED" />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={dsc.title}>Klinik İndirimi</Text>
               <Text style={dsc.sub} numberOfLines={1}>{clinic?.name}</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={dsc.closeBtn}>
-              <Feather name="x" size={16} color="#94A3B8" />
+              <AppIcon name="x" size={16} color="#94A3B8" />
             </TouchableOpacity>
           </View>
 
@@ -2022,7 +2022,7 @@ function DiscountModal({
 
             {currentDiscount != null && currentDiscount > 0 && (
               <TouchableOpacity style={dsc.removeBtn} onPress={handleRemove} disabled={saving} activeOpacity={0.8}>
-                <Feather name="trash-2" size={13} color="#DC2626" />
+                <AppIcon name="trash-2" size={13} color="#DC2626" />
                 <Text style={dsc.removeBtnText}>İndirimi Kaldır</Text>
               </TouchableOpacity>
             )}

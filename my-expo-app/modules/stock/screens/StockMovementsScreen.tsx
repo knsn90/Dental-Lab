@@ -4,8 +4,9 @@ import {
   ActivityIndicator, RefreshControl, useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { supabase } from '../../../lib/supabase';
+
+import { AppIcon } from '../../../core/ui/AppIcon';
 
 interface Movement {
   id: string;
@@ -27,7 +28,7 @@ function TypeBadge({ type }: { type: Movement['type'] }) {
   const c = TYPE_CFG[type] ?? TYPE_CFG.OUT;
   return (
     <View style={[b.pill, { backgroundColor: c.bg }]}>
-      <MaterialCommunityIcons name={c.icon as any} size={13} color={c.color} />
+      <AppIcon name={c.icon as any} size={13} color={c.color} />
       <Text style={[b.text, { color: c.color }]}>{c.label}</Text>
     </View>
   );
@@ -106,7 +107,7 @@ export function StockMovementsScreen() {
       ) : !tableExists ? (
         <View style={s.center}>
           <View style={s.emptyIcon}>
-            <MaterialCommunityIcons name="database-off-outline" size={40} color="#94A3B8" />
+            <AppIcon name="database-off-outline" size={40} color="#94A3B8" />
           </View>
           <Text style={s.emptyTitle}>Tablo bulunamadı</Text>
           <Text style={s.emptySub}>Supabase'de "stock_movements" tablosu oluşturulduğunda hareketler burada görünür.</Text>
@@ -114,7 +115,7 @@ export function StockMovementsScreen() {
       ) : items.length === 0 ? (
         <View style={s.center}>
           <View style={s.emptyIcon}>
-            <MaterialCommunityIcons name="swap-horizontal" size={40} color="#94A3B8" />
+            <AppIcon name="swap-horizontal" size={40} color="#94A3B8" />
           </View>
           <Text style={s.emptyTitle}>Hareket kaydı yok</Text>
           <Text style={s.emptySub}>Henüz stok girişi, çıkışı veya fire kaydı eklenmemiş.</Text>

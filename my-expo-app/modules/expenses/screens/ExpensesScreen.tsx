@@ -1,10 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useContext } from 'react';
+import { HubContext } from '../../../core/ui/HubContext';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   TextInput, Modal, Alert, RefreshControl, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import { useExpenses } from '../hooks/useExpenses';
 import {
@@ -13,6 +13,8 @@ import {
   type Expense, type ExpenseCategory, type ExpensePaymentMethod, type CreateExpenseParams,
 } from '../api';
 import { useBreakpoint } from '../../../core/layout/Responsive';
+
+import { AppIcon } from '../../../core/ui/AppIcon';
 
 function fmtMoney(n: number | string | null | undefined): string {
   const v = typeof n === 'string' ? Number(n) : (n ?? 0);
@@ -32,6 +34,8 @@ const PAY_METHODS: { v: ExpensePaymentMethod; l: string }[] = [
 
 export function ExpensesScreen() {
   const { isDesktop, px } = useBreakpoint();
+  const isEmbedded = useContext(HubContext);
+  const safeEdges = isEmbedded ? ([] as any) : (['top'] as any);
   const [catFilter, setCatFilter] = useState<ExpenseCategory | 'all'>('all');
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
@@ -72,7 +76,7 @@ export function ExpensesScreen() {
   }, [expenses]);
 
   return (
-    <SafeAreaView style={s.safe} edges={['top']}>
+    <SafeAreaView style={s.safe} edges={safeEdges}>
       {/* Header */}
       <View style={[s.header, { paddingHorizontal: px }]}>
         <View style={{ flex: 1 }}>
@@ -80,7 +84,7 @@ export function ExpensesScreen() {
           <Text style={s.subtitle}>Toplam: {fmtMoney(totalAmount)}</Text>
         </View>
         <TouchableOpacity style={s.addBtn} onPress={openAdd} activeOpacity={0.85}>
-          <MaterialCommunityIcons name={'plus' as any} size={16} color="#fff" />
+          <AppIcon name={'plus' as any} size={16} color="#fff" />
           <Text style={s.addBtnText}>Gider Ekle</Text>
         </TouchableOpacity>
       </View>
@@ -98,7 +102,7 @@ export function ExpensesScreen() {
             key={cat}
             style={[s.catChip, catFilter === cat && { borderColor: EXPENSE_CATEGORY_COLORS[cat], backgroundColor: EXPENSE_CATEGORY_COLORS[cat] + '15' }]}
             onPress={() => setCatFilter(cat)} activeOpacity={0.8}>
-            <MaterialCommunityIcons name={EXPENSE_CATEGORY_ICONS[cat] as any} size={13} color={EXPENSE_CATEGORY_COLORS[cat]} />
+            <AppIcon name={EXPENSE_CATEGORY_ICONS[cat] as any} size={13} color={EXPENSE_CATEGORY_COLORS[cat]} />
             <Text style={[s.catChipLabel, catFilter === cat && { color: EXPENSE_CATEGORY_COLORS[cat], fontWeight: '700' }]}>
               {EXPENSE_CATEGORY_LABELS[cat]}
             </Text>
@@ -114,12 +118,12 @@ export function ExpensesScreen() {
       {/* Search */}
       <View style={[s.searchRow, { paddingHorizontal: px }]}>
         <View style={s.searchWrap}>
-          <MaterialCommunityIcons name={'magnify' as any} size={16} color="#94A3B8" />
+          <AppIcon name={'magnify' as any} size={16} color="#94A3B8" />
           <TextInput style={s.searchInput} placeholder="Açıklama ara..."
             placeholderTextColor="#94A3B8" value={search} onChangeText={setSearch} />
           {search.length > 0 && (
             <TouchableOpacity onPress={() => setSearch('')}>
-              <MaterialCommunityIcons name={'close-circle' as any} size={15} color="#94A3B8" />
+              <AppIcon name={'close-circle' as any} size={15} color="#94A3B8" />
             </TouchableOpacity>
           )}
         </View>
@@ -134,7 +138,7 @@ export function ExpensesScreen() {
       >
         {filtered.length === 0 ? (
           <View style={s.empty}>
-            <MaterialCommunityIcons name={'receipt-text-remove-outline' as any} size={40} color="#CBD5E1" />
+            <AppIcon name={'receipt-text-remove-outline' as any} size={40} color="#CBD5E1" />
             <Text style={s.emptyText}>Gider kaydı bulunamadı</Text>
           </View>
         ) : (
@@ -165,7 +169,7 @@ function ExpenseCard({ expense: e, onEdit, onDelete }: { expense: Expense; onEdi
     <View style={ec.wrap}>
       <View style={[ec.accent, { backgroundColor: color }]} />
       <View style={ec.iconWrap}>
-        <MaterialCommunityIcons name={EXPENSE_CATEGORY_ICONS[e.category] as any} size={20} color={color} />
+        <AppIcon name={EXPENSE_CATEGORY_ICONS[e.category] as any} size={20} color={color} />
       </View>
       <View style={ec.body}>
         <Text style={ec.desc} numberOfLines={1}>{e.description}</Text>
@@ -177,10 +181,10 @@ function ExpenseCard({ expense: e, onEdit, onDelete }: { expense: Expense; onEdi
         <Text style={ec.amount}>{fmtMoney(e.amount)}</Text>
         <View style={ec.actions}>
           <TouchableOpacity style={ec.iconBtn} onPress={onEdit} activeOpacity={0.7}>
-            <MaterialCommunityIcons name={'pencil-outline' as any} size={16} color="#64748B" />
+            <AppIcon name={'pencil-outline' as any} size={16} color="#64748B" />
           </TouchableOpacity>
           <TouchableOpacity style={ec.iconBtn} onPress={onDelete} activeOpacity={0.7}>
-            <MaterialCommunityIcons name={'delete-outline' as any} size={16} color="#EF4444" />
+            <AppIcon name={'delete-outline' as any} size={16} color="#EF4444" />
           </TouchableOpacity>
         </View>
       </View>
@@ -240,7 +244,7 @@ function ExpenseFormModal({
           <View style={fm.header}>
             <Text style={fm.title}>{expense ? 'Gider Düzenle' : 'Gider Ekle'}</Text>
             <TouchableOpacity onPress={onClose} style={fm.closeBtn}>
-              <MaterialCommunityIcons name={'close' as any} size={20} color="#64748B" />
+              <AppIcon name={'close' as any} size={20} color="#64748B" />
             </TouchableOpacity>
           </View>
 
@@ -253,7 +257,7 @@ function ExpenseFormModal({
                   <TouchableOpacity key={cat}
                     style={[fm.chip, category === cat && { borderColor: EXPENSE_CATEGORY_COLORS[cat], backgroundColor: EXPENSE_CATEGORY_COLORS[cat] + '15' }]}
                     onPress={() => setCategory(cat)} activeOpacity={0.8}>
-                    <MaterialCommunityIcons name={EXPENSE_CATEGORY_ICONS[cat] as any} size={13} color={EXPENSE_CATEGORY_COLORS[cat]} />
+                    <AppIcon name={EXPENSE_CATEGORY_ICONS[cat] as any} size={13} color={EXPENSE_CATEGORY_COLORS[cat]} />
                     <Text style={[fm.chipText, category === cat && { color: EXPENSE_CATEGORY_COLORS[cat], fontWeight: '700' }]}>
                       {EXPENSE_CATEGORY_LABELS[cat]}
                     </Text>

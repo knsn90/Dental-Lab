@@ -20,9 +20,10 @@ import {
   Platform,
   Dimensions,
 } from 'react-native';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { C } from '../theme/colors';
 import { S } from '../theme/spacing';
+
+import { AppIcon } from './AppIcon';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
@@ -100,7 +101,7 @@ function ToastItem({ msg, onDismiss }: { msg: ToastMessage; onDismiss: (id: stri
         { opacity: opac, transform: [{ translateY }] },
       ]}
     >
-      <MaterialCommunityIcons name={cfg.icon as any} size={20} color={cfg.iconColor} style={styles.icon} />
+      <AppIcon name={cfg.icon as any} size={20} color={cfg.iconColor} style={styles.icon} />
       <View style={styles.textBlock}>
         <Text style={[styles.title, { color: cfg.iconColor }]}>
           {msg.title ?? cfg.titleDefault}
@@ -110,7 +111,7 @@ function ToastItem({ msg, onDismiss }: { msg: ToastMessage; onDismiss: (id: stri
         )}
       </View>
       <Pressable onPress={dismiss} hitSlop={10} style={styles.close}>
-        <MaterialCommunityIcons name="close" size={16} color={C.textMuted} />
+        <AppIcon name="close" size={16} color={C.textMuted} />
       </Pressable>
     </Animated.View>
   );

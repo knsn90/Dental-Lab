@@ -6,7 +6,7 @@ export function getTemplate(type: MeasurementType): StepDefinition[] {
   return type === 'digital' ? DIGITAL_STEPS : MANUAL_STEPS;
 }
 
-export async function createWorkflow(
+export async function createCaseSteps(
   workOrderId: string,
   measurementType: MeasurementType
 ): Promise<{ error: string | null }> {

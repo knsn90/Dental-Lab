@@ -14,7 +14,6 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useOrders } from '../../modules/orders/hooks/useOrders';
 import { WorkOrderCard } from '../../modules/orders/components/WorkOrderCard';
 import { KanbanBoard } from '../../modules/orders/components/KanbanBoard';
@@ -28,6 +27,8 @@ import { F } from '../../core/theme/typography';
 import { SlideTabBar } from '../../core/ui/SlideTabBar';
 import { IconBtn } from '../../core/ui/IconBtn';
 import { useAssignTechnician } from '../../modules/admin/orders/hooks';
+
+import { AppIcon } from '../../core/ui/AppIcon';
 
 const STATUS_FILTERS: { value: WorkOrderStatus | 'all'; label: string }[] = [
   { value: 'all',             label: 'Tümü' },
@@ -196,7 +197,7 @@ export default function AdminOrdersScreen() {
             </Text>
           </View>
           <View style={s.bannerArrow}>
-            <MaterialCommunityIcons name={'chevron-right' as any} size={16} color="#0F172A" />
+            <AppIcon name={'chevron-right' as any} size={16} color="#0F172A" />
           </View>
         </TouchableOpacity>
       )}
@@ -206,16 +207,16 @@ export default function AdminOrdersScreen() {
         <View style={s.activeFiltersRow}>
           {urgentOnly && (
             <View style={s.activeChip}>
-              <MaterialCommunityIcons name={'lightning-bolt' as any} size={12} color="#B45309" />
+              <AppIcon name={'lightning-bolt' as any} size={12} color="#B45309" />
               <Text style={s.activeChipText}>Acil</Text>
               <TouchableOpacity onPress={() => setUrgentOnly(false)}>
-                <MaterialCommunityIcons name={'close' as any} size={12} color="#B45309" />
+                <AppIcon name={'close' as any} size={12} color="#B45309" />
               </TouchableOpacity>
             </View>
           )}
           {machineFilter !== 'all' && (
             <View style={s.activeChip}>
-              <MaterialCommunityIcons
+              <AppIcon
                 name={machineFilter === 'milling' ? 'cog-outline' as any : 'printer-3d' as any}
                 size={12}
                 color="#1D4ED8"
@@ -224,16 +225,16 @@ export default function AdminOrdersScreen() {
                 {machineFilter === 'milling' ? 'Frezeleme' : '3D Baskı'}
               </Text>
               <TouchableOpacity onPress={() => setMachineFilter('all')}>
-                <MaterialCommunityIcons name={'close' as any} size={12} color="#1D4ED8" />
+                <AppIcon name={'close' as any} size={12} color="#1D4ED8" />
               </TouchableOpacity>
             </View>
           )}
           {overdueOnly && (
             <View style={[s.activeChip, s.activeChipDanger]}>
-              <MaterialCommunityIcons name={'clock-alert-outline' as any} size={12} color="#DC2626" />
+              <AppIcon name={'clock-alert-outline' as any} size={12} color="#DC2626" />
               <Text style={[s.activeChipText, { color: '#DC2626' }]}>Geciken</Text>
               <TouchableOpacity onPress={() => setOverdueOnly(false)}>
-                <MaterialCommunityIcons name={'close' as any} size={12} color="#DC2626" />
+                <AppIcon name={'close' as any} size={12} color="#DC2626" />
               </TouchableOpacity>
             </View>
           )}
@@ -268,10 +269,10 @@ export default function AdminOrdersScreen() {
         <View style={s.rightGroup}>
           {/* View mode toggle */}
           <IconBtn active={viewMode === 'list'} onPress={() => setViewMode('list')}>
-            <MaterialCommunityIcons name={'format-list-text' as any} size={20} color={viewMode === 'list' ? '#0F172A' : '#64748B'} />
+            <AppIcon name={'format-list-text' as any} size={20} color={viewMode === 'list' ? '#0F172A' : '#64748B'} />
           </IconBtn>
           <IconBtn active={viewMode === 'kanban'} onPress={() => setViewMode('kanban')}>
-            <MaterialCommunityIcons name={'view-column' as any} size={20} color={viewMode === 'kanban' ? '#0F172A' : '#64748B'} />
+            <AppIcon name={'view-column' as any} size={20} color={viewMode === 'kanban' ? '#0F172A' : '#64748B'} />
           </IconBtn>
 
           {/* Search */}
@@ -279,7 +280,7 @@ export default function AdminOrdersScreen() {
             active={searchExpanded || search.length > 0}
             onPress={() => setSearchExpanded(!searchExpanded)}
           >
-            <MaterialCommunityIcons
+            <AppIcon
               name={'magnify' as any}
               size={20}
               color={(searchExpanded || search.length > 0) ? '#0F172A' : '#64748B'}
@@ -289,7 +290,7 @@ export default function AdminOrdersScreen() {
           {/* Filter — hidden in kanban mode */}
           {viewMode !== 'kanban' && (
             <IconBtn active={activeFilterCount > 0} onPress={openFilterSheet} style={{ position: 'relative' }}>
-              <MaterialCommunityIcons
+              <AppIcon
                 name={'tune-variant' as any}
                 size={20}
                 color={activeFilterCount > 0 ? '#0F172A' : '#64748B'}
@@ -307,7 +308,7 @@ export default function AdminOrdersScreen() {
       {viewMode !== 'kanban' && (searchExpanded || search.length > 0) && (
         <View style={s.searchRow}>
           <View style={[s.searchWrap, searchFocused && s.inputWrapFocused]}>
-            <MaterialCommunityIcons
+            <AppIcon
               name={'magnify' as any}
               size={17}
               color={searchFocused ? '#0F172A' : C.textMuted}
@@ -324,7 +325,7 @@ export default function AdminOrdersScreen() {
             />
             {search.length > 0 && (
               <TouchableOpacity onPress={() => { setSearch(''); setSearchExpanded(false); }}>
-                <MaterialCommunityIcons name={'close-circle' as any} size={16} color={C.textMuted} />
+                <AppIcon name={'close-circle' as any} size={16} color={C.textMuted} />
               </TouchableOpacity>
             )}
           </View>
@@ -389,7 +390,7 @@ export default function AdminOrdersScreen() {
             {/* Header */}
             <View style={fp.header}>
               <View style={fp.headerLeft}>
-                <MaterialCommunityIcons name={'tune-variant' as any} size={16} color="#0F172A" />
+                <AppIcon name={'tune-variant' as any} size={16} color="#0F172A" />
                 <Text style={fp.headerTitle}>Filtrele & Sırala</Text>
                 {(draftUrgent || draftMachine !== 'all' || draftOverdue || draftSortBy !== 'delivery_date' || draftSortDir !== 'asc') && (
                   <View style={fp.countBadge}>
@@ -424,11 +425,11 @@ export default function AdminOrdersScreen() {
                         onPress={() => setDraftSortBy(opt.value)}
                         activeOpacity={0.7}
                       >
-                        <MaterialCommunityIcons name={opt.icon as any} size={12} color={active ? '#0F172A' : '#94A3B8'} />
+                        <AppIcon name={opt.icon as any} size={12} color={active ? '#0F172A' : '#94A3B8'} />
                         <Text style={[fp.chipText, active && fp.chipTextActive]}>{opt.label}</Text>
                         {active && (
                           <TouchableOpacity onPress={() => setDraftSortDir(d => d === 'asc' ? 'desc' : 'asc')} style={fp.dirBtn}>
-                            <MaterialCommunityIcons
+                            <AppIcon
                               name={(draftSortDir === 'asc' ? 'arrow-up' : 'arrow-down') as any}
                               size={12} color="#0F172A"
                             />
@@ -456,7 +457,7 @@ export default function AdminOrdersScreen() {
                     style={[fp.chip, draftUrgent && fp.chipUrgent]}
                     onPress={() => setDraftUrgent(true)} activeOpacity={0.7}
                   >
-                    <MaterialCommunityIcons name={'lightning-bolt' as any} size={12} color={draftUrgent ? '#92400E' : '#94A3B8'} />
+                    <AppIcon name={'lightning-bolt' as any} size={12} color={draftUrgent ? '#92400E' : '#94A3B8'} />
                     <Text style={[fp.chipText, draftUrgent && fp.chipTextUrgent]}>Sadece Acil</Text>
                   </TouchableOpacity>
                 </View>
@@ -480,7 +481,7 @@ export default function AdminOrdersScreen() {
                         style={[fp.chip, active && fp.chipActive]}
                         onPress={() => setDraftMachine(opt.value)} activeOpacity={0.7}
                       >
-                        {opt.icon && <MaterialCommunityIcons name={opt.icon as any} size={12} color={active ? '#0F172A' : '#94A3B8'} />}
+                        {opt.icon && <AppIcon name={opt.icon as any} size={12} color={active ? '#0F172A' : '#94A3B8'} />}
                         <Text style={[fp.chipText, active && fp.chipTextActive]}>{opt.label}</Text>
                       </TouchableOpacity>
                     );
@@ -504,7 +505,7 @@ export default function AdminOrdersScreen() {
                     style={[fp.chip, draftOverdue && fp.chipDanger]}
                     onPress={() => setDraftOverdue(true)} activeOpacity={0.7}
                   >
-                    <MaterialCommunityIcons name={'clock-alert-outline' as any} size={12} color={draftOverdue ? '#DC2626' : '#94A3B8'} />
+                    <AppIcon name={'clock-alert-outline' as any} size={12} color={draftOverdue ? '#DC2626' : '#94A3B8'} />
                     <Text style={[fp.chipText, draftOverdue && fp.chipTextDanger]}>Sadece Geciken</Text>
                   </TouchableOpacity>
                 </View>
@@ -540,7 +541,7 @@ export default function AdminOrdersScreen() {
             <View style={s.modalHeader}>
               <Text style={s.modalTitle}>Teknisyen Seç</Text>
               <TouchableOpacity onPress={() => { setAssignModalVisible(false); setAssignTarget(null); }}>
-                <MaterialCommunityIcons name={'close' as any} size={22} color={C.textMuted} />
+                <AppIcon name={'close' as any} size={22} color={C.textMuted} />
               </TouchableOpacity>
             </View>
             {assignTarget && (
@@ -572,7 +573,7 @@ export default function AdminOrdersScreen() {
                       <Text style={s.techName}>{tech.full_name}</Text>
                       {tech.role && <Text style={s.techRole}>{tech.role}</Text>}
                     </View>
-                    <MaterialCommunityIcons name={'chevron-right' as any} size={20} color={C.textMuted} />
+                    <AppIcon name={'chevron-right' as any} size={20} color={C.textMuted} />
                   </TouchableOpacity>
                 )}
               />
@@ -589,7 +590,7 @@ function EmptyState({ search, hasFilters }: { search: string; hasFilters: boolea
   return (
     <View style={s.empty}>
       <View style={s.emptyIconWrap}>
-        <MaterialCommunityIcons
+        <AppIcon
           name={noResults ? 'magnify-close' as any : 'clipboard-text-off-outline' as any}
           size={36}
           color={C.textMuted}
@@ -668,7 +669,7 @@ function OrderCard({
           <View style={card.topLeft}>
             <View style={card.idRow}>
               {order.is_urgent && (
-                <MaterialCommunityIcons name={'lightning-bolt' as any} size={12} color="#F59E0B" />
+                <AppIcon name={'lightning-bolt' as any} size={12} color="#F59E0B" />
               )}
               <Text style={[card.orderNo, { color: accent }]} numberOfLines={1}>
                 #{order.order_number}
@@ -676,7 +677,7 @@ function OrderCard({
             </View>
             <Text style={card.title} numberOfLines={1}>{order.work_type}</Text>
             <View style={card.metaRow}>
-              <MaterialCommunityIcons name={'domain' as any} size={13} color="#94A3B8" />
+              <AppIcon name={'domain' as any} size={13} color="#94A3B8" />
               <Text style={card.metaText} numberOfLines={1}>
                 {doctorName || '—'}
                 {clinicName ? `, ${clinicName}` : ''}
@@ -690,7 +691,7 @@ function OrderCard({
               </Text>
             </View>
             <View style={card.timeRow}>
-              <MaterialCommunityIcons name={dateIcon as any} size={12} color={dateColor} />
+              <AppIcon name={dateIcon as any} size={12} color={dateColor} />
               <Text style={[card.timeText, { color: dateColor }]}>{dateText}</Text>
             </View>
           </View>

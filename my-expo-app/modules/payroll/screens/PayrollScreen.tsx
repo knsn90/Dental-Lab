@@ -1,10 +1,10 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useContext } from 'react';
+import { HubContext } from '../../../core/ui/HubContext';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   ActivityIndicator, Modal, TextInput, Switch, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { C } from '../../../core/theme/colors';
 import { F, FS } from '../../../core/theme/typography';
 import { useIsDesktop } from '../../../core/layout/DesktopShell';
@@ -13,6 +13,8 @@ import { toast } from '../../../core/ui/Toast';
 import { SkeletonList } from '../../../core/ui/Skeleton';
 import { usePayrollList, usePayrollDetail, usePayrollSettings } from '../hooks/usePayroll';
 import { useEmployees } from '../../employees/hooks/useEmployees';
+import { AppIcon } from '../../../core/ui/AppIcon';
+
 import {
   PAYROLL_STATUS_CFG, PAYROLL_ITEM_TYPE_CFG,
   fmtPeriod, currentPeriod, shiftPeriod,
@@ -32,6 +34,8 @@ function fmtHours(minutes: number) {
 // ─── PayrollScreen ────────────────────────────────────────────────────────────
 export function PayrollScreen({ accentColor = C.primary }: { accentColor?: string }) {
   const { profile } = useAuthStore();
+  const isEmbedded = useContext(HubContext);
+  const safeEdges  = isEmbedded ? ([] as any) : undefined;
   const isDesktop   = useIsDesktop();
   const canApprove  = profile?.user_type === 'admin' || profile?.role === 'manager';
 
@@ -129,7 +133,7 @@ export function PayrollScreen({ accentColor = C.primary }: { accentColor?: strin
 
   // ── Mobile ─────────────────────────────────────────────────────────────────
   return (
-    <SafeAreaView style={s.safe}>
+    <SafeAreaView style={s.safe} edges={safeEdges}>
       <View style={s.mobileHeader}>
         <Text style={s.mobileTitle}>Bordro</Text>
       </View>
@@ -162,11 +166,11 @@ function PeriodBar({ period, onShift, accentColor }: {
   return (
     <View style={pb.bar}>
       <TouchableOpacity style={pb.arrow} onPress={() => onShift(-1)}>
-        <MaterialCommunityIcons name="chevron-left" size={20} color={C.textSecondary} />
+        <AppIcon name="chevron-left" size={20} color={C.textSecondary} />
       </TouchableOpacity>
       <Text style={[pb.label, { color: accentColor }]}>{fmtPeriod(period)}</Text>
       <TouchableOpacity style={pb.arrow} onPress={() => onShift(1)}>
-        <MaterialCommunityIcons name="chevron-right" size={20} color={C.textSecondary} />
+        <AppIcon name="chevron-right" size={20} color={C.textSecondary} />
       </TouchableOpacity>
     </View>
   );
@@ -308,11 +312,11 @@ function PayrollDetail({
           <Text style={pd.empRole}>{employeeRole}</Text>
         </View>
         <TouchableOpacity style={pd.settingsBtn} onPress={onOpenSettings}>
-          <MaterialCommunityIcons name="tune-variant" size={18} color={C.textSecondary} />
+          <AppIcon name="tune-variant" size={18} color={C.textSecondary} />
         </TouchableOpacity>
         {cfg && (
           <View style={[pd.statusChip, { backgroundColor: cfg.bg }]}>
-            <MaterialCommunityIcons name={cfg.icon as any} size={13} color={cfg.color} />
+            <AppIcon name={cfg.icon as any} size={13} color={cfg.color} />
             <Text style={[pd.statusTxt, { color: cfg.color }]}>{cfg.label}</Text>
           </View>
         )}
@@ -368,7 +372,7 @@ function PayrollDetail({
                     <Text style={[pd.itemAmt, { color: cfg2.color }]}>{sign}{fmtMoney(it.amount)}</Text>
                     {payroll.status === 'taslak' && (
                       <TouchableOpacity onPress={() => handleDeleteItem(it.id)} style={{ padding: 4, marginLeft: 4 }}>
-                        <MaterialCommunityIcons name="close" size={14} color={C.textMuted} />
+                        <AppIcon name="close" size={14} color={C.textMuted} />
                       </TouchableOpacity>
                     )}
                   </View>
@@ -392,11 +396,11 @@ function PayrollDetail({
               {payroll.status === 'taslak' && (
                 <>
                   <TouchableOpacity style={[pd.btn, pd.btnOutline]} onPress={() => setAddItemOpen?.(true)} activeOpacity={0.8}>
-                    <MaterialCommunityIcons name="plus" size={15} color={accentColor} />
+                    <AppIcon name="plus" size={15} color={accentColor} />
                     <Text style={[pd.btnTxt, { color: accentColor }]}>Kalem Ekle</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={[pd.btn, { backgroundColor: accentColor }]} onPress={handleApprove} activeOpacity={0.85}>
-                    <MaterialCommunityIcons name="check" size={15} color="#FFF" />
+                    <AppIcon name="check" size={15} color="#FFF" />
                     <Text style={[pd.btnTxt, { color: '#FFF' }]}>Onayla</Text>
                   </TouchableOpacity>
                 </>
@@ -407,14 +411,14 @@ function PayrollDetail({
                     <Text style={[pd.btnTxt, { color: C.textSecondary }]}>Taslağa Al</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={[pd.btn, { backgroundColor: C.success }]} onPress={handleMarkPaid} activeOpacity={0.85}>
-                    <MaterialCommunityIcons name="cash-check" size={15} color="#FFF" />
+                    <AppIcon name="cash-check" size={15} color="#FFF" />
                     <Text style={[pd.btnTxt, { color: '#FFF' }]}>Ödendi</Text>
                   </TouchableOpacity>
                 </>
               )}
               {payroll.status === 'odendi' && payroll.paid_at && (
                 <View style={pd.paidInfo}>
-                  <MaterialCommunityIcons name="check-circle" size={16} color={C.success} />
+                  <AppIcon name="check-circle" size={16} color={C.success} />
                   <Text style={pd.paidInfoTxt}>
                     {new Date(payroll.paid_at + 'T00:00:00').toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })} tarihinde ödendi
                   </Text>
@@ -425,7 +429,7 @@ function PayrollDetail({
         </>
       ) : (
         <View style={pd.noPayroll}>
-          <MaterialCommunityIcons name="calculator-variant-outline" size={40} color={C.textMuted} />
+          <AppIcon name="calculator-variant-outline" size={40} color={C.textMuted} />
           <Text style={pd.noPayrollTxt}>Bu dönem için bordro hesaplanmamış</Text>
           <Text style={pd.noPayrollSub}>Devam verilerinden otomatik hesaplamak için butona tıklayın</Text>
           <TouchableOpacity
@@ -437,7 +441,7 @@ function PayrollDetail({
             {calcLoading
               ? <ActivityIndicator size="small" color="#FFF" />
               : <>
-                  <MaterialCommunityIcons name="calculator-variant-outline" size={17} color="#FFF" />
+                  <AppIcon name="calculator-variant-outline" size={17} color="#FFF" />
                   <Text style={pd.calcBtnTxt}>Bordroyu Hesapla</Text>
                 </>
             }
@@ -448,7 +452,7 @@ function PayrollDetail({
       {/* Re-calculate button (when payroll exists and is draft) */}
       {payroll?.status === 'taslak' && !loading && (
         <TouchableOpacity style={pd.recalcRow} onPress={handleCalculate} disabled={calcLoading}>
-          <MaterialCommunityIcons name="refresh" size={14} color={C.textMuted} />
+          <AppIcon name="refresh" size={14} color={C.textMuted} />
           <Text style={pd.recalcTxt}>Devam verisinden yeniden hesapla</Text>
         </TouchableOpacity>
       )}
@@ -520,7 +524,7 @@ const pd = StyleSheet.create({
 function AttCell({ label, value, icon, color }: { label: string; value: string; icon: string; color: string }) {
   return (
     <View style={ac.cell}>
-      <MaterialCommunityIcons name={icon as any} size={18} color={color} />
+      <AppIcon name={icon as any} size={18} color={color} />
       <Text style={[ac.val, { color }]}>{value}</Text>
       <Text style={ac.lbl}>{label}</Text>
     </View>
@@ -575,7 +579,7 @@ function SettingsModal({ employeeId, employeeName, onClose }: {
           <Text style={sm.title}>Bordro Ayarları</Text>
           <Text style={sm.sub}>{employeeName}</Text>
           <TouchableOpacity style={sm.closeBtn} onPress={onClose}>
-            <MaterialCommunityIcons name="close" size={20} color={C.textSecondary} />
+            <AppIcon name="close" size={20} color={C.textSecondary} />
           </TouchableOpacity>
         </View>
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, gap: 16 }}>
@@ -659,7 +663,7 @@ function AddItemModal({ employeeId, period, onClose, onAdded }: {
         <View style={ai.header}>
           <Text style={ai.title}>Kalem Ekle</Text>
           <TouchableOpacity style={ai.closeBtn} onPress={onClose}>
-            <MaterialCommunityIcons name="close" size={20} color={C.textSecondary} />
+            <AppIcon name="close" size={20} color={C.textSecondary} />
           </TouchableOpacity>
         </View>
         <View style={{ padding: 20, gap: 16 }}>
@@ -757,7 +761,7 @@ function MobileEmpCard({ emp, payroll, period, accentColor, canApprove, onRefres
             <Text style={[mc.badgeTxt, { color: cfg.color }]}>{cfg.label}</Text>
           </View>
         )}
-        <MaterialCommunityIcons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={C.textMuted} />
+        <AppIcon name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={C.textMuted} />
       </TouchableOpacity>
 
       {expanded && (
@@ -856,7 +860,7 @@ const mc = StyleSheet.create({
 function EmptyState() {
   return (
     <View style={es.root}>
-      <MaterialCommunityIcons name="cash-multiple" size={52} color={C.textMuted} style={{ opacity: 0.4 }} />
+      <AppIcon name="cash-multiple" size={52} color={C.textMuted} style={{ opacity: 0.4 }} />
       <Text style={es.title}>Çalışan Seçin</Text>
       <Text style={es.sub}>Sol panelden bir çalışan seçerek bordrosunu görüntüleyin veya hesaplayın</Text>
     </View>

@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { Slot, usePathname, useRouter } from 'expo-router';
 import { useAuthStore } from '../store/authStore';
+import { usePageTitleStore } from '../store/pageTitleStore';
 import { useOrders } from '../../modules/orders/hooks/useOrders';
 import { supabase } from '../api/supabase';
 import { BlurFade } from '../ui/BlurFade';
@@ -595,8 +596,12 @@ export function DesktopShell({ navItems, accentColor = C.primary, onPressMessage
   const isDashboard = pathname === '/' || pathname === '';
   const showRight = width >= 1200 && !isDashboard;
 
-  const activeItem     = navItems.find(n => isActive(n));
-  const activeLabel    = activeItem?.label ?? 'Dashboard';
+  const activeItem        = navItems.find(n => isActive(n));
+  // Detay ekranları (örn. OrderDetail) override edebilir; yoksa nav item label'ı
+  const overrideTitle     = usePageTitleStore(s => s.title);
+  const overrideSubtitle  = usePageTitleStore(s => s.subtitle);
+  const activeLabel       = overrideTitle ?? activeItem?.label ?? 'Dashboard';
+  const activeSubtitle    = overrideTitle ? overrideSubtitle : null;
 
   return (
     <View style={s.shell}>
@@ -690,8 +695,13 @@ export function DesktopShell({ navItems, accentColor = C.primary, onPressMessage
       <View style={s.main}>
         {/* Header bar — like Overpay: title left, icons + avatar right */}
         <View style={s.header}>
-          <BlurFade key={activeLabel}>
-            <Text style={s.headerTitle}>{activeLabel}</Text>
+          <BlurFade key={activeLabel + (activeSubtitle ?? '')}>
+            <View>
+              <Text style={s.headerTitle}>{activeLabel}</Text>
+              {activeSubtitle ? (
+                <Text style={s.headerSubtitle} numberOfLines={1}>{activeSubtitle}</Text>
+              ) : null}
+            </View>
           </BlurFade>
           <View style={s.headerRight}>
             <TouchableOpacity style={s.headerIcon} onPress={() => setShowSearch(true)}>
@@ -822,17 +832,43 @@ const s = StyleSheet.create({
 
   /* ── Sidebar ── floating card */
   sidebar: {
-    backgroundColor: '#FFFFFF',
-    flexDirection: 'column',
-    paddingTop: 16,
+    // Yarı saydam beyaz → arkadaki içerik backdrop-filter ile bulanır
+    backgroundColor: 'rgba(255,255,255,0.65)',
+    flexDirection:   'column',
+    paddingTop:      16,
     borderRightWidth: 0,
-    zIndex: 100,
-    overflow: 'visible' as any,
-    margin: 12,
-    borderRadius: 20,
+    zIndex:          100,
+    overflow:        'visible' as any,
+    margin:          12,
+    borderRadius:    20,
+    // Cam kenarı (border)
+    borderWidth:     1,
+    borderColor:     'rgba(255,255,255,0.55)',
     ...Platform.select({
-      web: { boxShadow: '0 2px 16px rgba(15,23,42,0.07), 0 0 0 1px rgba(15,23,42,0.04)' } as any,
-      default: { shadowColor: '#0F172A', shadowOpacity: 0.08, shadowRadius: 20, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
+      web: {
+        // Hafif glassmorphism — daha düşük blur (perf), inset highlight'lar cam hissini korur
+        // @ts-ignore
+        backdropFilter:       'blur(8px)',
+        // @ts-ignore
+        WebkitBackdropFilter: 'blur(8px)',
+        // @ts-ignore
+        boxShadow:
+          // Dış derinlik
+          '0 8px 32px rgba(15,23,42,0.10),' +
+          ' 0 2px 8px rgba(15,23,42,0.06),' +
+          // Üst kenar gloss çizgisi (cam yansıması)
+          ' inset 0 1px 0 rgba(255,255,255,0.85),' +
+          // Sol kenar hafif parıltı
+          ' inset 1px 0 0 rgba(255,255,255,0.55)',
+      } as any,
+      default: {
+        // Native: backdrop-filter yok, klasik gölge
+        shadowColor:   '#0F172A',
+        shadowOpacity: 0.10,
+        shadowRadius:  24,
+        shadowOffset:  { width: 0, height: 6 },
+        elevation:     8,
+      },
     }),
   },
   sidebarExpanded:  { width: SIDEBAR_W },
@@ -957,20 +993,28 @@ const s = StyleSheet.create({
 
   /* ── Header bar — seamless, no divider ── */
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection:    'row',
+    alignItems:       'center',          // dikey ortalı (1 veya 2 satır title fark etmez)
+    justifyContent:   'space-between',
     paddingHorizontal: 32,
-    paddingVertical: 20,
-    backgroundColor: '#F9F9FB',
+    paddingVertical:   20,
+    minHeight:         88,                // sabit dikey alan → ortalama tutarlı
+    backgroundColor:  '#F9F9FB',
     borderBottomWidth: 0,
   },
   headerTitle: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#0F172A',
+    fontSize:      28,
+    fontWeight:    '800',
+    color:         '#0F172A',
     letterSpacing: -0.7,
-    lineHeight: 34,
+    lineHeight:    34,
+  },
+  headerSubtitle: {
+    fontSize:      13,
+    fontWeight:    '500',
+    color:         '#64748B',
+    letterSpacing: 0.1,
+    marginTop:     2,
   },
   headerRight: {
     flexDirection: 'row',

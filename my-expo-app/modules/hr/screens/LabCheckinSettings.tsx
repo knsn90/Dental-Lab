@@ -10,13 +10,14 @@ import {
   TextInput, ActivityIndicator, Alert, Platform, Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Feather from '@expo/vector-icons/Feather';
 import { BrandedQR } from '../../../core/ui/BrandedQR';
 import * as Location from 'expo-location';
 
 import { C } from '../../../core/theme/colors';
 import { F, FS } from '../../../core/theme/typography';
 import { toast } from '../../../core/ui/Toast';
+import { AppIcon } from '../../../core/ui/AppIcon';
+
 import {
   fetchLabLocation, updateLabLocation, regenerateCheckinToken,
   type LabLocation,
@@ -138,7 +139,7 @@ export function LabCheckinSettings({ accentColor = '#2563EB' }: Props) {
         {/* ── Header ── */}
         <View style={s.header}>
           <View style={[s.headerIcon, { backgroundColor: accentColor + '15' }]}>
-            <Feather name="camera" size={22} color={accentColor} />
+            <AppIcon name="camera" size={22} color={accentColor} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={s.headerTitle}>QR Check-in Ayarları</Text>
@@ -161,7 +162,7 @@ export function LabCheckinSettings({ accentColor = '#2563EB' }: Props) {
               />
             ) : (
               <View style={s.qrPlaceholder}>
-                <Feather name="alert-circle" size={32} color="#CBD5E1" />
+                <AppIcon name="alert-circle" size={32} color="#CBD5E1" />
                 <Text style={s.qrPlaceholderText}>QR token yükleniyor...</Text>
               </View>
             )}
@@ -178,7 +179,7 @@ export function LabCheckinSettings({ accentColor = '#2563EB' }: Props) {
 
           <View style={s.qrActions}>
             <TouchableOpacity style={[s.qrBtn, { borderColor: accentColor }]} onPress={shareQr}>
-              <Feather name="share-2" size={15} color={accentColor} />
+              <AppIcon name="share-2" size={15} color={accentColor} />
               <Text style={[s.qrBtnText, { color: accentColor }]}>Paylaş</Text>
             </TouchableOpacity>
 
@@ -189,7 +190,7 @@ export function LabCheckinSettings({ accentColor = '#2563EB' }: Props) {
             >
               {regen
                 ? <ActivityIndicator size="small" color="#DC2626" />
-                : <Feather name="refresh-cw" size={15} color="#DC2626" />
+                : <AppIcon name="refresh-cw" size={15} color="#DC2626" />
               }
               <Text style={[s.qrBtnText, { color: '#DC2626' }]}>Yenile</Text>
             </TouchableOpacity>
@@ -201,7 +202,7 @@ export function LabCheckinSettings({ accentColor = '#2563EB' }: Props) {
           <View style={s.cardTitleRow}>
             <Text style={s.cardTitle}>GPS Konum Kısıtlaması</Text>
             <TouchableOpacity style={s.gpsBtn} onPress={getCurrentLocation}>
-              <Feather name="crosshair" size={14} color={accentColor} />
+              <AppIcon name="crosshair" size={14} color={accentColor} />
               <Text style={[s.gpsBtnText, { color: accentColor }]}>Şu An</Text>
             </TouchableOpacity>
           </View>
@@ -252,7 +253,7 @@ export function LabCheckinSettings({ accentColor = '#2563EB' }: Props) {
 
         {/* ── Info card ── */}
         <View style={[s.infoCard, { borderLeftColor: accentColor }]}>
-          <Feather name="info" size={16} color={accentColor} style={{ marginTop: 2 }} />
+          <AppIcon name="info" size={16} color={accentColor} style={{ marginTop: 2 }} />
           <Text style={s.infoText}>
             GPS'siz check-in için çalışanın sadece QR'ı okuması yeterlidir.
             GPS etkinleştirilirse, çalışanın konum izni vermesi gerekir ve
@@ -271,7 +272,7 @@ export function LabCheckinSettings({ accentColor = '#2563EB' }: Props) {
         >
           {saving
             ? <ActivityIndicator size="small" color="#fff" />
-            : <Feather name="save" size={18} color="#fff" />
+            : <AppIcon name="save" size={18} color="#fff" />
           }
           <Text style={s.saveBtnText}>{saving ? 'Kaydediliyor...' : 'Konum Ayarlarını Kaydet'}</Text>
         </TouchableOpacity>

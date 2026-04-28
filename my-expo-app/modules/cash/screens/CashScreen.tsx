@@ -1,10 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useContext } from 'react';
+import { HubContext } from '../../../core/ui/HubContext';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   Modal, TextInput, ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { toast } from '../../../core/ui/Toast';
 
 import { useCashAccounts, useMovements } from '../hooks/useCash';
@@ -16,6 +16,8 @@ import {
   type CashAccount, type AccountType, type MovementCategory, type MovementDirection,
 } from '../api';
 import { useBreakpoint } from '../../../core/layout/Responsive';
+
+import { AppIcon } from '../../../core/ui/AppIcon';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmtMoney(n: number | null | undefined): string {
@@ -33,6 +35,8 @@ const DIRECTION_COLORS = { giris: '#047857', cikis: '#EF4444' };
 // ─── Screen ───────────────────────────────────────────────────────────────────
 export function CashScreen() {
   const { isDesktop, px, gap } = useBreakpoint();
+  const isEmbedded = useContext(HubContext);
+  const safeEdges = isEmbedded ? ([] as any) : (['top'] as any);
   const { accounts, loading, refetch } = useCashAccounts();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [addAccountOpen, setAddAccountOpen] = useState(false);
@@ -78,7 +82,7 @@ export function CashScreen() {
   };
 
   return (
-    <SafeAreaView style={s.safe} edges={['top']}>
+    <SafeAreaView style={s.safe} edges={safeEdges}>
       {/* Header */}
       <View style={[s.header, { paddingHorizontal: px }]}>
         <View style={{ flex: 1 }}>
@@ -86,7 +90,7 @@ export function CashScreen() {
           <Text style={s.subtitle}>Nakit ve banka hesap takibi</Text>
         </View>
         <TouchableOpacity style={s.addBtn} onPress={() => setAddAccountOpen(true)} activeOpacity={0.85}>
-          <MaterialCommunityIcons name={'plus' as any} size={16} color="#fff" />
+          <AppIcon name={'plus' as any} size={16} color="#fff" />
           <Text style={s.addBtnText}>Hesap Ekle</Text>
         </TouchableOpacity>
       </View>
@@ -117,7 +121,7 @@ export function CashScreen() {
             >
               {accounts.length === 0 ? (
                 <View style={s.empty}>
-                  <MaterialCommunityIcons name={'safe' as any} size={40} color="#CBD5E1" />
+                  <AppIcon name={'safe' as any} size={40} color="#CBD5E1" />
                   <Text style={s.emptyText}>Henüz hesap yok</Text>
                   <Text style={s.emptyHint}>+ Hesap Ekle butonuyla başlayın</Text>
                 </View>
@@ -147,7 +151,7 @@ export function CashScreen() {
                   onPress={() => setAddMovementOpen(true)}
                   activeOpacity={0.85}
                 >
-                  <MaterialCommunityIcons name={'plus' as any} size={14} color="#2563EB" />
+                  <AppIcon name={'plus' as any} size={14} color="#2563EB" />
                   <Text style={s.addMovBtnText}>Hareket Ekle</Text>
                 </TouchableOpacity>
               </View>
@@ -162,7 +166,7 @@ export function CashScreen() {
                 >
                   {movements.length === 0 ? (
                     <View style={s.empty}>
-                      <MaterialCommunityIcons name={'transfer' as any} size={36} color="#CBD5E1" />
+                      <AppIcon name={'transfer' as any} size={36} color="#CBD5E1" />
                       <Text style={s.emptyText}>Hareket yok</Text>
                     </View>
                   ) : movements.map(mv => (
@@ -206,7 +210,7 @@ function KpiBox({ label, value, color, icon }: { label: string; value: string; c
   return (
     <View style={[kpi.card, { flex: 1 }]}>
       <View style={[kpi.icon, { backgroundColor: color + '18' }]}>
-        <MaterialCommunityIcons name={icon as any} size={16} color={color} />
+        <AppIcon name={icon as any} size={16} color={color} />
       </View>
       <Text style={kpi.label}>{label}</Text>
       <Text style={[kpi.value, { color }]}>{value}</Text>
@@ -233,7 +237,7 @@ function AccountCard({
       activeOpacity={0.85}
     >
       <View style={[ac.iconWrap, { backgroundColor: bg }]}>
-        <MaterialCommunityIcons name={ACCOUNT_TYPE_ICONS[account.account_type] as any} size={20} color={color} />
+        <AppIcon name={ACCOUNT_TYPE_ICONS[account.account_type] as any} size={20} color={color} />
       </View>
       <View style={{ flex: 1 }}>
         <Text style={ac.name}>{account.name}</Text>
@@ -246,10 +250,10 @@ function AccountCard({
         </Text>
         <View style={{ flexDirection: 'row', gap: 6 }}>
           <TouchableOpacity onPress={onEdit} style={ac.iconBtn}>
-            <MaterialCommunityIcons name={'pencil-outline' as any} size={14} color="#64748B" />
+            <AppIcon name={'pencil-outline' as any} size={14} color="#64748B" />
           </TouchableOpacity>
           <TouchableOpacity onPress={onDelete} style={ac.iconBtn}>
-            <MaterialCommunityIcons name={'trash-can-outline' as any} size={14} color="#EF4444" />
+            <AppIcon name={'trash-can-outline' as any} size={14} color="#EF4444" />
           </TouchableOpacity>
         </View>
       </View>
@@ -266,7 +270,7 @@ function MovementRow({ movement: mv, onDelete }: { movement: any; onDelete: () =
   return (
     <View style={mr.wrap}>
       <View style={[mr.iconWrap, { backgroundColor: color + '18' }]}>
-        <MaterialCommunityIcons name={catIcon as any} size={16} color={color} />
+        <AppIcon name={catIcon as any} size={16} color={color} />
       </View>
       <View style={{ flex: 1 }}>
         <Text style={mr.desc}>{mv.description}</Text>
@@ -279,7 +283,7 @@ function MovementRow({ movement: mv, onDelete }: { movement: any; onDelete: () =
           {isIn ? '+' : '−'}{fmtMoney(mv.amount)}
         </Text>
         <TouchableOpacity onPress={onDelete} style={mr.delBtn}>
-          <MaterialCommunityIcons name={'trash-can-outline' as any} size={13} color="#CBD5E1" />
+          <AppIcon name={'trash-can-outline' as any} size={13} color="#CBD5E1" />
         </TouchableOpacity>
       </View>
     </View>
@@ -335,7 +339,7 @@ function AccountModal({
           <View style={fm.header}>
             <Text style={fm.title}>{account ? 'Hesabı Düzenle' : 'Yeni Hesap'}</Text>
             <TouchableOpacity onPress={onClose} style={fm.closeBtn}>
-              <MaterialCommunityIcons name={'close' as any} size={18} color="#94A3B8" />
+              <AppIcon name={'close' as any} size={18} color="#94A3B8" />
             </TouchableOpacity>
           </View>
 
@@ -349,7 +353,7 @@ function AccountModal({
                   style={[fm.chip, type === t && fm.chipActive]}
                   onPress={() => setType(t)}
                 >
-                  <MaterialCommunityIcons
+                  <AppIcon
                     name={ACCOUNT_TYPE_ICONS[t] as any}
                     size={14}
                     color={type === t ? '#2563EB' : '#94A3B8'}
@@ -456,7 +460,7 @@ function MovementModal({
             <Text style={fm.title}>Hareket Ekle</Text>
             <Text style={fm.headerSub}>{accountName}</Text>
             <TouchableOpacity onPress={onClose} style={fm.closeBtn}>
-              <MaterialCommunityIcons name={'close' as any} size={18} color="#94A3B8" />
+              <AppIcon name={'close' as any} size={18} color="#94A3B8" />
             </TouchableOpacity>
           </View>
 
@@ -468,7 +472,7 @@ function MovementModal({
                 style={[fm.dirBtn, direction === 'giris' && fm.dirBtnIn]}
                 onPress={() => setDirection('giris')}
               >
-                <MaterialCommunityIcons name={'arrow-down-circle-outline' as any} size={16}
+                <AppIcon name={'arrow-down-circle-outline' as any} size={16}
                   color={direction === 'giris' ? '#047857' : '#94A3B8'} />
                 <Text style={[fm.dirText, direction === 'giris' && { color: '#047857', fontWeight: '700' }]}>
                   Para Girişi
@@ -478,7 +482,7 @@ function MovementModal({
                 style={[fm.dirBtn, direction === 'cikis' && fm.dirBtnOut]}
                 onPress={() => setDirection('cikis')}
               >
-                <MaterialCommunityIcons name={'arrow-up-circle-outline' as any} size={16}
+                <AppIcon name={'arrow-up-circle-outline' as any} size={16}
                   color={direction === 'cikis' ? '#EF4444' : '#94A3B8'} />
                 <Text style={[fm.dirText, direction === 'cikis' && { color: '#EF4444', fontWeight: '700' }]}>
                   Para Çıkışı
@@ -500,7 +504,7 @@ function MovementModal({
                   style={[fm.chip, category === cat && fm.chipActive]}
                   onPress={() => setCategory(cat)}
                 >
-                  <MaterialCommunityIcons
+                  <AppIcon
                     name={MOVEMENT_CATEGORY_ICONS[cat] as any} size={12}
                     color={category === cat ? '#2563EB' : '#94A3B8'}
                   />

@@ -10,8 +10,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useAdminDashboard } from '../../modules/admin/orders/hooks';
+
+import { AppIcon } from '../../core/ui/AppIcon';
 
 // ─── Admin accent (black) ─────────────────────────────────────────────────────
 const P = '#0F172A';
@@ -77,11 +78,11 @@ function KpiCard({ icon, label, value, color, bgColor, trend }: {
     <View style={k.card}>
       <View style={k.top}>
         <View style={[k.iconBox, { backgroundColor: bgColor }]}>
-          <MaterialCommunityIcons name={icon as any} size={20} color={color} />
+          <AppIcon name={icon as any} size={20} color={color} />
         </View>
         {trend && (
           <View style={[k.trendPill, { backgroundColor: trend.startsWith('+') ? CLR.greenBg : CLR.redBg }]}>
-            <MaterialCommunityIcons
+            <AppIcon
               name={trend.startsWith('+') ? 'trending-up' : 'trending-down'}
               size={12}
               color={trend.startsWith('+') ? CLR.green : CLR.red}
@@ -123,7 +124,7 @@ function SectionHeader({ title, action, onAction }: { title: string; action?: st
       {action && (
         <TouchableOpacity onPress={onAction} style={sh.actionBtn}>
           <Text style={sh.action}>{action}</Text>
-          <MaterialCommunityIcons name="chevron-right" size={14} color={CLR.blue} />
+          <AppIcon name="chevron-right" size={14} color={CLR.blue} />
         </TouchableOpacity>
       )}
     </View>
@@ -237,7 +238,7 @@ function QuickAction({ icon, label, onPress }: { icon: string; label: string; on
   return (
     <TouchableOpacity style={qa.btn} onPress={onPress} activeOpacity={0.7}>
       <View style={qa.iconWrap}>
-        <MaterialCommunityIcons name={icon as any} size={22} color={P} />
+        <AppIcon name={icon as any} size={22} color={P} />
       </View>
       <Text style={qa.label}>{label}</Text>
     </TouchableOpacity>
@@ -284,7 +285,7 @@ export default function AdminDashboard() {
             <Text style={s.dateText}>{fmtDate()}</Text>
           </View>
           <TouchableOpacity style={s.refreshBtn} onPress={refresh} activeOpacity={0.7}>
-            <MaterialCommunityIcons name="refresh" size={16} color={P} />
+            <AppIcon name="refresh" size={16} color={P} />
           </TouchableOpacity>
         </View>
 
@@ -304,13 +305,13 @@ export default function AdminDashboard() {
                 activeOpacity={0.7}
               >
                 <View style={s.alertIcon}>
-                  <MaterialCommunityIcons name="alert-circle" size={20} color={CLR.red} />
+                  <AppIcon name="alert-circle" size={20} color={CLR.red} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={s.alertTitle}>{stats.overdueOrders} geciken sipariş</Text>
                   <Text style={s.alertSub}>Teslim tarihi geçmiş siparişler mevcut</Text>
                 </View>
-                <MaterialCommunityIcons name="chevron-right" size={18} color="#AEAEB2" />
+                <AppIcon name="chevron-right" size={18} color="#AEAEB2" />
               </TouchableOpacity>
             )}
 

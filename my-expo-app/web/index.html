@@ -14,7 +14,14 @@
       #root { display: flex; height: 100%; flex: 1; }
     </style>
 
-    <!-- MaterialCommunityIcons font – loaded before any JS renders -->
+    <!-- ── Google Fonts preconnect ──────────────────────────────────── -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <!-- ── Outfit (metin fontu) ──────────────────────────────────────── -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+    <!-- ── MaterialCommunityIcons (ikon fontu — expo-font tarafından da yüklenir) -->
     <style>
       @font-face {
         font-family: 'Material Design Icons';
@@ -22,6 +29,19 @@
         font-weight: normal;
         font-style: normal;
         font-display: block;
+      }
+    </style>
+
+    <!-- ── Temel tipografi ────────────────────────────────────────────── -->
+    <style>
+      /* Outfit: HTML metin elementleri + RN <Text> → <div dir="auto"> */
+      html, body,
+      input, textarea, select, button, label, a {
+        font-family: 'Outfit', system-ui, -apple-system, sans-serif;
+      }
+      /* !important KULLANMA — ikon fontlarının inline fontFamily'si ezerek çalışır */
+      [dir="auto"]:not([aria-hidden="true"]):not([role="img"]) {
+        font-family: 'Outfit', system-ui, -apple-system, sans-serif;
       }
     </style>
 
