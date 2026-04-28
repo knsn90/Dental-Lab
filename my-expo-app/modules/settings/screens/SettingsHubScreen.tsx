@@ -25,7 +25,17 @@ const TABS: { key: TabKey; label: string; icon: string; accent: string; bg: stri
 ];
 
 // ─── Component ────────────────────────────────────────────────────────────────
-export function SettingsHubScreen() {
+export interface SettingsHubScreenProps {
+  panelType?:    'lab' | 'admin' | 'doctor' | 'clinic';
+  panelLabel?:   string;
+  defaultAccent?: string;
+}
+
+export function SettingsHubScreen({
+  panelType    = 'lab',
+  panelLabel   = 'Laboratuvar',
+  defaultAccent = '#7C3AED',
+}: SettingsHubScreenProps = {}) {
   const insets = useSafeAreaInsets();
   const [activeKey, setActiveKey] = useState<TabKey>('users');
 
@@ -82,9 +92,9 @@ export function SettingsHubScreen() {
           {activeKey === 'settings' && (
             <SettingsScreen
               config={{
-                panelType: 'lab',
-                panelLabel: 'Laboratuvar',
-                defaultAccent: '#7C3AED',
+                panelType,
+                panelLabel,
+                defaultAccent,
               }}
               onBack={() => {}}
             />
