@@ -135,18 +135,11 @@ export function ToothNumberPicker({
   const hasQ3 = selected.some(t => t >= 31 && t <= 38);
   const hasQ4 = selected.some(t => t >= 41 && t <= 48);
 
-  // SOL tarafa kırp = Q1 (upper) veya Q4 (lower) seçili
-  // SAĞ tarafa kırp = Q2 (upper) veya Q3 (lower) seçili
-  const onlyLeft =
-    hideEmptyJaw && (
-      (jawMode === 'upper' && hasQ1 && !hasQ2) ||
-      (jawMode === 'lower' && hasQ4 && !hasQ3)
-    );
-  const onlyRight =
-    hideEmptyJaw && (
-      (jawMode === 'upper' && !hasQ1 && hasQ2) ||
-      (jawMode === 'lower' && !hasQ4 && hasQ3)
-    );
+  // Çeyrek-çene kırpması devre dışı — yalnızca yarı çene (üst/alt) gösterilir.
+  // Tek kadranda iş olsa bile boş kadran açıkta tutulur, görsel olarak yarı çene.
+  const onlyLeft  = false;
+  const onlyRight = false;
+  void hasQ1; void hasQ2; void hasQ3; void hasQ4;
 
   const activeVB = jawMode === 'upper' ? UPPER_VB
                  : jawMode === 'lower' ? LOWER_VB

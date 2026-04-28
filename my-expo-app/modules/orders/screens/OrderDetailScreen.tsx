@@ -880,7 +880,7 @@ export function OrderDetailScreen() {
   };
 
   const createdDate = new Date(order.created_at).toLocaleDateString('tr-TR', {
-    day: 'numeric', month: 'short', year: 'numeric',
+    day: '2-digit', month: '2-digit', year: 'numeric',
   });
 
   // Workflow progress percentage (10%→100%)
@@ -1018,11 +1018,7 @@ export function OrderDetailScreen() {
                   <View>
                     <Text style={styles.heroTimelineLabel}>Teslim</Text>
                     <Text style={[styles.heroTimelineValue, overdue && { color: '#FCA5A5' }]}>
-                      {order.status === 'teslim_edildi'
-                        ? '✓ Teslim'
-                        : daysLeft < 0
-                          ? `${Math.abs(daysLeft)}g geçti`
-                          : `${daysLeft} gün`}
+                      {order.delivery_date ? formatDeliveryDate(order.delivery_date) : '—'}
                     </Text>
                   </View>
                 </View>
