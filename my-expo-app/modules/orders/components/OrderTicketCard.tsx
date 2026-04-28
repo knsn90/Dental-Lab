@@ -161,10 +161,25 @@ export function OrderTicketCard({
 
         {/* ─────────── META: işlem listesi + QR ─────────── */}
         <View style={s.topSection}>
-          {width >= 768 ? (
-            // Geniş ekran: QR + açıklama SOLDA, operasyon listesi SAĞDA (daha dar)
+          {width >= 1600 ? (
+            // 17"+ geniş ekran: operasyonlar SOLDA, QR + açıklama SAĞDA
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 16, flex: 1 }}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <ToothOperationsList
+                  order={order}
+                  accentColor={accentColor}
+                  colorMap={toothColorMap}
+                  machineLabel={machineLabel}
+                  measurementLabel={measurementLabel}
+                />
+              </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, maxWidth: 260 }}>
+                <View style={{ flexShrink: 1, minWidth: 0 }}>
+                  <Text style={[s.metaQrLabel, { textAlign: 'right' }]}>QR İLE AÇ</Text>
+                  <Text style={[s.metaQrHint, { textAlign: 'right' }]} numberOfLines={3}>
+                    Kameranızla okutarak iş emrini görüntüleyin.
+                  </Text>
+                </View>
                 <View style={[s.qrBlock, { width: qrSize, height: qrSize }]}>
                   <QRCode
                     value={qrUrl}
@@ -174,21 +189,6 @@ export function OrderTicketCard({
                     ecl="M"
                   />
                 </View>
-                <View style={{ flexShrink: 1, minWidth: 0 }}>
-                  <Text style={s.metaQrLabel}>QR İLE AÇ</Text>
-                  <Text style={s.metaQrHint} numberOfLines={3}>
-                    Kameranızla okutarak iş emrini görüntüleyin.
-                  </Text>
-                </View>
-              </View>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <ToothOperationsList
-                  order={order}
-                  accentColor={accentColor}
-                  colorMap={toothColorMap}
-                  machineLabel={machineLabel}
-                  measurementLabel={measurementLabel}
-                />
               </View>
             </View>
           ) : (
