@@ -292,15 +292,8 @@ function ToothOperationsList({ order, accentColor, colorMap, machineLabel, measu
               {/* Sol: renk şeridi */}
               <View style={[ol.colorBar, { backgroundColor: groupColor }]} />
 
-              {/* Orta: iş tipi + diş chip'leri */}
+              {/* Orta: diş chip'leri + iş tipi (tek satır, sığmazsa wrap) */}
               <View style={ol.groupBody}>
-                <View style={ol.groupHeaderRow}>
-                  <Text style={ol.workType} numberOfLines={2}>{g.workType}</Text>
-                  <Text style={[ol.countText, { color: groupColor }]}>
-                    {g.teeth.length}
-                    <Text style={ol.countSuffix}> diş</Text>
-                  </Text>
-                </View>
                 <View style={ol.toothPillRow}>
                   {g.teeth.map(t => (
                     <View
@@ -314,6 +307,11 @@ function ToothOperationsList({ order, accentColor, colorMap, machineLabel, measu
                     </View>
                   ))}
                 </View>
+                <Text style={ol.workType} numberOfLines={2}>{g.workType}</Text>
+                <Text style={[ol.countText, { color: groupColor }]}>
+                  {g.teeth.length}
+                  <Text style={ol.countSuffix}> diş</Text>
+                </Text>
               </View>
             </View>
           );
@@ -375,7 +373,10 @@ const ol = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 12,
     paddingVertical:   10,
-    gap: 6,
+    flexDirection:     'row',
+    alignItems:        'center',
+    flexWrap:          'wrap',
+    gap:               10,
   },
   groupHeaderRow: {
     flexDirection: 'row',
@@ -384,7 +385,7 @@ const ol = StyleSheet.create({
     gap:           10,
   },
   workType: {
-    flex:          1,
+    flexShrink:    1,
     fontSize:      13.5,
     fontWeight:    '800',
     fontFamily:    F.bold,
@@ -397,6 +398,7 @@ const ol = StyleSheet.create({
     fontWeight:    '800',
     fontFamily:    F.bold,
     letterSpacing: -0.2,
+    marginLeft:    'auto',
   },
   countSuffix: {
     fontSize: 10,
@@ -1257,7 +1259,7 @@ const s = StyleSheet.create({
   qrBlock: {
     alignItems:     'center',
     justifyContent: 'center',
-    overflow:       'hidden',          // scale sonrası kalan ufak kayma için
+    overflow:       'visible',
     borderRadius:   3,
   },
   detailGroup: {

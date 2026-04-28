@@ -46,28 +46,38 @@ export function BrandedQR({
   pieceShape = 'dot',
   borderRadius = 14,
 }: BrandedQRProps) {
-  // pieceSize override varsa onu kullan, yoksa size'dan hesapla
-  const pieceSize = pieceSizeOverride ?? Math.max(1, Math.floor((size - padding * 2) / 33));
+  // Integer pieceSize — qrcode-styled float ignore ediyor.
+  // QR doğal boyutu = pieceSize * matrixSize. Bu boyut size'dan küçük olur,
+  // wrap padding ile beraber tam size'a oturtulur (overflow: hidden YOK).
+  const matrixSize    = estimateMatrixSize(value, errorCorrectionLevel);
+  const innerWidth    = Math.max(1, size - padding * 2);
+  const pieceSize     = pieceSizeOverride
+    ?? Math.max(1, Math.floor(innerWidth / matrixSize));
+  const renderedQR    = pieceSize * matrixSize;
+  // Kalan boşluğu eşit padding olarak ekle — QR ortalanır, kırpılmaz.
+  const slack         = Math.max(0, innerWidth - renderedQR);
+  const effectivePad  = padding + slack / 2;
 
   const isDot = pieceShape === 'dot';
-  const liquidRadius = isDot ? Math.max(1, Math.floor(pieceSize / 2)) : 1;
 
   return (
-    <View style={[styles.wrap, { backgroundColor, padding, borderRadius }]}>
+    <View style={[
+      styles.wrap,
+      { width: size, height: size, backgroundColor, padding: effectivePad, borderRadius },
+    ]}>
       <QRCodeStyled
         data={value}
         pieceSize={pieceSize}
         pieceCornerType="rounded"
-        pieceLiquidRadius={liquidRadius}
-        // Finder patterns (dış kareler) — yuvarlak köşe
+        pieceBorderRadius={isDot ? pieceSize / 2 : Math.max(1, pieceSize * 0.25)}
+        pieceScale={isDot ? 0.92 : 1}
         outerEyesOptions={{
-          topLeft:    { borderRadius: [12, 12, 2, 12] },
-          topRight:   { borderRadius: [12, 12, 12, 2] },
-          bottomLeft: { borderRadius: [12, 2, 12, 12] },
+          topLeft:    { borderRadius: pieceSize * 1.5 },
+          topRight:   { borderRadius: pieceSize * 1.5 },
+          bottomLeft: { borderRadius: pieceSize * 1.5 },
         }}
-        // Finder patterns (iç nokta) — daha yumuşak yuvarlak
         innerEyesOptions={{
-          borderRadius: 4,
+          borderRadius: pieceSize,
         }}
         color={color}
         errorCorrectionLevel={errorCorrectionLevel}
@@ -80,11 +90,27 @@ const styles = StyleSheet.create({
   wrap: {
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
-    ...(Platform.OS === 'web'
-      ? ({ display: 'inline-block' } as any)
-      : {}),
+    overflow: 'visible',
   },
 });
 
 export default BrandedQR;
+
+// QR sürümünün byte kapasitesi (ECL bazında) — version 1..10 (21..57 modül)
+// Her sürümün matrix size'ı: 17 + version * 4
+const QR_BYTE_CAPACITY: Record<'L' | 'M' | 'Q' | 'H', number[]> = {
+  L: [17, 32, 53, 78, 106, 134, 154, 192, 230, 271],
+  M: [14, 26, 42, 62,  84, 106, 122, 152, 180, 213],
+  Q: [11, 20, 32, 46,  60,  74,  86, 108, 130, 151],
+  H: [ 7, 14, 24, 34,  44,  58,  64,  84,  98, 119],
+};
+
+function estimateMatrixSize(value: string, ecl: 'L' | 'M' | 'Q' | 'H'): number {
+  const bytes = new TextEncoder().encode(value).length;
+  const caps = QR_BYTE_CAPACITY[ecl];
+  for (let v = 0; v < caps.length; v++) {
+    if (bytes <= caps[v]) return 17 + (v + 1) * 4;
+  }
+  // Çok uzun veri için emniyetli üst sınır — version 20
+  return 17 + 20 * 4;
+}
