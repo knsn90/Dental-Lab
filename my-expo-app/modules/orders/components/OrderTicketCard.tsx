@@ -161,32 +161,65 @@ export function OrderTicketCard({
 
         {/* ─────────── META: işlem listesi + QR ─────────── */}
         <View style={s.topSection}>
-          <View style={s.metaCol}>
-            <ToothOperationsList
-              order={order}
-              accentColor={accentColor}
-              colorMap={toothColorMap}
-              machineLabel={machineLabel}
-              measurementLabel={measurementLabel}
-            />
-            <View style={s.metaQrRow}>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={s.metaQrLabel}>QR İLE AÇ</Text>
-                <Text style={s.metaQrHint} numberOfLines={2}>
-                  Kameranızla okutarak iş emrini görüntüleyin.
-                </Text>
+          {width >= 768 ? (
+            // Geniş ekran: QR + açıklama SOLDA, operasyon listesi SAĞDA (daha dar)
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 16, flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, maxWidth: 260 }}>
+                <View style={[s.qrBlock, { width: qrSize, height: qrSize }]}>
+                  <QRCode
+                    value={qrUrl}
+                    size={qrSize}
+                    color="#0F172A"
+                    backgroundColor="#FFFFFF"
+                    ecl="M"
+                  />
+                </View>
+                <View style={{ flexShrink: 1, minWidth: 0 }}>
+                  <Text style={s.metaQrLabel}>QR İLE AÇ</Text>
+                  <Text style={s.metaQrHint} numberOfLines={3}>
+                    Kameranızla okutarak iş emrini görüntüleyin.
+                  </Text>
+                </View>
               </View>
-              <View style={[s.qrBlock, { width: qrSize, height: qrSize }]}>
-                <QRCode
-                  value={qrUrl}
-                  size={qrSize}
-                  color="#0F172A"
-                  backgroundColor="#FFFFFF"
-                  ecl="M"
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <ToothOperationsList
+                  order={order}
+                  accentColor={accentColor}
+                  colorMap={toothColorMap}
+                  machineLabel={machineLabel}
+                  measurementLabel={measurementLabel}
                 />
               </View>
             </View>
-          </View>
+          ) : (
+            // Küçük ekran: önceki düzen (operasyon listesi üstte, QR altta)
+            <View style={s.metaCol}>
+              <ToothOperationsList
+                order={order}
+                accentColor={accentColor}
+                colorMap={toothColorMap}
+                machineLabel={machineLabel}
+                measurementLabel={measurementLabel}
+              />
+              <View style={s.metaQrRow}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={s.metaQrLabel}>QR İLE AÇ</Text>
+                  <Text style={s.metaQrHint} numberOfLines={2}>
+                    Kameranızla okutarak iş emrini görüntüleyin.
+                  </Text>
+                </View>
+                <View style={[s.qrBlock, { width: qrSize, height: qrSize }]}>
+                  <QRCode
+                    value={qrUrl}
+                    size={qrSize}
+                    color="#0F172A"
+                    backgroundColor="#FFFFFF"
+                    ecl="M"
+                  />
+                </View>
+              </View>
+            </View>
+          )}
         </View>
 
         {/* ─────────── NOTLAR (varsa) ─────────── */}
