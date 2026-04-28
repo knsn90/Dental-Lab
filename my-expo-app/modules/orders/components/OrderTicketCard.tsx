@@ -46,6 +46,16 @@ export function OrderTicketCard({
 }: Props) {
   const { width } = useWindowDimensions();
 
+  // UI scale — büyük ekranlarda font/spacing/QR orantılı büyür.
+  // Breakpoints: <1280 → 1.0, 1280-1599 → 1.1, 1600-1999 → 1.22, 2000+ → 1.35
+  const uiScale = width >= 2000 ? 1.35
+                : width >= 1600 ? 1.22
+                : width >= 1280 ? 1.1
+                : 1;
+
+  // QR boyutu da scale'le orantılı büyür
+  const scaledQrSize = Math.round(qrSize * uiScale);
+
   // Satırın ölçülen genişliği — chart'ı sınırlamak için (feedback loop önler)
   const [rowW, setRowW] = React.useState<number | null>(null);
 
@@ -160,12 +170,12 @@ export function OrderTicketCard({
         )}
 
         {/* ─────────── META: işlem listesi + QR ─────────── */}
-        <View style={s.topSection}>
-          {(rowW ?? 0) >= 900 ? (
+        <View style={[s.topSection, { paddingHorizontal: 16 * uiScale, paddingVertical: 16 * uiScale, gap: 12 * uiScale }]}>
+          {(rowW ?? 0) >= 520 ? (
             // 17"+ geniş ekran: operasyonlar SOLDA, QR + açıklama SAĞDA
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 16, flex: 1 }}>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <ToothOperationsList
+                <ToothOperationsList uiScale={uiScale}
                   order={order}
                   accentColor={accentColor}
                   colorMap={toothColorMap}
@@ -173,45 +183,31 @@ export function OrderTicketCard({
                   measurementLabel={measurementLabel}
                 />
               </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, maxWidth: 260 }}>
-                <View style={{ flexShrink: 1, minWidth: 0 }}>
-                  <Text style={[s.metaQrLabel, { textAlign: 'right' }]}>QR İLE AÇ</Text>
-                  <Text style={[s.metaQrHint, { textAlign: 'right' }]} numberOfLines={3}>
-                    Kameranızla okutarak iş emrini görüntüleyin.
-                  </Text>
-                </View>
-                <View style={[s.qrBlock, { width: qrSize, height: qrSize }]}>
-                  <QRCode
-                    value={qrUrl}
-                    size={qrSize}
-                    color="#0F172A"
-                    backgroundColor="#FFFFFF"
-                    ecl="M"
-                  />
-                </View>
+              <View style={[s.qrBlock, { width: scaledQrSize, height: scaledQrSize }]}>
+                <QRCode
+                  value={qrUrl}
+                  size={scaledQrSize}
+                  color="#0F172A"
+                  backgroundColor="#FFFFFF"
+                  ecl="M"
+                />
               </View>
             </View>
           ) : (
             // Küçük ekran: önceki düzen (operasyon listesi üstte, QR altta)
             <View style={s.metaCol}>
-              <ToothOperationsList
+              <ToothOperationsList uiScale={uiScale}
                 order={order}
                 accentColor={accentColor}
                 colorMap={toothColorMap}
                 machineLabel={machineLabel}
                 measurementLabel={measurementLabel}
               />
-              <View style={s.metaQrRow}>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={s.metaQrLabel}>QR İLE AÇ</Text>
-                  <Text style={s.metaQrHint} numberOfLines={2}>
-                    Kameranızla okutarak iş emrini görüntüleyin.
-                  </Text>
-                </View>
-                <View style={[s.qrBlock, { width: qrSize, height: qrSize }]}>
+              <View style={[s.metaQrRow, { justifyContent: 'flex-end' }]}>
+                <View style={[s.qrBlock, { width: scaledQrSize, height: scaledQrSize }]}>
                   <QRCode
                     value={qrUrl}
-                    size={qrSize}
+                    size={scaledQrSize}
                     color="#0F172A"
                     backgroundColor="#FFFFFF"
                     ecl="M"
@@ -244,8 +240,9 @@ interface ToothOperationsListProps {
   colorMap?:        Record<number, string>;
   machineLabel:     string | null;
   measurementLabel: string | null;
+  uiScale?:         number;
 }
-function ToothOperationsList({ order, accentColor, colorMap, machineLabel, measurementLabel }: ToothOperationsListProps) {
+function ToothOperationsList({ order, accentColor, colorMap, machineLabel, measurementLabel, uiScale = 1 }: ToothOperationsListProps) {
   const { width: screenW } = useWindowDimensions();
   const allowWrap = screenW < 768;
   // tooth_numbers DB'de form sırasıyla saklanmış (NewOrder handleSubmit: ops.map → tooth)
@@ -328,24 +325,35 @@ function ToothOperationsList({ order, accentColor, colorMap, machineLabel, measu
               <View style={[ol.colorBar, { backgroundColor: groupColor }]} />
 
               {/* Orta: diş chip'leri + iş tipi (tek satır; küçük ekranda wrap) */}
-              <View style={[ol.groupBody, { flexWrap: allowWrap ? 'wrap' : 'nowrap' }]}>
-                <View style={ol.toothPillRow}>
+              <View style={[ol.groupBody, {
+                flexWrap: allowWrap ? 'wrap' : 'nowrap',
+                paddingVertical: 10 * uiScale,
+                paddingHorizontal: 12 * uiScale,
+                gap: 10 * uiScale,
+              }]}>
+                <View style={[ol.toothPillRow, { gap: 4 * uiScale }]}>
                   {g.teeth.map(t => (
                     <View
                       key={t}
                       style={[
                         ol.toothPill,
-                        { backgroundColor: groupColor + '14', borderColor: groupColor + '40' },
+                        {
+                          backgroundColor: groupColor + '14',
+                          borderColor: groupColor + '40',
+                          minWidth: 28 * uiScale,
+                          paddingHorizontal: 7 * uiScale,
+                          paddingVertical: 2 * uiScale,
+                        },
                       ]}
                     >
-                      <Text style={[ol.toothPillText, { color: groupColor }]}>{t}</Text>
+                      <Text style={[ol.toothPillText, { color: groupColor, fontSize: 11 * uiScale }]}>{t}</Text>
                     </View>
                   ))}
                 </View>
-                <Text style={ol.workType} numberOfLines={2}>{g.workType}</Text>
-                <Text style={[ol.countText, { color: groupColor }]}>
+                <Text style={[ol.workType, { fontSize: 13.5 * uiScale, lineHeight: 17 * uiScale }]} numberOfLines={2}>{g.workType}</Text>
+                <Text style={[ol.countText, { color: groupColor, fontSize: 13 * uiScale }]}>
                   {g.teeth.length}
-                  <Text style={ol.countSuffix}> diş</Text>
+                  <Text style={[ol.countSuffix, { fontSize: 10 * uiScale }]}> diş</Text>
                 </Text>
               </View>
             </View>
