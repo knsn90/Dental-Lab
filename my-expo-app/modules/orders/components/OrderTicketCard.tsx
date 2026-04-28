@@ -213,6 +213,8 @@ interface ToothOperationsListProps {
   measurementLabel: string | null;
 }
 function ToothOperationsList({ order, accentColor, colorMap, machineLabel, measurementLabel }: ToothOperationsListProps) {
+  const { width: screenW } = useWindowDimensions();
+  const allowWrap = screenW < 768;
   // tooth_numbers DB'de form sırasıyla saklanmış (NewOrder handleSubmit: ops.map → tooth)
   // work_type ise virgülle birleştirilmiş — i-th tooth ↔ i-th work_type
   const teethRaw = order.tooth_numbers ?? [];
@@ -292,8 +294,8 @@ function ToothOperationsList({ order, accentColor, colorMap, machineLabel, measu
               {/* Sol: renk şeridi */}
               <View style={[ol.colorBar, { backgroundColor: groupColor }]} />
 
-              {/* Orta: diş chip'leri + iş tipi (tek satır, sığmazsa wrap) */}
-              <View style={ol.groupBody}>
+              {/* Orta: diş chip'leri + iş tipi (tek satır; küçük ekranda wrap) */}
+              <View style={[ol.groupBody, { flexWrap: allowWrap ? 'wrap' : 'nowrap' }]}>
                 <View style={ol.toothPillRow}>
                   {g.teeth.map(t => (
                     <View
