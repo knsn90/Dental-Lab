@@ -146,6 +146,11 @@ export interface ClinicBalance {
   balance: number;                   // = total_billed - total_paid
   overdue_amount: number;
   oldest_overdue_date: string | null;
+  // Aging buckets (migration 063) — null geriye uyumlu
+  aging_current?: number;            // vadesi gelmemiş
+  aging_30?: number;                 // 1–30 gün gecikmiş
+  aging_60?: number;                 // 31–60 gün gecikmiş
+  aging_90?: number;                 // 61+ gün gecikmiş
 }
 
 // ─── Form / Create parametreleri ───────────────────────────────────────────

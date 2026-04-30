@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { supabase } from '../../../core/api/supabase';
 import { C } from '../../../core/theme/colors';
+import { Shadows, CardSpec } from '../../../core/theme/shadows';
 import { AppIcon } from '../../../core/ui/AppIcon';
 import { AppSwitch } from '../../../core/ui/AppSwitch';
 import { SlideTabBar } from '../../../core/ui/SlideTabBar';
@@ -263,6 +264,7 @@ function CustomTab() {
   const [clinics, setClinics]         = useState<Clinic[]>([]);
   const [services, setServices]       = useState<LabService[]>([]);
   const [overrides, setOverrides]     = useState<PriceOverride[]>([]);
+  const [overrideCounts, setOverrideCounts] = useState<Record<string, number>>({});
   const [selectedClinic, setSelected] = useState<Clinic | null>(null);
   const [loading, setLoading]         = useState(true);
   const [editModal, setEditModal]     = useState(false);
@@ -272,12 +274,19 @@ function CustomTab() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [{ data: cl }, { data: sv }] = await Promise.all([
+    const [{ data: cl }, { data: sv }, { data: oc }] = await Promise.all([
       fetchClinics(),
       fetchAllLabServices(),
+      supabase.from('clinic_price_overrides').select('clinic_id'),
     ]);
     setClinics((cl as Clinic[]) ?? []);
     setServices((sv as LabService[]) ?? []);
+    // Group overrides by clinic_id for badge counts
+    const counts: Record<string, number> = {};
+    (oc as { clinic_id: string }[] | null)?.forEach((row) => {
+      counts[row.clinic_id] = (counts[row.clinic_id] ?? 0) + 1;
+    });
+    setOverrideCounts(counts);
     setLoading(false);
   }, []);
 
@@ -319,14 +328,19 @@ function CustomTab() {
       currency:         'TRY',
       notes:            oForm.notes || null,
     };
+    let isNew = false;
     if (existing) {
       await supabase.from('clinic_price_overrides').update(payload).eq('id', existing.id);
     } else {
       await supabase.from('clinic_price_overrides').insert(payload);
+      isNew = true;
     }
     setSaving(false);
     setEditModal(false);
     loadOverrides(selectedClinic.id);
+    if (isNew) {
+      setOverrideCounts(prev => ({ ...prev, [selectedClinic.id]: (prev[selectedClinic.id] ?? 0) + 1 }));
+    }
   };
 
   const handleDeleteOverride = async () => {
@@ -336,6 +350,7 @@ function CustomTab() {
     await supabase.from('clinic_price_overrides').delete().eq('id', existing.id);
     setEditModal(false);
     loadOverrides(selectedClinic.id);
+    setOverrideCounts(prev => ({ ...prev, [selectedClinic.id]: Math.max(0, (prev[selectedClinic.id] ?? 1) - 1) }));
   };
 
   const getEffectivePrice = (sv: LabService, override?: PriceOverride) => {
@@ -370,7 +385,7 @@ function CustomTab() {
             </View>
           ) : (
             clinics.map((c) => {
-              const overrideCount = 0; // would need pre-fetching
+              const overrideCount = overrideCounts[c.id] ?? 0;
               return (
                 <TouchableOpacity key={c.id} style={s.clinicCard} onPress={() => selectClinic(c)} activeOpacity={0.8}>
                   <View style={s.clinicIcon}>
@@ -382,6 +397,11 @@ function CustomTab() {
                       <Text style={s.clinicSub}>{c.contact_person}</Text>
                     )}
                   </View>
+                  {overrideCount > 0 && (
+                    <View style={s.overrideBadge}>
+                      <Text style={s.overrideBadgeText}>{overrideCount}</Text>
+                    </View>
+                  )}
                   <AppIcon name="chevron-right" size={16} color="#94A3B8" />
                 </TouchableOpacity>
               );
@@ -968,7 +988,7 @@ function ServiceModal({
 // Styles
 // ────────────────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#F8FAFC' },
+  root: { flex: 1, backgroundColor: CardSpec.pageBg },
 
   tabBar: {
     backgroundColor: '#FFFFFF',
@@ -1053,9 +1073,10 @@ const s = StyleSheet.create({
   // Clinic list
   clinicCard: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: '#FFFFFF', borderRadius: 14,
-    borderWidth: 1, borderColor: '#E2E8F0',
+    backgroundColor: CardSpec.bg, borderRadius: CardSpec.radius,
+    borderWidth: 1, borderColor: CardSpec.border,
     padding: 14, marginBottom: 10,
+    ...Shadows.card,
   },
   clinicIcon: {
     width: 40, height: 40, borderRadius: 10,
@@ -1110,9 +1131,10 @@ const s = StyleSheet.create({
 
   // Promo card
   promoCard: {
-    backgroundColor: '#FFFFFF', borderRadius: 16,
-    borderWidth: 1, borderColor: '#E2E8F0',
+    backgroundColor: CardSpec.bg, borderRadius: CardSpec.radius,
+    borderWidth: 1, borderColor: CardSpec.border,
     padding: 16, marginBottom: 12,
+    ...Shadows.card,
   },
   promoTop: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 12 },
   discountCircle: {

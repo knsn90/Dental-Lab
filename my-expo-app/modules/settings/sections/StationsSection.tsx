@@ -853,6 +853,17 @@ export function StationsSection() {
       }
     } else {
       const maxHint = stations.reduce((m, s) => Math.max(m, s.sequence_hint), 0);
+      // ── Debug: insert öncesi durum bilgisi ─────────────────────────────
+      // FK error varsa labId ve profile durumu konsola dökülür.
+      console.log('[StationsSection.insert] payload:', {
+        lab_profile_id: labId,
+        profile_user_type: profile?.user_type,
+        profile_role: profile?.role,
+        profile_id: profile?.id,
+        profile_lab_id: profile?.lab_id,
+        profile_email: profile?.email,
+      });
+
       const { error } = await supabase.from('lab_stations').insert({
         lab_profile_id: labId,
         name:           data.name,
@@ -865,7 +876,13 @@ export function StationsSection() {
 
       setSaving(false);
       if (error) {
-        toast.error('Ekleme hatası: ' + error.message);
+        console.error('[StationsSection.insert] error:', error);
+        // FK hatası → labId profiles'da yok demektir
+        const isFK = error.message.includes('lab_profile_id_fkey');
+        const detail = isFK
+          ? `\n\nlab_profile_id "${labId}" profiles tablosunda yok.\nuser_type=${profile?.user_type}, lab_id=${profile?.lab_id ?? 'null'}`
+          : '';
+        toast.error('Ekleme hatası: ' + error.message + detail);
       } else {
         toast.success('İstasyon eklendi ✓');
         setFormVisible(false);

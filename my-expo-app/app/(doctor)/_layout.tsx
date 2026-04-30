@@ -48,6 +48,7 @@ export default function DoctorLayout() {
           navItems={DOCTOR_NAV}
           accentColor={accentColor}
           onPressMessages={() => setMessagesOpen(true)}
+          panelType="doctor"
         />
         <MessagesPopup
           visible={messagesOpen}

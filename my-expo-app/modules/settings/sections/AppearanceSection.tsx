@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
+  Platform,
 } from 'react-native';
 import {
   COLOR_THEMES,
@@ -41,12 +42,15 @@ export function AppearanceSection({ panelType, accentColor, defaultAccent }: Pro
       showsVerticalScrollIndicator={false}
     >
       {/* ── Renk Teması ────────────────────────────────────────────── */}
-      <Text style={s.sectionTitle}>Renk Teması</Text>
-      <Text style={s.sectionSub}>
-        Panel genelinde kullanılan ana rengi seçin.
-      </Text>
+      <View style={s.card}>
+        <View style={s.cardHead}>
+          <Text style={s.cardTitle}>Renk Teması</Text>
+          <Text style={s.cardSub}>
+            Panel genelinde kullanılan ana rengi seçin.
+          </Text>
+        </View>
 
-      <View style={s.themeGrid}>
+        <View style={s.themeGrid}>
         {COLOR_THEMES.map((theme) => {
           const active = currentTheme.key === theme.key;
           return (
@@ -78,15 +82,19 @@ export function AppearanceSection({ panelType, accentColor, defaultAccent }: Pro
             </TouchableOpacity>
           );
         })}
+        </View>
       </View>
 
       {/* ── Yazı Boyutu ────────────────────────────────────────────── */}
-      <Text style={[s.sectionTitle, { marginTop: 28 }]}>Yazı Boyutu</Text>
-      <Text style={s.sectionSub}>
-        Tüm uygulama bu ölçeğe göre boyutlandırılır.
-      </Text>
+      <View style={[s.card, { marginTop: 14 }]}>
+        <View style={s.cardHead}>
+          <Text style={s.cardTitle}>Yazı Boyutu</Text>
+          <Text style={s.cardSub}>
+            Tüm uygulama bu ölçeğe göre boyutlandırılır.
+          </Text>
+        </View>
 
-      <View style={s.sizeRow}>
+        <View style={s.sizeRow}>
         {FONT_SIZE_OPTIONS.map((opt) => {
           const active = selectedFontSize.key === opt.key;
           return (
@@ -113,50 +121,63 @@ export function AppearanceSection({ panelType, accentColor, defaultAccent }: Pro
             </TouchableOpacity>
           );
         })}
+        </View>
       </View>
     </ScrollView>
   );
 }
 
+const CARD_SHADOW = Platform.select({
+  web:     { boxShadow: '0 8px 24px rgba(0,0,0,0.15)' } as any,
+  default: { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 4 },
+});
+
 const s = StyleSheet.create({
   container: {
-    padding: 28,
-    paddingBottom: 48,
+    padding: 0,
+    paddingBottom: 24,
+    gap: 14,
   },
-  sectionTitle: {
+
+  // ── Card (Cards Design System) ──────────────────────────────────────────
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.95)',
+    padding: 16,
+    gap: 14,
+    ...CARD_SHADOW,
+  },
+  cardHead: { gap: 4 },
+  cardTitle: {
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#0F172A',
-    marginBottom: 4,
+    letterSpacing: -0.3,
   },
-  sectionSub: {
-    fontSize: 13,
+  cardSub: {
+    fontSize: 12,
     color: '#64748B',
-    marginBottom: 16,
-    lineHeight: 19,
+    lineHeight: 17,
   },
 
   // ── Theme grid ──────────────────────────────────────────────────────────
   themeGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: 10,
   },
   themeCard: {
-    width: 'calc(33.33% - 8px)' as any,
+    width: 'calc(33.33% - 7px)' as any,
     minWidth: 140,
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#F8FAFC',
     borderRadius: 12,
     borderWidth: 1.5,
-    borderColor: '#E8EDF4',
-    padding: 14,
+    borderColor: 'transparent',
+    padding: 12,
     position: 'relative',
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
   },
   swatchRow: {
     flexDirection: 'row',
@@ -187,18 +208,14 @@ const s = StyleSheet.create({
   },
   sizeCard: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#F8FAFC',
     borderRadius: 12,
     borderWidth: 1.5,
-    borderColor: '#E8EDF4',
+    borderColor: 'transparent',
     paddingVertical: 14,
     paddingHorizontal: 8,
     alignItems: 'center',
     position: 'relative',
-    shadowColor: '#000',
-    shadowOpacity: 0.03,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
   },
   sizePreview: { fontWeight: '700', marginBottom: 6 },
   sizeLabel:   { fontSize: 11, textAlign: 'center' },

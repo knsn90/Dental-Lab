@@ -1,2 +1,3 @@
 // app/(station)/index.tsx
-export { StationDashboardScreen as default } from '../../modules/station/screens/StationDashboardScreen';
+// Operator (teknisyen) ana ekranı — assigned jobs only.
+export { OperatorScreen as default } from '../../modules/orders/screens/OperatorScreen';

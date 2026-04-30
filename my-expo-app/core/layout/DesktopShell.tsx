@@ -1,3 +1,19 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// "Cards" Design System
+// ─────────────────────────────────────────────────────────────────────────────
+//   Bu uygulamadaki tüm görsel dilin adı: "Cards".
+//
+//   Temel öğeler:
+//     • Background              — sade gri (#F1F5F9)
+//     • Beyaz kartlar            — bg #FFFFFF, ince saydam border
+//     • İnce border              — rgba(255,255,255,0.95)
+//     • Yumuşak iç gloss         — inset 0 1px 0 rgba(255,255,255,0.85)
+//     • ⭐ STANDART KART GÖLGESİ  — `0 8px 24px rgba(0,0,0,0.15)`
+//                                  (X=0, Y=8, blur=24, alpha=15%, color=#000)
+//                                  Tüm kartlarda (sidebar, ticket, list, vs.)
+//                                  bu gölge kullanılır.
+//     • Sidebar köşeler          — açık 16, kapalı 9999 (pill)
+// ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -20,6 +36,7 @@ import { supabase } from '../api/supabase';
 import { BlurFade } from '../ui/BlurFade';
 
 import { AppIcon } from '../ui/AppIcon';
+import { NotificationPopover } from '../ui/NotificationPopover';
 
 // ─── Tokens ───────────────────────────────────────────────────────────────────
 const C = {
@@ -43,8 +60,8 @@ const C = {
 
 const SIDEBAR_W            = 228;
 const SIDEBAR_COLLAPSED_W  = 64;
-const RIGHT_W              = 272;
-const TOGGLE_W             = 32;
+const RIGHT_W              = 320;
+const TOGGLE_W             = 24;
 
 const AUTO_HIDE_PATHS = ['/new-order', '/orders/new'];
 
@@ -73,6 +90,8 @@ interface Props {
   messagesUnreadCount?: number;
   /** Bildirim (zil) ikonundaki badge sayısı */
   notificationsCount?: number;
+  /** Panel teması — background gradient renklerini belirler (default: lab=gri) */
+  panelType?: 'lab' | 'admin' | 'doctor' | 'clinic_admin';
 }
 
 // ─── Shared icon badge ────────────────────────────────────────────────────────
@@ -90,12 +109,43 @@ function getInitials(name?: string | null) {
   return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 }
 
-function NavIcon({ item, active, accentColor }: { item: NavItem; active: boolean; accentColor: string }) {
+function NavIcon({
+  item, active, accentColor, showBadge,
+}: { item: NavItem; active: boolean; accentColor: string; showBadge?: boolean }) {
   const iconColor = active ? accentColor : '#94A3B8';
-  if (item.iconName) {
-    return <AppIcon name={item.iconName} size={20} color={iconColor} strokeWidth={1.75} />;
-  }
-  return <Text style={{ fontSize: 17, opacity: active ? 1 : 0.5, width: 22, textAlign: 'center' }}>{item.emoji}</Text>;
+  const badgeNum  = item.badgeCount;
+  const badgeDot  = !badgeNum && item.badge;
+
+  return (
+    <View style={{ position: 'relative' }}>
+      {item.iconName ? (
+        <AppIcon name={item.iconName} size={20} color={iconColor} strokeWidth={1.75} />
+      ) : (
+        <Text style={{ fontSize: 17, opacity: active ? 1 : 0.5, width: 22, textAlign: 'center' }}>{item.emoji}</Text>
+      )}
+      {showBadge && (badgeNum || badgeDot) && (
+        <View
+          style={{
+            position: 'absolute',
+            top: -4, right: -6,
+            minWidth: badgeNum && badgeNum > 9 ? 18 : 14,
+            height: 14,
+            borderRadius: 7,
+            backgroundColor: '#DC2626',
+            paddingHorizontal: 3,
+            alignItems: 'center', justifyContent: 'center',
+            borderWidth: 1.5, borderColor: '#FFFFFF',
+          }}
+        >
+          {badgeNum ? (
+            <Text style={{ fontSize: 9, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.2 }}>
+              {badgeNum > 99 ? '99+' : badgeNum}
+            </Text>
+          ) : null}
+        </View>
+      )}
+    </View>
+  );
 }
 
 // ─── Right panel ──────────────────────────────────────────────────────────────
@@ -162,14 +212,13 @@ function RightPanel({ accentColor, profile, open, onToggle }: {
 
   return (
     <View style={[rp.panel, open ? rp.panelOpen : rp.panelClosed]}>
-      {/* Toggle strip */}
-      <TouchableOpacity onPress={onToggle} style={rp.toggleStrip} activeOpacity={0.7}>
+      {/* Toggle — hero card hizasında küçük yuvarlak buton */}
+      <TouchableOpacity onPress={onToggle} style={rp.toggleBtn} activeOpacity={0.7}>
         <AppIcon
           name={open ? 'chevron-right' : 'chevron-left' as any}
-          size={14}
-          color="#AEAEB2"
+          size={16}
+          color="#64748B"
         />
-        {!open && <Text style={rp.toggleHint}>{'İşler'}</Text>}
       </TouchableOpacity>
 
       {/* Content */}
@@ -242,35 +291,65 @@ function RightPanel({ accentColor, profile, open, onToggle }: {
 
 const rp = StyleSheet.create({
   panel: {
-    backgroundColor: '#F9F9FB',
+    backgroundColor: 'transparent',
     flexDirection: 'row',
     borderLeftWidth: 0,
+    paddingTop: 100,   // hero card hizası (header 88 + pageGrid padding 12)
   },
   panelOpen:   { width: RIGHT_W + TOGGLE_W },
-  panelClosed: { width: TOGGLE_W },
-  toggleStrip: {
-    width: TOGGLE_W,
+  panelClosed: { width: TOGGLE_W + 16 },
+  toggleBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
-    paddingTop: 20,
-    gap: 10,
-    borderRightWidth: 0,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.95)',
+    marginTop: 8,
+    marginRight: 4,
+    ...Platform.select({
+      web: {
+        // @ts-ignore
+        transform: 'translateZ(0)',
+        // @ts-ignore
+        backdropFilter:       'blur(16px)',
+        // @ts-ignore
+        WebkitBackdropFilter: 'blur(16px)',
+        // @ts-ignore
+        boxShadow:
+          '0 4px 12px rgba(15,23,42,0.06),' +
+          ' inset 0 1px 0 rgba(255,255,255,0.85)',
+      } as any,
+      default: {},
+    }),
   },
-  toggleHint: {
-    fontSize: 9, fontWeight: '700', color: '#AEAEB2',
-    letterSpacing: 1.2, textTransform: 'uppercase',
-    // @ts-ignore
-    writingMode: 'vertical-rl',
-    transform: [{ rotate: '180deg' }],
-    marginTop: 4,
-  },
-  scroll: { paddingTop: 14, paddingBottom: 32 },
+  scroll: { paddingTop: 0, paddingBottom: 12 },
 
-  /* Profile — centered card */
+  /* Profile — centered glass card */
   profileCard: {
-    marginHorizontal: 14, marginBottom: 12,
-    borderRadius: 16, backgroundColor: '#FFFFFF',
-    borderWidth: 1, borderColor: '#F1F5F9',
+    marginHorizontal: 6, marginBottom: 12,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)',
     padding: 16, alignItems: 'center', gap: 8,
+    ...Platform.select({
+      web: {
+        // @ts-ignore — GPU compositing zorla (banding fix)
+        transform: 'translateZ(0)',
+        // @ts-ignore
+        backdropFilter:       'blur(48px) saturate(220%)',
+        // @ts-ignore
+        WebkitBackdropFilter: 'blur(48px) saturate(220%)',
+        // @ts-ignore
+        boxShadow:
+          '0 8px 24px rgba(0,0,0,0.15),' +
+          ' inset 0 1px 0 rgba(255,255,255,0.85),' +
+          ' inset 1px 0 0 rgba(255,255,255,0.55)',
+      } as any,
+      default: {},
+    }),
   },
   avatar:      { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   avatarImg:   { width: 72, height: 72, borderRadius: 36 },
@@ -279,12 +358,29 @@ const rp = StyleSheet.create({
   rolePill:    { borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4 },
   roleLabel:   { fontSize: 11, fontWeight: '600' },
 
-  /* Stats — 2×2 white card */
+  /* Stats — 2×2 glass card */
   statsCard: {
-    marginHorizontal: 14, marginBottom: 12,
-    borderRadius: 16, backgroundColor: '#FFFFFF',
-    borderWidth: 1, borderColor: '#F1F5F9',
+    marginHorizontal: 6, marginBottom: 12,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)',
     overflow: 'hidden',
+    ...Platform.select({
+      web: {
+        // @ts-ignore — GPU compositing zorla (banding fix)
+        transform: 'translateZ(0)',
+        // @ts-ignore
+        backdropFilter:       'blur(48px) saturate(220%)',
+        // @ts-ignore
+        WebkitBackdropFilter: 'blur(48px) saturate(220%)',
+        // @ts-ignore
+        boxShadow:
+          '0 8px 24px rgba(0,0,0,0.15),' +
+          ' inset 0 1px 0 rgba(255,255,255,0.85),' +
+          ' inset 1px 0 0 rgba(255,255,255,0.55)',
+      } as any,
+      default: {},
+    }),
     flexDirection: 'row', flexWrap: 'wrap',
   },
   statItem:      { width: '50%', padding: 14, alignItems: 'center', gap: 3 },
@@ -301,12 +397,29 @@ const rp = StyleSheet.create({
     paddingHorizontal: 14, marginBottom: 8,
   },
 
-  /* Orders — white card */
+  /* Orders — glass card */
   ordersCard: {
-    marginHorizontal: 14,
-    borderRadius: 16, backgroundColor: '#FFFFFF',
-    borderWidth: 1, borderColor: '#F1F5F9',
+    marginHorizontal: 6,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)',
     overflow: 'hidden',
+    ...Platform.select({
+      web: {
+        // @ts-ignore — GPU compositing zorla (banding fix)
+        transform: 'translateZ(0)',
+        // @ts-ignore
+        backdropFilter:       'blur(48px) saturate(220%)',
+        // @ts-ignore
+        WebkitBackdropFilter: 'blur(48px) saturate(220%)',
+        // @ts-ignore
+        boxShadow:
+          '0 8px 24px rgba(0,0,0,0.15),' +
+          ' inset 0 1px 0 rgba(255,255,255,0.85),' +
+          ' inset 1px 0 0 rgba(255,255,255,0.55)',
+      } as any,
+      default: {},
+    }),
   },
   orderRow:       { flexDirection: 'row', alignItems: 'center', paddingRight: 12, paddingVertical: 11, gap: 10 },
   orderRowBorder: { borderBottomWidth: 1, borderBottomColor: '#F8FAFC' },
@@ -551,7 +664,7 @@ const gs = StyleSheet.create({
 });
 
 // ─── Shell ────────────────────────────────────────────────────────────────────
-export function DesktopShell({ navItems, accentColor = C.primary, onPressMessages, messagesUnreadCount = 0, notificationsCount = 0 }: Props) {
+export function DesktopShell({ navItems, accentColor = C.primary, onPressMessages, messagesUnreadCount = 0, notificationsCount = 0, panelType = 'lab' }: Props) {
   const router   = useRouter();
   const pathname = usePathname();
   const { profile, signOut } = useAuthStore();
@@ -559,6 +672,7 @@ export function DesktopShell({ navItems, accentColor = C.primary, onPressMessage
 
   const [hovered,    setHovered]    = useState<string | null>(null);
   const [showSearch, setShowSearch] = useState(false);
+  const [notifOpen, setNotifOpen]   = useState(false);
   const [navTooltip, setNavTooltip] = useState<{ label: string; y: number } | null>(null);
   const isAutoHide = AUTO_HIDE_PATHS.some(p => pathname.startsWith(p));
   const [rightOpen, setRightOpen] = useState(!isAutoHide);
@@ -600,11 +714,46 @@ export function DesktopShell({ navItems, accentColor = C.primary, onPressMessage
   // Detay ekranları (örn. OrderDetail) override edebilir; yoksa nav item label'ı
   const overrideTitle     = usePageTitleStore(s => s.title);
   const overrideSubtitle  = usePageTitleStore(s => s.subtitle);
+  const overrideActions   = usePageTitleStore(s => s.actions);
   const activeLabel       = overrideTitle ?? activeItem?.label ?? 'Dashboard';
   const activeSubtitle    = overrideTitle ? overrideSubtitle : null;
+  const activeActions     = overrideTitle ? overrideActions : null;
+
+  // ── Pastel mesh background — beyaz baskın, sönük renk lekeleri ──────────
+  // YEDEKLER:
+  //   GEOMETRIK: radial-gradient(circle 480px at 88% 8%, ...) + diagonal stripe
+  //   AURORA:    linear-gradient(115deg, transparent, rgba(...) 30%, transparent 60%) + 3 katman
+  const meshBg = Platform.OS === 'web'
+    ? (panelType === 'doctor'
+        // Hekim — pastel mint + sky + sage
+        ? 'radial-gradient(at 20% 30%, #D1FAE5 0%, transparent 22%),'
+          + ' radial-gradient(at 80% 20%, #CFFAFE 0%, transparent 22%),'
+          + ' radial-gradient(at 60% 70%, #ECFCCB 0%, transparent 22%),'
+          + ' radial-gradient(at 30% 90%, #A7F3D0 0%, transparent 22%)'
+        : panelType === 'clinic_admin'
+        // Klinik — pastel lavanta + pembe
+        ? 'radial-gradient(at 20% 30%, #E9D5FF 0%, transparent 22%),'
+          + ' radial-gradient(at 80% 20%, #FCE7F3 0%, transparent 22%),'
+          + ' radial-gradient(at 60% 70%, #DDD6FE 0%, transparent 22%),'
+          + ' radial-gradient(at 30% 90%, #FBCFE8 0%, transparent 22%)'
+        : panelType === 'admin'
+        // Admin — sade pastel gri/mavi
+        ? 'radial-gradient(at 20% 30%, #E2E8F0 0%, transparent 22%),'
+          + ' radial-gradient(at 80% 20%, #F1F5F9 0%, transparent 22%),'
+          + ' radial-gradient(at 60% 70%, #E5E7EB 0%, transparent 22%),'
+          + ' radial-gradient(at 30% 90%, #DBEAFE 0%, transparent 22%)'
+        // Lab (default) — sönük pastel: peach + sky + lavender + mint
+        : 'radial-gradient(at 20% 30%, #FFE4E1 0%, transparent 22%),'    // peach pembe
+          + ' radial-gradient(at 80% 20%, #DBEAFE 0%, transparent 22%),'  // açık mavi
+          + ' radial-gradient(at 60% 70%, #E9D5FF 0%, transparent 22%),'  // lavanta
+          + ' radial-gradient(at 30% 90%, #D1FAE5 0%, transparent 22%)')   // nane
+    : undefined;
+
+  // Sade gri arkaplan — mesh devre dışı (yedek olarak meshBg yukarıda)
+  void meshBg;
 
   return (
-    <View style={s.shell}>
+    <View style={[s.shell, ({ backgroundImage: 'none', backgroundColor: '#F1F5F9' } as any)]}>
 
       {/* ── Sidebar ── */}
       <View style={[s.sidebar, sidebarCollapsed ? s.sidebarCollapsed : s.sidebarExpanded]}>
@@ -635,7 +784,23 @@ export function DesktopShell({ navItems, accentColor = C.primary, onPressMessage
                       style={[
                         s.navItem,
                         sidebarCollapsed && s.navItemCollapsed,
-                        active && [s.navItemActive, { backgroundColor: accentColor + '15' }],
+                        active && [
+                          s.navItemActive,
+                          {
+                            // Cam-vurgu (heroBigActionBtn ile aynı dil): yumuşak diyagonal
+                            // gradient + şeffaf beyaz border + üst inset gloss + dış gölge
+                            backgroundColor: accentColor + '20',
+                            borderWidth: 1,
+                            borderColor: 'rgba(255,255,255,0.35)',
+                            // @ts-ignore
+                            backgroundImage: `linear-gradient(135deg, ${accentColor}28 0%, ${accentColor}18 50%, ${accentColor}28 100%)`,
+                            // @ts-ignore
+                            boxShadow:
+                              `0 4px 12px ${accentColor}30,` +
+                              ' inset 0 1px 0 rgba(255,255,255,0.55),' +
+                              ' inset 0 -1px 0 rgba(255,255,255,0.10)',
+                          },
+                        ],
                         !active && hover && s.navItemHover,
                       ]}
                       onPress={() => item.onPress ? item.onPress() : router.push(item.href as any)}
@@ -648,7 +813,7 @@ export function DesktopShell({ navItems, accentColor = C.primary, onPressMessage
                       {active && !sidebarCollapsed && (
                         <View style={[s.navAccentBar, { backgroundColor: accentColor }]} />
                       )}
-                      <NavIcon item={item} active={active} accentColor={accentColor} />
+                      <NavIcon item={item} active={active} accentColor={accentColor} showBadge={sidebarCollapsed} />
                       {!sidebarCollapsed && (
                         <>
                           <Text style={[s.navLabel, active && { color: accentColor, fontWeight: '700' }]}>
@@ -682,9 +847,10 @@ export function DesktopShell({ navItems, accentColor = C.primary, onPressMessage
             activeOpacity={0.7}
           >
             <AppIcon
-              name={sidebarCollapsed ? 'chevrons-right' : 'chevrons-left' as any}
-              size={15}
+              name={sidebarCollapsed ? 'chevron-right' : 'chevron-left'}
+              size={16}
               color="#94A3B8"
+              strokeWidth={2}
             />
             {!sidebarCollapsed && <Text style={s.collapseLabel}>Daralt</Text>}
           </TouchableOpacity>
@@ -696,23 +862,28 @@ export function DesktopShell({ navItems, accentColor = C.primary, onPressMessage
         {/* Header bar — like Overpay: title left, icons + avatar right */}
         <View style={s.header}>
           <BlurFade key={activeLabel + (activeSubtitle ?? '')}>
-            <View>
-              <Text style={s.headerTitle}>{activeLabel}</Text>
-              {activeSubtitle ? (
-                <Text style={s.headerSubtitle} numberOfLines={1}>{activeSubtitle}</Text>
-              ) : null}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View>
+                <Text style={s.headerTitle}>{activeLabel}</Text>
+                {activeSubtitle ? (
+                  <Text style={s.headerSubtitle} numberOfLines={1}>{activeSubtitle}</Text>
+                ) : null}
+              </View>
+              {activeActions}
             </View>
           </BlurFade>
           <View style={s.headerRight}>
             <TouchableOpacity style={s.headerIcon} onPress={() => setShowSearch(true)}>
               <AppIcon name="search" size={18} color={C.textSecondary} />
             </TouchableOpacity>
-            {/* Bildirim zili */}
+            {/* Bildirim zili — popover tetikleyici */}
             <TouchableOpacity
               style={[s.headerIcon, hovered === '__notif' && { backgroundColor: C.navHover }]}
+              onPress={() => setNotifOpen(v => !v)}
               // @ts-ignore
               onMouseEnter={() => setHovered('__notif')}
               onMouseLeave={() => setHovered(null)}
+              accessibilityLabel="Bildirimler"
             >
               <AppIcon name="bell" size={18} color={hovered === '__notif' ? accentColor : C.textSecondary} />
               <IconBadge count={notificationsCount} />
@@ -787,21 +958,23 @@ export function DesktopShell({ navItems, accentColor = C.primary, onPressMessage
       </View>
 
       {/* ── Global Search ── */}
+      {/* Bildirim popover'ı (sadece açıkken mount edilir — useOrders fetch'i tetiklemesin) */}
+      {notifOpen && (
+        <NotificationPopover
+          visible
+          onClose={() => setNotifOpen(false)}
+          anchorTop={60}
+          anchorRight={16}
+        />
+      )}
+
       <GlobalSearch
         visible={showSearch}
         onClose={() => setShowSearch(false)}
         userType={(profile as any)?.user_type ?? 'admin'}
       />
 
-      {/* ── Right panel ── */}
-      {showRight && (
-        <RightPanel
-          accentColor={accentColor}
-          profile={profile}
-          open={rightOpen}
-          onToggle={() => setRightOpen(v => !v)}
-        />
-      )}
+      {/* Right panel kaldırıldı */}
 
       {/* ── Collapsed sidebar tooltip (shell-level to avoid ScrollView clipping) ── */}
       {sidebarCollapsed && navTooltip && (
@@ -827,39 +1000,46 @@ const s = StyleSheet.create({
   shell: {
     flex: 1,
     flexDirection: 'row',
-    backgroundColor: '#F9F9FB',
+    backgroundColor: '#FFFFFF', // beyaz taban
+    ...Platform.select({
+      web: {
+        // @ts-ignore — GPU compositing zorla (subpixel banding fix)
+        transform: 'translateZ(0)',
+        // @ts-ignore — daha geniş yumuşak gradient'lar (banding'i smooth'lar)
+        backgroundImage:
+          'radial-gradient(ellipse 50% 35% at 12% 15%, rgba(100,116,139,0.30) 0%, transparent 70%),' +
+          ' radial-gradient(ellipse 40% 30% at 88% 18%, rgba(71,85,105,0.28) 0%, transparent 75%),' +
+          ' radial-gradient(ellipse 55% 38% at 50% 60%, rgba(148,163,184,0.22) 0%, transparent 75%),' +
+          ' radial-gradient(ellipse 50% 38% at 18% 85%, rgba(148,163,184,0.32) 0%, transparent 80%),' +
+          ' radial-gradient(ellipse 45% 36% at 88% 88%, rgba(71,85,105,0.28) 0%, transparent 75%)',
+      } as any,
+      default: {},
+    }),
   },
 
-  /* ── Sidebar ── floating card */
+  /* ── Sidebar ── floating white card */
   sidebar: {
-    // Yarı saydam beyaz → arkadaki içerik backdrop-filter ile bulanır
-    backgroundColor: 'rgba(255,255,255,0.65)',
+    backgroundColor: '#FFFFFF',
     flexDirection:   'column',
     paddingTop:      16,
     borderRightWidth: 0,
     zIndex:          100,
     overflow:        'visible' as any,
     margin:          12,
-    borderRadius:    20,
-    // Cam kenarı (border)
+    borderRadius:    9999,
     borderWidth:     1,
-    borderColor:     'rgba(255,255,255,0.55)',
+    borderColor:     'rgba(255,255,255,0.95)',
     ...Platform.select({
       web: {
-        // Hafif glassmorphism — daha düşük blur (perf), inset highlight'lar cam hissini korur
+        // @ts-ignore — frosted glass
+        backdropFilter:       'blur(48px) saturate(220%)',
         // @ts-ignore
-        backdropFilter:       'blur(8px)',
-        // @ts-ignore
-        WebkitBackdropFilter: 'blur(8px)',
-        // @ts-ignore
+        WebkitBackdropFilter: 'blur(48px) saturate(220%)',
+        // @ts-ignore — yumuşak tek katman gölge (keskin çizgi olmasın)
         boxShadow:
-          // Dış derinlik
-          '0 8px 32px rgba(15,23,42,0.10),' +
-          ' 0 2px 8px rgba(15,23,42,0.06),' +
-          // Üst kenar gloss çizgisi (cam yansıması)
+          '0 8px 24px rgba(0,0,0,0.15),' +
           ' inset 0 1px 0 rgba(255,255,255,0.85),' +
-          // Sol kenar hafif parıltı
-          ' inset 1px 0 0 rgba(255,255,255,0.55)',
+          ' inset 1px 0 0 rgba(255,255,255,0.65)',
       } as any,
       default: {
         // Native: backdrop-filter yok, klasik gölge
@@ -871,8 +1051,8 @@ const s = StyleSheet.create({
       },
     }),
   },
-  sidebarExpanded:  { width: SIDEBAR_W },
-  sidebarCollapsed: { width: SIDEBAR_COLLAPSED_W },
+  sidebarExpanded:  { width: SIDEBAR_W,           borderRadius: 16 },
+  sidebarCollapsed: { width: SIDEBAR_COLLAPSED_W, borderRadius: 9999 },
 
   // Logo
   logoRow: {
@@ -892,7 +1072,33 @@ const s = StyleSheet.create({
   logoSub:    { fontSize: 10, color: '#94A3B8', marginTop: 1 },
 
   // Nav
-  navScroll: { flex: 1, paddingHorizontal: 10 },
+  navScroll: { flex: 1, paddingHorizontal: 4 },
+
+  /* Her nav grubu kendi cam kartında */
+  navGroupCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius:    14,
+    borderWidth:     1,
+    borderColor:     'rgba(255,255,255,0.95)',
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    ...Platform.select({
+      web: {
+        // @ts-ignore — GPU compositing zorla (banding fix)
+        transform: 'translateZ(0)',
+        // @ts-ignore
+        backdropFilter:       'blur(48px) saturate(220%)',
+        // @ts-ignore
+        WebkitBackdropFilter: 'blur(48px) saturate(220%)',
+        // @ts-ignore
+        boxShadow:
+          '0 8px 24px rgba(0,0,0,0.15),' +
+          ' inset 0 1px 0 rgba(255,255,255,0.85),' +
+          ' inset 1px 0 0 rgba(255,255,255,0.55)',
+      } as any,
+      default: {},
+    }),
+  },
 
   navDivider: {
     height: 1,
@@ -987,7 +1193,7 @@ const s = StyleSheet.create({
   main: {
     flex: 1,
     flexDirection: 'column',
-    backgroundColor: '#F9F9FB',
+    backgroundColor: 'transparent',
     overflow: 'hidden',
   },
 
@@ -999,7 +1205,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 32,
     paddingVertical:   20,
     minHeight:         88,                // sabit dikey alan → ortalama tutarlı
-    backgroundColor:  '#F9F9FB',
+    backgroundColor:  'transparent',
     borderBottomWidth: 0,
   },
   headerTitle: {
@@ -1019,12 +1225,34 @@ const s = StyleSheet.create({
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
+    // Cards stilinde beyaz pill kart — viewport sağ üst köşeye sabitlenir
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.95)',
+    ...Platform.select({
+      web: {
+        // @ts-ignore
+        position: 'fixed' as any,
+        top: 16,
+        right: 16,
+        zIndex: 200,
+        // @ts-ignore
+        boxShadow:
+          '0 1px 3px rgba(15,23,42,0.06),' +
+          ' 0 8px 24px rgba(15,23,42,0.04),' +
+          ' inset 0 1px 0 rgba(255,255,255,0.85)',
+      },
+      default: {},
+    }),
   },
   headerIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
@@ -1053,17 +1281,17 @@ const s = StyleSheet.create({
   },
   headerDivider: {
     width: 1,
-    height: 24,
-    backgroundColor: '#F1F5F9',
-    marginHorizontal: 8,
+    height: 20,
+    backgroundColor: '#E2E8F0',
+    marginHorizontal: 4,
   },
   headerProfile: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     paddingLeft: 4,
-    paddingRight: 8,
-    paddingVertical: 4,
+    paddingRight: 10,
+    paddingVertical: 3,
     borderRadius: 999,
   },
   headerProfileMeta: {
@@ -1072,18 +1300,18 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
   headerAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  headerAvatarImg:  { width: 36, height: 36, borderRadius: 18 },
-  headerAvatarText: { color: '#fff', fontSize: 13, fontWeight: '800' },
-  headerName:       { fontSize: 13, fontWeight: '700', color: '#1C1C1E', letterSpacing: -0.1 },
-  headerRole:       { fontSize: 11, color: '#94A3B8', marginTop: 1 },
+  headerAvatarImg:  { width: 30, height: 30, borderRadius: 15 },
+  headerAvatarText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  headerName:       { fontSize: 13, fontWeight: '700', color: '#0F172A', letterSpacing: -0.2 },
+  headerRole:       { fontSize: 10, color: '#94A3B8', marginTop: 1, letterSpacing: 0.2 },
 
   /* ── Page ── */
-  page: { flex: 1, backgroundColor: '#F9F9FB' },
+  page: { flex: 1, backgroundColor: 'transparent' },
 });

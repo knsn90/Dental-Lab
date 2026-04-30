@@ -30,39 +30,39 @@ function WebSpotlight({ colors, style }: SpotlightBackgroundProps) {
 
   return (
     <View pointerEvents="none" style={[StyleSheet.absoluteFill, { overflow: 'hidden' }, style]}>
-      {/* SOL anchor — sabit pozisyon, animasyon kaldırıldı (perf) */}
+      {/* SOL anchor — büyütüldü */}
       <View
         // @ts-ignore — backgroundImage RN-Web property
         style={{
           ...blobBase,
-          top:    '-30%',
-          left:   '-15%',
-          width:  '60%',
-          height: '160%',
+          top:    '-60%',
+          left:   '-35%',
+          width:  '100%',
+          height: '240%',
           backgroundImage: radial(colors[0]),
         }}
       />
-      {/* ORTA — sabit */}
+      {/* ORTA — büyütüldü */}
       <View
         // @ts-ignore
         style={{
           ...blobBase,
-          top:    '-15%',
-          left:   '25%',
-          width:  '55%',
-          height: '150%',
+          top:    '-45%',
+          left:   '15%',
+          width:  '90%',
+          height: '230%',
           backgroundImage: radial(colors[1]),
         }}
       />
-      {/* SAĞ anchor — sabit */}
+      {/* SAĞ anchor — büyütüldü */}
       <View
         // @ts-ignore
         style={{
           ...blobBase,
-          top:    '-25%',
-          left:   '55%',
-          width:  '60%',
-          height: '155%',
+          top:    '-55%',
+          left:   '45%',
+          width:  '100%',
+          height: '235%',
           backgroundImage: radial(colors[2]),
         }}
       />
@@ -93,9 +93,9 @@ function NativeSpotlight({ colors, style }: SpotlightBackgroundProps) {
 
   return (
     <View pointerEvents="none" style={[StyleSheet.absoluteFill, { overflow: 'hidden' }, style]}>
-      {blob(colors[0], { top: -120, left: -80,  size: 360 })}
-      {blob(colors[1], { top:  -40, left: 120,  size: 320 })}
-      {blob(colors[2], { top:  -80, left: 280,  size: 340 })}
+      {blob(colors[0], { top: -240, left: -160, size: 640 })}
+      {blob(colors[1], { top: -160, left:   80, size: 580 })}
+      {blob(colors[2], { top: -200, left:  240, size: 620 })}
     </View>
   );
 }

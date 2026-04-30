@@ -8,6 +8,8 @@ import { supabase } from '../../../core/api/supabase';
 import { useBreakpoint } from '../../../core/layout/Responsive';
 
 import { AppIcon } from '../../../core/ui/AppIcon';
+import { Shadows, CardSpec } from '../../../core/theme/shadows';
+import { DateRangePicker, getRangeBounds, type RangeKey } from '../components/DateRangePicker';
 
 interface MonthlySummary {
   month: string;
@@ -42,12 +44,17 @@ export function FinanceReportScreen() {
   const [upcoming, setUpcoming] = useState<UpcomingDue[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'rapor' | 'hatirlatma'>('rapor');
+  const [range, setRange] = useState<RangeKey>('last_12_months');
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
+      const { from, to } = getRangeBounds(range);
+      let q = supabase.from('v_monthly_finance_summary').select('*').order('month', { ascending: true });
+      if (from) q = q.gte('month', from);
+      if (to)   q = q.lte('month', to);
       const [s1, s2] = await Promise.all([
-        supabase.from('v_monthly_finance_summary').select('*').limit(12),
+        q.limit(60),
         supabase.from('v_upcoming_due_invoices').select('*').limit(20),
       ]);
       setSummary((s1.data ?? []) as MonthlySummary[]);
@@ -55,7 +62,7 @@ export function FinanceReportScreen() {
       setLoading(false);
     };
     load();
-  }, []);
+  }, [range]);
 
   const totals = summary.reduce(
     (acc, m) => ({
@@ -72,9 +79,16 @@ export function FinanceReportScreen() {
       <View style={[s.header, { paddingHorizontal: px }]}>
         <View style={{ flex: 1 }}>
           <Text style={s.title}>Gelir / Gider Raporu</Text>
-          <Text style={s.subtitle}>Son 12 aylık mali özet</Text>
+          <Text style={s.subtitle}>Mali özet</Text>
         </View>
       </View>
+
+      {/* Date range filter */}
+      {tab === 'rapor' && (
+        <View style={{ paddingHorizontal: px, paddingBottom: 8 }}>
+          <DateRangePicker value={range} onChange={setRange} />
+        </View>
+      )}
 
       {/* Tabs */}
       <View style={[s.tabRow, { paddingHorizontal: px }]}>
@@ -91,7 +105,7 @@ export function FinanceReportScreen() {
       {loading ? (
         <ActivityIndicator style={{ marginTop: 64 }} color="#2563EB" />
       ) : tab === 'rapor' ? (
-        <ScrollView style={{ flex: 1, backgroundColor: '#F8FAFC' }}
+        <ScrollView style={{ flex: 1, backgroundColor: CardSpec.pageBg }}
           contentContainerStyle={{ padding: px, paddingBottom: 48, gap: 16 }}
           showsVerticalScrollIndicator={false}>
 
@@ -120,7 +134,7 @@ export function FinanceReportScreen() {
         </ScrollView>
       ) : (
         /* Hatırlatmalar */
-        <ScrollView style={{ flex: 1, backgroundColor: '#F8FAFC' }}
+        <ScrollView style={{ flex: 1, backgroundColor: CardSpec.pageBg }}
           contentContainerStyle={{ padding: px, paddingBottom: 48, gap: 10 }}
           showsVerticalScrollIndicator={false}>
 
@@ -217,7 +231,7 @@ function ReminderCard({ inv }: { inv: UpcomingDue }) {
 }
 
 const s = StyleSheet.create({
-  safe:          { flex: 1, backgroundColor: '#fff' },
+  safe:          { flex: 1, backgroundColor: CardSpec.pageBg },
   header:        { flexDirection: 'row', alignItems: 'center', paddingTop: 18, paddingBottom: 10, gap: 12 },
   title:         { fontSize: 20, fontWeight: '800', color: '#0F172A', letterSpacing: -0.3 },
   subtitle:      { fontSize: 13, color: '#64748B', marginTop: 2 },
@@ -234,14 +248,14 @@ const s = StyleSheet.create({
 });
 
 const kpi = StyleSheet.create({
-  card:    { backgroundColor: '#fff', borderRadius: 16, padding: 18, borderWidth: 1, borderColor: '#F1F5F9', gap: 8 },
+  card:    { backgroundColor: CardSpec.bg, borderRadius: CardSpec.radius, padding: 18, borderWidth: 1, borderColor: CardSpec.border, gap: 8, ...Shadows.card },
   iconWrap:{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   label:   { fontSize: 12, fontWeight: '600', color: '#64748B' },
   value:   { fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
 });
 
 const mr = StyleSheet.create({
-  wrap:      { backgroundColor: '#fff', borderRadius: 14, padding: 16, borderWidth: 1, borderColor: '#F1F5F9', gap: 10 },
+  wrap:      { backgroundColor: CardSpec.bg, borderRadius: CardSpec.radius, padding: 16, borderWidth: 1, borderColor: CardSpec.border, gap: 10, ...Shadows.card },
   month:     { fontSize: 14, fontWeight: '700', color: '#0F172A' },
   row:       { flexDirection: 'row', gap: 12, alignItems: 'center' },
   barTrack:  { height: 6, backgroundColor: '#F1F5F9', borderRadius: 3, overflow: 'hidden' },
@@ -252,7 +266,7 @@ const mr = StyleSheet.create({
 });
 
 const rc = StyleSheet.create({
-  wrap:      { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: '#fff', borderRadius: 14, padding: 16, borderWidth: 1, borderColor: '#F1F5F9' },
+  wrap:      { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: CardSpec.bg, borderRadius: CardSpec.radius, padding: 16, borderWidth: 1, borderColor: CardSpec.border, ...Shadows.card },
   wrapUrgent:{ borderColor: 'rgba(239,68,68,0.3)', backgroundColor: '#FEF2F2' },
   badge:     { width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   badgeDays: { fontSize: 20, fontWeight: '800', lineHeight: 22 },

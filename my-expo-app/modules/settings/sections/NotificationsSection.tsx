@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Switch } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Switch, Platform } from 'react-native';
 
 import { AppIcon } from '../../../core/ui/AppIcon';
 
@@ -39,12 +39,13 @@ export function NotificationsSection({ accentColor }: Props) {
       contentContainerStyle={s.container}
       showsVerticalScrollIndicator={false}
     >
-      <Text style={s.sectionTitle}>Bildirim Tercihleri</Text>
-      <Text style={s.sectionSub}>
-        Hangi bildirimleri almak istediğinizi yönetin.
-      </Text>
-
       <View style={s.card}>
+        <View style={s.cardHead}>
+          <Text style={s.cardTitle}>Bildirim Tercihleri</Text>
+          <Text style={s.cardSub}>
+            Hangi bildirimleri almak istediğinizi yönetin.
+          </Text>
+        </View>
         {NOTIF_ITEMS.map((item, i) => (
           <React.Fragment key={item.key}>
             <View style={s.row}>
@@ -58,8 +59,10 @@ export function NotificationsSection({ accentColor }: Props) {
               <Switch
                 value={toggles[item.key]}
                 onValueChange={() => toggle(item.key)}
-                trackColor={{ false: '#E2E8F0', true: accentColor + '60' }}
-                thumbColor={toggles[item.key] ? accentColor : '#94A3B8'}
+                trackColor={{ false: '#FFFFFF', true: '#FFFFFF' }}
+                thumbColor={toggles[item.key] ? accentColor : '#CBD5E1'}
+                ios_backgroundColor="#FFFFFF"
+                style={{ borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 16 } as any}
               />
             </View>
             {i < NOTIF_ITEMS.length - 1 && <View style={s.divider} />}
@@ -77,34 +80,37 @@ export function NotificationsSection({ accentColor }: Props) {
   );
 }
 
+const CARD_SHADOW = Platform.select({
+  web:     { boxShadow: '0 8px 24px rgba(0,0,0,0.15)' } as any,
+  default: { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 4 },
+});
+
 const s = StyleSheet.create({
   container: {
-    padding: 28,
-    paddingBottom: 48,
+    padding: 0,
+    paddingBottom: 24,
+    gap: 14,
   },
-  sectionTitle: {
+  cardHead: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8, gap: 4 },
+  cardTitle: {
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#0F172A',
-    marginBottom: 4,
+    letterSpacing: -0.3,
   },
-  sectionSub: {
-    fontSize: 13,
+  cardSub: {
+    fontSize: 12,
     color: '#64748B',
-    marginBottom: 16,
-    lineHeight: 19,
+    lineHeight: 17,
   },
   card: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#E8EDF4',
+    borderColor: 'rgba(255,255,255,0.95)',
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    marginBottom: 20,
+    paddingBottom: 6,
+    ...CARD_SHADOW,
   },
   row: {
     flexDirection: 'row',

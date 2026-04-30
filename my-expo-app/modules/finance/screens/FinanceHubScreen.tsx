@@ -16,27 +16,35 @@ import { HubContext } from '../../../core/ui/HubContext';
 import { AppIcon } from '../../../core/ui/AppIcon';
 
 import { InvoicesListScreen }  from '../../invoices/screens/InvoicesListScreen';
+import { ClinicBalanceScreen } from '../../invoices/screens/ClinicBalanceScreen';
 import { ExpensesScreen }      from '../../expenses/screens/ExpensesScreen';
 import { ChecksScreen }        from '../../checks/screens/ChecksScreen';
 import { CashScreen }          from '../../cash/screens/CashScreen';
 import { FinanceReportScreen } from './FinanceReportScreen';
 import { PriceListScreen }     from './PriceListScreen';
+import { ProfitabilityScreen } from './ProfitabilityScreen';
+import { TechnicianPerformanceScreen } from './TechnicianPerformanceScreen';
+import { BudgetScreen } from './BudgetScreen';
 
 // ── Tab tanımları ──────────────────────────────────────────────────────────────
 const TABS = [
-  { key: 'invoices',  label: 'Faturalar',     icon: 'file-text',     accent: '#2563EB', bg: '#EFF6FF' },
-  { key: 'expenses',  label: 'Giderler',      icon: 'trending-down', accent: '#DC2626', bg: '#FEF2F2' },
-  { key: 'checks',    label: 'Çek/Senet',    icon: 'credit-card',   accent: '#D97706', bg: '#FFFBEB' },
-  { key: 'cash',      label: 'Kasa/Banka',   icon: 'landmark',      accent: '#059669', bg: '#ECFDF5' },
-  { key: 'pricelist', label: 'Fiyat Listesi', icon: 'tag',           accent: '#0891B2', bg: '#ECFEFF' },
-  { key: 'report',    label: 'Rapor',         icon: 'bar-chart-2',   accent: '#7C3AED', bg: '#EDE9FE' },
+  { key: 'profitability', label: 'Karlılık',      icon: 'trending-up',   accent: '#059669', bg: '#ECFDF5' },
+  { key: 'tech_perf',     label: 'Personel Verim', icon: 'users',         accent: '#7C3AED', bg: '#EDE9FE' },
+  { key: 'invoices',      label: 'Faturalar',     icon: 'file-text',     accent: '#2563EB', bg: '#EFF6FF' },
+  { key: 'clinic_balance',label: 'Cari Hesap',    icon: 'building-2',    accent: '#0EA5E9', bg: '#E0F2FE' },
+  { key: 'expenses',      label: 'Giderler',      icon: 'trending-down', accent: '#DC2626', bg: '#FEF2F2' },
+  { key: 'budget',        label: 'Bütçe',         icon: 'chart-pie',     accent: '#7C3AED', bg: '#EDE9FE' },
+  { key: 'checks',        label: 'Çek/Senet',    icon: 'credit-card',   accent: '#D97706', bg: '#FFFBEB' },
+  { key: 'cash',          label: 'Kasa/Banka',   icon: 'landmark',      accent: '#059669', bg: '#ECFDF5' },
+  { key: 'pricelist',     label: 'Fiyat Listesi', icon: 'tag',           accent: '#0891B2', bg: '#ECFEFF' },
+  { key: 'report',        label: 'Rapor',         icon: 'bar-chart-2',   accent: '#7C3AED', bg: '#EDE9FE' },
 ] as const;
 
 type TabKey = typeof TABS[number]['key'];
 
 // ── Hub Screen ─────────────────────────────────────────────────────────────────
 export function FinanceHubScreen() {
-  const [activeKey, setActiveKey] = useState<TabKey>('invoices');
+  const [activeKey, setActiveKey] = useState<TabKey>('profitability');
   const insets = useSafeAreaInsets();
   const activeTab = TABS.find(t => t.key === activeKey)!;
 
@@ -90,12 +98,16 @@ export function FinanceHubScreen() {
       {/* ── Content: sub-screen embedded inside HubContext ── */}
       <HubContext.Provider value={true}>
         <View style={s.content}>
-          {activeKey === 'invoices'  && <InvoicesListScreen />}
-          {activeKey === 'expenses'  && <ExpensesScreen />}
-          {activeKey === 'checks'    && <ChecksScreen />}
-          {activeKey === 'cash'      && <CashScreen />}
-          {activeKey === 'pricelist' && <PriceListScreen />}
-          {activeKey === 'report'    && <FinanceReportScreen />}
+          {activeKey === 'profitability' && <ProfitabilityScreen />}
+          {activeKey === 'tech_perf'     && <TechnicianPerformanceScreen />}
+          {activeKey === 'invoices'      && <InvoicesListScreen />}
+          {activeKey === 'clinic_balance'&& <ClinicBalanceScreen />}
+          {activeKey === 'expenses'      && <ExpensesScreen />}
+          {activeKey === 'budget'        && <BudgetScreen />}
+          {activeKey === 'checks'        && <ChecksScreen />}
+          {activeKey === 'cash'          && <CashScreen />}
+          {activeKey === 'pricelist'     && <PriceListScreen />}
+          {activeKey === 'report'        && <FinanceReportScreen />}
         </View>
       </HubContext.Provider>
     </View>

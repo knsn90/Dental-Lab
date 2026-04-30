@@ -8,5 +8,4 @@ export { useTodayOrders } from './hooks/useTodayOrders';
 export { OrdersListScreen } from './screens/OrdersListScreen';
 export { OrderDetailScreen } from './screens/OrderDetailScreen';
 export { NewOrderScreen } from './screens/NewOrderScreen';
-export { DoctorOrderDetailScreen } from './screens/DoctorOrderDetailScreen';
 export { DoctorNewOrderScreen } from './screens/DoctorNewOrderScreen';

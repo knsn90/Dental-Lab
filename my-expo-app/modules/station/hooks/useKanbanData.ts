@@ -1,46 +1,61 @@
 // modules/station/hooks/useKanbanData.ts
-// v_active_orders_kanban view'ini gerçek zamanlı dinler, istasyona göre gruplar
+// Stage-driven Kanban data layer. Groups by Stage (TRIAGE → QC), not by station name.
+// Realtime: order_stages + work_orders.
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../../../core/api/supabase';
+import { mapStationToStage, KANBAN_STAGES } from '../../orders/stationMapping';
+import { STAGE_LABEL, STAGE_COLOR, type Stage } from '../../orders/stages';
 
-// ── Tipler ────────────────────────────────────────────────────────────────────
+// ── Types ────────────────────────────────────────────────────────────────────
 
 export interface KanbanCard {
-  // İş emri
-  id: string;
-  order_number: string;
-  work_type: string;
-  delivery_date: string;
-  is_rush: boolean;
-  status: string;
-  box_code: string | null;
-  // Mevcut aşama
-  current_stage_id: string | null;
-  current_sequence: number | null;
-  stage_status: string | null;
-  stage_started_at: string | null;
-  // İstasyon
-  current_station_name: string | null;
+  id:                string;
+  order_number:      string;
+  work_type:         string;
+  delivery_date:     string;
+  is_rush:           boolean;
+  status:            string;
+  box_code:          string | null;
+
+  current_stage_id:  string | null;
+  current_sequence:  number | null;
+  stage_status:      string | null;
+  stage_started_at:  string | null;
+
+  current_station_name:  string | null;
   current_station_color: string | null;
-  // Teknisyen
-  technician_id: string | null;
-  technician_name: string | null;
-  // Hekim
-  doctor_name: string | null;
-  clinic_name: string | null;
+
+  technician_id:    string | null;
+  technician_name:  string | null;
+
+  doctor_name:      string | null;
+  clinic_name:      string | null;
+
+  // Derived (added in hook)
+  current_stage:    Stage;             // explicit, never undefined
+  priority?:        string;
+  delay_reason?:    string | null;
+  rework_count?:    number;
+  complexity?:      string;
+  case_type?:       string | null;
 }
 
 export interface KanbanColumn {
-  station_name: string;
-  station_color: string;
-  cards: KanbanCard[];
+  stage:        Stage | 'UNASSIGNED';
+  label:        string;
+  color:        string;
+  cards:        KanbanCard[];
+  /** workload by technician for the workload summary line */
+  workload:     { name: string; count: number }[];
 }
 
-// ── Hook ──────────────────────────────────────────────────────────────────────
+const UNASSIGNED_LABEL = 'Atanmamış';
+
+// ── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useKanbanData(labId: string | null | undefined) {
-  const [columns,  setColumns]  = useState<KanbanColumn[]>([]);
+  const [cards,    setCards]    = useState<KanbanCard[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<Date | null>(null);
@@ -60,51 +75,13 @@ export function useKanbanData(labId: string | null | undefined) {
       return;
     }
 
-    const cards = (data ?? []) as KanbanCard[];
-
-    // İstasyona göre grupla
-    const map = new Map<string, KanbanColumn>();
-
-    // Rota atanmamış veya bekleyen iş emirleri için özel kolon
-    const unrouted: KanbanCard[] = [];
-
-    for (const card of cards) {
-      if (!card.current_station_name || card.stage_status === null) {
-        unrouted.push(card);
-        continue;
-      }
-
-      const key = card.current_station_name;
-      if (!map.has(key)) {
-        map.set(key, {
-          station_name:  card.current_station_name,
-          station_color: card.current_station_color ?? '#6B7280',
-          cards: [],
-        });
-      }
-      map.get(key)!.cards.push(card);
-    }
-
-    // Sütunları aşama durumuna göre sırala: aktif → bekliyor → tamamlandi
-    const colArray = Array.from(map.values()).map(col => ({
-      ...col,
-      cards: col.cards.sort((a, b) => {
-        const order = { aktif: 0, bekliyor: 1, tamamlandi: 2 };
-        return (order[a.stage_status as keyof typeof order] ?? 3) -
-               (order[b.stage_status as keyof typeof order] ?? 3);
-      }),
+    const rows = (data ?? []) as Omit<KanbanCard, 'current_stage'>[];
+    const enriched: KanbanCard[] = rows.map(r => ({
+      ...r,
+      current_stage: mapStationToStage(r.current_station_name, 'TRIAGE'),
     }));
 
-    // Rota atanmamış varsa en sona ekle
-    if (unrouted.length > 0) {
-      colArray.push({
-        station_name:  'Rota Yok',
-        station_color: '#94A3B8',
-        cards: unrouted,
-      });
-    }
-
-    setColumns(colArray);
+    setCards(enriched);
     setLastSync(new Date());
     setError(null);
     setLoading(false);
@@ -112,18 +89,64 @@ export function useKanbanData(labId: string | null | undefined) {
 
   useEffect(() => { load(); }, [load]);
 
-  // Gerçek zamanlı: order_stages veya work_orders değişince yenile
   useEffect(() => {
     if (!labId) return;
-
     const channel = supabase
       .channel('kanban_realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'order_stages' }, () => load())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders'  }, () => load())
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
   }, [labId, load]);
 
-  return { columns, loading, error, lastSync, refresh: load };
+  // Build columns: 7 stage columns + Atanmamış. Always render all (empty incl).
+  const columns = useMemo<KanbanColumn[]>(() => {
+    const buckets = new Map<string, KanbanCard[]>();
+    for (const stage of KANBAN_STAGES) buckets.set(stage, []);
+    const unassigned: KanbanCard[] = [];
+
+    for (const c of cards) {
+      const noOwner = !c.technician_id || !c.current_station_name || c.stage_status === null;
+      if (noOwner) {
+        unassigned.push(c);
+        continue;
+      }
+      buckets.get(c.current_stage)?.push(c);
+    }
+
+    const stageCols: KanbanColumn[] = KANBAN_STAGES.map(stage => {
+      const list = buckets.get(stage) ?? [];
+      // workload summary by technician
+      const wmap = new Map<string, number>();
+      for (const c of list) {
+        const n = c.technician_name ?? 'Atanmadı';
+        wmap.set(n, (wmap.get(n) ?? 0) + 1);
+      }
+      return {
+        stage,
+        label: STAGE_LABEL[stage],
+        color: STAGE_COLOR[stage],
+        cards: list.sort((a, b) => {
+          const order = { aktif: 0, bekliyor: 1, tamamlandi: 2 };
+          return (order[a.stage_status as keyof typeof order] ?? 3) -
+                 (order[b.stage_status as keyof typeof order] ?? 3);
+        }),
+        workload: Array.from(wmap.entries())
+          .map(([name, count]) => ({ name, count }))
+          .sort((a, b) => b.count - a.count),
+      };
+    });
+
+    const unassignedCol: KanbanColumn = {
+      stage: 'UNASSIGNED',
+      label: UNASSIGNED_LABEL,
+      color: '#94A3B8',
+      cards: unassigned,
+      workload: [],
+    };
+
+    return [...stageCols, unassignedCol];
+  }, [cards]);
+
+  return { columns, cards, loading, error, lastSync, refresh: load };
 }

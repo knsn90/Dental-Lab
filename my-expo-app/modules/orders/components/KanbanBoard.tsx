@@ -11,6 +11,7 @@ import Svg, { Circle } from 'react-native-svg';
 import { useRouter } from 'expo-router';
 import { WorkOrder, WorkOrderStatus } from '../types';
 import { STATUS_CONFIG, isOrderOverdue, getNextStatus } from '../constants';
+import { STAGE_LABEL, STAGE_COLOR, legacyStatusToStage, type Stage } from '../stages';
 import { C } from '../../../core/theme/colors';
 import { F } from '../../../core/theme/typography';
 
@@ -59,12 +60,29 @@ interface Props {
   onStatusAdvance?: (order: WorkOrder) => void;
 }
 
-const COLUMNS: WorkOrderStatus[] = [
-  'alindi',
-  'uretimde',
-  'kalite_kontrol',
-  'teslim_edildi',
+// ── Yeni stage-based kolonlar (DOCTOR_APPROVAL hariç — özel bekleme durumu) ──
+const STAGE_COLUMNS: Stage[] = [
+  'TRIAGE',
+  'DESIGN',
+  'CAM',
+  'MILLING',
+  'SINTER',
+  'FINISH',
+  'QC',
+  'SHIPPED',
 ];
+
+/** Order'ın hangi Stage kolonunda görüneceğini belirle.
+ *  Önce explicit current_stage_name varsa onu, yoksa status'tan map'le. */
+function getOrderStage(order: WorkOrder): Stage {
+  const stageName = order.current_stage_name;
+  if (stageName) {
+    const upper = stageName.toUpperCase();
+    const found = STAGE_COLUMNS.find(s => upper.includes(s));
+    if (found) return found;
+  }
+  return legacyStatusToStage(order.status);
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -104,23 +122,24 @@ export function KanbanBoard({ orders, userGroup, onStatusAdvance }: Props) {
 
   const BOARD_PAD = 12;
   const COL_GAP   = 10;
-  const MIN_COL_W = 210;
-  const numCols   = COLUMNS.length;
+  const MIN_COL_W = 220;
+  const numCols   = STAGE_COLUMNS.length;
   const available = width - BOARD_PAD * 2 - COL_GAP * (numCols - 1);
   const colWidth  = Math.max(MIN_COL_W, available / numCols);
   const isWide    = available / numCols >= MIN_COL_W;
 
-  const byStatus = COLUMNS.reduce<Record<WorkOrderStatus, WorkOrder[]>>(
-    (acc, s) => { acc[s] = orders.filter((o) => o.status === s); return acc; },
-    {} as Record<WorkOrderStatus, WorkOrder[]>
+  const byStage = STAGE_COLUMNS.reduce<Record<Stage, WorkOrder[]>>(
+    (acc, s) => { acc[s] = orders.filter((o) => getOrderStage(o) === s); return acc; },
+    {} as Record<Stage, WorkOrder[]>
   );
 
-  const columnViews = COLUMNS.map((status) => {
-    const cfg = STATUS_CONFIG[status];
-    const col = byStatus[status];
+  const columnViews = STAGE_COLUMNS.map((stage) => {
+    const col       = byStage[stage] ?? [];
+    const accent    = STAGE_COLOR[stage];
+    const stageLbl  = STAGE_LABEL[stage];
     return (
       <View
-        key={status}
+        key={stage}
         style={[
           styles.column,
           isWide ? { flex: 1 } : { width: colWidth },
@@ -128,14 +147,14 @@ export function KanbanBoard({ orders, userGroup, onStatusAdvance }: Props) {
       >
         {/* Column header */}
         <View style={styles.colHeader}>
-          <Text style={styles.colTitle}>{cfg.label.toUpperCase()}</Text>
-          <View style={[styles.colCountBadge, { backgroundColor: cfg.bgColor }]}>
-            <Text style={[styles.colCount, { color: cfg.color }]}>{col.length}</Text>
+          <Text style={styles.colTitle}>{stageLbl.toUpperCase()}</Text>
+          <View style={[styles.colCountBadge, { backgroundColor: accent + '22' }]}>
+            <Text style={[styles.colCount, { color: accent }]}>{col.length}</Text>
           </View>
         </View>
 
         {/* Thin colored divider */}
-        <View style={[styles.colDivider, { backgroundColor: cfg.color }]} />
+        <View style={[styles.colDivider, { backgroundColor: accent }]} />
 
         {/* Cards */}
         <ScrollView
@@ -201,7 +220,7 @@ function KanbanCard({
   const overdue    = isOrderOverdue(order.delivery_date, order.status);
   const nextStatus = getNextStatus(order.status);
   const { text: dateText, color: dateColor } = dateLabel(order.delivery_date, order.status);
-  const cfg = STATUS_CONFIG[status];
+  const cfg = STATUS_CONFIG[status] ?? { label: status, color: '#94A3B8', bgColor: '#F1F5F9', next: null } as any;
 
   const doctorName = order.doctor?.full_name ?? '';
   const initials   = doctorName ? getInitials(doctorName) : '??';
@@ -289,8 +308,18 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
   },
 
+  // Cards stilinde beyaz kolon kartı + standart gölge
   column: {
     flexShrink: 0,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.95)',
+    // @ts-ignore
+    boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
   },
 
   colScrollWide: {

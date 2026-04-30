@@ -23,6 +23,7 @@ import { useOrderDetail } from '../hooks/useOrderDetail';
 import { useAuthStore } from '../../../core/store/authStore';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 import { advanceOrderStatus } from '../api';
+import { deleteOrder as deleteOrderApi } from '../../admin/orders/service';
 import { uploadPhoto, pickPhoto, takePhoto } from '../../../lib/photos';
 import { StatusTimeline } from '../components/StatusTimeline';
 import { StatusUpdateModal } from '../components/StatusUpdateModal';
@@ -38,15 +39,22 @@ import { uploadChatAttachment } from '../chatApi';
 import { ToothIcon } from '../../../components/icons/ToothIcon';
 import { StepTimeline } from '../../production/components/StepTimeline';
 import { useCaseSteps } from '../../production/hooks/useCaseSteps';
+import { useOrderStages } from '../hooks/useOrderStages';
 import { printDeliveryReceipt } from '../../receipt/printReceipt';
 import { createInvoiceFromOrder } from '../../invoices/api';
-import { WorkflowCard } from '../components/WorkflowCard';
 import { StageActionPanel } from '../components/StageActionPanel';
 import { LivingToothChart } from '../components/LivingToothChart';
 import { OrderTicketCard } from '../components/OrderTicketCard';
-import { QuickStartModal } from '../components/QuickStartModal';
+import { UsedMaterialsSection } from '../components/UsedMaterialsSection';
+import { MaterialForecastSection } from '../components/MaterialForecastSection';
+import { OrderCostSection } from '../components/OrderCostSection';
 import { ChatDetail } from '../components/MessagesPopup';
 import { FilesUploadModal, UploadAttachment } from '../components/FilesUploadModal';
+import { StageChecklistModal } from '../components/StageChecklistModal';
+import { QCRejectModal } from '../components/QCRejectModal';
+import { ManagerPanel } from '../components/ManagerPanel';
+import { HeroManagerSection } from '../components/hero-manager';
+import { legacyStatusToStage, STAGE_ORDER, type Stage } from '../stages';
 import { supabase } from '../../../lib/supabase';
 
 import { AppIcon } from '../../../core/ui/AppIcon';
@@ -78,17 +86,17 @@ function getHeroPanelTheme(
 
     case 'admin':
       return {
-        baseBg:      '#06060A',
-        gradientCss: 'radial-gradient(ellipse 100% 260px at 50% 100%, rgba(99,102,241,0.55), transparent)',
+        baseBg:      '#0A0A0A',
+        gradientCss: 'radial-gradient(ellipse 100% 260px at 50% 100%, rgba(82,82,91,0.55), transparent)',
         shadowColor: '#000',
-        glowColor:   'rgba(99,102,241,0.28)',
-        discBg:      '#0C0D18',
-        accent:      '#A78BFA',
-        // Mor + fuşya — admin paneli güçlü, otoriter ton
+        glowColor:   'rgba(113,113,122,0.28)',
+        discBg:      '#141416',
+        accent:      '#D4D4D8',
+        // Siyah + gri tonları — admin paneli minimalist, monokrom
         spotlightColors: [
-          'rgba(167,139,250,0.85)',  // violet-400 — canlı mor
-          'rgba(217,70,239,0.70)',   // fuchsia-500 — neon fuşya
-          'rgba(124,58,237,0.75)',   // violet-600 — derin mor
+          'rgba(212,212,216,0.55)',  // zinc-300 — açık gri vurgu
+          'rgba(82,82,91,0.65)',     // zinc-600 — orta gri
+          'rgba(39,39,42,0.85)',     // zinc-800 — derin koyu
         ],
       };
 
@@ -147,7 +155,7 @@ function getHeroPanelTheme(
 const STEP_SHORT: Record<string, string> = {
   alindi:          'Alındı',
   uretimde:        'Üretim',
-  kalite_kontrol:  'Kalite',
+  kalite_kontrol:  'Final QC',
   teslimata_hazir: 'Hazır',
   teslim_edildi:   'Teslim',
 };
@@ -490,7 +498,10 @@ function HeroBtnPulse({
 // ── Print helper ──────────────────────────────────────────────────────────────
 function buildPrintHtml(order: WorkOrder, qrUrl: string): string {
 
-  const cfg = STATUS_CONFIG[order.status];
+  const cfg = STATUS_CONFIG[order.status] ?? {
+    label: order.status as string, color: '#0F172A', bgColor: '#F1F5F9',
+    next: null, icon: '', ionIcon: 'help-circle-outline',
+  };
   const qrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(qrUrl)}&margin=6&bgcolor=ffffff&color=0f172a`;
 
   const toothCells = (order.tooth_numbers ?? [])
@@ -635,6 +646,8 @@ export function OrderDetailScreen() {
 
   // Üretim aşamasındaki üretim istasyonları (case_steps tablosu) — hero altında ek satır
   const { steps: productionSteps } = useCaseSteps(id ?? '');
+  // Yeni workflow stage'leri (order_stages tablosundan, hero alt satırı için)
+  const { stages: orderStages, activeStage } = useOrderStages(id ?? undefined);
 
   // Sayfa başlığı:
   //   Title    → "LAB-2026-0031"             (üst, büyük)
@@ -642,9 +655,10 @@ export function OrderDetailScreen() {
   // - DesktopShell üst başlığı (pageTitleStore: title + subtitle)
   // - Browser tab (tek string olarak birleştirilir)
   // - Native header (navigation.setOptions)
-  const navigation     = useNavigation();
-  const setPageTitle   = usePageTitleStore(s => s.setTitle);
-  const clearPageTitle = usePageTitleStore(s => s.clear);
+  const navigation       = useNavigation();
+  const setPageTitle     = usePageTitleStore(s => s.setTitle);
+  const setPageActions   = usePageTitleStore(s => s.setActions);
+  const clearPageTitle   = usePageTitleStore(s => s.clear);
   useEffect(() => {
     if (!order?.order_number) return;
     const doctorName    = order.doctor?.full_name?.trim();
@@ -675,10 +689,11 @@ export function OrderDetailScreen() {
   const [activeSection, setActiveSection] = useState<Section>('details');
   const [modalVisible, setModalVisible] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [stageQCOpen, setStageQCOpen]   = useState<Stage | null>(null);
+  const [qcRejectOpen, setQCRejectOpen] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [showMoreActions, setShowMoreActions] = useState(false);
   const [toothPopup, setToothPopup] = useState<number | null>(null);
-  const [showQuickStart, setShowQuickStart] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [filesOpen, setFilesOpen] = useState(false);
   const [billingOpen, setBillingOpen] = useState(false);
@@ -687,6 +702,51 @@ export function OrderDetailScreen() {
   const [printOpen, setPrintOpen] = useState(false);
   const printIframeRef = React.useRef<any>(null);
   const [btnHovered, setBtnHovered]         = useState(false);   // hero Başlat butonu hover
+
+  // ── Sil handler — TÜM erken-return'lerden ÖNCE tanımlanmalı (hook ordering)
+  const handleDeleteOrder = React.useCallback(() => {
+    if (!order) return;
+    const ok = typeof window !== 'undefined' && typeof window.confirm === 'function'
+      ? window.confirm(`#${order.order_number} silinsin mi? Bu işlem geri alınamaz.`)
+      : true;
+    if (!ok) return;
+    deleteOrderApi(order.id)
+      .then(() => {
+        toast.success('Sipariş silindi');
+        if (typeof window !== 'undefined') window.history.back();
+      })
+      .catch((e: any) => toast.error('Silme hatası: ' + (e?.message ?? 'bilinmeyen')));
+  }, [order]);
+
+  // ── Header'a edit/delete butonlarını yerleştir (early-return'lerden önce)
+  // Lab + manager VEYA admin görür
+  const _canEditDelete = (profile?.user_type === 'lab' && profile?.role === 'manager')
+    || profile?.user_type === 'admin';
+  useEffect(() => {
+    if (!order || !_canEditDelete) {
+      setPageActions(null);
+      return;
+    }
+    setPageActions(
+      <View style={{ flexDirection: 'row', gap: 6 }}>
+        <TouchableOpacity
+          onPress={() => { toast.success('Düzenleme yakında'); }}
+          style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1F5F9' }}
+          accessibilityLabel="Düzenle"
+        >
+          <AppIcon name="pencil" size={15} color="#64748B" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={handleDeleteOrder}
+          style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FEF2F2' }}
+          accessibilityLabel="Sil"
+        >
+          <AppIcon name="trash-2" size={15} color="#EF4444" />
+        </TouchableOpacity>
+      </View>
+    );
+    return () => setPageActions(null);
+  }, [order?.id, _canEditDelete, handleDeleteOrder, setPageActions]);
 
   if (loading) {
     return (
@@ -732,16 +792,29 @@ export function OrderDetailScreen() {
 
   const overdue    = isOrderOverdue(order.delivery_date, order.status);
   const nextStatus = getNextStatus(order.status);
-  const cfg        = STATUS_CONFIG[order.status];
+  const cfg        = STATUS_CONFIG[order.status] ?? {
+    label: order.status as string, color: '#0F172A', bgColor: '#F1F5F9',
+    next: null, icon: '', ionIcon: 'help-circle-outline',
+  };
   const isManager  = profile?.role === 'manager' || profile?.user_type === 'admin';
 
   // ── Panel temasına göre hero card gradient ──────────────────────────────
   // panelType en üstte, useSegments ile hesaplandı (hook ordering için).
   const heroTheme = getHeroPanelTheme(panelType, profile?.role);
 
-  // Beyaz kartlar (Row 2) — marka rengi mavi (panel role'undan bağımsız)
-  // Hero card kendi panel temasını kullanır; Row 2 her zaman mavi (tutarlı CTA rengi)
-  const accentColor = '#2563EB';   // blue-600
+  // Panel temalı accent — admin gri, diğer paneller kendi rengi
+  const accentColor =
+    panelType === 'admin'        ? '#475569' :   // zinc-600 / slate-600 — gri
+    panelType === 'doctor'       ? '#10B981' :   // emerald-500
+    panelType === 'clinic_admin' ? '#8B5CF6' :   // violet-500
+                                   '#2563EB';    // lab default — blue-600
+
+  // Steps + yüzde dairesi accent (panel temalı). Admin'de gri, diğerlerinde mavi.
+  const progressAccent =
+    panelType === 'admin'        ? '#A1A1AA' :   // zinc-400 — açık gri (koyu hero üstünde okunaklı)
+    panelType === 'doctor'       ? '#34D399' :   // emerald-400
+    panelType === 'clinic_admin' ? '#C4B5FD' :   // violet-300
+                                   ACTION_BLUE_LIGHT;  // lab default — blue-400
 
   const qrUrl = Platform.OS === 'web' && typeof window !== 'undefined'
     ? `${window.location.origin}/order/${order.id}`
@@ -750,6 +823,81 @@ export function OrderDetailScreen() {
   const daysLeft = Math.ceil(
     (new Date(order.delivery_date + 'T00:00:00').getTime() - Date.now()) / (1000 * 60 * 60 * 24)
   );
+
+  // ── Auto-start: ilk istasyona (sequence_hint en düşük) iş emrini at, teknisyen otomatik
+  const handleAutoStart = async () => {
+    if (!profile) return;
+    const labId = (profile as any).lab_id ?? profile.id;
+
+    // 1. İlk istasyon (CHECK) — sequence_hint'e göre
+    const { data: station, error: stErr } = await supabase
+      .from('lab_stations')
+      .select('id, name, is_critical')
+      .eq('lab_profile_id', labId)
+      .eq('is_active', true)
+      .order('sequence_hint', { ascending: true })
+      .limit(1)
+      .single();
+    if (stErr || !station) { toast.error('İstasyon bulunamadı'); return; }
+
+    // 2. AUTO_ASSIGN(TRIAGE) — skill + trust + workload
+    const { autoAssignUser } = await import('../autoAssign');
+    const techId = await autoAssignUser(
+      'TRIAGE',
+      labId,
+      (order as any).complexity ?? 'medium',
+      (order as any).case_type ?? null,
+    );
+    const tech = techId ? { id: techId } : null;
+
+    // 3. Mevcut bekleyen stage'leri temizle (tekrar başlat senaryosu)
+    await supabase.from('order_stages').delete()
+      .eq('work_order_id', order.id).eq('status', 'bekliyor');
+
+    // 4. Yeni stage insert
+    const { data: stageData, error: stageErr } = await supabase
+      .from('order_stages')
+      .insert({
+        work_order_id:  order.id,
+        station_id:     station.id,
+        technician_id:  tech?.id ?? null,
+        sequence_order: 1,
+        is_critical:    station.is_critical,
+        status:         'aktif',
+        assigned_at:    new Date().toISOString(),
+      })
+      .select('id').single();
+    if (stageErr) { toast.error('Stage oluşturulamadı: ' + stageErr.message); return; }
+
+    // 5. work_orders → asamada
+    const { error: orderErr } = await supabase
+      .from('work_orders')
+      .update({ status: 'asamada', current_stage_id: stageData.id })
+      .eq('id', order.id);
+    if (orderErr) { toast.error('Durum güncellenemedi: ' + orderErr.message); return; }
+
+    // 6. Log — order_events + stage_log
+    await supabase.from('order_events').insert({
+      work_order_id: order.id,
+      stage_id:      stageData.id,
+      event_type:    'teknisyen_atandi',
+      actor_id:      profile.id,
+      metadata: { auto: true, station: station.name, technician_id: tech?.id ?? null,
+        note: 'Case started automatically' },
+    });
+
+    // stage_log — audit (TRIAGE başladı)
+    await supabase.from('stage_log').insert({
+      work_order_id: order.id,
+      stage:         'TRIAGE',
+      owner_id:      tech?.id ?? null,
+      start_time:    new Date().toISOString(),
+      notes:         'Auto-started',
+    });
+
+    toast.success(`İş başlatıldı → ${station.name}`);
+    refetch();
+  };
 
   const handleStatusUpdate = async (newStatus: WorkOrderStatus, note: string) => {
     if (!profile) return;
@@ -884,7 +1032,9 @@ export function OrderDetailScreen() {
   });
 
   // Workflow progress percentage (10%→100%)
-  const statusIndex = STATUS_ORDER.indexOf(order.status);
+  // 'asamada' STATUS_ORDER'da yok — UI için 'uretimde' gibi davransın (üretim step'i yansın)
+  const _normalizedStatus = (order.status as string) === 'asamada' ? 'uretimde' : order.status;
+  const statusIndex = STATUS_ORDER.indexOf(_normalizedStatus as any);
   const progressPercent = statusIndex >= 0
     ? Math.round(((statusIndex + 1) / STATUS_ORDER.length) * 100)
     : 10;
@@ -912,7 +1062,7 @@ export function OrderDetailScreen() {
 
       {/* OUTER SCROLL — tüm sayfa içeriği tek scroll yüzeyi olur */}
       <ScrollView
-        style={{ flex: 1 }}
+        style={{ flex: 1, backgroundColor: 'transparent' }}
         contentContainerStyle={{ paddingBottom: 12 }}
         showsVerticalScrollIndicator={true}
       >
@@ -1028,21 +1178,24 @@ export function OrderDetailScreen() {
               <View style={{ flexShrink: 0 }}>
                 <HeroDisc
                   percent={progressPercent}
-                  accent={ACTION_BLUE_LIGHT}
+                  accent={progressAccent}
                   discBg={heroTheme.discBg}
                   size={DISC_SIZE}
                 />
               </View>
             </View>
 
-            {/* SAĞ: BÜYÜK responsive aksiyon butonu — hover efektli, info kartı yüksekliği */}
-            {nextStatus ? (
+            {/* SAĞ: BÜYÜK responsive aksiyon butonu — hekimde tamamen gizlenir */}
+            {/* Hekim hiç görmez. Üretim/asama aşamalarında manager butonu görmez (akış istasyonlardan ilerler). */}
+            {(panelType === 'doctor' || profile?.user_type === 'doctor') ? null
+              : ((order.status as string) === 'uretimde' || (order.status as string) === 'asamada') ? null
+              : nextStatus ? (
               <TouchableOpacity
                 onPress={() => {
                   const rawStatus = order.status as string;
                   const isStartAction = rawStatus === 'alindi' || rawStatus === 'atama_bekleniyor';
                   if (isStartAction && isManager) {
-                    setShowQuickStart(true);
+                    handleAutoStart();   // Modal yerine tek tıkla otomatik başlat
                   } else {
                     setModalVisible(true);
                   }
@@ -1059,17 +1212,69 @@ export function OrderDetailScreen() {
                     flexShrink: 0,                  // küçülmesin
                     alignSelf:  'stretch',          // info kartının yüksekliğini al
                     // @ts-ignore — hızlı hover geçişi (web only, native'de yoksayılır)
-                    transition: 'background-image 80ms ease-out',
+                    transition: 'background-image 80ms ease-out, box-shadow 120ms ease-out',
                   },
-                  btnHovered && {
-                    // Sadece renk değişir — boyut/scale yok
-                    // @ts-ignore — hover'da daha açık + parlak gradient
+                  // ── Admin paneli + Başlat → gri gradient (mavi yerine) ──
+                  panelType === 'admin' && ((order.status as string) === 'alindi' || (order.status as string) === 'atama_bekleniyor') && {
+                    backgroundColor: '#475569',
+                    // @ts-ignore
                     backgroundImage:
                       'linear-gradient(135deg,' +
-                      ' #93C5FD 0%,' +     // blue-300 — daha açık üst sol
-                      ' #60A5FA 45%,' +    // blue-400
-                      ' #3B82F6 100%)',    // blue-500
+                      ' #94A3B8 0%,' +    // slate-400 — açık üst sol
+                      ' #64748B 45%,' +   // slate-500 — orta
+                      ' #334155 100%)',   // slate-700 — koyu sağ alt
+                    shadowColor:   '#1E293B',
+                    // @ts-ignore
+                    boxShadow:
+                      '0 6px 16px rgba(30,41,59,0.35),' +
+                      ' inset 0 1px 0 rgba(255,255,255,0.30)',
                   },
+                  // ── Tamamla → transparan + hafif beyaz parıltı (yumuşak) ──
+                  ((order.status as string) !== 'alindi' && (order.status as string) !== 'atama_bekleniyor') && {
+                    backgroundColor: 'rgba(255,255,255,0.04)',
+                    // @ts-ignore
+                    backgroundImage:
+                      'linear-gradient(135deg,' +
+                      ' rgba(255,255,255,0.08) 0%,' +
+                      ' rgba(255,255,255,0.02) 50%,' +
+                      ' rgba(255,255,255,0.08) 100%)',
+                    borderColor: 'rgba(255,255,255,0.40)',
+                    // @ts-ignore — yumuşak parıltı (eski neon yarı yarıya)
+                    boxShadow:
+                      '0 0 12px rgba(255,255,255,0.18),' +
+                      ' 0 0 24px rgba(255,255,255,0.08),' +
+                      ' inset 0 0 8px rgba(255,255,255,0.08),' +
+                      ' inset 0 1px 0 rgba(255,255,255,0.45)',
+                  },
+                  btnHovered && (((order.status as string) === 'alindi' || (order.status as string) === 'atama_bekleniyor')
+                    ? (panelType === 'admin'
+                        ? {
+                            // Admin Başlat hover — daha açık gri
+                            // @ts-ignore
+                            backgroundImage:
+                              'linear-gradient(135deg,' +
+                              ' #CBD5E1 0%,' +    // slate-300
+                              ' #94A3B8 45%,' +   // slate-400
+                              ' #64748B 100%)',   // slate-500
+                          }
+                        : {
+                            // Başlat hover — daha açık mavi
+                            // @ts-ignore
+                            backgroundImage:
+                              'linear-gradient(135deg,' +
+                              ' #93C5FD 0%,' +
+                              ' #60A5FA 45%,' +
+                              ' #3B82F6 100%)',
+                          })
+                    : {
+                        // Tamamla hover — parıltı hafif yoğunlaşır
+                        // @ts-ignore
+                        boxShadow:
+                          '0 0 18px rgba(255,255,255,0.30),' +
+                          ' 0 0 36px rgba(255,255,255,0.14),' +
+                          ' inset 0 0 12px rgba(255,255,255,0.14),' +
+                          ' inset 0 1px 0 rgba(255,255,255,0.65)',
+                      }),
                 ]}
               >
                 <View style={styles.heroBigActionIconCircle}>
@@ -1094,7 +1299,7 @@ export function OrderDetailScreen() {
                       }}
                     />
                   ) : (
-                    <Animated.View
+                    <View
                       pointerEvents="none"
                       style={{
                         position:     'absolute',
@@ -1105,23 +1310,29 @@ export function OrderDetailScreen() {
                         borderRadius: 36,
                         borderWidth:  1.5,
                         borderColor:  '#FFFFFF',
-                        opacity:      haloOpacity,
-                        transform:    [{ scale: haloScale }],
+                        opacity:      0.6,
                       }}
                     />
                   )}
-                  {(order.status as string) === 'alindi' || (order.status as string) === 'atama_bekleniyor' ? (
-                    <AppIcon name="zap" size={30} color="#FFFFFF" />
-                  ) : (
-                    <AppIcon name="check-circle" size={30} color="#FFFFFF" />
-                  )}
+                  {(() => {
+                    const st = order.status as string;
+                    if (st === 'alindi' || st === 'atama_bekleniyor') return <AppIcon name="zap" size={30} color="#FFFFFF" />;
+                    if (st === 'kalite_kontrol')                       return <AppIcon name="shield-check-outline" size={30} color="#FFFFFF" />;
+                    if (st === 'teslimata_hazir')                      return <AppIcon name="truck-fast-outline" size={30} color="#FFFFFF" />;
+                    return <AppIcon name="check-circle" size={30} color="#FFFFFF" />;
+                  })()}
                 </View>
                 <Text style={styles.heroBigActionText}>
-                  {(order.status as string) === 'alindi' || (order.status as string) === 'atama_bekleniyor'
-                    ? 'Başlat' : 'Tamamla'}
+                  {(() => {
+                    const st = order.status as string;
+                    if (st === 'alindi' || st === 'atama_bekleniyor') return 'İşi Başlat';
+                    if (st === 'kalite_kontrol')                       return 'KK Onayla';
+                    if (st === 'teslimata_hazir')                      return 'Teslim Et';
+                    return 'Tamamla';
+                  })()}
                 </Text>
                 <Text style={styles.heroBigActionSub}>
-                  {nextStatus ? STATUS_CONFIG[nextStatus].label : ''}
+                  {nextStatus ? (STATUS_CONFIG[nextStatus]?.label ?? nextStatus) : ''}
                 </Text>
               </TouchableOpacity>
             ) : (
@@ -1157,22 +1368,22 @@ export function OrderDetailScreen() {
                   {i > 0 && (
                     <View style={[
                       styles.heroStepConnector,
-                      isDone && { backgroundColor: ACTION_BLUE_LIGHT, opacity: 0.7 },
+                      isDone && { backgroundColor: progressAccent, opacity: 0.7 },
                     ]} />
                   )}
                   <View style={styles.heroStepItem}>
                     <View style={[
                       styles.heroStepDot,
-                      isDone    && { backgroundColor: ACTION_BLUE_LIGHT, borderColor: ACTION_BLUE_LIGHT },
-                      isCurrent && { borderColor: ACTION_BLUE_LIGHT, backgroundColor: 'transparent' },
+                      isDone    && { backgroundColor: progressAccent, borderColor: progressAccent },
+                      isCurrent && { borderColor: progressAccent, backgroundColor: 'transparent' },
                     ]}>
                       {isDone    && <Text style={{ fontSize: 9, color: '#FFFFFF', fontWeight: '700' }}>✓</Text>}
-                      {isCurrent && <StepPulse color={ACTION_BLUE_LIGHT} size={20} />}
+                      {isCurrent && <StepPulse color={progressAccent} size={20} />}
                     </View>
                     <Text style={[
                       styles.heroStepLabel,
                       isDone    && styles.heroStepLabelDone,
-                      isCurrent && { color: ACTION_BLUE_LIGHT, fontWeight: '700' },
+                      isCurrent && { color: progressAccent, fontWeight: '700' },
                     ]} numberOfLines={1}>
                       {STEP_SHORT[status]}
                     </Text>
@@ -1182,47 +1393,48 @@ export function OrderDetailScreen() {
             })}
           </View>
 
-          {/* ── Üretim İstasyonları (sadece "Üretim" aşamasında, ana steps'in altında) ── */}
-          {order.status === 'uretimde' && productionSteps.length > 0 && (
+          {/* ── Üretim İstasyonları — order_stages bazlı (her zaman görünür) ── */}
+          {orderStages.length > 0 && (
             <View style={styles.heroProdStationsWrap}>
               <Text style={styles.heroProdStationsTitle}>ÜRETİM İSTASYONLARI</Text>
               <View style={styles.heroProdStationsRow}>
-                {productionSteps
+                {orderStages
                   .slice()
-                  .sort((a, b) => a.step_order - b.step_order)
-                  .map((step, i) => {
-                    const isDone    = step.status === 'done';
-                    const isCurrent = step.status === 'active';
-                    const isBlocked = step.status === 'blocked';
+                  .sort((a, b) => a.sequence_order - b.sequence_order)
+                  .map((stage, i) => {
+                    const isDone    = stage.status === 'onaylandi' || stage.status === 'tamamlandi';
+                    const isCurrent = stage.status === 'aktif';
+                    const isBlocked = stage.status === 'reddedildi';
+                    const stationName = stage.station?.name ?? '—';
                     return (
-                      <React.Fragment key={step.id}>
+                      <React.Fragment key={stage.id}>
                         {i > 0 && (
                           <View style={[
                             styles.heroProdStationConnector,
-                            isDone && { backgroundColor: ACTION_BLUE_LIGHT, opacity: 0.7 },
+                            isDone && { backgroundColor: progressAccent, opacity: 0.7 },
                           ]} />
                         )}
                         <View style={styles.heroProdStationItem}>
                           <View style={[
                             styles.heroProdStationDot,
-                            isDone    && { backgroundColor: ACTION_BLUE_LIGHT, borderColor: ACTION_BLUE_LIGHT },
-                            isCurrent && { borderColor: ACTION_BLUE_LIGHT, backgroundColor: 'transparent' },
+                            isDone    && { backgroundColor: progressAccent, borderColor: progressAccent },
+                            isCurrent && { borderColor: progressAccent, backgroundColor: 'transparent' },
                             isBlocked && { borderColor: '#EF4444', backgroundColor: 'rgba(239,68,68,0.18)' },
                           ]}>
                             {isDone    && <Text style={{ fontSize: 8, color: '#FFFFFF', fontWeight: '700' }}>✓</Text>}
-                            {isCurrent && <StepPulse color={ACTION_BLUE_LIGHT} size={16} />}
+                            {isCurrent && <StepPulse color={progressAccent} size={16} />}
                             {isBlocked && <Text style={{ fontSize: 8, color: '#EF4444', fontWeight: '800' }}>!</Text>}
                           </View>
                           <Text
                             style={[
                               styles.heroProdStationLabel,
                               isDone    && styles.heroProdStationLabelDone,
-                              isCurrent && { color: ACTION_BLUE_LIGHT, fontWeight: '700' },
+                              isCurrent && { color: progressAccent, fontWeight: '700' },
                               isBlocked && { color: '#FCA5A5', fontWeight: '700' },
                             ]}
                             numberOfLines={1}
                           >
-                            {step.step_name}
+                            {stationName}
                           </Text>
                         </View>
                       </React.Fragment>
@@ -1232,7 +1444,108 @@ export function OrderDetailScreen() {
             </View>
           )}
 
+          {/* ── Aktif Aşama Strip — Şu An / Sorumlu / Aksiyon ──────────────── */}
+          {activeStage && (
+            <View style={styles.heroActiveStripWrap}>
+              <View style={styles.heroActiveStripCol}>
+                <Text style={styles.heroActiveStripLabel}>
+                  ŞU AN
+                  {activeStage.status === 'tamamlandi' && '  •  QC1 OPERASYON ONAYI'}
+                </Text>
+                <Text style={styles.heroActiveStripValue} numberOfLines={1}>
+                  {activeStage.station?.name?.toUpperCase() ?? '—'}
+                </Text>
+              </View>
+              <View style={styles.heroActiveStripDivider} />
+              <View style={styles.heroActiveStripCol}>
+                <Text style={styles.heroActiveStripLabel}>SORUMLU</Text>
+                <Text style={styles.heroActiveStripValue} numberOfLines={1}>
+                  {activeStage.technician?.full_name ?? 'Atanmadı'}
+                </Text>
+              </View>
+              {/* Aksiyon: teknisyen kendi aşamasını tamamlayabilir — DESIGN ise önce dosya yüklemiş olmalı */}
+              {profile?.id === activeStage.technician?.id && activeStage.status === 'aktif' && (
+                <TouchableOpacity
+                  style={styles.heroActiveStripBtn}
+                  onPress={async () => {
+                    // DESIGN aşamasında: önce dosya yüklemesi zorunlu
+                    const stationName = (activeStage.station?.name ?? '').toLowerCase();
+                    const isDesign = stationName.includes('design') || stationName.includes('tasarım');
+                    if (isDesign) {
+                      const filesForOrder = (order.photos ?? []).length;
+                      if (filesForOrder === 0) {
+                        toast.error('Önce tasarım dosyasını yüklemen gerekiyor');
+                        setFilesOpen(true);
+                        return;
+                      }
+                    }
+                    const { completeStage } = await import('../../station/api');
+                    const { error } = await completeStage(activeStage.id);
+                    if (error) toast.error('Tamamlanamadı: ' + error.message);
+                    else { toast.success('Aşama tamamlandı, QC bekleniyor'); refetch(); }
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.heroActiveStripBtnText}>
+                    {(activeStage.station?.name ?? 'AŞAMA').toUpperCase()} TAMAMLANDI
+                  </Text>
+                </TouchableOpacity>
+              )}
+              {/* Manager onay/red butonları */}
+              {isManager && activeStage.status === 'tamamlandi' && (
+                <>
+                  <TouchableOpacity
+                    style={[styles.heroActiveStripBtn, { backgroundColor: 'rgba(220,38,38,0.18)', borderColor: 'rgba(220,38,38,0.50)' }]}
+                    onPress={() => setQCRejectOpen(true)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={[styles.heroActiveStripBtnText, { color: '#FCA5A5' }]}>REDDET</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.heroActiveStripBtn, { backgroundColor: '#7C3AED' }]}
+                    onPress={() => {
+                      if (!profile) return;
+                      const raw = (activeStage.station?.name ?? '').toUpperCase();
+                      const map: Stage[] = ['TRIAGE', 'MANAGER_REVIEW', 'DESIGN', 'CAM', 'MILLING', 'SINTER', 'FINISH', 'QC'];
+                      const stage = map.find(s => raw.includes(s)) ?? legacyStatusToStage(order.status);
+                      setStageQCOpen(stage);
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.heroActiveStripBtnText}>ONAYLA</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+          )}
+
           {/* heroBottom kaldırıldı — heroStepsRow zaten aynı bilgiyi gösteriyor */}
+
+          {/* ── Hero Manager Section — INLINE inside heroCard (manager only) ── */}
+          {isManager && profile && (() => {
+            const stRaw = (activeStage?.station?.name ?? '').toUpperCase();
+            const stMap: Stage[] = ['TRIAGE', 'MANAGER_REVIEW', 'DESIGN', 'CAM', 'MILLING', 'SINTER', 'FINISH', 'QC'];
+            const currentStage = stMap.find(s => stRaw.includes(s)) ?? legacyStatusToStage(order.status);
+            const labId = (profile as any)?.lab_id ?? profile?.id ?? '';
+            return (
+              <HeroManagerSection
+                workOrderId={order.id}
+                managerId={profile.id}
+                labId={labId}
+                currentStage={currentStage}
+                ownerName={activeStage?.technician?.full_name ?? null}
+                ownerId={activeStage?.technician?.id ?? null}
+                activeStageId={activeStage?.id ?? null}
+                startedAt={activeStage?.started_at ?? activeStage?.assigned_at ?? null}
+                reworkCount={(order as any).rework_count ?? 0}
+                priority={(order as any).priority ?? 'normal'}
+                delayReason={(order as any).delay_reason ?? null}
+                doctorApprovalRequired={(order as any).doctor_approval_required ?? false}
+                managerReviewRequired={(order as any).manager_review_required ?? false}
+                onChanged={refetch}
+              />
+            );
+          })()}
 
         </View>{/* /heroCard */}
 
@@ -1260,80 +1573,30 @@ export function OrderDetailScreen() {
         ]}
       />
 
-      {/* StageActionPanel kaldırıldı — Yazdır/QR dock'ta, Rota Yönet ayrı sayfa */}
-
-      {/* ── Body ── */}
-      <View style={[styles.body, isDesktop && styles.bodyDesktop]}>
-
-        {/* Content — outer ScrollView var, burada View yeterli (nested scroll yok) */}
-        <View style={[styles.contentArea, styles.contentPad]}>
-          {activeSection === 'steps' && (
-            <StepsSection workOrderId={order.id} history={order.status_history ?? []} />
-          )}
-          {activeSection === 'prova' && (
-            <ProvaSection workOrderId={order.id} />
-          )}
-          {activeSection === 'vaka' && (
-            <VakaSection
-              patientId={order.patient_id}
-              patientName={order.patient_name}
-              orderId={order.id}
-            />
-          )}
-          {activeSection === 'billing' && (
-            <OrderItemsSection workOrderId={order.id} />
-          )}
-          {activeSection === 'doctor' && (
-            <DoctorSection order={order} />
-          )}
-          {activeSection === 'files' && (
-            <FilesSection
-              order={order}
-              signedUrls={signedUrls}
-              uploading={uploadingPhoto}
-              onAdd={handleAddPhoto}
-            />
-          )}
-          {activeSection === 'chat' && (
-            <View style={{ height: 600, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#E5E9F0' }}>
-              <ChatDetail
-                selectedOrder={{
-                  work_order_id:    order.id,
-                  order_number:     order.order_number,
-                  patient_name:     order.patient_name,
-                  doctor_name:      order.doctor?.full_name ?? null,
-                  clinic_name:      order.doctor?.clinic_name ?? order.doctor?.clinic?.name ?? null,
-                  work_type:        order.work_type,
-                  status:           order.status,
-                  tooth_numbers:    order.tooth_numbers,
-                  shade:            order.shade,
-                  machine_type:     (order as any).machine_type,
-                  delivery_date:    order.delivery_date,
-                  notes:            order.notes,
-                  is_urgent:        order.is_urgent,
-                }}
-                accentColor={accentColor}
-                currentUserId={profile?.id ?? null}
-                viewerType={profile?.user_type ?? null}
-              />
-            </View>
-          )}
-        </View>
-
+      {/* ── Tahmini Materyal Tüketimi (forecast) ──────────────────────────── */}
+      <View style={{ marginTop: 14 }}>
+        <MaterialForecastSection workOrderId={order.id} />
       </View>
+
+      {/* ── Kullanılan Materyaller — confirmed consumption kayıtları ─────── */}
+      <View style={{ marginTop: 14 }}>
+        <UsedMaterialsSection workOrderId={order.id} />
+      </View>
+
+      {/* ── Mali Bilgi — sale price + cost + profit + margin ────────────── */}
+      <View style={{ marginTop: 14 }}>
+        <OrderCostSection
+          workOrderId={order.id}
+          isManager={isManager}
+          cachedTotal={(order as any).material_cost ?? null}
+        />
+      </View>
+
+      {/* Body / contentArea kaldırıldı — sidebar olmadığı için zaten erişilemiyordu */}
 
       </View>{/* /pageGrid */}
 
       </ScrollView>{/* /OUTER SCROLL */}
-
-      {/* ── Hızlı Başlatma Modalı (Başlat butonu — müdür/admin) ── */}
-      <QuickStartModal
-        visible={showQuickStart}
-        order={order}
-        profile={profile}
-        onClose={() => setShowQuickStart(false)}
-        onSuccess={refetch}
-      />
 
       <StatusUpdateModal
         visible={modalVisible}
@@ -1382,6 +1645,42 @@ export function OrderDetailScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* ── QC Reject Modal — sebep + return stage seç ── */}
+      {qcRejectOpen && profile && (
+        <QCRejectModal
+          visible
+          workOrderId={order.id}
+          rejectedBy={profile.id}
+          availableStages={STAGE_ORDER.filter(st =>
+            st !== 'QC' && st !== 'SHIPPED' && st !== 'DOCTOR_APPROVAL'
+          ) as Stage[]}
+          onClose={() => setQCRejectOpen(false)}
+          onDone={() => refetch()}
+        />
+      )}
+
+      {/* ── Generic Stage Checklist Modal — her stage için aynı mantık ── */}
+      {stageQCOpen && profile && (
+        <StageChecklistModal
+          visible
+          stage={stageQCOpen}
+          workOrderId={order.id}
+          managerId={profile.id}
+          doctorId={order.doctor_id ?? null}
+          requiresDoctorApproval={(order as any).doctor_approval_required ?? false}
+          onClose={() => setStageQCOpen(null)}
+          onApproved={async () => {
+            setStageQCOpen(null);
+            const { error } = await supabase.rpc('advance_to_next_stage', {
+              p_work_order_id: order.id,
+              p_approver_id:   profile.id,
+            });
+            if (error) toast.error('Stage geçişi: ' + error.message);
+            else { toast.success('Sonraki aşama başlatıldı'); refetch(); }
+          }}
+        />
+      )}
 
       {/* ── Dosyalar Popup — NewOrder ile aynı kategorili upload modal ── */}
       <FilesUploadModal
@@ -1581,10 +1880,10 @@ export function OrderDetailScreen() {
                         {order.machine_type === 'milling' ? 'Frezeleme' : '3D Baskı'}
                       </Text>
                     </View>
-                    <View style={[toothMs.metaChip, { backgroundColor: `${STATUS_CONFIG[order.status].color}15` }]}>
+                    <View style={[toothMs.metaChip, { backgroundColor: `${cfg.color}15` }]}>
                       <Text style={toothMs.metaLabel}>Durum</Text>
-                      <Text style={[toothMs.metaValue, { color: STATUS_CONFIG[order.status].color }]}>
-                        {STATUS_CONFIG[order.status].label}
+                      <Text style={[toothMs.metaValue, { color: cfg.color }]}>
+                        {cfg.label}
                       </Text>
                     </View>
                     {op?.notes ? (
@@ -3232,18 +3531,18 @@ const sectionStyles = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F9F9FB' },
+  safe: { flex: 1, backgroundColor: 'transparent' },
 
   // ── Header row (hero + tooth chart, same height) ──
   // Tüm row'ları saran outer container — tutarlı 12px padding + 12px gap her yerde
   pageGrid: {
-    padding: 12,
-    gap:     12,
+    padding: 20,
+    gap:     20,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems:    'stretch',
-    gap:           12,
+    gap:           20,
     zIndex:        10,
   },
 
@@ -3744,6 +4043,56 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
 
+  // ── Aktif Aşama Strip (Şu An / Sorumlu / Aksiyon) ──
+  heroActiveStripWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+    paddingTop: 12,
+    paddingHorizontal: 4,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.08)',
+    gap: 12,
+  },
+  heroActiveStripCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  heroActiveStripLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.45)',
+    letterSpacing: 1.2,
+    marginBottom: 2,
+  },
+  heroActiveStripValue: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
+  },
+  heroActiveStripDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  heroActiveStripBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.30)',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+  },
+  heroActiveStripBtnText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 0.6,
+  },
+
   // ── Üretim istasyonları satırı (heroStepsRow'un altında, sadece üretim'de) ──
   heroProdStationsWrap: {
     marginTop:    10,
@@ -4011,7 +4360,7 @@ const styles = StyleSheet.create({
   },
 
   // ── Body ──
-  body: { flex: 1, flexDirection: 'column', backgroundColor: '#F9F9FB', gap: 12 },
+  body: { flex: 1, flexDirection: 'column', backgroundColor: 'transparent', gap: 12 },
   bodyDesktop: { flexDirection: 'row', gap: 12 },
 
   // ── Section navigation — mobile pill tabs ──

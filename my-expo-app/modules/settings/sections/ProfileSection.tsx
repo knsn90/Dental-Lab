@@ -444,8 +444,9 @@ export function ProfileSection({ accentColor }: Props) {
 // ── Styles ─────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   container: {
-    padding: 28,
-    paddingBottom: 48,
+    padding: 0,
+    paddingBottom: 24,
+    gap: 14,
   },
 
   sectionLabel: {
@@ -458,15 +459,14 @@ const s = StyleSheet.create({
   },
 
   card: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#E8EDF4',
+    borderColor: 'rgba(255,255,255,0.95)',
     padding: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 8px 24px rgba(0,0,0,0.15)' } as any)
+      : { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 4 }),
   },
 
   // Profile identity

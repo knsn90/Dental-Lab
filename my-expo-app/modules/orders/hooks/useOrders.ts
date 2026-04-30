@@ -27,22 +27,28 @@ export function useOrders(userType: 'doctor' | 'lab', doctorId?: string) {
   useEffect(() => {
     load();
 
+    // Realtime payload'ı sadece work_orders kolonlarını taşır; current_stage_name
+    // gibi join'li alanlar düşer. UPDATE/INSERT'te tam refetch et — stage_name
+    // kaybolmasın. (Liste boyutu büyük değil, performans yeterli.)
     const channel = supabase
       .channel('work_orders_realtime')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'work_orders' },
         (payload) => {
-          if (payload.eventType === 'INSERT') {
-            setOrders((prev) => [payload.new as WorkOrder, ...prev]);
-          } else if (payload.eventType === 'UPDATE') {
-            setOrders((prev) =>
-              prev.map((o) => (o.id === payload.new.id ? (payload.new as WorkOrder) : o))
-            );
-          } else if (payload.eventType === 'DELETE') {
+          if (payload.eventType === 'DELETE') {
             setOrders((prev) => prev.filter((o) => o.id !== payload.old.id));
+          } else {
+            // INSERT veya UPDATE → tam refetch (join'leri yenile)
+            load();
           }
         }
+      )
+      // Stage değişimleri de Kanban kolonunu etkiler
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'order_stages' },
+        () => load(),
       )
       .subscribe();
 

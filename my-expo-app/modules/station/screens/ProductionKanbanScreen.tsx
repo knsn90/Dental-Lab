@@ -1,240 +1,320 @@
 // modules/station/screens/ProductionKanbanScreen.tsx
-// Lab mesul müdürü — istasyon bazlı üretim panosu (gerçek zamanlı)
+// Üretim Panosu — Apple Reminders tarzı liste/sütun.
+//
+// Stil dili:
+//   • Page bg: iOS systemGroupedBackground (#F2F2F7)
+//   • Column = rounded white container (radius 18), kart yığını yok
+//   • Item = inline row, hairline ayraçlarla bölünür
+//   • Pastel filled circle = stage indicator (left)
+//   • Late = soft red dot + subtle red title
+//   • iOS-style filled pill button (Continue)
 
-import React, { useMemo, useState, useContext } from 'react';
+import React, { useEffect, useMemo, useState, useContext } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, useWindowDimensions, ActivityIndicator,
-  Platform,
+  Platform, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+
 import { useAuthStore } from '../../../core/store/authStore';
-import { useKanbanData, type KanbanCard, type KanbanColumn } from '../hooks/useKanbanData';
+import { supabase } from '../../../core/api/supabase';
+import { toast } from '../../../core/ui/Toast';
 import { AppIcon } from '../../../core/ui/AppIcon';
 import { HubContext } from '../../../core/ui/HubContext';
 
-const ACCENT      = '#2563EB';
-const COL_WIDTH   = 240;
-const COL_GAP     = 12;
-const BOARD_PAD   = 14;
+import { useKanbanData, type KanbanCard, type KanbanColumn } from '../hooks/useKanbanData';
+import { autoAssignUser } from '../../orders/autoAssign';
+import { STAGE_CHECKLIST, STAGE_LABEL, STAGE_COLOR, type Stage } from '../../orders/stages';
+import { slaStatus, humanIdle } from '../../orders/slaConfig';
+import { StageChecklistModal } from '../../orders/components/StageChecklistModal';
 
-// ── Yardımcılar ───────────────────────────────────────────────────────────────
+// ─── iOS palette ─────────────────────────────────────────────────────────────
+const iOS = {
+  bg:       '#F2F2F7',         // systemGroupedBackground
+  card:     '#FFFFFF',         // secondarySystemGroupedBackground
+  hairline: '#E5E5EA',         // separator
+  text:     '#1C1C1E',         // label
+  text2:    '#3C3C43',         // secondaryLabel
+  text3:    '#8E8E93',         // tertiaryLabel
+  text4:    '#C7C7CC',         // quaternaryLabel
+  blue:     '#007AFF',
+  red:      '#FF3B30',
+  orange:   '#FF9500',
+  green:    '#34C759',
+  purple:   '#AF52DE',
+};
 
-function elapsed(startedAt: string | null): string {
-  if (!startedAt) return '—';
-  const secs = Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000);
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  if (h > 0) return `${h}s ${m}dk`;
-  return `${m}dk`;
-}
+const COL_WIDTH = 300;
+const COL_GAP   = 16;
+const PAD       = 16;
 
-function daysLabel(deliveryDate: string): { text: string; color: string } {
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const due   = new Date(deliveryDate + 'T00:00:00');
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function deliveryText(d: string): string {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const due   = new Date(d + 'T00:00:00');
   const diff  = Math.ceil((due.getTime() - today.getTime()) / 86_400_000);
-  if (diff < 0)  return { text: `${Math.abs(diff)}g gecikti`, color: '#EF4444' };
-  if (diff === 0) return { text: 'Bugün teslim',              color: '#8B5CF6' };
-  if (diff === 1) return { text: 'Yarın teslim',              color: '#F59E0B' };
-  if (diff <= 3)  return { text: `${diff} gün kaldı`,         color: '#F59E0B' };
-  return {
-    text: due.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }),
-    color: '#94A3B8',
-  };
+  if (diff < 0)  return `${Math.abs(diff)}g geçti`;
+  if (diff === 0) return 'Bugün';
+  if (diff === 1) return 'Yarın';
+  if (diff <= 6)  return `${diff} gün`;
+  return due.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
 }
 
-const STAGE_COLORS: Record<string, string> = {
-  aktif:      '#2563EB',
-  bekliyor:   '#F59E0B',
-  tamamlandi: '#16A34A',
-};
+// ─── Item Row (Reminders task row) ───────────────────────────────────────────
 
-const STAGE_LABELS: Record<string, string> = {
-  aktif:      'Devam',
-  bekliyor:   'Bekliyor',
-  tamamlandi: 'Bitti',
-};
-
-// ── Kanban Kartı ──────────────────────────────────────────────────────────────
-
-interface CardProps {
-  card: KanbanCard;
-  onPress: () => void;
-  onRoute?: () => void;
-  isManager: boolean;
+interface ItemProps {
+  card:        KanbanCard;
+  isLast:      boolean;
+  isUnassigned?: boolean;
+  busy?:       boolean;
+  onOpen:      () => void;
+  onContinue:  () => void;
+  onAutoAssign?: () => void;
+  onAssign?:   () => void;
 }
 
-function KanbanCardView({ card, onPress, onRoute, isManager }: CardProps) {
-  const { text: dLabel, color: dColor } = daysLabel(card.delivery_date);
-  const stageColor = STAGE_COLORS[card.stage_status ?? ''] ?? '#94A3B8';
-  const stageLabel = STAGE_LABELS[card.stage_status ?? ''] ?? '—';
-  const isActive   = card.stage_status === 'aktif';
-  const isOverdue  = new Date(card.delivery_date + 'T00:00:00') < new Date() && card.stage_status !== 'tamamlandi';
+function ItemRow({
+  card, isLast, isUnassigned, busy,
+  onOpen, onContinue, onAutoAssign, onAssign,
+}: ItemProps) {
+  const idleMs = card.stage_started_at ? Date.now() - new Date(card.stage_started_at).getTime() : 0;
+  const sla    = slaStatus(card.current_stage, idleMs);
+  const isLate = sla === 'red';
+  const stageColor = STAGE_COLOR[card.current_stage];
 
   return (
-    <TouchableOpacity
-      style={[
-        cs.card,
-        isOverdue && cs.cardOverdue,
-        isActive  && cs.cardActive,
-      ]}
-      onPress={onPress}
-      activeOpacity={0.8}
-    >
-      {/* ACİL bandı */}
-      {card.is_rush && (
-        <View style={cs.rushBand}>
-          <Text style={cs.rushText}>⚡ ACİL</Text>
-        </View>
-      )}
+    <View style={[r.row, !isLast && r.rowDivider]}>
+      {/* Left: filled circle (stage indicator) */}
+      <TouchableOpacity onPress={onOpen} activeOpacity={0.7} style={r.indicatorWrap}>
+        <View style={[r.indicator, { backgroundColor: stageColor }]} />
+      </TouchableOpacity>
 
-      {/* Üst meta: durum + sipariş no */}
-      <View style={cs.topRow}>
-        <View style={[cs.stagePill, { backgroundColor: stageColor + '20' }]}>
-          <View style={[cs.stageDot, { backgroundColor: stageColor }]} />
-          <Text style={[cs.stageLabel, { color: stageColor }]}>{stageLabel}</Text>
-        </View>
-        <Text style={cs.orderNum}>#{card.order_number}</Text>
-      </View>
-
-      {/* İş türü */}
-      <Text style={cs.workType} numberOfLines={1}>{card.work_type}</Text>
-
-      {/* Hekim */}
-      {card.doctor_name && (
-        <Text style={cs.doctorLine} numberOfLines={1}>{card.doctor_name}</Text>
-      )}
-
-      {/* Teknisyen */}
-      <View style={cs.techRow}>
-        <AppIcon name="account-outline" set="mci" size={13} color="#64748B" />
-        <Text style={cs.techName} numberOfLines={1}>
-          {card.technician_name ?? 'Atanmadı'}
-        </Text>
-        {isActive && (
-          <Text style={cs.timer}>{elapsed(card.stage_started_at)}</Text>
-        )}
-      </View>
-
-      {/* Alt kısım: kutu + teslim tarihi */}
-      <View style={cs.footer}>
-        {card.box_code ? (
-          <View style={cs.boxPill}>
-            <AppIcon name="cube-outline" set="mci" size={11} color="#475569" />
-            <Text style={cs.boxCode}>{card.box_code}</Text>
-          </View>
-        ) : <View />}
-
-        <Text style={[cs.daysLabel, { color: isOverdue ? '#EF4444' : dColor }]}>
-          {dLabel}
-        </Text>
-      </View>
-
-      {/* Rota Ata butonu — sadece mesul müdür */}
-      {isManager && (
-        <TouchableOpacity
-          style={cs.routeBtn}
-          onPress={(e) => { (e as any).stopPropagation?.(); onRoute?.(); }}
-          activeOpacity={0.75}
-        >
-          <AppIcon name="sitemap-outline" set="mci" size={12} color="#16A34A" />
-          <Text style={cs.routeBtnText}>Rotayı Düzenle</Text>
-        </TouchableOpacity>
-      )}
-    </TouchableOpacity>
-  );
-}
-
-// ── Kolon ─────────────────────────────────────────────────────────────────────
-
-function KanbanColumnView({
-  column,
-  colWidth,
-  isWide,
-  isManager,
-  onCardPress,
-  onRoutePress,
-}: {
-  column: KanbanColumn;
-  colWidth: number;
-  isWide: boolean;
-  isManager: boolean;
-  onCardPress: (card: KanbanCard) => void;
-  onRoutePress: (card: KanbanCard) => void;
-}) {
-  const activeCount = column.cards.filter(c => c.stage_status === 'aktif').length;
-
-  return (
-    <View style={[cols.column, isWide ? { flex: 1 } : { width: colWidth }]}>
-      {/* Kolon başlığı */}
-      <View style={cols.header}>
-        <View style={[cols.colorBar, { backgroundColor: column.station_color }]} />
-        <Text style={cols.title} numberOfLines={1}>{column.station_name}</Text>
-        <View style={cols.badges}>
-          {activeCount > 0 && (
-            <View style={cols.activeBadge}>
-              <Text style={cols.activeBadgeText}>{activeCount} aktif</Text>
-            </View>
+      {/* Body */}
+      <TouchableOpacity onPress={onOpen} activeOpacity={0.7} style={r.body}>
+        <View style={r.titleRow}>
+          <Text style={[r.title, isLate && { color: iOS.red }]} numberOfLines={1}>
+            {card.work_type}
+          </Text>
+          {isLate && (
+            <Text style={r.lateText}>+{humanIdle(idleMs)}</Text>
           )}
-          <View style={[cols.countBadge, { backgroundColor: column.station_color + '20' }]}>
-            <Text style={[cols.countText, { color: column.station_color }]}>
-              {column.cards.length}
-            </Text>
-          </View>
         </View>
-      </View>
+        <Text style={r.meta} numberOfLines={1}>
+          <Text style={r.metaStrong}>#{card.order_number}</Text>
+          {card.doctor_name ? `  ·  ${card.doctor_name}` : ''}
+          {card.technician_name ? `  ·  ${card.technician_name}` : '  ·  Atanmadı'}
+          {`  ·  ${deliveryText(card.delivery_date)}`}
+        </Text>
+      </TouchableOpacity>
 
-      {/* Renkli çizgi */}
-      <View style={[cols.divider, { backgroundColor: column.station_color }]} />
-
-      {/* Kartlar */}
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={cols.cards}
-        style={isWide ? { flex: 1 } : undefined}
-      >
-        {column.cards.length === 0 ? (
-          <View style={cols.empty}>
-            <Text style={cols.emptyText}>Boş istasyon</Text>
+      {/* Action */}
+      <View style={r.actionWrap}>
+        {isUnassigned ? (
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            <TouchableOpacity
+              onPress={onAutoAssign}
+              disabled={busy}
+              activeOpacity={0.75}
+              style={[r.pill, r.pillFilled, busy && { opacity: 0.5 }]}
+            >
+              {busy
+                ? <ActivityIndicator size="small" color="#FFFFFF" />
+                : <Text style={r.pillFilledText}>Otomatik</Text>}
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={onAssign}
+              activeOpacity={0.75}
+              style={[r.pill, r.pillTinted]}
+            >
+              <Text style={r.pillTintedText}>Manuel</Text>
+            </TouchableOpacity>
           </View>
         ) : (
-          column.cards.map(card => (
-            <KanbanCardView
-              key={card.id}
-              card={card}
-              isManager={isManager}
-              onPress={() => onCardPress(card)}
-              onRoute={() => onRoutePress(card)}
-            />
-          ))
+          <TouchableOpacity
+            onPress={onContinue}
+            disabled={busy}
+            activeOpacity={0.75}
+            style={[r.pill, r.pillTinted, busy && { opacity: 0.5 }]}
+          >
+            {busy
+              ? <ActivityIndicator size="small" color={iOS.blue} />
+              : <Text style={r.pillTintedText}>Devam ›</Text>}
+          </TouchableOpacity>
         )}
-        <View style={{ height: 20 }} />
-      </ScrollView>
+      </View>
     </View>
   );
 }
 
-// ── Ana Ekran ─────────────────────────────────────────────────────────────────
+// ─── Column (Reminders list container) ───────────────────────────────────────
+
+interface ColumnProps {
+  column:    KanbanColumn;
+  colWidth:  number;
+  isWide:    boolean;
+  onCard:    (c: KanbanCard) => void;
+  onContinue:(c: KanbanCard) => void;
+  onAutoAssign:(c: KanbanCard) => void;
+  onAssign:  (c: KanbanCard) => void;
+  busyId:    string | null;
+}
+
+function ColumnView({
+  column, colWidth, isWide,
+  onCard, onContinue, onAutoAssign, onAssign, busyId,
+}: ColumnProps) {
+  const isUnassigned = column.stage === 'UNASSIGNED';
+  const headerColor  = column.color;
+  const workloadLine = column.workload.slice(0, 2).map(w => `${w.name} ${w.count}`).join(' · ');
+
+  return (
+    <View style={[col.wrap, isWide ? { flex: 1 } : { width: colWidth }]}>
+      {/* Section header (Reminders style: small caps gray) */}
+      <View style={col.headerOuter}>
+        <View style={col.headerRow}>
+          <View style={[col.dot, { backgroundColor: headerColor }]} />
+          <Text style={col.title}>{column.label}</Text>
+          <Text style={col.count}>{column.cards.length}</Text>
+        </View>
+        {workloadLine && !isUnassigned && (
+          <Text style={col.subtitle}>{workloadLine}</Text>
+        )}
+      </View>
+
+      {/* Items list (rounded white container) */}
+      <View style={col.list}>
+        {column.cards.length === 0 ? (
+          <Text style={col.empty}>Boş</Text>
+        ) : (
+          column.cards.map((card, i) => (
+            <ItemRow
+              key={card.id}
+              card={card}
+              isLast={i === column.cards.length - 1}
+              isUnassigned={isUnassigned}
+              busy={busyId === card.id}
+              onOpen={() => onCard(card)}
+              onContinue={() => onContinue(card)}
+              onAutoAssign={() => onAutoAssign(card)}
+              onAssign={() => onAssign(card)}
+            />
+          ))
+        )}
+      </View>
+    </View>
+  );
+}
+
+// ─── Manual Assign picker (iOS sheet feel) ───────────────────────────────────
+
+interface AssignPickerProps {
+  visible:    boolean;
+  card:       KanbanCard | null;
+  labId:      string;
+  onClose:    () => void;
+  onAssigned: () => void;
+}
+
+function AssignPickerModal({ visible, card, labId, onClose, onAssigned }: AssignPickerProps) {
+  const [users, setUsers] = useState<{ id: string; full_name: string; workload: number }[]>([]);
+  const [loading, setLoading] = useState(false);
+  const stage = card?.current_stage ?? 'TRIAGE';
+
+  useEffect(() => {
+    if (!visible || !card) return;
+    setLoading(true);
+    (async () => {
+      const { data: skills } = await supabase
+        .from('user_stage_skills')
+        .select('user_id, profiles!inner(id, full_name, lab_id, is_active)')
+        .eq('stage', stage)
+        .eq('profiles.lab_id', labId)
+        .eq('profiles.is_active', true);
+      const ids = ((skills ?? []) as any[]).map(s => s.user_id);
+      const { data: workload } = ids.length
+        ? await supabase.from('stage_log').select('owner_id').is('end_time', null).in('owner_id', ids)
+        : { data: [] };
+      const counts = new Map<string, number>();
+      for (const r of (workload ?? []) as any[]) counts.set(r.owner_id, (counts.get(r.owner_id) ?? 0) + 1);
+      setUsers(((skills ?? []) as any[]).map(s => ({
+        id: s.user_id,
+        full_name: s.profiles.full_name as string,
+        workload: counts.get(s.user_id) ?? 0,
+      })).sort((a, b) => a.workload - b.workload));
+      setLoading(false);
+    })();
+  }, [visible, card, stage, labId]);
+
+  async function pick(userId: string) {
+    if (!card) return;
+    const { error } = await supabase
+      .from('order_stages')
+      .update({ technician_id: userId, assigned_at: new Date().toISOString() })
+      .eq('work_order_id', card.id)
+      .eq('status', 'aktif');
+    if (error) { toast.error(error.message); return; }
+    toast.success('Atandı');
+    onAssigned();
+    onClose();
+  }
+
+  return (
+    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
+      <View style={mp.backdrop}>
+        <View style={mp.sheet}>
+          <View style={mp.handle} />
+          <Text style={mp.title}>{STAGE_LABEL[stage]}</Text>
+          <Text style={mp.subtitle}>İş yüküne göre sıralı</Text>
+          {loading ? (
+            <ActivityIndicator color={iOS.blue} style={{ marginVertical: 30 }} />
+          ) : users.length === 0 ? (
+            <Text style={mp.empty}>Bu aşama için yetkili kullanıcı yok</Text>
+          ) : (
+            <ScrollView style={{ maxHeight: 360 }}>
+              {users.map((u, i) => (
+                <TouchableOpacity
+                  key={u.id}
+                  style={[mp.row, i < users.length - 1 && mp.rowDivider]}
+                  onPress={() => pick(u.id)}
+                  activeOpacity={0.6}
+                >
+                  <Text style={mp.name}>{u.full_name}</Text>
+                  <Text style={mp.count}>{u.workload} iş</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+          <TouchableOpacity onPress={onClose} style={mp.close}>
+            <Text style={mp.closeText}>Kapat</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ─── Main Screen ─────────────────────────────────────────────────────────────
 
 export function ProductionKanbanScreen() {
-  const router  = useRouter();
+  const router      = useRouter();
   const { profile } = useAuthStore();
-  const { width } = useWindowDimensions();
-  const isDesktopWidth = width >= 900;
-  const isEmbedded = useContext(HubContext);
+  const { width }   = useWindowDimensions();
+  const isDesktop   = width >= 900;
+  const isEmbedded  = useContext(HubContext);
 
-  const { columns, loading, error, lastSync, refresh } = useKanbanData(profile?.lab_id);
+  const labId = profile?.lab_id ?? profile?.id ?? null;
+  const { columns, loading, error, lastSync, refresh } = useKanbanData(labId);
   const [refreshing, setRefreshing] = useState(false);
+  const [busyId, setBusyId]         = useState<string | null>(null);
+  const [checklistFor, setChecklistFor] = useState<{ card: KanbanCard; stage: Stage } | null>(null);
+  const [assignFor, setAssignFor]   = useState<KanbanCard | null>(null);
 
-  const isManager = profile?.role === 'manager' || profile?.user_type === 'admin';
-
-  const totalActive = useMemo(
+  const totalCards  = useMemo(() => columns.reduce((s, c) => s + c.cards.length, 0), [columns]);
+  const activeCount = useMemo(
     () => columns.reduce((s, c) => s + c.cards.filter(x => x.stage_status === 'aktif').length, 0),
-    [columns],
-  );
-  const totalOrders = useMemo(
-    () => columns.reduce((s, c) => s + c.cards.length, 0),
     [columns],
   );
 
@@ -244,244 +324,287 @@ export function ProductionKanbanScreen() {
     setRefreshing(false);
   }
 
-  function onCardPress(card: KanbanCard) {
+  function onCard(card: KanbanCard) {
     router.push(`/(lab)/order/${card.id}` as any);
   }
 
-  function onRoutePress(card: KanbanCard) {
-    router.push(`/(lab)/order/route/${card.id}` as any);
+  async function onContinue(card: KanbanCard) {
+    setBusyId(card.id);
+    try {
+      const stage = card.current_stage;
+      const items = STAGE_CHECKLIST[stage] ?? [];
+      const required = items.filter(i => i.required !== false);
+      if (required.length === 0) {
+        router.push(`/(lab)/order/${card.id}` as any);
+        return;
+      }
+      const { data: logs } = await supabase
+        .from('checklist_log')
+        .select('item_key, checked')
+        .eq('work_order_id', card.id)
+        .eq('stage', stage);
+      const checkedKeys = new Set((logs ?? []).filter((r: any) => r.checked).map((r: any) => r.item_key));
+      const allDone = required.every(i => checkedKeys.has(i.key));
+      if (allDone) {
+        router.push(`/(lab)/order/${card.id}` as any);
+      } else {
+        setChecklistFor({ card, stage });
+      }
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Hata');
+    } finally {
+      setBusyId(null);
+    }
   }
 
-  // Kolon genişliği hesabı
-  const available = width - BOARD_PAD * 2 - COL_GAP * Math.max(columns.length - 1, 0);
-  const isWide    = columns.length > 0 && available / columns.length >= COL_WIDTH;
+  async function onAutoAssign(card: KanbanCard) {
+    if (!labId) return;
+    setBusyId(card.id);
+    try {
+      const stage = card.current_stage ?? 'TRIAGE';
+      const userId = await autoAssignUser(
+        stage, labId,
+        (card as any).complexity ?? 'medium',
+        (card as any).case_type ?? null,
+      );
+      if (!userId) { toast.warning('Uygun teknisyen bulunamadı'); return; }
+      const { data: active } = await supabase
+        .from('order_stages').select('id')
+        .eq('work_order_id', card.id).eq('status', 'aktif').maybeSingle();
+      if (active?.id) {
+        await supabase.from('order_stages')
+          .update({ technician_id: userId, assigned_at: new Date().toISOString() })
+          .eq('id', active.id);
+      } else {
+        toast.warning('Aktif aşama yok, detaydan başlat');
+      }
+      toast.success('Atandı');
+      refresh();
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Hata');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const available = width - PAD * 2 - COL_GAP * Math.max(columns.length - 1, 0);
+  const isWide    = isDesktop && columns.length > 0 && available / columns.length >= COL_WIDTH;
   const colWidth  = isWide ? available / columns.length : COL_WIDTH;
+
+  const renderColumns = () => columns.map(c => (
+    <ColumnView
+      key={c.stage}
+      column={c}
+      colWidth={colWidth}
+      isWide={isWide}
+      onCard={onCard}
+      onContinue={onContinue}
+      onAutoAssign={onAutoAssign}
+      onAssign={(card) => setAssignFor(card)}
+      busyId={busyId}
+    />
+  ));
 
   return (
     <SafeAreaView style={s.container} edges={isEmbedded ? ([] as any) : ['top']}>
-      {/* ── Başlık ── */}
       <View style={s.header}>
         <View>
           <Text style={s.title}>Üretim Panosu</Text>
           <Text style={s.subtitle}>
-            {totalOrders} iş emri · {totalActive} aktif
+            {totalCards} iş · {activeCount} aktif
             {lastSync && (
               <Text style={s.syncTime}>
-                {' '}· {lastSync.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                {'  ·  '}{lastSync.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
               </Text>
             )}
           </Text>
         </View>
-        <TouchableOpacity style={s.refreshBtn} onPress={refresh}>
-          <AppIcon name="refresh-cw" size={18} color={ACCENT} />
+        <TouchableOpacity style={s.refreshBtn} onPress={refresh} activeOpacity={0.7}>
+          <AppIcon name="refresh-cw" size={17} color={iOS.blue} />
         </TouchableOpacity>
       </View>
 
-      {/* ── İçerik ── */}
       {loading && !refreshing ? (
-        <View style={s.center}>
-          <ActivityIndicator size="large" color={ACCENT} />
-          <Text style={s.loadingText}>Yükleniyor…</Text>
-        </View>
+        <View style={s.center}><ActivityIndicator size="large" color={iOS.blue} /></View>
       ) : error ? (
         <View style={s.center}>
-          <AppIcon name="alert-circle-outline" set="mci" size={40} color="#EF4444" />
           <Text style={s.errorText}>{error}</Text>
           <TouchableOpacity style={s.retryBtn} onPress={refresh}>
             <Text style={s.retryText}>Tekrar Dene</Text>
           </TouchableOpacity>
         </View>
-      ) : columns.length === 0 ? (
-        <View style={s.center}>
-          <AppIcon name="clipboard-list-outline" set="mci" size={48} color="#CBD5E1" />
-          <Text style={s.emptyTitle}>Aktif İş Emri Yok</Text>
-          <Text style={s.emptySubtitle}>
-            İş emirleri istasyonlara atandığında burada görünür.
-          </Text>
-        </View>
       ) : isWide ? (
-        // ── Masaüstü: yatay flex ──
-        <View
-          style={[s.board, { flexDirection: 'row', padding: BOARD_PAD, gap: COL_GAP }]}
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ padding: PAD }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={iOS.blue} />}
         >
-          {columns.map(col => (
-            <KanbanColumnView
-              key={col.station_name}
-              column={col}
-              colWidth={colWidth}
-              isWide={isWide}
-              isManager={isManager}
-              onCardPress={onCardPress}
-              onRoutePress={onRoutePress}
-            />
-          ))}
-        </View>
+          <View style={{ flexDirection: 'row', gap: COL_GAP, alignItems: 'flex-start' }}>
+            {renderColumns()}
+          </View>
+        </ScrollView>
       ) : (
-        // ── Mobil: yatay scroll ──
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={Platform.OS === 'web'}
           style={{ flex: 1 }}
-          contentContainerStyle={{ padding: BOARD_PAD, gap: COL_GAP, flexDirection: 'row' }}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={ACCENT} />
-          }
+          contentContainerStyle={{ padding: PAD, gap: COL_GAP, flexDirection: 'row', alignItems: 'flex-start' }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={iOS.blue} />}
         >
-          {columns.map(col => (
-            <KanbanColumnView
-              key={col.station_name}
-              column={col}
-              colWidth={colWidth}
-              isWide={false}
-              isManager={isManager}
-              onCardPress={onCardPress}
-              onRoutePress={onRoutePress}
-            />
-          ))}
+          {renderColumns()}
         </ScrollView>
       )}
+
+      {checklistFor && profile && (
+        <StageChecklistModal
+          visible
+          workOrderId={checklistFor.card.id}
+          stage={checklistFor.stage}
+          managerId={profile.id}
+          onClose={() => setChecklistFor(null)}
+          onApproved={() => { setChecklistFor(null); refresh(); }}
+        />
+      )}
+
+      <AssignPickerModal
+        visible={!!assignFor}
+        card={assignFor}
+        labId={labId ?? ''}
+        onClose={() => setAssignFor(null)}
+        onAssigned={refresh}
+      />
     </SafeAreaView>
   );
 }
 
-// ── Stiller ───────────────────────────────────────────────────────────────────
+// ─── Styles ──────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8FAFC' },
+  container: { flex: 1, backgroundColor: iOS.bg },
 
   header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 18, paddingVertical: 14,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1, borderBottomColor: '#E2E8F0',
+    flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',
+    paddingHorizontal: PAD, paddingTop: 18, paddingBottom: 14,
+    backgroundColor: iOS.bg,
   },
-  title:     { fontSize: 20, fontWeight: '800', color: '#0F172A' },
-  subtitle:  { fontSize: 13, color: '#64748B', marginTop: 2 },
-  syncTime:  { color: '#CBD5E1' },
+  title:    { fontSize: 32, fontWeight: '800', color: iOS.text, letterSpacing: -0.8 },
+  subtitle: { fontSize: 14, color: iOS.text3, marginTop: 4, fontWeight: '500' },
+  syncTime: { color: iOS.text4 },
+
   refreshBtn: {
-    width: 38, height: 38, borderRadius: 10,
-    backgroundColor: '#EFF6FF',
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: 'rgba(0,122,255,0.10)',
     alignItems: 'center', justifyContent: 'center',
+    marginBottom: 4,
   },
 
-  board: { flex: 1 },
-
-  center: {
-    flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 32,
-  },
-  loadingText: { fontSize: 14, color: '#94A3B8' },
-  errorText:   { fontSize: 14, color: '#EF4444', textAlign: 'center' },
-  retryBtn: {
-    backgroundColor: ACCENT, borderRadius: 10,
-    paddingHorizontal: 20, paddingVertical: 10,
-  },
-  retryText:    { color: '#fff', fontWeight: '700' },
-  emptyTitle:   { fontSize: 18, fontWeight: '700', color: '#475569' },
-  emptySubtitle:{ fontSize: 14, color: '#94A3B8', textAlign: 'center', lineHeight: 22 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  errorText: { fontSize: 14, color: iOS.text3 },
+  retryBtn:  { paddingHorizontal: 18, paddingVertical: 10, backgroundColor: iOS.blue, borderRadius: 999 },
+  retryText: { color: '#FFFFFF', fontWeight: '700' },
 });
 
-// Kolon stilleri
-const cols = StyleSheet.create({
-  column:  { flexShrink: 0, gap: 0 },
-  header: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingBottom: 8,
+const col = StyleSheet.create({
+  wrap: { gap: 8 },
+
+  // Section header (outside the white container — Reminders pattern)
+  headerOuter: { paddingHorizontal: 14, paddingTop: 4, paddingBottom: 4, gap: 2 },
+  headerRow:   { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  dot:         { width: 10, height: 10, borderRadius: 5 },
+  title:       { flex: 1, fontSize: 15, fontWeight: '700', color: iOS.text, letterSpacing: -0.2 },
+  count:       { fontSize: 13, fontWeight: '700', color: iOS.text3 },
+  subtitle:    { fontSize: 12, color: iOS.text3, marginLeft: 18, fontWeight: '500' },
+
+  // Rounded white list container
+  list: {
+    backgroundColor: iOS.card,
+    borderRadius: 14,
+    overflow: 'hidden',
   },
-  colorBar: { width: 4, height: 18, borderRadius: 2 },
-  title: { fontSize: 13, fontWeight: '700', color: '#1E293B', flex: 1 },
-  badges: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  activeBadge: {
-    backgroundColor: '#2563EB15', borderRadius: 6,
-    paddingHorizontal: 6, paddingVertical: 2,
-  },
-  activeBadgeText: { fontSize: 10, fontWeight: '700', color: '#2563EB' },
-  countBadge: {
-    minWidth: 20, height: 20, borderRadius: 10,
-    alignItems: 'center', justifyContent: 'center',
-    paddingHorizontal: 5,
-  },
-  countText: { fontSize: 11, fontWeight: '700' },
-  divider: { height: 3, borderRadius: 2, marginBottom: 10, opacity: 0.5 },
-  cards:  { gap: 8 },
   empty: {
-    alignItems: 'center', paddingVertical: 32,
-    borderWidth: 1.5, borderColor: '#E2E8F0',
-    borderStyle: 'dashed', borderRadius: 12,
+    fontSize: 14, color: iOS.text4,
+    textAlign: 'center', paddingVertical: 26,
+    fontWeight: '500',
   },
-  emptyText: { fontSize: 13, color: '#94A3B8' },
 });
 
-// Kart stilleri
-const cs = StyleSheet.create({
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 12, padding: 10,
-    borderWidth: 1, borderColor: '#E2E8F0',
-    gap: 4,
-    shadowColor: '#000', shadowOpacity: 0.04,
-    shadowRadius: 4, shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
+const r = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 12,
   },
-  cardActive: {
-    borderColor: '#BFDBFE',
-    shadowColor: '#2563EB', shadowOpacity: 0.08,
-    shadowRadius: 6,
-  },
-  cardOverdue: {
-    borderColor: '#FECACA',
-    backgroundColor: '#FFF5F5',
+  rowDivider: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: iOS.hairline,
   },
 
-  // ACİL bandı
-  rushBand: {
-    backgroundColor: '#FEF2F2',
-    borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2,
-    alignSelf: 'flex-start', marginBottom: 2,
+  indicatorWrap: { paddingVertical: 4 },
+  indicator: {
+    width: 12, height: 12, borderRadius: 6,
   },
-  rushText: { fontSize: 10, fontWeight: '800', color: '#DC2626', letterSpacing: 0.3 },
 
-  // Üst satır
-  topRow: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between', gap: 6,
+  body: { flex: 1, gap: 2, minWidth: 0 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  title: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+    color: iOS.text,
+    letterSpacing: -0.2,
   },
-  stagePill: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2,
-  },
-  stageDot:   { width: 6, height: 6, borderRadius: 3 },
-  stageLabel: { fontSize: 10, fontWeight: '700' },
-  orderNum:   { fontSize: 13, fontWeight: '800', color: '#0F172A' },
+  lateText: { fontSize: 12, fontWeight: '700', color: iOS.red, letterSpacing: 0.2 },
 
-  // İçerik
-  workType:   { fontSize: 12, color: '#64748B', fontWeight: '500' },
-  doctorLine: { fontSize: 13, fontWeight: '700', color: '#1E293B' },
+  meta: { fontSize: 12, color: iOS.text3, fontWeight: '500' },
+  metaStrong: { color: iOS.text2, fontWeight: '700' },
 
-  // Teknisyen satırı
-  techRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
-  techName: { fontSize: 12, color: '#64748B', flex: 1 },
-  timer:    { fontSize: 12, fontWeight: '700', color: '#2563EB', fontVariant: ['tabular-nums'] },
+  actionWrap: { flexShrink: 0 },
 
-  // Footer
-  footer: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between', marginTop: 4,
+  // iOS pill buttons
+  pill: {
+    paddingHorizontal: 14, height: 30,
+    borderRadius: 999,
+    alignItems: 'center', justifyContent: 'center',
   },
-  boxPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 3,
-    backgroundColor: '#F1F5F9', borderRadius: 6,
-    paddingHorizontal: 6, paddingVertical: 2,
-  },
-  boxCode:   { fontSize: 10, fontWeight: '700', color: '#475569' },
-  daysLabel: { fontSize: 11, fontWeight: '600' },
+  pillFilled: { backgroundColor: iOS.blue },
+  pillFilledText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF', letterSpacing: -0.1 },
 
-  // Rota butonu
-  routeBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    marginTop: 6, paddingVertical: 5,
-    backgroundColor: '#F0FDF4', borderRadius: 7,
-    justifyContent: 'center',
-    borderWidth: 1, borderColor: '#BBF7D0',
+  pillTinted: { backgroundColor: 'rgba(0,122,255,0.12)' },
+  pillTintedText: { fontSize: 13, fontWeight: '700', color: iOS.blue, letterSpacing: -0.1 },
+});
+
+const mp = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.40)', justifyContent: 'flex-end', alignItems: 'center' },
+  sheet: {
+    width: '100%', maxWidth: 420,
+    backgroundColor: iOS.card,
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    paddingTop: 8, paddingBottom: 24, paddingHorizontal: 16,
+    gap: 8,
   },
-  routeBtnText: { fontSize: 11, fontWeight: '700', color: '#16A34A' },
+  handle: {
+    width: 36, height: 5, borderRadius: 2.5,
+    backgroundColor: iOS.text4, alignSelf: 'center', marginBottom: 8,
+  },
+  title:    { fontSize: 17, fontWeight: '700', color: iOS.text, paddingHorizontal: 4 },
+  subtitle: { fontSize: 13, color: iOS.text3, paddingHorizontal: 4, marginBottom: 6 },
+  empty:    { fontSize: 14, color: iOS.text3, textAlign: 'center', paddingVertical: 24 },
+
+  row: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 14, paddingVertical: 12,
+    backgroundColor: iOS.card,
+  },
+  rowDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: iOS.hairline },
+  name:  { fontSize: 15, fontWeight: '600', color: iOS.text },
+  count: { fontSize: 13, color: iOS.text3, fontWeight: '600' },
+
+  close: {
+    alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 14, marginTop: 8,
+    backgroundColor: iOS.bg, borderRadius: 14,
+  },
+  closeText: { fontSize: 15, fontWeight: '700', color: iOS.blue },
 });

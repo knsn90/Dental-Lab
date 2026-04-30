@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, ActivityIndicator, Modal, useWindowDimensions,
+  TextInput, ActivityIndicator, Modal, useWindowDimensions, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
@@ -9,6 +9,8 @@ import { supabase } from '../../../lib/supabase';
 import { SlideTabBar } from '../../../core/ui/SlideTabBar';
 import { IconBtn } from '../../../core/ui/IconBtn';
 import { StockMovementsScreen } from './StockMovementsScreen';
+import { WasteReportModal } from '../components/WasteReportModal';
+import { useAuthStore } from '../../../core/store/authStore';
 
 import { AppIcon } from '../../../core/ui/AppIcon';
 
@@ -23,7 +25,22 @@ interface StockItem {
   category?: string;
   supplier?: string;
   brand?: string;
+  // ── Production-aware fields (Migration 052) ────────────────────────────
+  type?: string | null;                  // zirconia / metal / emax / pmma / glaze / ...
+  usage_category?: 'production' | 'office' | 'misc' | null;
+  units_per_tooth?: number | null;       // null/0 = no auto-consume
+  consume_at_stage?: string | null;      // default 'MILLING'
+  unit_cost?: number | null;             // future cost tracking
 }
+
+const USAGE_CATEGORY_OPTIONS: { key: 'all' | 'production' | 'office' | 'misc'; label: string }[] = [
+  { key: 'all',        label: 'Tümü'     },
+  { key: 'production', label: 'Üretim'   },
+  { key: 'office',     label: 'Ofis'     },
+  { key: 'misc',       label: 'Diğer'    },
+];
+
+const STAGE_OPTIONS = ['TRIAGE', 'DESIGN', 'CAM', 'MILLING', 'SINTER', 'FINISH', 'QC'];
 
 type MovType = 'IN' | 'OUT' | 'WASTE';
 type StatusFilter = 'all' | 'critical' | 'ok' | 'empty';
@@ -94,6 +111,13 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
   const [minQty, setMinQty]     = useState('');
   const [unit, setUnit]         = useState('');
   const [supplier, setSupplier] = useState('');
+  // ── Production-aware fields (Migration 052/054) ───────────────────────
+  const [matType, setMatType]             = useState('');             // zirconia/metal/...
+  const [usageCategory, setUsageCategory] = useState<'production' | 'office' | 'misc'>('misc');
+  const [unitsPerTooth, setUnitsPerTooth] = useState('');
+  const [consumeStage, setConsumeStage]   = useState<string>('MILLING');
+  const [unitCost, setUnitCost]           = useState('');
+  const [consumptionType, setConsumptionType] = useState<'fixed' | 'per_tooth' | 'manual'>('manual');
   const [saving, setSaving]     = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError]       = useState('');
@@ -109,6 +133,12 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
       setMinQty(item ? String(item.min_quantity) : '');
       setUnit(item?.unit ?? '');
       setSupplier(item?.supplier ?? '');
+      setMatType(item?.type ?? '');
+      setUsageCategory((item?.usage_category as any) ?? 'misc');
+      setUnitsPerTooth(item?.units_per_tooth != null ? String(item.units_per_tooth) : '');
+      setConsumeStage(item?.consume_at_stage ?? 'MILLING');
+      setUnitCost(item?.unit_cost != null ? String(item.unit_cost) : '');
+      setConsumptionType(((item as any)?.consumption_type as any) ?? 'manual');
       setError('');
     }
   }, [visible, item]);
@@ -122,7 +152,24 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
     setSaving(true); setError('');
     try {
       const brandName = brand.trim() || null;
-      const payload = { name: name.trim(), category: category.trim() || null, brand: brandName, quantity: qty, min_quantity: min, unit: unit.trim() || null, supplier: supplier.trim() || null };
+      const upt = parseFloat(unitsPerTooth);
+      const cost = parseFloat(unitCost);
+      const payload = {
+        name: name.trim(),
+        category: category.trim() || null,
+        brand: brandName,
+        quantity: qty,
+        min_quantity: min,
+        unit: unit.trim() || null,
+        supplier: supplier.trim() || null,
+        // Production-aware
+        type: matType.trim() || null,
+        usage_category: usageCategory,
+        consumption_type: consumptionType,
+        units_per_tooth: !isNaN(upt) && upt > 0 ? upt : null,
+        consume_at_stage: usageCategory === 'production' ? consumeStage : 'MILLING',
+        unit_cost: !isNaN(cost) && cost >= 0 ? cost : 0,
+      };
       if (isEdit) {
         const { error: e } = await supabase.from('stock_items').update(payload).eq('id', item!.id);
         if (e) throw e;
@@ -297,6 +344,152 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                   <Text style={m.errorText}>{error}</Text>
                 </View>
               ) : null}
+            </View>
+
+            {/* ── Üretim Entegrasyonu ─────────────────────────────────── */}
+            <View style={m.sectionCard}>
+              <Text style={m.sectionTitle}>Üretim Entegrasyonu</Text>
+
+              {/* Usage category — segmented */}
+              <View style={[m.fieldWrap, { marginBottom: 12 }]}>
+                <Text style={m.fieldLabel}>KULLANIM KATEGORİSİ</Text>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  {(['production','office','misc'] as const).map(cat => {
+                    const active = usageCategory === cat;
+                    const label  = cat === 'production' ? 'Üretim' : cat === 'office' ? 'Ofis' : 'Diğer';
+                    return (
+                      <TouchableOpacity
+                        key={cat}
+                        onPress={() => setUsageCategory(cat)}
+                        style={{
+                          paddingHorizontal: 12, paddingVertical: 8,
+                          borderRadius: 999,
+                          borderWidth: 1,
+                          borderColor: active ? '#2563EB' : '#E5E5EA',
+                          backgroundColor: active ? '#EFF6FF' : '#FFFFFF',
+                        }}
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: active ? '700' : '500', color: active ? '#2563EB' : '#3C3C43' }}>
+                          {label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* Type — only meaningful for production */}
+              <View style={[m.fieldWrap, { marginBottom: 12 }]}>
+                <Text style={m.fieldLabel}>MATERYAL TÜRÜ</Text>
+                <TextInput
+                  style={m.fieldInput}
+                  value={matType}
+                  onChangeText={setMatType}
+                  placeholder="zirconia / metal / emax / pmma / glaze…"
+                  placeholderTextColor="#C7C7CC"
+                />
+                <Text style={{ fontSize: 11, color: '#8E8E93', marginTop: 4 }}>
+                  Sipariş türüyle eşleşir (zirconia siparişi → zirconia disk).
+                </Text>
+              </View>
+
+              {/* Consumption type selector — production-only */}
+              {usageCategory === 'production' && (
+                <View style={[m.fieldWrap, { marginBottom: 12 }]}>
+                  <Text style={m.fieldLabel}>TÜKETİM MODELİ</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                    {([
+                      { key: 'per_tooth',     label: 'Diş Başı',  hint: 'tooth × units' },
+                      { key: 'fixed',         label: 'Sabit',     hint: '1 birim/sipariş' },
+                      { key: 'manual',        label: 'Manuel',    hint: 'her seferde gir' },
+                    ] as const).map(opt => {
+                      const active = consumptionType === opt.key;
+                      return (
+                        <TouchableOpacity
+                          key={opt.key}
+                          onPress={() => setConsumptionType(opt.key)}
+                          style={{
+                            paddingHorizontal: 10, paddingVertical: 6,
+                            borderRadius: 999,
+                            borderWidth: 1,
+                            borderColor: active ? '#7C3AED' : '#E5E5EA',
+                            backgroundColor: active ? '#F5F3FF' : '#FFFFFF',
+                          }}
+                        >
+                          <Text style={{ fontSize: 12, fontWeight: active ? '700' : '500', color: active ? '#7C3AED' : '#3C3C43' }}>
+                            {opt.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  <Text style={{ fontSize: 11, color: '#8E8E93', marginTop: 4 }}>
+                    {consumptionType === 'per_tooth' && 'Diş sayısı × diş başına tüketim formülü.'}
+                    {consumptionType === 'fixed'     && 'Aşama tamamlanınca 1 birim düşer.'}
+                    {consumptionType === 'manual'    && 'Her aşamada manuel miktar girilir.'}
+                  </Text>
+                </View>
+              )}
+
+              {/* Production-only fields */}
+              {usageCategory === 'production' && (
+                <>
+                  <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
+                    <View style={[m.fieldWrap, { flex: 1, marginBottom: 0 }]}>
+                      <Text style={m.fieldLabel}>DİŞ BAŞINA TÜKETİM</Text>
+                      <TextInput
+                        style={m.fieldInput}
+                        value={unitsPerTooth}
+                        onChangeText={setUnitsPerTooth}
+                        keyboardType="numeric"
+                        placeholder="0.5"
+                        placeholderTextColor="#C7C7CC"
+                      />
+                    </View>
+                    <View style={[m.fieldWrap, { flex: 1, marginBottom: 0 }]}>
+                      <Text style={m.fieldLabel}>TÜKETİM AŞAMASI</Text>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+                        {STAGE_OPTIONS.map(st => {
+                          const active = consumeStage === st;
+                          return (
+                            <TouchableOpacity
+                              key={st}
+                              onPress={() => setConsumeStage(st)}
+                              style={{
+                                paddingHorizontal: 8, paddingVertical: 4,
+                                borderRadius: 999,
+                                borderWidth: 1,
+                                borderColor: active ? '#2563EB' : '#E5E5EA',
+                                backgroundColor: active ? '#EFF6FF' : '#FFFFFF',
+                              }}
+                            >
+                              <Text style={{ fontSize: 11, fontWeight: '700', color: active ? '#2563EB' : '#8E8E93' }}>
+                                {st}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  </View>
+                  <Text style={{ fontSize: 11, color: '#8E8E93', marginBottom: 12 }}>
+                    Sipariş bu aşamayı tamamlayınca: diş sayısı × tüketim = stoktan otomatik düşülür.
+                  </Text>
+                </>
+              )}
+
+              {/* Unit cost — always visible (future cost tracking) */}
+              <View style={[m.fieldWrap, { marginBottom: 0 }]}>
+                <Text style={m.fieldLabel}>BİRİM MALİYET (₺)</Text>
+                <TextInput
+                  style={m.fieldInput}
+                  value={unitCost}
+                  onChangeText={setUnitCost}
+                  keyboardType="numeric"
+                  placeholder="0.00"
+                  placeholderTextColor="#C7C7CC"
+                />
+              </View>
             </View>
           </ScrollView>
 
@@ -794,7 +987,7 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
 const db = StyleSheet.create({
   // Quick actions
   qaGrid:            { flexDirection: 'row', gap: 10 },
-  qaCard:            { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: '#FFFFFF', borderRadius: 16, paddingVertical: 18, borderWidth: 1, borderColor: '#F1F5F9' },
+  qaCard:            { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: '#FFFFFF', borderRadius: 14, paddingVertical: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)', ...(Platform.OS === 'web' ? ({ boxShadow: '0 8px 24px rgba(0,0,0,0.15)' } as any) : { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 4 }) },
   qaCardPrimary:     { borderWidth: 0 },
   qaIconWrap:        { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1F5F9' },
   qaIconWrapWhite:   { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.2)' },
@@ -803,7 +996,7 @@ const db = StyleSheet.create({
 
   // Stat cards (Stitch style — clean white cards with circular icon)
   statRow:        { flexDirection: 'row', gap: 12, flexWrap: 'wrap' },
-  statCard:       { flex: 1, minWidth: 150, backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#F1F5F9', padding: 18, gap: 4 },
+  statCard:       { flex: 1, minWidth: 150, backgroundColor: '#FFFFFF', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)', padding: 18, gap: 4, ...(Platform.OS === 'web' ? ({ boxShadow: '0 8px 24px rgba(0,0,0,0.15)' } as any) : { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 4 }) },
   statCardAlert:  { borderColor: '#FECACA', backgroundColor: '#FFF5F5' },
   statCardTop:    { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 },
   statIcon:       { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
@@ -820,7 +1013,7 @@ const db = StyleSheet.create({
   barCatCount: { fontSize: 12, fontWeight: '700' },
 
   // Generic card
-  card:         { backgroundColor: '#FFFFFF', borderRadius: 14, borderWidth: 1, borderColor: '#F1F5F9', padding: 16 },
+  card:         { backgroundColor: '#FFFFFF', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)', padding: 16, ...(Platform.OS === 'web' ? ({ boxShadow: '0 8px 24px rgba(0,0,0,0.15)' } as any) : { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 4 }) },
   cardHead:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   sectionTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
   mutedText:    { fontSize: 12, color: '#94A3B8' },
@@ -1242,7 +1435,7 @@ function StockSettings({ accentColor, onReload }: { accentColor: string; onReloa
 }
 
 const ss = StyleSheet.create({
-  card:         { backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#F1F5F9', overflow: 'hidden' },
+  card:         { backgroundColor: '#FFFFFF', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)', overflow: 'hidden', ...(Platform.OS === 'web' ? ({ boxShadow: '0 8px 24px rgba(0,0,0,0.15)' } as any) : { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 4 }) },
   cardHead:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F8FAFC' },
   headIcon:     { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   cardTitle:    { fontSize: 15, fontWeight: '700', color: '#0F172A' },
@@ -1275,6 +1468,7 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
   const [tab, setTab] = useState<'dashboard' | 'list' | 'movements' | 'settings'>('dashboard');
 
   const [items, setItems]               = useState<StockItem[]>([]);
+  const [wasteMap, setWasteMap]         = useState<Record<string, { qty: number; cost: number }>>({});
   const [loading, setLoading]           = useState(true);
   const [refreshing, setRefreshing]     = useState(false);
   const [tableExists, setTableExists]   = useState(true);
@@ -1286,12 +1480,17 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
   const [searchFocused, setSearchFocused]   = useState(false);
 
   const [showFilter, setShowFilter]     = useState(false);
+  const [wasteOpen, setWasteOpen]       = useState(false);
+  const { profile: authProfile }        = useAuthStore();
+  const labId = (authProfile as any)?.lab_id ?? authProfile?.id ?? null;
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [catFilter, setCatFilter]       = useState('all');
   const [brandFilter, setBrandFilter]   = useState('all');
+  const [usageFilter, setUsageFilter]   = useState<'all' | 'production' | 'office' | 'misc'>('all');
   const [draftStatus, setDraftStatus]   = useState<StatusFilter>('all');
   const [draftCat, setDraftCat]         = useState('all');
   const [draftBrand, setDraftBrand]     = useState('all');
+  const [draftUsage, setDraftUsage]     = useState<'all' | 'production' | 'office' | 'misc'>('all');
 
   const [productModal, setProductModal] = useState<{ visible: boolean; item: StockItem | null }>({ visible: false, item: null });
   const [movModal, setMovModal]         = useState<{ visible: boolean; item: StockItem | null; defaultType?: MovType }>({ visible: false, item: null });
@@ -1299,10 +1498,19 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     try {
-      const [itemsRes, brandsRes, catsRes] = await Promise.all([
+      // 30 gün önce — fire badge için
+      const since = new Date(); since.setDate(since.getDate() - 30);
+      const sinceISO = since.toISOString();
+
+      const [itemsRes, brandsRes, catsRes, wasteRes] = await Promise.all([
         supabase.from('stock_items').select('*').order('name'),
         supabase.from('brands').select('name').order('name'),
         supabase.from('categories').select('name').order('name'),
+        supabase
+          .from('stock_movements')
+          .select('item_id, quantity, unit_cost_at_time')
+          .eq('type', 'WASTE')
+          .gte('created_at', sinceISO),
       ]);
       if (itemsRes.error) {
         if (itemsRes.error.code === '42P01' || itemsRes.error.message?.includes('does not exist')) setTableExists(false);
@@ -1313,6 +1521,16 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
       }
       try { if (!brandsRes.error && brandsRes.data) setBrands(brandsRes.data.map((b: any) => b.name)); } catch {}
       try { if (!catsRes.error && catsRes.data)   setDbCategories(catsRes.data.map((c: any) => c.name)); } catch {}
+
+      // Aggregate waste by item_id
+      const wm: Record<string, { qty: number; cost: number }> = {};
+      for (const m of ((wasteRes.data ?? []) as any[])) {
+        if (!m.item_id) continue;
+        if (!wm[m.item_id]) wm[m.item_id] = { qty: 0, cost: 0 };
+        wm[m.item_id].qty  += Number(m.quantity ?? 0);
+        wm[m.item_id].cost += Number(m.quantity ?? 0) * Number(m.unit_cost_at_time ?? 0);
+      }
+      setWasteMap(wm);
     } catch { setItems([]); }
     finally { setLoading(false); setRefreshing(false); }
   }, []);
@@ -1329,9 +1547,10 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
 
   const q = search.trim().toLowerCase();
   const filtered = items.filter(item => {
-    if (q && !item.name.toLowerCase().includes(q) && !item.category?.toLowerCase().includes(q) && !item.brand?.toLowerCase().includes(q)) return false;
+    if (q && !item.name.toLowerCase().includes(q) && !item.category?.toLowerCase().includes(q) && !item.brand?.toLowerCase().includes(q) && !(item.type ?? '').toLowerCase().includes(q)) return false;
     if (catFilter !== 'all' && item.category !== catFilter) return false;
     if (brandFilter !== 'all' && item.brand !== brandFilter) return false;
+    if (usageFilter !== 'all' && (item.usage_category ?? 'misc') !== usageFilter) return false;
     const pct = item.min_quantity > 0 ? item.quantity / item.min_quantity : 1;
     if (statusFilter === 'critical') return pct < 1 && item.quantity > 0;
     if (statusFilter === 'ok')       return pct >= 1;
@@ -1343,7 +1562,11 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
   const criticalCount = items.filter(i => i.quantity > 0 && i.quantity < i.min_quantity).length;
   const emptyCount    = items.filter(i => i.quantity === 0).length;
   const total         = items.length;
-  const activeFilterCount = (statusFilter !== 'all' ? 1 : 0) + (catFilter !== 'all' ? 1 : 0) + (brandFilter !== 'all' ? 1 : 0);
+  const activeFilterCount =
+    (statusFilter !== 'all' ? 1 : 0) +
+    (catFilter !== 'all' ? 1 : 0) +
+    (brandFilter !== 'all' ? 1 : 0) +
+    (usageFilter !== 'all' ? 1 : 0);
 
   // Grouped view
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -1367,8 +1590,8 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
     return a.localeCompare(b, 'tr');
   });
 
-  const openFilter = () => { setDraftStatus(statusFilter); setDraftCat(catFilter); setDraftBrand(brandFilter); setShowFilter(true); };
-  const applyFilter = () => { setStatusFilter(draftStatus); setCatFilter(draftCat); setBrandFilter(draftBrand); setShowFilter(false); };
+  const openFilter = () => { setDraftStatus(statusFilter); setDraftCat(catFilter); setDraftBrand(brandFilter); setDraftUsage(usageFilter); setShowFilter(true); };
+  const applyFilter = () => { setStatusFilter(draftStatus); setCatFilter(draftCat); setBrandFilter(draftBrand); setUsageFilter(draftUsage); setShowFilter(false); };
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
@@ -1463,6 +1686,21 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
                   </View>
                 )}
               </IconBtn>
+
+              {/* Fire bildir butonu */}
+              <TouchableOpacity
+                onPress={() => setWasteOpen(true)}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                  paddingHorizontal: 12, height: 36,
+                  borderRadius: 10,
+                  backgroundColor: '#FEE2E2', borderWidth: 1, borderColor: '#FCA5A5',
+                }}
+                activeOpacity={0.8}
+              >
+                <AppIcon name="alert-triangle" size={14} color="#DC2626" />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#DC2626' }}>Fire Bildir</Text>
+              </TouchableOpacity>
             </View>
 
             {/* ── Table ── */}
@@ -1527,10 +1765,53 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
 
                             <View style={[tbl.col, { flex: 2.8, paddingLeft: 10 }]}>
                               <View style={{ flex: 1 }}>
-                                <Text style={tbl.name} numberOfLines={1}>{item.name}</Text>
-                                {(item.brand || item.unit || item.supplier) && (
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                  <Text style={tbl.name} numberOfLines={1}>{item.name}</Text>
+                                  {item.usage_category === 'production' && (
+                                    <View style={{
+                                      paddingHorizontal: 6, paddingVertical: 1,
+                                      borderRadius: 999,
+                                      backgroundColor: '#EDE9FE',
+                                    }}>
+                                      <Text style={{ fontSize: 9, fontWeight: '800', color: '#7C3AED', letterSpacing: 0.4 }}>
+                                        ÜRETİM
+                                      </Text>
+                                    </View>
+                                  )}
+                                  {item.type && (
+                                    <View style={{
+                                      paddingHorizontal: 6, paddingVertical: 1,
+                                      borderRadius: 999,
+                                      backgroundColor: '#F1F5F9',
+                                    }}>
+                                      <Text style={{ fontSize: 9, fontWeight: '800', color: '#475569', letterSpacing: 0.4 }}>
+                                        {item.type.toUpperCase()}
+                                      </Text>
+                                    </View>
+                                  )}
+                                  {/* 30 gün fire badge — sadece > 0 ise */}
+                                  {(wasteMap[item.id]?.cost ?? 0) > 0 && (
+                                    <View style={{
+                                      flexDirection: 'row', alignItems: 'center', gap: 3,
+                                      paddingHorizontal: 6, paddingVertical: 1,
+                                      borderRadius: 999,
+                                      backgroundColor: '#FEE2E2',
+                                      borderWidth: 1, borderColor: '#FCA5A5',
+                                    }}>
+                                      <Text style={{ fontSize: 9, fontWeight: '800', color: '#DC2626', letterSpacing: 0.3 }}>
+                                        ⚠ {Math.round(wasteMap[item.id].cost).toLocaleString('tr-TR')} ₺
+                                      </Text>
+                                    </View>
+                                  )}
+                                </View>
+                                {(item.brand || item.unit || item.supplier || item.units_per_tooth) && (
                                   <Text style={tbl.meta} numberOfLines={1}>
-                                    {[item.brand, item.unit, item.supplier].filter(Boolean).join(' · ')}
+                                    {[
+                                      item.brand,
+                                      item.unit,
+                                      item.supplier,
+                                      item.units_per_tooth ? `${item.units_per_tooth}/diş → ${item.consume_at_stage ?? 'MILLING'}` : null,
+                                    ].filter(Boolean).join(' · ')}
                                   </Text>
                                 )}
                               </View>
@@ -1592,6 +1873,17 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
       />
 
       {/* Filter Sheet */}
+      {/* Fire bildirim modalı */}
+      {labId && authProfile && (
+        <WasteReportModal
+          visible={wasteOpen}
+          labId={labId}
+          userId={authProfile.id}
+          onClose={() => setWasteOpen(false)}
+          onSaved={() => load(true)}
+        />
+      )}
+
       <Modal visible={showFilter} transparent animationType="fade" onRequestClose={() => setShowFilter(false)}>
         <TouchableOpacity style={fp.backdrop} activeOpacity={1} onPress={() => setShowFilter(false)}>
           <View style={fp.panel} onStartShouldSetResponder={() => true}>
@@ -1603,7 +1895,7 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
                   <View style={fp.countBadge}><Text style={fp.countBadgeText}>{activeFilterCount}</Text></View>
                 )}
               </View>
-              <TouchableOpacity onPress={() => { setDraftStatus('all'); setDraftCat('all'); setDraftBrand('all'); }} activeOpacity={0.7}>
+              <TouchableOpacity onPress={() => { setDraftStatus('all'); setDraftCat('all'); setDraftBrand('all'); setDraftUsage('all'); }} activeOpacity={0.7}>
                 <Text style={fp.clearText}>Temizle</Text>
               </TouchableOpacity>
             </View>
@@ -1621,6 +1913,26 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
                   const active = draftStatus === it.value;
                   return (
                     <TouchableOpacity key={it.value} style={[fp.chip, active && fp.chipActive]} onPress={() => setDraftStatus(it.value)} activeOpacity={0.7}>
+                      <Text style={[fp.chipText, active && fp.chipTextActive]}>{it.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={fp.divider} />
+            <View style={fp.section}>
+              <Text style={fp.sectionLabel}>Kullanım</Text>
+              <View style={fp.chipRow}>
+                {([
+                  { value: 'all',        label: 'Tümü'    },
+                  { value: 'production', label: 'Üretim'  },
+                  { value: 'office',     label: 'Ofis'    },
+                  { value: 'misc',       label: 'Diğer'   },
+                ] as const).map(it => {
+                  const active = draftUsage === it.value;
+                  return (
+                    <TouchableOpacity key={it.value} style={[fp.chip, active && fp.chipActive]} onPress={() => setDraftUsage(it.value)} activeOpacity={0.7}>
                       <Text style={[fp.chipText, active && fp.chipTextActive]}>{it.label}</Text>
                     </TouchableOpacity>
                   );
@@ -1685,7 +1997,7 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
-  safe:      { flex: 1, backgroundColor: '#FFFFFF' },
+  safe:      { flex: 1, backgroundColor: '#F1F5F9' },
   container: { padding: 20, paddingBottom: 60 },
 
   /* Tab bar + CTA row (Stitch) */
@@ -1694,7 +2006,7 @@ const s = StyleSheet.create({
   pageCtaText:  { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
 
   /* Stats header */
-  statsCard:     { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FAFBFC', borderRadius: 12, borderWidth: 1, borderColor: '#F1F5F9', paddingHorizontal: 16, paddingVertical: 12, marginBottom: 16, gap: 16 },
+  statsCard:     { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)', paddingHorizontal: 16, paddingVertical: 14, marginBottom: 16, gap: 16, ...(Platform.OS === 'web' ? ({ boxShadow: '0 8px 24px rgba(0,0,0,0.15)' } as any) : { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 4 }) },
   statsLeft:     { flexDirection: 'row', alignItems: 'center', gap: 10 },
   statsIconBox:  { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   statsLabel:    { fontSize: 10, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.6, textTransform: 'uppercase' },
@@ -1714,7 +2026,7 @@ const s = StyleSheet.create({
 
   /* Toolbar */
   toolbar:          { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
-  searchWrap:       { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F8FAFC', borderRadius: 10, borderWidth: 1, borderColor: '#F1F5F9', paddingHorizontal: 12, height: 40 },
+  searchWrap:       { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)', paddingHorizontal: 12, height: 40, ...(Platform.OS === 'web' ? ({ boxShadow: '0 4px 12px rgba(0,0,0,0.08)' } as any) : { shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 2 }) },
   searchWrapFocused:{ borderColor: '#CBD5E1' },
   searchInput:      { flex: 1, fontSize: 14, color: '#1C1C1E', height: 40, outlineStyle: 'none' } as any,
 
@@ -1733,10 +2045,10 @@ const s = StyleSheet.create({
 });
 
 const tbl = StyleSheet.create({
-  headerRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#F1F5F9', marginBottom: 8 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)', marginBottom: 8, ...(Platform.OS === 'web' ? ({ boxShadow: '0 4px 12px rgba(0,0,0,0.08)' } as any) : { shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 2 }) },
   hCell:     { fontSize: 10, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.6, textTransform: 'uppercase' },
 
-  group:       { backgroundColor: '#FFFFFF', borderRadius: 14, borderWidth: 1, borderColor: '#F1F5F9', overflow: 'hidden', marginBottom: 8, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' } as any,
+  group:       { backgroundColor: '#FFFFFF', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)', overflow: 'hidden', marginBottom: 12, ...(Platform.OS === 'web' ? ({ boxShadow: '0 8px 24px rgba(0,0,0,0.15)' } as any) : { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 4 }) } as any,
   groupHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: '#FAFBFC', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
   groupLabel:  { fontSize: 13, fontWeight: '700', color: '#0F172A', flex: 1 },
   groupCount:  { backgroundColor: '#F1F5F9', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
@@ -1766,7 +2078,7 @@ const tbl = StyleSheet.create({
 
 const m = StyleSheet.create({
   overlay:    { flex: 1, backgroundColor: 'rgba(15,23,42,0.4)', justifyContent: 'center', alignItems: 'center', padding: 24 },
-  sheet:      { backgroundColor: '#FFFFFF', borderRadius: 16, width: '100%', maxWidth: 540, maxHeight: '92%', overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.15, shadowRadius: 48 },
+  sheet:      { backgroundColor: '#FFFFFF', borderRadius: 14, width: '100%', maxWidth: 540, maxHeight: '92%', overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)', ...(Platform.OS === 'web' ? ({ boxShadow: '0 8px 24px rgba(0,0,0,0.15)' } as any) : { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 4 }) },
   header:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 22, paddingBottom: 18, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
   title:      { fontSize: 18, fontWeight: '700', color: '#0F172A' },
   closeBtn:   { width: 32, height: 32, borderRadius: 8, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },

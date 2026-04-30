@@ -705,6 +705,14 @@ export function LabDashboardScreen() {
   const [topTechs,        setTopTechs]       = useState<TechStat[]>([]);
   const [pendingCount,    setPendingCount]   = useState(0);
 
+  // Stok özeti
+  const [stockSummary, setStockSummary] = useState<{
+    lowCount:        number;
+    materialCostMtd: number;
+    wasteCostMtd:    number;
+    topUsedName:     string | null;
+  } | null>(null);
+
   // Pipeline counts
   const [pipelineCounts, setPipelineCounts] = useState<Record<string, number>>({});
 
@@ -802,13 +810,57 @@ export function LabDashboardScreen() {
     setProvasLoading(false);
   }, []);
 
+  const loadStockSummary = useCallback(async () => {
+    const labId = profile?.lab_id ?? profile?.id;
+    if (!labId) return;
+    const monthStart = (() => {
+      const d = new Date();
+      return new Date(d.getFullYear(), d.getMonth(), 1).toISOString();
+    })();
+    try {
+      const [itemsRes, movRes] = await Promise.all([
+        supabase.from('stock_items')
+          .select('id, name, quantity, min_quantity')
+          .eq('lab_id', labId),
+        supabase.from('stock_movements')
+          .select('item_id, item_name, type, quantity, unit_cost_at_time, is_reversed')
+          .eq('lab_id', labId)
+          .gte('created_at', monthStart),
+      ]);
+      const items = (itemsRes.data ?? []) as any[];
+      const lowCount = items.filter(i => (i.min_quantity ?? 0) > 0 && i.quantity < i.min_quantity).length;
+
+      let materialCost = 0;
+      let wasteCost    = 0;
+      const usageByItem = new Map<string, { name: string; qty: number }>();
+      for (const m of (movRes.data ?? []) as any[]) {
+        const cost = Number(m.quantity ?? 0) * Number(m.unit_cost_at_time ?? 0);
+        if (m.type === 'OUT' && !m.is_reversed) {
+          materialCost += cost;
+          const cur = usageByItem.get(m.item_id) ?? { name: m.item_name, qty: 0 };
+          cur.qty += Number(m.quantity ?? 0);
+          usageByItem.set(m.item_id, cur);
+        } else if (m.type === 'WASTE') {
+          wasteCost += cost;
+        }
+      }
+      const topUsed = Array.from(usageByItem.values()).sort((a, b) => b.qty - a.qty)[0];
+      setStockSummary({
+        lowCount,
+        materialCostMtd: Math.round(materialCost),
+        wasteCostMtd:    Math.round(wasteCost),
+        topUsedName:     topUsed?.name ?? null,
+      });
+    } catch {}
+  }, [profile?.lab_id, profile?.id]);
+
   const handleRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([refetch(), loadProvas(), loadExtra(), loadAnalytics(), loadPipeline()]);
+    await Promise.all([refetch(), loadProvas(), loadExtra(), loadAnalytics(), loadPipeline(), loadStockSummary()]);
     setRefreshing(false);
   };
 
-  useEffect(() => { loadProvas(); loadExtra(); loadAnalytics(); loadPipeline(); }, []);
+  useEffect(() => { loadProvas(); loadExtra(); loadAnalytics(); loadPipeline(); loadStockSummary(); }, [loadStockSummary]);
 
   // ── Attention items (deduplicated, actionable) ──
   const unassignedCount = pipelineCounts['alindi']
@@ -1037,6 +1089,55 @@ export function LabDashboardScreen() {
           </View>
         </View>
 
+        {/* ── Stok & Maliyet Özeti ─────────────────────────────────── */}
+        {stockSummary && (
+          <Card>
+            <CardHeader
+              title="Stok & Maliyet"
+              subtitle="Bu ay"
+              right={
+                <TouchableOpacity onPress={() => router.push('/(lab)/stock' as any)}>
+                  <Text style={s.linkText}>Stoğa git →</Text>
+                </TouchableOpacity>
+              }
+            />
+            <View style={stk.grid}>
+              <TouchableOpacity
+                style={[stk.stat, stockSummary.lowCount > 0 && stk.statAlert]}
+                onPress={() => router.push('/(lab)/stock' as any)}
+                activeOpacity={0.85}
+              >
+                <Text style={[stk.statValue, stockSummary.lowCount > 0 && { color: '#DC2626' }]}>
+                  {stockSummary.lowCount}
+                </Text>
+                <Text style={stk.statLabel}>Kritik Stok</Text>
+                {stockSummary.lowCount > 0 && (
+                  <Text style={stk.statHint}>min altı</Text>
+                )}
+              </TouchableOpacity>
+
+              <View style={stk.stat}>
+                <Text style={stk.statValue}>
+                  {stockSummary.materialCostMtd.toLocaleString('tr-TR')} ₺
+                </Text>
+                <Text style={stk.statLabel}>Materyal Maliyeti</Text>
+              </View>
+
+              <View style={[stk.stat, stockSummary.wasteCostMtd > 0 && stk.statAlert]}>
+                <Text style={[stk.statValue, stockSummary.wasteCostMtd > 0 && { color: '#DC2626' }]}>
+                  {stockSummary.wasteCostMtd > 0 ? '−' : ''}{stockSummary.wasteCostMtd.toLocaleString('tr-TR')} ₺
+                </Text>
+                <Text style={stk.statLabel}>Fire Kaybı</Text>
+              </View>
+            </View>
+            {stockSummary.topUsedName && (
+              <Text style={stk.topUsed}>
+                🏆 En çok kullanılan: <Text style={{ fontWeight: '800', color: '#0F172A' }}>{stockSummary.topUsedName}</Text>
+              </Text>
+            )}
+          </Card>
+        )}
+
         {/* ── Sipariş Trendi (monthly chart) ──────────────────────────── */}
         <Card>
           <CardHeader
@@ -1115,6 +1216,7 @@ const s = StyleSheet.create({
 
   sectionLabel: { fontSize: 11, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 10, paddingHorizontal: 2 },
   linkBtn: { fontSize: 13, color: P, fontWeight: '700' },
+  linkText: { fontSize: 12, color: P, fontWeight: '700' },
 
   // Table
   tableHead: {
@@ -1148,4 +1250,20 @@ const s = StyleSheet.create({
   emptyIconWrap: { width: 72, height: 72, borderRadius: 36, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
   emptyTitle:    { fontSize: 14, fontWeight: '700', color: '#334155', textAlign: 'center' },
   emptyText:     { fontSize: 12, color: '#94A3B8', textAlign: 'center' },
+});
+
+// ─── Stock summary card styles ─────────────────────────────────────────────
+const stk = StyleSheet.create({
+  grid: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12 },
+  stat: {
+    flex: 1, padding: 12,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12, borderWidth: 1, borderColor: '#F1F5F9',
+    alignItems: 'flex-start', gap: 4,
+  },
+  statAlert: { backgroundColor: '#FEF2F2', borderColor: '#FCA5A5' },
+  statValue: { fontSize: 18, fontWeight: '800', color: '#0F172A', letterSpacing: -0.4 },
+  statLabel: { fontSize: 11, fontWeight: '700', color: '#64748B', letterSpacing: 0.2 },
+  statHint:  { fontSize: 10, fontWeight: '700', color: '#DC2626', marginTop: 1 },
+  topUsed:   { fontSize: 11, color: '#64748B', paddingHorizontal: 16, paddingBottom: 12 },
 });

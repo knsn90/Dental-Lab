@@ -1,4 +1,7 @@
 // modules/orders/components/OrderTicketCard.tsx
+// "Cards" design system — frosted glass + pastel mesh + beyaz neon.
+// Detaylı tanım: core/layout/DesktopShell.tsx üst yorumu.
+//
 // Boarding-pass tarzı iş emri kartı — tam iş fişi.
 // İyileştirmeler v2: tutarlı padding, kompakt meta, temiz hiyerarşi,
 // responsive tooth chart, CSS-dashed ayraç, boş alanlar gizli.
@@ -63,9 +66,9 @@ export function OrderTicketCard({
   // Chart kartı satırın en fazla %42'sini kaplasın; sağ karta yeterli alan kalsın.
   const toothPickerW = useMemo(() => {
     if (!rowW || rowW <= 0) {
-      return Math.min(Math.max(Math.round((width - 320) * 0.36), 220), 340);
+      return Math.min(Math.max(Math.round((width - 320) * 0.44), 280), 440);
     }
-    return Math.max(200, Math.min(Math.round(rowW * 0.36), 400));
+    return Math.max(260, Math.min(Math.round(rowW * 0.44), 520));
   }, [width, rowW]);
 
   const sortedTeeth = [...(order.tooth_numbers ?? [])].sort((a, b) => a - b);
@@ -127,7 +130,7 @@ export function OrderTicketCard({
 
   return (
     <View
-      style={{ flexDirection: 'row', alignItems: 'stretch', gap: 12 }}
+      style={{ flexDirection: 'row', alignItems: 'stretch', gap: 20 }}
       onLayout={(e) => {
         const w = e.nativeEvent.layout.width;
         setRowW(prev => (prev && Math.abs(prev - w) < 1 ? prev : w));
@@ -396,9 +399,24 @@ const ol = StyleSheet.create({
     width:           '100%',
     borderRadius:    12,
     borderWidth:     1,
-    borderColor:     '#E5E9F0',
-    backgroundColor: '#FFFFFF',
+    borderColor:     'rgba(255,255,255,0.85)',
+    backgroundColor: 'rgba(255,255,255,0.30)',
     overflow:        'hidden',
+    ...Platform.select({
+      web: {
+        // @ts-ignore
+        backdropFilter:       'blur(16px) saturate(160%)',
+        // @ts-ignore
+        WebkitBackdropFilter: 'blur(16px) saturate(160%)',
+        // @ts-ignore — beyaz neon glow
+        boxShadow:
+          '0 0 4px rgba(255,255,255,0.85),' +
+          ' 0 0 16px rgba(255,255,255,0.55),' +
+          ' 0 0 32px rgba(255,255,255,0.30),' +
+          ' inset 0 0 8px rgba(255,255,255,0.25)',
+      } as any,
+      default: {},
+    }),
   },
   groupRow: {
     flexDirection: 'row',
@@ -954,12 +972,36 @@ function DetailField({
 // ── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   card: {
+    // Yoğun cam dili — kenarlar belirgin, çok katmanlı gloss
     backgroundColor: '#FFFFFF',
-    borderRadius:    18,
+    borderRadius:    16,
     overflow:        'visible',
     borderWidth:     1,
-    borderColor:     '#E5E9F0',
-    // Gölgesiz — temiz minimalist görünüm
+    borderColor:     'rgba(255,255,255,0.95)',
+    ...Platform.select({
+      web: {
+        // @ts-ignore — GPU compositing zorla (backdrop-filter banding fix)
+        transform: 'translateZ(0)',
+        // @ts-ignore
+        willChange: 'transform',
+        // @ts-ignore — güçlü frosted glass
+        backdropFilter:       'blur(48px) saturate(220%)',
+        // @ts-ignore
+        WebkitBackdropFilter: 'blur(48px) saturate(220%)',
+        // @ts-ignore — gölge yok; sadece üst + sol cam yansıması
+        boxShadow:
+          '0 8px 24px rgba(0,0,0,0.15),' +
+          ' inset 0 1px 0 rgba(255,255,255,0.85),' +
+          ' inset 1px 0 0 rgba(255,255,255,0.65)',
+      } as any,
+      default: {
+        shadowColor:   '#0F172A',
+        shadowOpacity: 0.10,
+        shadowRadius:  16,
+        shadowOffset:  { width: 0, height: 6 },
+        elevation:     6,
+      },
+    }),
   },
 
   // ── HEADER STRIP ──

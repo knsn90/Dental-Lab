@@ -17,7 +17,9 @@ import {
   PAYMENT_METHOD_LABELS, type PaymentMethod,
 } from '../types';
 import { printInvoice } from '../printInvoice';
+import { PaymentReminderModal } from '../components/PaymentReminderModal';
 import { C } from '../../../core/theme/colors';
+import { Shadows, CardSpec } from '../../../core/theme/shadows';
 import { F } from '../../../core/theme/typography';
 
 import { AppIcon } from '../../../core/ui/AppIcon';
@@ -40,6 +42,7 @@ export function InvoiceDetailScreen() {
 
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [addItemModalVisible, setAddItemModalVisible] = useState(false);
+  const [reminderOpen, setReminderOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
   if (loading) {
@@ -319,6 +322,17 @@ export function InvoiceDetailScreen() {
               <Text style={[s.actionBtnText, { color: '#2563EB' }]}>Kesildi Olarak İşaretle</Text>
             </TouchableOpacity>
           )}
+          {/* Tahsilat hatırlatması — vadesi dolu / kısmi ödeme */}
+          {(invoice.status === 'kesildi' || invoice.status === 'kismi_odendi') && (
+            <TouchableOpacity
+              style={[s.actionBtn, { borderColor: '#FED7AA', backgroundColor: '#FFF7ED' }]}
+              onPress={() => setReminderOpen(true)}
+              disabled={busy}
+            >
+              <AppIcon name={'bell-ring-outline' as any} size={16} color="#EA580C" />
+              <Text style={[s.actionBtnText, { color: '#EA580C' }]}>Hatırlatma Gönder</Text>
+            </TouchableOpacity>
+          )}
           {invoice.status !== 'iptal' && invoice.status !== 'odendi' && (
             <TouchableOpacity style={[s.actionBtn, s.actionBtnDanger]} onPress={handleCancel} disabled={busy}>
               <AppIcon name={'cancel' as any} size={16} color="#DC2626" />
@@ -349,6 +363,15 @@ export function InvoiceDetailScreen() {
         invoiceId={invoice.id}
         onClose={() => setAddItemModalVisible(false)}
         onDone={() => { setAddItemModalVisible(false); refetch(); }}
+      />
+
+      {/* Tahsilat hatırlatma modalı */}
+      <PaymentReminderModal
+        visible={reminderOpen}
+        invoice={invoice}
+        clinicName={invoice.clinic?.name ?? undefined}
+        onClose={() => setReminderOpen(false)}
+        onSent={() => refetch()}
       />
     </SafeAreaView>
   );
@@ -592,7 +615,7 @@ function AddItemModal({
 
 // ─── Styles ───────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F7F9FB' },
+  safe: { flex: 1, backgroundColor: CardSpec.pageBg },
 
   topBar: {
     flexDirection: 'row', alignItems: 'center',
@@ -610,9 +633,10 @@ const s = StyleSheet.create({
   topStatusText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase' },
 
   summaryCard: {
-    backgroundColor: '#FFFFFF', borderRadius: 16,
-    borderWidth: 1, borderColor: '#F1F5F9',
+    backgroundColor: CardSpec.bg, borderRadius: CardSpec.radius,
+    borderWidth: 1, borderColor: CardSpec.border,
     padding: 18, marginBottom: 16, gap: 14,
+    ...Shadows.card,
   },
   summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   summaryLabel: { fontSize: 12, fontWeight: '600', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.5 },
@@ -645,9 +669,10 @@ const s = StyleSheet.create({
   smallBtnText: { fontSize: 11, fontWeight: '700', color: '#2563EB' },
 
   infoCard: {
-    backgroundColor: '#FFFFFF', borderRadius: 12,
-    borderWidth: 1, borderColor: '#F1F5F9',
+    backgroundColor: CardSpec.bg, borderRadius: CardSpec.radius,
+    borderWidth: 1, borderColor: CardSpec.border,
     padding: 6, marginBottom: 6,
+    ...Shadows.card,
   },
   infoRow: {
     flexDirection: 'row', alignItems: 'center', gap: 10,

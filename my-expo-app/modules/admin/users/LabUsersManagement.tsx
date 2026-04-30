@@ -23,6 +23,19 @@ const P   = '#2563EB';
 const ERR = '#FF3B30';
 const BG  = '#F7F9FB';
 import { Profile } from '../../../lib/types';
+import { STAGE_LABEL, STAGE_COLOR, type Stage } from '../../orders/stages';
+import { useAuthStore } from '../../../core/store/authStore';
+
+const SKILL_STAGES: Stage[] = ['TRIAGE', 'DESIGN', 'CAM', 'MILLING', 'SINTER', 'FINISH', 'QC'];
+
+// ── Smart assignment fields (Migration 047) ────────────────────────────────
+type SkillLevel = 'junior' | 'mid' | 'senior';
+const SKILL_LEVEL_OPTIONS: { key: SkillLevel; label: string; color: string }[] = [
+  { key: 'junior', label: 'Junior', color: '#94A3B8' },
+  { key: 'mid',    label: 'Mid',    color: '#2563EB' },
+  { key: 'senior', label: 'Senior', color: '#059669' },
+];
+const CASE_TYPE_OPTIONS = ['zirconia', 'emax', 'pmma', 'metal', 'pfm'];
 
 import { AppIcon } from '../../../core/ui/AppIcon';
 
@@ -58,6 +71,7 @@ interface UserStats {
 export function LabUsersManagement() {
   const { width } = useWindowDimensions();
   const isWide = width >= 1100;
+  const { profile } = useAuthStore();
 
   const [profiles,       setProfiles]       = useState<Profile[]>([]);
   const [loading,        setLoading]        = useState(true);
@@ -74,8 +88,101 @@ export function LabUsersManagement() {
   const [selectedId,     setSelectedId]     = useState<string | null>(null);
   const [stats,          setStats]          = useState<UserStats | null>(null);
   const [statsLoading,   setStatsLoading]   = useState(false);
+  // Stage yetkileri: { user_id → Set<Stage> }
+  const [skillsMap, setSkillsMap]   = useState<Map<string, Set<Stage>>>(new Map());
+  const [skillBusy, setSkillBusy]   = useState<Set<string>>(new Set());
+  // Inline hourly_rate edit state
+  const [rateEditId, setRateEditId] = useState<string | null>(null);
+  const [rateInput, setRateInput]   = useState<string>('');
 
   useEffect(() => { loadProfiles(); }, []);
+
+  // Lab user'larının skill'lerini yükle (profiles geldikten sonra)
+  useEffect(() => {
+    const labUsers = profiles.filter(p => p.user_type === 'lab').map(p => p.id);
+    if (labUsers.length === 0) { setSkillsMap(new Map()); return; }
+    supabase
+      .from('user_stage_skills')
+      .select('user_id, stage')
+      .in('user_id', labUsers)
+      .then(({ data }) => {
+        const m = new Map<string, Set<Stage>>();
+        for (const r of (data ?? []) as any[]) {
+          if (!m.has(r.user_id)) m.set(r.user_id, new Set());
+          m.get(r.user_id)!.add(r.stage as Stage);
+        }
+        setSkillsMap(m);
+      });
+  }, [profiles]);
+
+  // ── Skill level / trust / allowed_types updaters (Migration 047) ──────
+  async function setHourlyRate(userId: string, rate: number) {
+    setProfiles(prev => prev.map(p => p.id === userId ? ({ ...p, hourly_rate: rate } as any) : p));
+    const { error } = await supabase.from('profiles').update({ hourly_rate: rate }).eq('id', userId);
+    if (error) console.warn('hourly_rate update', error.message);
+  }
+
+  async function setSkillLevel(userId: string, level: SkillLevel) {
+    setProfiles(prev => prev.map(p => p.id === userId ? ({ ...p, skill_level: level } as any) : p));
+    const { error } = await supabase.from('profiles').update({ skill_level: level }).eq('id', userId);
+    if (error) console.warn('skill_level update', error.message);
+  }
+
+  async function toggleAllowedType(userId: string, type: string) {
+    const current = (profiles.find(p => p.id === userId) as any)?.allowed_types as string[] | null;
+    let next: string[] | null;
+    if (!current) {
+      // NULL means "all allowed". Switching to explicit list = remove this one.
+      next = CASE_TYPE_OPTIONS.filter(t => t !== type);
+    } else if (current.includes(type)) {
+      next = current.filter(t => t !== type);
+      if (next.length === 0) next = []; // empty = nothing allowed (explicit)
+    } else {
+      next = [...current, type];
+      // If covers all options → simplify back to NULL
+      if (CASE_TYPE_OPTIONS.every(t => next!.includes(t))) next = null;
+    }
+    setProfiles(prev => prev.map(p => p.id === userId ? ({ ...p, allowed_types: next } as any) : p));
+    const { error } = await supabase.from('profiles').update({ allowed_types: next }).eq('id', userId);
+    if (error) console.warn('allowed_types update', error.message);
+  }
+
+  async function toggleSkill(userId: string, stage: Stage) {
+    const labId = (profile as any)?.lab_id ?? profile?.id;
+    if (!labId) return;
+    const currentSet = skillsMap.get(userId) ?? new Set();
+    const has = currentSet.has(stage);
+    const key = `${userId}:${stage}`;
+    setSkillBusy(p => new Set(p).add(key));
+
+    if (has) {
+      const { error } = await supabase
+        .from('user_stage_skills')
+        .delete()
+        .eq('user_id', userId)
+        .eq('stage', stage);
+      if (error) console.warn('skill delete', error.message);
+    } else {
+      const { error } = await supabase
+        .from('user_stage_skills')
+        .insert({ user_id: userId, stage, lab_id: labId });
+      if (error) console.warn('skill insert', error.message);
+    }
+
+    // Optimistic local update
+    setSkillsMap(prev => {
+      const nx = new Map(prev);
+      const set = new Set(nx.get(userId) ?? []);
+      if (has) set.delete(stage); else set.add(stage);
+      nx.set(userId, set);
+      return nx;
+    });
+    setSkillBusy(p => {
+      const nx = new Set(p);
+      nx.delete(key);
+      return nx;
+    });
+  }
 
   const loadProfiles = async () => {
     setLoading(true);
@@ -266,6 +373,8 @@ export function LabUsersManagement() {
                 {filtered.map((profile) => {
                   const badge = typeBadge(profile);
                   const selected = selectedId === profile.id;
+                  const isLabUser = profile.user_type === 'lab';
+                  const userSkills = skillsMap.get(profile.id) ?? new Set();
                   return (
                     <TouchableOpacity
                       key={profile.id}
@@ -289,6 +398,143 @@ export function LabUsersManagement() {
                           </View>
                           <Text style={styles.cardEmail} numberOfLines={1}>{profile.email ?? '—'}</Text>
                         </View>
+                        {/* Smart-assignment stats + skill_level + allowed types + stage skills */}
+                        {isLabUser && (() => {
+                          const lvl  = ((profile as any).skill_level ?? 'mid') as SkillLevel;
+                          const tr   = (profile as any).trust_score   ?? 70;
+                          const cmp  = (profile as any).completed_count ?? 0;
+                          const rj   = (profile as any).reject_count  ?? 0;
+                          const allowed = (profile as any).allowed_types as string[] | null;
+                          const trustColor = tr >= 80 ? '#059669' : tr >= 60 ? '#2563EB' : tr >= 40 ? '#D97706' : '#DC2626';
+                          return (
+                            <>
+                              {/* Stats row */}
+                              <View style={styles.metricsRow}>
+                                <View style={[styles.trustBadge, { borderColor: trustColor }]}>
+                                  <View style={[styles.trustDot, { backgroundColor: trustColor }]} />
+                                  <Text style={[styles.trustText, { color: trustColor }]}>Güven {tr}</Text>
+                                </View>
+                                <Text style={styles.metricMuted}>✓ {cmp}</Text>
+                                <Text style={styles.metricMuted}>✗ {rj}</Text>
+
+                                {/* Hourly rate — inline edit */}
+                                {rateEditId === profile.id ? (
+                                  <View style={styles.rateEdit}>
+                                    <TextInput
+                                      value={rateInput}
+                                      onChangeText={setRateInput}
+                                      keyboardType="numeric"
+                                      autoFocus
+                                      placeholder="0"
+                                      placeholderTextColor="#C7C7CC"
+                                      onSubmitEditing={async () => {
+                                        const n = parseFloat(rateInput.replace(',', '.'));
+                                        if (!isNaN(n) && n >= 0) await setHourlyRate(profile.id, n);
+                                        setRateEditId(null);
+                                      }}
+                                      onBlur={async () => {
+                                        const n = parseFloat(rateInput.replace(',', '.'));
+                                        if (!isNaN(n) && n >= 0) await setHourlyRate(profile.id, n);
+                                        setRateEditId(null);
+                                      }}
+                                      style={styles.rateInput as any}
+                                    />
+                                    <Text style={styles.rateUnit}>₺/sa</Text>
+                                  </View>
+                                ) : (
+                                  <TouchableOpacity
+                                    onPress={(e) => {
+                                      (e as any).stopPropagation?.();
+                                      setRateInput(String((profile as any).hourly_rate ?? 0));
+                                      setRateEditId(profile.id);
+                                    }}
+                                    style={styles.rateChip}
+                                  >
+                                    <Text style={styles.rateChipText}>
+                                      {(profile as any).hourly_rate
+                                        ? `${(profile as any).hourly_rate} ₺/sa`
+                                        : 'Saat ücreti'}
+                                    </Text>
+                                    <AppIcon name="edit-2" size={9} color="#94A3B8" />
+                                  </TouchableOpacity>
+                                )}
+                              </View>
+
+                              {/* Skill level selector */}
+                              <View style={styles.skillRow}>
+                                <Text style={styles.miniLabel}>Seviye</Text>
+                                {SKILL_LEVEL_OPTIONS.map(opt => {
+                                  const active = lvl === opt.key;
+                                  return (
+                                    <TouchableOpacity
+                                      key={opt.key}
+                                      onPress={(e) => { (e as any).stopPropagation?.(); setSkillLevel(profile.id, opt.key); }}
+                                      activeOpacity={0.7}
+                                      style={[
+                                        styles.skillChip,
+                                        active && { backgroundColor: opt.color, borderColor: opt.color },
+                                      ]}
+                                    >
+                                      <Text style={[styles.skillChipText, active && { color: '#FFFFFF' }]}>
+                                        {opt.label}
+                                      </Text>
+                                    </TouchableOpacity>
+                                  );
+                                })}
+                              </View>
+
+                              {/* Allowed case types */}
+                              <View style={styles.skillRow}>
+                                <Text style={styles.miniLabel}>Türler</Text>
+                                {CASE_TYPE_OPTIONS.map(t => {
+                                  const has = allowed === null ? true : allowed.includes(t);
+                                  return (
+                                    <TouchableOpacity
+                                      key={t}
+                                      onPress={(e) => { (e as any).stopPropagation?.(); toggleAllowedType(profile.id, t); }}
+                                      activeOpacity={0.7}
+                                      style={[
+                                        styles.skillChip,
+                                        has && { backgroundColor: '#0F172A', borderColor: '#0F172A' },
+                                      ]}
+                                    >
+                                      <Text style={[styles.skillChipText, has && { color: '#FFFFFF' }]}>
+                                        {t}
+                                      </Text>
+                                    </TouchableOpacity>
+                                  );
+                                })}
+                              </View>
+
+                              {/* Stage Yetkileri */}
+                              <View style={styles.skillRow}>
+                                <Text style={styles.miniLabel}>Stage</Text>
+                                {SKILL_STAGES.map(st => {
+                                  const has  = userSkills.has(st);
+                                  const busy = skillBusy.has(`${profile.id}:${st}`);
+                                  const color = STAGE_COLOR[st];
+                                  return (
+                                    <TouchableOpacity
+                                      key={st}
+                                      onPress={(e) => { (e as any).stopPropagation?.(); toggleSkill(profile.id, st); }}
+                                      disabled={busy}
+                                      activeOpacity={0.7}
+                                      style={[
+                                        styles.skillChip,
+                                        has && { backgroundColor: color, borderColor: color },
+                                        busy && { opacity: 0.5 },
+                                      ]}
+                                    >
+                                      <Text style={[styles.skillChipText, has && { color: '#FFFFFF' }]}>
+                                        {STAGE_LABEL[st]}
+                                      </Text>
+                                    </TouchableOpacity>
+                                  );
+                                })}
+                              </View>
+                            </>
+                          );
+                        })()}
                       </View>
                       <View style={styles.cardRight}>
                         <View style={styles.toggleCluster}>
@@ -499,6 +745,9 @@ function EditUserModal({
   const [showPass,    setShowPass]    = useState(false);
   const [saving,      setSaving]      = useState(false);
   const [error,       setError]       = useState('');
+  // Stage yetkileri (sadece lab user'larında)
+  const [skills,      setSkills]      = useState<Set<Stage>>(new Set());
+  const [originalSkills, setOriginalSkills] = useState<Set<Stage>>(new Set());
 
   useEffect(() => {
     if (profile) {
@@ -510,6 +759,22 @@ function EditUserModal({
       setIsActive(profile.is_active ?? true);
       setNewPassword('');
       setError('');
+
+      // Lab user'sa stage yetkilerini yükle
+      if (profile.user_type === 'lab') {
+        supabase
+          .from('user_stage_skills')
+          .select('stage')
+          .eq('user_id', profile.id)
+          .then(({ data }) => {
+            const set = new Set<Stage>(((data ?? []) as any[]).map(r => r.stage as Stage));
+            setSkills(set);
+            setOriginalSkills(new Set(set));
+          });
+      } else {
+        setSkills(new Set());
+        setOriginalSkills(new Set());
+      }
     }
   }, [profile]);
 
@@ -541,6 +806,24 @@ function EditUserModal({
         if (passwordChanged) body.password = newPassword;
         const { data: fnData, error: fnError } = await supabase.functions.invoke('admin-update-user', { body });
         if (fnError || fnData?.error) throw new Error(fnData?.error ?? fnError?.message ?? 'Auth güncellenemedi');
+      }
+
+      // Stage yetkileri diff (sadece lab user)
+      if (profile.user_type === 'lab') {
+        const toAdd    = [...skills].filter(s => !originalSkills.has(s));
+        const toRemove = [...originalSkills].filter(s => !skills.has(s));
+        const labId    = (profile as any).lab_id ?? profile.id;
+
+        if (toRemove.length > 0) {
+          await supabase.from('user_stage_skills')
+            .delete()
+            .eq('user_id', profile.id)
+            .in('stage', toRemove);
+        }
+        if (toAdd.length > 0) {
+          await supabase.from('user_stage_skills')
+            .insert(toAdd.map(s => ({ user_id: profile.id, stage: s, lab_id: labId })));
+        }
       }
 
       onSuccess({ ...profile, ...profileUpdates, email: email.trim() });
@@ -603,6 +886,39 @@ function EditUserModal({
                       <TouchableOpacity key={r} style={[m.roleCard, active && m.roleCardActive]} onPress={() => setRole(r)}>
                         <AppIcon name={icon as any} size={20} color={active ? '#FFF' : '#374151'} />
                         <Text style={[m.roleLabel, active && m.roleLabelActive]}>{label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Stage Yetkileri — AUTO_ASSIGN bu listeye göre seçim yapar */}
+                <Text style={m.sectionLabel}>Stage Yetkileri</Text>
+                <Text style={m.skillHint}>Hangi aşamayı yapabilir? AUTO_ASSIGN bu listeden seçer.</Text>
+                <View style={m.skillRow}>
+                  {SKILL_STAGES.map(st => {
+                    const has = skills.has(st);
+                    const color = STAGE_COLOR[st];
+                    return (
+                      <TouchableOpacity
+                        key={st}
+                        onPress={() => {
+                          setSkills(prev => {
+                            const nx = new Set(prev);
+                            if (nx.has(st)) nx.delete(st);
+                            else            nx.add(st);
+                            return nx;
+                          });
+                        }}
+                        activeOpacity={0.7}
+                        style={[
+                          m.skillChip,
+                          has && { backgroundColor: color, borderColor: color },
+                        ]}
+                      >
+                        {has && <AppIcon name="check" size={11} color="#FFFFFF" strokeWidth={3} />}
+                        <Text style={[m.skillChipText, has && { color: '#FFFFFF' }]}>
+                          {STAGE_LABEL[st]}
+                        </Text>
                       </TouchableOpacity>
                     );
                   })}
@@ -830,6 +1146,51 @@ const styles = StyleSheet.create({
   empty:      { alignItems: 'center', paddingTop: 60, gap: 10 },
   emptyTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
   emptySub:   { fontSize: 13, color: '#AEAEB2' },
+
+  skillRow:  { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 4, marginTop: 6 },
+  skillChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 8, paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1, borderColor: '#E5E7EB',
+    backgroundColor: '#F8FAFC',
+  },
+  skillChipText: { fontSize: 10, fontWeight: '700', color: '#64748B' },
+  miniLabel: {
+    fontSize: 9, fontWeight: '800', color: '#94A3B8',
+    letterSpacing: 0.6, textTransform: 'uppercase',
+    marginRight: 4,
+  },
+
+  // Metrics
+  metricsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' },
+  rateChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1, borderColor: '#E2E8F0',
+  },
+  rateChipText: { fontSize: 10, fontWeight: '700', color: '#475569', letterSpacing: 0.2 },
+  rateEdit: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  rateInput: {
+    width: 60, height: 24,
+    paddingHorizontal: 8,
+    borderRadius: 999, borderWidth: 1, borderColor: '#2563EB',
+    backgroundColor: '#FFFFFF',
+    fontSize: 11, fontWeight: '700', color: '#0F172A',
+    outlineStyle: 'none',
+  } as any,
+  rateUnit: { fontSize: 10, fontWeight: '700', color: '#64748B' },
+  trustBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: 999, borderWidth: 1.5,
+    backgroundColor: '#FFFFFF',
+  },
+  trustDot:  { width: 6, height: 6, borderRadius: 3 },
+  trustText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.2 },
+  metricMuted: { fontSize: 11, fontWeight: '700', color: '#94A3B8' },
 });
 
 const dp = StyleSheet.create({
@@ -925,6 +1286,17 @@ const m = StyleSheet.create({
   roleLabelActive: { color: '#FFFFFF' },
   roleSub: { fontSize: 10, color: '#9CA3AF', textAlign: 'center' },
   roleSubActive: { color: 'rgba(255,255,255,0.6)' },
+  // Stage Yetkileri
+  skillHint: { fontSize: 11, color: '#94A3B8', marginBottom: 8, marginTop: -4 },
+  skillRow:  { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 20 },
+  skillChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1, borderColor: '#E5E7EB',
+    backgroundColor: '#F8FAFC',
+  },
+  skillChipText: { fontSize: 11, fontWeight: '700', color: '#64748B' },
   toggleRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     backgroundColor: '#F9FAFB', borderRadius: 10, padding: 14,

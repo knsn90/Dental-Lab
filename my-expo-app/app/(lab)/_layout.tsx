@@ -11,6 +11,7 @@ import { MessagesPopup } from '../../modules/orders/components/MessagesPopup';
 import { usePendingLeaveCount } from '../../modules/hr/hooks/useHR';
 import { useAuthStore } from '../../core/store/authStore';
 import { useOrderChatInbox } from '../../modules/orders/hooks/useOrderChatInbox';
+import { usePendingActionCount } from '../../modules/orders/hooks/usePendingActionCount';
 import { useColorThemeStore, applyColorThemeWeb } from '../../core/store/colorThemeStore';
 import { CommandPalette, CommandPaletteFAB } from '../../core/ui/CommandPalette';
 
@@ -28,6 +29,7 @@ export default function LabLayout() {
   const { profile }     = useAuthStore();
   const pendingLeaveCount = usePendingLeaveCount();
   const { totalUnread: chatUnread } = useOrderChatInbox();
+  const pendingActionCount = usePendingActionCount();
   const isManager = profile?.role === 'manager' || profile?.user_type === 'admin';
 
   const [newOrderOpen, setNewOrderOpen] = useState(false);
@@ -46,10 +48,12 @@ export default function LabLayout() {
     { label: 'Bugün',         emoji: '📅', href: '/(lab)',                iconName: 'home' },
 
     // ── İş Yönetimi ────────────────────────────────────────────────────────
-    // Siparişler: Liste / Durum / Üretim / Teslimat / Analitik görünümleri dahili toggle ile
-    { label: 'Siparişler',    emoji: '📋', href: '/(lab)/all-orders',     iconName: 'clipboard-list',   matchPrefix: true, sectionLabel: 'İş Yönetimi' },
-    { label: 'Yeni İş Emri', emoji: '➕', href: '/(lab)/new-order',      iconName: 'plus-circle' },
-    { label: 'Onaylar',       emoji: '✅', href: '/(lab)/approvals',      iconName: 'check-circle',     badge: pendingCount > 0, matchPrefix: true },
+    // Yeni İş Emri 2. sırada — hızlı erişim için en üstte
+    { label: 'Yeni İş Emri', emoji: '➕', href: '/(lab)/new-order',      iconName: 'plus-circle',      sectionLabel: 'İş Yönetimi' },
+    { label: 'Siparişler',    emoji: '📋', href: '/(lab)/all-orders',     iconName: 'clipboard-list',   matchPrefix: true,
+      badgeCount: pendingActionCount > 0 ? pendingActionCount : undefined },
+    { label: 'Onaylar',       emoji: '✅', href: '/(lab)/approvals',      iconName: 'check-circle',     matchPrefix: true,
+      badgeCount: pendingCount > 0 ? pendingCount : undefined },
 
     // ── Müşteriler ─────────────────────────────────────────────────────────
     { label: 'Klinikler',     emoji: '🏥', href: '/(lab)/clinics',        iconName: 'building-2',       matchPrefix: true, sectionLabel: 'Müşteriler' },

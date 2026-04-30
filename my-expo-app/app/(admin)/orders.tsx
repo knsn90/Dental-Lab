@@ -15,7 +15,6 @@ import {
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useOrders } from '../../modules/orders/hooks/useOrders';
-import { WorkOrderCard } from '../../modules/orders/components/WorkOrderCard';
 import { KanbanBoard } from '../../modules/orders/components/KanbanBoard';
 import { StatusUpdateModal } from '../../modules/orders/components/StatusUpdateModal';
 import { STATUS_CONFIG } from '../../modules/orders/constants';

@@ -30,24 +30,47 @@ export async function createWorkOrder(params: CreateWorkOrderParams & { measurem
   return { data, error };
 }
 
+// Kanban / liste için iş emrinin mevcut stage'inin istasyon adını da pull ederiz.
+// PostgREST embed: current_stage:order_stages!fk_work_orders_stage(...)
+// Sonra display tarafında current_stage_name string'e map'leriz.
+const LIST_SELECT = `
+  *,
+  current_stage:order_stages!fk_work_orders_stage(
+    id, status, sequence_order,
+    station:lab_stations(id, name, color)
+  )
+`;
+
+/** Embedded `current_stage` objesini düz `current_stage_name` string'ine map'ler. */
+function flattenStageName(rows: any[]): any[] {
+  return rows.map(r => ({
+    ...r,
+    current_stage_name: r.current_stage?.station?.name ?? null,
+    current_stage_color: r.current_stage?.station?.color ?? null,
+  }));
+}
+
 export async function fetchWorkOrdersForDoctor(doctorId: string) {
-  return supabase
+  const res = await supabase
     .from('work_orders')
-    .select('*')
+    .select(LIST_SELECT)
     .eq('doctor_id', doctorId)
     .order('created_at', { ascending: false });
+  if (res.data) (res as any).data = flattenStageName(res.data as any[]);
+  return res;
 }
 
 export async function fetchAllWorkOrders() {
   // NOTE: work_orders.doctor_id is polymorphic (profiles.id OR doctors.id).
   // Migration 037 intentionally dropped the FK constraint, so PostgREST
   // embedded resource joins using !work_orders_doctor_id_fkey no longer work.
-  // Doctor info is resolved manually in fetchWorkOrderById; for the list view
-  // we select * and let the detail screen handle the polymorphic lookup.
-  return supabase
+  // current_stage_id FK ise duruyor — onu embed ediyoruz.
+  const res = await supabase
     .from('work_orders')
-    .select('*')
+    .select(LIST_SELECT)
     .order('delivery_date', { ascending: true });
+  if (res.data) (res as any).data = flattenStageName(res.data as any[]);
+  return res;
 }
 
 export async function fetchWorkOrderById(id: string) {

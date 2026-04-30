@@ -18,6 +18,7 @@ import {
 import { useBreakpoint } from '../../../core/layout/Responsive';
 
 import { AppIcon } from '../../../core/ui/AppIcon';
+import { Shadows, CardSpec } from '../../../core/theme/shadows';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmtMoney(n: number | null | undefined): string {
@@ -549,7 +550,7 @@ function MovementModal({
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
-  safe:    { flex: 1, backgroundColor: '#fff' },
+  safe:    { flex: 1, backgroundColor: CardSpec.pageBg },
   header:  { flexDirection: 'row', alignItems: 'center', paddingTop: 18, paddingBottom: 10, gap: 12 },
   title:   { fontSize: 20, fontWeight: '800', color: '#0F172A', letterSpacing: -0.3 },
   subtitle:{ fontSize: 13, color: '#64748B', marginTop: 2 },
@@ -581,7 +582,7 @@ const s = StyleSheet.create({
 });
 
 const kpi = StyleSheet.create({
-  card:  { backgroundColor: '#fff', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#F1F5F9', gap: 6 },
+  card:  { backgroundColor: CardSpec.bg, borderRadius: CardSpec.radius, padding: 14, borderWidth: 1, borderColor: CardSpec.border, gap: 6, ...Shadows.card },
   icon:  { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   label: { fontSize: 10, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.5 },
   value: { fontSize: 17, fontWeight: '800', letterSpacing: -0.4 },
@@ -590,8 +591,9 @@ const kpi = StyleSheet.create({
 const ac = StyleSheet.create({
   card: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: '#fff', borderRadius: 14, padding: 14,
-    borderWidth: 1, borderColor: '#F1F5F9',
+    backgroundColor: CardSpec.bg, borderRadius: CardSpec.radius, padding: 14,
+    borderWidth: 1, borderColor: CardSpec.border,
+    ...Shadows.card,
   },
   cardActive: { borderColor: '#2563EB', backgroundColor: '#F0F7FF' },
   iconWrap: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },

@@ -21,6 +21,7 @@ import { SlideTabBar } from '../../../core/ui/SlideTabBar';
 import { useBreakpoint } from '../../../core/layout/Responsive';
 
 import { AppIcon } from '../../../core/ui/AppIcon';
+import { downloadCsv, csvMoney, csvDate } from '../../../core/util/csvExport';
 
 const STATUS_FILTERS: { value: InvoiceStatus | 'all'; label: string }[] = [
   { value: 'all',          label: 'Tümü' },
@@ -228,6 +229,32 @@ export function InvoicesListScreen() {
               <TouchableOpacity style={d.outlineBtn} onPress={() => setBulkPayOpen(true)} activeOpacity={0.85}>
                 <AppIcon name={'cash-multiple' as any} size={16} color="#047857" />
                 <Text style={[d.outlineBtnText, { color: '#047857' }]}>Toplu Tahsilat</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={d.outlineBtn}
+                activeOpacity={0.85}
+                onPress={async () => {
+                  const res = await downloadCsv(
+                    `Faturalar-${new Date().toISOString().slice(0,10)}`,
+                    filtered,
+                    [
+                      { header: 'Fatura No',     value: r => r.invoice_number },
+                      { header: 'Tarih',         value: r => csvDate(r.issue_date) },
+                      { header: 'Vade',          value: r => csvDate(r.due_date) },
+                      { header: 'Klinik',        value: r => r.clinic?.name ?? '' },
+                      { header: 'Hekim',         value: r => r.doctor?.full_name ?? '' },
+                      { header: 'Tutar',         value: r => csvMoney(r.total) },
+                      { header: 'Tahsil Edilen', value: r => csvMoney(r.paid_amount) },
+                      { header: 'Bakiye',        value: r => csvMoney(Number(r.total) - Number(r.paid_amount)) },
+                      { header: 'Durum',         value: r => INVOICE_STATUS_LABELS[r.status] ?? r.status },
+                    ],
+                  );
+                  if (!res.ok && res.error) toast.error(res.error);
+                  else toast.success('CSV indirildi');
+                }}
+              >
+                <AppIcon name={'file-excel-outline' as any} size={16} color="#0F172A" />
+                <Text style={d.outlineBtnText}>Excel'e Aktar</Text>
               </TouchableOpacity>
               <TouchableOpacity style={d.primaryBtn} onPress={() => setBulkOpen(true)} activeOpacity={0.85}>
                 <AppIcon name={'layers-plus' as any} size={16} color="#FFFFFF" />

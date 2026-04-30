@@ -78,6 +78,7 @@ export default function AdminLayout() {
           onPressMessages={() => setMessagesOpen(true)}
           messagesUnreadCount={chatUnread}
           notificationsCount={pendingCount}
+          panelType="admin"
         />
         <MessagesPopup
           visible={messagesOpen}

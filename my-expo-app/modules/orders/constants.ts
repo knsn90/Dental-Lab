@@ -55,7 +55,24 @@ export interface StatusConfig {
   ionIcon: string;
 }
 
-export const STATUS_CONFIG: Record<WorkOrderStatus, StatusConfig> = {
+export const STATUS_CONFIG: Record<string, StatusConfig> = {
+  atama_bekleniyor: {
+    label: 'Atama Bekliyor',
+    color: '#94A3B8',
+    bgColor: '#F1F5F9',
+    next: 'alindi',
+    icon: '⏳',
+    ionIcon: 'clock-outline',
+  },
+  // Yeni: iş aktif istasyonda — tüm stage'ler bitince otomatik kalite_kontrol'e geçer
+  asamada: {
+    label: 'Üretim Aşaması',
+    color: '#D97706',
+    bgColor: '#FEF3C7',
+    next: 'kalite_kontrol',
+    icon: '🔧',
+    ionIcon: 'hammer-wrench',
+  },
   alindi: {
     label: 'Alındı',
     color: '#2563EB',
@@ -73,7 +90,7 @@ export const STATUS_CONFIG: Record<WorkOrderStatus, StatusConfig> = {
     ionIcon: 'wrench-outline',
   },
   kalite_kontrol: {
-    label: 'Kalite Kontrol',
+    label: 'Final QC',
     color: '#7C3AED',
     bgColor: '#EDE9FE',
     next: 'teslimata_hazir',
@@ -111,7 +128,7 @@ export function getStatusConfig(status: WorkOrderStatus): StatusConfig {
 }
 
 export function getNextStatus(status: WorkOrderStatus): WorkOrderStatus | null {
-  return STATUS_CONFIG[status].next;
+  return STATUS_CONFIG[status]?.next ?? null;
 }
 
 export function isOrderOverdue(deliveryDate: string, status: WorkOrderStatus): boolean {

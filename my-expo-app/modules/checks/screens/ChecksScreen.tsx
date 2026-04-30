@@ -16,6 +16,7 @@ import { useClinics } from '../../clinics/hooks/useClinics';
 import { useBreakpoint } from '../../../core/layout/Responsive';
 
 import { AppIcon } from '../../../core/ui/AppIcon';
+import { Shadows, CardSpec } from '../../../core/theme/shadows';
 
 function fmtMoney(n: number): string {
   return '₺' + n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -99,7 +100,7 @@ export function ChecksScreen() {
 
       {/* List */}
       <ScrollView
-        style={{ flex: 1, backgroundColor: '#F8FAFC' }}
+        style={{ flex: 1, backgroundColor: CardSpec.pageBg }}
         contentContainerStyle={{ padding: px, paddingBottom: 48, gap: 10 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor="#AEAEB2" />}
         showsVerticalScrollIndicator={false}
@@ -301,7 +302,7 @@ function CheckFormModal({ visible, onClose, onSaved }: { visible: boolean; onClo
 }
 
 const s = StyleSheet.create({
-  safe:     { flex: 1, backgroundColor: '#FFFFFF' },
+  safe:     { flex: 1, backgroundColor: CardSpec.pageBg },
   header:   { flexDirection: 'row', alignItems: 'center', paddingTop: 18, paddingBottom: 10, gap: 12 },
   title:    { fontSize: 20, fontWeight: '800', color: '#0F172A', letterSpacing: -0.3 },
   subtitle: { fontSize: 13, color: '#64748B', marginTop: 2 },
@@ -316,7 +317,7 @@ const s = StyleSheet.create({
 });
 
 const cc = StyleSheet.create({
-  wrap:      { backgroundColor: '#fff', borderRadius: 14, borderWidth: 1, borderColor: '#F1F5F9', overflow: 'hidden' },
+  wrap:      { backgroundColor: CardSpec.bg, borderRadius: CardSpec.radius, borderWidth: 1, borderColor: CardSpec.border, overflow: 'hidden', ...Shadows.card },
   wrapOverdue: { borderColor: 'rgba(239,68,68,0.3)', backgroundColor: '#FEF2F2' },
   top:       { flexDirection: 'row', padding: 16, gap: 12 },
   amount:    { fontSize: 16, fontWeight: '800', color: '#0F172A' },

@@ -15,6 +15,10 @@ import {
 import { useBreakpoint } from '../../../core/layout/Responsive';
 
 import { AppIcon } from '../../../core/ui/AppIcon';
+import { Shadows, CardSpec } from '../../../core/theme/shadows';
+import { RecurringExpensesPanel } from '../components/RecurringExpensesPanel';
+import { downloadCsv, csvMoney, csvDate } from '../../../core/util/csvExport';
+import { toast } from '../../../core/ui/Toast';
 
 function fmtMoney(n: number | string | null | undefined): string {
   const v = typeof n === 'string' ? Number(n) : (n ?? 0);
@@ -39,6 +43,7 @@ export function ExpensesScreen() {
   const [catFilter, setCatFilter] = useState<ExpenseCategory | 'all'>('all');
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
+  const [recurringOpen, setRecurringOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
 
   const { expenses, loading, refetch } = useExpenses(
@@ -83,11 +88,48 @@ export function ExpensesScreen() {
           <Text style={s.title}>Giderler</Text>
           <Text style={s.subtitle}>Toplam: {fmtMoney(totalAmount)}</Text>
         </View>
+        <TouchableOpacity
+          style={[s.addBtn, { backgroundColor: '#0F172A', marginRight: 6 }]}
+          onPress={() => setRecurringOpen(true)}
+          activeOpacity={0.85}
+        >
+          <AppIcon name={'repeat' as any} size={16} color="#fff" />
+          <Text style={s.addBtnText}>Otomatik</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[s.addBtn, { backgroundColor: '#475569', marginRight: 6 }]}
+          activeOpacity={0.85}
+          onPress={async () => {
+            const res = await downloadCsv(
+              `Giderler-${new Date().toISOString().slice(0,10)}`,
+              filtered,
+              [
+                { header: 'Tarih',     value: e => csvDate(e.expense_date) },
+                { header: 'Kategori',  value: e => EXPENSE_CATEGORY_LABELS[e.category] ?? e.category },
+                { header: 'Açıklama',  value: e => e.description },
+                { header: 'Tutar',     value: e => csvMoney(e.amount) },
+                { header: 'Ödeme',     value: e => e.payment_method },
+                { header: 'Notlar',    value: e => e.notes ?? '' },
+              ],
+            );
+            if (!res.ok && res.error) toast.error(res.error);
+            else toast.success('CSV indirildi');
+          }}
+        >
+          <AppIcon name={'file-excel-outline' as any} size={16} color="#fff" />
+          <Text style={s.addBtnText}>Excel</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={s.addBtn} onPress={openAdd} activeOpacity={0.85}>
           <AppIcon name={'plus' as any} size={16} color="#fff" />
           <Text style={s.addBtnText}>Gider Ekle</Text>
         </TouchableOpacity>
       </View>
+
+      <RecurringExpensesPanel
+        visible={recurringOpen}
+        onClose={() => setRecurringOpen(false)}
+        onAfterGenerate={() => refetch()}
+      />
 
       {/* Category summary — horizontal chips */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false}
@@ -131,7 +173,7 @@ export function ExpensesScreen() {
 
       {/* List */}
       <ScrollView
-        style={{ flex: 1, backgroundColor: '#F8FAFC' }}
+        style={{ flex: 1, backgroundColor: CardSpec.pageBg }}
         contentContainerStyle={{ padding: px, paddingBottom: 48, gap: 10 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor="#AEAEB2" />}
         showsVerticalScrollIndicator={false}
@@ -329,7 +371,7 @@ function ExpenseFormModal({
 }
 
 const s = StyleSheet.create({
-  safe:         { flex: 1, backgroundColor: '#FFFFFF' },
+  safe:         { flex: 1, backgroundColor: CardSpec.pageBg },
   header:       { flexDirection: 'row', alignItems: 'center', paddingTop: 18, paddingBottom: 10, gap: 12 },
   title:        { fontSize: 20, fontWeight: '800', color: '#0F172A', letterSpacing: -0.3 },
   subtitle:     { fontSize: 13, color: '#64748B', marginTop: 2 },
@@ -349,7 +391,7 @@ const s = StyleSheet.create({
 });
 
 const ec = StyleSheet.create({
-  wrap:    { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 14, borderWidth: 1, borderColor: '#F1F5F9', overflow: 'hidden', gap: 0 },
+  wrap:    { flexDirection: 'row', alignItems: 'center', backgroundColor: CardSpec.bg, borderRadius: CardSpec.radius, borderWidth: 1, borderColor: CardSpec.border, overflow: 'hidden', gap: 0, ...Shadows.card },
   accent:  { width: 4, alignSelf: 'stretch' },
   iconWrap:{ width: 44, alignItems: 'center', justifyContent: 'center' },
   body:    { flex: 1, paddingVertical: 14, gap: 3 },

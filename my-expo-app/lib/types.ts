@@ -58,6 +58,12 @@ export interface WorkOrder {
   photos?: WorkOrderPhoto[];
   status_history?: StatusHistory[];
   order_items?: OrderItem[];
+  // Workflow extras (foundation 044/045)
+  current_stage_id?:    string | null;
+  current_stage_name?:  string | null;     // join'den flatten edilmiş istasyon adı
+  current_stage_color?: string | null;
+  rework_count?:        number;
+  priority?:            'low' | 'normal' | 'high' | 'urgent';
 }
 
 export interface LabService {
