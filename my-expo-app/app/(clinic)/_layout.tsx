@@ -6,6 +6,7 @@ import { DesktopShell, useIsDesktop } from '../../core/layout/DesktopShell';
 import { useAuthStore } from '../../core/store/authStore';
 import { NewOrderScreen } from '../../modules/orders/screens/NewOrderScreen';
 import { MessagesPopup } from '../../modules/orders/components/MessagesPopup';
+import { useOrderChatInbox } from '../../modules/orders/hooks/useOrderChatInbox';
 import { useColorThemeStore, applyColorThemeWeb } from '../../core/store/colorThemeStore';
 
 // Klinik paneli teması — daha koyu sky blue (otorite/yönetici hissi)
@@ -21,6 +22,7 @@ export default function ClinicLayout() {
   const isDesktop = useIsDesktop();
   const [newOrderOpen, setNewOrderOpen] = useState(false);
   const [messagesOpen, setMessagesOpen] = useState(false);
+  const { totalUnread } = useOrderChatInbox();
 
   // Load saved color theme
   const { getTheme, loadTheme } = useColorThemeStore();
@@ -50,6 +52,8 @@ export default function ClinicLayout() {
           navItems={CLINIC_NAV}
           accentColor={accentColor}
           onPressMessages={() => setMessagesOpen(true)}
+          messagesUnreadCount={totalUnread}
+          panelType="clinic_admin"
         />
         <MessagesPopup
           visible={messagesOpen}
@@ -95,6 +99,7 @@ export default function ClinicLayout() {
           options={{
             title: 'Mesajlar',
             tabBarIcon: ({ focused }) => <TabIcon emoji="💬" focused={focused} />,
+            tabBarBadge: totalUnread > 0 ? totalUnread : undefined,
           }}
           listeners={{
             tabPress: (e) => {

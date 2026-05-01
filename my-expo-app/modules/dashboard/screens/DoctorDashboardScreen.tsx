@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, StyleSheet,
   TouchableOpacity, useWindowDimensions, RefreshControl,
@@ -11,6 +11,7 @@ import Svg, {
   Defs, RadialGradient, Stop, Rect,
 } from 'react-native-svg';
 import { useAuthStore } from '../../../core/store/authStore';
+import { supabase } from '../../../core/api/supabase';
 import { useOrders } from '../../orders/hooks/useOrders';
 import { isOrderOverdue, STATUS_CONFIG } from '../../orders/constants';
 import { WorkOrderStatus } from '../../../lib/types';
@@ -468,6 +469,27 @@ export function DoctorDashboardScreen() {
     .sort((a, b) => a.delivery_date.localeCompare(b.delivery_date))
     .slice(0, 5), [orders]);
 
+  // Pending design approvals (token-based, doctor must approve)
+  const [pendingApprovals, setPendingApprovals] = useState<{
+    id: string; order_number: string; token: string; patient_name: string | null;
+  }[]>([]);
+
+  const loadApprovals = useCallback(async () => {
+    if (!profile?.id) return;
+    const { data } = await supabase
+      .from('work_orders')
+      .select('id, order_number, patient_name, doctor_approval_token')
+      .eq('doctor_id', profile.id)
+      .eq('doctor_approval_status', 'pending')
+      .not('doctor_approval_token', 'is', null);
+    setPendingApprovals(((data ?? []) as any[]).map(r => ({
+      id: r.id, order_number: r.order_number,
+      token: r.doctor_approval_token, patient_name: r.patient_name,
+    })));
+  }, [profile?.id]);
+
+  useEffect(() => { loadApprovals(); }, [loadApprovals]);
+
   // Recent orders
   const recent = useMemo(() => orders.slice().sort((a, b) =>
     (b.created_at ?? '').localeCompare(a.created_at ?? '')).slice(0, 5), [orders]);
@@ -493,6 +515,39 @@ export function DoctorDashboardScreen() {
           overdueCount={overdueCount}
           onPressOverdue={() => router.push('/(doctor)/orders' as any)}
         />
+
+        {/* ── Onay Bekleyen Tasarımlar Banner ── */}
+        {pendingApprovals.length > 0 && (
+          <View style={apv.banner}>
+            <View style={apv.iconWrap}>
+              <Icon name={'clipboard' as any} size={18} color="#FFFFFF" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={apv.title}>{pendingApprovals.length} tasarım onayınızı bekliyor</Text>
+              <Text style={apv.sub}>
+                {pendingApprovals.slice(0, 2).map(p =>
+                  p.order_number + (p.patient_name ? ' · ' + p.patient_name : '')
+                ).join(' · ')}
+                {pendingApprovals.length > 2 && ` · +${pendingApprovals.length - 2} daha`}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={apv.cta}
+              onPress={() => {
+                if (pendingApprovals.length === 1) {
+                  router.push(`/doctor-approval/${pendingApprovals[0].token}` as any);
+                } else {
+                  // Birden fazla varsa orders ekranına git, oradan seçsin
+                  router.push('/(doctor)/orders' as any);
+                }
+              }}
+              activeOpacity={0.85}
+            >
+              <Text style={apv.ctaText}>İncele</Text>
+              <Icon name="arrow-right" size={14} color="#7C3AED" />
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* KPI strip — mobile wrap 2x3, tablet/desktop single row */}
         <View style={[s.kpiStrip, (isDesktop || isTablet) && { flexWrap: 'nowrap' }]}>
@@ -703,4 +758,32 @@ const s = StyleSheet.create({
       ? ({ boxShadow: `0 4px 8px ${hexA(P, 0.18)}, 0 14px 36px ${hexA(P, 0.42)}` } as any)
       : { shadowColor: P, shadowOpacity: 0.40, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 10 }),
   },
+});
+
+// ─── Pending approvals banner ────────────────────────────────────────────
+const apv = StyleSheet.create({
+  banner: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 14, paddingVertical: 14,
+    marginHorizontal: 16, marginTop: 4, marginBottom: -4,
+    borderRadius: 16,
+    backgroundColor: '#7C3AED',
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 8px 20px rgba(124,58,237,0.30)' } as any)
+      : { shadowColor: '#7C3AED', shadowOpacity: 0.30, shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, elevation: 6 }),
+  },
+  iconWrap: {
+    width: 36, height: 36, borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.20)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  title:  { fontSize: 13, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.1 },
+  sub:    { fontSize: 11, color: 'rgba(255,255,255,0.85)', marginTop: 2 },
+  cta: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 12, paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+  },
+  ctaText: { fontSize: 12, fontWeight: '800', color: '#7C3AED' },
 });

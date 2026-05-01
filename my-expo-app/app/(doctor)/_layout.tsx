@@ -6,6 +6,7 @@ import { DesktopShell, useIsDesktop } from '../../core/layout/DesktopShell';
 import { useAuthStore } from '../../core/store/authStore';
 import { NewOrderScreen } from '../../modules/orders/screens/NewOrderScreen';
 import { MessagesPopup } from '../../modules/orders/components/MessagesPopup';
+import { useOrderChatInbox } from '../../modules/orders/hooks/useOrderChatInbox';
 import { useColorThemeStore, applyColorThemeWeb } from '../../core/store/colorThemeStore';
 
 // Doktor paneli teması (lab #2563EB / admin #0F172A'dan ayrıştırılmış sky blue)
@@ -20,6 +21,7 @@ export default function DoctorLayout() {
   const isDesktop = useIsDesktop();
   const [newOrderOpen, setNewOrderOpen] = useState(false);
   const [messagesOpen, setMessagesOpen] = useState(false);
+  const { totalUnread } = useOrderChatInbox();
 
   // Load saved color theme
   const { getTheme, loadTheme } = useColorThemeStore();
@@ -48,6 +50,7 @@ export default function DoctorLayout() {
           navItems={DOCTOR_NAV}
           accentColor={accentColor}
           onPressMessages={() => setMessagesOpen(true)}
+          messagesUnreadCount={totalUnread}
           panelType="doctor"
         />
         <MessagesPopup
@@ -94,6 +97,7 @@ export default function DoctorLayout() {
           options={{
             title: 'Mesajlar',
             tabBarIcon: ({ focused }) => <TabIcon emoji="💬" focused={focused} />,
+            tabBarBadge: totalUnread > 0 ? totalUnread : undefined,
           }}
           listeners={{
             tabPress: (e) => {

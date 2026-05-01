@@ -43,3 +43,36 @@ export async function fetchClinicDoctorProfiles(doctorIds: string[]) {
     .select('id, full_name, phone, avatar_url, clinic_name, clinic_id')
     .in('id', doctorIds);
 }
+
+/** Klinik admin: hekim aktif/pasif toggle + telefon güncelleme */
+export async function updateClinicDoctor(
+  doctorId: string,
+  patch: Partial<{ is_active: boolean; phone: string | null }>,
+) {
+  return supabase
+    .from('profiles')
+    .update(patch)
+    .eq('id', doctorId)
+    .eq('user_type', 'doctor');
+}
+
+/**
+ * Klinik admin: yeni hekim davet (Edge Function admin-create-user).
+ * Edge Function clinic_id ve user_type='doctor' set eder.
+ */
+export async function inviteClinicDoctor(input: {
+  email:      string;
+  full_name:  string;
+  phone?:     string;
+  clinic_id:  string;
+}) {
+  return supabase.functions.invoke('admin-create-user', {
+    body: {
+      email:     input.email,
+      full_name: input.full_name,
+      phone:     input.phone ?? null,
+      user_type: 'doctor',
+      clinic_id: input.clinic_id,
+    },
+  });
+}
