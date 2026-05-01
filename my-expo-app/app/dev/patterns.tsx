@@ -13,19 +13,30 @@ import React from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { ResponsiveCanvas } from '../../core/layout/ResponsiveCanvas';
 import { CardX } from '../../core/ui/CardX';
+import { KPICardX } from '../../core/ui/KPICardX';
+import { SectionLabelX } from '../../core/ui/SectionLabelX';
+import { HeroX } from '../../core/ui/HeroX';
+import { EmptyStateX } from '../../core/ui/EmptyStateX';
 
 export default function PatternsScreen() {
   return (
     <ResponsiveCanvas size="lg">
-      {/* Hero */}
-      <View className="mb-8">
-        <Text className="text-3xl font-bold text-slate-900 tracking-tight">
-          Tasarım Patternleri
-        </Text>
-        <Text className="text-sm text-slate-500 mt-2">
-          NativeWind + Cards Design — web ve mobile için ortak
-        </Text>
-      </View>
+      {/* Hero — gerçek HeroX bileşeniyle */}
+      <HeroX
+        kicker="Pattern Showcase · v1"
+        title="Tasarım Patternleri"
+        subtitle="NativeWind + Cards Design — web ve mobile için ortak bileşenler"
+        glow={['#2563EB', '#10B981']}
+        stats={[
+          { label: 'Renk',     value: 9,  accent: '#2563EB' },
+          { label: 'Bileşen',  value: 8,  accent: '#10B981' },
+          { label: 'Variant',  value: 16, accent: '#7C3AED' },
+        ]}
+        actions={[
+          { icon: 'github', label: 'Repo', primary: true, accent: '#0F172A', onPress: () => {} },
+          { icon: 'book',   label: 'Dokümantasyon',                          onPress: () => {} },
+        ]}
+      />
 
       {/* Bölüm 1: Renk paleti */}
       <Section title="Renk Paleti">
@@ -134,7 +145,37 @@ export default function PatternsScreen() {
         </ResponsiveCanvas>
       </Section>
 
-      {/* Bölüm 6: Tipografi */}
+      {/* Bölüm 6.5: KPICardX */}
+      <Section title="KPICardX (canonical KPI bileşeni)">
+        <View className="flex-row flex-wrap gap-3">
+          <KPICardX label="Bugün Yeni"     value={12}        icon="plus"            accent="#10B981" sub="sipariş" />
+          <KPICardX label="Geciken"        value={3}         icon="alert-triangle"  accent="#DC2626" sub="acil müdahale" danger />
+          <KPICardX label="Toplam Gelir"   value="₺125.430"  icon="trending-up"     accent="#059669"
+                    trend={{ value: 12, label: '%12 arttı' }} />
+          <KPICardX label="Vadesi Geçen"   value="₺18.500"   icon="clock"           accent="#D97706"
+                    trend={{ value: -5, label: '%5 azaldı' }} pressable onPress={() => {}} />
+        </View>
+      </Section>
+
+      {/* Bölüm 6.7: SectionLabelX + EmptyStateX */}
+      <Section title="SectionLabelX & EmptyStateX">
+        <CardX>
+          <CardX.Body>
+            <SectionLabelX action={{ label: 'Tümünü Gör →', onPress: () => {} }} accent="#2563EB">
+              Bekleyen Siparişler
+            </SectionLabelX>
+            <EmptyStateX
+              icon="inbox"
+              title="Henüz sipariş yok"
+              subtitle="Yeni iş emri oluşturarak başlayabilirsiniz"
+              cta={{ label: 'Yeni İş Emri', onPress: () => {} }}
+              compact
+            />
+          </CardX.Body>
+        </CardX>
+      </Section>
+
+      {/* Bölüm 7: Tipografi */}
       <Section title="Tipografi">
         <View className="gap-2">
           <Text className="text-4xl font-bold text-slate-900 tracking-tight">Heading 1</Text>

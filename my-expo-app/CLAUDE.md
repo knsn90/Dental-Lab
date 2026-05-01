@@ -30,21 +30,47 @@ export function MyScreen() {
 - Mobile'da otomatik tam genişlik
 - Desktop'ta otomatik ortalama + padding
 
-### 2. CardX kullan
-Manuel `View` + `StyleSheet` yerine:
+### 2. Canonical bileşenleri kullan
+
+**Kart:** `CardX` (4 variant)
 ```tsx
 import { CardX } from 'core/ui/CardX';
-
-<CardX>
-  <CardX.Header>
-    <CardX.Title>Başlık</CardX.Title>
-    <CardX.Subtitle>Alt başlık</CardX.Subtitle>
-  </CardX.Header>
-  <CardX.Body>...</CardX.Body>
-  <CardX.Footer>...</CardX.Footer>
-</CardX>
+<CardX><CardX.Header>...</CardX.Header><CardX.Body>...</CardX.Body></CardX>
 ```
-- Variant: `default` (genel) · `hero` (büyük + accent) · `flat` (KPI) · `outline` (lite)
+
+**KPI:** `KPICardX` — değer + ikon + opsiyonel trend
+```tsx
+import { KPICardX } from 'core/ui/KPICardX';
+<KPICardX label="Gelir" value="₺125.430" icon="trending-up" accent="#059669"
+          trend={{ value: 12, label: '%12 arttı' }} />
+```
+
+**Hero:** `HeroX` — modern dashboard hero (gradient blob + stats + actions)
+```tsx
+import { HeroX } from 'core/ui/HeroX';
+<HeroX
+  kicker="Pazartesi, 12 Mayıs"
+  title="Hoş geldin, Ahmet"
+  subtitle="..."
+  glow={['#2563EB', '#10B981']}
+  stats={[{ label: 'Yeni', value: 12, accent: '#10B981' }]}
+  actions={[{ icon: 'plus', label: 'Yeni İş Emri', primary: true, onPress }]}
+/>
+```
+
+**Section başlığı:** `SectionLabelX`
+```tsx
+import { SectionLabelX } from 'core/ui/SectionLabelX';
+<SectionLabelX action={{ label: 'Tümünü Gör →', onPress }}>Son Siparişler</SectionLabelX>
+```
+
+**Empty state:** `EmptyStateX`
+```tsx
+import { EmptyStateX } from 'core/ui/EmptyStateX';
+<EmptyStateX icon="inbox" title="Henüz sipariş yok" cta={{ label: 'Ekle', onPress }} />
+```
+
+> **`X` suffix'i:** mevcut StyleSheet versiyonlarıyla çakışmamak için. Yeni kod `X` ile başlar; eski kod yavaş yavaş geçer.
 
 ### 3. Tailwind className — StyleSheet değil
 ```tsx
