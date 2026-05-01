@@ -8,6 +8,7 @@
  */
 import React from 'react';
 import { View, Text, ScrollView, Pressable } from 'react-native';
+import { Svg, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { DS, dsTheme, type DsTheme } from '../../core/theme/dsTokens';
 
 // Tüm display başlıklar — Inter Tight Light (300), sıkı tracking
@@ -203,33 +204,37 @@ export default function PatternsScreen() {
       </View>
 
       {/* ═════ 06 — RING & PROGRESS ═════ */}
-      <SecHeader eyebrow="06 · Veri görselleri" title="Sade istatistik primitifleri" />
+      <SecHeader eyebrow="06 · Veri görselleri" title="Mavi gradient yüzde halkaları" desc="0–100% arası 21 farklı değer. Açık mavi → koyu mavi gradient stroke." />
 
+      <View style={{ backgroundColor: '#FFF', borderRadius: 24, padding: 40, marginBottom: 32, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' }}>
+        {/* Yüzde halka grid'i — 21 değer (0 → 100, +5'er) */}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16, justifyContent: 'flex-start' }}>
+          {Array.from({ length: 21 }, (_, i) => i * 5).map(pct => (
+            <PercentRing key={pct} value={pct} size={84} />
+          ))}
+        </View>
+      </View>
+
+      {/* Progress bar variantları */}
       <View style={{ backgroundColor: '#FFF', borderRadius: 24, padding: 40, marginBottom: 80, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' }}>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 32, alignItems: 'center' }}>
-          <View style={{ width: 140, height: 140, borderRadius: 70, borderWidth: 10, borderColor: 'rgba(0,0,0,0.06)', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-            <View style={{ position: 'absolute', alignItems: 'center' }}>
-              <Text style={{ ...DISPLAY, fontSize: 32, letterSpacing: -0.6 }}>72%</Text>
-              <Text style={{ fontSize: 9, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, marginTop: 4 }}>Üretim</Text>
-            </View>
-          </View>
-          <View style={{ flex: 1, minWidth: 240, gap: 16 }}>
-            {[
-              { label: 'Üretim hattı', value: 72, color: DS.lab.primary },
-              { label: 'Teslim',       value: 54, color: DS.ink[900] },
-              { label: 'Stok seviyesi',value: 86, color: DS.ink[900] },
-            ].map((p, i) => (
-              <View key={i}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <Text style={{ fontSize: 11, color: DS.ink[500] }}>{p.label}</Text>
-                  <Text style={{ fontSize: 11, color: DS.ink[900], fontWeight: '500' }}>{p.value}%</Text>
-                </View>
-                <View style={{ height: 6, backgroundColor: 'rgba(0,0,0,0.08)', borderRadius: 999, overflow: 'hidden' }}>
-                  <View style={{ height: '100%', width: `${p.value}%`, backgroundColor: p.color }} />
-                </View>
+        <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 20 }}>Lineer ilerleme</Text>
+        <View style={{ gap: 16 }}>
+          {[
+            { label: 'Üretim hattı',  value: 72, color: '#1E88FF' },
+            { label: 'Teslim',         value: 54, color: '#3DB1FF' },
+            { label: 'Stok seviyesi',  value: 86, color: '#0066D6' },
+            { label: 'Bütçe kullanımı',value: 38, color: '#5BC4FF' },
+          ].map((p, i) => (
+            <View key={i}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                <Text style={{ fontSize: 12, color: DS.ink[700] }}>{p.label}</Text>
+                <Text style={{ fontSize: 12, color: DS.ink[900], fontWeight: '500' }}>{p.value}%</Text>
               </View>
-            ))}
-          </View>
+              <View style={{ height: 8, backgroundColor: 'rgba(0,0,0,0.06)', borderRadius: 999, overflow: 'hidden' }}>
+                <View style={{ height: '100%', width: `${p.value}%`, backgroundColor: p.color, borderRadius: 999 }} />
+              </View>
+            </View>
+          ))}
         </View>
       </View>
 
@@ -654,6 +659,43 @@ function TypeRow({ label, sample, size, sansSerif, noBorder, variant }: {
 }
 
 // ─── Form bileşenleri (sade, NativeWind sansSerif) ───────────────────────────
+// ─── Yüzde halkası — açık → koyu mavi gradient stroke ───────────────────────
+function PercentRing({ value, size = 84 }: { value: number; size?: number }) {
+  const stroke = 8;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const dash = (value / 100) * c;
+  const id = `pr-grad-${value}`;
+
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
+        <Defs>
+          <LinearGradient id={id} x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0%"   stopColor="#5BC4FF" />
+            <Stop offset="50%"  stopColor="#1E88FF" />
+            <Stop offset="100%" stopColor="#0052CC" />
+          </LinearGradient>
+        </Defs>
+        {/* Track */}
+        <Circle cx={size / 2} cy={size / 2} r={r}
+                stroke="#E5E7EB" strokeWidth={stroke} fill="none" />
+        {/* Progress */}
+        {value > 0 && (
+          <Circle cx={size / 2} cy={size / 2} r={r}
+                  stroke={`url(#${id})`} strokeWidth={stroke} fill="none"
+                  strokeDasharray={`${dash} ${c}`} strokeLinecap="round" />
+        )}
+      </Svg>
+      <View style={{ position: 'absolute', alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900], letterSpacing: -0.4 }}>
+          {value}%
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 function BigStat({ value, label }: { value: string; label: string }) {
   return (
     <View style={{ alignItems: 'flex-end' }}>
