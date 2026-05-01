@@ -643,12 +643,221 @@ export default function PatternsScreen() {
         </View>
       </View>
 
-      {/* ═════ 12 — REFERANS LİNKLER ═════ */}
+      {/* ═════ 12 — SİPARİŞ DETAY PATTERNLERİ ═════ */}
+      <SecHeader eyebrow="12 · Sipariş Detay" title="Hasta vakası kartları" desc="V2 handoff'tan: stage hero (sarı gradient), aktif istasyon, materyal grid, mali özet (dark)." />
+
+      {/* Stage Hero — sarı gradient + büyük rakam + progress + steps */}
+      <View style={{ borderRadius: 28, padding: 32, marginBottom: 24, position: 'relative', overflow: 'hidden', backgroundColor: '#FFF6D9' }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, flexWrap: 'wrap', gap: 16 }}>
+          <View>
+            <Text style={{ fontSize: 11, color: '#6B5A1F', letterSpacing: 1.32, textTransform: 'uppercase', fontWeight: '600', marginBottom: 8 }}>Hasta · 5 diş çalışması</Text>
+            <Text style={{ ...DISPLAY, fontSize: 54, letterSpacing: -2.16, lineHeight: 51, color: DS.ink[900] }}>Kaan Esen</Text>
+            <Text style={{ fontSize: 13, color: '#3C3C3C', marginTop: 8 }}>Dr. Ahmet Kartal · Merkez Diş Kliniği</Text>
+          </View>
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={{ fontSize: 11, color: '#6B5A1F', letterSpacing: 1.32, textTransform: 'uppercase', fontWeight: '600' }}>Kalan</Text>
+            <Text style={{ ...DISPLAY, fontSize: 48, letterSpacing: -1.92, lineHeight: 48, marginTop: 6, color: DS.ink[900] }}>3<Text style={{ fontSize: 18 }}> gün</Text></Text>
+            <Text style={{ fontSize: 12, color: '#3C3C3C', marginTop: 4 }}>Teslim 01.05.2026</Text>
+          </View>
+        </View>
+        <View style={{ backgroundColor: 'rgba(0,0,0,0.08)', borderRadius: 999, padding: 6 }}>
+          <View style={{ height: 8, backgroundColor: DS.ink[900], borderRadius: 999, width: '40%', position: 'relative' }}>
+            <View style={{ position: 'absolute', right: -10, top: -4, width: 20, height: 20, borderRadius: 10, backgroundColor: DS.ink[900], borderWidth: 4, borderColor: DS.lab.primary }} />
+          </View>
+        </View>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 14 }}>
+          {['Alındı', 'Üretim', 'Final QC', 'Hazır', 'Teslim'].map((s, i) => (
+            <Text key={i} style={{
+              fontSize: 11,
+              color: i <= 1 ? DS.ink[900] : '#6B5A1F',
+              fontWeight: i === 1 ? '600' : '400',
+              opacity: i > 1 ? 0.5 : 1,
+            }}>{s}</Text>
+          ))}
+        </View>
+      </View>
+
+      {/* Aktif istasyon kartı */}
+      <View style={{ backgroundColor: '#FFF', borderRadius: 24, padding: 24, marginBottom: 24, flexDirection: 'row', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
+        <View style={{ width: 64, height: 64, borderRadius: 18, backgroundColor: DS.ink[900], alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ fontSize: 26, color: DS.lab.primary }}>⚗</Text>
+        </View>
+        <View style={{ flex: 1, minWidth: 200 }}>
+          <Text style={{ fontSize: 11, color: '#9A9A9A', letterSpacing: 1.1, textTransform: 'uppercase', fontWeight: '600' }}>Şu an</Text>
+          <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, marginTop: 2, color: DS.ink[900] }}>3D Baskı istasyonu</Text>
+          <Text style={{ fontSize: 12, color: '#9C5E0E', marginTop: 4, fontWeight: '500' }}>● 2 saat 10 dakika gecikti · 38% tamamlandı</Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 8, paddingLeft: 8, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' }}>
+          <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: DS.lab.primary, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: DS.ink[900] }}>Nİ</Text>
+          </View>
+          <View>
+            <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[900] }}>Navid İ.</Text>
+            <Text style={{ fontSize: 10, color: '#6B6B6B' }}>Sorumlu</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Materyal hareketleri grid */}
+      <View style={{ backgroundColor: '#FFF', borderRadius: 24, padding: 24, marginBottom: 24 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
+          <Text style={{ fontSize: 11, color: '#9A9A9A', letterSpacing: 1.1, textTransform: 'uppercase', fontWeight: '600' }}>Materyal hareketleri</Text>
+          <View style={{ flex: 1 }} />
+          <PillButton variant="light" size="sm">+ Stok düş</PillButton>
+        </View>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+          {[
+            { name: 'NextDent C&B', amt: '12.4 g', cost: '₺ 10.54', stage: '3D Baskı' },
+            { name: 'Ortho IBT',     amt: '3.8 g',  cost: '₺ 4.56',  stage: '3D Baskı' },
+            { name: 'Etil alkol',    amt: '50 ml',  cost: '₺ 2.00',  stage: '3D Baskı' },
+          ].map((m, i) => (
+            <View key={i} style={{ flex: 1, minWidth: 200, paddingHorizontal: 16, paddingVertical: 14, backgroundColor: '#FBFAF6', borderRadius: 14 }}>
+              <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[900] }}>{m.name}</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
+                <Text style={{ fontSize: 11, color: '#6B6B6B' }}>{m.amt}</Text>
+                <Text style={{ fontSize: 11, color: DS.ink[900], fontWeight: '500' }}>{m.cost}</Text>
+              </View>
+              <Text style={{ fontSize: 10, color: '#9A9A9A', marginTop: 4 }}>{m.stage}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+
+      {/* Aktivite feed + Mali bilgi (yan yana) */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16, marginBottom: 80 }}>
+        <View style={{ flex: 1, minWidth: 320, backgroundColor: '#FFF', borderRadius: 24, padding: 20 }}>
+          <Text style={{ fontSize: 11, color: '#9A9A9A', letterSpacing: 1.1, textTransform: 'uppercase', fontWeight: '600', marginBottom: 14 }}>Aktivite</Text>
+          <View style={{ position: 'relative' }}>
+            <View style={{ position: 'absolute', left: 13, top: 14, bottom: 14, width: 1.5, backgroundColor: 'rgba(0,0,0,0.06)' }} />
+            {[
+              { who: 'Navid İ.',  bg: DS.lab.primary, action: '3D Baskı başlattı',     time: '2sa önce' },
+              { who: 'Ayşel K.',  bg: '#10B981',     action: 'Tasarım QC onayı',       time: '4sa önce' },
+              { who: 'Mehmet A.', bg: '#3B82F6',     action: 'CAD tasarımını yükledi', time: '1g önce' },
+            ].map((a, i) => (
+              <View key={i} style={{ flexDirection: 'row', gap: 12, paddingVertical: 10, position: 'relative', zIndex: 1 }}>
+                <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: a.bg, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ color: '#FFF', fontSize: 12 }}>•</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 12 }}>
+                    <Text style={{ fontWeight: '500', color: DS.ink[900] }}>{a.who}</Text>{' '}
+                    <Text style={{ color: '#6B6B6B' }}>{a.action}</Text>
+                  </Text>
+                  <Text style={{ fontSize: 11, color: '#9A9A9A', marginTop: 2 }}>{a.time}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        <View style={{ flex: 1, minWidth: 280, backgroundColor: DS.ink[900], borderRadius: 24, padding: 20 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
+            <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', letterSpacing: 1.1, textTransform: 'uppercase', fontWeight: '600' }}>Mali Bilgi</Text>
+            <View style={{ flex: 1 }} />
+            <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: 'rgba(245,194,75,0.2)' }}>
+              <Text style={{ fontSize: 10, color: DS.lab.primary, fontWeight: '500' }}>● Beklemede</Text>
+            </View>
+          </View>
+          <View style={{ gap: 10 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>Satış fiyatı</Text>
+              <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.66, color: '#FFF' }}>₺ 4.200</Text>
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>Materyal</Text>
+              <Text style={{ fontSize: 12, color: '#FFF' }}>₺ 1.080</Text>
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>İşçilik</Text>
+              <Text style={{ fontSize: 12, color: '#FFF' }}>₺ 850</Text>
+            </View>
+            <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginVertical: 2 }} />
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <Text style={{ fontSize: 12, color: DS.lab.primary }}>Net kâr</Text>
+              <Text style={{ ...DISPLAY, fontSize: 28, letterSpacing: -0.84, color: DS.lab.primary }}>₺ 2.270</Text>
+            </View>
+          </View>
+        </View>
+      </View>
+
+      {/* ═════ 13 — MODAL PATTERNI ═════ */}
+      <SecHeader eyebrow="13 · Modal" title="Header + body + footer · pill köşeli" desc="Kicker label + büyük başlık + alt açıklama. Backdrop blur arka plan." />
+
+      <View style={{ marginBottom: 80, padding: 40, borderRadius: 24, backgroundColor: 'rgba(20,18,12,0.45)', alignItems: 'center' }}>
+        <View style={{ width: '100%', maxWidth: 560, backgroundColor: '#FFF', borderRadius: 24, overflow: 'hidden' }}>
+          {/* Header */}
+          <View style={{ padding: 28, paddingBottom: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)', flexDirection: 'row', gap: 12 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 11, color: '#9A9A9A', letterSpacing: 1.1, textTransform: 'uppercase', fontWeight: '600', marginBottom: 6 }}>3D Baskı</Text>
+              <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.55, lineHeight: 27, color: DS.ink[900] }}>Aşamayı tamamla</Text>
+              <Text style={{ fontSize: 13, color: '#6B6B6B', marginTop: 6 }}>Kaan Esen · LAB-2026-0033 · 5 diş</Text>
+            </View>
+            <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.04)', alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ fontSize: 14, color: '#3C3C3C' }}>×</Text>
+            </View>
+          </View>
+
+          {/* Body */}
+          <View style={{ padding: 28, gap: 18 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16, backgroundColor: '#FBFAF6', borderRadius: 16 }}>
+              <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: DS.ink[900], alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 18, color: DS.lab.primary }}>⚗</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, color: '#9A9A9A', letterSpacing: 0.9, textTransform: 'uppercase', fontWeight: '600' }}>Şu an</Text>
+                <Text style={{ fontSize: 14, fontWeight: '500', color: DS.ink[900], marginTop: 2 }}>3D Baskı</Text>
+              </View>
+              <Text style={{ fontSize: 18, color: '#9A9A9A' }}>→</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, color: '#9A9A9A', letterSpacing: 0.9, textTransform: 'uppercase', fontWeight: '600' }}>Sonraki</Text>
+                <Text style={{ fontSize: 14, fontWeight: '500', color: DS.ink[900], marginTop: 2 }}>Tasarım QC</Text>
+              </View>
+            </View>
+
+            {/* Field grup */}
+            <View style={{ gap: 6 }}>
+              <Text style={{ fontSize: 12, fontWeight: '500', color: '#3C3C3C' }}>QC Sonucu</Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                {[
+                  { label: '✓ Geçti',  active: true,  color: '#10B981' },
+                  { label: '! Revize', active: false, color: '#F59E0B' },
+                  { label: '✗ Red',    active: false, color: '#9C2E2E' },
+                ].map((opt, i) => (
+                  <View key={i} style={{
+                    flex: 1, paddingVertical: 10, borderRadius: 12,
+                    backgroundColor: opt.active ? opt.color + '15' : 'transparent',
+                    borderWidth: 1, borderColor: opt.active ? opt.color : 'rgba(0,0,0,0.1)',
+                    alignItems: 'center',
+                  }}>
+                    <Text style={{ fontSize: 13, fontWeight: '500', color: opt.active ? opt.color : DS.ink[700] }}>{opt.label}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            {/* Note field */}
+            <View style={{ gap: 6 }}>
+              <Text style={{ fontSize: 12, fontWeight: '500', color: '#3C3C3C' }}>Not (opsiyonel)</Text>
+              <View style={{ minHeight: 80, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.1)' }}>
+                <Text style={{ fontSize: 13, color: '#9A9A9A' }}>Bir sonraki ekibe iletilecek not...</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Footer */}
+          <View style={{ padding: 16, paddingHorizontal: 28, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)', backgroundColor: '#FBFAF6', flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
+            <PillButton variant="ghost" size="sm">Vazgeç</PillButton>
+            <PillButton variant="dark" size="sm">✓ Onayla & geç</PillButton>
+          </View>
+        </View>
+      </View>
+
+      {/* ═════ 14 — REFERANS LİNKLER ═════ */}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'center', paddingTop: 32, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.08)' }}>
         <Text style={{ fontSize: 12, color: DS.ink[500] }}>Canlı önizlemeler:</Text>
         <PillButton variant="light" size="sm">/dev/ds-lab</PillButton>
+        <PillButton variant="light" size="sm">/dev/order-detail</PillButton>
         <PillButton variant="light" size="sm">/(lab)/dashboard</PillButton>
-        <PillButton variant="light" size="sm">/(doctor)</PillButton>
       </View>
 
       <View style={{ height: 80 }} />
