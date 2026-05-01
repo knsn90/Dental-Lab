@@ -13,6 +13,7 @@ import Svg, {
 import { useAuthStore } from '../../../core/store/authStore';
 import { supabase } from '../../../core/api/supabase';
 import { useOrders } from '../../orders/hooks/useOrders';
+import { ResponsiveCanvas } from '../../../core/layout/ResponsiveCanvas';
 import { isOrderOverdue, STATUS_CONFIG } from '../../orders/constants';
 import { WorkOrderStatus } from '../../../lib/types';
 import { BlurFade } from '../../../core/ui/BlurFade';
@@ -503,10 +504,13 @@ export function DoctorDashboardScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
-      <ScrollView
-        contentContainerStyle={s.scroll}
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={P} />}
+      <ResponsiveCanvas
+        size="xl"
+        bgClassName="bg-page"
+        padClassName="px-4 sm:px-6 lg:px-10 pt-5 pb-32"
+        scrollProps={{
+          refreshControl: <RefreshControl refreshing={loading} onRefresh={refetch} tintColor={P} />,
+        }}
       >
         {/* Hero */}
         <Hero
@@ -703,7 +707,7 @@ export function DoctorDashboardScreen() {
         </View>
 
         <View style={{ height: 40 }} />
-      </ScrollView>
+      </ResponsiveCanvas>
 
       {/* FAB — only on mobile */}
       {!isDesktop && (
@@ -732,7 +736,7 @@ const rec = StyleSheet.create({
 // ── Root styles ───────────────────────────────────────────────────
 const s = StyleSheet.create({
   safe:   { flex: 1, backgroundColor: BG },
-  scroll: { padding: 20, paddingBottom: 120, maxWidth: 1400, alignSelf: 'stretch' },
+  // scroll: artık ResponsiveCanvas yönetiyor (NativeWind padding + maxWidth)
 
   kpiStrip: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 24 },
 

@@ -12,6 +12,7 @@ import Svg, {
 } from 'react-native-svg';
 import { useAuthStore } from '../../../core/store/authStore';
 import { useClinicOrders } from '../../clinic/hooks/useClinicOrders';
+import { ResponsiveCanvas } from '../../../core/layout/ResponsiveCanvas';
 import { isOrderOverdue, STATUS_CONFIG } from '../../orders/constants';
 import { WorkOrderStatus } from '../../../lib/types';
 import { BlurFade } from '../../../core/ui/BlurFade';
@@ -192,10 +193,13 @@ export function ClinicDashboardScreen() {
   // ── Render ─────────────────────────────────────────────────────
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
-      <ScrollView
-        contentContainerStyle={s.scroll}
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={P} />}
+      <ResponsiveCanvas
+        size="xl"
+        bgClassName="bg-page"
+        padClassName="px-4 sm:px-6 lg:px-10 pt-5 pb-32"
+        scrollProps={{
+          refreshControl: <RefreshControl refreshing={loading} onRefresh={refetch} tintColor={P} />,
+        }}
       >
         {/* Hero — layered radial gradients (frontend-design: depth) */}
         <View style={[s.heroRow, isDesktop && s.heroRowDesktop]}>
@@ -377,7 +381,7 @@ export function ClinicDashboardScreen() {
         </View>
 
         <View style={{ height: 40 }} />
-      </ScrollView>
+      </ResponsiveCanvas>
 
       {/* FAB — sadece mobilde */}
       {!isDesktop && (

@@ -11,6 +11,7 @@ import {
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../../core/store/authStore';
+import { ResponsiveCanvas } from '../../../core/layout/ResponsiveCanvas';
 import { useTodayOrders } from '../../orders/hooks/useTodayOrders';
 import { isOrderOverdue } from '../../orders/constants';
 import { fetchTodayProvas } from '../../provas/api';
@@ -897,10 +898,13 @@ export function LabDashboardScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={[s.scroll, isDesktop && s.scrollDesktop]}
-        refreshControl={<RefreshControl refreshing={refreshing || loading} onRefresh={handleRefresh} tintColor={P} />}
+      <ResponsiveCanvas
+        size="xl"
+        bgClassName="bg-page"
+        padClassName="px-4 sm:px-6 lg:px-10 pt-5 pb-32"
+        scrollProps={{
+          refreshControl: <RefreshControl refreshing={refreshing || loading} onRefresh={handleRefresh} tintColor={P} />,
+        }}
       >
         {/* ── Welcome ─────────────────────────────────────────────────── */}
         <View style={s.welcome}>
@@ -1178,7 +1182,7 @@ export function LabDashboardScreen() {
         )}
 
         <View style={{ height: 40 }} />
-      </ScrollView>
+      </ResponsiveCanvas>
     </SafeAreaView>
   );
 }
