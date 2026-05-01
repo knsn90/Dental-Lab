@@ -6,7 +6,7 @@
  *   • 3 panel teması: Lab (Saffron), Klinik (Sage), Yönetim (Mercan)
  *   • Büyük yumuşak köşeler, glassmorphism, ince modern hatlar
  */
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, Pressable, Animated, Easing } from 'react-native';
 import { Svg, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { DS, dsTheme, type DsTheme } from '../../core/theme/dsTokens';
@@ -1060,6 +1060,25 @@ function TypeRow({ label, sample, size, sansSerif, noBorder, variant }: {
 }
 
 // ─── Form bileşenleri (sade, NativeWind sansSerif) ───────────────────────────
+// ─── CountUp hook — 0'dan target'e ease-out ────────────────────────────────
+function useCountUp(target: number, duration = 1400) {
+  const [v, setV] = useState(0);
+  useEffect(() => {
+    const start = Date.now();
+    let raf: any;
+    const tick = () => {
+      const elapsed = Date.now() - start;
+      const t = Math.min(1, elapsed / duration);
+      const eased = 1 - Math.pow(1 - t, 3); // ease-out cubic
+      setV(target * eased);
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => raf && cancelAnimationFrame(raf);
+  }, [target, duration]);
+  return v;
+}
+
 // ─── Pulse Ring — animasyonlu büyüyen dış halka ────────────────────────────
 function PulseRing({ color, size }: { color: string; size: number }) {
   const { scale, opacity } = usePulse({ duration: 1600 });
@@ -1207,24 +1226,32 @@ function StepsTimeline({
 
 // ─── Hero PercentRing — dark wrap + büyük halka (referans görsele yakın) ────
 function PercentRingHero({
-  value, size = 200, theme = 'lab',
-}: { value: number; size?: number; theme?: DsTheme }) {
-  const stroke = Math.max(12, size / 16);
-  const r = (size - stroke - 8) / 2;
+  value: targetValue, size = 200, theme = 'lab', weight = '300', animate = true,
+}: { value: number; size?: number; theme?: DsTheme; weight?: '200' | '300' | '400' | '500' | '600' | '700'; animate?: boolean }) {
+  // Mount animasyonu — 0'dan target'e ease-out (rakam + dash + knob hep birlikte)
+  const animatedValue = useCountUp(targetValue, animate ? 1400 : 0);
+  const value = animate ? animatedValue : targetValue;
+
+  // Stroke responsive: küçük boyutta ince, büyük boyutta kalın
+  const stroke = Math.max(3, Math.round(size * 0.06));
+  const r = (size - stroke - Math.max(3, size * 0.04)) / 2;
   const c = 2 * Math.PI * r;
   const dash = (value / 100) * c;
   const t = dsTheme(theme);
 
   const lightColor = t.primary;
   const deepColor  = t.primaryDeep;
-  const id = `pr-hero-${theme}-${value}`;
+  const id = `pr-hero-${theme}-${targetValue}-${size}`;
 
-  // Knob pozisyonu
+  // Knob pozisyonu (animated value ile)
   const angleDeg = (value / 100) * 360 - 90;
   const angleRad = (angleDeg * Math.PI) / 180;
   const knobX = size / 2 + r * Math.cos(angleRad);
   const knobY = size / 2 + r * Math.sin(angleRad);
   const knobR = stroke * 0.85;
+  const showKnob = size >= 56;
+  const showPulse = size >= 100;
+  const displayValue = Math.round(value);
 
   // Track — accent zemin üzerinde soluk panel rengi
   const trackColor = lightColor + '33'; // %20 opacity
@@ -1252,46 +1279,48 @@ function PercentRingHero({
         )}
 
         {/* Static glow halo arkasında */}
-        {value > 0 && value < 100 && (
-          <Circle cx={knobX} cy={knobY} r={knobR + 6}
+        {value > 0 && value < 100 && showKnob && (
+          <Circle cx={knobX} cy={knobY} r={knobR + Math.max(2, stroke * 0.4)}
                   fill="#FFFFFF" fillOpacity={0.18} />
         )}
 
         {/* Beyaz knob — solid */}
-        {value > 0 && value < 100 && (
+        {value > 0 && value < 100 && showKnob && (
           <Circle cx={knobX} cy={knobY} r={knobR}
                   fill="#FFFFFF" />
         )}
       </Svg>
 
-      {/* Animated pulse halo — knob üzerinde, SVG dışında (RN Animated için) */}
-      {value > 0 && value < 100 && (
+      {/* Animated pulse halo — sadece büyük boyutlarda */}
+      {value > 0 && value < 100 && showPulse && (
         <PulseDot color="#FFFFFF" size={knobR * 2.6} x={knobX} y={knobY} />
       )}
 
-      {/* Centered text — büyük rakam + küçük % */}
+      {/* Centered text — büyük rakam (ince) + küçük % */}
       <View style={{ position: 'absolute', alignItems: 'center', justifyContent: 'center' }}>
         <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
           <Text style={{
             fontFamily: 'Inter Tight, Inter, system-ui, sans-serif',
-            fontWeight: '700',
+            fontWeight: weight,
             fontSize: size * 0.28,
             color: '#FFFFFF',
-            letterSpacing: -2,
+            letterSpacing: size * 0.28 * -0.04,
             lineHeight: size * 0.28,
           }}>
-            {value}
+            {displayValue}
           </Text>
-          <Text style={{
-            fontFamily: 'Inter Tight, Inter, system-ui, sans-serif',
-            fontWeight: '500',
-            fontSize: size * 0.13,
-            color: lightColor,
-            marginLeft: 4,
-            lineHeight: size * 0.13,
-          }}>
-            %
-          </Text>
+          {size >= 56 && (
+            <Text style={{
+              fontFamily: 'Inter Tight, Inter, system-ui, sans-serif',
+              fontWeight: '400',
+              fontSize: size * 0.13,
+              color: lightColor,
+              marginLeft: 3,
+              lineHeight: size * 0.13,
+            }}>
+              %
+            </Text>
+          )}
         </View>
       </View>
     </View>
