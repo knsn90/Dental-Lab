@@ -396,7 +396,157 @@ export default function PatternsScreen() {
         </View>
       </View>
 
-      {/* ═════ 10 — REFERANS LİNKLER ═════ */}
+      {/* ═════ 10 — HERO PATTERNLER ═════ */}
+      <SecHeader eyebrow="10 · Hero Patternleri" title="Üç farklı sayfa açılışı" desc="Glassmorphism, full-bleed gradient ve dark inverted versiyonları." />
+
+      <View style={{ gap: 20, marginBottom: 80 }}>
+        {/* HERO 1 — Glassmorphism (lab tarzı) */}
+        <View style={{ borderRadius: 28, overflow: 'hidden', backgroundColor: DS.lab.bg, padding: 32 }}>
+          <View style={{ backgroundColor: 'rgba(255,255,255,0.55)', borderRadius: 24, padding: 32, borderWidth: 1, borderColor: 'rgba(255,255,255,0.7)' }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 24 }}>
+              <View>
+                <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 1.1, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 12 }}>Cuma · 1 Mayıs</Text>
+                <Text style={{ ...DISPLAY, fontSize: 56, letterSpacing: -1.96, lineHeight: 56, color: DS.ink[900] }}>
+                  Hoş geldin, <Text style={{ color: DS.ink[400] }}>Ali</Text>
+                </Text>
+                <Text style={{ fontSize: 14, color: DS.ink[500], marginTop: 12, maxWidth: 480 }}>
+                  Bugün üretim hattında 18 vaka aktif. 3'ü teslim için hazır.
+                </Text>
+              </View>
+              <View style={{ flexDirection: 'row', gap: 32 }}>
+                <BigStat value="248" label="Aktif" />
+                <BigStat value="56"  label="Hasta" />
+                <BigStat value="18"  label="Bugün" />
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 24 }}>
+              <PillButton variant="dark">+ Yeni vaka</PillButton>
+              <PillButton variant="light">Üretim hattını gör</PillButton>
+            </View>
+          </View>
+        </View>
+
+        {/* HERO 2 — Full bleed gradient (yönetim tarzı) */}
+        <View style={{ borderRadius: 28, padding: 48, backgroundColor: DS.exec.primary, position: 'relative', overflow: 'hidden' }}>
+          <View style={{ position: 'absolute', top: -40, right: -40, width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(255,255,255,0.15)' }} />
+          <View style={{ position: 'absolute', bottom: -60, left: -20, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(0,0,0,0.05)' }} />
+          <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 1.1, textTransform: 'uppercase', color: DS.ink[900], marginBottom: 14 }}>Mart · Yönetim Özeti</Text>
+          <Text style={{ ...DISPLAY, fontSize: 64, letterSpacing: -2.24, lineHeight: 64, color: DS.ink[900] }}>
+            Bu ay <Text style={{ color: '#FFFFFF' }}>+%18</Text>{'\n'}büyüme
+          </Text>
+          <Text style={{ fontSize: 15, color: DS.ink[800], marginTop: 16, maxWidth: 520, lineHeight: 22 }}>
+            Klinikten gelen vaka sayısı geçen aya göre 18% arttı. Üretim kapasitesi %72'de.
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 24 }}>
+            <PillButton variant="dark">Detaylı rapor</PillButton>
+          </View>
+        </View>
+
+        {/* HERO 3 — Dark inverted */}
+        <View style={{ borderRadius: 28, padding: 48, backgroundColor: DS.ink[900], position: 'relative', overflow: 'hidden' }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 24 }}>
+            <View style={{ maxWidth: 600 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: DS.lab.primary }} />
+                <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 1.1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.5)' }}>Canlı · 3 üretimde</Text>
+              </View>
+              <Text style={{ ...DISPLAY, fontSize: 64, letterSpacing: -2.24, lineHeight: 64, color: '#FFF' }}>
+                Üretim hattı{'\n'}
+                <Text style={{ color: DS.lab.primary }}>aktif</Text>
+              </Text>
+              <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)', marginTop: 14, lineHeight: 22 }}>
+                3 vaka şu an üretimde. Ortalama tamamlanma süresi 6.4 gün.
+              </Text>
+            </View>
+            <View style={{ width: 160, height: 160, borderRadius: 80, borderWidth: 10, borderColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+              <View style={{ position: 'absolute', alignItems: 'center' }}>
+                <Text style={{ ...DISPLAY, fontSize: 40, color: '#FFF', letterSpacing: -1.4 }}>72%</Text>
+                <Text style={{ fontSize: 9, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 1, marginTop: 4 }}>Kapasite</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      </View>
+
+      {/* ═════ 11 — TABS ═════ */}
+      <SecHeader eyebrow="11 · Sekmeler (Tabs)" title="3 farklı tab variant" desc="Pill (default), underline ve dolu segment kontrolü." />
+
+      <View style={{ backgroundColor: '#FFF', borderRadius: 24, padding: 40, marginBottom: 80, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', gap: 32 }}>
+
+        {/* Variant 1 — Pill tabs (mevcut Lab dashboard'da) */}
+        <View style={{ gap: 10 }}>
+          <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500] }}>Pill (varsayılan)</Text>
+          <View style={{ flexDirection: 'row', gap: 2, padding: 4, backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 999, alignSelf: 'flex-start' }}>
+            {['Dashboard','Siparişler','Üretim','Stok','Hastalar','Faturalar','Ayarlar'].map((tab, i) => (
+              <View key={tab} style={{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: 999, backgroundColor: i === 0 ? DS.ink[900] : 'transparent' }}>
+                <Text style={{ fontSize: 13, fontWeight: '500', color: i === 0 ? '#FFF' : DS.ink[700] }}>{tab}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* Variant 2 — Underline tabs */}
+        <View style={{ gap: 10 }}>
+          <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500] }}>Underline (sayfa içi navigasyon)</Text>
+          <View style={{ flexDirection: 'row', gap: 32, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.08)' }}>
+            {['Genel','Vaka detayı','Mali','Mesajlar','Geçmiş'].map((tab, i) => {
+              const active = i === 1;
+              return (
+                <View key={tab} style={{ paddingVertical: 12, borderBottomWidth: active ? 2 : 0, borderBottomColor: DS.ink[900] }}>
+                  <Text style={{ fontSize: 14, fontWeight: active ? '600' : '400', color: active ? DS.ink[900] : DS.ink[500], letterSpacing: -0.14 }}>{tab}</Text>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Variant 3 — Segmented control (filter / view mode) */}
+        <View style={{ gap: 10 }}>
+          <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500] }}>Segmented (görünüm modu)</Text>
+          <View style={{ flexDirection: 'row', borderRadius: 12, borderWidth: 1, borderColor: DS.ink[200], alignSelf: 'flex-start', overflow: 'hidden' }}>
+            {[
+              { label: 'Liste', icon: '☰' },
+              { label: 'Kart',  icon: '▦' },
+              { label: 'Grid',  icon: '▤' },
+              { label: 'Takvim',icon: '▦' },
+            ].map((v, i) => {
+              const active = i === 0;
+              return (
+                <View key={v.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: active ? DS.ink[900] : '#FFF', borderRightWidth: i < 3 ? 1 : 0, borderRightColor: DS.ink[200] }}>
+                  <Text style={{ fontSize: 12, color: active ? '#FFF' : DS.ink[700] }}>{v.icon}</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '500', color: active ? '#FFF' : DS.ink[700] }}>{v.label}</Text>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Variant 4 — Vertical sidebar tabs */}
+        <View style={{ gap: 10 }}>
+          <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500] }}>Dikey (settings sidebar)</Text>
+          <View style={{ flexDirection: 'row', gap: 24 }}>
+            <View style={{ width: 200, gap: 2 }}>
+              {['Profil','Bildirimler','Güvenlik','Faturalama','Entegrasyonlar','Ekip','Tercihler'].map((tab, i) => {
+                const active = i === 1;
+                return (
+                  <View key={tab} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: active ? 'rgba(0,0,0,0.05)' : 'transparent' }}>
+                    {active && <View style={{ width: 3, height: 16, borderRadius: 2, backgroundColor: DS.ink[900], marginLeft: -6, marginRight: 4 }} />}
+                    <Text style={{ fontSize: 13, fontWeight: active ? '600' : '400', color: active ? DS.ink[900] : DS.ink[700] }}>{tab}</Text>
+                  </View>
+                );
+              })}
+            </View>
+            <View style={{ flex: 1, padding: 24, backgroundColor: '#FAFAFA', borderRadius: 16 }}>
+              <Text style={{ ...DISPLAY, fontSize: 24, letterSpacing: -0.5, color: DS.ink[900], marginBottom: 8 }}>Bildirimler</Text>
+              <Text style={{ fontSize: 13, color: DS.ink[500], lineHeight: 19 }}>
+                Hangi durumlarda bildirim alacağınızı seçin. E-posta, push ve in-app olarak ayarlanabilir.
+              </Text>
+            </View>
+          </View>
+        </View>
+      </View>
+
+      {/* ═════ 12 — REFERANS LİNKLER ═════ */}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'center', paddingTop: 32, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.08)' }}>
         <Text style={{ fontSize: 12, color: DS.ink[500] }}>Canlı önizlemeler:</Text>
         <PillButton variant="light" size="sm">/dev/ds-lab</PillButton>
@@ -504,6 +654,15 @@ function TypeRow({ label, sample, size, sansSerif, noBorder, variant }: {
 }
 
 // ─── Form bileşenleri (sade, NativeWind sansSerif) ───────────────────────────
+function BigStat({ value, label }: { value: string; label: string }) {
+  return (
+    <View style={{ alignItems: 'flex-end' }}>
+      <Text style={{ ...DISPLAY, fontSize: 40, letterSpacing: -1.4, lineHeight: 40, color: DS.ink[900] }}>{value}</Text>
+      <Text style={{ fontSize: 10, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, marginTop: 4 }}>{label}</Text>
+    </View>
+  );
+}
+
 function FormInput({ label, placeholder, hint, error }: { label: string; placeholder: string; hint?: string; error?: string }) {
   return (
     <View style={{ gap: 6 }}>
