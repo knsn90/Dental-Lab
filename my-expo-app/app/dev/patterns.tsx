@@ -204,37 +204,129 @@ export default function PatternsScreen() {
       </View>
 
       {/* ═════ 06 — RING & PROGRESS ═════ */}
-      <SecHeader eyebrow="06 · Veri görselleri" title="Mavi gradient yüzde halkaları" desc="0–100% arası 21 farklı değer. Açık mavi → koyu mavi gradient stroke." />
+      <SecHeader eyebrow="06 · Veri görselleri" title="Modern yüzde halkaları" desc="Glow halo + büyük beyaz knob + delta chip. Her panel kendi accent rengiyle." />
 
-      <View style={{ backgroundColor: '#FFF', borderRadius: 24, padding: 40, marginBottom: 32, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' }}>
-        {/* Yüzde halka grid'i — 21 değer (0 → 100, +5'er) */}
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16, justifyContent: 'flex-start' }}>
-          {Array.from({ length: 21 }, (_, i) => i * 5).map(pct => (
-            <PercentRing key={pct} value={pct} size={84} />
-          ))}
-        </View>
+      {/* HERO RINGS — 3 panel × 1 büyük ring (label + delta) */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16, marginBottom: 24 }}>
+        {([
+          { theme: 'lab',    value: 72, label: 'Üretim Hattı',     delta: { value: 12, positive: true  } },
+          { theme: 'clinic', value: 54, label: 'Vaka Kabul',        delta: { value: 8,  positive: true  } },
+          { theme: 'exec',   value: 86, label: 'Hedef Tamamlanma',  delta: { value: 4,  positive: false } },
+        ] as const).map((r, i) => {
+          const t = dsTheme(r.theme as DsTheme);
+          return (
+            <View key={i} style={{ flex: 1, minWidth: 280, backgroundColor: t.bgSoft, borderRadius: 24, padding: 32, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)' }}>
+              <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], alignSelf: 'flex-start', marginBottom: 16 }}>
+                {t.name}
+              </Text>
+              <PercentRing value={r.value} size={180} theme={r.theme as DsTheme} label={r.label} delta={r.delta} />
+            </View>
+          );
+        })}
       </View>
 
-      {/* Progress bar variantları */}
-      <View style={{ backgroundColor: '#FFF', borderRadius: 24, padding: 40, marginBottom: 80, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' }}>
-        <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 20 }}>Lineer ilerleme</Text>
-        <View style={{ gap: 16 }}>
-          {[
-            { label: 'Üretim hattı',  value: 72, color: '#1E88FF' },
-            { label: 'Teslim',         value: 54, color: '#3DB1FF' },
-            { label: 'Stok seviyesi',  value: 86, color: '#0066D6' },
-            { label: 'Bütçe kullanımı',value: 38, color: '#5BC4FF' },
-          ].map((p, i) => (
-            <View key={i}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-                <Text style={{ fontSize: 12, color: DS.ink[700] }}>{p.label}</Text>
-                <Text style={{ fontSize: 12, color: DS.ink[900], fontWeight: '500' }}>{p.value}%</Text>
-              </View>
-              <View style={{ height: 8, backgroundColor: 'rgba(0,0,0,0.06)', borderRadius: 999, overflow: 'hidden' }}>
-                <View style={{ height: '100%', width: `${p.value}%`, backgroundColor: p.color, borderRadius: 999 }} />
+      {/* ORTA BOY — her tema için 6 ring grid */}
+      {(['lab', 'clinic', 'exec'] as DsTheme[]).map((th) => {
+        const t = dsTheme(th);
+        return (
+          <View key={th} style={{ backgroundColor: t.bgSoft, borderRadius: 24, padding: 32, marginBottom: 24, borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+              <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: t.primary }} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>{t.name}</Text>
+                <Text style={{ fontSize: 11, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 2 }}>
+                  primary {t.primary} · deep {t.primaryDeep}
+                </Text>
               </View>
             </View>
-          ))}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16 }}>
+              {Array.from({ length: 21 }, (_, i) => i * 5).map(pct => (
+                <PercentRing key={pct} value={pct} size={84} theme={th} />
+              ))}
+            </View>
+          </View>
+        );
+      })}
+
+      {/* Modern lineer ilerleme — 3 panel için ayrı kartlar */}
+      {(['lab', 'clinic', 'exec'] as DsTheme[]).map((th) => {
+        const t = dsTheme(th);
+        const items: { label: string; value: number; trend?: string }[] =
+          th === 'lab' ? [
+            { label: 'Üretim hattı',    value: 72, trend: '+12% bu hafta'  },
+            { label: 'Stok seviyesi',   value: 86, trend: '4 ürün kritik' },
+            { label: 'Teslim hedefi',    value: 54, trend: '6/11 yapıldı'  },
+          ]
+          : th === 'clinic' ? [
+            { label: 'Vaka kabul',       value: 64, trend: '+8 yeni'        },
+            { label: 'Hekim doluluğu',   value: 92, trend: '11/12 dolu'     },
+            { label: 'Hasta memnuniyeti',value: 88, trend: '+3 puan'        },
+          ]
+          : [
+            { label: 'Aylık hedef',      value: 86, trend: '+₺48K'          },
+            { label: 'Bütçe kullanımı',  value: 38, trend: '₺52K kaldı'     },
+            { label: 'Tahsilat',          value: 72, trend: '14 vade geçen' },
+          ];
+
+        return (
+          <View key={`bar-${th}`} style={{ backgroundColor: t.bgSoft, borderRadius: 24, padding: 32, marginBottom: 24, borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 28 }}>
+              <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: t.primary }} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>{t.name} · İlerleme</Text>
+                <Text style={{ fontSize: 11, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 2 }}>
+                  Modern bar — gradient + knob + glow
+                </Text>
+              </View>
+            </View>
+            <View style={{ gap: 22 }}>
+              {items.map((p, i) => (
+                <LinearProgress key={i} value={p.value} label={p.label} trend={p.trend} theme={th} />
+              ))}
+            </View>
+          </View>
+        );
+      })}
+
+      {/* Mini variants (kompakt + segmented) */}
+      <View style={{ backgroundColor: '#FFF', borderRadius: 24, padding: 32, marginBottom: 80, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', gap: 28 }}>
+        <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>Variantlar</Text>
+
+        {/* Compact (label inline) */}
+        <View style={{ gap: 12 }}>
+          <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500] }}>Kompakt</Text>
+          <LinearProgress value={72} label="Tamamlandı" theme="lab" compact />
+          <LinearProgress value={54} label="Tamamlandı" theme="clinic" compact />
+          <LinearProgress value={86} label="Tamamlandı" theme="exec" compact />
+        </View>
+
+        {/* Stacked segmented (multi-status) */}
+        <View style={{ gap: 12 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <Text style={{ fontSize: 12, fontWeight: '500', color: DS.ink[800] }}>Vaka durumu — bu hafta</Text>
+            <Text style={{ fontSize: 12, color: DS.ink[500] }}>42 toplam</Text>
+          </View>
+          <View style={{ height: 12, borderRadius: 999, overflow: 'hidden', flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.05)' }}>
+            <View style={{ width: '40%', backgroundColor: DS.lab.primary }} />
+            <View style={{ width: '25%', backgroundColor: DS.clinic.primary, marginLeft: 2 }} />
+            <View style={{ width: '15%', backgroundColor: DS.exec.primary, marginLeft: 2 }} />
+            <View style={{ width: '8%', backgroundColor: DS.ink[900], marginLeft: 2 }} />
+          </View>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16 }}>
+            {[
+              { label: 'Üretim',      value: 17, color: DS.lab.primary },
+              { label: 'Onay',         value: 11, color: DS.clinic.primary },
+              { label: 'Teslimde',     value: 6,  color: DS.exec.primary },
+              { label: 'Tamamlandı',   value: 4,  color: DS.ink[900] },
+              { label: 'Bekleyen',     value: 4,  color: DS.ink[300] },
+            ].map((s, i) => (
+              <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: s.color }} />
+                <Text style={{ fontSize: 11, color: DS.ink[700] }}>{s.label}</Text>
+                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[900] }}>{s.value}</Text>
+              </View>
+            ))}
+          </View>
         </View>
       </View>
 
@@ -659,38 +751,204 @@ function TypeRow({ label, sample, size, sansSerif, noBorder, variant }: {
 }
 
 // ─── Form bileşenleri (sade, NativeWind sansSerif) ───────────────────────────
-// ─── Yüzde halkası — açık → koyu mavi gradient stroke ───────────────────────
-function PercentRing({ value, size = 84 }: { value: number; size?: number }) {
-  const stroke = 8;
-  const r = (size - stroke) / 2;
+// ─── Modern lineer ilerleme — gradient + knob + glow ───────────────────────
+function LinearProgress({
+  value, label, trend, theme = 'lab', compact = false,
+}: {
+  value: number; label: string; trend?: string; theme?: DsTheme; compact?: boolean;
+}) {
+  const t = dsTheme(theme);
+  const lightColor = t.primary;
+  const deepColor  = t.primaryDeep;
+  const trackColor = theme === 'lab'    ? 'rgba(245,194,75,0.18)'
+                   : theme === 'clinic' ? 'rgba(107,168,136,0.20)'
+                   : 'rgba(233,119,87,0.18)';
+
+  const barH = compact ? 8 : 14;
+  const knobSize = compact ? 14 : 20;
+
+  return (
+    <View style={{ gap: 8 }}>
+      {/* Label row */}
+      {!compact && (
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[900] }}>{label}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+            {trend && <Text style={{ fontSize: 11, color: DS.ink[500] }}>{trend}</Text>}
+            <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.5, color: DS.ink[900] }}>
+              {value}<Text style={{ fontSize: 12, color: DS.ink[400] }}>%</Text>
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* Bar wrapper */}
+      <View style={{ height: barH + 12, justifyContent: 'center', position: 'relative' }}>
+        {/* Track */}
+        <View style={{
+          height: barH,
+          backgroundColor: trackColor,
+          borderRadius: 999,
+        }} />
+
+        {/* Filled segment — gradient (web boxShadow ile soft glow) */}
+        <View style={{
+          position: 'absolute', top: 6, left: 0,
+          height: barH,
+          width: `${value}%`,
+          borderRadius: 999,
+          backgroundColor: deepColor,
+          // @ts-ignore web — linear-gradient gerçek dolum + glow
+          backgroundImage: `linear-gradient(90deg, ${lightColor} 0%, ${deepColor} 100%)`,
+          boxShadow: `0 4px 12px ${lightColor}66, 0 0 0 1px ${lightColor}44 inset`,
+        }} />
+
+        {/* Beyaz knob — bar ucu */}
+        {value > 0 && value < 100 && (
+          <View style={{
+            position: 'absolute',
+            left: `${value}%`,
+            top: '50%',
+            width: knobSize, height: knobSize,
+            marginLeft: -knobSize / 2,
+            marginTop: -knobSize / 2,
+            borderRadius: knobSize / 2,
+            backgroundColor: '#FFFFFF',
+            borderWidth: 1.5,
+            borderColor: deepColor,
+            alignItems: 'center', justifyContent: 'center',
+            // @ts-ignore web glow
+            boxShadow: `0 2px 6px ${lightColor}88, 0 0 0 4px ${lightColor}22`,
+          }}>
+            <View style={{ width: knobSize / 3.5, height: knobSize / 3.5, borderRadius: knobSize / 7, backgroundColor: deepColor }} />
+          </View>
+        )}
+      </View>
+
+      {/* Compact alt etiket */}
+      {compact && (
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <Text style={{ fontSize: 11, color: DS.ink[500] }}>{label}</Text>
+          <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[900] }}>{value}%</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ─── Modern yüzde halkası — glow halo + büyük knob + delta chip ─────────────
+function PercentRing({
+  value, size = 84, theme = 'lab', label, delta,
+}: {
+  value: number; size?: number; theme?: DsTheme;
+  label?: string; delta?: { value: number; positive?: boolean };
+}) {
+  const stroke = Math.max(5, size / 14);  // ince modern halka
+  const r = (size - stroke - 4) / 2;       // 4px glow için pay
   const c = 2 * Math.PI * r;
   const dash = (value / 100) * c;
-  const id = `pr-grad-${value}`;
+  const t = dsTheme(theme);
+
+  const lightColor = t.primary;
+  const deepColor  = t.primaryDeep;
+  const id        = `pr-grad-${theme}-${size}-${value}`;
+  const haloId    = `pr-halo-${theme}-${size}-${value}`;
+
+  // Knob pozisyonu (saat 12'den başlar, saat yönünde)
+  const angleDeg = (value / 100) * 360 - 90;
+  const angleRad = (angleDeg * Math.PI) / 180;
+  const knobX = size / 2 + r * Math.cos(angleRad);
+  const knobY = size / 2 + r * Math.sin(angleRad);
+
+  // Track — panel temasından hafif çok soluk
+  const trackColor = theme === 'lab'    ? 'rgba(245,194,75,0.18)'
+                   : theme === 'clinic' ? 'rgba(107,168,136,0.20)'
+                   : 'rgba(233,119,87,0.18)';
+
+  const knobR = Math.max(5, stroke * 0.85);
+  const isLarge = size >= 140;
+  const numFontSize = isLarge ? 36 : (size >= 100 ? 22 : 14);
 
   return (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
+      <Svg width={size} height={size}>
         <Defs>
           <LinearGradient id={id} x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0%"   stopColor="#5BC4FF" />
-            <Stop offset="50%"  stopColor="#1E88FF" />
-            <Stop offset="100%" stopColor="#0052CC" />
+            <Stop offset="0%"   stopColor={lightColor} />
+            <Stop offset="100%" stopColor={deepColor} />
+          </LinearGradient>
+          {/* Knob için soft halo gradient */}
+          <LinearGradient id={haloId} x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0%"   stopColor="#FFFFFF" stopOpacity="1" />
+            <Stop offset="100%" stopColor={lightColor} stopOpacity="0.3" />
           </LinearGradient>
         </Defs>
-        {/* Track */}
+
+        {/* Track — soluk panel rengi */}
         <Circle cx={size / 2} cy={size / 2} r={r}
-                stroke="#E5E7EB" strokeWidth={stroke} fill="none" />
-        {/* Progress */}
+                stroke={trackColor} strokeWidth={stroke} fill="none" />
+
+        {/* Progress arc */}
         {value > 0 && (
           <Circle cx={size / 2} cy={size / 2} r={r}
                   stroke={`url(#${id})`} strokeWidth={stroke} fill="none"
-                  strokeDasharray={`${dash} ${c}`} strokeLinecap="round" />
+                  strokeDasharray={`${dash} ${c}`} strokeLinecap="round"
+                  transform={`rotate(-90 ${size / 2} ${size / 2})`} />
+        )}
+
+        {/* Glow halo — knob arkasında soft daire */}
+        {value > 0 && value < 100 && (
+          <Circle cx={knobX} cy={knobY} r={knobR + 3}
+                  fill={lightColor} fillOpacity={0.25} />
+        )}
+
+        {/* Beyaz knob — büyük + ince accent stroke */}
+        {value > 0 && value < 100 && (
+          <>
+            <Circle cx={knobX} cy={knobY} r={knobR}
+                    fill="#FFFFFF"
+                    stroke={deepColor} strokeWidth={1.2} />
+            {/* iç parlak nokta */}
+            <Circle cx={knobX} cy={knobY} r={knobR / 3}
+                    fill={deepColor} />
+          </>
+        )}
+
+        {/* 100%'de tek bir dolu knob (geçiş yok) */}
+        {value === 100 && (
+          <Circle cx={size / 2} cy={size / 2 - r} r={knobR / 2}
+                  fill={deepColor} />
         )}
       </Svg>
+
       <View style={{ position: 'absolute', alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900], letterSpacing: -0.4 }}>
-          {value}%
+        <Text style={{
+          ...DISPLAY,
+          fontSize: numFontSize,
+          color: DS.ink[900],
+          letterSpacing: numFontSize > 30 ? -1.4 : -0.5,
+          lineHeight: numFontSize,
+        }}>
+          {value}<Text style={{ fontSize: numFontSize * 0.55, color: DS.ink[400] }}>%</Text>
         </Text>
+        {label && isLarge && (
+          <Text style={{ fontSize: 10, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, marginTop: 6 }}>
+            {label}
+          </Text>
+        )}
+        {delta && isLarge && (
+          <View style={{
+            marginTop: 8, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
+            backgroundColor: delta.positive !== false ? 'rgba(45,154,107,0.12)' : 'rgba(217,75,75,0.12)',
+          }}>
+            <Text style={{
+              fontSize: 10, fontWeight: '600',
+              color: delta.positive !== false ? '#1F6B47' : '#9C2E2E',
+            }}>
+              {delta.positive !== false ? '↑' : '↓'} {Math.abs(delta.value)}%
+            </Text>
+          </View>
+        )}
       </View>
     </View>
   );
