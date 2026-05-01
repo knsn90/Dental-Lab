@@ -643,6 +643,57 @@ export default function PatternsScreen() {
         </View>
       </View>
 
+      {/* ═════ 11.5 — STEPS TIMELINE ═════ */}
+      <SecHeader eyebrow="11.5 · Steps Timeline" title="Aşamalı süreç adımları" desc="Tamamlanan ✓ + aktif (glow ring) + bekleyen (boş daire). Yatay çizgili." />
+
+      <View style={{ gap: 16, marginBottom: 80 }}>
+        {(['lab', 'clinic', 'exec'] as DsTheme[]).map(th => {
+          const t = dsTheme(th);
+          return (
+            <View key={th} style={{
+              borderRadius: 24, padding: 32,
+              backgroundColor: t.surfaceAlt,
+              // @ts-ignore web gradient
+              backgroundImage: `linear-gradient(135deg, ${t.surfaceAlt} 0%, ${t.primaryDeep}33 100%)`,
+            }}>
+              <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', letterSpacing: 1.1, textTransform: 'uppercase', fontWeight: '600', marginBottom: 24 }}>
+                {t.name} · İlerleme
+              </Text>
+              <StepsTimeline
+                steps={['Alındı', 'Üretim', 'Final QC', 'Hazır']}
+                current={1}
+                theme={th}
+              />
+            </View>
+          );
+        })}
+      </View>
+
+      {/* ═════ 11.7 — PERCENTAGE HERO (dark bg variant) ═════ */}
+      <SecHeader eyebrow="11.7 · Yüzde Hero" title="Koyu zemin + büyük halka" desc="Dashboard hero blokları için — soluk track + parlak gradient ring + büyük beyaz knob." />
+
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16, marginBottom: 80 }}>
+        {([
+          { theme: 'lab',    value: 40 },
+          { theme: 'clinic', value: 65 },
+          { theme: 'exec',   value: 82 },
+        ] as const).map((r, i) => {
+          const t = dsTheme(r.theme as DsTheme);
+          return (
+            <View key={i} style={{
+              flex: 1, minWidth: 280, height: 280,
+              borderRadius: 24, padding: 32,
+              backgroundColor: t.surfaceAlt,
+              // @ts-ignore web gradient — koyu accent + biraz primary tint
+              backgroundImage: `linear-gradient(135deg, ${t.surfaceAlt} 0%, ${t.primaryDeep}55 100%)`,
+              alignItems: 'center', justifyContent: 'center',
+            }}>
+              <PercentRingHero value={r.value} size={220} theme={r.theme as DsTheme} />
+            </View>
+          );
+        })}
+      </View>
+
       {/* ═════ 12 — SİPARİŞ DETAY PATTERNLERİ ═════ */}
       <SecHeader eyebrow="12 · Sipariş Detay" title="Hasta vakası kartları" desc="V2 handoff'tan: stage hero (sarı gradient), aktif istasyon, materyal grid, mali özet (dark)." />
 
@@ -960,6 +1011,167 @@ function TypeRow({ label, sample, size, sansSerif, noBorder, variant }: {
 }
 
 // ─── Form bileşenleri (sade, NativeWind sansSerif) ───────────────────────────
+// ─── Steps Timeline — yatay süreç adımları (panel temasıyla) ─────────────────
+function StepsTimeline({
+  steps, current, theme = 'lab',
+}: {
+  steps: string[]; current: number; theme?: DsTheme;
+}) {
+  const t = dsTheme(theme);
+  const accent = t.primary;        // dolu rengi
+  const lineActive = t.primary;    // tamamlanan çizgi
+  const lineRest = 'rgba(255,255,255,0.15)';
+  const labelActive = '#FFFFFF';
+  const labelRest = 'rgba(255,255,255,0.45)';
+
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+      {steps.map((step, i) => {
+        const isPast    = i < current;
+        const isCurrent = i === current;
+        const isFuture  = i > current;
+        const isLast    = i === steps.length - 1;
+
+        return (
+          <React.Fragment key={i}>
+            {/* Node + label */}
+            <View style={{ alignItems: 'center', flex: 0, width: 80 }}>
+              {/* Outer glow halo (sadece active) */}
+              {isCurrent && (
+                <View style={{
+                  position: 'absolute', top: -8, width: 56, height: 56, borderRadius: 28,
+                  backgroundColor: accent, opacity: 0.18,
+                }} />
+              )}
+              {/* Node */}
+              <View style={{
+                width: 40, height: 40, borderRadius: 20,
+                backgroundColor: isPast || isCurrent ? accent : 'transparent',
+                borderWidth: isFuture ? 2 : 0,
+                borderColor: lineRest,
+                alignItems: 'center', justifyContent: 'center',
+                marginTop: isCurrent ? 0 : 0,
+              }}>
+                {isPast && (
+                  <Text style={{ fontSize: 18, fontWeight: '700', color: t.accent }}>✓</Text>
+                )}
+                {isCurrent && (
+                  <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: t.accent }} />
+                )}
+              </View>
+              {/* Label */}
+              <Text style={{
+                fontSize: 14, fontWeight: '500',
+                color: isPast ? labelActive : isCurrent ? accent : labelRest,
+                marginTop: 16,
+              }}>
+                {step}
+              </Text>
+            </View>
+
+            {/* Connecting line */}
+            {!isLast && (
+              <View style={{
+                flex: 1, height: 2,
+                backgroundColor: i < current ? lineActive : lineRest,
+                marginTop: 19,
+              }} />
+            )}
+          </React.Fragment>
+        );
+      })}
+    </View>
+  );
+}
+
+// ─── Hero PercentRing — dark wrap + büyük halka (referans görsele yakın) ────
+function PercentRingHero({
+  value, size = 200, theme = 'lab',
+}: { value: number; size?: number; theme?: DsTheme }) {
+  const stroke = Math.max(12, size / 16);
+  const r = (size - stroke - 8) / 2;
+  const c = 2 * Math.PI * r;
+  const dash = (value / 100) * c;
+  const t = dsTheme(theme);
+
+  const lightColor = t.primary;
+  const deepColor  = t.primaryDeep;
+  const id = `pr-hero-${theme}-${value}`;
+
+  // Knob pozisyonu
+  const angleDeg = (value / 100) * 360 - 90;
+  const angleRad = (angleDeg * Math.PI) / 180;
+  const knobX = size / 2 + r * Math.cos(angleRad);
+  const knobY = size / 2 + r * Math.sin(angleRad);
+  const knobR = stroke * 0.85;
+
+  // Track — accent zemin üzerinde soluk panel rengi
+  const trackColor = lightColor + '33'; // %20 opacity
+
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <Svg width={size} height={size}>
+        <Defs>
+          <LinearGradient id={id} x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0%"   stopColor={lightColor} stopOpacity="0.95" />
+            <Stop offset="100%" stopColor={deepColor}  stopOpacity="1" />
+          </LinearGradient>
+        </Defs>
+
+        {/* Track */}
+        <Circle cx={size / 2} cy={size / 2} r={r}
+                stroke={trackColor} strokeWidth={stroke} fill="none" />
+
+        {/* Progress arc */}
+        {value > 0 && (
+          <Circle cx={size / 2} cy={size / 2} r={r}
+                  stroke={`url(#${id})`} strokeWidth={stroke} fill="none"
+                  strokeDasharray={`${dash} ${c}`} strokeLinecap="round"
+                  transform={`rotate(-90 ${size / 2} ${size / 2})`} />
+        )}
+
+        {/* Glow halo arkasında */}
+        {value > 0 && value < 100 && (
+          <Circle cx={knobX} cy={knobY} r={knobR + 6}
+                  fill="#FFFFFF" fillOpacity={0.18} />
+        )}
+
+        {/* Beyaz knob */}
+        {value > 0 && value < 100 && (
+          <Circle cx={knobX} cy={knobY} r={knobR}
+                  fill="#FFFFFF" />
+        )}
+      </Svg>
+
+      {/* Centered text — büyük rakam + küçük % */}
+      <View style={{ position: 'absolute', alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+          <Text style={{
+            fontFamily: 'Inter Tight, Inter, system-ui, sans-serif',
+            fontWeight: '700',
+            fontSize: size * 0.28,
+            color: '#FFFFFF',
+            letterSpacing: -2,
+            lineHeight: size * 0.28,
+          }}>
+            {value}
+          </Text>
+          <Text style={{
+            fontFamily: 'Inter Tight, Inter, system-ui, sans-serif',
+            fontWeight: '500',
+            fontSize: size * 0.13,
+            color: lightColor,
+            marginLeft: 4,
+            lineHeight: size * 0.13,
+          }}>
+            %
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 // ─── Modern lineer ilerleme — gradient + knob + glow ───────────────────────
 function LinearProgress({
   value, label, trend, theme = 'lab', compact = false,
