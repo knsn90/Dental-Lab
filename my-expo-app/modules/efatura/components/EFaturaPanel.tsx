@@ -34,7 +34,10 @@ export function EFaturaPanel({ invoiceId, status, uuid, type, provider, error, o
   const [busy, setBusy] = useState(false);
   const [logs, setLogs] = useState<any[]>([]);
   const cfg = STATUS_LABELS[status ?? 'pending'];
-  const activeProvider = getActiveProvider();
+  const [providerName, setProviderName] = useState<string>('Demo (Sandbox)');
+  useEffect(() => {
+    getActiveProvider().then(p => setProviderName(p.displayName));
+  }, []);
 
   const refreshLogs = async () => {
     const { data } = await fetchEFaturaLogs(invoiceId);
@@ -99,7 +102,7 @@ export function EFaturaPanel({ invoiceId, status, uuid, type, provider, error, o
             {type === 'e_arsiv' ? 'e-Arşiv' : 'e-Fatura'}
           </Text>
           <Text style={s.providerHint}>
-            Sağlayıcı: {provider ?? activeProvider.displayName}
+            Sağlayıcı: {provider ?? providerName}
           </Text>
         </View>
         <View style={[s.statusBadge, { backgroundColor: cfg.color + '15' }]}>

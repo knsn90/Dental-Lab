@@ -11,7 +11,9 @@
 --   ClinicBalanceScreen aging buckets segmentini gösterir.
 -- ═════════════════════════════════════════════════════════════════════════
 
-CREATE OR REPLACE VIEW v_clinic_balance AS
+DROP VIEW IF EXISTS v_clinic_balance CASCADE;
+
+CREATE VIEW v_clinic_balance AS
 SELECT
   c.id              AS clinic_id,
   c.name            AS clinic_name,

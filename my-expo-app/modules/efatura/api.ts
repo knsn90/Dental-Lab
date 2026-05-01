@@ -108,7 +108,7 @@ async function buildDomainInvoice(invoiceId: string): Promise<EFaturaInvoice | {
 
 // ─── Public API ───────────────────────────────────────────────────────────
 export async function sendInvoice(invoiceId: string): Promise<EFaturaSendResult> {
-  const provider = getActiveProvider();
+  const provider = await getActiveProvider();
   const built = await buildDomainInvoice(invoiceId);
   if ('error' in built) return { ok: false, error: built.error };
 
@@ -148,7 +148,7 @@ export async function sendInvoice(invoiceId: string): Promise<EFaturaSendResult>
 }
 
 export async function queryEFaturaStatus(invoiceId: string): Promise<EFaturaQueryResult> {
-  const provider = getActiveProvider();
+  const provider = await getActiveProvider();
   const { data: inv } = await supabase
     .from('invoices')
     .select('efatura_uuid, efatura_status')
@@ -180,7 +180,7 @@ export async function queryEFaturaStatus(invoiceId: string): Promise<EFaturaQuer
 }
 
 export async function cancelEFatura(invoiceId: string, reason?: string): Promise<EFaturaSendResult> {
-  const provider = getActiveProvider();
+  const provider = await getActiveProvider();
   const { data: inv } = await supabase
     .from('invoices')
     .select('efatura_uuid')
@@ -236,7 +236,7 @@ export async function checkMukellef(vkn: string): Promise<MukellefCheckResult> {
   }
 
   // Provider'dan sorgula
-  const provider = getActiveProvider();
+  const provider = await getActiveProvider();
   const result = await provider.checkMukellef(vkn);
 
   if (result.ok) {

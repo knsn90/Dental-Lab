@@ -22,11 +22,12 @@ import { ProfileSection } from '../sections/ProfileSection';
 import { AppearanceSection } from '../sections/AppearanceSection';
 import { NotificationsSection } from '../sections/NotificationsSection';
 import { GeneralSection } from '../sections/GeneralSection';
+import { IntegrationsScreen } from '../../integrations/screens/IntegrationsScreen';
 
 // ── Types ─────────────────────────────────────────────────────────────────
 type SectionKey =
   | 'profile' | 'appearance' | 'notifications' | 'general'
-  | 'users'   | 'checkin'    | 'stations';
+  | 'users'   | 'checkin'    | 'stations'      | 'integrations';
 
 interface NavGroup {
   title: string;
@@ -55,6 +56,12 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'users',    label: 'Kullanıcılar', sub: 'Personel ve stage yetkileri', icon: 'users'           },
       { key: 'checkin',  label: 'QR Check-in',  sub: 'Mesai takip ayarları',        icon: 'qr-code'         },
       { key: 'stations', label: 'İstasyonlar',  sub: 'Üretim aşamaları',            icon: 'sitemap-outline' },
+    ],
+  },
+  {
+    title: 'ENTEGRASYONLAR',
+    items: [
+      { key: 'integrations', label: 'e-Fatura & POS', sub: 'Sağlayıcı API anahtarları', icon: 'plug' },
     ],
   },
 ];
@@ -161,6 +168,7 @@ export function SettingsHubScreen({
                 <LabCheckinSettings accentColor={accent} />
               )}
               {active === 'stations' && <StationsSection />}
+              {active === 'integrations' && <IntegrationsScreen />}
             </View>
           </HubContext.Provider>
         </View>

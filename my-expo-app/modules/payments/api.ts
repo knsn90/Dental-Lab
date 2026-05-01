@@ -39,7 +39,7 @@ export async function createPaymentLink(params: {
   const { data: tokRes } = await supabase.rpc('generate_payment_token');
   const token = (tokRes as string | null) ?? Math.random().toString(36).slice(2, 24);
 
-  const provider = getActivePaymentProvider();
+  const provider = await getActivePaymentProvider();
   const expiresAt = new Date(Date.now() + (params.expires_in_days ?? 7) * 86400 * 1000).toISOString();
 
   // 3) Intent insert
@@ -97,7 +97,7 @@ export async function chargeWithCard(params: {
     return { ok: false, error: 'Ödeme linki süresi dolmuş', error_code: 'EXPIRED' };
   }
 
-  const provider = getActivePaymentProvider();
+  const provider = await getActivePaymentProvider();
 
   // Log: init
   await supabase.from('payment_attempts').insert({
@@ -156,7 +156,7 @@ export async function queryIntent(intentId: string): Promise<ChargeQueryResult> 
   const ref = (intent as any)?.provider_ref;
   if (!ref) return { ok: false, error: 'Provider referansı yok' };
 
-  const provider = getActivePaymentProvider();
+  const provider = await getActivePaymentProvider();
   return provider.query(ref);
 }
 
@@ -170,7 +170,7 @@ export async function refundIntent(intentId: string, amount?: number): Promise<R
   const ref = (intent as any)?.provider_ref;
   if (!ref) return { ok: false, error: 'Provider referansı yok' };
 
-  const provider = getActivePaymentProvider();
+  const provider = await getActivePaymentProvider();
   const result = await provider.refund(ref, amount);
 
   if (result.ok) {
@@ -185,7 +185,7 @@ export async function refundIntent(intentId: string, amount?: number): Promise<R
 
 // ─── Taksit seçenekleri ──────────────────────────────────────────────────
 export async function getInstallments(binNumber: string, amount: number): Promise<InstallmentOption[]> {
-  const provider = getActivePaymentProvider();
+  const provider = await getActivePaymentProvider();
   return provider.getInstallments(binNumber, amount);
 }
 

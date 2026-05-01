@@ -35,7 +35,10 @@ export function PaymentLinkPanel({ invoiceId, balance, onChanged }: Props) {
   const [loading, setLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
 
-  const provider = getActivePaymentProvider();
+  const [providerName, setProviderName] = useState<string>('Demo POS (Sandbox)');
+  useEffect(() => {
+    getActivePaymentProvider().then(p => setProviderName(p.displayName));
+  }, []);
 
   const load = async () => {
     setLoading(true);
@@ -87,7 +90,7 @@ export function PaymentLinkPanel({ invoiceId, balance, onChanged }: Props) {
         </View>
         <View style={{ flex: 1 }}>
           <Text style={s.title}>Online Ödeme</Text>
-          <Text style={s.providerHint}>Sağlayıcı: {provider.displayName}</Text>
+          <Text style={s.providerHint}>Sağlayıcı: {providerName}</Text>
         </View>
       </View>
 
