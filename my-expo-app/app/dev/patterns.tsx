@@ -46,7 +46,7 @@ export default function PatternsScreen() {
       <SecHeader eyebrow="01 · Renk Sistemi" title="Üç panel, üç kişilik" desc="Her panel kendi rengiyle gelir. Aynı bileşenler, farklı kimlikler." />
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 24, marginBottom: 80 }}>
-        {(['lab', 'clinic', 'exec'] as DsTheme[]).map((k, i) => {
+        {(['lab', 'clinic', 'exec', 'tech'] as DsTheme[]).map((k, i) => {
           const t = dsTheme(k);
           return (
             <View key={k} style={{ flex: 1, minWidth: 320, backgroundColor: t.bg, borderRadius: 24, padding: 28, overflow: 'hidden' }}>
@@ -207,7 +207,7 @@ export default function PatternsScreen() {
       <SecHeader eyebrow="06 · Lineer İlerleme" title="Modern bar — gradient + knob + glow" desc="Her panel kendi accent rengiyle. Yüzde halkaları için bkz. bölüm 11.7." />
 
       {/* Modern lineer ilerleme — 3 panel için ayrı kartlar */}
-      {(['lab', 'clinic', 'exec'] as DsTheme[]).map((th) => {
+      {(['lab', 'clinic', 'exec', 'tech'] as DsTheme[]).map((th) => {
         const t = dsTheme(th);
         const items: { label: string; value: number; trend?: string }[] =
           th === 'lab' ? [
@@ -605,7 +605,7 @@ export default function PatternsScreen() {
       <SecHeader eyebrow="11.5 · Steps Timeline" title="Aşamalı süreç adımları" desc="Tamamlanan ✓ + aktif (glow ring) + bekleyen (boş daire). Yatay çizgili." />
 
       <View style={{ gap: 16, marginBottom: 80 }}>
-        {(['lab', 'clinic', 'exec'] as DsTheme[]).map(th => {
+        {(['lab', 'clinic', 'exec', 'tech'] as DsTheme[]).map(th => {
           const t = dsTheme(th);
           return (
             <View key={th} style={{
@@ -635,6 +635,7 @@ export default function PatternsScreen() {
           { theme: 'lab',    value: 40 },
           { theme: 'clinic', value: 65 },
           { theme: 'exec',   value: 82 },
+          { theme: 'tech',   value: 58 },
         ] as const).map((r, i) => {
           const t = dsTheme(r.theme as DsTheme);
           return (
@@ -661,6 +662,7 @@ export default function PatternsScreen() {
           { theme: 'lab',    value: 72, label: 'Üretim hattı',     desc: 'Kapasite kullanımı' },
           { theme: 'clinic', value: 88, label: 'Hekim doluluğu',    desc: '11/12 hekim' },
           { theme: 'exec',   value: 38, label: 'Bütçe kullanımı',   desc: '₺18K / ₺48K' },
+          { theme: 'tech',   value: 64, label: 'İstasyon doluluk',  desc: '11/17 aktif' },
         ] as const).map((r, i) => {
           const t = dsTheme(r.theme as DsTheme);
           return (
@@ -727,6 +729,7 @@ export default function PatternsScreen() {
             { theme: 'lab',    value: 72, label: 'Lab' },
             { theme: 'clinic', value: 88, label: 'Klinik' },
             { theme: 'exec',   value: 38, label: 'Yönetim' },
+            { theme: 'tech',   value: 64, label: 'Teknisyen' },
           ] as const).map((r, i) => {
             const t = dsTheme(r.theme as DsTheme);
             return (
@@ -1272,6 +1275,25 @@ function PulseRing({ color, size }: { color: string; size: number }) {
   );
 }
 
+// ─── Pulse Linear Halo — lineer bar knob'u için (% pozisyon) ───────────────
+function PulseLinearHalo({ color, size, leftPct }: { color: string; size: number; leftPct: number }) {
+  const { scale, opacity } = usePulse({ duration: 1400 });
+  return (
+    <Animated.View style={{
+      position: 'absolute',
+      left: `${leftPct}%` as any,
+      top: '50%' as any,
+      width: size, height: size,
+      marginLeft: -size / 2,
+      marginTop: -size / 2,
+      borderRadius: size / 2,
+      backgroundColor: color,
+      transform: [{ scale }],
+      opacity,
+    }} pointerEvents="none" />
+  );
+}
+
 // ─── Pulse Dot — knob için animasyonlu büyüyen halo ────────────────────────
 function PulseDot({ color, size, x, y }: { color: string; size: number; x: number; y: number }) {
   const { scale, opacity } = usePulse({ duration: 1400 });
@@ -1506,31 +1528,42 @@ function PercentRingHero({
   );
 }
 
-// ─── Modern lineer ilerleme — koyu zemin + gradient + beyaz knob + pulse ────
+// ─── Modern lineer ilerleme — sade light track + accent fill + halkalı knob ─
+// Tasarım: krem zemin üzerinde ince black bar + saffron knob (içinde küçük black nokta)
+// Hem PercentRingHero ile aynı dil (knob ortası küçük accent dot)
 function LinearProgress({
   value: targetValue, label, trend, theme = 'lab', compact = false, animate = true,
 }: {
   value: number; label: string; trend?: string; theme?: DsTheme; compact?: boolean; animate?: boolean;
 }) {
   const t = dsTheme(theme);
-  const lightColor = t.primary;
-  const deepColor  = t.primaryDeep;
+  const accentFill = t.accent;     // dolu kısım (siyah lab'da)
+  const knobBg = t.primary;         // knob halkası (saffron)
+  const knobInner = t.accent;       // knob iç noktası (siyah)
 
   // Mount animasyonu — 0'dan target'e
   const animatedValue = useCountUp(targetValue, animate ? 1400 : 0);
   const value = animate ? animatedValue : targetValue;
   const displayValue = Math.round(value);
 
-  // Track (rail içi koyu accent + içinde soluk dolu rail)
-  const railOuter = t.surfaceAlt;          // koyu zemin (PercentRingHero ile aynı)
-  const railInner = lightColor + '22';     // %13 light primary — soluk dolum
+  // Outer pill (kapsül) — kart zemininden bir ton koyu krem
+  const railOuter = theme === 'lab'    ? '#FAF5E8'
+                  : theme === 'clinic' ? '#EDF2EE'
+                  : theme === 'exec'   ? '#FAF5F1'
+                  : '#F4F8FC';            // tech
+  // Inner track (boş kısım) — kapsülün içinde daha sönük krem
+  const trackInner = theme === 'lab'    ? '#E8E2C8'
+                   : theme === 'clinic' ? '#D5E2DA'
+                   : theme === 'exec'   ? '#E5D4C5'
+                   : '#D8E5F2';
 
-  const barH = compact ? 10 : 18;          // ray yüksekliği (rail)
-  const innerH = barH - 4;                 // iç dolum yüksekliği
-  const knobSize = barH + 6;               // knob bar'dan biraz büyük
+  const railH = compact ? 14 : 22;         // Dış kapsül yüksekliği
+  const padding = 4;                        // Kapsül iç padding
+  const barH = railH - padding * 2;         // İç bar yüksekliği
+  const knobSize = compact ? 16 : 22;       // Knob — kapsülden hafif büyük
 
   return (
-    <View style={{ gap: 10 }}>
+    <View style={{ gap: 8 }}>
       {/* Label row */}
       {!compact && (
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -1544,79 +1577,58 @@ function LinearProgress({
         </View>
       )}
 
-      {/* Rail wrapper (koyu zemin) — knob taşması için yatay padding */}
-      <View style={{ height: knobSize + 8, justifyContent: 'center', position: 'relative' }}>
-        {/* Outer rail — koyu accent kapsül */}
+      {/* Bar wrapper — knob taşması için ek yükseklik */}
+      <View style={{ height: Math.max(knobSize, railH) + 4, justifyContent: 'center', position: 'relative' }}>
+        {/* Outer rail (kapsül) — kart zemininden bir ton koyu */}
         <View style={{
           position: 'absolute', left: 0, right: 0,
-          height: barH,
+          height: railH,
           top: '50%',
-          marginTop: -barH / 2,
+          marginTop: -railH / 2,
           backgroundColor: railOuter,
           borderRadius: 999,
-          padding: 2,
-          // @ts-ignore web inset shadow
-          boxShadow: `inset 0 1px 2px rgba(0,0,0,0.4)`,
+          padding,
         }}>
-          {/* Inner track — soluk renkli (dolu olmayan kısım) */}
+          {/* Inner track (boş kısım) */}
           <View style={{
             flex: 1,
-            backgroundColor: railInner,
+            backgroundColor: trackInner,
             borderRadius: 999,
             position: 'relative',
             overflow: 'hidden',
           }}>
-            {/* Filled segment — gradient (animatedValue ile) */}
+            {/* Filled segment — solid accent (referansta siyah) */}
             <View style={{
               position: 'absolute', left: 0, top: 0, bottom: 0,
               width: `${value}%`,
-              backgroundColor: deepColor,
-              // @ts-ignore web gradient + glow
-              backgroundImage: `linear-gradient(90deg, ${lightColor} 0%, ${deepColor} 100%)`,
+              backgroundColor: accentFill,
               borderRadius: 999,
-              boxShadow: `0 0 8px ${lightColor}88`,
             }} />
           </View>
         </View>
 
-        {/* Beyaz knob — animatedValue pozisyonunda */}
+        {/* Knob — saffron halka + accent iç nokta (kapsül üzerinde yüzer) */}
         {value > 0 && value < 100 && (
-          <>
-            {/* Static halo */}
+          <View style={{
+            position: 'absolute',
+            left: `${value}%` as any,
+            top: '50%',
+            width: knobSize, height: knobSize,
+            marginLeft: -knobSize / 2,
+            marginTop: -knobSize / 2,
+            borderRadius: knobSize / 2,
+            backgroundColor: knobBg,
+            alignItems: 'center', justifyContent: 'center',
+            // @ts-ignore web subtle shadow
+            boxShadow: `0 1px 3px rgba(0,0,0,0.15)`,
+          }}>
+            {/* İç nokta (accent) */}
             <View style={{
-              position: 'absolute',
-              left: `${value}%` as any,
-              top: '50%',
-              width: knobSize + 8, height: knobSize + 8,
-              marginLeft: -(knobSize + 8) / 2,
-              marginTop: -(knobSize + 8) / 2,
-              borderRadius: (knobSize + 8) / 2,
-              backgroundColor: '#FFFFFF',
-              opacity: 0.18,
+              width: knobSize / 2.6, height: knobSize / 2.6,
+              borderRadius: knobSize / 5.2,
+              backgroundColor: knobInner,
             }} />
-            {/* Solid knob */}
-            <View style={{
-              position: 'absolute',
-              left: `${value}%` as any,
-              top: '50%',
-              width: knobSize, height: knobSize,
-              marginLeft: -knobSize / 2,
-              marginTop: -knobSize / 2,
-              borderRadius: knobSize / 2,
-              backgroundColor: '#FFFFFF',
-              // @ts-ignore web glow
-              boxShadow: `0 2px 8px rgba(0,0,0,0.3)`,
-            }} />
-            {/* Pulse halo (animated) */}
-            {!compact && (
-              <PulseDot
-                color="#FFFFFF"
-                size={knobSize * 2.4}
-                x={`${value}%` as any}
-                y={'50%' as any}
-              />
-            )}
-          </>
+          </View>
         )}
       </View>
 

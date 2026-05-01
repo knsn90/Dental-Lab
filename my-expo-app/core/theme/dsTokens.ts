@@ -71,6 +71,24 @@ export const DS = {
     info:        '#4A8FC9',
   },
 
+  // Panel 4: TEKNİSYEN — Mavi tonları (üretim hattı / istasyon paneli)
+  // Açık ve aydınlık mavi: yoğun ekran kullanımı için göz dostu, "iş yeri" hissi
+  tech: {
+    name:        'Teknisyen Paneli',
+    bg:          '#EAF2FA',   // Açık gökyüzü mavisi
+    bgSoft:      '#F4F8FC',   // Çok soluk
+    bgDeep:      '#D2E1F0',   // Daha koyu (gradient ucu)
+    surface:     '#FFFFFF',
+    surfaceAlt:  '#0F2840',   // Koyu denim — kart bg + accent
+    primary:     '#3B82F6',   // Parlak mavi (Tailwind blue-500)
+    primaryDeep: '#1E5FBF',   // Koyu mavi (hover/active)
+    accent:      '#0F2840',   // Koyu denim — CTA + kontrast
+    success:     '#2D9A6B',
+    warning:     '#E89B2A',
+    danger:      '#D94B4B',
+    info:        '#4A8FC9',
+  },
+
   font: {
     // Display ve UI tek ailede — Inter Tight (Light 300 başlıklarda, Regular/Medium gövdede)
     display: '"Inter Tight", "Inter", -apple-system, BlinkMacSystemFont, sans-serif',
@@ -93,5 +111,5 @@ export const DS = {
   },
 } as const;
 
-export type DsTheme = 'lab' | 'clinic' | 'exec';
+export type DsTheme = 'lab' | 'clinic' | 'exec' | 'tech';
 export const dsTheme = (k: DsTheme) => DS[k];
