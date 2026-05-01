@@ -6,8 +6,8 @@
  *   • 3 panel teması: Lab (Saffron), Klinik (Sage), Yönetim (Mercan)
  *   • Büyük yumuşak köşeler, glassmorphism, ince modern hatlar
  */
-import React from 'react';
-import { View, Text, ScrollView, Pressable } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, ScrollView, Pressable, Animated, Easing } from 'react-native';
 import { Svg, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { DS, dsTheme, type DsTheme } from '../../core/theme/dsTokens';
 
@@ -203,50 +203,8 @@ export default function PatternsScreen() {
         </View>
       </View>
 
-      {/* ═════ 06 — RING & PROGRESS ═════ */}
-      <SecHeader eyebrow="06 · Veri görselleri" title="Modern yüzde halkaları" desc="Glow halo + büyük beyaz knob + delta chip. Her panel kendi accent rengiyle." />
-
-      {/* HERO RINGS — 3 panel × 1 büyük ring (label + delta) */}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16, marginBottom: 24 }}>
-        {([
-          { theme: 'lab',    value: 72, label: 'Üretim Hattı',     delta: { value: 12, positive: true  } },
-          { theme: 'clinic', value: 54, label: 'Vaka Kabul',        delta: { value: 8,  positive: true  } },
-          { theme: 'exec',   value: 86, label: 'Hedef Tamamlanma',  delta: { value: 4,  positive: false } },
-        ] as const).map((r, i) => {
-          const t = dsTheme(r.theme as DsTheme);
-          return (
-            <View key={i} style={{ flex: 1, minWidth: 280, backgroundColor: t.bgSoft, borderRadius: 24, padding: 32, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)' }}>
-              <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], alignSelf: 'flex-start', marginBottom: 16 }}>
-                {t.name}
-              </Text>
-              <PercentRing value={r.value} size={180} theme={r.theme as DsTheme} label={r.label} delta={r.delta} />
-            </View>
-          );
-        })}
-      </View>
-
-      {/* ORTA BOY — her tema için 6 ring grid */}
-      {(['lab', 'clinic', 'exec'] as DsTheme[]).map((th) => {
-        const t = dsTheme(th);
-        return (
-          <View key={th} style={{ backgroundColor: t.bgSoft, borderRadius: 24, padding: 32, marginBottom: 24, borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 24 }}>
-              <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: t.primary }} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>{t.name}</Text>
-                <Text style={{ fontSize: 11, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 2 }}>
-                  primary {t.primary} · deep {t.primaryDeep}
-                </Text>
-              </View>
-            </View>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16 }}>
-              {Array.from({ length: 21 }, (_, i) => i * 5).map(pct => (
-                <PercentRing key={pct} value={pct} size={84} theme={th} />
-              ))}
-            </View>
-          </View>
-        );
-      })}
+      {/* ═════ 06 — LİNEER İLERLEME (eski yüzde halkaları kaldırıldı, yenisi 11.7'de) ═════ */}
+      <SecHeader eyebrow="06 · Lineer İlerleme" title="Modern bar — gradient + knob + glow" desc="Her panel kendi accent rengiyle. Yüzde halkaları için bkz. bölüm 11.7." />
 
       {/* Modern lineer ilerleme — 3 panel için ayrı kartlar */}
       {(['lab', 'clinic', 'exec'] as DsTheme[]).map((th) => {
@@ -694,6 +652,97 @@ export default function PatternsScreen() {
         })}
       </View>
 
+      {/* ═════ 11.8 — YÜZDE KULLANIM SENARYOLARI ═════ */}
+      <SecHeader eyebrow="11.8 · Kullanım Senaryoları" title="Yüzde halkasının farklı yerleri" desc="KPI bloğu (yatay), inline mini stat, comparison kartı, mini avatar yanında — şekil korunur, boyut/yerleşim değişir." />
+
+      {/* Senaryo 1: KPI yatay kart (icon + değer + ring) */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16, marginBottom: 24 }}>
+        {([
+          { theme: 'lab',    value: 72, label: 'Üretim hattı',     desc: 'Kapasite kullanımı' },
+          { theme: 'clinic', value: 88, label: 'Hekim doluluğu',    desc: '11/12 hekim' },
+          { theme: 'exec',   value: 38, label: 'Bütçe kullanımı',   desc: '₺18K / ₺48K' },
+        ] as const).map((r, i) => {
+          const t = dsTheme(r.theme as DsTheme);
+          return (
+            <View key={i} style={{
+              flex: 1, minWidth: 320, padding: 24, borderRadius: 24,
+              backgroundColor: t.surfaceAlt,
+              flexDirection: 'row', alignItems: 'center', gap: 20,
+            }}>
+              <PercentRingHero value={r.value} size={120} theme={r.theme as DsTheme} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', letterSpacing: 1.1, textTransform: 'uppercase', fontWeight: '600' }}>
+                  {r.label}
+                </Text>
+                <Text style={{ ...DISPLAY, fontSize: 22, color: '#FFF', letterSpacing: -0.5, marginTop: 6 }}>{r.desc}</Text>
+                <View style={{ marginTop: 10, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: t.primary + '22', alignSelf: 'flex-start' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '500', color: t.primary }}>↑ +%4 bu hafta</Text>
+                </View>
+              </View>
+            </View>
+          );
+        })}
+      </View>
+
+      {/* Senaryo 2: Inline mini ring (text yanında) */}
+      <View style={{ backgroundColor: '#FFF', borderRadius: 24, padding: 32, marginBottom: 24 }}>
+        <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 20 }}>
+          Inline mini ring — liste satırlarında
+        </Text>
+        <View style={{ gap: 14 }}>
+          {[
+            { name: 'Mehmet Yılmaz',  job: 'Zirkonya köprü · #DL-2842', value: 72, theme: 'lab' as DsTheme },
+            { name: 'Ayşe Kaya',       job: 'Lamine 6 üye · #DL-2841',   value: 100, theme: 'clinic' as DsTheme },
+            { name: 'Hakan Doğan',     job: 'İmplant üst · #DL-2840',     value: 28, theme: 'exec' as DsTheme },
+          ].map((row, i) => {
+            const t = dsTheme(row.theme);
+            return (
+              <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 16, paddingVertical: 8 }}>
+                <View style={{ padding: 6, borderRadius: 14, backgroundColor: t.surfaceAlt }}>
+                  <PercentRingHero value={row.value} size={56} theme={row.theme} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '500', color: DS.ink[900] }}>{row.name}</Text>
+                  <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 2 }}>{row.job}</Text>
+                </View>
+                <Text style={{ fontSize: 11, color: DS.ink[400], textTransform: 'uppercase', letterSpacing: 0.6 }}>
+                  {row.value === 100 ? '✓ tamamlandı' : `${row.value}% ilerleme`}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      </View>
+
+      {/* Senaryo 3: Comparison kartı (3 ring yan yana, beyaz arkaplan) */}
+      <View style={{ backgroundColor: '#FFF', borderRadius: 24, padding: 32, marginBottom: 80 }}>
+        <View style={{ marginBottom: 24 }}>
+          <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500] }}>Comparison kartı</Text>
+          <Text style={{ ...DISPLAY, fontSize: 22, color: DS.ink[900], letterSpacing: -0.5, marginTop: 4 }}>
+            Bu ayın panel performansı
+          </Text>
+        </View>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 24, justifyContent: 'space-around' }}>
+          {([
+            { theme: 'lab',    value: 72, label: 'Lab' },
+            { theme: 'clinic', value: 88, label: 'Klinik' },
+            { theme: 'exec',   value: 38, label: 'Yönetim' },
+          ] as const).map((r, i) => {
+            const t = dsTheme(r.theme as DsTheme);
+            return (
+              <View key={i} style={{ alignItems: 'center', gap: 12 }}>
+                <View style={{ padding: 8, borderRadius: 20, backgroundColor: t.surfaceAlt }}>
+                  <PercentRingHero value={r.value} size={140} theme={r.theme as DsTheme} />
+                </View>
+                <Text style={{ fontSize: 11, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.6, fontWeight: '600' }}>
+                  {r.label}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      </View>
+
       {/* ═════ 12 — SİPARİŞ DETAY PATTERNLERİ ═════ */}
       <SecHeader eyebrow="12 · Sipariş Detay" title="Hasta vakası kartları" desc="V2 handoff'tan: stage hero (sarı gradient), aktif istasyon, materyal grid, mali özet (dark)." />
 
@@ -1011,6 +1060,54 @@ function TypeRow({ label, sample, size, sansSerif, noBorder, variant }: {
 }
 
 // ─── Form bileşenleri (sade, NativeWind sansSerif) ───────────────────────────
+// ─── Pulse Ring — animasyonlu büyüyen dış halka ────────────────────────────
+function PulseRing({ color, size }: { color: string; size: number }) {
+  const { scale, opacity } = usePulse({ duration: 1600 });
+  return (
+    <Animated.View style={{
+      position: 'absolute',
+      width: size, height: size, borderRadius: size / 2,
+      backgroundColor: color,
+      transform: [{ scale }],
+      opacity,
+    }} />
+  );
+}
+
+// ─── Pulse Dot — knob için animasyonlu büyüyen halo ────────────────────────
+function PulseDot({ color, size, x, y }: { color: string; size: number; x: number; y: number }) {
+  const { scale, opacity } = usePulse({ duration: 1400 });
+  return (
+    <Animated.View style={{
+      position: 'absolute',
+      left: x - size / 2, top: y - size / 2,
+      width: size, height: size, borderRadius: size / 2,
+      backgroundColor: color,
+      transform: [{ scale }],
+      opacity,
+    }} pointerEvents="none" />
+  );
+}
+
+// ─── Pulse animasyon hook (loop scale + opacity) ────────────────────────────
+function usePulse({ duration = 1600 }: { duration?: number } = {}) {
+  const v = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(v, { toValue: 1, duration, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(v, { toValue: 0, duration, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [v, duration]);
+  // scale: 1 → 1.25, opacity: 0.18 → 0
+  const scale = v.interpolate({ inputRange: [0, 1], outputRange: [1, 1.5] });
+  const opacity = v.interpolate({ inputRange: [0, 1], outputRange: [0.4, 0] });
+  return { scale, opacity };
+}
+
 // ─── Steps Timeline — yatay süreç adımları (panel temasıyla) ─────────────────
 function StepsTimeline({
   steps, current, theme = 'lab',
@@ -1018,11 +1115,16 @@ function StepsTimeline({
   steps: string[]; current: number; theme?: DsTheme;
 }) {
   const t = dsTheme(theme);
-  const accent = t.primary;        // dolu rengi
-  const lineActive = t.primary;    // tamamlanan çizgi
+  const accent = t.primary;
+  const lineActive = t.primary;
   const lineRest = 'rgba(255,255,255,0.15)';
   const labelActive = '#FFFFFF';
   const labelRest = 'rgba(255,255,255,0.45)';
+
+  // Aktif node halo dahil dış çapı 56, normal node 40 — her iki taraftan boşluk bırak
+  const NODE = 40;
+  const HALO = 56;
+  const GAP  = 8; // node ile çizgi arasındaki boşluk
 
   return (
     <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
@@ -1031,34 +1133,52 @@ function StepsTimeline({
         const isCurrent = i === current;
         const isFuture  = i > current;
         const isLast    = i === steps.length - 1;
+        const nodeW = isCurrent ? HALO : NODE;
 
         return (
           <React.Fragment key={i}>
-            {/* Node + label */}
-            <View style={{ alignItems: 'center', flex: 0, width: 80 }}>
-              {/* Outer glow halo (sadece active) */}
+            {/* Node + label kolonu — sabit genişlik (halo'lu node 56px) */}
+            <View style={{ alignItems: 'center', width: nodeW }}>
+              {/* Active node + pulse halo */}
               {isCurrent && (
+                <View style={{ width: HALO, height: HALO, alignItems: 'center', justifyContent: 'center' }}>
+                  <PulseRing color={accent} size={HALO} />
+                  {/* Static outer ring (always visible) */}
+                  <View style={{
+                    position: 'absolute',
+                    width: HALO, height: HALO, borderRadius: HALO / 2,
+                    backgroundColor: accent, opacity: 0.18,
+                  }} />
+                  {/* Node (active) — solid */}
+                  <View style={{
+                    width: NODE, height: NODE, borderRadius: NODE / 2,
+                    backgroundColor: accent,
+                    alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: t.accent }} />
+                  </View>
+                </View>
+              )}
+
+              {/* Node (past) */}
+              {isPast && (
                 <View style={{
-                  position: 'absolute', top: -8, width: 56, height: 56, borderRadius: 28,
-                  backgroundColor: accent, opacity: 0.18,
+                  width: NODE, height: NODE, borderRadius: NODE / 2,
+                  backgroundColor: accent, marginTop: (HALO - NODE) / 2,
+                  alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Text style={{ fontSize: 18, fontWeight: '700', color: t.accent }}>✓</Text>
+                </View>
+              )}
+
+              {/* Node (future) */}
+              {isFuture && (
+                <View style={{
+                  width: NODE, height: NODE, borderRadius: NODE / 2,
+                  borderWidth: 2, borderColor: lineRest, marginTop: (HALO - NODE) / 2,
                 }} />
               )}
-              {/* Node */}
-              <View style={{
-                width: 40, height: 40, borderRadius: 20,
-                backgroundColor: isPast || isCurrent ? accent : 'transparent',
-                borderWidth: isFuture ? 2 : 0,
-                borderColor: lineRest,
-                alignItems: 'center', justifyContent: 'center',
-                marginTop: isCurrent ? 0 : 0,
-              }}>
-                {isPast && (
-                  <Text style={{ fontSize: 18, fontWeight: '700', color: t.accent }}>✓</Text>
-                )}
-                {isCurrent && (
-                  <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: t.accent }} />
-                )}
-              </View>
+
               {/* Label */}
               <Text style={{
                 fontSize: 14, fontWeight: '500',
@@ -1069,12 +1189,13 @@ function StepsTimeline({
               </Text>
             </View>
 
-            {/* Connecting line */}
+            {/* Çizgi — node'lar arasında boşlukla */}
             {!isLast && (
               <View style={{
                 flex: 1, height: 2,
                 backgroundColor: i < current ? lineActive : lineRest,
-                marginTop: 19,
+                marginTop: HALO / 2 - 1,    // ortalama: halo'nun dikey ortası
+                marginHorizontal: GAP,       // node ile çizgi arasında boşluk
               }} />
             )}
           </React.Fragment>
@@ -1130,18 +1251,23 @@ function PercentRingHero({
                   transform={`rotate(-90 ${size / 2} ${size / 2})`} />
         )}
 
-        {/* Glow halo arkasında */}
+        {/* Static glow halo arkasında */}
         {value > 0 && value < 100 && (
           <Circle cx={knobX} cy={knobY} r={knobR + 6}
                   fill="#FFFFFF" fillOpacity={0.18} />
         )}
 
-        {/* Beyaz knob */}
+        {/* Beyaz knob — solid */}
         {value > 0 && value < 100 && (
           <Circle cx={knobX} cy={knobY} r={knobR}
                   fill="#FFFFFF" />
         )}
       </Svg>
+
+      {/* Animated pulse halo — knob üzerinde, SVG dışında (RN Animated için) */}
+      {value > 0 && value < 100 && (
+        <PulseDot color="#FFFFFF" size={knobR * 2.6} x={knobX} y={knobY} />
+      )}
 
       {/* Centered text — büyük rakam + küçük % */}
       <View style={{ position: 'absolute', alignItems: 'center', justifyContent: 'center' }}>
