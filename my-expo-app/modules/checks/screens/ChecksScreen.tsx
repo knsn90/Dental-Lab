@@ -68,11 +68,12 @@ export function ChecksScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={safeEdges}>
-      {/* Header */}
+      {/* Header — embedded ise başlık gizli */}
       <View style={[s.header, { paddingHorizontal: px }]}>
         <View style={{ flex: 1 }}>
-          <Text style={s.title}>Çek / Senet</Text>
-          <Text style={s.subtitle}>Bekleyen: {fmtMoney(totalPending)}</Text>
+          {!isEmbedded && <Text style={s.title}>Çek / Senet</Text>}
+          {!isEmbedded && <Text style={s.subtitle}>Bekleyen: {fmtMoney(totalPending)}</Text>}
+          {isEmbedded && <Text style={s.subtitle}>Bekleyen: {fmtMoney(totalPending)}</Text>}
         </View>
         <TouchableOpacity style={s.addBtn} onPress={() => setAddOpen(true)} activeOpacity={0.85}>
           <AppIcon name={'plus' as any} size={16} color="#fff" />

@@ -222,7 +222,13 @@ function BalanceCard({
       <View style={[card.accentStrip, { backgroundColor: hasOverdue ? '#DC2626' : (hasBalance ? '#B45309' : '#10B981') }]} />
       <View style={card.body}>
         <View style={card.top}>
-          <View style={{ flex: 1 }}>
+          {/* Klinik avatar (initials) */}
+          <View style={[card.avatar, { backgroundColor: hasOverdue ? '#FEE2E2' : (hasBalance ? '#FEF3C7' : '#ECFDF5') }]}>
+            <Text style={[card.avatarText, { color: hasOverdue ? '#B91C1C' : (hasBalance ? '#B45309' : '#047857') }]}>
+              {clinicName.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
+            </Text>
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={card.name} numberOfLines={1}>{clinicName}</Text>
             <Text style={card.meta}>
               {invoiceCount} fatura
@@ -289,7 +295,7 @@ function BalanceCard({
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#FFFFFF' },
+  safe: { flex: 1, backgroundColor: '#F1F5F9' },
   header: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     paddingHorizontal: 12, paddingTop: 10, paddingBottom: 8,
@@ -352,7 +358,9 @@ const card = StyleSheet.create({
   },
   accentStrip: { position: 'absolute', top: 0, left: 0, bottom: 0, width: 4 },
   body: { paddingTop: 14, paddingBottom: 14, paddingLeft: 18, paddingRight: 14, gap: 10 },
-  top: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  top: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  avatar: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { fontSize: 13, fontWeight: '800', letterSpacing: 0.4 },
   name: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
   meta: { fontSize: 11, color: '#94A3B8', marginTop: 2 },
   balance: { fontSize: 17, fontWeight: '800', color: '#0F172A', letterSpacing: -0.3 },

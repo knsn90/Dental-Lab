@@ -84,11 +84,11 @@ export function CashScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={safeEdges}>
-      {/* Header */}
+      {/* Header — embedded ise başlık gizli */}
       <View style={[s.header, { paddingHorizontal: px }]}>
         <View style={{ flex: 1 }}>
-          <Text style={s.title}>Kasa / Banka</Text>
-          <Text style={s.subtitle}>Nakit ve banka hesap takibi</Text>
+          {!isEmbedded && <Text style={s.title}>Kasa / Banka</Text>}
+          {!isEmbedded && <Text style={s.subtitle}>Nakit ve banka hesap takibi</Text>}
         </View>
         <TouchableOpacity style={s.addBtn} onPress={() => setAddAccountOpen(true)} activeOpacity={0.85}>
           <AppIcon name={'plus' as any} size={16} color="#fff" />

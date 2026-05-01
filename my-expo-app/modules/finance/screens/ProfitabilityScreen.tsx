@@ -170,24 +170,47 @@ export function ProfitabilityScreen() {
         </View>
       ) : (
         <>
-          {/* ── Hero summary ─────────────────────────────────────────────── */}
-          <View style={[s.summaryCard, { backgroundColor: toneBg }]}>
-            <Text style={s.summaryLabel}>NET KAR</Text>
-            <Text style={[s.summaryProfit, { color: toneFg }]}>
-              {profit >= 0 ? '+' : '−'}{fmt(Math.abs(profit))} ₺
-            </Text>
-            {margin !== null && (
-              <Text style={[s.summaryMargin, { color: toneFg }]}>
-                Ortalama Marj: %{margin}
+          {/* ── Hero: 2 büyük kart yan yana ───────────────────────────────── */}
+          <View style={[s.heroRow, !isWide && { flexDirection: 'column' }]}>
+            {/* Net Kâr */}
+            <View style={[s.heroCard, { borderLeftColor: toneFg, borderLeftWidth: 4 }]}>
+              <Text style={s.heroKicker}>NET KÂR</Text>
+              <Text style={[s.heroValue, { color: toneFg }]}>
+                {profit >= 0 ? '+' : '−'}₺{fmt(Math.abs(profit))}
               </Text>
-            )}
-
-            <View style={s.summaryGrid}>
-              <SummaryStat label="Sipariş" value={`${summary?.total_orders ?? 0}`} />
-              <SummaryStat label="Gelir"   value={`${fmt(summary?.total_revenue ?? 0)} ₺`} />
-              <SummaryStat label="Maliyet" value={`${fmt(summary?.total_cost ?? 0)} ₺`} />
+              <View style={[s.heroChip, { backgroundColor: toneBg }]}>
+                <Text style={[s.heroChipText, { color: toneFg }]}>
+                  {summary?.total_orders ?? 0} sipariş
+                </Text>
+              </View>
             </View>
 
+            {/* Marj % */}
+            <View style={[s.heroCard, { borderLeftColor: '#7C3AED', borderLeftWidth: 4 }]}>
+              <Text style={s.heroKicker}>ORTALAMA MARJ</Text>
+              <Text style={[s.heroValue, { color: '#7C3AED' }]}>
+                {margin !== null ? `%${margin}` : '—'}
+              </Text>
+              <View style={[s.heroChip, { backgroundColor: '#EDE9FE' }]}>
+                <Text style={[s.heroChipText, { color: '#7C3AED' }]}>
+                  {margin !== null && margin >= 30 ? 'Mükemmel'
+                    : margin !== null && margin >= 20 ? 'İyi'
+                    : margin !== null && margin >= 10 ? 'Düşük' : 'Risk'}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* ── 3 kolon mini KPI ─────────────────────────────────────────── */}
+          <View style={s.miniKpiRow}>
+            <MiniKpi label="Gelir"   value={fmt(summary?.total_revenue ?? 0)} icon="trending-up"   accent="#059669" />
+            <MiniKpi label="Maliyet" value={fmt(summary?.total_cost ?? 0)}    icon="trending-down" accent="#DC2626" />
+            <MiniKpi label="İşçilik" value={fmt(summary?.total_labor ?? 0)}   icon="users"         accent="#0EA5E9" />
+          </View>
+
+          {/* ── Maliyet Dağılımı ─────────────────────────────────────────── */}
+          <View style={s.breakdownCard}>
+            <Text style={s.cardTitle}>Maliyet Dağılımı</Text>
             <View style={s.summaryBreak}>
               <BreakRow label="Materyal"     value={summary?.total_material ?? 0} />
               <BreakRow label="İşçilik"      value={summary?.total_labor ?? 0} />
@@ -286,6 +309,24 @@ export function ProfitabilityScreen() {
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
+
+function MiniKpi({ label, value, icon, accent }: { label: string; value: string; icon: string; accent: string }) {
+  return (
+    <View style={mk.card}>
+      <View style={[mk.iconBox, { backgroundColor: accent + '15' }]}>
+        <AppIcon name={icon as any} size={14} color={accent} />
+      </View>
+      <Text style={mk.label}>{label}</Text>
+      <Text style={mk.value} numberOfLines={1}>₺{value}</Text>
+    </View>
+  );
+}
+const mk = StyleSheet.create({
+  card: { flex: 1, minWidth: 110, backgroundColor: '#FFFFFF', borderRadius: 14, padding: 14, gap: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)', ...Shadows.card } as any,
+  iconBox: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  label: { fontSize: 10, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.5, textTransform: 'uppercase', marginTop: 4 },
+  value: { fontSize: 18, fontWeight: '800', color: '#0F172A', letterSpacing: -0.4 },
+});
 
 function SummaryStat({ label, value }: { label: string; value: string }) {
   return (
@@ -440,7 +481,20 @@ const s = StyleSheet.create({
   summaryMargin: { fontSize: 13, fontWeight: '700' },
 
   summaryGrid: { flexDirection: 'row', gap: 8, marginTop: 14 },
-  summaryBreak: { gap: 4, marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.5)' },
+  summaryBreak: { gap: 6 },
+
+  // ── Yeni hero (2 büyük kart yan yana) ──
+  heroRow:  { flexDirection: 'row', gap: 12 },
+  heroCard: { flex: 1, backgroundColor: '#FFFFFF', borderRadius: 16, padding: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)', ...SHADOW },
+  heroKicker: { fontSize: 10, fontWeight: '800', color: '#94A3B8', letterSpacing: 1.2, textTransform: 'uppercase' },
+  heroValue:  { fontSize: 36, fontWeight: '800', letterSpacing: -1.2, marginTop: 8, marginBottom: 10 },
+  heroChip:   { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
+  heroChipText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.2 },
+
+  miniKpiRow: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
+
+  breakdownCard: { backgroundColor: '#FFFFFF', borderRadius: 14, padding: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)', ...SHADOW },
+  cardTitle: { fontSize: 12, fontWeight: '800', color: '#0F172A', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.6 },
 
   twoCol: { flexDirection: 'row', gap: 14 },
   col:    { gap: 8 },

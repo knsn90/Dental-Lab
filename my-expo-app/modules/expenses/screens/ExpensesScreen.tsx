@@ -82,10 +82,10 @@ export function ExpensesScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={safeEdges}>
-      {/* Header */}
+      {/* Header — embedded ise başlık gizli */}
       <View style={[s.header, { paddingHorizontal: px }]}>
         <View style={{ flex: 1 }}>
-          <Text style={s.title}>Giderler</Text>
+          {!isEmbedded && <Text style={s.title}>Giderler</Text>}
           <Text style={s.subtitle}>Toplam: {fmtMoney(totalAmount)}</Text>
         </View>
         <TouchableOpacity

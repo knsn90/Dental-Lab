@@ -75,13 +75,15 @@ export function FinanceReportScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={safeEdges}>
-      {/* Header */}
-      <View style={[s.header, { paddingHorizontal: px }]}>
-        <View style={{ flex: 1 }}>
-          <Text style={s.title}>Gelir / Gider Raporu</Text>
-          <Text style={s.subtitle}>Mali özet</Text>
+      {/* Header — embedded ise başlık gizli */}
+      {!isEmbedded && (
+        <View style={[s.header, { paddingHorizontal: px }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.title}>Gelir / Gider Raporu</Text>
+            <Text style={s.subtitle}>Mali özet</Text>
+          </View>
         </View>
-      </View>
+      )}
 
       {/* Date range filter */}
       {tab === 'rapor' && (

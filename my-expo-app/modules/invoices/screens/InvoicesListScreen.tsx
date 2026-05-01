@@ -217,10 +217,12 @@ export function InvoicesListScreen() {
             {/* Page header */}
             <View style={d.pageHeader}>
               <View style={{ flex: 1 }}>
-                <Text style={d.title}>Faturalar</Text>
-                <Text style={d.subtitle}>
-                  {stats ? `Kestiğiniz faturalar ve tahsilatlar` : '…'}
-                </Text>
+                {!isEmbedded && <Text style={d.title}>Faturalar</Text>}
+                {!isEmbedded && (
+                  <Text style={d.subtitle}>
+                    {stats ? `Kestiğiniz faturalar ve tahsilatlar` : '…'}
+                  </Text>
+                )}
               </View>
               <TouchableOpacity style={d.outlineBtn} onPress={() => router.push('/(lab)/balance' as any)} activeOpacity={0.85}>
                 <AppIcon name={'chart-line' as any} size={16} color="#0F172A" />
@@ -283,13 +285,15 @@ export function InvoicesListScreen() {
   // ─── Mobile layout ──────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={s.safe} edges={safeEdges}>
-      {/* Mobile header */}
+      {/* Mobile header — embedded ise başlık tekrarlanmasın */}
       <View style={s.header}>
         <View style={{ flex: 1 }}>
-          <Text style={s.title}>Faturalar</Text>
-          <Text style={s.subtitle}>
-            {stats ? `${stats.invoiceCount} fatura · ${fmtMoney(stats.outstandingBalance)} bakiye` : '…'}
-          </Text>
+          {!isEmbedded && <Text style={s.title}>Faturalar</Text>}
+          {!isEmbedded && (
+            <Text style={s.subtitle}>
+              {stats ? `${stats.invoiceCount} fatura · ${fmtMoney(stats.outstandingBalance)} bakiye` : '…'}
+            </Text>
+          )}
         </View>
         <TouchableOpacity style={s.newBtn} onPress={() => router.push('/(lab)/balance' as any)} activeOpacity={0.85}>
           <AppIcon name={'chart-line' as any} size={15} color="#0F172A" />
@@ -467,7 +471,7 @@ function EmptyState({ hasFilter }: { hasFilter: boolean }) {
 
 // ─── Mobile styles ─────────────────────────────────────────────────────────
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#FFFFFF' },
+  safe: { flex: 1, backgroundColor: '#F1F5F9' },
   header: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 20, paddingTop: 18, paddingBottom: 10, gap: 10,
@@ -515,7 +519,7 @@ const s = StyleSheet.create({
 
 // ─── Desktop styles ────────────────────────────────────────────────────────
 const d = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F8FAFC' },
+  safe: { flex: 1, backgroundColor: '#F1F5F9' },
 
   // All content constrained to maxWidth 1180, centered
   canvas: { maxWidth: 1180, alignSelf: 'center', width: '100%', paddingTop: 8, paddingBottom: 48 },
