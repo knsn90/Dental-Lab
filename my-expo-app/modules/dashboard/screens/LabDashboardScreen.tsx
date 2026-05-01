@@ -4,7 +4,7 @@
  */
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet,
+  View, Text, ScrollView, StyleSheet, Pressable,
   TouchableOpacity, useWindowDimensions, RefreshControl,
   Animated, Platform,
 } from 'react-native';
@@ -686,6 +686,25 @@ function TopTechnicians({ data }: { data: TechStat[] }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  HeroStat — yeni hero içindeki inline stat (NativeWind)
+// ─────────────────────────────────────────────────────────────────────────────
+function HeroStat({ label, value, accent }: { label: string; value: number; accent: string }) {
+  return (
+    <View
+      className="bg-slate-50 rounded-xl px-4 py-3 min-w-[120px] flex-1 sm:flex-none border-l-4"
+      style={{ borderLeftColor: accent }}
+    >
+      <Text className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+        {label}
+      </Text>
+      <Text className="text-2xl font-bold text-slate-900 mt-1 tracking-tight" style={{ color: accent }}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Main Screen
 // ─────────────────────────────────────────────────────────────────────────────
 export function LabDashboardScreen() {
@@ -906,21 +925,76 @@ export function LabDashboardScreen() {
           refreshControl: <RefreshControl refreshing={refreshing || loading} onRefresh={handleRefresh} tintColor={P} />,
         }}
       >
-        {/* ── Welcome ─────────────────────────────────────────────────── */}
-        <View style={s.welcome}>
-          <BlurFade duration={600} delay={0} yOffset={10}>
-            <Text style={s.welcomeDate}>{getTodayLabel()}</Text>
-          </BlurFade>
-          <BlurFade duration={600} delay={80} yOffset={10}>
-            <Text style={s.welcomeGreet}>
-              Hoş geldin{firstName ? `, ${firstName}` : ''} 👋
+        {/* ─────────────────────────────────────────────────────────────────
+            HERO — modern lab dashboard, Cards Design + NativeWind
+            ───────────────────────────────────────────────────────────────── */}
+        <View className="relative mb-6">
+          {/* Background layer — radial gradient feel via overlapping circles */}
+          <View
+            pointerEvents="none"
+            className="absolute -top-10 -right-16 w-72 h-72 rounded-full opacity-30"
+            style={{ backgroundColor: '#2563EB' }}
+          />
+          <View
+            pointerEvents="none"
+            className="absolute -bottom-10 -left-10 w-56 h-56 rounded-full opacity-20"
+            style={{ backgroundColor: '#10B981' }}
+          />
+
+          {/* Hero card — Cards Design compliant */}
+          <View className="relative bg-surface rounded-card border border-card shadow-cardHero p-6 lg:p-8 overflow-hidden">
+            {/* Top kicker */}
+            <View className="flex-row items-center gap-2 mb-3">
+              <View className="w-2 h-2 rounded-full bg-success" />
+              <Text className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
+                {getTodayLabel()}
+              </Text>
+            </View>
+
+            {/* Greeting */}
+            <Text className="text-3xl lg:text-4xl font-bold text-slate-900 tracking-tight">
+              Hoş geldin{firstName ? `, ${firstName}` : ''}
             </Text>
-          </BlurFade>
-          <BlurFade duration={600} delay={160} yOffset={10}>
-            <Text style={s.welcomeSub}>
-              Bugün üretim hattında neler oluyor bir bakalım.
+            <Text className="text-sm lg:text-base text-slate-500 mt-2 max-w-xl">
+              Bugün üretim hattında neler oluyor — günün özetine hızlıca göz at.
             </Text>
-          </BlurFade>
+
+            {/* Inline stat strip */}
+            <View className="flex-row flex-wrap gap-3 mt-6">
+              <HeroStat label="Bugün yeni"      value={todayNewCount}             accent="#10B981" />
+              <HeroStat label="Geciken"          value={overdueOrders.length}      accent={overdueOrders.length > 0 ? '#DC2626' : '#94A3B8'} />
+              <HeroStat label="Bugün teslimat"   value={todayDeliverable.length}   accent="#D97706" />
+              <HeroStat label="Prova"            value={provas.length}             accent="#7C3AED" />
+              {isManager && (
+                <HeroStat label="Onay bekliyor"  value={pendingCount}              accent="#7C3AED" />
+              )}
+            </View>
+
+            {/* Actions */}
+            <View className="flex-row flex-wrap gap-3 mt-6">
+              <Pressable
+                onPress={() => router.push('/(lab)/new-order' as any)}
+                className="flex-row items-center gap-2 bg-lab rounded-xl px-5 py-3 active:opacity-80 web:cursor-pointer web:hover:opacity-90"
+              >
+                <AppIcon name={"plus-circle" as any} size={16} color="#FFFFFF" strokeWidth={2.5} />
+                <Text className="text-white font-bold text-sm">Yeni İş Emri</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => router.push('/(lab)/all-orders' as any)}
+                className="flex-row items-center gap-2 bg-surface border border-slate-200 rounded-xl px-5 py-3 active:opacity-70 web:cursor-pointer web:hover:bg-slate-50"
+              >
+                <AppIcon name={"clipboard-list" as any} size={16} color="#0F172A" strokeWidth={2} />
+                <Text className="text-slate-900 font-semibold text-sm">Tüm Siparişler</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => router.push('/(lab)/finance' as any)}
+                className="flex-row items-center gap-2 bg-surface border border-slate-200 rounded-xl px-5 py-3 active:opacity-70 web:cursor-pointer web:hover:bg-slate-50"
+              >
+                <AppIcon name={"trending-up" as any} size={16} color="#059669" strokeWidth={2} />
+                <Text className="text-slate-900 font-semibold text-sm">Finans</Text>
+              </Pressable>
+            </View>
+          </View>
         </View>
 
         {/* ── Attention alerts ─────────────────────────────────────────── */}
@@ -934,43 +1008,11 @@ export function LabDashboardScreen() {
           onStagePress={() => router.push('/(lab)/all-orders' as any)}
         />
 
-        {/* ── KPI row (today's numbers) ────────────────────────────────── */}
-        <View style={[s.kpiRow, isDesktop && s.kpiRowDesktop]}>
-          <KPICard
-            label="BUGÜN YENİ"
-            value={todayNewCount}
-            icon="plus"
-            accent={CLR.green}
-            sub="sipariş alındı"
-          />
-          <KPICard
-            label="GECİKEN"
-            value={overdueOrders.length}
-            icon="clock"
-            accent={overdueOrders.length > 0 ? CLR.red : '#94A3B8'}
-            sub="sipariş"
-          />
-          <KPICard
-            label="BUGÜN TESLİMAT"
-            value={todayDeliverable.length}
-            icon="package"
-            accent={CLR.orange}
-            sub="teslim edilmeli"
-          />
-          {isDesktop && (
-            <KPICard
-              label="PROVA"
-              value={provas.length}
-              icon="calendar"
-              accent={CLR.purple}
-              sub="bugün planlandı"
-            />
-          )}
-        </View>
-
         {/* ── Quick Actions ────────────────────────────────────────────── */}
-        <View>
-          <Text style={s.sectionLabel}>Hızlı Erişim</Text>
+        <View className="mt-6">
+          <Text className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3 px-0.5">
+            Hızlı Erişim
+          </Text>
           <QuickActions actions={quickActions} />
         </View>
 
