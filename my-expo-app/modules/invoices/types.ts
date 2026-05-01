@@ -63,6 +63,14 @@ export interface Invoice {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  // e-Fatura (migration 067)
+  efatura_uuid?:     string | null;
+  efatura_etag?:     string | null;
+  efatura_type?:     'e_fatura' | 'e_arsiv' | null;
+  efatura_status?:   'pending' | 'queued' | 'sent' | 'accepted' | 'rejected' | 'cancelled' | 'error' | null;
+  efatura_sent_at?:  string | null;
+  efatura_error?:    string | null;
+  efatura_provider?: string | null;
   // Joined (optional)
   doctor?:  { id: string; full_name: string; phone?: string | null; clinic_id?: string | null } | null;
   clinic?:  { id: string; name: string; address?: string | null; phone?: string | null; email?: string | null } | null;

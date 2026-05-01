@@ -18,6 +18,7 @@ import {
 } from '../types';
 import { printInvoice } from '../printInvoice';
 import { PaymentReminderModal } from '../components/PaymentReminderModal';
+import { EFaturaPanel } from '../../efatura/components/EFaturaPanel';
 import { C } from '../../../core/theme/colors';
 import { Shadows, CardSpec } from '../../../core/theme/shadows';
 import { F } from '../../../core/theme/typography';
@@ -313,6 +314,19 @@ export function InvoiceDetailScreen() {
             </View>
           </>
         )}
+
+        {/* e-Fatura Paneli */}
+        <View style={{ marginTop: 8, marginBottom: 8 }}>
+          <EFaturaPanel
+            invoiceId={invoice.id}
+            status={invoice.efatura_status ?? 'pending'}
+            uuid={invoice.efatura_uuid ?? null}
+            type={invoice.efatura_type ?? null}
+            provider={invoice.efatura_provider ?? null}
+            error={invoice.efatura_error ?? null}
+            onChanged={refetch}
+          />
+        </View>
 
         {/* Actions */}
         <View style={s.actionsRow}>

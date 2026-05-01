@@ -9,9 +9,13 @@ export async function createClinic(data: {
   category?: 'klinik' | 'poliklinik' | 'hastane';
   address?: string;
   phone?: string;
-  email?: string;
+  email?: string | null;
   contact_person?: string;
-  notes?: string;
+  notes?: string | null;
+  is_active?: boolean;
+  // e-Fatura
+  vkn?: string | null;
+  tax_office?: string | null;
 }) {
   return supabase.from('clinics').insert(data).select().single();
 }
@@ -23,10 +27,12 @@ export async function updateClinic(
     category: 'klinik' | 'poliklinik' | 'hastane';
     address: string;
     phone: string;
-    email: string;
+    email: string | null;
     contact_person: string;
-    notes: string;
+    notes: string | null;
     is_active: boolean;
+    vkn: string | null;
+    tax_office: string | null;
   }>
 ) {
   return supabase.from('clinics').update(data).eq('id', id).select().single();
@@ -56,6 +62,8 @@ export async function createDoctor(data: {
   phone?: string | null;
   specialty?: string | null;
   notes?: string | null;
+  is_active?: boolean;
+  tckn?: string | null;
 }) {
   return supabase.from('doctors').insert(data).select().single();
 }
@@ -65,10 +73,11 @@ export async function updateDoctor(
   data: Partial<{
     clinic_id: string | null;
     full_name: string;
-    phone: string;
-    specialty: string;
-    notes: string;
+    phone: string | null;
+    specialty: string | null;
+    notes: string | null;
     is_active: boolean;
+    tckn: string | null;
   }>
 ) {
   return supabase.from('doctors').update(data).eq('id', id).select().single();

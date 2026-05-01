@@ -46,13 +46,15 @@ type ClinicForm = {
   name: string; category: ClinicCategory; phone: string; email: string;
   il: string; ilce: string; mahalle: string;
   contact_person: string; notes: string; is_active: boolean;
+  vkn: string; tax_office: string;
 };
 type DoctorForm = {
   full_name: string; phone: string; specialty: string;
   notes: string; clinic_id: string; is_active: boolean;
+  tckn: string;
 };
 
-const EMPTY_CLINIC: ClinicForm = { name: '', category: 'klinik', phone: '', email: '', il: '', ilce: '', mahalle: '', contact_person: '', notes: '', is_active: true };
+const EMPTY_CLINIC: ClinicForm = { name: '', category: 'klinik', phone: '', email: '', il: '', ilce: '', mahalle: '', contact_person: '', notes: '', is_active: true, vkn: '', tax_office: '' };
 
 function parseAddress(raw?: string | null): { il: string; ilce: string; mahalle: string } {
   if (!raw) return { il: '', ilce: '', mahalle: '' };
@@ -62,7 +64,7 @@ function parseAddress(raw?: string | null): { il: string; ilce: string; mahalle:
   } catch {}
   return { il: '', ilce: '', mahalle: raw }; // legacy: put old text in mahalle
 }
-const EMPTY_DOCTOR: DoctorForm = { full_name: '', phone: '', specialty: '', notes: '', clinic_id: '', is_active: true };
+const EMPTY_DOCTOR: DoctorForm = { full_name: '', phone: '', specialty: '', notes: '', clinic_id: '', is_active: true, tckn: '' };
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 interface Props {
@@ -848,6 +850,8 @@ function ClinicModal({
         contact_person: editingClinic.contact_person ?? '',
         notes: editingClinic.notes ?? '',
         is_active: editingClinic.is_active,
+        vkn: (editingClinic as any).vkn ?? '',
+        tax_office: (editingClinic as any).tax_office ?? '',
       });
     } else {
       setForm(EMPTY_CLINIC);
@@ -871,18 +875,26 @@ function ClinicModal({
     if (!form.mahalle.trim())          { setError('Adres zorunludur'); return; }
     setSaving(true);
     try {
+      // VKN/TCKN format kontrolü (opsiyonel ama girildiyse 10 veya 11 hane olmalı)
+      const vknTrim = form.vkn.trim();
+      if (vknTrim && ![10, 11].includes(vknTrim.length)) {
+        setError('VKN 10 hane, TCKN 11 hane olmalıdır');
+        return;
+      }
       const payload = {
         name: form.name.trim(), category: form.category,
         phone: form.phone.trim(),
-        email: form.email.trim() || undefined,
+        email: form.email.trim() || null,
         address: JSON.stringify({ il: form.il.trim(), ilce: form.ilce.trim(), mahalle: form.mahalle.trim() }),
         contact_person: form.contact_person.trim(),
-        notes: form.notes.trim() || undefined,
+        notes: form.notes.trim() || null,
         is_active: form.is_active,
+        vkn:        vknTrim || null,
+        tax_office: form.tax_office.trim() || null,
       };
       const { error: err } = editingClinic
-        ? await updateClinic(editingClinic.id, payload)
-        : await createClinic({ name: payload.name, ...payload });
+        ? await updateClinic(editingClinic.id, payload as any)
+        : await createClinic(payload as any);
       if (err) { setError(err.message ?? 'Bir hata oluştu'); return; }
       onSuccess();
     } catch (e: any) { setError(e.message ?? 'Bir hata oluştu'); }
@@ -1111,6 +1123,34 @@ function ClinicModal({
               </View>
             </View>
 
+            {/* ── e-Fatura bilgileri ── */}
+            <View style={m.sectionCard}>
+              <Text style={m.sectionTitle}>e-Fatura Bilgileri</Text>
+              <View style={m.fieldWrap}>
+                <Text style={m.fieldLabel}>VKN / TCKN</Text>
+                <TextInput
+                  style={m.fieldInput}
+                  value={form.vkn}
+                  onChangeText={v => set('vkn', v.replace(/[^0-9]/g, ''))}
+                  placeholder="Mükellef ise 10 hane VKN, bireysel ise 11 hane TCKN"
+                  placeholderTextColor="#C7C7CC"
+                  keyboardType="number-pad"
+                  maxLength={11}
+                />
+              </View>
+              <View style={[m.fieldWrap, { marginBottom: 0 }]}>
+                <Text style={m.fieldLabel}>Vergi Dairesi</Text>
+                <TextInput
+                  style={m.fieldInput}
+                  value={form.tax_office}
+                  onChangeText={v => set('tax_office', v)}
+                  placeholder="Örn: Kadıköy Vergi Dairesi"
+                  placeholderTextColor="#C7C7CC"
+                  autoCapitalize="words"
+                />
+              </View>
+            </View>
+
             {/* ── Notlar ── */}
             <View style={m.sectionCard}>
               <Text style={m.sectionTitle}>Notlar</Text>
@@ -1184,6 +1224,7 @@ function DoctorModal({
       full_name: editingDoctor.full_name, phone: editingDoctor.phone ?? '',
       specialty: editingDoctor.specialty ?? '', notes: editingDoctor.notes ?? '',
       clinic_id: editingDoctor.clinic_id ?? '', is_active: editingDoctor.is_active,
+      tckn: (editingDoctor as any).tckn ?? '',
     } : { ...EMPTY_DOCTOR, clinic_id: defaultClinicId });
     setError('');
   }, [editingDoctor, defaultClinicId, visible]);
@@ -1194,6 +1235,11 @@ function DoctorModal({
   const handleSave = async () => {
     setError('');
     if (!form.full_name.trim()) { setError('Ad Soyad zorunludur'); return; }
+    const tcknTrim = form.tckn.trim();
+    if (tcknTrim && tcknTrim.length !== 11) {
+      setError('TCKN 11 hane olmalıdır');
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
@@ -1203,6 +1249,7 @@ function DoctorModal({
         notes: form.notes.trim() || null,
         clinic_id: form.clinic_id || null,
         is_active: form.is_active,
+        tckn: tcknTrim || null,
       };
       const { error: err } = editingDoctor
         ? await updateDoctor(editingDoctor.id, payload)
@@ -1237,6 +1284,17 @@ function DoctorModal({
               <Field label="Telefon">
                 <TextInput style={dm.input} value={form.phone} onChangeText={v => set('phone', v)}
                   placeholder="0555 000 00 00" placeholderTextColor="#C7C7CC" keyboardType="phone-pad" />
+              </Field>
+              <Field label="TCKN (e-Arşiv için)">
+                <TextInput
+                  style={dm.input}
+                  value={form.tckn}
+                  onChangeText={v => set('tckn', v.replace(/[^0-9]/g, ''))}
+                  placeholder="11 haneli TC Kimlik No"
+                  placeholderTextColor="#C7C7CC"
+                  keyboardType="number-pad"
+                  maxLength={11}
+                />
               </Field>
               <Text style={dm.fieldLabel}>Klinik</Text>
               <ClinicDropdown value={form.clinic_id} clinics={clinics} accentColor={accentColor} onChange={id => set('clinic_id', id)} />
