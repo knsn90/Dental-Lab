@@ -1275,9 +1275,24 @@ function PulseRing({ color, size }: { color: string; size: number }) {
   );
 }
 
-// ─── Pulse Linear Halo — lineer bar knob'u için (% pozisyon) ───────────────
+// ─── Pulse Linear Halo — minimal (subtle scale + low opacity) ──────────────
 function PulseLinearHalo({ color, size, leftPct }: { color: string; size: number; leftPct: number }) {
-  const { scale, opacity } = usePulse({ duration: 1400 });
+  // Minimal pulse — daha az belirgin, slow tempo
+  const v = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(v, { toValue: 1, duration: 1800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(v, { toValue: 0, duration: 1800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [v]);
+  // Çok küçük ölçek farkı + düşük opacity
+  const scale = v.interpolate({ inputRange: [0, 1], outputRange: [1, 1.18] });
+  const opacity = v.interpolate({ inputRange: [0, 1], outputRange: [0.18, 0] });
+
   return (
     <Animated.View style={{
       position: 'absolute',
@@ -1550,7 +1565,7 @@ function LinearProgress({
   const t = dsTheme(theme);
   const accentFill = t.accent;     // dolu kısım (siyah lab'da)
   const knobBg = t.primary;         // knob halkası (saffron)
-  const knobInner = t.accent;       // knob iç noktası (siyah)
+  const knobInner = '#FFFFFF';      // knob iç noktası (beyaz)
 
   // Mount animasyonu — 0'dan target'e
   const animatedValue = useCountUp(targetValue, animate ? 1400 : 0);
@@ -1618,16 +1633,16 @@ function LinearProgress({
           </View>
         </View>
 
-        {/* Animated pulse halo — knob etrafında, doğru % pozisyonunda */}
+        {/* Animated pulse halo — minimal (knob * 1.5) */}
         {value > 0 && value < 100 && !compact && (
           <PulseLinearHalo
             color={knobBg}
-            size={knobSize * 2.2}
+            size={knobSize * 1.5}
             leftPct={value}
           />
         )}
 
-        {/* Knob — saffron halka + accent iç nokta (kapsül üzerinde yüzer) */}
+        {/* Knob — sade saffron daire (iç nokta yok) */}
         {value > 0 && value < 100 && (
           <View style={{
             position: 'absolute',
@@ -1638,17 +1653,9 @@ function LinearProgress({
             marginTop: -knobSize / 2,
             borderRadius: knobSize / 2,
             backgroundColor: knobBg,
-            alignItems: 'center', justifyContent: 'center',
             // @ts-ignore web subtle shadow
             boxShadow: `0 1px 3px rgba(0,0,0,0.15)`,
-          }}>
-            {/* İç nokta (accent) */}
-            <View style={{
-              width: knobSize / 2.6, height: knobSize / 2.6,
-              borderRadius: knobSize / 5.2,
-              backgroundColor: knobInner,
-            }} />
-          </View>
+          }} />
         )}
       </View>
 
