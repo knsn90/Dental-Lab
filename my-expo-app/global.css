@@ -1,0 +1,4 @@
+/* NativeWind global stylesheet — Tailwind layers */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
