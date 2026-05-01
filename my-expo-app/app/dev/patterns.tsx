@@ -952,7 +952,186 @@ export default function PatternsScreen() {
         </View>
       </View>
 
-      {/* ═════ 14 — REFERANS LİNKLER ═════ */}
+      {/* ═════ 14 — SIDEBAR (expanded + collapsed) ═════ */}
+      <SecHeader eyebrow="14 · Sidebar Menü" title="Yan navigasyon — açık & kapalı" desc="Logo + yeni sipariş CTA + search + nav (count badge'lerle) + alt user card. Pill köşeli, hafif zemin." />
+
+      {/* EXPANDED */}
+      <View style={{ marginBottom: 24, height: 640, backgroundColor: '#F5F2EA', borderRadius: 24, overflow: 'hidden', flexDirection: 'row', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' }}>
+        <View style={{ width: 240, backgroundColor: '#FFFFFF', borderRightWidth: 1, borderRightColor: 'rgba(0,0,0,0.06)', padding: 14, paddingTop: 20 }}>
+          {/* Logo */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingBottom: 20 }}>
+            <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: DS.ink[900], alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ fontSize: 16, color: DS.lab.primary }}>🦷</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 14, fontWeight: '600', letterSpacing: -0.28, color: DS.ink[900] }}>Aydın Lab</Text>
+              <Text style={{ fontSize: 10, color: DS.ink[400] }}>İstanbul · 18 teknisyen</Text>
+            </View>
+          </View>
+
+          {/* New order CTA */}
+          <View style={{ paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: DS.ink[900], flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 18 }}>
+            <Text style={{ fontSize: 12, color: '#FFF' }}>+</Text>
+            <Text style={{ fontSize: 13, fontWeight: '500', color: '#FFF', flex: 1 }}>Yeni sipariş</Text>
+            <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: 'rgba(245,194,75,0.2)' }}>
+              <Text style={{ fontSize: 10, color: DS.lab.primary, fontFamily: 'monospace', fontWeight: '600' }}>⌘N</Text>
+            </View>
+          </View>
+
+          {/* Search */}
+          <View style={{ paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#FBFAF6', borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 18 }}>
+            <Text style={{ fontSize: 12, color: DS.ink[400] }}>⌕</Text>
+            <Text style={{ fontSize: 12, color: DS.ink[400], flex: 1 }}>Sipariş, hasta, doktor...</Text>
+            <View style={{ paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, backgroundColor: 'rgba(0,0,0,0.06)' }}>
+              <Text style={{ fontSize: 10, color: DS.ink[500], fontFamily: 'monospace' }}>⌘K</Text>
+            </View>
+          </View>
+
+          {/* Section label */}
+          <Text style={{ fontSize: 10, color: DS.ink[400], letterSpacing: 1, textTransform: 'uppercase', fontWeight: '600', paddingHorizontal: 10, paddingTop: 6, paddingBottom: 8 }}>
+            Çalışma alanı
+          </Text>
+
+          {/* Nav items */}
+          <View style={{ flex: 1, gap: 2 }}>
+            {[
+              { icon: '◇', label: 'Panel',          count: null,  active: false },
+              { icon: '☐', label: 'Siparişler',     count: 4,     active: true  },
+              { icon: '⚗', label: 'Üretim',          count: 12,    active: false },
+              { icon: '✓', label: 'Kalite Kontrol', count: 3,     active: false },
+              { icon: '◯', label: 'Doktorlar',       count: null,  active: false },
+              { icon: '▢', label: 'Stok',            count: null,  active: false },
+              { icon: '⇒', label: 'Sevkiyat',        count: 2,     active: false },
+              { icon: '$', label: 'Finans',          count: null,  active: false },
+            ].map((it, i) => (
+              <View key={i} style={{
+                paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10,
+                backgroundColor: it.active ? '#FBFAF6' : 'transparent',
+                flexDirection: 'row', alignItems: 'center', gap: 10, position: 'relative',
+              }}>
+                {it.active && <View style={{ position: 'absolute', left: 0, top: 8, bottom: 8, width: 2.5, borderRadius: 2, backgroundColor: DS.lab.primary }} />}
+                <Text style={{ fontSize: 14, color: it.active ? DS.ink[900] : DS.ink[700], width: 16 }}>{it.icon}</Text>
+                <Text style={{ flex: 1, fontSize: 13, fontWeight: it.active ? '500' : '400', color: it.active ? DS.ink[900] : DS.ink[700] }}>{it.label}</Text>
+                {it.count != null && (
+                  <View style={{
+                    paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999,
+                    backgroundColor: it.active ? DS.ink[900] : 'rgba(0,0,0,0.06)',
+                  }}>
+                    <Text style={{ fontSize: 10, fontWeight: '600', color: it.active ? DS.lab.primary : DS.ink[500] }}>{it.count}</Text>
+                  </View>
+                )}
+              </View>
+            ))}
+          </View>
+
+          {/* Bottom: settings + user */}
+          <View style={{ gap: 2, paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
+            <View style={{ paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Text style={{ fontSize: 14, color: DS.ink[700], width: 16 }}>⚙</Text>
+              <Text style={{ flex: 1, fontSize: 13, color: DS.ink[700] }}>Ayarlar</Text>
+            </View>
+            <View style={{ marginTop: 6, padding: 10, borderRadius: 12, backgroundColor: '#FBFAF6', flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: DS.lab.primary, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: DS.ink[900] }}>KE</Text>
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '500', color: DS.ink[900] }}>Kaan Esen</Text>
+                <Text style={{ fontSize: 10, color: DS.ink[400] }}>Mesul Müdür</Text>
+              </View>
+              <Text style={{ fontSize: 12, color: DS.ink[500] }}>↪</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Demo content */}
+        <View style={{ flex: 1, padding: 32 }}>
+          <Text style={{ fontSize: 11, color: DS.ink[400], letterSpacing: 1.1, textTransform: 'uppercase', fontWeight: '600', marginBottom: 6 }}>Siparişler · Aktif</Text>
+          <Text style={{ ...DISPLAY, fontSize: 32, letterSpacing: -1.12, marginBottom: 18, color: DS.ink[900] }}>Bugün 4 yeni sipariş</Text>
+          <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20 }}>
+            {[
+              { label: 'Aktif',           value: '24', color: DS.ink[900] },
+              { label: 'Bu hafta teslim', value: '8',  color: DS.lab.primary },
+              { label: 'Geciken',          value: '2',  color: '#9C2E2E' },
+            ].map((s, i) => (
+              <View key={i} style={{ flex: 1, padding: 20, backgroundColor: '#FFF', borderRadius: 18 }}>
+                <Text style={{ fontSize: 10, color: DS.ink[400], letterSpacing: 0.8, textTransform: 'uppercase', fontWeight: '600' }}>{s.label}</Text>
+                <Text style={{ ...DISPLAY, fontSize: 36, letterSpacing: -1.08, marginTop: 8, color: s.color }}>{s.value}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      </View>
+
+      {/* COLLAPSED */}
+      <View style={{ marginBottom: 80, height: 520, backgroundColor: '#F5F2EA', borderRadius: 24, overflow: 'hidden', flexDirection: 'row', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' }}>
+        <View style={{ width: 64, backgroundColor: '#FFFFFF', borderRightWidth: 1, borderRightColor: 'rgba(0,0,0,0.06)', alignItems: 'center', paddingVertical: 18 }}>
+          {/* Logo */}
+          <View style={{ width: 40, height: 40, borderRadius: 11, backgroundColor: DS.ink[900], alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}>
+            <Text style={{ fontSize: 18, color: DS.lab.primary }}>🦷</Text>
+          </View>
+          {/* Plus btn */}
+          <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: DS.lab.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+            <Text style={{ fontSize: 16, color: DS.ink[900] }}>+</Text>
+          </View>
+          <View style={{ width: 28, height: 1, backgroundColor: 'rgba(0,0,0,0.08)', marginBottom: 14 }} />
+          {/* Search */}
+          <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: '#FBFAF6', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+            <Text style={{ fontSize: 14 }}>⌕</Text>
+          </View>
+          {/* Nav */}
+          <View style={{ flex: 1, gap: 4, alignItems: 'center' }}>
+            {[
+              { icon: '◇', count: null, active: false },
+              { icon: '☐', count: 4,    active: true  },
+              { icon: '⚗', count: 12,   active: false },
+              { icon: '✓', count: 3,    active: false },
+              { icon: '◯', count: null, active: false },
+              { icon: '▢', count: null, active: false },
+              { icon: '⇒', count: 2,    active: false },
+              { icon: '$', count: null, active: false },
+            ].map((it, i) => (
+              <View key={i} style={{
+                width: 40, height: 40, borderRadius: 10,
+                backgroundColor: it.active ? DS.ink[900] : 'transparent',
+                alignItems: 'center', justifyContent: 'center', position: 'relative',
+              }}>
+                <Text style={{ fontSize: 15, color: it.active ? DS.lab.primary : DS.ink[700] }}>{it.icon}</Text>
+                {it.count != null && (
+                  <View style={{
+                    position: 'absolute', top: -2, right: -2,
+                    minWidth: 16, height: 16, paddingHorizontal: 4, borderRadius: 999,
+                    backgroundColor: '#9C2E2E', borderWidth: 2, borderColor: '#FFF',
+                    alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <Text style={{ fontSize: 9, fontWeight: '600', color: '#FFF' }}>{it.count}</Text>
+                  </View>
+                )}
+              </View>
+            ))}
+          </View>
+          {/* Bottom */}
+          <View style={{ gap: 8, alignItems: 'center', paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)', width: '100%' }}>
+            <View style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ fontSize: 14 }}>⚙</Text>
+            </View>
+            <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: DS.lab.primary, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[900] }}>KE</Text>
+            </View>
+          </View>
+        </View>
+        <View style={{ flex: 1, padding: 32 }}>
+          <Text style={{ fontSize: 11, color: DS.ink[400], letterSpacing: 1.1, textTransform: 'uppercase', fontWeight: '600' }}>Collapsed Mode</Text>
+          <Text style={{ ...DISPLAY, fontSize: 28, letterSpacing: -0.98, color: DS.ink[900], marginTop: 6 }}>
+            Daha fazla içeriğe yer
+          </Text>
+          <Text style={{ fontSize: 13, color: DS.ink[500], marginTop: 12, lineHeight: 19, maxWidth: 480 }}>
+            Sadece ikonlar görünür, count badge'leri sağ üst köşede mini kırmızı daire olarak.
+            Tooltip ile menü adı hover'da çıkar.
+          </Text>
+        </View>
+      </View>
+
+      {/* ═════ 15 — REFERANS LİNKLER ═════ */}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'center', paddingTop: 32, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.08)' }}>
         <Text style={{ fontSize: 12, color: DS.ink[500] }}>Canlı önizlemeler:</Text>
         <PillButton variant="light" size="sm">/dev/ds-lab</PillButton>
@@ -1327,24 +1506,31 @@ function PercentRingHero({
   );
 }
 
-// ─── Modern lineer ilerleme — gradient + knob + glow ───────────────────────
+// ─── Modern lineer ilerleme — koyu zemin + gradient + beyaz knob + pulse ────
 function LinearProgress({
-  value, label, trend, theme = 'lab', compact = false,
+  value: targetValue, label, trend, theme = 'lab', compact = false, animate = true,
 }: {
-  value: number; label: string; trend?: string; theme?: DsTheme; compact?: boolean;
+  value: number; label: string; trend?: string; theme?: DsTheme; compact?: boolean; animate?: boolean;
 }) {
   const t = dsTheme(theme);
   const lightColor = t.primary;
   const deepColor  = t.primaryDeep;
-  const trackColor = theme === 'lab'    ? 'rgba(245,194,75,0.18)'
-                   : theme === 'clinic' ? 'rgba(107,168,136,0.20)'
-                   : 'rgba(233,119,87,0.18)';
 
-  const barH = compact ? 8 : 14;
-  const knobSize = compact ? 14 : 20;
+  // Mount animasyonu — 0'dan target'e
+  const animatedValue = useCountUp(targetValue, animate ? 1400 : 0);
+  const value = animate ? animatedValue : targetValue;
+  const displayValue = Math.round(value);
+
+  // Track (rail içi koyu accent + içinde soluk dolu rail)
+  const railOuter = t.surfaceAlt;          // koyu zemin (PercentRingHero ile aynı)
+  const railInner = lightColor + '22';     // %13 light primary — soluk dolum
+
+  const barH = compact ? 10 : 18;          // ray yüksekliği (rail)
+  const innerH = barH - 4;                 // iç dolum yüksekliği
+  const knobSize = barH + 6;               // knob bar'dan biraz büyük
 
   return (
-    <View style={{ gap: 8 }}>
+    <View style={{ gap: 10 }}>
       {/* Label row */}
       {!compact && (
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -1352,52 +1538,85 @@ function LinearProgress({
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
             {trend && <Text style={{ fontSize: 11, color: DS.ink[500] }}>{trend}</Text>}
             <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.5, color: DS.ink[900] }}>
-              {value}<Text style={{ fontSize: 12, color: DS.ink[400] }}>%</Text>
+              {displayValue}<Text style={{ fontSize: 12, color: DS.ink[400] }}>%</Text>
             </Text>
           </View>
         </View>
       )}
 
-      {/* Bar wrapper */}
-      <View style={{ height: barH + 12, justifyContent: 'center', position: 'relative' }}>
-        {/* Track */}
+      {/* Rail wrapper (koyu zemin) — knob taşması için yatay padding */}
+      <View style={{ height: knobSize + 8, justifyContent: 'center', position: 'relative' }}>
+        {/* Outer rail — koyu accent kapsül */}
         <View style={{
+          position: 'absolute', left: 0, right: 0,
           height: barH,
-          backgroundColor: trackColor,
+          top: '50%',
+          marginTop: -barH / 2,
+          backgroundColor: railOuter,
           borderRadius: 999,
-        }} />
-
-        {/* Filled segment — gradient (web boxShadow ile soft glow) */}
-        <View style={{
-          position: 'absolute', top: 6, left: 0,
-          height: barH,
-          width: `${value}%`,
-          borderRadius: 999,
-          backgroundColor: deepColor,
-          // @ts-ignore web — linear-gradient gerçek dolum + glow
-          backgroundImage: `linear-gradient(90deg, ${lightColor} 0%, ${deepColor} 100%)`,
-          boxShadow: `0 4px 12px ${lightColor}66, 0 0 0 1px ${lightColor}44 inset`,
-        }} />
-
-        {/* Beyaz knob — bar ucu */}
-        {value > 0 && value < 100 && (
+          padding: 2,
+          // @ts-ignore web inset shadow
+          boxShadow: `inset 0 1px 2px rgba(0,0,0,0.4)`,
+        }}>
+          {/* Inner track — soluk renkli (dolu olmayan kısım) */}
           <View style={{
-            position: 'absolute',
-            left: `${value}%`,
-            top: '50%',
-            width: knobSize, height: knobSize,
-            marginLeft: -knobSize / 2,
-            marginTop: -knobSize / 2,
-            borderRadius: knobSize / 2,
-            backgroundColor: '#FFFFFF',
-            borderWidth: 1.5,
-            borderColor: deepColor,
-            alignItems: 'center', justifyContent: 'center',
-            // @ts-ignore web glow
-            boxShadow: `0 2px 6px ${lightColor}88, 0 0 0 4px ${lightColor}22`,
+            flex: 1,
+            backgroundColor: railInner,
+            borderRadius: 999,
+            position: 'relative',
+            overflow: 'hidden',
           }}>
-            <View style={{ width: knobSize / 3.5, height: knobSize / 3.5, borderRadius: knobSize / 7, backgroundColor: deepColor }} />
+            {/* Filled segment — gradient (animatedValue ile) */}
+            <View style={{
+              position: 'absolute', left: 0, top: 0, bottom: 0,
+              width: `${value}%`,
+              backgroundColor: deepColor,
+              // @ts-ignore web gradient + glow
+              backgroundImage: `linear-gradient(90deg, ${lightColor} 0%, ${deepColor} 100%)`,
+              borderRadius: 999,
+              boxShadow: `0 0 8px ${lightColor}88`,
+            }} />
           </View>
+        </View>
+
+        {/* Beyaz knob — animatedValue pozisyonunda */}
+        {value > 0 && value < 100 && (
+          <>
+            {/* Static halo */}
+            <View style={{
+              position: 'absolute',
+              left: `${value}%` as any,
+              top: '50%',
+              width: knobSize + 8, height: knobSize + 8,
+              marginLeft: -(knobSize + 8) / 2,
+              marginTop: -(knobSize + 8) / 2,
+              borderRadius: (knobSize + 8) / 2,
+              backgroundColor: '#FFFFFF',
+              opacity: 0.18,
+            }} />
+            {/* Solid knob */}
+            <View style={{
+              position: 'absolute',
+              left: `${value}%` as any,
+              top: '50%',
+              width: knobSize, height: knobSize,
+              marginLeft: -knobSize / 2,
+              marginTop: -knobSize / 2,
+              borderRadius: knobSize / 2,
+              backgroundColor: '#FFFFFF',
+              // @ts-ignore web glow
+              boxShadow: `0 2px 8px rgba(0,0,0,0.3)`,
+            }} />
+            {/* Pulse halo (animated) */}
+            {!compact && (
+              <PulseDot
+                color="#FFFFFF"
+                size={knobSize * 2.4}
+                x={`${value}%` as any}
+                y={'50%' as any}
+              />
+            )}
+          </>
         )}
       </View>
 
@@ -1405,7 +1624,7 @@ function LinearProgress({
       {compact && (
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <Text style={{ fontSize: 11, color: DS.ink[500] }}>{label}</Text>
-          <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[900] }}>{value}%</Text>
+          <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[900] }}>{displayValue}%</Text>
         </View>
       )}
     </View>
