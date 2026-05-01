@@ -44,12 +44,12 @@
     "react-native": "0.76.9",
     "react-native-qrcode-styled": "^0.4.0",
     "react-native-qrcode-svg": "^6.3.21",
-    "react-native-reanimated": "~3.16.1",
     "react-native-safe-area-context": "^4.12.0",
     "react-native-screens": "~4.4.0",
     "react-native-svg": "15.8.0",
     "react-native-url-polyfill": "^2.0.0",
     "react-native-web": "~0.19.13",
+    "react-native-worklets": "^0.8.1",
     "three": "^0.183.2",
     "three-mesh-bvh": "^0.9.9",
     "zustand": "^5.0.3"

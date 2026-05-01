@@ -1,44 +1,35 @@
 /**
- * CardX — NativeWind tabanlı Cards Design bileşenleri (web-first)
+ * CardX — shadcn/ui style card
  *
- *   <CardX>...</CardX>
- *   <CardX.Header>...</CardX.Header>
- *   <CardX.Body>...</CardX.Body>
- *   <CardX.Footer>...</CardX.Footer>
- *
- * Mevcut StyleSheet tabanlı `Card` bileşenini bozmaz — yeni ekranlarda CardX kullan.
+ *   <CardX>
+ *     <CardX.Header>
+ *       <CardX.Title>Başlık</CardX.Title>
+ *       <CardX.Description>Alt açıklama</CardX.Description>
+ *     </CardX.Header>
+ *     <CardX.Content>...</CardX.Content>
+ *     <CardX.Footer>...</CardX.Footer>
+ *   </CardX>
  */
 import React from 'react';
 import { View, Text, ViewProps, TextProps } from 'react-native';
 
-type Variant = 'default' | 'hero' | 'flat' | 'outline';
-
-const BASE = 'bg-surface rounded-card border border-card';
-const VARIANTS: Record<Variant, string> = {
-  default: BASE + ' shadow-card',
-  hero:    BASE + ' shadow-cardHero p-6',
-  flat:    BASE + ' shadow-cardLite',
-  outline: 'bg-surface rounded-card border border-slate-200',
-};
-
 interface CardXProps extends ViewProps {
-  variant?: Variant;
-  /** Üst kenarda renkli accent strip */
+  /** İnce border + shadow (varsayılan shadcn görünümü) */
+  variant?: 'default' | 'elevated' | 'flat' | 'hero' | 'outline';
+  /** Üst kenarda renkli accent strip (legacy compat) */
   accent?:  string;
 }
 
 export function CardX({ variant = 'default', accent, className, children, ...rest }: CardXProps) {
+  const variantClass =
+    variant === 'elevated' || variant === 'hero' ? 'shadow-md'
+    : variant === 'flat' || variant === 'outline' ? ''
+    : 'shadow-sm';
   return (
     <View
-      className={`${VARIANTS[variant]} ${className ?? ''} relative overflow-hidden`}
+      className={`rounded-lg border border-border bg-card ${variantClass} ${className ?? ''}`}
       {...rest}
     >
-      {accent && (
-        <View
-          className="absolute top-0 left-0 right-0 h-1"
-          style={{ backgroundColor: accent }}
-        />
-      )}
       {children}
     </View>
   );
@@ -46,26 +37,7 @@ export function CardX({ variant = 'default', accent, className, children, ...res
 
 CardX.Header = function CardHeader({ className, children, ...rest }: ViewProps) {
   return (
-    <View className={`px-5 py-4 border-b border-slate-100 ${className ?? ''}`} {...rest}>
-      {children}
-    </View>
-  );
-};
-
-CardX.Body = function CardBody({ className, children, ...rest }: ViewProps) {
-  return (
-    <View className={`px-5 py-4 ${className ?? ''}`} {...rest}>
-      {children}
-    </View>
-  );
-};
-
-CardX.Footer = function CardFooter({ className, children, ...rest }: ViewProps) {
-  return (
-    <View
-      className={`px-5 py-3 border-t border-slate-100 bg-slate-50/50 ${className ?? ''}`}
-      {...rest}
-    >
+    <View className={`flex flex-col space-y-1.5 p-6 ${className ?? ''}`} {...rest}>
       {children}
     </View>
   );
@@ -73,16 +45,40 @@ CardX.Footer = function CardFooter({ className, children, ...rest }: ViewProps) 
 
 CardX.Title = function CardTitle({ className, children, ...rest }: TextProps) {
   return (
-    <Text className={`text-base font-bold text-slate-900 tracking-tight ${className ?? ''}`} {...rest}>
+    <Text
+      className={`text-lg font-semibold leading-none tracking-tight text-card-foreground ${className ?? ''}`}
+      {...rest}
+    >
       {children}
     </Text>
   );
 };
 
-CardX.Subtitle = function CardSubtitle({ className, children, ...rest }: TextProps) {
+CardX.Description = function CardDescription({ className, children, ...rest }: TextProps) {
   return (
-    <Text className={`text-xs text-slate-500 mt-1 ${className ?? ''}`} {...rest}>
+    <Text className={`text-sm text-muted-foreground ${className ?? ''}`} {...rest}>
       {children}
     </Text>
+  );
+};
+
+// Eski API ile geri uyumluluk
+CardX.Subtitle = CardX.Description;
+
+CardX.Content = function CardContent({ className, children, ...rest }: ViewProps) {
+  return (
+    <View className={`p-6 pt-0 ${className ?? ''}`} {...rest}>
+      {children}
+    </View>
+  );
+};
+// Eski API
+CardX.Body = CardX.Content;
+
+CardX.Footer = function CardFooter({ className, children, ...rest }: ViewProps) {
+  return (
+    <View className={`flex flex-row items-center p-6 pt-0 ${className ?? ''}`} {...rest}>
+      {children}
+    </View>
   );
 };

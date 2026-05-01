@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../../core/store/authStore';
 import { ResponsiveCanvas } from '../../../core/layout/ResponsiveCanvas';
 import { HeroX } from '../../../core/ui/HeroX';
+import { KPICardX } from '../../../core/ui/KPICardX';
 import { useTodayOrders } from '../../orders/hooks/useTodayOrders';
 import { isOrderOverdue } from '../../orders/constants';
 import { fetchTodayProvas } from '../../provas/api';
@@ -913,21 +914,24 @@ export function LabDashboardScreen() {
         <HeroX
           kicker={getTodayLabel()}
           title={`Hoş geldin${firstName ? `, ${firstName}` : ''}`}
-          subtitle="Bugün üretim hattında neler oluyor — günün özetine hızlıca göz at."
-          glow={['#2563EB', '#10B981']}
-          stats={[
-            { label: 'Bugün yeni',     value: todayNewCount,           accent: '#10B981' },
-            { label: 'Geciken',        value: overdueOrders.length,    accent: overdueOrders.length > 0 ? '#DC2626' : '#94A3B8' },
-            { label: 'Bugün teslimat', value: todayDeliverable.length, accent: '#D97706' },
-            { label: 'Prova',          value: provas.length,           accent: '#7C3AED' },
-            ...(isManager ? [{ label: 'Onay bekliyor', value: pendingCount, accent: '#7C3AED' }] : []),
-          ]}
+          description="Bugün üretim hattında neler oluyor — günün özetine hızlıca göz at."
           actions={[
-            { icon: 'plus-circle',    label: 'Yeni İş Emri',   primary: true, accent: '#2563EB', onPress: () => router.push('/(lab)/new-order' as any) },
-            { icon: 'clipboard-list', label: 'Tüm Siparişler',                                  onPress: () => router.push('/(lab)/all-orders' as any) },
-            { icon: 'trending-up',    label: 'Finans',                          accent: '#059669', onPress: () => router.push('/(lab)/finance' as any) },
+            { leftIcon: 'plus-circle',    label: 'Yeni İş Emri',                       onPress: () => router.push('/(lab)/new-order' as any) },
+            { leftIcon: 'clipboard-list', label: 'Tüm Siparişler', variant: 'outline', onPress: () => router.push('/(lab)/all-orders' as any) },
+            { leftIcon: 'trending-up',    label: 'Finans',          variant: 'outline', onPress: () => router.push('/(lab)/finance' as any) },
           ]}
         />
+
+        {/* KPI grid (shadcn-style) */}
+        <View className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <KPICardX title="Bugün yeni"      value={todayNewCount}           icon="plus" />
+          <KPICardX title="Geciken"          value={overdueOrders.length}    icon="alert-triangle" iconColor={overdueOrders.length > 0 ? '#DC2626' : undefined} />
+          <KPICardX title="Bugün teslimat"   value={todayDeliverable.length} icon="package" />
+          <KPICardX title="Prova"            value={provas.length}           icon="calendar" />
+          {isManager && (
+            <KPICardX title="Onay bekliyor"  value={pendingCount}            icon="shield-check" />
+          )}
+        </View>
 
         {/* ── Attention alerts ─────────────────────────────────────────── */}
         {attentionItems.length > 0 && (

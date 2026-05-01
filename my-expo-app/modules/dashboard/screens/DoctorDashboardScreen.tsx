@@ -15,6 +15,7 @@ import { supabase } from '../../../core/api/supabase';
 import { useOrders } from '../../orders/hooks/useOrders';
 import { ResponsiveCanvas } from '../../../core/layout/ResponsiveCanvas';
 import { HeroX } from '../../../core/ui/HeroX';
+import { KPICardX } from '../../../core/ui/KPICardX';
 import { isOrderOverdue, STATUS_CONFIG } from '../../orders/constants';
 import { WorkOrderStatus } from '../../../lib/types';
 import { BlurFade } from '../../../core/ui/BlurFade';
@@ -517,18 +518,11 @@ export function DoctorDashboardScreen() {
         <HeroX
           kicker={getTodayLabel()}
           title={`Merhaba${firstName ? `, Dr. ${firstName}` : ''}`}
-          subtitle={profile?.clinic_name ? `${profile.clinic_name} · Bugünkü siparişlerinize göz atın` : 'Bugünkü siparişlerinize göz atın'}
-          glow={['#0EA5E9', '#7C3AED']}
-          stats={[
-            { label: 'Toplam',    value: total,         accent: '#0EA5E9' },
-            { label: 'Aktif',     value: active,        accent: '#0891B2' },
-            { label: 'Geciken',   value: overdueCount,  accent: overdueCount > 0 ? '#DC2626' : '#94A3B8' },
-            { label: 'Bu Hafta',  value: thisWeekDel,   accent: '#D97706' },
-          ]}
+          description={profile?.clinic_name ? `${profile.clinic_name} · Bugünkü siparişlerinize göz atın` : 'Bugünkü siparişlerinize göz atın'}
           actions={[
-            { icon: 'zap',       label: 'Yeni İş Emri', primary: true, accent: '#0EA5E9', onPress: () => router.push('/(doctor)/new-order' as any) },
-            { icon: 'file-text', label: 'Siparişlerim',                                  onPress: () => router.push('/(doctor)/orders' as any) },
-            ...(overdueCount > 0 ? [{ icon: 'alert-triangle', label: `${overdueCount} Geciken`, accent: '#DC2626', onPress: () => router.push('/(doctor)/orders' as any) }] : []),
+            { leftIcon: 'zap',         label: 'Yeni İş Emri',                          onPress: () => router.push('/(doctor)/new-order' as any) },
+            { leftIcon: 'file-text',   label: 'Siparişlerim',     variant: 'outline',  onPress: () => router.push('/(doctor)/orders' as any) },
+            ...(overdueCount > 0 ? [{ leftIcon: 'alert-triangle', label: `${overdueCount} Geciken`, variant: 'destructive' as const, onPress: () => router.push('/(doctor)/orders' as any) }] : []),
           ]}
         />
 
@@ -565,14 +559,14 @@ export function DoctorDashboardScreen() {
           </View>
         )}
 
-        {/* KPI strip — mobile wrap 2x3, tablet/desktop single row */}
-        <View style={[s.kpiStrip, (isDesktop || isTablet) && { flexWrap: 'nowrap' }]}>
-          <KPICard label="Toplam"       value={total}         icon="package"       accent={P} />
-          <KPICard label="Aktif"        value={active}        icon="activity"      accent={CLR.teal} />
-          <KPICard label="Geciken"      value={overdueCount}  icon="alert-triangle" accent={overdueCount > 0 ? CLR.red : '#94A3B8'} />
-          <KPICard label="Bu Hafta"     value={thisWeekDel}   icon="calendar"      accent={CLR.amber} />
-          <KPICard label="Bu Ay Yeni"   value={thisMonthNew}  icon="trending-up"   accent={CLR.green} />
-          <KPICard label="Tamamlanan"   value={delivered}     icon="check-circle"  accent="#64748B" />
+        {/* KPI grid — KPICardX (canonical NativeWind) */}
+        <View className="flex-row flex-wrap gap-3 mt-2 mb-6">
+          <KPICardX label="Toplam"     value={total}         icon="package"        accent={P} />
+          <KPICardX label="Aktif"      value={active}        icon="activity"       accent={CLR.teal} />
+          <KPICardX label="Geciken"    value={overdueCount}  icon="alert-triangle" accent={overdueCount > 0 ? CLR.red : '#94A3B8'} danger={overdueCount > 0} />
+          <KPICardX label="Bu Hafta"   value={thisWeekDel}   icon="calendar"       accent={CLR.amber} />
+          <KPICardX label="Bu Ay Yeni" value={thisMonthNew}  icon="trending-up"    accent={CLR.green} />
+          <KPICardX label="Tamamlanan" value={delivered}     icon="check-circle"   accent="#64748B" />
         </View>
 
         {/* Quick Actions — primary first, then 3 secondary */}

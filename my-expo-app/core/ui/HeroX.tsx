@@ -1,158 +1,114 @@
 /**
- * HeroX — Modern dashboard hero card (Cards Design)
+ * HeroX — shadcn/ui style page header
  *
- *  Kullanım (basit):
+ *  Tarz: shadcn'in app dashboard'ları gibi minimal — büyük başlık, sade
+ *  alt açıklama, ince border altta opsiyonel. Gradient/blob YOK.
+ *
+ *  Kullanım:
  *    <HeroX
- *      kicker="Pazartesi, 12 Mayıs"
  *      title="Hoş geldin, Ahmet"
- *      subtitle="Bugün üretim hattında neler oluyor"
- *      stats={[
- *        { label: 'Bugün yeni',    value: 12, accent: '#10B981' },
- *        { label: 'Geciken',       value: 3,  accent: '#DC2626' },
- *        { label: 'Bugün teslimat',value: 8,  accent: '#D97706' },
- *      ]}
+ *      description="Bugünkü siparişler ve aktif metrikler"
+ *      breadcrumb={['Lab', 'Dashboard']}
  *      actions={[
- *        { icon: 'plus-circle', label: 'Yeni İş Emri', accent: '#2563EB', primary: true, onPress: ... },
- *        { icon: 'list',        label: 'Tüm Siparişler', onPress: ... },
+ *        { label: 'Yeni İş Emri', leftIcon: 'plus', onPress: ... },
+ *        { label: 'Tüm Siparişler', variant: 'outline', onPress: ... },
  *      ]}
- *      glow={['#2563EB', '#10B981']}
  *    />
- *
- *  glow prop: arka planda 2 noktada belirsiz blob renk efekti — derinlik için.
  */
 import React from 'react';
-import { View, Text, Pressable } from 'react-native';
-import { AppIcon } from './AppIcon';
-
-export interface HeroStat {
-  label:  string;
-  value:  string | number;
-  accent: string;
-}
+import { View, Text } from 'react-native';
+import { ButtonX } from './ButtonX';
 
 export interface HeroAction {
-  icon?:    string;
-  label:    string;
-  /** Primary varsa accent rengiyle dolu buton, yoksa outline */
-  primary?: boolean;
-  accent?:  string;
-  onPress:  () => void;
+  label:     string;
+  leftIcon?: string;
+  rightIcon?: string;
+  variant?:  'default' | 'secondary' | 'destructive' | 'outline' | 'ghost';
+  onPress:   () => void;
+  // Legacy alias
+  icon?:     string;
+  primary?:  boolean;
+  accent?:   string;
 }
 
 export interface HeroXProps {
-  kicker?:   string;
-  title:     string;
-  subtitle?: string;
-  stats?:    HeroStat[];
-  actions?:  HeroAction[];
-  /** [topRightColor, bottomLeftColor] — arka plan blob'ları */
-  glow?:     [string, string];
-  /** Status dot — yeşil aktif gibi görsel ipucu */
-  statusDot?:string;
+  title:        string;
+  description?: string;
+  /** Üst breadcrumb (sadece string array, ayrım: '/' veya '›') */
+  breadcrumb?:  string[];
+  /** Başlığın üstündeki kicker (kategori/durum etiketi gibi) */
+  kicker?:      string;
+  actions?:     HeroAction[];
+  /** Alt border ile ayır (default: true) */
+  divider?:     boolean;
+
+  // Eski API geri uyumluluk
+  subtitle?:    string;
+  stats?:       any;       // artık ignore — KPI'lar ayrı KPICardX olarak gösterilmeli
+  glow?:        any;       // artık ignore
+  statusDot?:   any;       // artık ignore
 }
 
 export function HeroX({
-  kicker, title, subtitle, stats, actions, glow,
-  statusDot = '#10B981',
+  title,
+  description,
+  breadcrumb,
+  kicker,
+  actions,
+  divider = true,
+  subtitle, // legacy alias
 }: HeroXProps) {
+  const _description = description ?? subtitle;
+
   return (
-    <View className="relative mb-6">
-      {/* Gradient blob layers — depth için */}
-      {glow && (
-        <>
-          <View
-            pointerEvents="none"
-            className="absolute -top-10 -right-16 w-72 h-72 rounded-full opacity-25"
-            style={{ backgroundColor: glow[0] }}
-          />
-          <View
-            pointerEvents="none"
-            className="absolute -bottom-12 -left-12 w-56 h-56 rounded-full opacity-20"
-            style={{ backgroundColor: glow[1] }}
-          />
-        </>
+    <View className={`pb-6 mb-6 ${divider ? 'border-b border-border' : ''}`}>
+      {/* Breadcrumb */}
+      {breadcrumb && breadcrumb.length > 0 && (
+        <View className="flex-row items-center gap-2 mb-3">
+          {breadcrumb.map((crumb, i) => (
+            <React.Fragment key={i}>
+              {i > 0 && <Text className="text-xs text-muted-foreground">/</Text>}
+              <Text className={`text-xs ${i === breadcrumb.length - 1 ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
+                {crumb}
+              </Text>
+            </React.Fragment>
+          ))}
+        </View>
       )}
 
-      {/* Hero card */}
-      <View className="relative bg-surface rounded-card border border-card shadow-cardHero p-6 lg:p-8 overflow-hidden">
-        {/* Kicker */}
-        {kicker && (
-          <View className="flex-row items-center gap-2 mb-3">
-            <View className="w-2 h-2 rounded-full" style={{ backgroundColor: statusDot }} />
-            <Text className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
-              {kicker}
-            </Text>
-          </View>
-        )}
-
-        {/* Title */}
-        <Text className="text-3xl lg:text-4xl font-bold text-slate-900 tracking-tight">
-          {title}
+      {/* Kicker */}
+      {kicker && (
+        <Text className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+          {kicker}
         </Text>
-        {subtitle && (
-          <Text className="text-sm lg:text-base text-slate-500 mt-2 max-w-xl">
-            {subtitle}
+      )}
+
+      {/* Title + Actions row */}
+      <View className="flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <View className="flex-1 min-w-0">
+          <Text className="text-3xl lg:text-4xl font-bold text-foreground tracking-tight">
+            {title}
           </Text>
-        )}
+          {_description && (
+            <Text className="text-sm text-muted-foreground mt-2 max-w-2xl">
+              {_description}
+            </Text>
+          )}
+        </View>
 
-        {/* Stats strip */}
-        {stats && stats.length > 0 && (
-          <View className="flex-row flex-wrap gap-3 mt-6">
-            {stats.map((s, i) => (
-              <View
-                key={i}
-                className="bg-slate-50 rounded-xl px-4 py-3 min-w-[120px] flex-1 sm:flex-none border-l-4"
-                style={{ borderLeftColor: s.accent }}
-              >
-                <Text className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                  {s.label}
-                </Text>
-                <Text
-                  className="text-2xl font-bold mt-1 tracking-tight"
-                  style={{ color: s.accent }}
-                >
-                  {s.value}
-                </Text>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* Actions */}
         {actions && actions.length > 0 && (
-          <View className="flex-row flex-wrap gap-3 mt-6">
-            {actions.map((a, i) => {
-              const isPrimary = !!a.primary;
-              const accent    = a.accent ?? '#2563EB';
-              return (
-                <Pressable
-                  key={i}
-                  onPress={a.onPress}
-                  className={`
-                    flex-row items-center gap-2 rounded-xl px-5 py-3
-                    active:opacity-70 web:cursor-pointer
-                    ${isPrimary
-                      ? 'web:hover:opacity-90'
-                      : 'bg-surface border border-slate-200 web:hover:bg-slate-50'}
-                  `}
-                  style={isPrimary ? { backgroundColor: accent } : undefined}
-                >
-                  {a.icon && (
-                    <AppIcon
-                      name={a.icon as any}
-                      size={16}
-                      color={isPrimary ? '#FFFFFF' : accent}
-                      strokeWidth={2}
-                    />
-                  )}
-                  <Text
-                    className={`font-bold text-sm ${isPrimary ? 'text-white' : 'text-slate-900'}`}
-                  >
-                    {a.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
+          <View className="flex-row gap-2 flex-wrap">
+            {actions.map((a, i) => (
+              <ButtonX
+                key={i}
+                variant={a.variant ?? (a.primary ? 'default' : (i === 0 ? 'default' : 'outline'))}
+                leftIcon={a.leftIcon ?? a.icon}
+                rightIcon={a.rightIcon}
+                onPress={a.onPress}
+              >
+                {a.label}
+              </ButtonX>
+            ))}
           </View>
         )}
       </View>

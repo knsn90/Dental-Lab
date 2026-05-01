@@ -14,6 +14,7 @@ import { useAuthStore } from '../../../core/store/authStore';
 import { useClinicOrders } from '../../clinic/hooks/useClinicOrders';
 import { ResponsiveCanvas } from '../../../core/layout/ResponsiveCanvas';
 import { HeroX } from '../../../core/ui/HeroX';
+import { KPICardX } from '../../../core/ui/KPICardX';
 import { isOrderOverdue, STATUS_CONFIG } from '../../orders/constants';
 import { WorkOrderStatus } from '../../../lib/types';
 import { BlurFade } from '../../../core/ui/BlurFade';
@@ -206,30 +207,22 @@ export function ClinicDashboardScreen() {
         <HeroX
           kicker={getTodayLabel()}
           title={`Merhaba${firstName ? `, ${firstName}` : ''}`}
-          subtitle={clinicName}
-          glow={['#0369A1', '#0EA5E9']}
-          stats={[
-            { label: 'Toplam',      value: total,       accent: '#0369A1' },
-            { label: 'Aktif',       value: activeCount, accent: '#0EA5E9' },
-            { label: 'Geciken',     value: overdue,     accent: overdue > 0 ? '#DC2626' : '#94A3B8' },
-            { label: 'Bu Hafta',    value: thisWeek,    accent: '#D97706' },
-            { label: 'Teslim',      value: delivered,   accent: '#10B981' },
-          ]}
+          description={clinicName}
           actions={[
-            { icon: 'plus-circle', label: 'Yeni İş Emri', primary: true, accent: '#0369A1', onPress: () => router.push('/(clinic)/new-order' as any) },
-            { icon: 'users',       label: 'Hekimler',                                       onPress: () => router.push('/(clinic)/doctors' as any) },
-            ...(overdue > 0 ? [{ icon: 'alert-triangle', label: `${overdue} Geciken`, accent: '#DC2626', onPress: () => router.push('/(clinic)/orders' as any) }] : []),
+            { leftIcon: 'plus-circle',    label: 'Yeni İş Emri',                          onPress: () => router.push('/(clinic)/new-order' as any) },
+            { leftIcon: 'users',          label: 'Hekimler',         variant: 'outline',  onPress: () => router.push('/(clinic)/doctors' as any) },
+            ...(overdue > 0 ? [{ leftIcon: 'alert-triangle', label: `${overdue} Geciken`, variant: 'destructive' as const, onPress: () => router.push('/(clinic)/orders' as any) }] : []),
           ]}
         />
 
-        {/* KPI Strip — mobile: wrap 2x3, tablet+: single row */}
-        <View style={[s.kpiStrip, (isDesktop || isTablet) && { flexWrap: 'nowrap' }]}>
-          <KPICard label="Toplam Sipariş" value={total}       icon="package"       accent={P} />
-          <KPICard label="Aktif"           value={activeCount} icon="activity"      accent={CLR.blue} />
-          <KPICard label="Geciken"         value={overdue}     icon="alert-triangle" accent={overdue > 0 ? CLR.red : '#94A3B8'} />
-          <KPICard label="Bu Hafta"        value={thisWeek}    icon="calendar"      accent={CLR.amber} />
-          <KPICard label="Bu Ay Yeni"      value={thisMonth}   icon="trending-up"   accent={CLR.green} />
-          <KPICard label="Teslim Edilen"   value={delivered}   icon="check-circle"  accent="#64748B" />
+        {/* KPI grid — KPICardX (canonical NativeWind) */}
+        <View className="flex-row flex-wrap gap-3 mt-2 mb-6">
+          <KPICardX label="Toplam Sipariş" value={total}       icon="package"        accent={P} />
+          <KPICardX label="Aktif"          value={activeCount} icon="activity"       accent={CLR.blue} />
+          <KPICardX label="Geciken"        value={overdue}     icon="alert-triangle" accent={overdue > 0 ? CLR.red : '#94A3B8'} danger={overdue > 0} />
+          <KPICardX label="Bu Hafta"       value={thisWeek}    icon="calendar"       accent={CLR.amber} />
+          <KPICardX label="Bu Ay Yeni"     value={thisMonth}   icon="trending-up"    accent={CLR.green} />
+          <KPICardX label="Teslim Edilen"  value={delivered}   icon="check-circle"   accent="#64748B" />
         </View>
 
         {/* Main grid — responsive */}

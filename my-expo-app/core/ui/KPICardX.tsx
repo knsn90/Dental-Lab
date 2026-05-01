@@ -1,117 +1,87 @@
 /**
- * KPICardX — Canonical NativeWind KPI kart bileşeni
+ * KPICardX — shadcn/ui style stat card
  *
- *  Tek değer + ikon + opsiyonel alt metin/trend.
- *  Cards Design System uyumlu — beyaz bg, transparent border, shadow-card.
+ *  Tek değer + açıklama + opsiyonel trend
+ *  Tarz: shadcn `Card` + ince border + minimal shadow + muted-foreground label
  *
  *  Kullanım:
- *    <KPICardX label="Bugün Yeni" value={12} icon="plus" accent="#10B981" sub="sipariş" />
+ *    <KPICardX title="Toplam Gelir" value="₺125.430"
+ *              description="bu ay" icon="dollar-sign" />
  *
- *    <KPICardX
- *      label="Vadesi Geçen"
- *      value="₺125.430"
- *      icon="alert-triangle"
- *      accent="#DC2626"
- *      trend={{ value: -12, label: '%12 azaldı' }}
- *      pressable onPress={...}
- *    />
+ *    <KPICardX title="Vadesi Geçen" value={3}
+ *              icon="alert-triangle" trend={{ value: -12, direction: 'down' }} />
  */
 import React from 'react';
 import { View, Text, Pressable, ViewProps } from 'react-native';
 import { AppIcon } from './AppIcon';
 
 export interface KPICardXProps extends Omit<ViewProps, 'children'> {
-  label:    string;
-  value:    string | number;
-  icon?:    string;
-  accent?:  string;             // Default: lab #2563EB
-  /** Alt açıklama, ikincil bilgi */
-  sub?:     string;
-  /** Trend göstergesi: pozitif = yeşil, negatif = kırmızı */
-  trend?:   { value: number; label: string };
-  /** Tehlike modu — kırmızı border */
-  danger?:  boolean;
-  /** Tıklanabilir mi? */
-  pressable?: boolean;
-  onPress?: () => void;
-  /** Aktif durumu (filtre seçili gibi) */
-  active?:  boolean;
-  /** Sıkı mod (mini KPI strip için) */
-  compact?: boolean;
+  title?:       string;
+  value:        string | number;
+  description?: string;
+  icon?:        string;
+  /** Opsiyonel trend göstergesi (legacy 'label' field de desteklenir) */
+  trend?:       { value: number; direction?: 'up' | 'down'; label?: string };
+  pressable?:   boolean;
+  onPress?:     () => void;
+  className?:   string;
+  /** İkon rengi override */
+  iconColor?:   string;
+
+  // Eski API ile geri uyumluluk
+  label?:       string;
+  sub?:         string;
+  accent?:      string;
+  danger?:      boolean;
+  active?:      boolean;
+  compact?:     boolean;
 }
 
 export function KPICardX({
-  label, value, icon, sub, trend,
-  accent = '#2563EB',
-  danger = false,
-  pressable = false,
-  onPress,
-  active = false,
-  compact = false,
-  className,
+  title, value, description, icon, trend, pressable, onPress,
+  className, iconColor,
+  // legacy
+  label, sub, accent,
   ...rest
 }: KPICardXProps) {
-  const baseClass = `
-    flex-1 min-w-[140px]
-    bg-surface rounded-card border border-card shadow-card
-    ${compact ? 'p-3' : 'p-4'}
-    ${danger ? 'border-danger/40' : ''}
-    ${active ? 'ring-2 ring-offset-2' : ''}
-  `;
+  // Legacy props normalize
+  const _title = title ?? label ?? '';
+  const _desc  = description ?? sub;
+  const _iconColor = iconColor ?? '#71717A'; // muted-foreground
 
   const Wrapper: any = pressable ? Pressable : View;
   const wrapperProps: any = pressable
     ? {
         onPress,
-        className: `${baseClass} active:opacity-80 web:cursor-pointer web:hover:opacity-95 ${className ?? ''}`,
+        className: `rounded-lg border border-border bg-card shadow-sm p-6 flex-1 min-w-[180px] active:opacity-80 web:cursor-pointer web:hover:shadow-md ${className ?? ''}`,
       }
-    : {
-        className: `${baseClass} ${className ?? ''}`,
-      };
+    : { className: `rounded-lg border border-border bg-card shadow-sm p-6 flex-1 min-w-[180px] ${className ?? ''}` };
 
   return (
     <Wrapper {...wrapperProps} {...rest}>
-      {/* Top: icon + trend chip */}
-      <View className="flex-row items-center justify-between mb-2">
-        {icon ? (
-          <View
-            className={`${compact ? 'w-7 h-7' : 'w-9 h-9'} rounded-xl items-center justify-center`}
-            style={{ backgroundColor: accent + '15' }}
-          >
-            <AppIcon name={icon as any} size={compact ? 14 : 16} color={accent} />
-          </View>
-        ) : <View />}
-        {trend && (
-          <View
-            className="px-2 py-0.5 rounded-full"
-            style={{ backgroundColor: trend.value >= 0 ? '#ECFDF5' : '#FEF2F2' }}
-          >
-            <Text
-              className="text-[10px] font-bold"
-              style={{ color: trend.value >= 0 ? '#059669' : '#DC2626' }}
-            >
-              {trend.value > 0 ? '↑' : '↓'} {trend.label}
-            </Text>
-          </View>
-        )}
+      {/* Header — title + icon */}
+      <View className="flex-row items-center justify-between space-y-0 pb-2">
+        <Text className="text-sm font-medium text-muted-foreground">{_title}</Text>
+        {icon && <AppIcon name={icon as any} size={16} color={accent ?? _iconColor} strokeWidth={1.75} />}
       </View>
 
       {/* Value */}
-      <Text
-        className={`font-bold text-slate-900 tracking-tight ${compact ? 'text-xl' : 'text-2xl lg:text-3xl'}`}
-        numberOfLines={1}
-      >
-        {value}
-      </Text>
+      <Text className="text-2xl font-bold text-card-foreground tracking-tight">{value}</Text>
 
-      {/* Label */}
-      <Text className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-1">
-        {label}
-      </Text>
-
-      {/* Sub */}
-      {sub && (
-        <Text className="text-xs text-slate-400 mt-0.5" numberOfLines={1}>{sub}</Text>
+      {/* Description / trend */}
+      {(_desc || trend) && (
+        <View className="flex-row items-center gap-1 mt-1">
+          {trend && (
+            <Text
+              className={`text-xs font-semibold ${
+                (trend.direction ?? (trend.value >= 0 ? 'up' : 'down')) === 'up' ? 'text-emerald-600' : 'text-rose-600'
+              }`}
+            >
+              {(trend.direction ?? (trend.value >= 0 ? 'up' : 'down')) === 'up' ? '↑' : '↓'} {trend.label ?? `${Math.abs(trend.value)}%`}
+            </Text>
+          )}
+          {_desc && <Text className="text-xs text-muted-foreground">{_desc}</Text>}
+        </View>
       )}
     </Wrapper>
   );
