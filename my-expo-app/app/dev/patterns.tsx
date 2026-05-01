@@ -1,233 +1,616 @@
 /**
- * /dev/patterns — NativeWind POC + Pattern Showcase
+ * /dev/patterns — Tasarım Sistemi Stil Rehberi
  *
- *  Bu route geliştiricinin yeni pattern'leri test etmesi için.
- *  - Cards Design tokenleri (CardX)
- *  - Responsive layout (ResponsiveCanvas)
- *  - Renk paleti
- *  - Tipografi
- *
- *  Production'da kaldırılabilir veya admin panelinde gizli kalabilir.
+ *   Lab management handoff bundle'ına göre yeniden düzenlendi:
+ *   • Krem zemin + Instrument Serif italic display
+ *   • 3 panel teması: Lab (Saffron), Klinik (Sage), Yönetim (Mercan)
+ *   • Büyük yumuşak köşeler, glassmorphism, ince modern hatlar
  */
 import React from 'react';
-import { View, Text, Pressable } from 'react-native';
-import { ResponsiveCanvas } from '../../core/layout/ResponsiveCanvas';
-import { CardX } from '../../core/ui/CardX';
-import { KPICardX } from '../../core/ui/KPICardX';
-import { SectionLabelX } from '../../core/ui/SectionLabelX';
-import { HeroX } from '../../core/ui/HeroX';
-import { EmptyStateX } from '../../core/ui/EmptyStateX';
+import { View, Text, ScrollView, Pressable } from 'react-native';
+import { DS, dsTheme, type DsTheme } from '../../core/theme/dsTokens';
+
+// Tüm display başlıklar — Inter Tight Light (300), sıkı tracking
+const DISPLAY = {
+  fontFamily: 'Inter Tight, Inter, system-ui, sans-serif' as const,
+  fontWeight: '300' as const,
+};
 
 export default function PatternsScreen() {
   return (
-    <ResponsiveCanvas size="lg">
-      {/* Hero — gerçek HeroX bileşeniyle */}
-      <HeroX
-        kicker="Pattern Showcase · v1"
-        title="Tasarım Patternleri"
-        subtitle="NativeWind + Cards Design — web ve mobile için ortak bileşenler"
-        glow={['#2563EB', '#10B981']}
-        stats={[
-          { label: 'Renk',     value: 9,  accent: '#2563EB' },
-          { label: 'Bileşen',  value: 8,  accent: '#10B981' },
-          { label: 'Variant',  value: 16, accent: '#7C3AED' },
-        ]}
-        actions={[
-          { icon: 'github', label: 'Repo', primary: true, accent: '#0F172A', onPress: () => {} },
-          { icon: 'book',   label: 'Dokümantasyon',                          onPress: () => {} },
-        ]}
-      />
+    <ScrollView style={{ flex: 1, backgroundColor: DS.ink[50] }} contentContainerStyle={{ padding: 56 }}>
 
-      {/* Bölüm 1: Renk paleti */}
-      <Section title="Renk Paleti">
-        <View className="flex-row flex-wrap gap-3">
-          <ColorChip name="profit" hex="#059669" />
-          <ColorChip name="invoice" hex="#2563EB" />
-          <ColorChip name="balance" hex="#0EA5E9" />
-          <ColorChip name="expense" hex="#DC2626" />
-          <ColorChip name="budget" hex="#7C3AED" />
-          <ColorChip name="check" hex="#D97706" />
-          <ColorChip name="lab" hex="#2563EB" />
-          <ColorChip name="doctor" hex="#0EA5E9" />
-          <ColorChip name="clinic" hex="#0369A1" />
+      {/* ═════ HERO ═════ */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 32, paddingBottom: 32, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.08)', marginBottom: 64, flexWrap: 'wrap' }}>
+        <View style={{ flex: 1, maxWidth: 720, minWidth: 320 }}>
+          <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 1.3, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 16 }}>
+            Tasarım Sistemi · v1.0
+          </Text>
+          <Text style={{ ...DISPLAY, fontSize: 88, letterSpacing: -3.1, lineHeight: 84, color: DS.ink[900] }}>
+            Dental Lab{'\n'}
+            <Text style={{ color: DS.ink[500] }}>tasarım sistemi</Text>
+          </Text>
+          <Text style={{ fontSize: 17, color: '#3C3C3C', maxWidth: 560, lineHeight: 25, marginTop: 24 }}>
+            Laboratuvar yönetimi için modern, ferah ve premium hisli komponent kütüphanesi.
+            Her panel için farklı renk teması, ortak tipografi ve etkileşim dili.
+          </Text>
         </View>
-      </Section>
-
-      {/* Bölüm 2: Cards */}
-      <Section title="Cards (3 variant)">
-        <View className="flex-col md:flex-row gap-4">
-          <CardX className="flex-1">
-            <CardX.Header>
-              <CardX.Title>Default Card</CardX.Title>
-              <CardX.Subtitle>Standart shadow + transparent border</CardX.Subtitle>
-            </CardX.Header>
-            <CardX.Body>
-              <Text className="text-slate-600 text-sm leading-5">
-                İçerik burada. Mali İşlemler kartlarının çoğu bu varyantta.
-              </Text>
-            </CardX.Body>
-          </CardX>
-
-          <CardX variant="hero" className="flex-1" accent="#059669">
-            <CardX.Title className="text-xl">Hero Card</CardX.Title>
-            <CardX.Subtitle>Üstte accent strip + ağır shadow</CardX.Subtitle>
-            <Text className="text-3xl font-bold text-emerald-600 mt-4 tracking-tight">
-              +₺125.430
-            </Text>
-            <Text className="text-xs text-emerald-600 mt-1 font-semibold uppercase">
-              Net Kâr · Bu Ay
-            </Text>
-          </CardX>
-
-          <CardX variant="flat" className="flex-1">
-            <CardX.Body>
-              <Text className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                Flat Card
-              </Text>
-              <Text className="text-2xl font-bold text-slate-900 mt-2">42</Text>
-              <Text className="text-xs text-slate-500 mt-1">Hafif shadow, KPI için</Text>
-            </CardX.Body>
-          </CardX>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <PillButton variant="dark">Dokümantasyon</PillButton>
+          <PillButton variant="light">Figma</PillButton>
         </View>
-      </Section>
+      </View>
 
-      {/* Bölüm 3: Responsive Grid */}
-      <Section title="Responsive Grid (mobile 1col, tablet 2col, desktop 4col)">
-        <View className="flex-row flex-wrap gap-3">
-          {[1, 2, 3, 4].map(n => (
-            <View
-              key={n}
-              className="bg-surface rounded-card border border-card shadow-cardLite p-4 w-full sm:w-[calc(50%-6px)] lg:w-[calc(25%-9px)]"
-            >
-              <Text className="text-xs font-bold text-slate-400 uppercase">KPI {n}</Text>
-              <Text className="text-2xl font-bold text-slate-900 mt-2">{n * 10}</Text>
+      {/* ═════ 01 — RENK SİSTEMİ (3 PANEL) ═════ */}
+      <SecHeader eyebrow="01 · Renk Sistemi" title="Üç panel, üç kişilik" desc="Her panel kendi rengiyle gelir. Aynı bileşenler, farklı kimlikler." />
+
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 24, marginBottom: 80 }}>
+        {(['lab', 'clinic', 'exec'] as DsTheme[]).map((k, i) => {
+          const t = dsTheme(k);
+          return (
+            <View key={k} style={{ flex: 1, minWidth: 320, backgroundColor: t.bg, borderRadius: 24, padding: 28, overflow: 'hidden' }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+                <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 1.1, textTransform: 'uppercase', color: DS.ink[500] }}>0{i + 1}</Text>
+                <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: t.accent }}>
+                  <Text style={{ fontSize: 10, fontWeight: '500', letterSpacing: 0.6, textTransform: 'uppercase', color: t.surface }}>{k}</Text>
+                </View>
+              </View>
+              <Text style={{ ...DISPLAY, fontSize: 36, letterSpacing: -0.7, color: DS.ink[900], marginBottom: 8, lineHeight: 36 }}>
+                {t.name}
+              </Text>
+              <Text style={{ fontSize: 13, color: '#3C3C3C', marginBottom: 32, lineHeight: 19 }}>
+                {k === 'lab'    && 'Üretim takibi, sipariş yönetimi, teknisyen panelleri için ana operasyon teması.'}
+                {k === 'clinic' && 'Doktorlar ve klinikler için sağlıklı, sakin ve güvenilir hisli arayüz.'}
+                {k === 'exec'   && 'Yönetici dashboard\'ları, finans ve raporlama için premium ve sıcak görünüm.'}
+              </Text>
+
+              {/* Color swatches */}
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+                {[
+                  { bg: t.primary,  label: 'primary',  hex: t.primary },
+                  { bg: t.accent,   label: 'accent',   hex: t.accent },
+                  { bg: t.bgDeep,   label: 'bg deep',  hex: t.bgDeep },
+                  { bg: t.surface,  label: 'surface',  hex: t.surface, border: true },
+                ].map((s, j) => (
+                  <View key={j} style={{ flex: 1, gap: 6 }}>
+                    <View style={{ height: 64, borderRadius: 12, backgroundColor: s.bg, borderWidth: s.border ? 1 : 0, borderColor: 'rgba(0,0,0,0.08)' }} />
+                    <Text style={{ fontSize: 10, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.5 }}>{s.label}</Text>
+                    <Text style={{ fontSize: 10, color: DS.ink[900], fontFamily: 'monospace' }}>{s.hex}</Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* Status chips */}
+              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                <StatusChip color="#1F6B47" bg="rgba(45,154,107,0.12)" label="success" />
+                <StatusChip color="#9C5E0E" bg="rgba(232,155,42,0.15)" label="warning" />
+                <StatusChip color="#9C2E2E" bg="rgba(217,75,75,0.12)" label="danger" />
+                <StatusChip color="#1F5689" bg="rgba(74,143,201,0.12)" label="info" />
+              </View>
             </View>
+          );
+        })}
+      </View>
+
+      {/* ═════ 02 — TİPOGRAFİ ═════ */}
+      <SecHeader eyebrow="02 · Tipografi" title="Tek aile, ince ve modern" desc="Display başlıklarda Instrument Serif (italic vurguyla). UI için Inter Tight." />
+
+      <View style={{ backgroundColor: '#FFF', borderRadius: 24, padding: 40, marginBottom: 80, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' }}>
+        <TypeRow label="DISPLAY · 88/0.95"  variant="display" sample={<Text>Hoş geldiniz, <Text style={{ color: DS.ink[400] }}>doktor</Text></Text>} />
+        <TypeRow label="H1 · 56/1.0"        size={56} sample="Bu hafta 248 sipariş tamamlandı" />
+        <TypeRow label="H2 · 40/1.1"        size={40} sample="Üretim hattındaki vakalar" />
+        <TypeRow label="H3 · 28/1.2"        size={28} sample="Mehmet Yılmaz · Zirkonya köprü" sansSerif />
+        <TypeRow label="BODY · 15/1.5"      size={15} sample="Hasta dosyası açıldı, ölçü teslim alındı. Üretim 5 iş günü içinde tamamlanacak." sansSerif />
+        <TypeRow label="MICRO · 11"         size={11} sample="DL-2842 · 09:30" sansSerif noBorder />
+      </View>
+
+      {/* ═════ 03 — BUTONLAR ═════ */}
+      <SecHeader eyebrow="03 · Butonlar" title="Tek bir doğru çağrı" desc="Pill köşeli, sıkı tipografi. Primary ve secondary için yeterli kontrast." />
+
+      <View style={{ backgroundColor: '#FFF', borderRadius: 24, padding: 40, marginBottom: 80, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+        <PillButton variant="dark">Birincil aksiyon</PillButton>
+        <PillButton variant="primary">İkincil — Saffron</PillButton>
+        <PillButton variant="light">Sade çerçeve</PillButton>
+        <PillButton variant="ghost">Hayalet</PillButton>
+        <PillButton variant="dark" size="sm">Küçük</PillButton>
+        <PillButton variant="dark" size="lg">Büyük çağrı</PillButton>
+      </View>
+
+      {/* ═════ 04 — CHIP / TAG ═════ */}
+      <SecHeader eyebrow="04 · Chip & Etiket" title="Bilgiyi mini paketlerde göster" />
+
+      <View style={{ backgroundColor: '#FFF', borderRadius: 24, padding: 40, marginBottom: 80, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <Chip tone="neutral">nötr</Chip>
+        <Chip tone="primary">primary</Chip>
+        <Chip tone="accent">accent</Chip>
+        <Chip tone="success" dot>tamamlandı</Chip>
+        <Chip tone="warning" dot>üretimde</Chip>
+        <Chip tone="danger"  dot>geciken</Chip>
+        <Chip tone="info"    dot>kontrol</Chip>
+        <Chip tone="outline">outline</Chip>
+      </View>
+
+      {/* ═════ 05 — KARTLAR (3 variant) ═════ */}
+      <SecHeader eyebrow="05 · Kartlar" title="Üç katman: solid · flat · dark" />
+
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginBottom: 80 }}>
+        <View style={{ ...cardSolid, flex: 1, minWidth: 240 }}>
+          <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 8 }}>Default</Text>
+          <Text style={{ ...DISPLAY, fontSize: 32, letterSpacing: -0.6, color: DS.ink[900] }}>248</Text>
+          <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 4 }}>Aktif sipariş</Text>
+        </View>
+        <View style={{ ...cardFlat, flex: 1, minWidth: 240 }}>
+          <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 8 }}>Flat</Text>
+          <Text style={{ ...DISPLAY, fontSize: 32, letterSpacing: -0.6, color: DS.ink[900] }}>56</Text>
+          <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 4 }}>Hasta</Text>
+        </View>
+        <View style={{ ...cardDark, flex: 1, minWidth: 240 }}>
+          <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 0.7, textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)', marginBottom: 8 }}>Dark</Text>
+          <Text style={{ ...DISPLAY, fontSize: 32, letterSpacing: -0.6, color: '#FFF' }}>2.840</Text>
+          <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginTop: 4 }}>Toplam vaka</Text>
+        </View>
+      </View>
+
+      {/* ═════ 05.5 — FORM ELEMANLARI ═════ */}
+      <SecHeader eyebrow="05 · Form Elemanları" title="Net, sade, dokunmaya davet" desc="Pill yerine yumuşak köşeli (14px) input'lar. Label üstte, hint altta. Hata için kırmızı border + mesaj." />
+
+      <View style={{ backgroundColor: '#FFF', borderRadius: 24, padding: 40, marginBottom: 80, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' }}>
+
+        {/* 2-kolon form */}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 24, marginBottom: 32 }}>
+          <View style={{ flex: 1, minWidth: 280, gap: 18 }}>
+            <FormInput label="Hasta Adı" placeholder="Mehmet Yılmaz" />
+            <FormInput label="Telefon" placeholder="+90 555 123 45 67" hint="WhatsApp'tan ulaşılabilir" />
+            <FormInput label="E-posta" placeholder="ornek@klinik.com" error="Geçersiz e-posta formatı" />
+            <FormInput label="Vergi No (VKN)" placeholder="10 hane" />
+          </View>
+          <View style={{ flex: 1, minWidth: 280, gap: 18 }}>
+            <FormSelect label="Vaka Tipi" value="Zirkonya köprü" />
+            <FormSelect label="Renk Skalası" value="A2 — Vita Classic" />
+            <FormInput label="Teslim Tarihi" placeholder="GG/AA/YYYY" />
+            <FormTextarea label="Notlar" placeholder="Hekimden gelen özel istekler..." />
+          </View>
+        </View>
+
+        {/* Checkbox + Toggle + Radio */}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 32, paddingTop: 24, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
+          <View style={{ gap: 12, flex: 1, minWidth: 240 }}>
+            <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500] }}>Checkbox</Text>
+            <FormCheckbox checked label="E-fatura kes" />
+            <FormCheckbox checked={false} label="WhatsApp bildirimi" />
+            <FormCheckbox checked={false} label="Tekrarlayan vaka" />
+          </View>
+          <View style={{ gap: 12, flex: 1, minWidth: 240 }}>
+            <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500] }}>Toggle</Text>
+            <FormToggle on label="Üretim önceliği" />
+            <FormToggle on={false} label="Manuel onay gerekli" />
+            <FormToggle on label="Hekim portali görsün" />
+          </View>
+          <View style={{ gap: 12, flex: 1, minWidth: 240 }}>
+            <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500] }}>Radio</Text>
+            <FormRadio selected label="Üst çene" />
+            <FormRadio selected={false} label="Alt çene" />
+            <FormRadio selected={false} label="Her ikisi" />
+          </View>
+        </View>
+
+        {/* Form footer — actions */}
+        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12, paddingTop: 32, marginTop: 32, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
+          <PillButton variant="ghost">İptal</PillButton>
+          <PillButton variant="light">Taslak Kaydet</PillButton>
+          <PillButton variant="dark">Vakayı Oluştur</PillButton>
+        </View>
+      </View>
+
+      {/* ═════ 06 — RING & PROGRESS ═════ */}
+      <SecHeader eyebrow="06 · Veri görselleri" title="Sade istatistik primitifleri" />
+
+      <View style={{ backgroundColor: '#FFF', borderRadius: 24, padding: 40, marginBottom: 80, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 32, alignItems: 'center' }}>
+          <View style={{ width: 140, height: 140, borderRadius: 70, borderWidth: 10, borderColor: 'rgba(0,0,0,0.06)', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+            <View style={{ position: 'absolute', alignItems: 'center' }}>
+              <Text style={{ ...DISPLAY, fontSize: 32, letterSpacing: -0.6 }}>72%</Text>
+              <Text style={{ fontSize: 9, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, marginTop: 4 }}>Üretim</Text>
+            </View>
+          </View>
+          <View style={{ flex: 1, minWidth: 240, gap: 16 }}>
+            {[
+              { label: 'Üretim hattı', value: 72, color: DS.lab.primary },
+              { label: 'Teslim',       value: 54, color: DS.ink[900] },
+              { label: 'Stok seviyesi',value: 86, color: DS.ink[900] },
+            ].map((p, i) => (
+              <View key={i}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <Text style={{ fontSize: 11, color: DS.ink[500] }}>{p.label}</Text>
+                  <Text style={{ fontSize: 11, color: DS.ink[900], fontWeight: '500' }}>{p.value}%</Text>
+                </View>
+                <View style={{ height: 6, backgroundColor: 'rgba(0,0,0,0.08)', borderRadius: 999, overflow: 'hidden' }}>
+                  <View style={{ height: '100%', width: `${p.value}%`, backgroundColor: p.color }} />
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
+      </View>
+
+      {/* ═════ 07 — ARAMA ═════ */}
+      <SecHeader eyebrow="07 · Arama" title="Hızlı bulma" desc="Pill köşeli, ikonlu, klavye odaklanma için yeterli kontrast." />
+
+      <View style={{ backgroundColor: '#FFF', borderRadius: 24, padding: 40, marginBottom: 80, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', gap: 16 }}>
+        {/* Default search */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, height: 48, paddingHorizontal: 18, backgroundColor: '#F5F5F5', borderRadius: 999, maxWidth: 480 }}>
+          <Text style={{ fontSize: 16, color: DS.ink[400] }}>⌕</Text>
+          <Text style={{ flex: 1, fontSize: 14, color: DS.ink[400] }}>Sipariş, hasta veya hekim ara...</Text>
+          <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[200] }}>
+            <Text style={{ fontSize: 10, color: DS.ink[500], fontFamily: 'monospace' }}>⌘K</Text>
+          </View>
+        </View>
+
+        {/* Active state — with chip results */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, height: 48, paddingHorizontal: 18, backgroundColor: '#FFF', borderRadius: 999, maxWidth: 480, borderWidth: 1, borderColor: DS.ink[900] }}>
+          <Text style={{ fontSize: 16, color: DS.ink[900] }}>⌕</Text>
+          <Text style={{ flex: 1, fontSize: 14, color: DS.ink[900] }}>mehmet</Text>
+          <Pressable><Text style={{ fontSize: 18, color: DS.ink[400] }}>×</Text></Pressable>
+        </View>
+
+        {/* Filter chips */}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+          <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], letterSpacing: 0.7, textTransform: 'uppercase', alignSelf: 'center', marginRight: 4 }}>Filtrele:</Text>
+          <Chip tone="neutral">Tüm vakalar</Chip>
+          <Chip tone="primary">Bu hafta</Chip>
+          <Chip tone="warning" dot>Üretimde</Chip>
+          <Chip tone="danger" dot>Geciken</Chip>
+        </View>
+      </View>
+
+      {/* ═════ 08 — ONAY DIALOG ═════ */}
+      <SecHeader eyebrow="08 · Onay & Uyarılar" title="Geri dönülemez aksiyonlar için" desc="3 ton: nötr (info), tehlikeli (destructive), başarılı (success)." />
+
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16, marginBottom: 80 }}>
+        {/* Destructive */}
+        <View style={{ flex: 1, minWidth: 320, backgroundColor: '#FFF', borderRadius: 24, padding: 28, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' }}>
+          <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(217,75,75,0.12)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+            <Text style={{ fontSize: 22, color: '#9C2E2E' }}>!</Text>
+          </View>
+          <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900], marginBottom: 8 }}>Vakayı sil</Text>
+          <Text style={{ fontSize: 13, color: DS.ink[500], lineHeight: 20, marginBottom: 20 }}>
+            <Text style={{ fontWeight: '500', color: DS.ink[900] }}>#DL-2842 · Mehmet Yılmaz</Text> kalıcı olarak silinecek. Bu işlem geri alınamaz.
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end' }}>
+            <PillButton variant="ghost" size="sm">Vazgeç</PillButton>
+            <PillButton variant="dark" size="sm">Evet, sil</PillButton>
+          </View>
+        </View>
+
+        {/* Success */}
+        <View style={{ flex: 1, minWidth: 320, backgroundColor: '#FFF', borderRadius: 24, padding: 28, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' }}>
+          <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(45,154,107,0.12)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+            <Text style={{ fontSize: 22, color: '#1F6B47' }}>✓</Text>
+          </View>
+          <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900], marginBottom: 8 }}>Sipariş tamamlandı</Text>
+          <Text style={{ fontSize: 13, color: DS.ink[500], lineHeight: 20, marginBottom: 20 }}>
+            Vaka teslimat aşamasına geçti. Hekim portali otomatik bilgilendirildi.
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end' }}>
+            <PillButton variant="dark" size="sm">Tamam</PillButton>
+          </View>
+        </View>
+
+        {/* Toast */}
+        <View style={{ flex: 1, minWidth: 320, backgroundColor: DS.ink[900], borderRadius: 24, padding: 20, alignSelf: 'flex-start' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: DS.lab.primary, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ fontSize: 14, color: DS.ink[900], fontWeight: '700' }}>✓</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 13, fontWeight: '500', color: '#FFF' }}>Kaydedildi</Text>
+              <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>Otomatik kapanır · 3sn</Text>
+            </View>
+            <Pressable><Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 16 }}>×</Text></Pressable>
+          </View>
+        </View>
+      </View>
+
+      {/* ═════ 09 — TABLOLAR ═════ */}
+      <SecHeader eyebrow="09 · Tablolar" title="Yoğun veri, sıkı tipografi" desc="Zebra yok — sadece hover satırı. Tablo başlıkları büyük UPPERCASE, hücre 13px Inter." />
+
+      <View style={{ backgroundColor: '#FFF', borderRadius: 24, marginBottom: 80, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', overflow: 'hidden' }}>
+        {/* Toolbar */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
+          <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>Bu hafta · 18 vaka</Text>
+          <View style={{ flex: 1 }} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: DS.ink[200] }}>
+            <Text style={{ fontSize: 12, color: DS.ink[800] }}>↓ Filtrele</Text>
+          </View>
+          <PillButton variant="dark" size="sm">+ Yeni vaka</PillButton>
+        </View>
+
+        {/* Header */}
+        <View style={{ flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: '#FAFAFA', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
+          {[
+            { label: 'NO',     flex: 1 },
+            { label: 'HASTA',  flex: 2.5 },
+            { label: 'VAKA',   flex: 2 },
+            { label: 'HEKİM',  flex: 2 },
+            { label: 'TESLİM', flex: 1.4 },
+            { label: 'DURUM',  flex: 1.4 },
+            { label: 'TUTAR',  flex: 1, align: 'right' as const },
+          ].map((h, i) => (
+            <Text key={i} style={{ flex: h.flex, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textAlign: h.align }}>
+              {h.label}
+            </Text>
           ))}
         </View>
-      </Section>
 
-      {/* Bölüm 4: Buttons */}
-      <Section title="Butonlar">
-        <View className="flex-row flex-wrap gap-3">
-          <Pressable className="bg-invoice rounded-xl px-5 py-3 active:opacity-70 web:cursor-pointer web:hover:opacity-90">
-            <Text className="text-white font-bold text-sm">Birincil Aksiyon</Text>
-          </Pressable>
-          <Pressable className="bg-surface border border-slate-200 rounded-xl px-5 py-3 active:opacity-70 web:cursor-pointer web:hover:bg-slate-50">
-            <Text className="text-slate-900 font-semibold text-sm">İkincil</Text>
-          </Pressable>
-          <Pressable className="bg-danger/10 border border-danger/30 rounded-xl px-5 py-3 active:opacity-70 web:cursor-pointer">
-            <Text className="text-danger font-bold text-sm">Tehlikeli</Text>
-          </Pressable>
+        {/* Rows */}
+        {[
+          ['#DL-2842','Mehmet Yılmaz','Zirkonya köprü','Dr. A. Demir','12 Mar','warning','Üretimde','₺4.200'],
+          ['#DL-2841','Ayşe Kaya','Lamine 6 üye','Dr. B. Şahin','11 Mar','success','Tamamlandı','₺7.800'],
+          ['#DL-2840','Hakan Doğan','İmplant üst','Dr. A. Demir','10 Mar','danger','Geciken','₺12.500'],
+          ['#DL-2839','Selin Aydın','Hareketli protez','Dr. C. Öz','14 Mar','info','Kontrol','₺3.600'],
+          ['#DL-2838','Ali Polat','Geçici köprü','Dr. B. Şahin','09 Mar','success','Teslim edildi','₺2.100'],
+        ].map((row, i) => (
+          <View key={i} style={{
+            flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 14,
+            borderBottomWidth: i < 4 ? 1 : 0, borderBottomColor: 'rgba(0,0,0,0.04)',
+            alignItems: 'center',
+          }}>
+            <Text style={{ flex: 1, fontSize: 11, color: DS.ink[500], fontFamily: 'monospace' }}>{row[0]}</Text>
+            <View style={{ flex: 2.5, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: DS.lab.primary, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 10, fontWeight: '600', color: DS.ink[900] }}>{(row[1] as string).split(' ').map(w => w[0]).join('').toUpperCase()}</Text>
+              </View>
+              <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[900] }}>{row[1]}</Text>
+            </View>
+            <Text style={{ flex: 2, fontSize: 13, color: DS.ink[800] }}>{row[2]}</Text>
+            <Text style={{ flex: 2, fontSize: 13, color: DS.ink[500] }}>{row[3]}</Text>
+            <Text style={{ flex: 1.4, fontSize: 13, color: DS.ink[800] }}>{row[4]}</Text>
+            <View style={{ flex: 1.4 }}>
+              <Chip tone={row[5] as any} dot>{row[6]}</Chip>
+            </View>
+            <Text style={{ flex: 1, fontSize: 13, fontWeight: '500', color: DS.ink[900], textAlign: 'right' }}>{row[7]}</Text>
+          </View>
+        ))}
+
+        {/* Footer */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)', backgroundColor: '#FAFAFA' }}>
+          <Text style={{ fontSize: 11, color: DS.ink[500] }}>5 satır · 18 toplam</Text>
+          <View style={{ flex: 1 }} />
+          <View style={{ flexDirection: 'row', gap: 4 }}>
+            <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[200], alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ fontSize: 13 }}>‹</Text>
+            </View>
+            <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: DS.ink[900], alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ fontSize: 12, color: '#FFF' }}>1</Text>
+            </View>
+            <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[200], alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ fontSize: 12 }}>2</Text>
+            </View>
+            <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[200], alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ fontSize: 12 }}>3</Text>
+            </View>
+            <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[200], alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ fontSize: 13 }}>›</Text>
+            </View>
+          </View>
         </View>
-      </Section>
+      </View>
 
-      {/* Bölüm 5: Form */}
-      <Section title="Form (max-width sm = 720px)">
-        <ResponsiveCanvas size="sm" scroll={false} padClassName="">
-          <CardX>
-            <CardX.Header>
-              <CardX.Title>Hekim Davet Et</CardX.Title>
-            </CardX.Header>
-            <CardX.Body className="gap-3">
-              <FormField label="Ad Soyad" placeholder="Dr. Ayşe Yılmaz" />
-              <FormField label="E-posta" placeholder="ornek@klinik.com" />
-              <FormField label="Telefon" placeholder="+90 555 000 00 00" />
-            </CardX.Body>
-            <CardX.Footer className="flex-row gap-2 justify-end">
-              <Pressable className="bg-surface border border-slate-200 rounded-xl px-4 py-2">
-                <Text className="text-slate-700 font-semibold text-sm">İptal</Text>
-              </Pressable>
-              <Pressable className="bg-clinic rounded-xl px-5 py-2">
-                <Text className="text-white font-bold text-sm">Davet Gönder</Text>
-              </Pressable>
-            </CardX.Footer>
-          </CardX>
-        </ResponsiveCanvas>
-      </Section>
+      {/* ═════ 10 — REFERANS LİNKLER ═════ */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'center', paddingTop: 32, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.08)' }}>
+        <Text style={{ fontSize: 12, color: DS.ink[500] }}>Canlı önizlemeler:</Text>
+        <PillButton variant="light" size="sm">/dev/ds-lab</PillButton>
+        <PillButton variant="light" size="sm">/(lab)/dashboard</PillButton>
+        <PillButton variant="light" size="sm">/(doctor)</PillButton>
+      </View>
 
-      {/* Bölüm 6.5: KPICardX */}
-      <Section title="KPICardX (canonical KPI bileşeni)">
-        <View className="flex-row flex-wrap gap-3">
-          <KPICardX label="Bugün Yeni"     value={12}        icon="plus"            accent="#10B981" sub="sipariş" />
-          <KPICardX label="Geciken"        value={3}         icon="alert-triangle"  accent="#DC2626" sub="acil müdahale" danger />
-          <KPICardX label="Toplam Gelir"   value="₺125.430"  icon="trending-up"     accent="#059669"
-                    trend={{ value: 12, label: '%12 arttı' }} />
-          <KPICardX label="Vadesi Geçen"   value="₺18.500"   icon="clock"           accent="#D97706"
-                    trend={{ value: -5, label: '%5 azaldı' }} pressable onPress={() => {}} />
-        </View>
-      </Section>
-
-      {/* Bölüm 6.7: SectionLabelX + EmptyStateX */}
-      <Section title="SectionLabelX & EmptyStateX">
-        <CardX>
-          <CardX.Body>
-            <SectionLabelX action={{ label: 'Tümünü Gör →', onPress: () => {} }} accent="#2563EB">
-              Bekleyen Siparişler
-            </SectionLabelX>
-            <EmptyStateX
-              icon="inbox"
-              title="Henüz sipariş yok"
-              subtitle="Yeni iş emri oluşturarak başlayabilirsiniz"
-              cta={{ label: 'Yeni İş Emri', onPress: () => {} }}
-              compact
-            />
-          </CardX.Body>
-        </CardX>
-      </Section>
-
-      {/* Bölüm 7: Tipografi */}
-      <Section title="Tipografi">
-        <View className="gap-2">
-          <Text className="text-4xl font-bold text-slate-900 tracking-tight">Heading 1</Text>
-          <Text className="text-2xl font-bold text-slate-900">Heading 2</Text>
-          <Text className="text-lg font-semibold text-slate-900">Heading 3</Text>
-          <Text className="text-sm text-slate-700 leading-relaxed">
-            Body — bu metin uzun bir paragraf için kullanılır. Line height geniş tutulmuş,
-            color slate-700 olarak optimize edilmiş.
-          </Text>
-          <Text className="text-xs text-slate-400">Caption / muted</Text>
-        </View>
-      </Section>
-
-      <View className="h-20" />
-    </ResponsiveCanvas>
+      <View style={{ height: 80 }} />
+    </ScrollView>
   );
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function SecHeader({ eyebrow, title, desc }: { eyebrow: string; title: string; desc?: string }) {
   return (
-    <View className="mb-10">
-      <Text className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">
-        {title}
-      </Text>
-      {children}
+    <View style={{ marginBottom: 24, gap: 8 }}>
+      <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 1.4, textTransform: 'uppercase', color: DS.ink[500] }}>{eyebrow}</Text>
+      <Text style={{ ...DISPLAY, fontSize: 36, letterSpacing: -0.9, color: DS.ink[900], lineHeight: 38 }}>{title}</Text>
+      {desc && <Text style={{ fontSize: 14, color: DS.ink[500], maxWidth: 560, lineHeight: 21 }}>{desc}</Text>}
     </View>
   );
 }
 
-function ColorChip({ name, hex }: { name: string; hex: string }) {
+function PillButton({ children, variant = 'dark', size = 'md' }: { children: React.ReactNode; variant?: 'dark' | 'light' | 'primary' | 'ghost'; size?: 'sm' | 'md' | 'lg' }) {
+  const sizes = {
+    sm: { paddingHorizontal: 12, paddingVertical: 6, fontSize: 12 },
+    md: { paddingHorizontal: 20, paddingVertical: 10, fontSize: 13 },
+    lg: { paddingHorizontal: 28, paddingVertical: 14, fontSize: 14 },
+  };
+  const variants = {
+    dark:    { backgroundColor: DS.ink[900], color: '#FFF', borderWidth: 1, borderColor: DS.ink[900] },
+    primary: { backgroundColor: DS.lab.primary, color: DS.ink[900], borderWidth: 1, borderColor: DS.lab.primary },
+    light:   { backgroundColor: '#FFF', color: DS.ink[900], borderWidth: 1, borderColor: DS.ink[300] },
+    ghost:   { backgroundColor: 'transparent', color: DS.ink[900], borderWidth: 1, borderColor: 'transparent' },
+  };
+  const v = variants[variant];
+  const sz = sizes[size];
   return (
-    <View className="items-center">
-      <View
-        className="w-16 h-16 rounded-2xl shadow-cardLite"
-        style={{ backgroundColor: hex }}
-      />
-      <Text className="text-xs font-mono text-slate-500 mt-2">{name}</Text>
-      <Text className="text-[10px] text-slate-400">{hex}</Text>
+    <Pressable style={{
+      paddingHorizontal: sz.paddingHorizontal, paddingVertical: sz.paddingVertical,
+      backgroundColor: v.backgroundColor, borderRadius: 999,
+      borderWidth: v.borderWidth, borderColor: v.borderColor,
+      alignSelf: 'flex-start',
+    }}>
+      <Text style={{ fontSize: sz.fontSize, fontWeight: '500', color: v.color, letterSpacing: -0.13 }}>{children}</Text>
+    </Pressable>
+  );
+}
+
+function Chip({ children, tone, dot }: { children: React.ReactNode; tone: string; dot?: boolean }) {
+  const tones: Record<string, { bg: string; fg: string; border?: string }> = {
+    neutral: { bg: 'rgba(0,0,0,0.05)', fg: DS.ink[800] },
+    primary: { bg: DS.lab.primary,    fg: DS.ink[900] },
+    accent:  { bg: DS.ink[900],       fg: '#FFF' },
+    success: { bg: 'rgba(45,154,107,0.12)', fg: '#1F6B47' },
+    warning: { bg: 'rgba(232,155,42,0.15)', fg: '#9C5E0E' },
+    danger:  { bg: 'rgba(217,75,75,0.12)',  fg: '#9C2E2E' },
+    info:    { bg: 'rgba(74,143,201,0.12)', fg: '#1F5689' },
+    outline: { bg: 'transparent', fg: DS.ink[800], border: DS.ink[300] },
+  };
+  const t = tones[tone];
+  return (
+    <View style={{
+      flexDirection: 'row', alignItems: 'center', gap: 6,
+      paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999,
+      backgroundColor: t.bg, borderWidth: t.border ? 1 : 0, borderColor: t.border,
+    }}>
+      {dot && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: t.fg, opacity: 0.8 }} />}
+      <Text style={{ fontSize: 12, fontWeight: '500', color: t.fg }}>{children}</Text>
     </View>
   );
 }
 
-function FormField({ label, placeholder }: { label: string; placeholder: string }) {
+function StatusChip({ color, bg, label }: { color: string; bg: string; label: string }) {
   return (
-    <View>
-      <Text className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-        {label}
-      </Text>
-      <View className="border border-slate-200 rounded-xl px-3 py-2.5">
-        <Text className="text-slate-400 text-sm">{placeholder}</Text>
+    <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: bg }}>
+      <Text style={{ fontSize: 10, fontWeight: '500', color }}>● {label}</Text>
+    </View>
+  );
+}
+
+function TypeRow({ label, sample, size, sansSerif, noBorder, variant }: {
+  label: string; sample: React.ReactNode; size?: number; sansSerif?: boolean; noBorder?: boolean; variant?: 'display';
+}) {
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 32, paddingVertical: 24, borderBottomWidth: noBorder ? 0 : 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
+      <View style={{ width: 180 }}>
+        <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[500] }}>{label}</Text>
+        <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 4 }}>
+          {sansSerif ? 'Inter Tight · Regular' : 'Instrument Serif · Light'}
+        </Text>
+      </View>
+      <View style={{ flex: 1, minWidth: 240 }}>
+        <Text style={{
+          ...(sansSerif ? {} : DISPLAY),
+          fontSize: variant === 'display' ? 88 : (size ?? 24),
+          letterSpacing: -1.0, lineHeight: variant === 'display' ? 84 : (size ?? 24) * 1.05,
+          color: DS.ink[900],
+        }}>
+          {sample}
+        </Text>
       </View>
     </View>
   );
 }
+
+// ─── Form bileşenleri (sade, NativeWind sansSerif) ───────────────────────────
+function FormInput({ label, placeholder, hint, error }: { label: string; placeholder: string; hint?: string; error?: string }) {
+  return (
+    <View style={{ gap: 6 }}>
+      <Text style={{ fontSize: 12, fontWeight: '500', color: DS.ink[800] }}>{label}</Text>
+      <View style={{
+        height: 44, paddingHorizontal: 14, justifyContent: 'center',
+        backgroundColor: '#FFF', borderRadius: 14,
+        borderWidth: 1, borderColor: error ? '#D94B4B' : 'rgba(0,0,0,0.08)',
+      }}>
+        <Text style={{ fontSize: 14, color: '#9A9A9A' }}>{placeholder}</Text>
+      </View>
+      {hint && !error && <Text style={{ fontSize: 11, color: DS.ink[500] }}>{hint}</Text>}
+      {error && <Text style={{ fontSize: 11, color: '#D94B4B' }}>{error}</Text>}
+    </View>
+  );
+}
+
+function FormSelect({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={{ gap: 6 }}>
+      <Text style={{ fontSize: 12, fontWeight: '500', color: DS.ink[800] }}>{label}</Text>
+      <View style={{
+        height: 44, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center',
+        backgroundColor: '#FFF', borderRadius: 14,
+        borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
+      }}>
+        <Text style={{ flex: 1, fontSize: 14, color: DS.ink[900] }}>{value}</Text>
+        <Text style={{ color: DS.ink[400] }}>▾</Text>
+      </View>
+    </View>
+  );
+}
+
+function FormTextarea({ label, placeholder }: { label: string; placeholder: string }) {
+  return (
+    <View style={{ gap: 6 }}>
+      <Text style={{ fontSize: 12, fontWeight: '500', color: DS.ink[800] }}>{label}</Text>
+      <View style={{
+        minHeight: 80, padding: 14,
+        backgroundColor: '#FFF', borderRadius: 14,
+        borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
+      }}>
+        <Text style={{ fontSize: 14, color: '#9A9A9A' }}>{placeholder}</Text>
+      </View>
+    </View>
+  );
+}
+
+function FormCheckbox({ checked, label }: { checked: boolean; label: string }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      <View style={{
+        width: 20, height: 20, borderRadius: 6,
+        backgroundColor: checked ? DS.ink[900] : '#FFF',
+        borderWidth: checked ? 0 : 1, borderColor: 'rgba(0,0,0,0.18)',
+        alignItems: 'center', justifyContent: 'center',
+      }}>
+        {checked && <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '700' }}>✓</Text>}
+      </View>
+      <Text style={{ fontSize: 14, color: DS.ink[900] }}>{label}</Text>
+    </View>
+  );
+}
+
+function FormToggle({ on, label }: { on: boolean; label: string }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+      <View style={{
+        width: 44, height: 24, borderRadius: 999,
+        backgroundColor: on ? DS.ink[900] : 'rgba(0,0,0,0.15)',
+        padding: 2, justifyContent: 'center',
+      }}>
+        <View style={{
+          width: 20, height: 20, borderRadius: 10, backgroundColor: '#FFF',
+          alignSelf: on ? 'flex-end' : 'flex-start',
+          // @ts-ignore
+          boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+        }} />
+      </View>
+      <Text style={{ fontSize: 14, color: DS.ink[900] }}>{label}</Text>
+    </View>
+  );
+}
+
+function FormRadio({ selected, label }: { selected: boolean; label: string }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      <View style={{
+        width: 20, height: 20, borderRadius: 10,
+        borderWidth: selected ? 6 : 1.5,
+        borderColor: selected ? DS.ink[900] : 'rgba(0,0,0,0.18)',
+        backgroundColor: '#FFF',
+      }} />
+      <Text style={{ fontSize: 14, color: DS.ink[900] }}>{label}</Text>
+    </View>
+  );
+}
+
+const cardSolid = {
+  backgroundColor: '#FFF', borderRadius: 24, padding: 22,
+  // @ts-ignore
+  boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)',
+};
+const cardFlat = {
+  backgroundColor: 'rgba(255,255,255,0.5)', borderRadius: 24, padding: 22,
+  borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+};
+const cardDark = {
+  backgroundColor: DS.ink[900], borderRadius: 24, padding: 22,
+};
