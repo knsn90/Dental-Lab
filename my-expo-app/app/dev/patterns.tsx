@@ -1425,7 +1425,7 @@ function StepsTimeline({
   );
 }
 
-// ─── Hero PercentRing — dark wrap + büyük halka (referans görsele yakın) ────
+// ─── Hero PercentRing — outer pill kapsül + inner track + gradient + knob ───
 function PercentRingHero({
   value: targetValue, size = 200, theme = 'lab', weight = '300', animate = true,
 }: { value: number; size?: number; theme?: DsTheme; weight?: '200' | '300' | '400' | '500' | '600' | '700'; animate?: boolean }) {
@@ -1433,9 +1433,11 @@ function PercentRingHero({
   const animatedValue = useCountUp(targetValue, animate ? 1400 : 0);
   const value = animate ? animatedValue : targetValue;
 
-  // Stroke responsive: küçük boyutta ince, büyük boyutta kalın
-  const stroke = Math.max(3, Math.round(size * 0.06));
-  const r = (size - stroke - Math.max(3, size * 0.04)) / 2;
+  // Outer pill kapsül stroke (kalın çerçeve)
+  const outerStroke = Math.max(8, Math.round(size * 0.12));
+  // Inner track + progress stroke (içeride daha ince)
+  const innerStroke = outerStroke - 6;
+  const r = (size - outerStroke - Math.max(3, size * 0.04)) / 2;
   const c = 2 * Math.PI * r;
   const dash = (value / 100) * c;
   const t = dsTheme(theme);
@@ -1444,12 +1446,17 @@ function PercentRingHero({
   const deepColor  = t.primaryDeep;
   const id = `pr-hero-${theme}-${targetValue}-${size}`;
 
+  // Outer pill — koyu zemin üzerinde panel primary'in soluk tonu
+  const outerPillColor = lightColor + '22'; // %13 soluk
+  // Inner empty track — daha sönük (kapsülün içi)
+  const innerTrackColor = lightColor + '15'; // %8 daha soluk
+
   // Knob pozisyonu (animated value ile)
   const angleDeg = (value / 100) * 360 - 90;
   const angleRad = (angleDeg * Math.PI) / 180;
   const knobX = size / 2 + r * Math.cos(angleRad);
   const knobY = size / 2 + r * Math.sin(angleRad);
-  const knobR = stroke * 0.85;
+  const knobR = innerStroke * 0.85;
   const showKnob = size >= 56;
   const showPulse = size >= 100;
   const displayValue = Math.round(value);
@@ -1467,21 +1474,25 @@ function PercentRingHero({
           </LinearGradient>
         </Defs>
 
-        {/* Track */}
+        {/* Outer pill kapsül — kalın çerçeve (soluk panel rengi) */}
         <Circle cx={size / 2} cy={size / 2} r={r}
-                stroke={trackColor} strokeWidth={stroke} fill="none" />
+                stroke={outerPillColor} strokeWidth={outerStroke} fill="none" />
 
-        {/* Progress arc */}
+        {/* Inner track (boş kısım) — kapsülün içinde daha sönük */}
+        <Circle cx={size / 2} cy={size / 2} r={r}
+                stroke={innerTrackColor} strokeWidth={innerStroke} fill="none" />
+
+        {/* Progress arc — gradient (inner stroke kalınlığında) */}
         {value > 0 && (
           <Circle cx={size / 2} cy={size / 2} r={r}
-                  stroke={`url(#${id})`} strokeWidth={stroke} fill="none"
+                  stroke={`url(#${id})`} strokeWidth={innerStroke} fill="none"
                   strokeDasharray={`${dash} ${c}`} strokeLinecap="round"
                   transform={`rotate(-90 ${size / 2} ${size / 2})`} />
         )}
 
         {/* Static glow halo arkasında */}
         {value > 0 && value < 100 && showKnob && (
-          <Circle cx={knobX} cy={knobY} r={knobR + Math.max(2, stroke * 0.4)}
+          <Circle cx={knobX} cy={knobY} r={knobR + Math.max(2, innerStroke * 0.4)}
                   fill="#FFFFFF" fillOpacity={0.18} />
         )}
 
@@ -1606,6 +1617,15 @@ function LinearProgress({
             }} />
           </View>
         </View>
+
+        {/* Animated pulse halo — knob etrafında, doğru % pozisyonunda */}
+        {value > 0 && value < 100 && !compact && (
+          <PulseLinearHalo
+            color={knobBg}
+            size={knobSize * 2.2}
+            leftPct={value}
+          />
+        )}
 
         {/* Knob — saffron halka + accent iç nokta (kapsül üzerinde yüzer) */}
         {value > 0 && value < 100 && (
