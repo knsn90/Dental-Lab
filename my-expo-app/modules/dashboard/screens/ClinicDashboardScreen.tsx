@@ -13,6 +13,7 @@ import Svg, {
 import { useAuthStore } from '../../../core/store/authStore';
 import { useClinicOrders } from '../../clinic/hooks/useClinicOrders';
 import { ResponsiveCanvas } from '../../../core/layout/ResponsiveCanvas';
+import { HeroX } from '../../../core/ui/HeroX';
 import { isOrderOverdue, STATUS_CONFIG } from '../../orders/constants';
 import { WorkOrderStatus } from '../../../lib/types';
 import { BlurFade } from '../../../core/ui/BlurFade';
@@ -201,67 +202,25 @@ export function ClinicDashboardScreen() {
           refreshControl: <RefreshControl refreshing={loading} onRefresh={refetch} tintColor={P} />,
         }}
       >
-        {/* Hero — layered radial gradients (frontend-design: depth) */}
-        <View style={[s.heroRow, isDesktop && s.heroRowDesktop]}>
-          <View style={[s.welcome, isDesktop && { flex: 1 }]}>
-            {/* Gradient background layer */}
-            <Svg
-              width="100%" height="100%"
-              viewBox="0 0 400 200"
-              preserveAspectRatio="none"
-              style={StyleSheet.absoluteFillObject}
-            >
-              <Defs>
-                <RadialGradient id="clinic-g1" cx="15%" cy="25%" r="55%">
-                  <Stop offset="0%"   stopColor={P} stopOpacity="0.16" />
-                  <Stop offset="100%" stopColor={P} stopOpacity="0" />
-                </RadialGradient>
-                <RadialGradient id="clinic-g2" cx="90%" cy="90%" r="55%">
-                  <Stop offset="0%"   stopColor="#0EA5E9" stopOpacity="0.10" />
-                  <Stop offset="100%" stopColor="#0EA5E9" stopOpacity="0" />
-                </RadialGradient>
-              </Defs>
-              <Rect width="400" height="200" fill="url(#clinic-g1)" />
-              <Rect width="400" height="200" fill="url(#clinic-g2)" />
-            </Svg>
-
-            {/* Content on top */}
-            <View style={{ zIndex: 1 }}>
-              <BlurFade duration={500} delay={0} yOffset={6}>
-                <Text style={s.greeting}>Merhaba{firstName ? `, ${firstName}` : ''}</Text>
-              </BlurFade>
-              <BlurFade duration={500} delay={70} yOffset={6}>
-                <Text style={s.clinicName}>{clinicName}</Text>
-              </BlurFade>
-              <BlurFade duration={500} delay={140} yOffset={6}>
-                <View style={s.metaRow}>
-                  <View style={s.metaChip}>
-                    <Icon name="calendar" size={11} color="#075985" strokeWidth={2} />
-                    <Text style={s.metaText}>{getTodayLabel()}</Text>
-                  </View>
-                </View>
-              </BlurFade>
-            </View>
-          </View>
-
-          {overdue > 0 && (
-            <View style={[s.alertCard, isDesktop && { width: 280 }]}>
-              <View style={s.alertTop}><Text style={s.alertPill}>KRİTİK</Text></View>
-              <Text style={s.alertTitle}>
-                <Text style={s.alertCount}>{overdue}</Text>
-                {' geciken sipariş'}
-              </Text>
-              <Text style={s.alertSub}>Klinik çapında acil müdahale gerekir.</Text>
-              <TouchableOpacity
-                style={s.alertBtn}
-                onPress={() => router.push('/(clinic)/orders' as any)}
-                activeOpacity={0.9}
-              >
-                <Text style={s.alertBtnText}>Detayları Gör</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
+        {/* Hero — canonical HeroX */}
+        <HeroX
+          kicker={getTodayLabel()}
+          title={`Merhaba${firstName ? `, ${firstName}` : ''}`}
+          subtitle={clinicName}
+          glow={['#0369A1', '#0EA5E9']}
+          stats={[
+            { label: 'Toplam',      value: total,       accent: '#0369A1' },
+            { label: 'Aktif',       value: activeCount, accent: '#0EA5E9' },
+            { label: 'Geciken',     value: overdue,     accent: overdue > 0 ? '#DC2626' : '#94A3B8' },
+            { label: 'Bu Hafta',    value: thisWeek,    accent: '#D97706' },
+            { label: 'Teslim',      value: delivered,   accent: '#10B981' },
+          ]}
+          actions={[
+            { icon: 'plus-circle', label: 'Yeni İş Emri', primary: true, accent: '#0369A1', onPress: () => router.push('/(clinic)/new-order' as any) },
+            { icon: 'users',       label: 'Hekimler',                                       onPress: () => router.push('/(clinic)/doctors' as any) },
+            ...(overdue > 0 ? [{ icon: 'alert-triangle', label: `${overdue} Geciken`, accent: '#DC2626', onPress: () => router.push('/(clinic)/orders' as any) }] : []),
+          ]}
+        />
 
         {/* KPI Strip — mobile: wrap 2x3, tablet+: single row */}
         <View style={[s.kpiStrip, (isDesktop || isTablet) && { flexWrap: 'nowrap' }]}>

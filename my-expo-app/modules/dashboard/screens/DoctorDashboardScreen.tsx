@@ -14,6 +14,7 @@ import { useAuthStore } from '../../../core/store/authStore';
 import { supabase } from '../../../core/api/supabase';
 import { useOrders } from '../../orders/hooks/useOrders';
 import { ResponsiveCanvas } from '../../../core/layout/ResponsiveCanvas';
+import { HeroX } from '../../../core/ui/HeroX';
 import { isOrderOverdue, STATUS_CONFIG } from '../../orders/constants';
 import { WorkOrderStatus } from '../../../lib/types';
 import { BlurFade } from '../../../core/ui/BlurFade';
@@ -512,12 +513,23 @@ export function DoctorDashboardScreen() {
           refreshControl: <RefreshControl refreshing={loading} onRefresh={refetch} tintColor={P} />,
         }}
       >
-        {/* Hero */}
-        <Hero
-          firstName={firstName}
-          clinicName={profile?.clinic_name ?? null}
-          overdueCount={overdueCount}
-          onPressOverdue={() => router.push('/(doctor)/orders' as any)}
+        {/* Hero — canonical HeroX */}
+        <HeroX
+          kicker={getTodayLabel()}
+          title={`Merhaba${firstName ? `, Dr. ${firstName}` : ''}`}
+          subtitle={profile?.clinic_name ? `${profile.clinic_name} · Bugünkü siparişlerinize göz atın` : 'Bugünkü siparişlerinize göz atın'}
+          glow={['#0EA5E9', '#7C3AED']}
+          stats={[
+            { label: 'Toplam',    value: total,         accent: '#0EA5E9' },
+            { label: 'Aktif',     value: active,        accent: '#0891B2' },
+            { label: 'Geciken',   value: overdueCount,  accent: overdueCount > 0 ? '#DC2626' : '#94A3B8' },
+            { label: 'Bu Hafta',  value: thisWeekDel,   accent: '#D97706' },
+          ]}
+          actions={[
+            { icon: 'zap',       label: 'Yeni İş Emri', primary: true, accent: '#0EA5E9', onPress: () => router.push('/(doctor)/new-order' as any) },
+            { icon: 'file-text', label: 'Siparişlerim',                                  onPress: () => router.push('/(doctor)/orders' as any) },
+            ...(overdueCount > 0 ? [{ icon: 'alert-triangle', label: `${overdueCount} Geciken`, accent: '#DC2626', onPress: () => router.push('/(doctor)/orders' as any) }] : []),
+          ]}
         />
 
         {/* ── Onay Bekleyen Tasarımlar Banner ── */}
