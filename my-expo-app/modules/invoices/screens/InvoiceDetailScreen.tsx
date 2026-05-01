@@ -19,6 +19,7 @@ import {
 import { printInvoice } from '../printInvoice';
 import { PaymentReminderModal } from '../components/PaymentReminderModal';
 import { EFaturaPanel } from '../../efatura/components/EFaturaPanel';
+import { PaymentLinkPanel } from '../../payments/components/PaymentLinkPanel';
 import { C } from '../../../core/theme/colors';
 import { Shadows, CardSpec } from '../../../core/theme/shadows';
 import { F } from '../../../core/theme/typography';
@@ -314,6 +315,15 @@ export function InvoiceDetailScreen() {
             </View>
           </>
         )}
+
+        {/* Online Ödeme Paneli */}
+        <View style={{ marginTop: 8, marginBottom: 8 }}>
+          <PaymentLinkPanel
+            invoiceId={invoice.id}
+            balance={balance}
+            onChanged={refetch}
+          />
+        </View>
 
         {/* e-Fatura Paneli */}
         <View style={{ marginTop: 8, marginBottom: 8 }}>

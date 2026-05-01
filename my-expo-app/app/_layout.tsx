@@ -160,6 +160,10 @@ export default function RootLayout() {
     const inAuthGroup  = segments[0] === '(auth)';
     const isAdminLogin = segments[1] === 'admin-login';
 
+    // Public routes — auth gerekmez (token bazlı erişim)
+    const isPublicRoute = segments[0] === 'pay' || segments[0] === 'doctor-approval';
+    if (isPublicRoute) return;
+
     if (!session) {
       if (!inAuthGroup) router.replace('/(auth)/login');
       return;
