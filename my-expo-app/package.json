@@ -56,6 +56,7 @@
     "react-native-svg": "15.8.0",
     "react-native-url-polyfill": "^2.0.0",
     "react-native-web": "~0.19.13",
+    "react-native-worklets": "^0.4.2",
     "three": "^0.183.2",
     "three-mesh-bvh": "^0.9.9",
     "zustand": "^5.0.3"
