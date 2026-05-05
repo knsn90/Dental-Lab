@@ -1,0 +1,7 @@
+ios/
+android/
+*.xcodeproj
+*.xcworkspace
+Podfile
+Podfile.lock
+eas.json
