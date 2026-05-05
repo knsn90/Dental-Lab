@@ -1,156 +1,152 @@
+/**
+ * NotificationsSection — Patterns Design Language (NativeWind)
+ * ─────────────────────────────────────────────────────────────
+ * Ayarlar > Bildirimler sekmesi.
+ * Her bildirim tipi için E-posta ve Uygulama toggle'ları.
+ * Patterns FormToggle stili (custom View toggle).
+ */
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Switch, Platform } from 'react-native';
+import { View, Text, ScrollView, Pressable, Platform } from 'react-native';
+import {
+  ClipboardList, RefreshCw, MessageCircle, CheckCircle,
+  CreditCard, Package, AlertTriangle, Mail, Smartphone,
+} from 'lucide-react-native';
 
-import { AppIcon } from '../../../core/ui/AppIcon';
-
+// ── Types ───────────────────────────────────────────────────────────────
 interface Props {
   panelType: string;
   accentColor: string;
 }
 
-interface NotifToggle {
+interface NotifItem {
   key: string;
-  icon: keyof typeof Feather.glyphMap;
+  icon: any;
   label: string;
   sub: string;
 }
 
-const NOTIF_ITEMS: NotifToggle[] = [
-  { key: 'new_order',    icon: 'clipboard',     label: 'Yeni Sipariş',         sub: 'Yeni iş emri geldiğinde bildirim al' },
-  { key: 'order_status', icon: 'refresh-cw',    label: 'Sipariş Durumu',       sub: 'Sipariş durumu değiştiğinde bildirim al' },
-  { key: 'chat',         icon: 'message-circle', label: 'Mesajlar',             sub: 'Yeni mesaj geldiğinde bildirim al' },
-  { key: 'approval',     icon: 'check-circle',  label: 'Onay Bekleyenler',     sub: 'Onay gerektiren işlem olduğunda bildirim al' },
-  { key: 'payment',      icon: 'credit-card',   label: 'Ödeme & Fatura',       sub: 'Ödeme ve fatura bildirimleri' },
-  { key: 'stock',        icon: 'package',       label: 'Stok Uyarıları',       sub: 'Stok kritik seviyeye düştüğünde bildirim al' },
+// ── Notification items ──────────────────────────────────────────────────
+const NOTIF_ITEMS: NotifItem[] = [
+  { key: 'new_order',    icon: ClipboardList, label: 'Yeni Sipariş',       sub: 'Yeni iş emri geldiğinde' },
+  { key: 'order_status', icon: RefreshCw,     label: 'Sipariş Durumu',     sub: 'Sipariş durumu değiştiğinde' },
+  { key: 'chat',         icon: MessageCircle, label: 'Mesajlar',           sub: 'Yeni mesaj geldiğinde' },
+  { key: 'approval',     icon: CheckCircle,   label: 'Onay Bekleyenler',   sub: 'Onay gerektiren işlem olduğunda' },
+  { key: 'payment',      icon: CreditCard,    label: 'Ödeme & Fatura',     sub: 'Ödeme ve fatura bildirimleri' },
+  { key: 'stock',        icon: Package,       label: 'Stok Uyarıları',     sub: 'Stok kritik seviyeye düştüğünde' },
 ];
 
+// ── Shadow (patterns cardSolid) ─────────────────────────────────────────
+const CARD_SHADOW = Platform.select({
+  web: { boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)' } as any,
+  default: { shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+});
+
+const THUMB_SHADOW = Platform.select({
+  web: { boxShadow: '0 1px 3px rgba(0,0,0,0.2)' } as any,
+  default: { shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
+});
+
+// ── Patterns FormToggle ─────────────────────────────────────────────────
+function PatternsToggle({ on, onPress, accentColor }: { on: boolean; onPress: () => void; accentColor: string }) {
+  return (
+    <Pressable onPress={onPress} style={{ width: 44, height: 24, borderRadius: 999, backgroundColor: on ? accentColor : 'rgba(0,0,0,0.12)', padding: 2, justifyContent: 'center' }}>
+      <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#FFF', alignSelf: on ? 'flex-end' : 'flex-start', ...THUMB_SHADOW }} />
+    </Pressable>
+  );
+}
+
+// ── Toggle channels ─────────────────────────────────────────────────────
+type Channel = 'email' | 'app';
+
+// ── Component ───────────────────────────────────────────────────────────
 export function NotificationsSection({ accentColor }: Props) {
-  const [toggles, setToggles] = useState<Record<string, boolean>>(
-    Object.fromEntries(NOTIF_ITEMS.map((n) => [n.key, true]))
+  const [toggles, setToggles] = useState<Record<string, Record<Channel, boolean>>>(
+    Object.fromEntries(NOTIF_ITEMS.map(n => [n.key, { email: true, app: true }]))
   );
 
-  function toggle(key: string) {
-    setToggles((prev) => ({ ...prev, [key]: !prev[key] }));
-  }
+  const toggle = (key: string, channel: Channel) => {
+    setToggles(prev => ({
+      ...prev,
+      [key]: { ...prev[key], [channel]: !prev[key][channel] },
+    }));
+  };
 
   return (
     <ScrollView
-      style={{ flex: 1 }}
-      contentContainerStyle={s.container}
+      className="flex-1"
+      contentContainerStyle={{ paddingHorizontal: 28, paddingTop: 0, paddingBottom: 40 }}
       showsVerticalScrollIndicator={false}
     >
-      <View style={s.card}>
-        <View style={s.cardHead}>
-          <Text style={s.cardTitle}>Bildirim Tercihleri</Text>
-          <Text style={s.cardSub}>
-            Hangi bildirimleri almak istediğinizi yönetin.
-          </Text>
+      {/* Bildirim Tercihleri kartı */}
+      <View className="bg-white rounded-[24px] p-[22px]" style={CARD_SHADOW}>
+        <Text
+          className="text-ink-900 mb-1"
+          style={{ fontFamily: 'Inter Tight, Inter, system-ui, sans-serif', fontWeight: '300', fontSize: 18, letterSpacing: -0.3 }}
+        >
+          Bildirim Tercihleri
+        </Text>
+        <Text className="text-[13px] text-ink-400 mb-4">
+          Her bildirim türü için e-posta ve uygulama kanallarını ayrı ayrı yönetin.
+        </Text>
+
+        {/* Kolon başlıkları */}
+        <View className="flex-row items-center mb-1 pl-12">
+          <View className="flex-1" />
+          <View className="flex-row items-center gap-1.5 w-16 justify-center">
+            <Mail size={12} color="#9A9A9A" strokeWidth={1.6} />
+            <Text className="text-[10px] font-semibold text-ink-400 tracking-wider" numberOfLines={1}>E-posta</Text>
+          </View>
+          <View className="flex-row items-center gap-1.5 w-16 justify-center">
+            <Smartphone size={12} color="#9A9A9A" strokeWidth={1.6} />
+            <Text className="text-[10px] font-semibold text-ink-400 tracking-wider" numberOfLines={1}>Uygulama</Text>
+          </View>
         </View>
-        {NOTIF_ITEMS.map((item, i) => (
-          <React.Fragment key={item.key}>
-            <View style={s.row}>
-              <View style={[s.iconBox, { backgroundColor: accentColor + '15' }]}>
-                <AppIcon name={item.icon} size={15} color={accentColor} />
+
+        <View className="h-px bg-black/[0.04] mb-1" />
+
+        {NOTIF_ITEMS.map((item, i) => {
+          const Icon = item.icon;
+          const state = toggles[item.key];
+          return (
+            <React.Fragment key={item.key}>
+              <View className="flex-row items-center gap-3 py-3">
+                <View
+                  className="w-9 h-9 rounded-xl items-center justify-center"
+                  style={{ backgroundColor: `${accentColor}14` }}
+                >
+                  <Icon size={16} color={accentColor} strokeWidth={1.8} />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-[14px] font-semibold text-ink-900 mb-0.5">{item.label}</Text>
+                  <Text className="text-[12px] text-ink-400">{item.sub}</Text>
+                </View>
+                {/* E-posta toggle */}
+                <View className="w-16 items-center">
+                  <PatternsToggle on={state.email} onPress={() => toggle(item.key, 'email')} accentColor={accentColor} />
+                </View>
+                {/* Uygulama toggle */}
+                <View className="w-16 items-center">
+                  <PatternsToggle on={state.app} onPress={() => toggle(item.key, 'app')} accentColor={accentColor} />
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.rowLabel}>{item.label}</Text>
-                <Text style={s.rowSub}>{item.sub}</Text>
-              </View>
-              <Switch
-                value={toggles[item.key]}
-                onValueChange={() => toggle(item.key)}
-                trackColor={{ false: '#FFFFFF', true: '#FFFFFF' }}
-                thumbColor={toggles[item.key] ? accentColor : '#CBD5E1'}
-                ios_backgroundColor="#FFFFFF"
-                style={{ borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 16 } as any}
-              />
-            </View>
-            {i < NOTIF_ITEMS.length - 1 && <View style={s.divider} />}
-          </React.Fragment>
-        ))}
+              {i < NOTIF_ITEMS.length - 1 && (
+                <View className="h-px bg-black/[0.04]" style={{ marginLeft: 48 }} />
+              )}
+            </React.Fragment>
+          );
+        })}
       </View>
 
-      <View style={[s.notice, { borderColor: '#F59E0B40', backgroundColor: '#FFFBEB' }]}>
-        <AppIcon name="alert-triangle" size={14} color="#D97706" style={{ marginTop: 1 }} />
-        <Text style={[s.noticeText, { color: '#92400E' }]}>
-          Bildirimler şu an yalnızca uygulama içi olarak desteklenmektedir. Push bildirimi altyapısı yakında eklenecektir.
+      {/* Uyarı notu */}
+      <View
+        className="flex-row gap-3 rounded-2xl p-4 mt-4"
+        style={{ backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: 'rgba(245,158,11,0.2)' }}
+      >
+        <AlertTriangle size={15} color="#D97706" strokeWidth={1.8} style={{ marginTop: 1 }} />
+        <Text className="flex-1 text-[13px] leading-5" style={{ color: '#92400E' }}>
+          E-posta bildirimleri yakında aktif edilecektir. Şu an yalnızca uygulama içi bildirimler desteklenmektedir.
         </Text>
       </View>
     </ScrollView>
   );
 }
-
-const CARD_SHADOW = Platform.select({
-  web:     { boxShadow: '0 8px 24px rgba(0,0,0,0.15)' } as any,
-  default: { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 4 },
-});
-
-const s = StyleSheet.create({
-  container: {
-    padding: 0,
-    paddingBottom: 24,
-    gap: 14,
-  },
-  cardHead: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8, gap: 4 },
-  cardTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#0F172A',
-    letterSpacing: -0.3,
-  },
-  cardSub: {
-    fontSize: 12,
-    color: '#64748B',
-    lineHeight: 17,
-  },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.95)',
-    overflow: 'hidden',
-    paddingBottom: 6,
-    ...CARD_SHADOW,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 13,
-    gap: 12,
-  },
-  iconBox: {
-    width: 34,
-    height: 34,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rowLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#0F172A',
-    marginBottom: 2,
-  },
-  rowSub: {
-    fontSize: 12,
-    color: '#94A3B8',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#F1F5F9',
-    marginLeft: 62,
-  },
-  notice: {
-    flexDirection: 'row',
-    gap: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    padding: 14,
-  },
-  noticeText: {
-    flex: 1,
-    fontSize: 13,
-    lineHeight: 19,
-  },
-});

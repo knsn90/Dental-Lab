@@ -74,7 +74,7 @@ export function useCourierDelivery(courierId: string | null) {
       .limit(1)
       .maybeSingle();
 
-    if (!error && data) setDelivery(data as Delivery);
+    if (!error && data) setDelivery(data as unknown as Delivery);
     else setDelivery(null);
     setLoading(false);
   }, [courierId]);

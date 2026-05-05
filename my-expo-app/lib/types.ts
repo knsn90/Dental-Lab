@@ -22,6 +22,18 @@ export interface Profile {
   approval_status: 'pending' | 'approved' | 'rejected';
   lab_id?: string | null;      // çok-kiracılı (012_multi_tenancy)
   avatar_url?: string | null;
+  birth_date?: string | null;
+  gender?: 'erkek' | 'kadın' | 'belirtilmedi' | null;
+  city?: string | null;
+  address?: string | null;
+  tc_kimlik_no?: string | null;
+  diploma_no?: string | null;
+  specialty?: string | null;
+  department?: string | null;
+  whatsapp_phone?: string | null;
+  language?: string | null;
+  timezone?: string | null;
+  kvkk_accepted_at?: string | null;
   created_at: string;
   updated_at: string;
 }

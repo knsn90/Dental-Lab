@@ -73,7 +73,7 @@ function AssignCourierModal({ workOrderId, orderNumber, labId, onClose, onDone }
     if (error) {
       Alert.alert('Hata', error.message);
     } else {
-      toast('Kurye atandı ✓', 'success');
+      toast.success('Kurye atandı ✓');
       onDone();
     }
   }

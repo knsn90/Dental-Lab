@@ -15,7 +15,7 @@ export function useDeliveries(labId: string | null | undefined) {
     setLoading(true);
     const { data, error: err } = await fetchActiveDeliveries(labId);
     if (err) setError(err.message);
-    else     setDeliveries((data ?? []) as Delivery[]);
+    else     setDeliveries((data ?? []) as unknown as Delivery[]);
     setLoading(false);
   }, [labId]);
 

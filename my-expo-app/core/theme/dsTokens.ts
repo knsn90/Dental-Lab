@@ -89,6 +89,42 @@ export const DS = {
     info:        '#4A8FC9',
   },
 
+  // Panel 5: PLUM — Erik / Lavanta tonları (analitik / raporlama paneli için ileride)
+  // Yumuşak lavanta zemin + derin erik primary — "düşünme / odak" hissi
+  plum: {
+    name:        'Analitik Paneli',
+    bg:          '#EFE9F5',   // Soluk lavanta
+    bgSoft:      '#F7F3FA',   // Çok soluk
+    bgDeep:      '#DDD0EA',   // Daha koyu (gradient ucu)
+    surface:     '#FFFFFF',
+    surfaceAlt:  '#2A1A3D',   // Koyu erik — kart bg + accent
+    primary:     '#8B5CB8',   // Erik moru
+    primaryDeep: '#6B3F94',   // Daha koyu erik (hover/active)
+    accent:      '#2A1A3D',   // Koyu erik — CTA + kontrast
+    success:     '#2D9A6B',
+    warning:     '#E89B2A',
+    danger:      '#D94B4B',
+    info:        '#4A8FC9',
+  },
+
+  // Panel 6: TEAL — Petrol / Turkuaz tonları (depo / stok / lojistik paneli için ileride)
+  // Soğuk ve berrak teal — "operasyon / akış" hissi, mavi paletten farklılaşır
+  teal: {
+    name:        'Depo Paneli',
+    bg:          '#E4F1F0',   // Soluk petrol
+    bgSoft:      '#F1F8F7',   // Çok soluk
+    bgDeep:      '#C9E2DF',   // Daha koyu (gradient ucu)
+    surface:     '#FFFFFF',
+    surfaceAlt:  '#0E2E2C',   // Koyu petrol — kart bg + accent
+    primary:     '#2BA39B',   // Parlak teal
+    primaryDeep: '#197872',   // Koyu teal (hover/active)
+    accent:      '#0E2E2C',   // Koyu petrol — CTA + kontrast
+    success:     '#2D9A6B',
+    warning:     '#E89B2A',
+    danger:      '#D94B4B',
+    info:        '#4A8FC9',
+  },
+
   font: {
     // Display ve UI tek ailede — Inter Tight (Light 300 başlıklarda, Regular/Medium gövdede)
     display: '"Inter Tight", "Inter", -apple-system, BlinkMacSystemFont, sans-serif',
@@ -111,5 +147,5 @@ export const DS = {
   },
 } as const;
 
-export type DsTheme = 'lab' | 'clinic' | 'exec' | 'tech';
+export type DsTheme = 'lab' | 'clinic' | 'exec' | 'tech' | 'plum' | 'teal';
 export const dsTheme = (k: DsTheme) => DS[k];

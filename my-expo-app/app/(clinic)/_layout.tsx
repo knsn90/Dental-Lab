@@ -2,16 +2,16 @@ import { useState, useEffect } from 'react';
 import { Modal, Text } from 'react-native';
 import { Slot, Tabs } from 'expo-router';
 import { C as Colors } from '../../core/theme/colors';
-import { DesktopShell, useIsDesktop } from '../../core/layout/DesktopShell';
+import { PatternsShell, useIsDesktop } from '../../core/layout/PatternsShell';
 import { useAuthStore } from '../../core/store/authStore';
 import { NewOrderScreen } from '../../modules/orders/screens/NewOrderScreen';
 import { MessagesPopup } from '../../modules/orders/components/MessagesPopup';
 import { useOrderChatInbox } from '../../modules/orders/hooks/useOrderChatInbox';
 import { useColorThemeStore, applyColorThemeWeb } from '../../core/store/colorThemeStore';
 
-// Klinik paneli teması — daha koyu sky blue (otorite/yönetici hissi)
-// Hekim     #0EA5E9 · Klinik müdürü #0369A1 · Lab #2563EB · Admin #0F172A
-const CLINIC_DEFAULT_ACCENT = '#0369A1';
+// Klinik paneli teması — patterns dili: sage yeşil
+// Lab=saffron #F5C24B · Clinic=sage #6BA888 · Exec=coral #E97757 · Tech=blue #3B82F6
+const CLINIC_DEFAULT_ACCENT = '#6BA888';
 
 function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
   return <Text style={{ fontSize: focused ? 24 : 22, opacity: focused ? 1 : 0.6 }}>{emoji}</Text>;
@@ -33,11 +33,10 @@ export default function ClinicLayout() {
   const accentColor = getTheme('clinic_admin').primary;
 
   const CLINIC_NAV = [
-    { label: 'Dashboard',    emoji: '📊', href: '/(clinic)',            iconName: 'grid',           iconSet: 'mdi' as const },
-    { label: 'Hekimler',     emoji: '🩺', href: '/(clinic)/doctors',   iconName: 'activity',       iconSet: 'mdi' as const },
-    { label: 'Siparişler',   emoji: '📋', href: '/(clinic)/orders',    iconName: 'file-text',      iconSet: 'mdi' as const },
-    { label: 'Yeni İş Emri', emoji: '➕', href: '/(clinic)/new-order', iconName: 'plus-circle',    iconSet: 'mdi' as const },
-    { label: 'Ayarlar',      emoji: '⚙️', href: '/(clinic)/settings', iconName: 'settings',       iconSet: 'mdi' as const, matchPrefix: true },
+    { label: 'Dashboard',  href: '/(clinic)',          iconName: 'home' },
+    { label: 'Hekimler',   href: '/(clinic)/doctors',  iconName: 'users',          matchPrefix: true },
+    { label: 'Siparişler', href: '/(clinic)/orders',   iconName: 'clipboard-list', matchPrefix: true },
+    { label: 'Ayarlar',    href: '/(clinic)/settings', iconName: 'settings',       matchPrefix: true },
   ];
 
   // Klinik müdürü olmayan kullanıcı bu layout'a düştüyse sidebar gösterme
@@ -48,12 +47,13 @@ export default function ClinicLayout() {
   if (isDesktop) {
     return (
       <>
-        <DesktopShell
+        <PatternsShell
           navItems={CLINIC_NAV}
           accentColor={accentColor}
           onPressMessages={() => setMessagesOpen(true)}
           messagesUnreadCount={totalUnread}
           panelType="clinic_admin"
+          newOrderHref="/(clinic)/new-order"
         />
         <MessagesPopup
           visible={messagesOpen}
@@ -111,7 +111,7 @@ export default function ClinicLayout() {
         <Tabs.Screen
           name="new-order"
           options={{
-            title: 'Yeni İş',
+            title: 'Yeni Sipariş',
             tabBarIcon: ({ focused }) => <TabIcon emoji="➕" focused={focused} />,
           }}
         />

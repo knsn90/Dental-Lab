@@ -2,9 +2,8 @@ import React, { useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   ScrollView,
-  TouchableOpacity,
+  Pressable,
   ActivityIndicator,
   Modal,
   TextInput,
@@ -14,21 +13,57 @@ import {
   Image,
   useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { AppSwitch } from '../../../core/ui/AppSwitch';
-import { IconBtn } from '../../../core/ui/IconBtn';
-import { SlideTabBar } from '../../../core/ui/SlideTabBar';
-import { supabase } from '../../../lib/supabase';
-const P   = '#2563EB';
-const ERR = '#FF3B30';
-const BG  = '#F7F9FB';
+import {
+  Search,
+  SlidersHorizontal,
+  UserPlus,
+  X,
+  XCircle,
+  Pencil,
+  Trash2,
+  Eye,
+  EyeOff,
+  Check,
+  ChevronRight,
+  AlertCircle,
+  Save,
+  UserX,
+  UserCircle,
+  Wrench,
+  FlaskConical,
+  TrendingUp,
+  AlertTriangle,
+  Clock,
+  Stethoscope,
+  Building2,
+  Phone,
+} from 'lucide-react-native';
+import { supabase } from '../../../core/api/supabase';
 import { Profile } from '../../../lib/types';
 import { STAGE_LABEL, STAGE_COLOR, type Stage } from '../../orders/stages';
 import { useAuthStore } from '../../../core/store/authStore';
 
+// ── Design tokens ───────────────────────────────────────────────────────────
+const ERR = '#FF3B30';
+
+const CARD_SHADOW = Platform.select({
+  web: { boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)' },
+  default: { shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+}) as any;
+
+const THUMB_SHADOW = Platform.select({
+  web: { boxShadow: '0 1px 3px rgba(0,0,0,0.15)' },
+  default: { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
+}) as any;
+
+const DISPLAY = {
+  fontFamily: 'Inter Tight, Inter, system-ui, sans-serif',
+  fontWeight: '300' as const,
+};
+
+// ── Constants ───────────────────────────────────────────────────────────────
 const SKILL_STAGES: Stage[] = ['TRIAGE', 'DESIGN', 'CAM', 'MILLING', 'SINTER', 'FINISH', 'QC'];
 
-// ── Smart assignment fields (Migration 047) ────────────────────────────────
 type SkillLevel = 'junior' | 'mid' | 'senior';
 const SKILL_LEVEL_OPTIONS: { key: SkillLevel; label: string; color: string }[] = [
   { key: 'junior', label: 'Junior', color: '#94A3B8' },
@@ -37,17 +72,18 @@ const SKILL_LEVEL_OPTIONS: { key: SkillLevel; label: string; color: string }[] =
 ];
 const CASE_TYPE_OPTIONS = ['zirconia', 'emax', 'pmma', 'metal', 'pfm'];
 
-import { AppIcon } from '../../../core/ui/AppIcon';
-
 type FilterType = 'all' | 'manager' | 'technician' | 'doctor';
 type StatusFilter = 'all' | 'active' | 'inactive';
-type NewUserRole = 'manager' | 'technician';
+type NewUserRole = 'manager' | 'technician' | 'doctor' | 'clinic_admin';
 
 const ROLE_OPTIONS: { key: NewUserRole; label: string; sub: string; icon: string }[] = [
-  { key: 'manager',    label: 'Mesul Müdür',  sub: 'Lab yöneticisi',         icon: 'account-circle-outline' },
-  { key: 'technician', label: 'Teknisyen',    sub: 'Üretim personeli',       icon: 'wrench-outline' },
+  { key: 'manager',      label: 'Mesul Müdür',  sub: 'Lab yöneticisi',       icon: 'account-circle-outline' },
+  { key: 'technician',   label: 'Teknisyen',    sub: 'Üretim personeli',     icon: 'wrench-outline' },
+  { key: 'doctor',       label: 'Muayenehane',  sub: 'Tek hekim, kendi kliniği',  icon: 'stethoscope' },
+  { key: 'clinic_admin', label: 'Klinik',       sub: 'Çok hekimli kurum',         icon: 'building' },
 ];
 
+// ── Helpers ─────────────────────────────────────────────────────────────────
 function initials(name?: string | null) {
   if (!name) return '?';
   const parts = name.trim().split(/\s+/).slice(0, 2);
@@ -68,7 +104,33 @@ interface UserStats {
   activeOrders: { id: string; order_number: string; item: string; overdue: boolean }[];
 }
 
-export function LabUsersManagement() {
+// ── PatternsToggle ──────────────────────────────────────────────────────────
+function PatternsToggle({ on, onPress, accentColor }: { on: boolean; onPress: () => void; accentColor: string }) {
+  return (
+    <Pressable onPress={onPress} style={{ width: 44, height: 24, borderRadius: 999, backgroundColor: on ? accentColor : 'rgba(0,0,0,0.12)', padding: 2, justifyContent: 'center' }}>
+      <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#FFF', alignSelf: on ? 'flex-end' : 'flex-start', ...THUMB_SHADOW }} />
+    </Pressable>
+  );
+}
+
+// ── Lucide icon helper for MetricCell ───────────────────────────────────────
+function MetricIcon({ name, size, color, style }: { name: string; size: number; color: string; style?: any }) {
+  const props = { size, color, strokeWidth: 1.6, style };
+  switch (name) {
+    case 'flask-outline':  return <FlaskConical {...props} />;
+    case 'chart-line':     return <TrendingUp {...props} />;
+    case 'alert-outline':  return <AlertTriangle {...props} />;
+    case 'progress-clock': return <Clock {...props} />;
+    default:               return <FlaskConical {...props} />;
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// LabUsersManagement
+// ═════════════════════════════════════════════════════════════════════════════
+
+export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }: { accentColor?: string; labOnly?: boolean }) {
+  const P = accentColor;
   const { width } = useWindowDimensions();
   const isWide = width >= 1100;
   const { profile } = useAuthStore();
@@ -88,10 +150,8 @@ export function LabUsersManagement() {
   const [selectedId,     setSelectedId]     = useState<string | null>(null);
   const [stats,          setStats]          = useState<UserStats | null>(null);
   const [statsLoading,   setStatsLoading]   = useState(false);
-  // Stage yetkileri: { user_id → Set<Stage> }
   const [skillsMap, setSkillsMap]   = useState<Map<string, Set<Stage>>>(new Map());
   const [skillBusy, setSkillBusy]   = useState<Set<string>>(new Set());
-  // Inline hourly_rate edit state
   const [rateEditId, setRateEditId] = useState<string | null>(null);
   const [rateInput, setRateInput]   = useState<string>('');
 
@@ -116,10 +176,10 @@ export function LabUsersManagement() {
   }, [profiles]);
 
   // ── Skill level / trust / allowed_types updaters (Migration 047) ──────
-  async function setHourlyRate(userId: string, rate: number) {
-    setProfiles(prev => prev.map(p => p.id === userId ? ({ ...p, hourly_rate: rate } as any) : p));
-    const { error } = await supabase.from('profiles').update({ hourly_rate: rate }).eq('id', userId);
-    if (error) console.warn('hourly_rate update', error.message);
+  async function setSalary(userId: string, rate: number) {
+    setProfiles(prev => prev.map(p => p.id === userId ? ({ ...p, monthly_salary: rate } as any) : p));
+    const { error } = await supabase.from('profiles').update({ monthly_salary: rate }).eq('id', userId);
+    if (error) console.warn('monthly_salary update', error.message);
   }
 
   async function setSkillLevel(userId: string, level: SkillLevel) {
@@ -132,14 +192,12 @@ export function LabUsersManagement() {
     const current = (profiles.find(p => p.id === userId) as any)?.allowed_types as string[] | null;
     let next: string[] | null;
     if (!current) {
-      // NULL means "all allowed". Switching to explicit list = remove this one.
       next = CASE_TYPE_OPTIONS.filter(t => t !== type);
     } else if (current.includes(type)) {
       next = current.filter(t => t !== type);
-      if (next.length === 0) next = []; // empty = nothing allowed (explicit)
+      if (next.length === 0) next = [];
     } else {
       next = [...current, type];
-      // If covers all options → simplify back to NULL
       if (CASE_TYPE_OPTIONS.every(t => next!.includes(t))) next = null;
     }
     setProfiles(prev => prev.map(p => p.id === userId ? ({ ...p, allowed_types: next } as any) : p));
@@ -169,7 +227,6 @@ export function LabUsersManagement() {
       if (error) console.warn('skill insert', error.message);
     }
 
-    // Optimistic local update
     setSkillsMap(prev => {
       const nx = new Map(prev);
       const set = new Set(nx.get(userId) ?? []);
@@ -189,8 +246,9 @@ export function LabUsersManagement() {
     try {
       const { data, error } = await supabase.functions.invoke('admin-list-users');
       if (!error && data?.users) {
-        // Lab panel scope: exclude admins — mesul müdür manages lab staff + doctors
-        const scoped = (data.users as Profile[]).filter(p => p.user_type !== 'admin');
+        const scoped = (data.users as Profile[]).filter(p =>
+          p.user_type !== 'admin' && (!labOnly || p.user_type === 'lab')
+        );
         setProfiles(scoped);
       }
     } catch (e) {
@@ -279,13 +337,13 @@ export function LabUsersManagement() {
     { key: 'all',        label: 'Tümü',      count: profiles.length },
     { key: 'manager',    label: 'Müdür',     count: profiles.filter(p => p.user_type === 'lab' && p.role === 'manager').length },
     { key: 'technician', label: 'Teknisyen', count: profiles.filter(p => p.user_type === 'lab' && p.role === 'technician').length },
-    { key: 'doctor',     label: 'Hekim',     count: profiles.filter(p => p.user_type === 'doctor').length },
+    ...(!labOnly ? [{ key: 'doctor' as FilterType, label: 'Hekim', count: profiles.filter(p => p.user_type === 'doctor').length }] : []),
   ];
 
   const typeBadge = (profile: Profile) =>
-    profile.user_type === 'doctor'  ? { bg: '#DBEAFE', text: '#1D4ED8', label: 'Hekim',     avatarBg: '#EFF6FF', avatarText: P,         roleLabel: 'Hekim' } :
-    profile.role      === 'manager' ? { bg: '#DBEAFE', text: '#1D4ED8', label: 'Müdür',     avatarBg: '#DBEAFE', avatarText: P,         roleLabel: 'Mesul Müdür' } :
-                                      { bg: '#F1F5F9', text: '#475569', label: 'Teknisyen', avatarBg: '#F1F5F9', avatarText: '#475569', roleLabel: 'Teknisyen' };
+    profile.user_type === 'doctor'  ? { bg: '#D1FAE5', text: '#065F46', label: 'Hekim',     avatarBg: `${P}14`, avatarText: P, roleLabel: 'Hekim' } :
+    profile.role      === 'manager' ? { bg: `${P}18`,  text: P,         label: 'Müdür',     avatarBg: `${P}14`, avatarText: P, roleLabel: 'Mesul Müdür' } :
+                                      { bg: 'rgba(0,0,0,0.05)', text: '#6B6B6B', label: 'Teknisyen', avatarBg: `${P}14`, avatarText: P, roleLabel: 'Teknisyen' };
 
   const selectedProfile = useMemo(
     () => profiles.find(p => p.id === selectedId) ?? null,
@@ -300,46 +358,81 @@ export function LabUsersManagement() {
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+    <View className="flex-1">
+      <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 60, maxWidth: 1440, width: '100%', alignSelf: 'center' as const }} showsVerticalScrollIndicator={false}>
 
         {/* Tabs + search + actions — single row */}
-        <View style={styles.subToolbar}>
-          <SlideTabBar
-            items={TYPE_TABS}
-            activeKey={typeFilter}
-            onChange={(k) => setTypeFilter(k as FilterType)}
-            accentColor={P}
-          />
+        <View className="flex-row items-center gap-2 mb-5">
+          {/* Inline tab pills */}
+          <View className="flex-row items-center gap-1">
+            {TYPE_TABS.map(tab => {
+              const active = typeFilter === tab.key;
+              return (
+                <Pressable
+                  key={tab.key}
+                  onPress={() => setTypeFilter(tab.key as FilterType)}
+                  className="px-3.5 py-1.5 rounded-lg"
+                  style={{
+                    backgroundColor: active ? `${P}18` : 'transparent',
+                    // @ts-ignore web
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: active ? P : '#9A9A9A' }}>
+                    {tab.label} {tab.count > 0 ? tab.count : ''}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
 
-          <View style={{ flex: 1 }} />
+          <View className="flex-1" />
 
-          <IconBtn active={searchExpanded || search.length > 0} onPress={() => setSearchExpanded(!searchExpanded)}>
-            <AppIcon name="search" size={20} color={(searchExpanded || search.length > 0) ? P : '#64748B'} />
-          </IconBtn>
-          <TouchableOpacity
-            style={[styles.headerBtn, activeFilterCount > 0 && styles.headerBtnActive]}
-            onPress={() => { setDraftStatus(statusFilter); setShowFilter(true); }}
-            activeOpacity={0.75}
+          {/* Search toggle */}
+          <Pressable
+            onPress={() => setSearchExpanded(!searchExpanded)}
+            className="w-9 h-9 rounded-[10px] items-center justify-center"
+            style={{ backgroundColor: (searchExpanded || search.length > 0) ? `${P}14` : 'transparent' }}
           >
-            <AppIcon name={'tune-variant' as any} size={16} color={P} />
-            <Text style={styles.headerBtnText}>Filtrele</Text>
-            {activeFilterCount > 0 && (
-              <View style={styles.headerBtnBadge}><Text style={styles.headerBtnBadgeText}>{activeFilterCount}</Text></View>
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.addBtn} onPress={() => setShowAddModal(true)} activeOpacity={0.85}>
-            <AppIcon name="user-plus" size={15} color="#FFFFFF" />
-            <Text style={styles.addBtnText}>Yeni Kullanıcı</Text>
-          </TouchableOpacity>
+            <Search size={18} color={(searchExpanded || search.length > 0) ? P : '#64748B'} strokeWidth={1.8} />
+          </Pressable>
+
+          {/* Filter button */}
+          <Pressable
+            onPress={() => { setDraftStatus(statusFilter); setShowFilter(true); }}
+            className="w-8 h-8 rounded-lg items-center justify-center"
+            style={{ backgroundColor: activeFilterCount > 0 ? `${P}14` : 'transparent' }}
+          >
+            <SlidersHorizontal size={15} color={activeFilterCount > 0 ? P : '#9A9A9A'} strokeWidth={1.8} />
+          </Pressable>
+
+          {/* Add user button */}
+          <Pressable
+            onPress={() => setShowAddModal(true)}
+            className="flex-row items-center gap-1.5 px-3.5 py-2 rounded-xl"
+            style={{ backgroundColor: P }}
+          >
+            <UserPlus size={14} color="#FFFFFF" strokeWidth={2} />
+            <Text style={{ fontSize: 12, fontWeight: '600', color: '#FFFFFF' }}>Yeni Kullanıcı</Text>
+          </Pressable>
         </View>
 
+        {/* Search bar */}
         {(searchExpanded || search.length > 0) && (
-          <View style={styles.searchRow}>
-            <View style={[styles.searchWrap, searchFocused && styles.searchWrapFocused]}>
-              <AppIcon name="search" size={16} color={searchFocused ? P : '#AEAEB2'} />
+          <View className="mb-3">
+            <View
+              className="flex-row items-center gap-2 px-3 rounded-[14px]"
+              style={{
+                backgroundColor: '#FFFFFF',
+                borderWidth: 1,
+                borderColor: searchFocused ? P : 'rgba(0,0,0,0.08)',
+                height: 44,
+                ...CARD_SHADOW,
+              }}
+            >
+              <Search size={16} color={searchFocused ? P : '#AEAEB2'} strokeWidth={1.6} />
               <TextInput
-                style={styles.searchInput}
+                style={{ flex: 1, fontSize: 14, color: '#0F172A', height: 44, outlineStyle: 'none' } as any}
                 value={search}
                 onChangeText={setSearch}
                 onFocus={() => setSearchFocused(true)}
@@ -350,225 +443,128 @@ export function LabUsersManagement() {
                 autoFocus={searchExpanded && search.length === 0}
               />
               {search.length > 0 && (
-                <TouchableOpacity onPress={() => { setSearch(''); setSearchExpanded(false); }}>
-                  <AppIcon name="x-circle" size={15} color="#AEAEB2" />
-                </TouchableOpacity>
+                <Pressable onPress={() => { setSearch(''); setSearchExpanded(false); }}>
+                  <XCircle size={16} color="#AEAEB2" strokeWidth={1.6} />
+                </Pressable>
               )}
             </View>
           </View>
         )}
 
-        <View style={[styles.grid, isWide && styles.gridWide]}>
-          <View style={[styles.listCol, isWide && styles.listColWide]}>
+        {/* Grid: list + detail */}
+        <View style={[{ gap: 24 }, isWide && { flexDirection: 'row', alignItems: 'flex-start' }]}>
+          {/* List column */}
+          <View style={[{ flex: 1, gap: 12 }, isWide && { flex: 2, minWidth: 0 }]}>
             {loading ? (
               <ActivityIndicator size="large" color={P} style={{ marginTop: 60 }} />
             ) : filtered.length === 0 ? (
-              <View style={styles.empty}>
-                <AppIcon name="account-off-outline" size={40} color="#AEAEB2" />
-                <Text style={styles.emptyTitle}>{q ? 'Sonuç bulunamadı' : 'Kullanıcı bulunamadı'}</Text>
-                {q && <Text style={styles.emptySub}>"{q}" ile eşleşen kullanıcı yok</Text>}
+              <View className="items-center pt-16 gap-2.5">
+                <UserX size={40} color="#AEAEB2" strokeWidth={1.4} />
+                <Text style={{ fontSize: 16, fontWeight: '700', color: '#0F172A' }}>
+                  {q ? 'Sonuç bulunamadı' : 'Kullanıcı bulunamadı'}
+                </Text>
+                {q && <Text style={{ fontSize: 13, color: '#AEAEB2' }}>"{q}" ile eşleşen kullanıcı yok</Text>}
               </View>
             ) : (
-              <View style={styles.cardList}>
-                {filtered.map((profile) => {
-                  const badge = typeBadge(profile);
-                  const selected = selectedId === profile.id;
-                  const isLabUser = profile.user_type === 'lab';
-                  const userSkills = skillsMap.get(profile.id) ?? new Set();
+              <View style={{ gap: 10 }}>
+                {filtered.map((prof) => {
+                  const badge = typeBadge(prof);
+                  const selected = selectedId === prof.id;
+                  const isLabUser = prof.user_type === 'lab';
+                  const userSkills = skillsMap.get(prof.id) ?? new Set();
                   return (
-                    <TouchableOpacity
-                      key={profile.id}
-                      activeOpacity={0.85}
-                      onPress={() => handleSelect(profile)}
-                      style={[styles.card, selected ? styles.cardSelected : null, !profile.is_active && styles.cardInactive]}
+                    <Pressable
+                      key={prof.id}
+                      onPress={() => handleSelect(prof)}
+                      style={{
+                        backgroundColor: '#FFFFFF',
+                        borderRadius: 16,
+                        padding: 14,
+                        paddingLeft: 16,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 12,
+                        overflow: 'hidden',
+                        opacity: prof.is_active ? 1 : 0.55,
+                        ...(selected ? {
+                          borderWidth: 1,
+                          borderColor: `${P}30`,
+                        } : {
+                          borderWidth: 1,
+                          borderColor: 'rgba(0,0,0,0.04)',
+                        }),
+                        // @ts-ignore web
+                        cursor: 'pointer',
+                      } as any}
                     >
-                      {selected && <View style={styles.cardAccent} />}
-                      <View style={[styles.avatar, { backgroundColor: badge.avatarBg }]}>
-                        {(profile as any).avatar_url
-                          ? <Image source={{ uri: (profile as any).avatar_url }} style={styles.avatarImg} />
-                          : <Text style={[styles.avatarText, { color: badge.avatarText }]}>
-                              {initials(profile.full_name)}
-                            </Text>}
+                      {/* Avatar */}
+                      <View style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden', backgroundColor: `${P}14` }}>
+                        {(prof as any).avatar_url
+                          ? <Image source={{ uri: (prof as any).avatar_url }} style={{ width: 40, height: 40, borderRadius: 12 }} />
+                          : <Text style={{ fontSize: 14, fontWeight: '600', color: P }}>{initials(prof.full_name)}</Text>}
                       </View>
-                      <View style={styles.cardInfo}>
-                        <Text style={styles.cardName} numberOfLines={1}>{profile.full_name}</Text>
-                        <View style={styles.cardMetaRow}>
-                          <View style={[styles.typeBadge, { backgroundColor: badge.bg }]}>
-                            <Text style={[styles.typeBadgeText, { color: badge.text }]}>{badge.label}</Text>
+                      {/* Info */}
+                      <View className="flex-1" style={{ minWidth: 0, gap: 4 }}>
+                        <Text style={{ fontSize: 15, fontWeight: '600', color: '#0A0A0A', letterSpacing: -0.2 }} numberOfLines={1}>{prof.full_name}</Text>
+                        <View className="flex-row items-center gap-2">
+                          <View style={{ borderRadius: 100, paddingHorizontal: 8, paddingVertical: 2.5, backgroundColor: badge.bg }}>
+                            <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.3, color: badge.text }}>{badge.label}</Text>
                           </View>
-                          <Text style={styles.cardEmail} numberOfLines={1}>{profile.email ?? '—'}</Text>
+                          <Text style={{ fontSize: 12, color: '#9A9A9A', flexShrink: 1 }} numberOfLines={1}>{prof.email ?? '—'}</Text>
                         </View>
-                        {/* Smart-assignment stats + skill_level + allowed types + stage skills */}
+                        {/* Compact skill summary — details in side panel */}
                         {isLabUser && (() => {
-                          const lvl  = ((profile as any).skill_level ?? 'mid') as SkillLevel;
-                          const tr   = (profile as any).trust_score   ?? 70;
-                          const cmp  = (profile as any).completed_count ?? 0;
-                          const rj   = (profile as any).reject_count  ?? 0;
-                          const allowed = (profile as any).allowed_types as string[] | null;
-                          const trustColor = tr >= 80 ? '#059669' : tr >= 60 ? '#2563EB' : tr >= 40 ? '#D97706' : '#DC2626';
+                          const lvl = ((prof as any).skill_level ?? 'mid') as SkillLevel;
+                          const lvlOpt = SKILL_LEVEL_OPTIONS.find(o => o.key === lvl);
+                          const stageCount = (skillsMap.get(prof.id) ?? new Set()).size;
                           return (
-                            <>
-                              {/* Stats row */}
-                              <View style={styles.metricsRow}>
-                                <View style={[styles.trustBadge, { borderColor: trustColor }]}>
-                                  <View style={[styles.trustDot, { backgroundColor: trustColor }]} />
-                                  <Text style={[styles.trustText, { color: trustColor }]}>Güven {tr}</Text>
-                                </View>
-                                <Text style={styles.metricMuted}>✓ {cmp}</Text>
-                                <Text style={styles.metricMuted}>✗ {rj}</Text>
-
-                                {/* Hourly rate — inline edit */}
-                                {rateEditId === profile.id ? (
-                                  <View style={styles.rateEdit}>
-                                    <TextInput
-                                      value={rateInput}
-                                      onChangeText={setRateInput}
-                                      keyboardType="numeric"
-                                      autoFocus
-                                      placeholder="0"
-                                      placeholderTextColor="#C7C7CC"
-                                      onSubmitEditing={async () => {
-                                        const n = parseFloat(rateInput.replace(',', '.'));
-                                        if (!isNaN(n) && n >= 0) await setHourlyRate(profile.id, n);
-                                        setRateEditId(null);
-                                      }}
-                                      onBlur={async () => {
-                                        const n = parseFloat(rateInput.replace(',', '.'));
-                                        if (!isNaN(n) && n >= 0) await setHourlyRate(profile.id, n);
-                                        setRateEditId(null);
-                                      }}
-                                      style={styles.rateInput as any}
-                                    />
-                                    <Text style={styles.rateUnit}>₺/sa</Text>
-                                  </View>
-                                ) : (
-                                  <TouchableOpacity
-                                    onPress={(e) => {
-                                      (e as any).stopPropagation?.();
-                                      setRateInput(String((profile as any).hourly_rate ?? 0));
-                                      setRateEditId(profile.id);
-                                    }}
-                                    style={styles.rateChip}
-                                  >
-                                    <Text style={styles.rateChipText}>
-                                      {(profile as any).hourly_rate
-                                        ? `${(profile as any).hourly_rate} ₺/sa`
-                                        : 'Saat ücreti'}
-                                    </Text>
-                                    <AppIcon name="edit-2" size={9} color="#94A3B8" />
-                                  </TouchableOpacity>
-                                )}
+                            <View className="flex-row items-center gap-1.5 mt-0.5">
+                              <View style={{ borderRadius: 100, paddingHorizontal: 6, paddingVertical: 2, backgroundColor: `${lvlOpt?.color ?? '#94A3B8'}18` }}>
+                                <Text style={{ fontSize: 10, fontWeight: '600', color: lvlOpt?.color ?? '#94A3B8' }}>{lvlOpt?.label}</Text>
                               </View>
-
-                              {/* Skill level selector */}
-                              <View style={styles.skillRow}>
-                                <Text style={styles.miniLabel}>Seviye</Text>
-                                {SKILL_LEVEL_OPTIONS.map(opt => {
-                                  const active = lvl === opt.key;
-                                  return (
-                                    <TouchableOpacity
-                                      key={opt.key}
-                                      onPress={(e) => { (e as any).stopPropagation?.(); setSkillLevel(profile.id, opt.key); }}
-                                      activeOpacity={0.7}
-                                      style={[
-                                        styles.skillChip,
-                                        active && { backgroundColor: opt.color, borderColor: opt.color },
-                                      ]}
-                                    >
-                                      <Text style={[styles.skillChipText, active && { color: '#FFFFFF' }]}>
-                                        {opt.label}
-                                      </Text>
-                                    </TouchableOpacity>
-                                  );
-                                })}
-                              </View>
-
-                              {/* Allowed case types */}
-                              <View style={styles.skillRow}>
-                                <Text style={styles.miniLabel}>Türler</Text>
-                                {CASE_TYPE_OPTIONS.map(t => {
-                                  const has = allowed === null ? true : allowed.includes(t);
-                                  return (
-                                    <TouchableOpacity
-                                      key={t}
-                                      onPress={(e) => { (e as any).stopPropagation?.(); toggleAllowedType(profile.id, t); }}
-                                      activeOpacity={0.7}
-                                      style={[
-                                        styles.skillChip,
-                                        has && { backgroundColor: '#0F172A', borderColor: '#0F172A' },
-                                      ]}
-                                    >
-                                      <Text style={[styles.skillChipText, has && { color: '#FFFFFF' }]}>
-                                        {t}
-                                      </Text>
-                                    </TouchableOpacity>
-                                  );
-                                })}
-                              </View>
-
-                              {/* Stage Yetkileri */}
-                              <View style={styles.skillRow}>
-                                <Text style={styles.miniLabel}>Stage</Text>
-                                {SKILL_STAGES.map(st => {
-                                  const has  = userSkills.has(st);
-                                  const busy = skillBusy.has(`${profile.id}:${st}`);
-                                  const color = STAGE_COLOR[st];
-                                  return (
-                                    <TouchableOpacity
-                                      key={st}
-                                      onPress={(e) => { (e as any).stopPropagation?.(); toggleSkill(profile.id, st); }}
-                                      disabled={busy}
-                                      activeOpacity={0.7}
-                                      style={[
-                                        styles.skillChip,
-                                        has && { backgroundColor: color, borderColor: color },
-                                        busy && { opacity: 0.5 },
-                                      ]}
-                                    >
-                                      <Text style={[styles.skillChipText, has && { color: '#FFFFFF' }]}>
-                                        {STAGE_LABEL[st]}
-                                      </Text>
-                                    </TouchableOpacity>
-                                  );
-                                })}
-                              </View>
-                            </>
+                              {stageCount > 0 && (
+                                <Text style={{ fontSize: 11, color: '#9A9A9A' }}>{stageCount} stage</Text>
+                              )}
+                            </View>
                           );
                         })()}
                       </View>
-                      <View style={styles.cardRight}>
-                        <View style={styles.toggleCluster}>
-                          <Text style={[styles.toggleLabel, profile.is_active ? styles.toggleLabelActive : styles.toggleLabelInactive]}>
-                            {profile.is_active ? 'AKTİF' : 'PASİF'}
-                          </Text>
-                          {updatingId === profile.id ? (
-                            <ActivityIndicator size="small" color={P} />
-                          ) : (
-                            <AppSwitch
-                              value={profile.is_active ?? true}
-                              onValueChange={() => handleToggleActive(profile)}
-                              accentColor={P}
-                            />
-                          )}
-                        </View>
-                        <View style={styles.actionCluster}>
-                          <TouchableOpacity style={styles.actionBtn} onPress={() => setEditingProfile(profile)} activeOpacity={0.7}>
-                            <AppIcon name="edit-2" size={14} color="#64748B" />
-                          </TouchableOpacity>
-                          <TouchableOpacity style={styles.actionBtn} onPress={() => handleDeleteUser(profile)} activeOpacity={0.7}>
-                            <AppIcon name="trash-2" size={14} color={ERR} />
-                          </TouchableOpacity>
-                        </View>
+                      {/* Right side: toggle + actions */}
+                      <View className="flex-row items-center gap-3">
+                        {updatingId === prof.id ? (
+                          <ActivityIndicator size="small" color={P} />
+                        ) : (
+                          <PatternsToggle
+                            on={prof.is_active ?? true}
+                            onPress={() => handleToggleActive(prof)}
+                            accentColor={P}
+                          />
+                        )}
+                        <Pressable
+                          onPress={() => setEditingProfile(prof)}
+                          className="w-7 h-7 rounded-lg items-center justify-center"
+                          style={{ backgroundColor: 'rgba(0,0,0,0.04)' }}
+                        >
+                          <Pencil size={13} color="#9A9A9A" strokeWidth={1.6} />
+                        </Pressable>
+                        <Pressable
+                          onPress={() => handleDeleteUser(prof)}
+                          className="w-7 h-7 rounded-lg items-center justify-center"
+                          style={{ backgroundColor: 'rgba(0,0,0,0.04)' }}
+                        >
+                          <Trash2 size={13} color="#DC2626" strokeWidth={1.6} />
+                        </Pressable>
                       </View>
-                    </TouchableOpacity>
+                    </Pressable>
                   );
                 })}
               </View>
             )}
           </View>
 
+          {/* Detail panel */}
           {selectedProfile && (
-            <View style={[styles.detailCol, isWide && styles.detailColWide]}>
+            <View style={[{ width: '100%' }, isWide && { flex: 1, position: 'sticky', top: 24 }] as any}>
               <DetailPanel
                 profile={selectedProfile}
                 badge={typeBadge(selectedProfile)}
@@ -584,52 +580,80 @@ export function LabUsersManagement() {
         <View style={{ height: 40 }} />
       </ScrollView>
 
+      {/* Filter modal */}
       <Modal visible={showFilter} transparent animationType="fade" onRequestClose={() => setShowFilter(false)}>
-        <TouchableOpacity style={fp.backdrop} activeOpacity={1} onPress={() => setShowFilter(false)}>
-          <View style={fp.panel} onStartShouldSetResponder={() => true}>
-            <View style={fp.header}>
-              <View style={fp.headerLeft}>
-                <AppIcon name={'tune-variant' as any} size={16} color={P} />
-                <Text style={fp.headerTitle}>Filtrele</Text>
+        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', alignItems: 'flex-end', paddingTop: 70, paddingRight: 24 }} onPress={() => setShowFilter(false)}>
+          <View
+            onStartShouldSetResponder={() => true}
+            style={{
+              width: 300,
+              backgroundColor: '#FFFFFF',
+              borderRadius: 20,
+              overflow: 'hidden',
+              ...CARD_SHADOW,
+            }}
+          >
+            <View className="flex-row items-center justify-between px-4 py-3.5">
+              <View className="flex-row items-center gap-2">
+                <SlidersHorizontal size={16} color={P} strokeWidth={1.8} />
+                <Text style={{ fontSize: 15, fontWeight: '700', color: '#0F172A' }}>Filtrele</Text>
                 {activeFilterCount > 0 && (
-                  <View style={fp.countBadge}>
-                    <Text style={fp.countBadgeText}>{activeFilterCount}</Text>
+                  <View style={{ backgroundColor: P, borderRadius: 10, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#FFFFFF' }}>{activeFilterCount}</Text>
                   </View>
                 )}
               </View>
-              <TouchableOpacity onPress={() => { setDraftStatus('all'); }} activeOpacity={0.7}>
-                <Text style={fp.clearText}>Temizle</Text>
-              </TouchableOpacity>
+              <Pressable onPress={() => { setDraftStatus('all'); }}>
+                <Text style={{ fontSize: 13, fontWeight: '500', color: '#94A3B8' }}>Temizle</Text>
+              </Pressable>
             </View>
-            <View style={fp.divider} />
-            <View style={fp.section}>
-              <Text style={fp.sectionLabel}>DURUM</Text>
-              <View style={fp.chipRow}>
+            <View className="h-px bg-[#F1F5F9]" />
+            <View className="px-4 py-3.5">
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 10 }}>DURUM</Text>
+              <View className="flex-row gap-2 flex-wrap">
                 {([['all','Tümü'],['active','Aktif'],['inactive','Pasif']] as [StatusFilter,string][]).map(([val,lbl]) => (
-                  <TouchableOpacity key={val} style={[fp.chip, draftStatus === val && fp.chipActive]}
-                    onPress={() => setDraftStatus(val)} activeOpacity={0.75}>
-                    <Text style={[fp.chipText, draftStatus === val && fp.chipTextActive]}>{lbl}</Text>
-                  </TouchableOpacity>
+                  <Pressable
+                    key={val}
+                    onPress={() => setDraftStatus(val)}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center',
+                      paddingHorizontal: 12, paddingVertical: 7,
+                      borderRadius: 8, borderWidth: 1.5,
+                      borderColor: draftStatus === val ? P : '#F1F5F9',
+                      backgroundColor: draftStatus === val ? '#EFF6FF' : '#FAFAFA',
+                    }}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: draftStatus === val ? '600' : '500', color: draftStatus === val ? P : '#94A3B8' }}>{lbl}</Text>
+                  </Pressable>
                 ))}
               </View>
             </View>
-            <View style={fp.divider} />
-            <View style={fp.footer}>
-              <TouchableOpacity style={fp.cancelBtn} onPress={() => setShowFilter(false)} activeOpacity={0.7}>
-                <Text style={fp.cancelText}>İptal</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={fp.applyBtn} onPress={() => { setStatusFilter(draftStatus); setShowFilter(false); }} activeOpacity={0.7}>
-                <Text style={fp.applyText}>Uygula</Text>
-              </TouchableOpacity>
+            <View className="h-px bg-[#F1F5F9]" />
+            <View className="flex-row gap-2 px-4 py-3.5">
+              <Pressable
+                onPress={() => setShowFilter(false)}
+                className="flex-1 py-2.5 rounded-[10px] items-center justify-center"
+                style={{ borderWidth: 1.5, borderColor: '#F1F5F9' }}
+              >
+                <Text style={{ fontSize: 14, fontWeight: '600', color: '#6C6C70' }}>İptal</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => { setStatusFilter(draftStatus); setShowFilter(false); }}
+                className="flex-[2] py-2.5 rounded-[10px] items-center justify-center"
+                style={{ backgroundColor: P }}
+              >
+                <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>Uygula</Text>
+              </Pressable>
             </View>
           </View>
-        </TouchableOpacity>
+        </Pressable>
       </Modal>
 
       <AddUserModal
         visible={showAddModal}
         onClose={() => setShowAddModal(false)}
         onSuccess={() => { setShowAddModal(false); loadProfiles(); }}
+        accentColor={P}
       />
 
       <EditUserModal
@@ -639,12 +663,16 @@ export function LabUsersManagement() {
           setProfiles((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
           setEditingProfile(null);
         }}
+        accentColor={P}
+        onToggleType={toggleAllowedType}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
-// ─── Detail Panel ────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+// DetailPanel
+// ═════════════════════════════════════════════════════════════════════════════
 
 function DetailPanel({
   profile, badge, stats, loading, primary, onClose,
@@ -661,48 +689,75 @@ function DetailPanel({
     : null;
 
   return (
-    <View style={dp.card}>
-      <TouchableOpacity style={dp.closeBtn} onPress={onClose} activeOpacity={0.7} hitSlop={10}>
-        <AppIcon name="x" size={14} color="#64748B" />
-      </TouchableOpacity>
+    <View
+      className="bg-white rounded-[24px] overflow-hidden"
+      style={{
+        borderWidth: 1,
+        borderColor: '#F1F5F9',
+        ...Platform.select({
+          web: { boxShadow: '0 16px 40px rgba(0,0,0,0.06)' },
+          default: { shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 3 },
+        }),
+      } as any}
+    >
+      {/* Close button */}
+      <Pressable
+        onPress={onClose}
+        className="absolute top-3 right-3 z-10 w-7 h-7 rounded-lg items-center justify-center"
+        style={{ backgroundColor: '#F1F5F9' }}
+      >
+        <X size={14} color="#64748B" strokeWidth={2} />
+      </Pressable>
 
-      <View style={dp.hero}>
-        <View style={dp.avatarWrap}>
-          <View style={[dp.avatarGlow, { backgroundColor: primary }]} />
-          <View style={[dp.avatar, { backgroundColor: badge.avatarBg }]}>
+      {/* Hero */}
+      <View className="items-center py-7 px-7 pb-5" style={{ borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
+        <View style={{ width: 96, height: 96, alignItems: 'center', justifyContent: 'center', marginBottom: 14, position: 'relative' }}>
+          <View style={{ position: 'absolute', inset: 0, borderRadius: 48, opacity: 0.22, backgroundColor: primary, ...Platform.select({ web: { filter: 'blur(20px)' }, default: {} }) } as any} />
+          <View
+            style={{
+              width: 88, height: 88, borderRadius: 44, alignItems: 'center', justifyContent: 'center',
+              overflow: 'hidden', borderWidth: 4, borderColor: '#FFFFFF', backgroundColor: badge.avatarBg,
+              ...Platform.select({
+                web: { boxShadow: `0 8px 24px ${primary}26` },
+                default: { shadowColor: primary, shadowOpacity: 0.15, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
+              }),
+            } as any}
+          >
             {(profile as any).avatar_url
-              ? <Image source={{ uri: (profile as any).avatar_url }} style={dp.avatarImg} />
-              : <Text style={[dp.avatarText, { color: badge.avatarText }]}>{initials(profile.full_name)}</Text>}
+              ? <Image source={{ uri: (profile as any).avatar_url }} style={{ width: 88, height: 88, borderRadius: 44 }} />
+              : <Text style={{ fontSize: 28, fontWeight: '800', color: badge.avatarText }}>{initials(profile.full_name)}</Text>}
           </View>
         </View>
-        <Text style={dp.name}>{profile.full_name}</Text>
-        <Text style={[dp.role, { color: primary }]}>{badge.roleLabel.toUpperCase()}</Text>
-        <Text style={dp.joined}>Katılım: {fmtDate(profile.created_at)}</Text>
+        <Text style={{ ...DISPLAY, fontSize: 22, fontWeight: '800', color: '#0A0A0A', letterSpacing: -0.5, marginBottom: 2 }}>{profile.full_name}</Text>
+        <Text style={{ fontSize: 12, fontWeight: '700', letterSpacing: 1.0, marginBottom: 6, color: primary }}>{badge.roleLabel.toUpperCase()}</Text>
+        <Text style={{ fontSize: 12, color: '#94A3B8', fontWeight: '500' }}>Katılım: {fmtDate(profile.created_at)}</Text>
       </View>
 
-      <View style={dp.metricGrid}>
+      {/* Metric grid */}
+      <View className="flex-row flex-wrap gap-2.5 p-5">
         <MetricCell label="Toplam İş" value={loading ? '…' : (stats?.total ?? 0).toString()} icon="flask-outline" tint={primary} />
         <MetricCell label="Tamamlanma" value={loading ? '…' : productivity !== null ? `${productivity}%` : '—'} icon="chart-line" tint={primary} accent />
         <MetricCell label="Geciken" value={loading ? '…' : (stats?.overdue ?? 0).toString()} icon="alert-outline" tint="#DC2626" />
         <MetricCell label="Aktif" value={loading ? '…' : (stats?.active ?? 0).toString()} icon="progress-clock" tint="#64748B" />
       </View>
 
-      <View style={dp.listSection}>
-        <Text style={dp.listTitle}>AKTİF İŞLER</Text>
+      {/* Active orders list */}
+      <View className="px-5 pb-5">
+        <Text style={{ fontSize: 10, fontWeight: '800', color: '#64748B', letterSpacing: 0.8, marginBottom: 12 }}>AKTİF İŞLER</Text>
         {loading ? (
           <ActivityIndicator size="small" color={primary} style={{ marginTop: 8 }} />
         ) : !stats?.activeOrders?.length ? (
-          <Text style={dp.listEmpty}>Aktif iş yok</Text>
+          <Text style={{ fontSize: 13, color: '#94A3B8', paddingVertical: 6 }}>Aktif iş yok</Text>
         ) : (
           <View style={{ gap: 8 }}>
             {stats.activeOrders.map(o => (
-              <View key={o.id} style={dp.orderRow}>
-                <View style={[dp.dot, { backgroundColor: o.overdue ? '#DC2626' : primary }]} />
-                <View style={{ flex: 1 }}>
-                  <Text style={dp.orderNo}>{o.order_number}</Text>
-                  <Text style={dp.orderItem} numberOfLines={1}>{o.item}</Text>
+              <View key={o.id} className="flex-row items-center gap-2.5 rounded-[10px] p-3" style={{ backgroundColor: '#F1F5F9' }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: o.overdue ? '#DC2626' : primary }} />
+                <View className="flex-1">
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A' }}>{o.order_number}</Text>
+                  <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }} numberOfLines={1}>{o.item}</Text>
                 </View>
-                <AppIcon name="chevron-right" size={14} color="#CBD5E1" />
+                <ChevronRight size={14} color="#CBD5E1" strokeWidth={1.8} />
               </View>
             ))}
           </View>
@@ -716,25 +771,37 @@ function MetricCell({ label, value, icon, tint, accent }: {
   label: string; value: string; icon: string; tint: string; accent?: boolean;
 }) {
   return (
-    <View style={dp.metric}>
-      <View style={dp.metricIconWrap}>
-        <AppIcon name={icon as any} size={64} color={tint} style={{ opacity: 0.1 }} />
+    <View
+      style={{
+        flexGrow: 1, flexBasis: '45%', minWidth: 120,
+        backgroundColor: '#F8FAFC', borderRadius: 14,
+        padding: 14, paddingRight: 16, height: 92,
+        justifyContent: 'space-between', position: 'relative', overflow: 'hidden',
+      }}
+    >
+      <View style={{ position: 'absolute', top: -10, right: -10 }}>
+        <MetricIcon name={icon} size={64} color={tint} style={{ opacity: 0.1 }} />
       </View>
-      <Text style={dp.metricLabel}>{label}</Text>
-      <Text style={[dp.metricValue, accent && { color: tint }]}>{value}</Text>
+      <Text style={{ fontSize: 10, fontWeight: '800', color: '#64748B', letterSpacing: 0.5, textTransform: 'uppercase' }}>{label}</Text>
+      <Text style={{ fontSize: 22, fontWeight: '800', color: accent ? tint : '#0F172A', letterSpacing: -0.5 }}>{value}</Text>
     </View>
   );
 }
 
-// ─── Edit User Modal ──────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+// EditUserModal
+// ═════════════════════════════════════════════════════════════════════════════
 
 function EditUserModal({
-  profile, onClose, onSuccess,
+  profile, onClose, onSuccess, accentColor, onToggleType,
 }: {
   profile: Profile | null;
   onClose: () => void;
   onSuccess: (updated: Profile) => void;
+  accentColor: string;
+  onToggleType: (userId: string, type: string) => void;
 }) {
+  const P = accentColor;
   const [fullName,    setFullName]    = useState('');
   const [email,       setEmail]       = useState('');
   const [phone,       setPhone]       = useState('');
@@ -742,10 +809,11 @@ function EditUserModal({
   const [role,        setRole]        = useState<'manager' | 'technician'>('technician');
   const [isActive,    setIsActive]    = useState(true);
   const [newPassword, setNewPassword] = useState('');
+  const [skillLevel,  setSkillLevel2] = useState<SkillLevel>('mid');
+  const [salary,  setSalary]  = useState('');
   const [showPass,    setShowPass]    = useState(false);
   const [saving,      setSaving]      = useState(false);
   const [error,       setError]       = useState('');
-  // Stage yetkileri (sadece lab user'larında)
   const [skills,      setSkills]      = useState<Set<Stage>>(new Set());
   const [originalSkills, setOriginalSkills] = useState<Set<Stage>>(new Set());
 
@@ -759,8 +827,9 @@ function EditUserModal({
       setIsActive(profile.is_active ?? true);
       setNewPassword('');
       setError('');
+      setSkillLevel2(((profile as any).skill_level ?? 'mid') as SkillLevel);
+      setSalary(String((profile as any).monthly_salary ?? ''));
 
-      // Lab user'sa stage yetkilerini yükle
       if (profile.user_type === 'lab') {
         supabase
           .from('user_stage_skills')
@@ -787,12 +856,16 @@ function EditUserModal({
 
     setSaving(true);
     try {
-      const profileUpdates: Partial<Profile> = {
+      const profileUpdates: Partial<Profile> & Record<string, any> = {
         full_name:  fullName.trim(),
         phone:      phone.trim() || null,
         is_active:  isActive,
         ...(profile.user_type === 'doctor' ? { clinic_name: clinicName.trim() || null } : { clinic_name: null }),
-        ...(profile.user_type === 'lab'    ? { role } : {}),
+        ...(profile.user_type === 'lab'    ? {
+          role,
+          skill_level: skillLevel,
+          monthly_salary: salary ? parseFloat(salary.replace(',', '.')) : 0,
+        } : {}),
       };
 
       const { error: dbError } = await supabase.from('profiles').update(profileUpdates).eq('id', profile.id);
@@ -808,7 +881,6 @@ function EditUserModal({
         if (fnError || fnData?.error) throw new Error(fnData?.error ?? fnError?.message ?? 'Auth güncellenemedi');
       }
 
-      // Stage yetkileri diff (sadece lab user)
       if (profile.user_type === 'lab') {
         const toAdd    = [...skills].filter(s => !originalSkills.has(s));
         const toRemove = [...originalSkills].filter(s => !skills.has(s));
@@ -837,69 +909,126 @@ function EditUserModal({
   const isLabUser    = profile?.user_type === 'lab';
   const isDoctorUser = profile?.user_type === 'doctor';
 
+  const INPUT_STYLE = {
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.08)',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    fontSize: 14,
+    color: '#0F172A',
+    backgroundColor: '#FFFFFF',
+    marginBottom: 14,
+    height: 44,
+    outlineStyle: 'none',
+  } as any;
+
   return (
     <Modal visible={!!profile} transparent animationType="fade" onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={m.overlay}>
-        <View style={m.popup}>
-          <View style={m.header}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+        <View
+          className="bg-white rounded-[20px] w-full overflow-hidden"
+          style={{
+            maxWidth: 520, maxHeight: '92%',
+            ...Platform.select({
+              web: { boxShadow: '0 20px 60px rgba(0,0,0,0.15)' },
+              default: { shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.15, shadowRadius: 48, elevation: 10 },
+            }),
+          } as any}
+        >
+          {/* Header */}
+          <View className="flex-row justify-between items-center px-6 pt-5 pb-4" style={{ borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
             <View>
-              <Text style={m.title}>Kullanıcıyı Düzenle</Text>
+              <Text style={{ fontSize: 18, fontWeight: '700', color: '#0F172A' }}>Kullanıcıyı Düzenle</Text>
               {profile && (
-                <Text style={m.subtitle}>
+                <Text style={{ fontSize: 12, color: '#94A3B8', marginTop: 2 }}>
                   {profile.user_type === 'doctor' ? 'Hekim' : 'Lab Personeli'}
                 </Text>
               )}
             </View>
-            <TouchableOpacity onPress={onClose} style={m.closeBtn}>
-              <AppIcon name="x" size={16} color={P} />
-            </TouchableOpacity>
+            <Pressable onPress={onClose} className="w-8 h-8 rounded-lg items-center justify-center" style={{ backgroundColor: `${P}14` }}>
+              <X size={16} color={P} strokeWidth={2} />
+            </Pressable>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} style={m.body}>
-            <Text style={m.sectionLabel}>Kişisel Bilgiler</Text>
+          {/* Body */}
+          <ScrollView showsVerticalScrollIndicator={false} style={{ padding: 20 }}>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: '#64748B', letterSpacing: 0.5, marginBottom: 10, marginTop: 4 }}>Kişisel Bilgiler</Text>
 
-            <Text style={m.fieldLabel}>Ad Soyad *</Text>
-            <TextInput style={m.input} value={fullName} onChangeText={setFullName}
-              placeholder="Örn: Ahmet Yılmaz" placeholderTextColor={'#AEAEB2'} />
+            <Text style={{ fontSize: 11, fontWeight: '500', color: '#64748B', marginBottom: 7, letterSpacing: 0.5 }}>Ad Soyad *</Text>
+            <TextInput style={INPUT_STYLE} value={fullName} onChangeText={setFullName}
+              placeholder="Örn: Ahmet Yılmaz" placeholderTextColor="#AEAEB2" />
 
-            <Text style={m.fieldLabel}>Telefon</Text>
-            <TextInput style={m.input} value={phone} onChangeText={setPhone}
-              placeholder="0555 000 00 00" placeholderTextColor={'#AEAEB2'} keyboardType="phone-pad" />
+            <Text style={{ fontSize: 11, fontWeight: '500', color: '#64748B', marginBottom: 7, letterSpacing: 0.5 }}>Telefon</Text>
+            <TextInput style={INPUT_STYLE} value={phone} onChangeText={setPhone}
+              placeholder="0555 000 00 00" placeholderTextColor="#AEAEB2" keyboardType="phone-pad" />
 
             {isDoctorUser && (
               <>
-                <Text style={m.fieldLabel}>Klinik Adı</Text>
-                <TextInput style={m.input} value={clinicName} onChangeText={setClinicName}
-                  placeholder="Örn: Sağlık Kliniği" placeholderTextColor={'#AEAEB2'} />
+                <Text style={{ fontSize: 11, fontWeight: '500', color: '#64748B', marginBottom: 7, letterSpacing: 0.5 }}>Klinik Adı</Text>
+                <TextInput style={INPUT_STYLE} value={clinicName} onChangeText={setClinicName}
+                  placeholder="Örn: Sağlık Kliniği" placeholderTextColor="#AEAEB2" />
               </>
             )}
 
             {isLabUser && (
               <>
-                <Text style={m.sectionLabel}>Rol</Text>
-                <View style={m.roleRow}>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: '#64748B', letterSpacing: 0.5, marginBottom: 10, marginTop: 4 }}>Rol</Text>
+                <View className="flex-row gap-2 mb-5">
                   {(['manager', 'technician'] as const).map((r) => {
                     const active = role === r;
                     const label  = r === 'manager' ? 'Mesul Müdür' : 'Teknisyen';
-                    const icon   = r === 'manager' ? 'account-circle-outline' : 'wrench-outline';
                     return (
-                      <TouchableOpacity key={r} style={[m.roleCard, active && m.roleCardActive]} onPress={() => setRole(r)}>
-                        <AppIcon name={icon as any} size={20} color={active ? '#FFF' : '#374151'} />
-                        <Text style={[m.roleLabel, active && m.roleLabelActive]}>{label}</Text>
-                      </TouchableOpacity>
+                      <Pressable
+                        key={r}
+                        onPress={() => setRole(r)}
+                        className="flex-1 rounded-[14px] p-3 items-center gap-1"
+                        style={{
+                          borderWidth: 1.5,
+                          borderColor: active ? P : '#E5E7EB',
+                          backgroundColor: active ? P : '#FAFAFA',
+                        }}
+                      >
+                        {r === 'manager'
+                          ? <UserCircle size={20} color={active ? '#FFF' : '#374151'} strokeWidth={1.6} />
+                          : <Wrench size={20} color={active ? '#FFF' : '#374151'} strokeWidth={1.6} />}
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: active ? '#FFFFFF' : '#374151', textAlign: 'center' }}>{label}</Text>
+                      </Pressable>
                     );
                   })}
                 </View>
 
-                {/* Stage Yetkileri — AUTO_ASSIGN bu listeye göre seçim yapar */}
-                <Text style={m.sectionLabel}>Stage Yetkileri</Text>
-                <Text style={m.skillHint}>Hangi aşamayı yapabilir? AUTO_ASSIGN bu listeden seçer.</Text>
-                <View style={m.skillRow}>
+                {/* Seviye */}
+                <Text style={{ fontSize: 11, fontWeight: '600', color: '#64748B', letterSpacing: 0.5, marginBottom: 8, marginTop: 4 }}>Seviye</Text>
+                <View className="flex-row gap-2 mb-4">
+                  {SKILL_LEVEL_OPTIONS.map(opt => {
+                    const active = skillLevel === opt.key;
+                    return (
+                      <Pressable
+                        key={opt.key}
+                        onPress={() => setSkillLevel2(opt.key)}
+                        className="flex-1 py-2 rounded-xl items-center"
+                        style={{
+                          borderWidth: 1,
+                          borderColor: active ? opt.color : 'rgba(0,0,0,0.08)',
+                          backgroundColor: active ? opt.color : '#FFFFFF',
+                        }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: active ? '#FFFFFF' : '#6B6B6B' }}>{opt.label}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                {/* Stage Yetkileri */}
+                <Text style={{ fontSize: 11, fontWeight: '600', color: '#64748B', letterSpacing: 0.5, marginBottom: 6, marginTop: 4 }}>Stage Yetkileri</Text>
+                <Text style={{ fontSize: 11, color: '#9A9A9A', marginBottom: 8 }}>Hangi aşamayı yapabilir?</Text>
+                <View className="flex-row flex-wrap gap-1.5 mb-4">
                   {SKILL_STAGES.map(st => {
                     const has = skills.has(st);
                     const color = STAGE_COLOR[st];
                     return (
-                      <TouchableOpacity
+                      <Pressable
                         key={st}
                         onPress={() => {
                           setSkills(prev => {
@@ -909,67 +1038,109 @@ function EditUserModal({
                             return nx;
                           });
                         }}
-                        activeOpacity={0.7}
-                        style={[
-                          m.skillChip,
-                          has && { backgroundColor: color, borderColor: color },
-                        ]}
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', gap: 4,
+                          paddingHorizontal: 10, paddingVertical: 6,
+                          borderRadius: 999,
+                          borderWidth: 1, borderColor: has ? color : 'rgba(0,0,0,0.08)',
+                          backgroundColor: has ? color : '#FFFFFF',
+                        }}
                       >
-                        {has && <AppIcon name="check" size={11} color="#FFFFFF" strokeWidth={3} />}
-                        <Text style={[m.skillChipText, has && { color: '#FFFFFF' }]}>
+                        {has && <Check size={11} color="#FFFFFF" strokeWidth={3} />}
+                        <Text style={{ fontSize: 11, fontWeight: '600', color: has ? '#FFFFFF' : '#6B6B6B' }}>
                           {STAGE_LABEL[st]}
                         </Text>
-                      </TouchableOpacity>
+                      </Pressable>
                     );
                   })}
                 </View>
+
+                {/* Vaka Türleri */}
+                <Text style={{ fontSize: 11, fontWeight: '600', color: '#64748B', letterSpacing: 0.5, marginBottom: 6, marginTop: 4 }}>Vaka Türleri</Text>
+                <View className="flex-row flex-wrap gap-1.5 mb-4">
+                  {CASE_TYPE_OPTIONS.map(t => {
+                    const currentAllowed = (profile as any)?.allowed_types as string[] | null;
+                    const has = !currentAllowed ? true : Array.isArray(currentAllowed) ? currentAllowed.includes(t) : false;
+                    return (
+                      <Pressable
+                        key={t}
+                        onPress={() => {
+                          // Toggle via parent's toggleAllowedType
+                          if (profile) onToggleType(profile.id, t);
+                        }}
+                        style={{
+                          paddingHorizontal: 10, paddingVertical: 6,
+                          borderRadius: 999,
+                          borderWidth: 1, borderColor: has ? '#0A0A0A' : 'rgba(0,0,0,0.08)',
+                          backgroundColor: has ? '#0A0A0A' : '#FFFFFF',
+                        }}
+                      >
+                        <Text style={{ fontSize: 11, fontWeight: '600', color: has ? '#FFFFFF' : '#6B6B6B' }}>{t}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                {/* Saat Ücreti */}
+                <Text style={{ fontSize: 11, fontWeight: '500', color: '#64748B', marginBottom: 7, letterSpacing: 0.5 }}>Aylık Maaş (₺)</Text>
+                <TextInput style={INPUT_STYLE} value={salary} onChangeText={setSalary}
+                  placeholder="0" placeholderTextColor="#AEAEB2" keyboardType="numeric" />
               </>
             )}
 
-            <Text style={m.sectionLabel}>Hesap & Güvenlik</Text>
-            <Text style={m.fieldLabel}>E-posta *</Text>
-            <TextInput style={m.input} value={email} onChangeText={setEmail}
-              placeholder="kullanici@ornek.com" placeholderTextColor={'#AEAEB2'}
+            <Text style={{ fontSize: 11, fontWeight: '600', color: '#64748B', letterSpacing: 0.5, marginBottom: 10, marginTop: 4 }}>Hesap & Güvenlik</Text>
+            <Text style={{ fontSize: 11, fontWeight: '500', color: '#64748B', marginBottom: 7, letterSpacing: 0.5 }}>E-posta *</Text>
+            <TextInput style={INPUT_STYLE} value={email} onChangeText={setEmail}
+              placeholder="kullanici@ornek.com" placeholderTextColor="#AEAEB2"
               keyboardType="email-address" autoCapitalize="none" />
 
-            <Text style={m.fieldLabel}>Yeni Şifre</Text>
-            <View style={m.inputRow}>
-              <TextInput style={[m.input, { flex: 1, marginBottom: 0 }]} value={newPassword} onChangeText={setNewPassword}
-                placeholder="Boş bırakılırsa değişmez" placeholderTextColor={'#AEAEB2'} secureTextEntry={!showPass} />
-              <TouchableOpacity style={m.eyeBtn} onPress={() => setShowPass(v => !v)}>
-                <AppIcon name={showPass ? 'eye-off-outline' : 'eye-outline'} size={18} color={'#AEAEB2'} />
-              </TouchableOpacity>
+            <Text style={{ fontSize: 11, fontWeight: '500', color: '#64748B', marginBottom: 7, letterSpacing: 0.5 }}>Yeni Şifre</Text>
+            <View className="flex-row items-center gap-2 mb-1">
+              <TextInput style={{ ...INPUT_STYLE, flex: 1, marginBottom: 0 }} value={newPassword} onChangeText={setNewPassword}
+                placeholder="Boş bırakılırsa değişmez" placeholderTextColor="#AEAEB2" secureTextEntry={!showPass} />
+              <Pressable onPress={() => setShowPass(v => !v)} style={{ padding: 11, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', borderRadius: 14, backgroundColor: '#FAFAFA' }}>
+                {showPass ? <EyeOff size={18} color="#AEAEB2" strokeWidth={1.6} /> : <Eye size={18} color="#AEAEB2" strokeWidth={1.6} />}
+              </Pressable>
             </View>
-            <Text style={m.hint}>En az 6 karakter. Boş bırakılırsa şifre değişmez.</Text>
+            <Text style={{ fontSize: 11, color: '#AEAEB2', marginBottom: 14, marginTop: 2 }}>En az 6 karakter. Boş bırakılırsa şifre değişmez.</Text>
 
-            <View style={[m.toggleRow, { marginTop: 16 }]}>
-              <View style={{ flex: 1 }}>
-                <Text style={m.toggleLabel}>Hesap Aktif</Text>
-                <Text style={m.toggleSub}>{isActive ? 'Kullanıcı giriş yapabilir' : 'Kullanıcı giriş yapamaz'}</Text>
+            <View
+              className="flex-row items-center gap-3 rounded-[14px] p-3.5 mb-4"
+              style={{ backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', marginTop: 16 }}
+            >
+              <View className="flex-1">
+                <Text style={{ fontSize: 14, fontWeight: '600', color: '#0F172A', marginBottom: 2 }}>Hesap Aktif</Text>
+                <Text style={{ fontSize: 12, color: '#9CA3AF' }}>{isActive ? 'Kullanıcı giriş yapabilir' : 'Kullanıcı giriş yapamaz'}</Text>
               </View>
-              <AppSwitch value={isActive} onValueChange={setIsActive} accentColor={P} />
+              <PatternsToggle on={isActive} onPress={() => setIsActive(v => !v)} accentColor={P} />
             </View>
 
             {error ? (
-              <View style={m.errorBox}>
-                <AppIcon name="alert-circle-outline" size={14} color={ERR} />
-                <Text style={m.errorText}>{error}</Text>
+              <View className="flex-row items-center gap-1.5 rounded-lg p-2.5 mb-3" style={{ backgroundColor: '#FEF2F2' }}>
+                <AlertCircle size={14} color={ERR} strokeWidth={1.8} />
+                <Text style={{ fontSize: 13, color: ERR, flex: 1 }}>{error}</Text>
               </View>
             ) : null}
           </ScrollView>
 
-          <View style={m.footer}>
-            <TouchableOpacity style={m.cancelBtn} onPress={onClose}>
-              <Text style={m.cancelText}>İptal</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[m.saveBtn, saving && m.saveBtnDisabled]} onPress={handleSave} disabled={saving}>
+          {/* Footer */}
+          <View className="flex-row gap-2.5 p-4" style={{ borderTopWidth: 1, borderTopColor: '#F3F4F6' }}>
+            <Pressable onPress={onClose} className="flex-1 py-3 rounded-[14px] items-center" style={{ borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' }}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151' }}>İptal</Text>
+            </Pressable>
+            <Pressable
+              onPress={handleSave}
+              disabled={saving}
+              className="flex-[2] py-3 rounded-[14px] items-center flex-row justify-center gap-1.5"
+              style={{ backgroundColor: P, opacity: saving ? 0.6 : 1 }}
+            >
               {saving ? <ActivityIndicator size="small" color="#FFFFFF" /> : (
                 <>
-                  <AppIcon name="content-save-outline" size={16} color="#FFFFFF" />
-                  <Text style={m.saveText}>Kaydet</Text>
+                  <Save size={16} color="#FFFFFF" strokeWidth={1.8} />
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>Kaydet</Text>
                 </>
               )}
-            </TouchableOpacity>
+            </Pressable>
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -977,21 +1148,49 @@ function EditUserModal({
   );
 }
 
-// ─── Add User Modal ───────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+// AddUserModal
+// ═════════════════════════════════════════════════════════════════════════════
+
+function RoleIcon({ role, active }: { role: NewUserRole; active: boolean }) {
+  const color = active ? '#FFFFFF' : '#374151';
+  const sw = 1.6;
+  switch (role) {
+    case 'manager':      return <UserCircle size={20} color={color} strokeWidth={sw} />;
+    case 'technician':   return <Wrench size={20} color={color} strokeWidth={sw} />;
+    case 'doctor':       return <Stethoscope size={20} color={color} strokeWidth={sw} />;
+    case 'clinic_admin': return <Building2 size={20} color={color} strokeWidth={sw} />;
+    default:             return <UserCircle size={20} color={color} strokeWidth={sw} />;
+  }
+}
 
 function AddUserModal({
-  visible, onClose, onSuccess,
+  visible, onClose, onSuccess, accentColor,
 }: {
-  visible: boolean; onClose: () => void; onSuccess: () => void;
+  visible: boolean; onClose: () => void; onSuccess: () => void; accentColor: string;
 }) {
-  const [fullName, setFullName] = useState('');
-  const [email,    setEmail]    = useState('');
-  const [password, setPassword] = useState('');
-  const [selectedRole, setSelectedRole] = useState<NewUserRole>('technician');
+  const P = accentColor;
+  const [fullName,    setFullName]    = useState('');
+  const [email,       setEmail]       = useState('');
+  const [password,    setPassword]    = useState('');
+  const [clinicName,  setClinicName]  = useState('');
+  const [phone,       setPhone]       = useState('');
+  const [level,       setLevel]       = useState<'junior' | 'mid' | 'senior'>('mid');
+  const [stagePerms,  setStagePerms]  = useState<string[]>([]);
+  const [caseTypes,   setCaseTypes]   = useState<string[]>([]);
+  const [salary,  setSalary]  = useState('');
+  const [selectedRole, setSelectedRole] = useState<NewUserRole>('doctor');
   const [saving,  setSaving]  = useState(false);
   const [error,   setError]   = useState('');
 
-  const reset = () => { setFullName(''); setEmail(''); setPassword(''); setSelectedRole('technician'); setError(''); };
+  const isDoctorType = selectedRole === 'doctor' || selectedRole === 'clinic_admin';
+  const isTechnician = selectedRole === 'technician';
+
+  const reset = () => {
+    setFullName(''); setEmail(''); setPassword(''); setClinicName(''); setPhone('');
+    setLevel('mid'); setStagePerms([]); setCaseTypes([]); setSalary('');
+    setSelectedRole('doctor'); setError('');
+  };
   const handleClose = () => { reset(); onClose(); };
 
   const handleSave = async () => {
@@ -999,11 +1198,31 @@ function AddUserModal({
     if (!fullName.trim())    { setError('Ad Soyad zorunludur'); return; }
     if (!email.trim())       { setError('E-posta zorunludur'); return; }
     if (password.length < 6) { setError('Şifre en az 6 karakter olmalıdır'); return; }
+    if (isDoctorType && !clinicName.trim()) { setError('Klinik adı zorunludur'); return; }
+
+    const user_type = isDoctorType ? selectedRole : 'lab';
+    const role = isDoctorType ? null : selectedRole;
 
     setSaving(true);
     try {
       const { data, error: fnError } = await supabase.functions.invoke('admin-create-user', {
-        body: { email: email.trim(), password, full_name: fullName.trim(), user_type: 'lab', role: selectedRole },
+        body: {
+          email: email.trim(),
+          password,
+          full_name: fullName.trim(),
+          user_type,
+          role,
+          ...(isDoctorType ? {
+            clinic_name: clinicName.trim(),
+            phone: phone.trim() || null,
+          } : {}),
+          ...(isTechnician ? {
+            specialty: caseTypes.join(', ') || null,
+            department: stagePerms.join(', ') || null,
+            level,
+            monthly_salary: salary ? Number(salary) : null,
+          } : {}),
+        },
       });
       if (fnError || data?.error) {
         setError(data?.error ?? fnError?.message ?? 'Bir hata oluştu');
@@ -1018,304 +1237,215 @@ function AddUserModal({
     }
   };
 
+  const INPUT_STYLE = {
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.08)',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    fontSize: 14,
+    color: '#0F172A',
+    backgroundColor: '#FFFFFF',
+    marginBottom: 14,
+    height: 44,
+    outlineStyle: 'none',
+  } as any;
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={m.overlay}>
-        <View style={m.popup}>
-          <View style={m.header}>
-            <Text style={m.title}>Yeni Kullanıcı</Text>
-            <TouchableOpacity onPress={handleClose}>
-              <AppIcon name="close" size={22} color={'#6C6C70'} />
-            </TouchableOpacity>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+        <View
+          className="bg-white rounded-[20px] w-full overflow-hidden"
+          style={{
+            maxWidth: 520, maxHeight: '92%',
+            ...Platform.select({
+              web: { boxShadow: '0 20px 60px rgba(0,0,0,0.15)' },
+              default: { shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.15, shadowRadius: 48, elevation: 10 },
+            }),
+          } as any}
+        >
+          {/* Header */}
+          <View className="flex-row justify-between items-center px-6 pt-5 pb-4" style={{ borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: '#0F172A' }}>Yeni Kullanıcı</Text>
+            <Pressable onPress={handleClose}>
+              <X size={22} color="#6C6C70" strokeWidth={1.8} />
+            </Pressable>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} style={m.body}>
-            <Text style={m.sectionLabel}>Kullanıcı Rolü</Text>
-            <View style={m.roleGrid}>
+          {/* Body */}
+          <ScrollView showsVerticalScrollIndicator={false} style={{ padding: 20 }}>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: '#64748B', letterSpacing: 0.5, marginBottom: 10, marginTop: 4 }}>Kullanıcı Türü</Text>
+            <View className="flex-row flex-wrap gap-2 mb-5">
               {ROLE_OPTIONS.map((opt) => {
                 const active = selectedRole === opt.key;
                 return (
-                  <TouchableOpacity key={opt.key} style={[m.roleCard, active && m.roleCardActive]} onPress={() => setSelectedRole(opt.key)}>
-                    <AppIcon name={opt.icon as any} size={20} color={active ? '#FFFFFF' : '#374151'} />
-                    <Text style={[m.roleLabel, active && m.roleLabelActive]}>{opt.label}</Text>
-                    <Text style={[m.roleSub, active && m.roleSubActive]}>{opt.sub}</Text>
-                  </TouchableOpacity>
+                  <Pressable
+                    key={opt.key}
+                    onPress={() => setSelectedRole(opt.key)}
+                    style={{
+                      flex: 1, minWidth: 100, borderRadius: 14, padding: 12,
+                      alignItems: 'center', gap: 4,
+                      borderWidth: 1.5,
+                      borderColor: active ? P : '#E5E7EB',
+                      backgroundColor: active ? P : '#FAFAFA',
+                    }}
+                  >
+                    <RoleIcon role={opt.key} active={active} />
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: active ? '#FFFFFF' : '#374151', textAlign: 'center' }}>{opt.label}</Text>
+                    <Text style={{ fontSize: 10, color: active ? 'rgba(255,255,255,0.6)' : '#9CA3AF', textAlign: 'center' }}>{opt.sub}</Text>
+                  </Pressable>
                 );
               })}
             </View>
 
-            <Text style={m.sectionLabel}>Bilgiler</Text>
-            <Text style={m.fieldLabel}>Ad Soyad *</Text>
-            <TextInput style={m.input} value={fullName} onChangeText={setFullName}
-              placeholder="Örn: Ahmet Yılmaz" placeholderTextColor={'#AEAEB2'} />
+            <Text style={{ fontSize: 11, fontWeight: '600', color: '#64748B', letterSpacing: 0.5, marginBottom: 10, marginTop: 4 }}>Kişisel Bilgiler</Text>
+            <Text style={{ fontSize: 11, fontWeight: '500', color: '#64748B', marginBottom: 7, letterSpacing: 0.5 }}>Ad Soyad *</Text>
+            <TextInput style={INPUT_STYLE} value={fullName} onChangeText={setFullName}
+              placeholder={isDoctorType ? 'Dr. Ahmet Yılmaz' : 'Örn: Ahmet Yılmaz'} placeholderTextColor="#AEAEB2" />
 
-            <Text style={m.fieldLabel}>E-posta *</Text>
-            <TextInput style={m.input} value={email} onChangeText={setEmail}
-              placeholder="kullanici@ornek.com" placeholderTextColor={'#AEAEB2'}
+            {isDoctorType && (
+              <>
+                <Text style={{ fontSize: 11, fontWeight: '500', color: '#64748B', marginBottom: 7, letterSpacing: 0.5 }}>
+                  {selectedRole === 'clinic_admin' ? 'Klinik Adı *' : 'Muayenehane Adı *'}
+                </Text>
+                <TextInput style={INPUT_STYLE} value={clinicName} onChangeText={setClinicName}
+                  placeholder="Yılmaz Diş Kliniği" placeholderTextColor="#AEAEB2" />
+
+                <Text style={{ fontSize: 11, fontWeight: '500', color: '#64748B', marginBottom: 7, letterSpacing: 0.5 }}>Telefon</Text>
+                <TextInput style={INPUT_STYLE} value={phone} onChangeText={setPhone}
+                  placeholder="0532 000 00 00" placeholderTextColor="#AEAEB2" keyboardType="phone-pad" />
+              </>
+            )}
+
+            {isTechnician && (
+              <>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: '#64748B', letterSpacing: 0.5, marginBottom: 10, marginTop: 4 }}>Teknisyen Bilgileri</Text>
+
+                {/* Seviye */}
+                <Text style={{ fontSize: 11, fontWeight: '500', color: P, marginBottom: 7 }}>Seviye</Text>
+                <View className="flex-row gap-2 mb-4">
+                  {([['junior', 'Junior'], ['mid', 'Mid'], ['senior', 'Senior']] as const).map(([key, label]) => {
+                    const active = level === key;
+                    return (
+                      <Pressable
+                        key={key}
+                        onPress={() => setLevel(key)}
+                        style={{
+                          flex: 1, paddingVertical: 10, borderRadius: 20, alignItems: 'center',
+                          borderWidth: 1.5,
+                          borderColor: active ? P : '#E5E7EB',
+                          backgroundColor: active ? P : '#FAFAFA',
+                        }}
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#FFF' : '#374151' }}>{label}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                {/* Stage Yetkileri */}
+                <Text style={{ fontSize: 11, fontWeight: '500', color: P, marginBottom: 4 }}>Stage Yetkileri</Text>
+                <Text style={{ fontSize: 10, color: '#94A3B8', marginBottom: 8 }}>Hangi aşamayı yapabilir?</Text>
+                <View className="flex-row flex-wrap gap-2 mb-4">
+                  {['Triyaj', 'Tasarım', 'CAM', 'Frezeleme', 'Sinterleme', 'Bitiş', 'Kalite Kontrol'].map((stage) => {
+                    const active = stagePerms.includes(stage);
+                    return (
+                      <Pressable
+                        key={stage}
+                        onPress={() => setStagePerms(active ? stagePerms.filter(s => s !== stage) : [...stagePerms, stage])}
+                        style={{
+                          paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
+                          borderWidth: 1.5,
+                          borderColor: active ? '#0F172A' : '#E5E7EB',
+                          backgroundColor: active ? '#F8FAFC' : '#FAFAFA',
+                        }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: '500', color: active ? '#0F172A' : '#6B7280' }}>{stage}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                {/* Vaka Türleri */}
+                <Text style={{ fontSize: 11, fontWeight: '500', color: P, marginBottom: 8 }}>Vaka Türleri</Text>
+                <View className="flex-row flex-wrap gap-2 mb-4">
+                  {['zirconia', 'emax', 'pmma', 'metal', 'pfm'].map((ct) => {
+                    const active = caseTypes.includes(ct);
+                    return (
+                      <Pressable
+                        key={ct}
+                        onPress={() => setCaseTypes(active ? caseTypes.filter(c => c !== ct) : [...caseTypes, ct])}
+                        style={{
+                          paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
+                          backgroundColor: active ? '#0F172A' : '#FAFAFA',
+                          borderWidth: 1.5,
+                          borderColor: active ? '#0F172A' : '#E5E7EB',
+                        }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: active ? '#FFF' : '#374151' }}>{ct}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                {/* Saat Ücreti */}
+                <Text style={{ fontSize: 11, fontWeight: '500', color: P, marginBottom: 7 }}>Aylık Maaş (₺)</Text>
+                <TextInput style={INPUT_STYLE} value={salary} onChangeText={setSalary}
+                  placeholder="0" placeholderTextColor="#AEAEB2" keyboardType="numeric" />
+              </>
+            )}
+
+            <Text style={{ fontSize: 11, fontWeight: '600', color: '#64748B', letterSpacing: 0.5, marginBottom: 10, marginTop: 4 }}>Hesap Bilgileri</Text>
+            <Text style={{ fontSize: 11, fontWeight: '500', color: '#64748B', marginBottom: 7, letterSpacing: 0.5 }}>E-posta *</Text>
+            <TextInput style={INPUT_STYLE} value={email} onChangeText={setEmail}
+              placeholder="kullanici@ornek.com" placeholderTextColor="#AEAEB2"
               keyboardType="email-address" autoCapitalize="none" />
 
-            <Text style={m.fieldLabel}>Şifre *</Text>
-            <TextInput style={m.input} value={password} onChangeText={setPassword}
-              placeholder="En az 6 karakter" placeholderTextColor={'#AEAEB2'} secureTextEntry />
+            <Text style={{ fontSize: 11, fontWeight: '500', color: '#64748B', marginBottom: 7, letterSpacing: 0.5 }}>Şifre *</Text>
+            <TextInput style={INPUT_STYLE} value={password} onChangeText={setPassword}
+              placeholder="En az 6 karakter" placeholderTextColor="#AEAEB2" secureTextEntry />
+
+            {isDoctorType && (
+              <View style={{
+                flexDirection: 'row', alignItems: 'center', gap: 8,
+                padding: 10, borderRadius: 10, backgroundColor: '#F0FDF4', marginBottom: 14,
+              }}>
+                <Check size={13} color="#16A34A" strokeWidth={2} />
+                <Text style={{ fontSize: 11, color: '#15803D', flex: 1, lineHeight: 16 }}>
+                  Hekim/klinik otomatik onaylı olarak oluşturulur. OTP ve onay adımı atlanır.
+                </Text>
+              </View>
+            )}
 
             {error ? (
-              <View style={m.errorBox}>
-                <AppIcon name="alert-circle-outline" size={14} color={ERR} />
-                <Text style={m.errorText}>{error}</Text>
+              <View className="flex-row items-center gap-1.5 rounded-lg p-2.5 mb-3" style={{ backgroundColor: '#FEF2F2' }}>
+                <AlertCircle size={14} color={ERR} strokeWidth={1.8} />
+                <Text style={{ fontSize: 13, color: ERR, flex: 1 }}>{error}</Text>
               </View>
             ) : null}
           </ScrollView>
 
-          <View style={m.footer}>
-            <TouchableOpacity style={m.cancelBtn} onPress={handleClose}>
-              <Text style={m.cancelText}>İptal</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[m.saveBtn, saving && m.saveBtnDisabled]} onPress={handleSave} disabled={saving}>
+          {/* Footer */}
+          <View className="flex-row gap-2.5 p-4" style={{ borderTopWidth: 1, borderTopColor: '#F3F4F6' }}>
+            <Pressable onPress={handleClose} className="flex-1 py-3 rounded-[14px] items-center" style={{ borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' }}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151' }}>İptal</Text>
+            </Pressable>
+            <Pressable
+              onPress={handleSave}
+              disabled={saving}
+              className="flex-[2] py-3 rounded-[14px] items-center flex-row justify-center gap-1.5"
+              style={{ backgroundColor: P, opacity: saving ? 0.6 : 1 }}
+            >
               {saving ? <ActivityIndicator size="small" color="#FFFFFF" /> : (
                 <>
-                  <AppIcon name="check" size={16} color="#FFFFFF" />
-                  <Text style={m.saveText}>Kullanıcı Ekle</Text>
+                  <Check size={16} color="#FFFFFF" strokeWidth={2} />
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>Kullanıcı Ekle</Text>
                 </>
               )}
-            </TouchableOpacity>
+            </Pressable>
           </View>
         </View>
       </KeyboardAvoidingView>
     </Modal>
   );
 }
-
-// ─── Styles ──────────────────────────────────────────────────────────────────
-
-const styles = StyleSheet.create({
-  safe:      { flex: 1, backgroundColor: BG },
-  container: { padding: 24, paddingBottom: 60, maxWidth: 1440, width: '100%', alignSelf: 'center' },
-
-  headerBtn:        { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFFFFF', paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10, borderWidth: 1, borderColor: '#F1F5F9' },
-  headerBtnActive:  { backgroundColor: '#EFF6FF', borderColor: '#DBEAFE' },
-  headerBtnText:    { fontSize: 13, fontWeight: '600', color: '#0F172A' },
-  headerBtnBadge:   { backgroundColor: P, borderRadius: 10, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5, marginLeft: 2 },
-  headerBtnBadgeText: { fontSize: 10, fontWeight: '800', color: '#FFFFFF' },
-  addBtn:           { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: P, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 10 },
-  addBtnText:       { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
-
-  subToolbar:      { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 20 },
-
-  searchRow:         { marginBottom: 12 },
-  searchWrap:        { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: '#F1F5F9', paddingHorizontal: 12, height: 42 },
-  searchWrapFocused: { borderColor: P },
-  searchInput:       { flex: 1, fontSize: 14, color: '#0F172A', height: 42, outlineStyle: 'none' } as any,
-
-  grid:        { gap: 24 },
-  gridWide:    { flexDirection: 'row', alignItems: 'flex-start' },
-  listCol:     { flex: 1, gap: 12 },
-  listColWide: { flex: 2, minWidth: 0 },
-  detailCol:   { width: '100%' },
-  detailColWide: { flex: 1, position: 'sticky', top: 24 } as any,
-
-  cardList:    { gap: 12 },
-  card:        {
-    backgroundColor: '#F2F4F6', borderRadius: 14, padding: 16, paddingLeft: 20,
-    flexDirection: 'row', alignItems: 'center', gap: 14, position: 'relative', overflow: 'hidden',
-  } as any,
-  cardSelected: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 2, borderColor: 'rgba(37,99,235,0.2)',
-    boxShadow: '0 8px 32px rgba(37,99,235,0.08)',
-  } as any,
-  cardAccent:   { position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, backgroundColor: P },
-  cardInactive: { opacity: 0.55 },
-  avatar:       { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' },
-  avatarImg:    { width: 52, height: 52, borderRadius: 26 },
-  avatarText:   { fontSize: 17, fontWeight: '800' },
-  cardInfo:     { flex: 1, gap: 6, minWidth: 0 },
-  cardName:     { fontSize: 16, fontWeight: '800', color: '#0F172A', letterSpacing: -0.3 },
-  cardMetaRow:  { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
-  typeBadge:    { borderRadius: 100, paddingHorizontal: 8, paddingVertical: 3 },
-  typeBadgeText:{ fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
-  cardEmail:    { fontSize: 13, color: '#64748B', fontWeight: '500', flexShrink: 1 },
-
-  cardRight:       { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  toggleCluster:   { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  toggleLabel:     { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
-  toggleLabelActive:   { color: P },
-  toggleLabelInactive: { color: '#94A3B8' },
-  actionCluster:   { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  actionBtn:       { width: 32, height: 32, borderRadius: 8, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
-
-  empty:      { alignItems: 'center', paddingTop: 60, gap: 10 },
-  emptyTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
-  emptySub:   { fontSize: 13, color: '#AEAEB2' },
-
-  skillRow:  { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 4, marginTop: 6 },
-  skillChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 8, paddingVertical: 4,
-    borderRadius: 999,
-    borderWidth: 1, borderColor: '#E5E7EB',
-    backgroundColor: '#F8FAFC',
-  },
-  skillChipText: { fontSize: 10, fontWeight: '700', color: '#64748B' },
-  miniLabel: {
-    fontSize: 9, fontWeight: '800', color: '#94A3B8',
-    letterSpacing: 0.6, textTransform: 'uppercase',
-    marginRight: 4,
-  },
-
-  // Metrics
-  metricsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' },
-  rateChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 8, paddingVertical: 3,
-    borderRadius: 999,
-    backgroundColor: '#F1F5F9',
-    borderWidth: 1, borderColor: '#E2E8F0',
-  },
-  rateChipText: { fontSize: 10, fontWeight: '700', color: '#475569', letterSpacing: 0.2 },
-  rateEdit: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  rateInput: {
-    width: 60, height: 24,
-    paddingHorizontal: 8,
-    borderRadius: 999, borderWidth: 1, borderColor: '#2563EB',
-    backgroundColor: '#FFFFFF',
-    fontSize: 11, fontWeight: '700', color: '#0F172A',
-    outlineStyle: 'none',
-  } as any,
-  rateUnit: { fontSize: 10, fontWeight: '700', color: '#64748B' },
-  trustBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 8, paddingVertical: 3,
-    borderRadius: 999, borderWidth: 1.5,
-    backgroundColor: '#FFFFFF',
-  },
-  trustDot:  { width: 6, height: 6, borderRadius: 3 },
-  trustText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.2 },
-  metricMuted: { fontSize: 11, fontWeight: '700', color: '#94A3B8' },
-});
-
-const dp = StyleSheet.create({
-  card: {
-    backgroundColor: '#FFFFFF', borderRadius: 16,
-    borderWidth: 1, borderColor: '#F1F5F9',
-    overflow: 'hidden',
-    boxShadow: '0 16px 40px rgba(37,99,235,0.06)',
-  } as any,
-  closeBtn: { position: 'absolute', top: 12, right: 12, zIndex: 2, width: 28, height: 28, borderRadius: 8, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
-
-  hero: { padding: 28, paddingBottom: 20, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  avatarWrap: { width: 96, height: 96, alignItems: 'center', justifyContent: 'center', marginBottom: 14, position: 'relative' },
-  avatarGlow: { position: 'absolute', inset: 0, borderRadius: 48, opacity: 0.22, filter: 'blur(20px)' } as any,
-  avatar:     { width: 88, height: 88, borderRadius: 44, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderWidth: 4, borderColor: '#FFFFFF', boxShadow: '0 8px 24px rgba(37,99,235,0.15)' } as any,
-  avatarImg:  { width: 88, height: 88, borderRadius: 44 },
-  avatarText: { fontSize: 28, fontWeight: '800' },
-  name:       { fontSize: 22, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5, marginBottom: 2 },
-  role:       { fontSize: 12, fontWeight: '700', letterSpacing: 1.0, marginBottom: 6 },
-  joined:     { fontSize: 12, color: '#94A3B8', fontWeight: '500' },
-
-  metricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, padding: 20 },
-  metric: {
-    flexGrow: 1, flexBasis: '45%', minWidth: 120,
-    backgroundColor: '#F8FAFC', borderRadius: 12,
-    padding: 14, paddingRight: 16, height: 92,
-    justifyContent: 'space-between', position: 'relative', overflow: 'hidden',
-  },
-  metricIconWrap: { position: 'absolute', top: -10, right: -10 },
-  metricLabel:    { fontSize: 10, fontWeight: '800', color: '#64748B', letterSpacing: 0.5, textTransform: 'uppercase' },
-  metricValue:    { fontSize: 22, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
-
-  listSection: { paddingHorizontal: 20, paddingBottom: 20 },
-  listTitle:   { fontSize: 10, fontWeight: '800', color: '#64748B', letterSpacing: 0.8, marginBottom: 12 },
-  listEmpty:   { fontSize: 13, color: '#94A3B8', paddingVertical: 6 },
-  orderRow:    { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#F1F5F9', borderRadius: 10, padding: 12 },
-  dot:         { width: 8, height: 8, borderRadius: 4 },
-  orderNo:     { fontSize: 13, fontWeight: '800', color: '#0F172A' },
-  orderItem:   { fontSize: 11, color: '#64748B', marginTop: 2 },
-});
-
-const fp = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.25)', alignItems: 'flex-end', paddingTop: 70, paddingRight: 24 },
-  panel:    { width: 300, backgroundColor: '#FFFFFF', borderRadius: 18, overflow: 'hidden',
-              shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.15, shadowRadius: 32 },
-  header:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14 },
-  headerLeft:  { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  headerTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
-  countBadge:  { backgroundColor: P, borderRadius: 10, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
-  countBadgeText: { fontSize: 10, fontWeight: '800', color: '#FFFFFF' },
-  clearText:   { fontSize: 13, fontWeight: '500', color: '#94A3B8' },
-  divider:     { height: 1, backgroundColor: '#F1F5F9' },
-  section:     { paddingHorizontal: 16, paddingVertical: 14 },
-  sectionLabel:{ fontSize: 11, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 10 },
-  chipRow:     { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  chip:        { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, borderWidth: 1.5, borderColor: '#F1F5F9', backgroundColor: '#FAFAFA' },
-  chipActive:  { borderColor: P, backgroundColor: '#EFF6FF' },
-  chipText:    { fontSize: 13, fontWeight: '500', color: '#94A3B8' },
-  chipTextActive: { color: P, fontWeight: '600' },
-  footer:      { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 14 },
-  cancelBtn:   { flex: 1, paddingVertical: 11, borderRadius: 10, borderWidth: 1.5, borderColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
-  cancelText:  { fontSize: 14, fontWeight: '600', color: '#6C6C70' },
-  applyBtn:    { flex: 2, paddingVertical: 11, borderRadius: 10, backgroundColor: P, alignItems: 'center', justifyContent: 'center' },
-  applyText:   { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
-});
-
-const m = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.4)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  popup: {
-    backgroundColor: '#FFFFFF', borderRadius: 16, width: '100%', maxWidth: 520, maxHeight: '92%', overflow: 'hidden',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.15, shadowRadius: 48,
-  } as any,
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingTop: 22, paddingBottom: 18, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  title:    { fontSize: 18, fontWeight: '700', color: '#0F172A' },
-  subtitle: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
-  body: { padding: 20 },
-  sectionLabel: { fontSize: 11, fontWeight: '600', color: '#64748B', letterSpacing: 0.5, marginBottom: 10, marginTop: 4 },
-  fieldLabel: { fontSize: 11, fontWeight: '500', color: '#64748B', marginBottom: 7, letterSpacing: 0.5 },
-  input: {
-    borderWidth: 1, borderColor: '#F1F5F9', borderRadius: 10,
-    paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, color: '#0F172A',
-    backgroundColor: '#FFFFFF', marginBottom: 14, outlineStyle: 'none',
-  } as any,
-  closeBtn: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center' },
-  roleGrid: { flexDirection: 'row', gap: 8, marginBottom: 20 },
-  roleRow:  { flexDirection: 'row', gap: 8, marginBottom: 20 },
-  roleCard: {
-    flex: 1, borderRadius: 12, padding: 12, borderWidth: 1.5, borderColor: '#E5E7EB',
-    backgroundColor: '#FAFAFA', alignItems: 'center', gap: 4,
-  },
-  roleCardActive: { backgroundColor: P, borderColor: P },
-  roleLabel: { fontSize: 12, fontWeight: '700', color: '#374151', textAlign: 'center' },
-  roleLabelActive: { color: '#FFFFFF' },
-  roleSub: { fontSize: 10, color: '#9CA3AF', textAlign: 'center' },
-  roleSubActive: { color: 'rgba(255,255,255,0.6)' },
-  // Stage Yetkileri
-  skillHint: { fontSize: 11, color: '#94A3B8', marginBottom: 8, marginTop: -4 },
-  skillRow:  { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 20 },
-  skillChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 10, paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1, borderColor: '#E5E7EB',
-    backgroundColor: '#F8FAFC',
-  },
-  skillChipText: { fontSize: 11, fontWeight: '700', color: '#64748B' },
-  toggleRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: '#F9FAFB', borderRadius: 10, padding: 14,
-    borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 16,
-  },
-  toggleLabel: { fontSize: 14, fontWeight: '600', color: '#0F172A', marginBottom: 2 },
-  toggleSub:   { fontSize: 12, color: '#9CA3AF' },
-  inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
-  eyeBtn: { padding: 11, borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 10, backgroundColor: '#FAFAFA' },
-  hint: { fontSize: 11, color: '#AEAEB2', marginBottom: 14, marginTop: 2 },
-  errorBox: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FEF2F2', borderRadius: 8, padding: 10, marginBottom: 12 },
-  errorText: { fontSize: 13, color: ERR, flex: 1 },
-  footer: { flexDirection: 'row', gap: 10, padding: 16, borderTopWidth: 1, borderTopColor: '#F3F4F6' },
-  cancelBtn: { flex: 1, borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 10, paddingVertical: 13, alignItems: 'center' },
-  cancelText: { fontSize: 14, fontWeight: '600', color: '#374151' },
-  saveBtn: {
-    flex: 2, backgroundColor: P, borderRadius: 10,
-    paddingVertical: 13, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6,
-  },
-  saveBtnDisabled: { opacity: 0.6 },
-  saveText: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
-});

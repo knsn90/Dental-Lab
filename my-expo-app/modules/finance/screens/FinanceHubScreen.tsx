@@ -1,29 +1,22 @@
 /**
- * FinanceHubScreen — Modern Mali İşlemler Hub
+ * FinanceHubScreen — Mali İşlemler Hub (Patterns Design Language)
  *
- *  Layout:
- *    Desktop ≥ 980 → Sol sidebar (sticky) + sağ content
- *    Mobile        → Üst pill chip strip (yatay scroll) + content
- *
- *  Her sekme kendi accent rengini taşır:
- *    • Aktif sekme: dolu chip (sidebar) veya pill (mobil) — accent bg + beyaz text
- *    • Pasif: hafif accent tint + accent text
- *
- *  Sidebar group'lara ayrıldı:
- *    • ANALİZ        Karlılık · Personel Verim · Bütçe · Rapor
- *    • TAHSİLAT      Faturalar · Cari Hesap · Çek/Senet
- *    • OPERASYON     Giderler · Kasa/Banka · Fiyat Listesi
+ * Sidebar: Ayarlar sayfasıyla aynı minimal vertical-tab pattern.
+ * Mobile: gruplu pill strip.
+ * PatternsShell header "Mali İşlemler" başlığını gösterir.
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet,
-  TouchableOpacity, useWindowDimensions, Platform,
+  View, Text, ScrollView, Pressable,
+  useWindowDimensions,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  TrendingUp, Users, PieChart, BarChart2, FileText, Building2,
+  CreditCard, TrendingDown, Landmark, Tag,
+} from 'lucide-react-native';
 
 import { HubContext } from '../../../core/ui/HubContext';
-import { AppIcon } from '../../../core/ui/AppIcon';
-import { Shadows, CardSpec } from '../../../core/theme/shadows';
+import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 
 import { InvoicesListScreen }  from '../../invoices/screens/InvoicesListScreen';
 import { ClinicBalanceScreen } from '../../invoices/screens/ClinicBalanceScreen';
@@ -36,239 +29,256 @@ import { ProfitabilityScreen } from './ProfitabilityScreen';
 import { TechnicianPerformanceScreen } from './TechnicianPerformanceScreen';
 import { BudgetScreen } from './BudgetScreen';
 
-// ── Sekme tanımları (3 grup) ─────────────────────────────────────────────────
+// ── Display font token ──────────────────────────────────────────────
+const DISPLAY = {
+  fontFamily: 'Inter Tight, Inter, system-ui, sans-serif',
+  fontWeight: '300' as const,
+};
+
+// ── Tab tanımları ────────────────────────────────────────────────────
 interface TabDef {
-  key:     string;
-  label:   string;
-  icon:    string;
-  accent:  string;
-  bg:      string;
-  hint?:   string;     // Sidebar'da küçük ikincil metin
+  key:   string;
+  label: string;
+  icon:  React.ComponentType<any>;
+  accent: string;
+  hint:  string;
 }
 
-const NAV_GROUPS: { title: string; items: TabDef[] }[] = [
-  {
-    title: 'ANALİZ',
-    items: [
-      { key: 'profitability', label: 'Karlılık',       icon: 'trending-up',     accent: '#059669', bg: '#ECFDF5', hint: 'Kar marjı analizi'  },
-      { key: 'tech_perf',     label: 'Personel Verim', icon: 'users',           accent: '#7C3AED', bg: '#EDE9FE', hint: 'Teknisyen üretim'   },
-      { key: 'budget',        label: 'Bütçe',          icon: 'chart-pie',       accent: '#7C3AED', bg: '#EDE9FE', hint: 'Plan vs. gerçek'    },
-      { key: 'report',        label: 'Rapor',          icon: 'bar-chart-2',     accent: '#0F172A', bg: '#F1F5F9', hint: 'Aylık özet'         },
-    ],
-  },
-  {
-    title: 'TAHSİLAT',
-    items: [
-      { key: 'invoices',      label: 'Faturalar',     icon: 'file-text',     accent: '#2563EB', bg: '#EFF6FF', hint: 'Fatura yönetimi'   },
-      { key: 'clinic_balance',label: 'Cari Hesap',    icon: 'building-2',    accent: '#0EA5E9', bg: '#E0F2FE', hint: 'Klinik bakiyeleri' },
-      { key: 'checks',        label: 'Çek / Senet',   icon: 'credit-card',   accent: '#D97706', bg: '#FFFBEB', hint: 'Vadeli ödemeler'   },
-    ],
-  },
-  {
-    title: 'OPERASYON',
-    items: [
-      { key: 'expenses',      label: 'Giderler',      icon: 'trending-down', accent: '#DC2626', bg: '#FEF2F2', hint: 'Sabit + değişken'  },
-      { key: 'cash',          label: 'Kasa / Banka',  icon: 'landmark',      accent: '#059669', bg: '#ECFDF5', hint: 'Hesap hareketleri' },
-      { key: 'pricelist',     label: 'Fiyat Listesi', icon: 'tag',           accent: '#0891B2', bg: '#ECFEFF', hint: 'Hizmet katalog'    },
-    ],
-  },
+const ANALYSIS_TABS: TabDef[] = [
+  { key: 'profitability', label: 'Karlılık',       icon: TrendingUp, accent: '#059669', hint: 'Kar marjı analizi' },
+  { key: 'tech_perf',     label: 'Personel Verim', icon: Users,      accent: '#7C3AED', hint: 'Teknisyen üretim' },
+  { key: 'budget',        label: 'Bütçe',          icon: PieChart,   accent: '#7C3AED', hint: 'Plan vs. gerçek' },
+  { key: 'report',        label: 'Rapor',          icon: BarChart2,  accent: '#0F172A', hint: 'Aylık özet' },
 ];
 
-const ALL_TABS: TabDef[] = NAV_GROUPS.flatMap(g => g.items);
-type TabKey = string;
+const COLLECTION_TABS: TabDef[] = [
+  { key: 'invoices',       label: 'Faturalar',   icon: FileText,   accent: '#2563EB', hint: 'Fatura yönetimi' },
+  { key: 'clinic_balance', label: 'Cari Hesap',  icon: Building2,  accent: '#0EA5E9', hint: 'Klinik bakiyeleri' },
+  { key: 'checks',         label: 'Çek / Senet', icon: CreditCard, accent: '#D97706', hint: 'Vadeli ödemeler' },
+];
 
-// ─── Hub Screen ──────────────────────────────────────────────────────────────
+const OPERATION_TABS: TabDef[] = [
+  { key: 'expenses',  label: 'Giderler',      icon: TrendingDown, accent: '#DC2626', hint: 'Sabit + değişken' },
+  { key: 'cash',      label: 'Kasa / Banka',  icon: Landmark,     accent: '#059669', hint: 'Hesap hareketleri' },
+  { key: 'pricelist', label: 'Fiyat Listesi', icon: Tag,          accent: '#0891B2', hint: 'Hizmet katalog' },
+];
+
+const TAB_GROUPS = [
+  { title: 'Analiz',    items: ANALYSIS_TABS },
+  { title: 'Tahsilat',  items: COLLECTION_TABS },
+  { title: 'Operasyon', items: OPERATION_TABS },
+];
+const ALL_TABS = TAB_GROUPS.flatMap(g => g.items);
+
+// Sidebar accent — uses a neutral warm tone like Settings
+const SIDEBAR_ACCENT = '#F5C24B';
+
+// ═════════════════════════════════════════════════════════════════════
+// MAIN
+// ═════════════════════════════════════════════════════════════════════
 export function FinanceHubScreen() {
-  const [activeKey, setActiveKey] = useState<TabKey>('profitability');
-  const insets = useSafeAreaInsets();
+  const [activeKey, setActiveKey] = useState('profitability');
   const { width } = useWindowDimensions();
-  const isDesktop = width >= 980;
+  const isDesktop = width >= 1024;
+
+  // PatternsShell başlık
+  const { setTitle, clear } = usePageTitleStore();
+  useEffect(() => {
+    setTitle('Mali İşlemler', '');
+    return clear;
+  }, []);
 
   const activeTab = ALL_TABS.find(t => t.key === activeKey)!;
 
   return (
-    <View style={[s.root, { paddingTop: insets.top }]}>
-      {/* ── Üst başlık banner — accent renkli ── */}
-      <View style={[s.banner, { backgroundColor: activeTab.bg, borderBottomColor: activeTab.accent + '22' }]}>
-        <View style={s.bannerLeft}>
-          <View style={[s.bannerIcon, { backgroundColor: activeTab.accent }]}>
-            <AppIcon name={activeTab.icon} size={18} color="#FFFFFF" strokeWidth={2.25} />
-          </View>
-          <View>
-            <Text style={s.bannerKicker}>Mali İşlemler</Text>
-            <Text style={[s.bannerTitle, { color: activeTab.accent }]}>{activeTab.label}</Text>
-            {activeTab.hint && (
-              <Text style={[s.bannerHint, { color: activeTab.accent + 'BB' }]}>{activeTab.hint}</Text>
-            )}
-          </View>
-        </View>
-      </View>
+    <View style={{ flex: 1 }}>
 
-      {/* ── Mobile: yatay pill strip ── */}
+      {/* ── Filter Bar — mobile only (desktop uses sidebar) ──── */}
       {!isDesktop && (
-        <View style={[s.mobileTabWrap, { borderBottomColor: '#F1F5F9' }]}>
+        <View className="px-4 pt-3 pb-2">
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={s.mobileTabScroll}
+            contentContainerStyle={{ gap: 6, alignItems: 'center' }}
           >
-            {ALL_TABS.map(tab => {
-              const active = tab.key === activeKey;
-              return (
-                <TouchableOpacity
-                  key={tab.key}
-                  onPress={() => setActiveKey(tab.key)}
-                  activeOpacity={0.85}
-                  style={[
-                    s.pill,
-                    active
-                      ? { backgroundColor: tab.accent, borderColor: tab.accent }
-                      : { backgroundColor: '#FFFFFF', borderColor: '#E2E8F0' },
-                  ]}
-                >
-                  <AppIcon
-                    name={tab.icon}
-                    size={13}
-                    color={active ? '#FFFFFF' : tab.accent}
-                    strokeWidth={active ? 2.25 : 1.75}
-                  />
-                  <Text style={[s.pillText, active ? { color: '#FFFFFF' } : { color: tab.accent }]}>
-                    {tab.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+            {TAB_GROUPS.map((group, gi) => (
+              <React.Fragment key={gi}>
+                {gi > 0 && (
+                  <View className="w-px h-5 bg-black/[0.08] mx-1" />
+                )}
+                <View className="flex-row gap-0.5 p-0.5 bg-cream-panel rounded-full">
+                  {group.items.map(tab => {
+                    const active = tab.key === activeKey;
+                    const TabIcon = tab.icon;
+                    return (
+                      <Pressable
+                        key={tab.key}
+                        onPress={() => setActiveKey(tab.key)}
+                        className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full"
+                        style={active ? { backgroundColor: tab.accent } : undefined}
+                      >
+                        <TabIcon
+                          size={12}
+                          strokeWidth={active ? 2.2 : 1.8}
+                          color={active ? '#FFFFFF' : tab.accent}
+                        />
+                        <Text
+                          className={`text-[12px] font-semibold ${active ? 'text-white' : 'text-ink-500'}`}
+                        >
+                          {tab.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </React.Fragment>
+            ))}
           </ScrollView>
         </View>
       )}
 
-      {/* ── Desktop: sidebar + content split ── */}
-      <View style={[s.body, isDesktop && { flexDirection: 'row' }]}>
-        {isDesktop && (
-          <View style={s.sidebarWrap}>
-            <View style={s.sidebarCard}>
-              <ScrollView
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={{ padding: 10, gap: 18 }}
-              >
-                {NAV_GROUPS.map(group => (
-                  <View key={group.title} style={{ gap: 4 }}>
-                    <Text style={s.groupLabel}>{group.title}</Text>
-                    {group.items.map(tab => {
-                      const active = tab.key === activeKey;
-                      return (
-                        <TouchableOpacity
-                          key={tab.key}
-                          onPress={() => setActiveKey(tab.key)}
-                          activeOpacity={0.85}
-                          style={[
-                            s.navRow,
-                            active && { backgroundColor: tab.accent + '12' },
-                          ]}
+      {/* ── Content ──────────────────────────────────────────── */}
+      {isDesktop ? (
+        <View style={{ flex: 1, flexDirection: 'row' }}>
+
+          {/* ── Sidebar — Settings-style minimal vertical tabs ── */}
+          <View style={{ width: 200, paddingTop: 24, paddingBottom: 16 }}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ gap: 2, paddingHorizontal: 8 }}
+            >
+              {TAB_GROUPS.map((group, gi) => (
+                <View key={group.title}>
+                  {/* Group label */}
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontWeight: '700',
+                      color: '#9A9A9A',
+                      letterSpacing: 1,
+                      textTransform: 'uppercase',
+                      paddingHorizontal: 14,
+                      paddingTop: gi === 0 ? 0 : 16,
+                      paddingBottom: 8,
+                    }}
+                  >
+                    {group.title}
+                  </Text>
+
+                  {group.items.map(tab => {
+                    const isActive = tab.key === activeKey;
+                    const TabIcon = tab.icon;
+                    return (
+                      <Pressable
+                        key={tab.key}
+                        onPress={() => setActiveKey(tab.key)}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 10,
+                          paddingHorizontal: 14,
+                          paddingVertical: 10,
+                          borderRadius: 12,
+                          backgroundColor: isActive ? '#FFFFFF' : 'transparent',
+                          // @ts-ignore web
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {/* Active bar indicator */}
+                        {isActive && (
+                          <View
+                            style={{
+                              width: 3,
+                              height: 16,
+                              borderRadius: 2,
+                              backgroundColor: SIDEBAR_ACCENT,
+                              marginLeft: -6,
+                              marginRight: 4,
+                            }}
+                          />
+                        )}
+                        <TabIcon
+                          size={15}
+                          strokeWidth={isActive ? 2 : 1.6}
+                          color={isActive ? '#0A0A0A' : '#9A9A9A'}
+                        />
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            fontWeight: isActive ? '600' : '400',
+                            color: isActive ? '#0A0A0A' : '#6B6B6B',
+                          }}
                         >
-                          {/* Active accent strip (sol kenar) */}
-                          {active && <View style={[s.activeStrip, { backgroundColor: tab.accent }]} />}
+                          {tab.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ))}
+            </ScrollView>
+          </View>
 
-                          <View style={[
-                            s.navIcon,
-                            { backgroundColor: active ? tab.accent : tab.bg },
-                          ]}>
-                            <AppIcon
-                              name={tab.icon}
-                              size={14}
-                              color={active ? '#FFFFFF' : tab.accent}
-                              strokeWidth={active ? 2.25 : 1.75}
-                            />
-                          </View>
+          {/* ── Right content ─────────────────────────────────── */}
+          <View style={{ flex: 1, borderRadius: 16, overflow: 'hidden' }}>
+            {/* Section header */}
+            {activeTab && (
+              <View style={{ paddingHorizontal: 28, paddingTop: 16, paddingBottom: 12 }}>
+                <Text
+                  style={{
+                    ...DISPLAY,
+                    fontSize: 24,
+                    letterSpacing: -0.5,
+                    color: '#0A0A0A',
+                    marginBottom: 4,
+                  }}
+                >
+                  {activeTab.label}
+                </Text>
+                <Text style={{ fontSize: 13, color: '#9A9A9A', lineHeight: 19 }}>
+                  {activeTab.hint}
+                </Text>
+              </View>
+            )}
 
-                          <View style={{ flex: 1, minWidth: 0 }}>
-                            <Text
-                              style={[
-                                s.navLabel,
-                                active && { color: tab.accent, fontWeight: '700' },
-                              ]}
-                              numberOfLines={1}
-                            >
-                              {tab.label}
-                            </Text>
-                            {tab.hint && (
-                              <Text style={s.navHint} numberOfLines={1}>{tab.hint}</Text>
-                            )}
-                          </View>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                ))}
-              </ScrollView>
+            {/* Section body */}
+            <HubContext.Provider value={true}>
+              <View style={{ flex: 1, minHeight: 0 }}>
+                <TabContent activeKey={activeKey} />
+              </View>
+            </HubContext.Provider>
+          </View>
+        </View>
+      ) : (
+        /* Mobile: just content */
+        <View style={{ flex: 1, paddingHorizontal: 12, paddingTop: 4 }}>
+          <HubContext.Provider value={true}>
+            <View style={{ flex: 1 }}>
+              <TabContent activeKey={activeKey} />
             </View>
-          </View>
-        )}
-
-        {/* Content */}
-        <HubContext.Provider value={true}>
-          <View style={s.content}>
-            {activeKey === 'profitability'  && <ProfitabilityScreen />}
-            {activeKey === 'tech_perf'      && <TechnicianPerformanceScreen />}
-            {activeKey === 'invoices'       && <InvoicesListScreen />}
-            {activeKey === 'clinic_balance' && <ClinicBalanceScreen />}
-            {activeKey === 'expenses'       && <ExpensesScreen />}
-            {activeKey === 'budget'         && <BudgetScreen />}
-            {activeKey === 'checks'         && <ChecksScreen />}
-            {activeKey === 'cash'           && <CashScreen />}
-            {activeKey === 'pricelist'      && <PriceListScreen />}
-            {activeKey === 'report'         && <FinanceReportScreen />}
-          </View>
-        </HubContext.Provider>
-      </View>
+          </HubContext.Provider>
+        </View>
+      )}
     </View>
   );
 }
 
-// ── Styles ─────────────────────────────────────────────────────────────────────
-const s = StyleSheet.create({
-  root:      { flex: 1, backgroundColor: CardSpec.pageBg },
+// ─── Tab Content ─────────────────────────────────────────────────────
+function TabContent({ activeKey }: { activeKey: string }) {
+  return (
+    <>
+      {activeKey === 'profitability'  && <ProfitabilityScreen />}
+      {activeKey === 'tech_perf'      && <TechnicianPerformanceScreen />}
+      {activeKey === 'budget'         && <BudgetScreen />}
+      {activeKey === 'report'         && <FinanceReportScreen />}
+      {activeKey === 'invoices'       && <InvoicesListScreen />}
+      {activeKey === 'clinic_balance' && <ClinicBalanceScreen />}
+      {activeKey === 'checks'         && <ChecksScreen />}
+      {activeKey === 'expenses'       && <ExpensesScreen />}
+      {activeKey === 'cash'           && <CashScreen />}
+      {activeKey === 'pricelist'      && <PriceListScreen />}
+    </>
+  );
+}
 
-  // Banner (üst başlık)
-  banner:    { paddingHorizontal: 22, paddingVertical: 18, borderBottomWidth: 1 },
-  bannerLeft:{ flexDirection: 'row', alignItems: 'center', gap: 14 },
-  bannerIcon:{ width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', ...Shadows.cardLite },
-  bannerKicker: { fontSize: 10, fontWeight: '700', color: '#94A3B8', letterSpacing: 1, textTransform: 'uppercase' },
-  bannerTitle:  { fontSize: 24, fontWeight: '800', letterSpacing: -0.6, marginTop: 2 },
-  bannerHint:   { fontSize: 12, fontWeight: '500', marginTop: 2 },
-
-  // Mobile pill tab bar
-  mobileTabWrap:  { backgroundColor: '#FFFFFF', borderBottomWidth: 1 },
-  mobileTabScroll:{ paddingHorizontal: 14, paddingVertical: 10, gap: 8, flexDirection: 'row' },
-  pill:           { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, borderWidth: 1 },
-  pillText:       { fontSize: 12, fontWeight: '700', letterSpacing: -0.1 },
-
-  // Body (desktop split)
-  body:    { flex: 1 },
-
-  // Desktop sidebar
-  sidebarWrap: { width: 240, padding: 12, paddingRight: 6 },
-  sidebarCard: {
-    flex: 1,
-    backgroundColor: CardSpec.bg,
-    borderRadius: CardSpec.radius,
-    borderWidth: 1,
-    borderColor: CardSpec.border,
-    ...Shadows.card,
-  } as any,
-  groupLabel: { fontSize: 10, fontWeight: '800', color: '#94A3B8', letterSpacing: 1.2, paddingHorizontal: 10, paddingTop: 6, paddingBottom: 4 },
-
-  navRow:  {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingHorizontal: 10, paddingVertical: 9, borderRadius: 10,
-    position: 'relative',
-  },
-  activeStrip: {
-    position: 'absolute', left: 0, top: 8, bottom: 8, width: 3, borderRadius: 2,
-  },
-  navIcon: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  navLabel:{ fontSize: 13, fontWeight: '600', color: '#0F172A', letterSpacing: -0.1 },
-  navHint: { fontSize: 11, color: '#94A3B8', marginTop: 1 },
-
-  content: { flex: 1, padding: 12, paddingLeft: 6 },
-});
+export default FinanceHubScreen;

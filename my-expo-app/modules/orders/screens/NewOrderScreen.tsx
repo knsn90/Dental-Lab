@@ -48,6 +48,17 @@ import { OcclusionAnalysisModal } from '../../occlusion/components/OcclusionAnal
 import type { OcclusionAnalysisResult } from '../../occlusion/types/occlusion';
 
 import { AppIcon } from '../../../core/ui/AppIcon';
+import {
+  SectionCard, FieldError, Field, SearchableDropdown, Chip, TwoCol,
+  LockedInfoCard, DISPLAY_FONT, CARD_SHADOW, INPUT_STYLE,
+} from '../components/FormPrimitives';
+import type { DropdownOption, SearchableDropdownProps } from '../components/FormPrimitives';
+import { DS } from '../../../core/theme/dsTokens';
+import { NO, NOType, NORadius } from '../components/NOTokens';
+import { NOCard, NOCardHead } from '../components/NOCard';
+import { NOStepHeader, NOEmText, NOLabel, NOEyebrow, NOSegment, NOToggle, NOField as NOFieldPrimitive } from '../components/NOFormPrimitives';
+import { NOPageChrome } from '../components/NOPageChrome';
+import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -360,6 +371,14 @@ export function NewOrderScreen({
     setStep(s);
   };
 
+  // Sayfa başlığını set et
+  const setPageTitle = usePageTitleStore(s => s.setTitle);
+  const clearPageTitle = usePageTitleStore(s => s.clear);
+  useEffect(() => {
+    setPageTitle('Yeni Sipariş');
+    return () => clearPageTitle();
+  }, []);
+
   // Her step değişiminde sessionStorage'ı güncelle (HMR/reload sonrası kaldığı yerden devam)
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -628,7 +647,7 @@ export function NewOrderScreen({
   }, [form]);
 
   const STEP_FIELDS: Record<Step, string[]> = {
-    1: ['doctor_id', 'patient_first_name', 'patient_last_name', 'patient_gender', 'patient_dob', 'patient_id', 'patient_nationality'],
+    1: ['doctor_id', 'patient_first_name', 'patient_last_name', 'patient_gender', 'patient_dob'],
     2: ['measurement_type', 'model_type', 'delivery_date', 'delivery_method'],
     3: ['tooth_ops'],
     4: [],
@@ -1200,35 +1219,6 @@ ${form.notes ? `<div class="card">
 
   return (
     <SafeAreaView style={styles.safe}>
-      {/* ── Taslak otomatik kayıt göstergesi (alt orta, viewport) ── */}
-      {Platform.OS === 'web' && lastSavedAt && (
-        <View style={{
-          // @ts-ignore web-only fixed pozisyon — alt-orta, sidebar/nav ile çakışmaz
-          position: 'fixed', bottom: 20, left: '50%',
-          // @ts-ignore
-          transform: 'translateX(-50%)',
-          zIndex: 50,
-          flexDirection: 'row' as any, alignItems: 'center' as any, gap: 8,
-          backgroundColor: '#FFFFFF',
-          borderWidth: 1, borderColor: '#E2E8F0',
-          borderRadius: 999, paddingVertical: 6, paddingHorizontal: 12,
-          // @ts-ignore
-          boxShadow: '0 4px 12px rgba(15,23,42,0.1)',
-        }}>
-          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#22C55E' }} />
-          <Text style={{ fontSize: 11, color: '#475569', fontFamily: F.semibold }}>
-            Taslak kaydedildi · {fmtDraftTime(lastSavedAt)}
-          </Text>
-          <TouchableOpacity
-            onPress={discardDraft}
-            hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
-            accessibilityLabel="Taslağı sil"
-          >
-            <AppIcon name={'delete-outline' as any} size={14} color="#94A3B8" />
-          </TouchableOpacity>
-        </View>
-      )}
-
       {/* ── Taslak seçim modalı: mevcut taslak varsa ilk açılışta sorar ── */}
       {Platform.OS === 'web' && draftPromptOpen && (
         <View style={{
@@ -1299,359 +1289,339 @@ ${form.notes ? `<div class="card">
         </View>
       )}
 
-      <View style={[styles.outerWrap, isDesktop && styles.outerWrapDesktop]}>
-
-        {/* ── Vertical step sidebar (desktop only) ── */}
-        {isDesktop && <StepSidebar currentStep={step} accentColor={P} />}
-
-        {/* ── Main content column ── */}
-        <View style={styles.mainCol}>
-
-      {/* ── Live Summary Panel — full-width top card ── */}
-      <LiveSummaryPanel
-        form={form}
-        selectedDoctor={selectedDoctor}
-        selectedClinic={selectedClinic}
-        currentStep={step}
-        onOpenChat={() => setChatModalVisible(true)}
-        accentColor={P}
-      />
+      <NOPageChrome
+        step={step}
+        title="Yeni Sipariş"
+        hekim={selectedDoctor?.full_name}
+        hasta={form.patient_first_name ? `${form.patient_first_name} ${form.patient_last_name}`.trim() : undefined}
+        toothCount={form.tooth_ops.length || undefined}
+        onCancel={() => router.back()}
+        onStepPress={(s) => goToStep(s as Step)}
+        onBack={step > 1 ? () => goToStep((step - 1) as Step) : undefined}
+        onNext={step < 4 ? handleNext : handleSubmit}
+        nextLabel={step < 4 ? 'İleri' : '✓ Hekime gönder & kaydet'}
+        actionPrimary={step === 4 ? 'success' : 'dark'}
+        loading={loading}
+        savedTime={lastSavedAt ? fmtDraftTime(lastSavedAt) : undefined}
+        rightPanel={undefined}
+      >
 
       {/* Step 1 — Clinic & Patient */}
       {step === 1 && (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          {/* Clinic & Doctor — üç mod: doctorMode (tam read-only), clinicMode (klinik kilitli+hekim seçilir), normal (tam seçilir) */}
-          {clinicMode ? (
-            <SectionCard
-              title="Klinik & diş hekimi"
-              iconNode={<ClinicIcon size={14} color={stepAttempted[1] && errors.doctor_id ? '#EF4444' : P} />}
-              errorCount={stepAttempted[1] && errors.doctor_id ? 1 : 0}
-              accentColor={P}
-            >
-              {/* Klinik kartı — kilitli (profile'den) */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', paddingHorizontal: 14, paddingVertical: 12, marginBottom: 12 }}>
-                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E2E8F0' }}>
-                  <AppIcon name={'hospital-building' as any} size={20} color="#64748B" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.6, textTransform: 'uppercase' }}>Klinik</Text>
-                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#0F172A', marginTop: 2 }} numberOfLines={1}>
-                    {profile?.clinic_name ?? 'Klinik belirtilmemiş'}
-                  </Text>
-                </View>
-                <AppIcon name={'lock-outline' as any} size={14} color="#94A3B8" />
-              </View>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }} keyboardShouldPersistTaps="handled">
 
-              {/* Hekim seçici — sadece kliniğin hekimleri */}
-              <SearchableDropdown
-                label="Diş hekimi"
-                placeholder={allDoctors.length > 0 ? 'Kliniğinizdeki hekimi seçin' : 'Kliniğinizde hekim bulunmuyor'}
-                options={allDoctors.map(d => ({ id: d.id, label: d.full_name, sublabel: (d as any).phone ?? undefined }))}
-                selectedId={form.doctor_id}
-                onSelect={set('doctor_id')}
-                required
-                error={fe('doctor_id')}
-              />
-            </SectionCard>
-          ) : doctorMode ? (
-            <SectionCard
-              title="Klinik & diş hekimi"
-              iconNode={<ClinicIcon size={14} color={P} />}
-              accentColor={P}
-            >
-              <View style={[twoColStyle, { gap: 12 }]}>
-                {/* Hekim kartı */}
-                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: P + '0F', borderRadius: 12, borderWidth: 1, borderColor: P + '22', paddingHorizontal: 14, paddingVertical: 12 }}>
-                  <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: P, alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 14 }}>
-                      {(profile?.full_name ?? '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+          {/* Step header */}
+          <NOStepHeader step={1}>
+            Önce <NOEmText>kim için</NOEmText> çalışıyoruz?
+          </NOStepHeader>
+
+          {/* 2 kart: Klinik & hekim (dar) + Hasta bilgileri (geniş) */}
+          <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: 12 }}>
+
+            {/* ── Kart 1: Klinik & hekim ── */}
+            <View style={{ flex: 1 }}>
+              <NOCard>
+                <NOCardHead num={1} title="Klinik & hekim" sub="Vakanın bağlı olduğu klinik ve hekim" />
+
+                {clinicMode ? (
+                  <View style={{ gap: 12 }}>
+                    <LockedInfoCard
+                      label="Klinik"
+                      value={profile?.clinic_name ?? 'Klinik belirtilmemiş'}
+                      iconVariant="clinic"
+                    />
+                    <SearchableDropdown
+                      label="Diş hekimi"
+                      placeholder={allDoctors.length > 0 ? 'Kliniğinizdeki hekimi seçin' : 'Kliniğinizde hekim bulunmuyor'}
+                      options={allDoctors.map(d => ({ id: d.id, label: d.full_name, sublabel: (d as any).phone ?? undefined }))}
+                      selectedId={form.doctor_id}
+                      onSelect={set('doctor_id')}
+                      required
+                      error={fe('doctor_id')}
+                    />
+                  </View>
+                ) : doctorMode ? (
+                  <View style={{ gap: 12 }}>
+                    <LockedInfoCard
+                      label="Diş Hekimi"
+                      value={profile?.full_name ?? '—'}
+                      subtitle={profile?.phone ?? undefined}
+                      avatarInitials={(profile?.full_name ?? '?').split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
+                      accentColor={P}
+                    />
+                    <LockedInfoCard
+                      label="Klinik"
+                      value={profile?.clinic_name ?? 'Klinik belirtilmemiş'}
+                      iconVariant="clinic"
+                    />
+                  </View>
+                ) : (
+                  <View style={{ gap: 12 }}>
+                    <SearchableDropdown
+                      label="Klinik"
+                      placeholder="Klinik seçin veya ekleyin"
+                      options={clinics.filter(c => c.is_active).map(c => ({ id: c.id, label: c.name, sublabel: c.phone ?? undefined }))}
+                      selectedId={form.clinic_id}
+                      onSelect={(id) => { set('clinic_id')(id); set('doctor_id')(''); }}
+                      onAddNew={async (name) => {
+                        setClinicModal({ visible: true, prefill: name });
+                      }}
+                      addNewLabel="Yeni klinik ekle"
+                      required
+                    />
+                    <SearchableDropdown
+                      label="Diş hekimi"
+                      placeholder={form.clinic_id ? 'Diş hekimi seçin veya ekleyin' : 'Önce klinik seçin'}
+                      disabled={!form.clinic_id}
+                      disabledHint="Önce klinik seçin"
+                      options={filteredDoctors.map(d => ({ id: d.id, label: d.full_name, sublabel: d.clinic?.name ?? undefined }))}
+                      selectedId={form.doctor_id}
+                      onSelect={set('doctor_id')}
+                      onAddNew={async (name) => {
+                        setDoctorModal({ visible: true, prefill: name });
+                      }}
+                      addNewLabel="Yeni diş hekimi ekle"
+                      required
+                      error={fe('doctor_id')}
+                    />
+                  </View>
+                )}
+
+                {/* Aktif vaka sayısı info */}
+                {selectedDoctor && (
+                  <View style={{
+                    marginTop: 12, padding: 10, paddingHorizontal: 12,
+                    backgroundColor: NO.bgInput, borderRadius: 10,
+                    flexDirection: 'row', alignItems: 'center', gap: 8,
+                  }}>
+                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: NO.success }} />
+                    <Text style={{ fontSize: 11, color: NO.inkSoft }}>
+                      Bu hekimle <Text style={{ color: NO.inkStrong, fontWeight: '600' }}>aktif</Text> vakalar
                     </Text>
+                  </View>
+                )}
+              </NOCard>
+            </View>
+
+            {/* ── Kart 2: Hasta bilgileri ── */}
+            <View style={{ flex: isDesktop ? 1.6 : 1 }}>
+              <NOCard>
+                <NOCardHead
+                  num={2}
+                  title="Hasta bilgileri"
+                  sub="Mevcut hastayı seç veya yeni ekle"
+                  badge="Yeni"
+                />
+
+                {/* Satır 1: Ad + Soyad */}
+                <TwoCol stack={!isDesktop}>
+                  <Field label="Ad" value={form.patient_first_name}
+                    onChangeText={set('patient_first_name')} placeholder="Ad" flex
+                    required error={fe('patient_first_name')} />
+                  <Field label="Soyad" value={form.patient_last_name}
+                    onChangeText={set('patient_last_name')} placeholder="Soyad" flex
+                    required error={fe('patient_last_name')} />
+                </TwoCol>
+
+                {/* Satır 2: TC / Pasaport + Doğum tarihi */}
+                <TwoCol stack={!isDesktop}>
+                  <Field label="TC / Pasaport No" value={form.patient_id}
+                    onChangeText={set('patient_id')} placeholder="TC veya Pasaport No" flex />
+                  <DateField
+                    label="Doğum tarihi"
+                    value={form.patient_dob}
+                    onChange={set('patient_dob')}
+                    maxDate={new Date()}
+                    placeholder="Tarih seçin"
+                    flex
+                    required
+                    error={fe('patient_dob')}
+                  />
+                </TwoCol>
+
+                {/* Satır 3: Cinsiyet + Uyruk */}
+                <TwoCol stack={!isDesktop}>
+                  <View style={{ flex: 1 }}>
+                    <NOLabel required>Cinsiyet</NOLabel>
+                    <NOSegment
+                      options={GENDERS.map(g => g.label)}
+                      value={GENDERS.find(g => g.value === form.patient_gender)?.label ?? ''}
+                      onChange={(label) => {
+                        const g = GENDERS.find(x => x.label === label);
+                        if (g) set('patient_gender')(g.value as any);
+                      }}
+                    />
+                  </View>
+                  <SearchableDropdown
+                    label="Uyruk"
+                    placeholder="Ülke ara..."
+                    options={GEO_COUNTRIES.map(c => ({ id: c.label, label: c.label }))}
+                    selectedId={form.patient_nationality}
+                    onSelect={set('patient_nationality')}
+                  />
+                </TwoCol>
+
+                {/* Satır 4: İkamet ülkesi + İkamet şehri + Telefon (3 kolon desktop) */}
+                <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: 12, marginTop: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <SearchableDropdown
+                      label="İkamet ülkesi"
+                      placeholder="Ülke ara..."
+                      options={GEO_COUNTRIES.map(c => ({ id: c.label, label: c.label }))}
+                      selectedId={form.patient_country}
+                      onSelect={(val) => {
+                        set('patient_country')(val);
+                        set('patient_city')('');
+                      }}
+                    />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.6, textTransform: 'uppercase' }}>Diş Hekimi</Text>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#0F172A', marginTop: 2 }} numberOfLines={1}>
-                      {profile?.full_name ?? '—'}
-                    </Text>
-                    {profile?.phone && (
-                      <Text style={{ fontSize: 11, color: '#64748B', marginTop: 1 }} numberOfLines={1}>
-                        {profile.phone}
-                      </Text>
-                    )}
-                  </View>
-                  <AppIcon name={'lock-outline' as any} size={14} color="#94A3B8" />
-                </View>
-
-                {/* Klinik kartı */}
-                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', paddingHorizontal: 14, paddingVertical: 12 }}>
-                  <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E2E8F0' }}>
-                    <AppIcon name={'hospital-building' as any} size={20} color="#64748B" />
+                    <SearchableDropdown
+                      label="İkamet şehri"
+                      placeholder={form.patient_country ? 'Şehir ara...' : 'Önce ülke seçin'}
+                      options={
+                        form.patient_country && GEO_BY_LABEL[form.patient_country]
+                          ? GEO_BY_LABEL[form.patient_country].cities.map(city => ({ id: city, label: city }))
+                          : []
+                      }
+                      selectedId={form.patient_city}
+                      onSelect={set('patient_city')}
+                    />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.6, textTransform: 'uppercase' }}>Klinik</Text>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#0F172A', marginTop: 2 }} numberOfLines={1}>
-                      {profile?.clinic_name ?? 'Klinik belirtilmemiş'}
-                    </Text>
+                    <Field label="Telefon" value={form.patient_phone}
+                      onChangeText={set('patient_phone')} placeholder="05XX XXX XX XX" flex />
                   </View>
-                  <AppIcon name={'lock-outline' as any} size={14} color="#94A3B8" />
                 </View>
-              </View>
-            </SectionCard>
-          ) : (
-            <SectionCard title="Klinik & diş hekimi" iconNode={<ClinicIcon size={14} color={stepAttempted[1] && errors.doctor_id ? '#EF4444' : P} />} errorCount={stepAttempted[1] && errors.doctor_id ? 1 : 0} accentColor={P}>
-              <View style={twoColStyle}>
-                <SearchableDropdown
-                  label="Klinik"
-                  placeholder="Klinik seçin veya ekleyin"
-                  options={clinics.filter(c => c.is_active).map(c => ({ id: c.id, label: c.name, sublabel: c.phone ?? undefined }))}
-                  selectedId={form.clinic_id}
-                  onSelect={(id) => { set('clinic_id')(id); set('doctor_id')(''); }}
-                  onAddNew={async (name) => {
-                    setClinicModal({ visible: true, prefill: name });
-                  }}
-                  addNewLabel="Yeni klinik ekle"
-                  required
-                />
-                <SearchableDropdown
-                  label="Diş hekimi"
-                  placeholder={form.clinic_id ? 'Diş hekimi seçin veya ekleyin' : 'Önce klinik seçin'}
-                  disabled={!form.clinic_id}
-                  disabledHint="Önce klinik seçin"
-                  options={filteredDoctors.map(d => ({ id: d.id, label: d.full_name, sublabel: d.clinic?.name ?? undefined }))}
-                  selectedId={form.doctor_id}
-                  onSelect={set('doctor_id')}
-                  onAddNew={async (name) => {
-                    setDoctorModal({ visible: true, prefill: name });
-                  }}
-                  addNewLabel="Yeni diş hekimi ekle"
-                  required
-                  error={fe('doctor_id')}
-                />
-              </View>
-            </SectionCard>
-          )}
 
-          {/* Patient info */}
-          <SectionCard title="Hasta bilgileri" icon={'account-outline' as any}
-            errorCount={stepAttempted[1] ? ['patient_first_name','patient_last_name','patient_gender','patient_dob','patient_id','patient_nationality'].filter(k => errors[k]).length : 0}
-            accentColor={P}
-          >
-
-            {/* Satır 1: Ad + Soyad */}
-            <View style={twoColStyle}>
-              <Field label="Ad" value={form.patient_first_name}
-                onChangeText={set('patient_first_name')} placeholder="Ad" flex
-                required error={fe('patient_first_name')} />
-              <Field label="Soyad" value={form.patient_last_name}
-                onChangeText={set('patient_last_name')} placeholder="Soyad" flex
-                required error={fe('patient_last_name')} />
+              </NOCard>
             </View>
 
-            {/* Satır 2: TC / Pasaport + Doğum tarihi */}
-            <View style={twoColStyle}>
-              <Field label="TC / Pasaport No" value={form.patient_id}
-                onChangeText={set('patient_id')} placeholder="TC veya Pasaport No" flex
-                required error={fe('patient_id')} />
-              <DateField
-                label="Doğum tarihi"
-                value={form.patient_dob}
-                onChange={set('patient_dob')}
-                maxDate={new Date()}
-                placeholder="Tarih seçin"
-                flex
-                required
-                error={fe('patient_dob')}
-              />
-            </View>
-
-            {/* Satır 3: Uyruk + Cinsiyet */}
-            <View style={twoColStyle}>
-              <SearchableDropdown
-                label="Uyruk"
-                placeholder="Ülke ara..."
-                options={GEO_COUNTRIES.map(c => ({ id: c.label, label: c.label }))}
-                selectedId={form.patient_nationality}
-                onSelect={set('patient_nationality')}
-                required
-                error={fe('patient_nationality')}
-              />
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 5 }}>
-                  <Text style={{ fontSize: 13, color: fe('patient_gender') ? '#EF4444' : '#0F172A', fontWeight: '700', lineHeight: 16 }}>*</Text>
-                  <Text style={[styles.fieldLabel, { marginBottom: 0 }, fe('patient_gender') ? { color: '#EF4444' } : undefined]}>Cinsiyet</Text>
-                </View>
-                <View style={styles.chipRow}>
-                  {GENDERS.map((g) => (
-                    <TouchableOpacity key={g.value} onPress={() => set('patient_gender')(g.value as any)}
-                      style={[styles.chip, form.patient_gender === g.value && styles.chipActive]}>
-                      <Text style={[styles.chipText, form.patient_gender === g.value && styles.chipTextActive]}>
-                        {g.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            </View>
-
-            {/* Satır 4: İkamet ülkesi + İkamet şehri */}
-            <View style={twoColStyle}>
-              <SearchableDropdown
-                label="İkamet ülkesi"
-                placeholder="Ülke ara..."
-                options={GEO_COUNTRIES.map(c => ({ id: c.label, label: c.label }))}
-                selectedId={form.patient_country}
-                onSelect={(val) => {
-                  set('patient_country')(val);
-                  set('patient_city')('');
-                }}
-              />
-              <SearchableDropdown
-                label="İkamet şehri"
-                placeholder={form.patient_country ? 'Şehir ara...' : 'Önce ülke seçin'}
-                options={
-                  form.patient_country && GEO_BY_LABEL[form.patient_country]
-                    ? GEO_BY_LABEL[form.patient_country].cities.map(city => ({ id: city, label: city }))
-                    : []
-                }
-                selectedId={form.patient_city}
-                onSelect={set('patient_city')}
-              />
-            </View>
-
-            {/* Satır 5: İletişim + boş */}
-            <View style={twoColStyle}>
-              <Field label="İletişim" value={form.patient_phone}
-                onChangeText={set('patient_phone')} placeholder="05XX XXX XX XX" flex />
-              <View style={{ flex: 1 }} />
-            </View>
-
-          </SectionCard>
-
+          </View>
         </ScrollView>
       )}
 
       {/* Step 2 — Case Details */}
       {step === 2 && (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }} keyboardShouldPersistTaps="handled">
 
-          {/* ── Split: Vaka detayları (sol) + Mesaj kutusu (sağ) ── */}
-          <View style={{
-            flexDirection: isDesktop ? 'row' : 'column',
-            gap: 12,
-            alignItems: 'stretch',
-          }}>
-          <View style={{ flex: 1 }}>
-          <SectionCard title="Vaka detayları" icon={'tune-variant' as any} style={{ flex: 1, marginBottom: 0 }} accentColor={P}>
+          {/* Step header */}
+          <NOStepHeader
+            step={2}
+            headerRight={
+              <Pressable onPress={() => setUploadModalOpen(true)} style={{
+                flexDirection: 'row', alignItems: 'center', gap: 6,
+                paddingVertical: 7, paddingHorizontal: 14,
+                borderRadius: NORadius.md,
+                borderWidth: 1, borderColor: NO.borderMedium,
+                backgroundColor: '#FFFFFF',
+              }}>
+                <AppIcon name="paperclip" size={14} color={NO.inkSoft} />
+                <Text style={{ fontSize: 12, color: NO.inkSoft, fontWeight: '500' }}>Dosyalar</Text>
+              </Pressable>
+            }
+          >
+            <NOEmText>Nasıl</NOEmText> çalışılacak?
+          </NOStepHeader>
 
-            {/* Acil vaka + Tasarım onayı — yan yana (mobilde stacklenir) */}
-            <View style={[s2.toggleRow, !isDesktop && { flexDirection: 'column', gap: 10 }]}>
+          {/* 2 kart: Çalışma yöntemi (sol) + Teslimat (sağ) */}
+          <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: 12, marginBottom: 12 }}>
 
-              {/* Acil vaka */}
-              <TouchableOpacity
-                style={[s2.toggleItem, form.is_urgent && s2.toggleItemUrgent]}
-                onPress={() => set('is_urgent')(!form.is_urgent)}
-                activeOpacity={0.7}
-              >
-                <AppIcon name={'alarm' as any} size={14} color={form.is_urgent ? P : '#94A3B8'} />
-                <View style={{ flex: 1 }}>
-                  <Text style={[s2.toggleItemLabel, form.is_urgent && s2.toggleItemLabelActive]}>Acil vaka</Text>
-                  <Text style={s2.toggleItemDesc}>Öncelikli, ek ücretlidir.</Text>
+            {/* ── Kart 1: Çalışma yöntemi ── */}
+            <View style={{ flex: 1 }}>
+              <NOCard>
+                <NOCardHead num={1} title="Çalışma yöntemi" sub="Ölçüm ve model tipi" />
+                <View style={{ gap: 12 }}>
+                  <InlineSelect
+                    label="* Ölçüm yöntemi"
+                    icon={'ruler' as any}
+                    value={form.measurement_type}
+                    options={[
+                      { value: 'manual',  label: 'Manuel' },
+                      { value: 'digital', label: 'Dijital' },
+                    ]}
+                    onSelect={(v) => set('measurement_type')(v as 'manual' | 'digital')}
+                    error={fe('measurement_type')}
+                    accentColor={P}
+                  />
+                  <InlineSelect
+                    label="* Model tipi"
+                    icon={'cube-outline' as any}
+                    value={form.model_type}
+                    options={[
+                      { value: 'dijital',  label: 'Dijital Tarama' },
+                      { value: 'fiziksel', label: 'Fiziksel Model' },
+                      { value: 'cad',      label: 'CAD Dosyası' },
+                    ]}
+                    onSelect={(v) => set('model_type')(form.model_type === v ? '' : v)}
+                    error={fe('model_type')}
+                    accentColor={P}
+                  />
+                  {/* Acil vaka toggle */}
+                  <View style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 12,
+                    padding: 10, paddingHorizontal: 12,
+                    backgroundColor: NO.bgInput, borderRadius: 10,
+                  }}>
+                    <AppIcon name="zap" size={14} color="#94A3B8" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 12, fontWeight: '500', color: NO.inkStrong }}>Acil vaka</Text>
+                      <Text style={{ fontSize: 10, color: NO.inkMute }}>+%30 ücret · 5 gün öncelik</Text>
+                    </View>
+                    <NOToggle on={form.is_urgent} onChange={(v) => set('is_urgent')(v)} />
+                  </View>
                 </View>
-                <AppSwitch value={form.is_urgent} onValueChange={set('is_urgent')}
-                  accentColor={P} style={s2.rowSwitch} />
-              </TouchableOpacity>
+              </NOCard>
+            </View>
 
-              {/* Tasarım onayı */}
-              <TouchableOpacity
-                style={[s2.toggleItem, form.doctor_approval_required && s2.toggleItemApproval]}
-                onPress={() => set('doctor_approval_required')(!form.doctor_approval_required)}
-                activeOpacity={0.7}
-              >
-                <AppIcon name={'check-decagram-outline' as any} size={14}
-                  color={form.doctor_approval_required ? P : '#94A3B8'} />
-                <View style={{ flex: 1 }}>
-                  <Text style={[s2.toggleItemLabel, form.doctor_approval_required && s2.toggleItemLabelActive]}>Tasarım onayı</Text>
-                  <Text style={s2.toggleItemDesc}>Diş hekimi onayı sonrası üretilir.</Text>
+            {/* ── Kart 2: Teslimat ── */}
+            <View style={{ flex: 1 }}>
+              <NOCard>
+                <NOCardHead num={2} title="Teslimat" sub="En geç teslim tarihi ve yöntemi" />
+                <View style={{ gap: 12 }}>
+                  <InlineDateSelect
+                    label="* Teslim tarihi"
+                    value={form.delivery_date}
+                    onChange={set('delivery_date')}
+                    minDate={new Date()}
+                    error={fe('delivery_date')}
+                    accentColor={P}
+                  />
+                  <InlineSelect
+                    label="* Teslim yöntemi"
+                    icon={'truck' as any}
+                    value={form.delivery_method}
+                    options={[
+                      { value: 'kurye', label: 'Kurye' },
+                      { value: 'elden', label: 'Elden teslim' },
+                      { value: 'kargo', label: 'Kargo' },
+                    ]}
+                    onSelect={(v) => set('delivery_method')(form.delivery_method === v ? '' : v as any)}
+                    error={fe('delivery_method')}
+                    accentColor={P}
+                  />
+                  {/* Onay sonrası üretim toggle */}
+                  <View style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 12,
+                    padding: 10, paddingHorizontal: 12,
+                    backgroundColor: NO.bgInput, borderRadius: 10,
+                  }}>
+                    <AppIcon name="shield-check" size={14} color="#94A3B8" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 12, fontWeight: '500', color: NO.inkStrong }}>Onay sonrası üretim</Text>
+                      <Text style={{ fontSize: 10, color: NO.inkMute }}>Hekim onayı bekle</Text>
+                    </View>
+                    <NOToggle on={form.doctor_approval_required} onChange={(v) => set('doctor_approval_required')(v)} />
+                  </View>
                 </View>
-                <AppSwitch value={form.doctor_approval_required} onValueChange={set('doctor_approval_required')}
-                  accentColor={P} style={s2.rowSwitch} />
-              </TouchableOpacity>
-
+              </NOCard>
             </View>
 
-            <View style={s2.separator} />
-
-            {/* Ölçüm Yöntemi + Model Tipi — yan yana dropdown (mobilde stacklenir) */}
-            <View style={[s2.selectRow, !isDesktop && { flexDirection: 'column', gap: 12 }]}>
-              <InlineSelect
-                label="* Ölçüm yöntemi"
-                icon={'ruler-square' as any}
-                value={form.measurement_type}
-                options={[
-                  { value: 'manual',  label: 'Manuel' },
-                  { value: 'digital', label: 'Dijital' },
-                ]}
-                onSelect={(v) => set('measurement_type')(v as 'manual' | 'digital')}
-                error={fe('measurement_type')}
-                accentColor={P}
-              />
-              <InlineSelect
-                label="* Model tipi"
-                icon={'cube-outline' as any}
-                value={form.model_type}
-                options={[
-                  { value: 'dijital',  label: 'Dijital Tarama' },
-                  { value: 'fiziksel', label: 'Fiziksel Model' },
-                  { value: 'cad',      label: 'CAD Dosyası' },
-                ]}
-                onSelect={(v) => set('model_type')(form.model_type === v ? '' : v)}
-                error={fe('model_type')}
-                accentColor={P}
-              />
-            </View>
-
-            <View style={s2.separator} />
-
-            {/* En geç teslim tarihi + Teslim yöntemi (mobilde stacklenir) */}
-            <View style={[s2.selectRow, !isDesktop && { flexDirection: 'column', gap: 12 }]}>
-              <InlineDateSelect
-                label="* En geç teslim tarihi"
-                value={form.delivery_date}
-                onChange={set('delivery_date')}
-                minDate={new Date()}
-                error={fe('delivery_date')}
-                accentColor={P}
-              />
-              <InlineSelect
-                label="* Teslim yöntemi"
-                icon={'truck-delivery-outline' as any}
-                value={form.delivery_method}
-                options={[
-                  { value: 'kurye', label: 'Kurye' },
-                  { value: 'elden', label: 'Elden teslim' },
-                  { value: 'kargo', label: 'Kargo' },
-                ]}
-                onSelect={(v) => set('delivery_method')(form.delivery_method === v ? '' : v as any)}
-                error={fe('delivery_method')}
-                accentColor={P}
-              />
-            </View>
-
-          </SectionCard>
-          </View>{/* sol kolon sonu */}
-
-          {/* Sağ kolon: Mesaj kutusu */}
-          <View style={{ flex: 1 }}>
-            <ChatBox
-              messages={form.chat_messages}
-              onAdd={(msg) => set('chat_messages')([...form.chat_messages, msg])}
-              onDelete={(id) => set('chat_messages')(form.chat_messages.filter(m => m.id !== id))}
-              accentColor={P}
-            />
           </View>
-          </View>{/* split row sonu */}
 
           {/* ── Dosyalar ── */}
-          <SectionCard title="Dosyalar" icon={'paperclip' as any} accentColor={P}>
+          <NOCard>
+            <NOCardHead num={3} title="Dosyalar & ölçüm" sub="STL, PLY, JPG, PDF — maks 200 MB" badge={form.attachments.length > 0 ? `${form.attachments.length} dosya · ${formatBytes(form.attachments.reduce((s, a) => s + (a.size || 0), 0))}` : undefined} />
 
             <View style={[fus.twoCol, !isDesktop && { flexDirection: 'column', gap: 16 }]}>
 
@@ -1669,11 +1639,11 @@ ${form.notes ? `<div class="card">
                   <Text style={[fus.uploadTriggerSub, { textAlign: 'center' }]}>
                     {form.attachments.length === 0
                       ? 'Fotoğraf, STL, PLY, PDF eklemek için tıklayın'
-                      : `${form.attachments.length} dosya yüklendi — düzenlemek için tıklayın`}
+                      : `${form.attachments.length} dosya · ${formatBytes(form.attachments.reduce((s, a) => s + (a.size || 0), 0))}`}
                   </Text>
                   {form.attachments.length > 0 && (
                     <View style={[fus.uploadTriggerBadge, { backgroundColor: P }]}>
-                      <Text style={fus.uploadTriggerBadgeText}>{form.attachments.length} dosya</Text>
+                      <Text style={fus.uploadTriggerBadgeText}>{form.attachments.length} dosya · {formatBytes(form.attachments.reduce((s, a) => s + (a.size || 0), 0))}</Text>
                     </View>
                   )}
                 </TouchableOpacity>
@@ -1740,17 +1710,39 @@ ${form.notes ? `<div class="card">
                         </View>
                       );
                     })()}
-                    <View style={fus.totalRow}>
-                      <AppIcon name={'paperclip' as any} size={12} color="#64748B" />
-                      <Text style={fus.totalText}>Toplam {form.attachments.length} dosya</Text>
-                    </View>
+                    {/* ── Toplam özet + boyut barı ── */}
+                    {(() => {
+                      const MAX_BYTES = 200 * 1024 * 1024; // 200 MB
+                      const totalBytes = form.attachments.reduce((s, a) => s + (a.size || 0), 0);
+                      const pct = Math.min((totalBytes / MAX_BYTES) * 100, 100);
+                      const barColor = pct >= 90 ? NO.error : pct >= 70 ? '#F59E0B' : NO.success;
+                      return (
+                        <View style={fus.totalRow}>
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                                <AppIcon name={'paperclip' as any} size={12} color="#64748B" />
+                                <Text style={fus.totalText}>{form.attachments.length} dosya</Text>
+                              </View>
+                              <Text style={{ fontSize: 11, fontFamily: F.medium, color: barColor }}>
+                                {formatBytes(totalBytes)} / 200 MB
+                              </Text>
+                            </View>
+                            {/* Progress bar */}
+                            <View style={{ height: 4, borderRadius: 2, backgroundColor: NO.bgInput }}>
+                              <View style={{ height: 4, borderRadius: 2, backgroundColor: barColor, width: `${pct}%` as any }} />
+                            </View>
+                          </View>
+                        </View>
+                      );
+                    })()}
                   </>
                 )}
               </View>
 
             </View>
 
-          </SectionCard>
+          </NOCard>
 
           {/* ── Dosya Yükleme Modal ── */}
           <Modal
@@ -2269,57 +2261,88 @@ ${form.notes ? `<div class="card">
 
       {/* Step 3 — Teeth & Dentures */}
       {step === 3 && (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }} keyboardShouldPersistTaps="handled">
 
-          {/* Split row: Diş Seçimi | Operasyon Detayı */}
+          {/* Step header */}
+          <NOStepHeader
+            step={3}
+            headerRight={
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                <Pressable onPress={() => setUploadModalOpen(true)} style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                  paddingVertical: 7, paddingHorizontal: 14,
+                  borderRadius: NORadius.md,
+                  borderWidth: 1, borderColor: NO.borderMedium,
+                  backgroundColor: '#FFFFFF',
+                }}>
+                  <AppIcon name="paperclip" size={14} color={NO.inkSoft} />
+                  <Text style={{ fontSize: 12, color: NO.inkSoft, fontWeight: '500' }}>Dosyalar</Text>
+                </Pressable>
+                <Pressable onPress={() => setChatModalVisible(true)} style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                  paddingVertical: 7, paddingHorizontal: 14,
+                  borderRadius: NORadius.md,
+                  borderWidth: 1, borderColor: NO.borderMedium,
+                  backgroundColor: '#FFFFFF',
+                }}>
+                  <AppIcon name="message-circle" size={14} color={NO.inkSoft} />
+                  <Text style={{ fontSize: 12, color: NO.inkSoft, fontWeight: '500' }}>Mesaj</Text>
+                </Pressable>
+              </View>
+            }
+          >
+            <NOEmText>Hangi diş</NOEmText>, hangi iş?
+          </NOStepHeader>
+
+          {/* 2 kart: Diş seçimi (sol, geniş) + İş detayı & iş listesi (sağ) */}
           <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: 12, alignItems: 'stretch' }}>
 
-            {/* Left — Diş Seçimi */}
-            <View style={{ flex: 1 }}>
-              <SectionCard
-                title="Diş Seçimi"
-                icon={'tooth-outline' as any}
-                errorCount={stepAttempted[3] && errors.tooth_ops ? 1 : 0}
-                accentColor={P}
-                headerRight={
-                  <View style={{ flexDirection: 'row', gap: 4, alignItems: 'center' }}>
-                    {([
-                      { label: 'Üst çene', teeth: [11,12,13,14,15,16,17,18,21,22,23,24,25,26,27,28] },
-                      { label: 'Alt çene', teeth: [31,32,33,34,35,36,37,38,41,42,43,44,45,46,47,48] },
-                      { label: 'Full ağız', teeth: [11,12,13,14,15,16,17,18,21,22,23,24,25,26,27,28,31,32,33,34,35,36,37,38,41,42,43,44,45,46,47,48] },
-                    ] as { label: string; teeth: number[] }[]).map(({ label, teeth }) => (
-                      <TouchableOpacity
-                        key={label}
-                        onPress={() => {
-                          setForm(f => {
-                            const existing = f.tooth_ops.map(o => o.tooth);
-                            const toAdd = teeth.filter(t => !existing.includes(t));
-                            const newOps = [...f.tooth_ops, ...toAdd.map(t => ({ tooth: t, ...BLANK_OP }))];
-                            return { ...f, tooth_ops: newOps };
-                          });
-                          setSelectedTeeth([teeth[0]]);
-                          setActiveTooth(teeth[0]);
-                        }}
-                        style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, borderWidth: 1, borderColor: '#CBD5E1', backgroundColor: '#F1F5F9' }}
-                      >
-                        <Text style={{ fontSize: 10, fontFamily: F.medium, color: P }}>{label}</Text>
-                      </TouchableOpacity>
-                    ))}
-                    {form.tooth_ops.length > 0 && (
-                      <TouchableOpacity
-                        onPress={() => { setForm(f => ({ ...f, tooth_ops: [] })); setSelectedTeeth([]); setActiveTooth(null); setConfirmedTeeth([]); }}
-                        style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, borderWidth: 1, borderColor: '#FECACA', backgroundColor: '#FFF5F5' }}
-                      >
-                        <Text style={{ fontSize: 10, fontFamily: F.medium, color: '#EF4444' }}>Temizle</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                }
-              >
+            {/* ── Kart 1: Diş seçimi ── */}
+            <View style={{ flex: isDesktop ? 1.4 : 1 }}>
+              <NOCard>
+                <NOCardHead
+                  num={1}
+                  title="Diş seçimi"
+                  sub="Şema üzerinden seç"
+                  headerRight={
+                    <View style={{ flexDirection: 'row', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+                      {([
+                        { label: 'Üst çene', teeth: [11,12,13,14,15,16,17,18,21,22,23,24,25,26,27,28] },
+                        { label: 'Alt çene', teeth: [31,32,33,34,35,36,37,38,41,42,43,44,45,46,47,48] },
+                        { label: 'Full ağız', teeth: [11,12,13,14,15,16,17,18,21,22,23,24,25,26,27,28,31,32,33,34,35,36,37,38,41,42,43,44,45,46,47,48] },
+                      ] as { label: string; teeth: number[] }[]).map(({ label, teeth }) => (
+                        <Pressable
+                          key={label}
+                          onPress={() => {
+                            setForm(f => {
+                              const existing = f.tooth_ops.map(o => o.tooth);
+                              const toAdd = teeth.filter(t => !existing.includes(t));
+                              const newOps = [...f.tooth_ops, ...toAdd.map(t => ({ tooth: t, ...BLANK_OP }))];
+                              return { ...f, tooth_ops: newOps };
+                            });
+                            setSelectedTeeth([teeth[0]]);
+                            setActiveTooth(teeth[0]);
+                          }}
+                          style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: NORadius.pill, backgroundColor: NO.bgInput }}
+                        >
+                          <Text style={{ fontSize: 10, fontWeight: '500', color: NO.inkMedium }}>{label}</Text>
+                        </Pressable>
+                      ))}
+                      {form.tooth_ops.length > 0 && (
+                        <Pressable
+                          onPress={() => { setForm(f => ({ ...f, tooth_ops: [] })); setSelectedTeeth([]); setActiveTooth(null); setConfirmedTeeth([]); }}
+                          style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: NORadius.pill, backgroundColor: 'rgba(156,46,46,0.06)' }}
+                        >
+                          <Text style={{ fontSize: 10, fontWeight: '500', color: NO.error }}>Temizle</Text>
+                        </Pressable>
+                      )}
+                    </View>
+                  }
+                />
                 <ToothNumberPicker
                   selected={form.tooth_ops.map(o => o.tooth)}
                   colorMap={toothColorMap}
-                  accentColor={P}
+                  accentColor={NO.saffron}
                   onChange={(newTeeth) => {
                     const prevTeeth = form.tooth_ops.map(o => o.tooth);
                     const added   = newTeeth.filter(t => !prevTeeth.includes(t));
@@ -2329,9 +2352,7 @@ ${form.notes ? `<div class="card">
                       added.forEach(t => { ops = [...ops, { tooth: t, ...BLANK_OP }]; });
                       return { ...f, tooth_ops: ops };
                     });
-                    // Remove deselected teeth from confirmed list
                     if (removed.length > 0) setConfirmedTeeth(prev => prev.filter(t => !removed.includes(t)));
-                    // Yeni diş seçilince gruba ekle (toplu düzenleme için birikimli seçim)
                     const nextSelected = selectedTeeth.filter(t => !removed.includes(t));
                     if (added.length > 0) {
                       setSelectedTeeth([...nextSelected, ...added]);
@@ -2346,34 +2367,58 @@ ${form.notes ? `<div class="card">
                   containerWidth={isDesktop ? (width - 100) / 2 - 64 : width - 80}
                 />
 
+                {/* Renk paleti */}
+                <View style={{ marginTop: 16, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Text style={{ ...NOType.nano, color: NO.inkMute }}>RENK</Text>
+                  <View style={{ flexDirection: 'row', gap: 4, flexWrap: 'wrap' }}>
+                    {ALL_SHADES.slice(0, 9).map((shade) => {
+                      const activeShade = activeTooth ? (form.tooth_ops.find(o => o.tooth === activeTooth)?.shade ?? '') : '';
+                      const sel = shade === activeShade;
+                      return (
+                        <Pressable
+                          key={shade}
+                          onPress={() => { if (activeTooth) updateToothOp({ shade }); }}
+                          style={{
+                            paddingVertical: 5, paddingHorizontal: 9,
+                            borderRadius: NORadius.sm,
+                            backgroundColor: sel ? NO.saffron : NO.bgInput,
+                          }}
+                        >
+                          <Text style={{
+                            fontSize: 10, fontFamily: 'monospace', fontWeight: '600',
+                            color: sel ? NO.inkStrong : NO.inkSoft,
+                          }}>{shade}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+
                 <FieldError msg={fe('tooth_ops')} />
-              </SectionCard>
+              </NOCard>
             </View>
 
-            {/* Right — Operasyon Detayı */}
-            <View style={{ flex: 1 }}>
+            {/* ── Sağ kolon: İş detayı + İş listesi ── */}
+            <View style={{ flex: 1, gap: 12 }}>
+
+              {/* Kart 2: İş detayı */}
               {(() => {
                 const validTooth = activeTooth !== null && selectedTeeth.includes(activeTooth) ? activeTooth : null;
                 const op = form.tooth_ops.find(o => o.tooth === validTooth) ?? { tooth: 0, ...BLANK_OP };
-                const groupLabel = selectedTeeth.length > 1
-                  ? `Dişler ${[...selectedTeeth].sort((a, b) => a - b).join(', ')} — Toplu Atama`
-                  : validTooth ? `Diş ${validTooth} — Operasyon` : 'Operasyon Detayı';
                 const isAlreadyConfirmed = selectedTeeth.length > 0 && selectedTeeth.every(t => confirmedTeeth.includes(t));
                 const hasLastOp = lastConfirmedOpRef.current.work_type !== '';
 
                 return (
-                  <SectionCard title={groupLabel} icon={'cog-outline' as any} accentColor={P}>
+                  <NOCard>
+                    <NOCardHead
+                      num={2}
+                      title="İş detayı"
+                      sub={validTooth ? `Diş ${validTooth} düzenleniyor` : 'Diş seçin'}
+                      badge={validTooth ? 'Aktif' : undefined}
+                    />
                     {!validTooth ? (
                       <View style={{ paddingVertical: 16, alignItems: 'center', opacity: 0.45 }}>
-                        <Svg width={28} height={28} viewBox="0 0 48 48" fill="none">
-                          <SvgPath
-                            fillRule="evenodd"
-                            clipRule="evenodd"
-                            d="M22.2544 12.6476C22.9806 13.2696 24.0452 13.2905 24.7952 12.6981L24.7976 12.6962L24.8031 12.692C24.8124 12.6848 24.8293 12.6719 24.8535 12.6537C24.9019 12.6172 24.9794 12.5601 25.0831 12.4869C25.291 12.3402 25.6017 12.1308 25.9936 11.8956C26.7857 11.42 27.8673 10.8638 29.0724 10.4904C31.4653 9.74886 34.0017 9.78507 36.0662 12.1789C37.3116 13.6229 37.8315 15.0193 37.9642 16.3899C38.0606 17.3856 37.9581 18.4265 37.7077 19.5311C36.3868 18.5682 34.7598 18 33 18C28.5817 18 25 21.5817 25 26C25 30.3582 28.485 33.9025 32.8203 33.998C32.4952 34.9239 32.201 35.57 31.8929 36.0853C31.5294 36.6934 31.1093 37.1824 30.4615 37.7681C30.1349 37.4586 29.7219 36.9638 29.1767 36.2629C29.0908 36.1525 29.0018 36.0371 28.9099 35.9182L28.9098 35.918L28.9098 35.918C28.3478 35.1901 27.6819 34.3276 27.003 33.6389C26.2861 32.9118 25.0796 31.8649 23.5038 31.8697C21.9352 31.8745 20.7255 32.9047 19.9937 33.6369C19.3048 34.3262 18.6294 35.1885 18.0593 35.9164C17.9666 36.0348 17.8766 36.1497 17.7899 36.2597C17.2333 36.965 16.8126 37.4619 16.48 37.7712C14.8687 36.1971 13.9804 33.9629 12.9592 29.8058C12.7283 28.8661 12.3756 27.7341 12.0112 26.5651L12.0112 26.565C11.9067 26.2298 11.8013 25.8915 11.6976 25.5539C11.2167 23.9892 10.7392 22.3418 10.4119 20.7151C9.72465 17.2994 9.85439 14.6849 11.1291 13.1373C12.8241 11.0794 14.5088 10.1432 16.1308 10.0157C17.7598 9.88754 19.7916 10.5379 22.2544 12.6476ZM35.0116 33.745C33.9903 36.9793 33.1461 38.1311 31.2874 39.701C30.0886 40.7135 28.7366 38.9646 27.3138 37.1239C26.0812 35.5293 24.7954 33.8658 23.5098 33.8697C22.203 33.8737 20.8965 35.5398 19.6465 37.1338C18.2048 38.9724 16.8383 40.715 15.6331 39.701C13.1996 37.6532 12.1324 34.8237 11.0169 30.2829C10.8022 29.4087 10.4755 28.3602 10.1153 27.2039C8.60445 22.3544 6.50278 15.6083 9.58534 11.8657C13.4029 7.23082 18.1474 6.49593 23.5556 11.1286C23.5556 11.1286 32.0135 4.41755 37.5808 10.8727C40.4801 14.2345 40.3596 17.7171 39.3536 21.138C40.3863 22.4856 41 24.1711 41 26C41 29.7235 38.4562 32.8529 35.0116 33.745ZM39 26C39 29.3137 36.3137 32 33 32C29.6863 32 27 29.3137 27 26C27 22.6863 29.6863 20 33 20C36.3137 20 39 22.6863 39 26ZM33 22C32.4477 22 32 22.4477 32 23V25H30C29.4477 25 29 25.4477 29 26C29 26.5523 29.4477 27 30 27H32V29C32 29.5523 32.4477 30 33 30C33.5523 30 34 29.5523 34 29V27H36C36.5523 27 37 26.5523 37 26C37 25.4477 36.5523 25 36 25H34V23C34 22.4477 33.5523 22 33 22Z"
-                            fill="#94A3B8"
-                          />
-                        </Svg>
-                        <Text style={{ marginTop: 6, color: '#64748B', fontSize: 12, fontFamily: F.medium, textAlign: 'center' }}>
+                        <Text style={{ color: NO.inkSoft, fontSize: 12, textAlign: 'center' }}>
                           Önce bir diş seçin
                         </Text>
                       </View>
@@ -2402,78 +2447,164 @@ ${form.notes ? `<div class="card">
                             setSelectedTeeth(teeth);
                             setActiveTooth(teeth[0]);
                           }}
+                          onAutoConfirm={() => {
+                            if (!op.work_type) return;
+                            const { tooth: _t, ...rest } = op as ToothOp;
+                            lastConfirmedOpRef.current = rest;
+                            selectedTeeth.forEach(t => {
+                              setConfirmedTeeth(prev => prev.includes(t) ? prev : [...prev, t]);
+                            });
+                            setSelectedTeeth([]);
+                            setActiveTooth(null);
+                            setOpResetKey(k => k + 1);
+                          }}
                         />
 
-                        {/* ── Aksiyon butonları ── */}
-                        <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F1F5F9' }}>
-                          {/* Önceki dişi kopyala */}
-                          {hasLastOp && !isAlreadyConfirmed && (
-                            <TouchableOpacity
-                              onPress={() => updateToothOp({ ...lastConfirmedOpRef.current })}
-                              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 9, borderRadius: 10, borderWidth: 1, borderColor: '#F1F5F9', backgroundColor: '#F8FAFC' }}
+                        {/* Önceki dişi kopyala butonu */}
+                        {hasLastOp && !isAlreadyConfirmed && (
+                          <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: NO.borderSoft }}>
+                            <Pressable
+                              onPress={() => {
+                                updateToothOp({ ...lastConfirmedOpRef.current });
+                                // Auto-confirm after copying
+                                setTimeout(() => {
+                                  const { tooth: _t, ...rest } = op as ToothOp;
+                                  lastConfirmedOpRef.current = { ...lastConfirmedOpRef.current };
+                                  selectedTeeth.forEach(t => {
+                                    setConfirmedTeeth(prev => prev.includes(t) ? prev : [...prev, t]);
+                                  });
+                                  setSelectedTeeth([]);
+                                  setActiveTooth(null);
+                                  setOpResetKey(k => k + 1);
+                                }, 0);
+                              }}
+                              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 9, borderRadius: 10, borderWidth: 1, borderColor: NO.borderSoft, backgroundColor: NO.bgInput }}
                             >
-                              <AppIcon name={'content-copy' as any} size={14} color="#64748B" />
-                              <Text style={{ fontSize: 12, fontFamily: F.medium, color: '#64748B' }}>Önceki dişi kopyala</Text>
-                            </TouchableOpacity>
-                          )}
-
-                          {/* Listeye ekle */}
-                          <TouchableOpacity
-                            onPress={() => {
-                              if (!op.work_type) return;
-                              const { tooth: _t, ...rest } = op as ToothOp;
-                              lastConfirmedOpRef.current = rest;
-                              selectedTeeth.forEach(t => {
-                                setConfirmedTeeth(prev => prev.includes(t) ? prev : [...prev, t]);
-                              });
-                              // Formu temizle — bir sonraki diş seçimi için
-                              setSelectedTeeth([]);
-                              setActiveTooth(null);
-                              setOpResetKey(k => k + 1);
-                            }}
-                            disabled={!op.work_type}
-                            style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 9, borderRadius: 10, backgroundColor: op.work_type ? P : '#F1F5F9' }}
-                          >
-                            <AppIcon name={isAlreadyConfirmed ? 'check-circle' : 'plus-circle-outline' as any} size={14} color={op.work_type ? '#fff' : '#94A3B8'} />
-                            <Text style={{ fontSize: 12, fontFamily: F.semibold, color: op.work_type ? '#fff' : '#94A3B8' }}>
-                              {isAlreadyConfirmed ? 'Güncelle' : selectedTeeth.length > 1 ? `${selectedTeeth.length} diş ekle` : 'Listeye ekle'}
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
+                              <AppIcon name={'content-copy' as any} size={14} color={NO.inkSoft} />
+                              <Text style={{ fontSize: 12, fontWeight: '500', color: NO.inkSoft }}>Önceki dişi kopyala</Text>
+                            </Pressable>
+                          </View>
+                        )}
                       </>
                     )}
-                  </SectionCard>
+                  </NOCard>
                 );
               })()}
 
+              {/* Kart 3: İş listesi — kompakt tablo */}
+              {(() => {
+                const confirmed = [...form.tooth_ops].filter(o => confirmedTeeth.includes(o.tooth)).sort((a, b) => a.tooth - b.tooth);
+                const totalPrice = confirmed.reduce((s, o) => s + (o.price || 0) + (o.material_price || 0), 0);
+                return (
+                  <NOCard>
+                    <NOCardHead
+                      num={3}
+                      title="İş listesi"
+                      badge={confirmed.length > 0 ? `${confirmed.length} diş · ₺${totalPrice.toLocaleString('tr-TR')}` : undefined}
+                    />
+                    {confirmed.length === 0 ? (
+                      <View style={{ paddingVertical: 20, alignItems: 'center', gap: 6, opacity: 0.5 }}>
+                        <Text style={{ color: NO.inkMute, fontSize: 12, textAlign: 'center' }}>
+                          Diş seçin ve işlemleri doldurun — otomatik eklenir
+                        </Text>
+                      </View>
+                    ) : (
+                      <View>
+                        {/* Başlık satırı */}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', paddingBottom: 6, marginBottom: 4, borderBottomWidth: 1, borderBottomColor: NO.borderSoft }}>
+                          <Text style={{ flex: 0.3, fontSize: 10, fontWeight: '600', color: NO.inkMute, letterSpacing: 0.5 }}>DİŞ</Text>
+                          <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: NO.inkMute, letterSpacing: 0.5 }}>İŞLEM</Text>
+                          <Text style={{ width: 70, fontSize: 10, fontWeight: '600', color: NO.inkMute, letterSpacing: 0.5, textAlign: 'right' }}>MALİYET</Text>
+                          <View style={{ width: 28 }} />
+                        </View>
+                        {/* Satırlar */}
+                        {confirmed.map((op, i) => {
+                          const detail = [op.material, op.shade].filter(Boolean).join(' · ');
+                          const cost = (op.price || 0) + (op.material_price || 0);
+                          const isEditing = selectedTeeth.includes(op.tooth);
+                          return (
+                            <Pressable
+                              key={op.tooth}
+                              onPress={() => {
+                                setSelectedTeeth([op.tooth]);
+                                setActiveTooth(op.tooth);
+                                setOpResetKey(k => k + 1);
+                              }}
+                              style={{
+                                flexDirection: 'row', alignItems: 'center', paddingVertical: 7, paddingHorizontal: 4,
+                                borderBottomWidth: i < confirmed.length - 1 ? 1 : 0,
+                                borderBottomColor: NO.borderSoft,
+                                backgroundColor: isEditing ? NO.saffronSoft : 'transparent',
+                                borderRadius: isEditing ? 8 : 0,
+                                marginHorizontal: isEditing ? -4 : 0,
+                              }}
+                            >
+                              {/* Diş badge */}
+                              <View style={{ flex: 0.3 }}>
+                                <View style={{
+                                  width: 28, height: 22, borderRadius: 6,
+                                  backgroundColor: isEditing ? NO.saffron : NO.saffronSoft,
+                                  alignItems: 'center', justifyContent: 'center',
+                                }}>
+                                  <Text style={{ fontSize: 11, fontWeight: '700', color: isEditing ? '#FFFFFF' : NO.inkStrong, fontFamily: 'monospace' }}>{op.tooth}</Text>
+                                </View>
+                              </View>
+                              {/* İşlem detay */}
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 12, fontWeight: '500', color: NO.inkStrong }} numberOfLines={1}>{op.work_type || '—'}</Text>
+                                {detail ? <Text style={{ fontSize: 10, color: NO.inkMute, marginTop: 1 }} numberOfLines={1}>{detail}</Text> : null}
+                              </View>
+                              {/* Düzenle ikonu */}
+                              {isEditing && (
+                                <View style={{ marginRight: 4 }}>
+                                  <AppIcon name="pencil" size={11} color={NO.inkSoft} />
+                                </View>
+                              )}
+                              {/* Maliyet */}
+                              <Text style={{ width: 70, fontSize: 12, fontWeight: '600', color: cost > 0 ? NO.inkStrong : NO.inkMute, textAlign: 'right' }}>
+                                {cost > 0 ? `₺${cost.toLocaleString('tr-TR')}` : '—'}
+                              </Text>
+                              {/* Sil */}
+                              <TouchableOpacity
+                                onPress={(e) => {
+                                  (e as any).stopPropagation?.();
+                                  setConfirmedTeeth(prev => prev.filter(t => t !== op.tooth));
+                                  setForm(f => ({ ...f, tooth_ops: f.tooth_ops.filter(o => o.tooth !== op.tooth) }));
+                                  if (isEditing) { setSelectedTeeth([]); setActiveTooth(null); }
+                                }}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                style={{ width: 28, alignItems: 'center' }}
+                              >
+                                <AppIcon name="x" size={13} color={NO.inkMute} />
+                              </TouchableOpacity>
+                            </Pressable>
+                          );
+                        })}
+                        {/* Toplam */}
+                        <View style={{
+                          flexDirection: 'row', alignItems: 'center',
+                          marginTop: 8, paddingTop: 8,
+                          borderTopWidth: 1, borderTopColor: NO.inkStrong,
+                        }}>
+                          <Text style={{ flex: 1, fontSize: 12, fontWeight: '700', color: NO.inkStrong }}>Toplam</Text>
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: NO.inkStrong }}>
+                            ₺{totalPrice.toLocaleString('tr-TR')}
+                          </Text>
+                          <View style={{ width: 28 }} />
+                        </View>
+                      </View>
+                    )}
+                  </NOCard>
+                );
+              })()}
 
-            {/* İş listesi — operasyon kartının altında */}
-            {(() => {
-              const confirmed = [...form.tooth_ops].filter(o => confirmedTeeth.includes(o.tooth)).sort((a, b) => a.tooth - b.tooth);
-              return (
-                <SectionCard
-                  title={`İş listesi${confirmed.length > 0 ? ` (${confirmed.length} diş)` : ''}`}
-                  icon={'format-list-bulleted-square' as any}
-                  style={{ overflow: 'visible' } as any}
-                  accentColor={P}
-                >
-                  {confirmed.length === 0 ? (
-                    <View style={{ paddingVertical: 28, alignItems: 'center', gap: 6, opacity: 0.5 }}>
-                      <AppIcon name={'clipboard-list-outline' as any} size={28} color="#94A3B8" />
-                      <Text style={{ color: '#94A3B8', fontSize: 12, fontFamily: F.medium, textAlign: 'center' }}>
-                        Diş seçin, işlemleri doldurun ve "Listeye ekle" butonuna basın
-                      </Text>
-                    </View>
-                  ) : (
-                    <View>
-                      {confirmed.map(op => (
-                        <ToothOpRow key={op.tooth} op={op} onChange={(patch) => updateOneTooth(op.tooth, patch)} materialPrices={materialPrices} accentColor={P} />
-                      ))}
-                    </View>
-                  )}
-                </SectionCard>
-              );
-            })()}
+              {/* Mesaj kutusu — iş listesinin altında */}
+              <ChatBox
+                messages={form.chat_messages}
+                onAdd={(msg) => set('chat_messages')([...form.chat_messages, msg])}
+                onDelete={(id) => set('chat_messages')(form.chat_messages.filter(m => m.id !== id))}
+                accentColor={P}
+              />
 
             </View>{/* end right column */}
 
@@ -2482,115 +2613,229 @@ ${form.notes ? `<div class="card">
         </ScrollView>
       )}
 
-      {/* Step 4 — Summary */}
+      {/* Step 4 — Summary & Approval */}
       {step === 4 && (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 80 }}>
-          <View style={styles.summaryCard}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-              paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
-              <Text style={[styles.summaryTitle, { paddingHorizontal: 0, paddingVertical: 0, borderBottomWidth: 0 }]}>Vaka Özeti</Text>
-              {Platform.OS === 'web' && (
-                <TouchableOpacity onPress={printSummary} style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 5,
-                  paddingHorizontal: 12, paddingVertical: 6,
-                  backgroundColor: '#F1F5F9', borderRadius: 20,
-                  borderWidth: 1, borderColor: '#CBD5E1',
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }} keyboardShouldPersistTaps="handled">
+
+          {/* Step header */}
+          <NOStepHeader
+            step={4}
+            headerRight={
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                <Pressable onPress={() => setUploadModalOpen(true)} style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                  paddingVertical: 7, paddingHorizontal: 14,
+                  borderRadius: NORadius.md,
+                  borderWidth: 1, borderColor: NO.borderMedium,
+                  backgroundColor: '#FFFFFF',
                 }}>
-                  <AppIcon name={'printer-outline' as any} size={14} color={P} />
-                  <Text style={{ fontSize: 12, color: P, fontFamily: F.medium }}>Çıktı Al</Text>
-                </TouchableOpacity>
-              )}
-            </View>
+                  <AppIcon name="paperclip" size={14} color={NO.inkSoft} />
+                  <Text style={{ fontSize: 12, color: NO.inkSoft, fontWeight: '500' }}>Dosyalar</Text>
+                </Pressable>
+                <Pressable onPress={() => setChatModalVisible(true)} style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                  paddingVertical: 7, paddingHorizontal: 14,
+                  borderRadius: NORadius.md,
+                  borderWidth: 1, borderColor: NO.borderMedium,
+                  backgroundColor: '#FFFFFF',
+                }}>
+                  <AppIcon name="message-circle" size={14} color={NO.inkSoft} />
+                  <Text style={{ fontSize: 12, color: NO.inkSoft, fontWeight: '500' }}>Mesaj</Text>
+                </Pressable>
+                {Platform.OS === 'web' && (
+                  <Pressable onPress={printSummary} style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 6,
+                    paddingVertical: 7, paddingHorizontal: 14,
+                    borderRadius: NORadius.md,
+                    borderWidth: 1, borderColor: NO.borderMedium,
+                    backgroundColor: '#FFFFFF',
+                  }}>
+                    <AppIcon name="printer-outline" size={14} color={NO.inkSoft} />
+                    <Text style={{ fontSize: 12, color: NO.inkSoft, fontWeight: '500' }}>Çıktı Al</Text>
+                  </Pressable>
+                )}
+              </View>
+            }
+          >
+            <NOEmText>Hepsi hazır.</NOEmText> Bir kez daha bakalım.
+          </NOStepHeader>
 
+          <View style={{ gap: 12 }}>
+
+            {/* ── Urgent banner ── */}
             {form.is_urgent && (
-              <View style={styles.urgentBanner}>
-                <Text style={styles.urgentBannerText}>🔴 ACİL VAKA</Text>
-              </View>
-            )}
-
-            <SummaryGroup title="Klinik & diş hekimi">
-              {selectedClinic && <SummaryRow label="Klinik" value={selectedClinic.name} />}
-              {selectedDoctor && <SummaryRow label="Diş hekimi" value={selectedDoctor.full_name} />}
-            </SummaryGroup>
-
-            <SummaryGroup title="Hasta">
-              {(form.patient_first_name || form.patient_last_name) && <SummaryRow label="Ad Soyad" value={[form.patient_first_name, form.patient_last_name].filter(Boolean).join(' ')} />}
-              {form.patient_id && <SummaryRow label="TC Kimlik" value={form.patient_id} />}
-              {form.patient_gender !== 'belirtilmedi' && <SummaryRow label="Cinsiyet" value={form.patient_gender === 'erkek' ? '♂ Erkek' : '♀ Kadın'} />}
-              {form.patient_dob && <SummaryRow label="Doğum tarihi" value={form.patient_dob.toLocaleDateString('tr-TR')} />}
-              {form.patient_phone && <SummaryRow label="İletişim" value={form.patient_phone} />}
-            </SummaryGroup>
-
-            <SummaryGroup title="Vaka">
-              {form.model_type && <SummaryRow label="Model tipi" value={MODEL_TYPES.find((m) => m.value === form.model_type)?.label ?? form.model_type} />}
-              <SummaryRow label="Makine" value={form.machine_type === 'milling' ? '⚙️ Frezeleme' : '🖨️ 3D Baskı'} />
-            </SummaryGroup>
-
-            {form.tooth_ops.length > 0 && (
-              <SummaryGroup title={`Dişler & Operasyonlar (${form.tooth_ops.length} diş)`}>
-                {groupToothOps(form.tooth_ops).map(group => {
-                  const jLabel = getJawLabel(group.ops.map(o => o.tooth));
-                  const repOp  = group.ops[0];
-                  const detail = [repOp.work_type, repOp.shade, repOp.implant_system, repOp.abutment, repOp.screw, repOp.material].filter(Boolean).join(' · ') || 'Operasyon belirtilmedi';
-                  if (jLabel) {
-                    return <SummaryRow key={group.key} label={jLabel} value={detail} />;
-                  }
-                  return group.ops.sort((a, b) => a.tooth - b.tooth).map(op => (
-                    <SummaryRow
-                      key={op.tooth}
-                      label={`Diş ${op.tooth}`}
-                      value={[op.work_type, op.shade, op.implant_system, op.abutment, op.screw, op.material].filter(Boolean).join(' · ') || 'Operasyon belirtilmedi'}
-                    />
-                  ));
-                })}
-              </SummaryGroup>
-            )}
-
-            {form.pending_items.length > 0 && (
-              <SummaryGroup title={`Protez Listesi (${form.pending_items.length} kalem)`}>
-                {form.pending_items.map((item, i) => (
-                  <SummaryRow key={i} label={item.name}
-                    value={`${(item.price * item.quantity).toFixed(2)} TRY${item.quantity > 1 ? ` (x${item.quantity})` : ''}`} />
-                ))}
-                <View style={styles.summaryTotal}>
-                  <Text style={styles.summaryTotalLabel}>Toplam Tutar</Text>
-                  <Text style={styles.summaryTotalValue}>{itemTotal.toFixed(2)} TRY</Text>
+              <View style={{
+                padding: 12, borderRadius: NORadius.md,
+                backgroundColor: 'rgba(156,46,46,0.08)',
+                flexDirection: 'row', alignItems: 'center', gap: 8,
+              }}>
+                <AppIcon name="zap" size={14} color={NO.error} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: NO.error }}>ACİL VAKA</Text>
+                  <Text style={{ fontSize: 10, color: NO.error, opacity: 0.7 }}>+%30 ücret · öncelikli üretim</Text>
                 </View>
-              </SummaryGroup>
-            )}
-
-            {form.notes ? (
-              <SummaryGroup title="Diş hekimi talimatları">
-                <Text style={styles.noteText}>{form.notes}</Text>
-              </SummaryGroup>
-            ) : null}
-            {form.lab_notes ? (
-              <SummaryGroup title="🔒 Lab iç notu">
-                <Text style={[styles.noteText, { color: '#92400E' }]}>{form.lab_notes}</Text>
-              </SummaryGroup>
-            ) : null}
-
-            {form.attachments.length > 0 && (
-              <SummaryGroup title={`Dosyalar (${form.attachments.length})`}>
-                {form.attachments.filter(a => a.scope === 'case').map(a => (
-                  <SummaryRow key={a.id} label={kindLabel(a.kind)} value={a.name} />
-                ))}
-                {form.attachments.filter(a => a.scope === 'tooth').map(a => (
-                  <SummaryRow key={a.id} label={`Diş ${a.tooth} · ${kindLabel(a.kind)}`} value={a.name} />
-                ))}
-              </SummaryGroup>
-            )}
-
-            {/* QR Kodu */}
-            <View style={{ alignItems: 'center', paddingVertical: 24,
-              borderTopWidth: 1, borderTopColor: '#F1F5F9', marginTop: 8 }}>
-              <View nativeID="dental-qr-container">
-                <BrandedQR value={qrValue} size={130} color="#0F172A" backgroundColor="#FFFFFF" />
               </View>
-              <Text style={{ marginTop: 10, fontSize: 11, color: '#94A3B8', fontFamily: F.regular, textAlign: 'center' }}>
-                QR kodu ile vaka bilgileri
-              </Text>
-            </View>
+            )}
+
+            {/* ── Kart 1: Sipariş özeti ── */}
+            <NOCard>
+              <NOCardHead num={1} title="Sipariş özeti" sub="Tüm adımların kısa görünümü" />
+
+              {/* Klinik & Hasta */}
+              <View style={{ gap: 10 }}>
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <View style={{ flex: 1, padding: 10, backgroundColor: NO.bgInput, borderRadius: NORadius.sm }}>
+                    <Text style={{ fontSize: 10, color: NO.inkMute, marginBottom: 3 }}>KLİNİK</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: NO.inkStrong }} numberOfLines={1}>
+                      {selectedClinic?.name || '—'}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1, padding: 10, backgroundColor: NO.bgInput, borderRadius: NORadius.sm }}>
+                    <Text style={{ fontSize: 10, color: NO.inkMute, marginBottom: 3 }}>HEKİM</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: NO.inkStrong }} numberOfLines={1}>
+                      {selectedDoctor?.full_name || '—'}
+                    </Text>
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <View style={{ flex: 1, padding: 10, backgroundColor: NO.bgInput, borderRadius: NORadius.sm }}>
+                    <Text style={{ fontSize: 10, color: NO.inkMute, marginBottom: 3 }}>HASTA</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: NO.inkStrong }} numberOfLines={1}>
+                      {form.patient_first_name ? `${form.patient_first_name} ${form.patient_last_name}`.trim() : '—'}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1, padding: 10, backgroundColor: NO.bgInput, borderRadius: NORadius.sm }}>
+                    <Text style={{ fontSize: 10, color: NO.inkMute, marginBottom: 3 }}>TESLİM TARİHİ</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: NO.inkStrong }}>
+                      {form.delivery_date ? form.delivery_date.toLocaleDateString('tr-TR') : '—'}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Çalışma yöntemi satırı */}
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <View style={{ flex: 1, padding: 10, backgroundColor: NO.bgInput, borderRadius: NORadius.sm }}>
+                    <Text style={{ fontSize: 10, color: NO.inkMute, marginBottom: 3 }}>ÖLÇÜM</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: NO.inkStrong }}>
+                      {form.measurement_type === 'digital' ? 'Dijital' : form.measurement_type === 'manual' ? 'Manuel' : '—'}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1, padding: 10, backgroundColor: NO.bgInput, borderRadius: NORadius.sm }}>
+                    <Text style={{ fontSize: 10, color: NO.inkMute, marginBottom: 3 }}>MODEL</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: NO.inkStrong }}>
+                      {form.model_type || '—'}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            </NOCard>
+
+            {/* ── Kart 2: İş listesi özeti ── */}
+            {(() => {
+              const ops = form.tooth_ops.filter(o => confirmedTeeth.includes(o.tooth)).sort((a, b) => a.tooth - b.tooth);
+              const totalMat = ops.reduce((s, o) => s + (o.material_price || 0), 0);
+              const totalLabor = ops.reduce((s, o) => s + (o.price || 0), 0);
+              const grandTotal = totalMat + totalLabor;
+              return (
+                <NOCard>
+                  <NOCardHead num={2} title="İşlemler" sub={`${ops.length} diş`} badge={grandTotal > 0 ? `₺${grandTotal.toLocaleString('tr-TR')}` : undefined} />
+                  {ops.length === 0 ? (
+                    <View style={{ paddingVertical: 16, alignItems: 'center', opacity: 0.5 }}>
+                      <Text style={{ fontSize: 12, color: NO.inkMute }}>Henüz işlem eklenmedi</Text>
+                    </View>
+                  ) : (
+                    <View>
+                      {ops.map((op, i) => {
+                        const detail = [op.material, op.shade].filter(Boolean).join(' · ');
+                        const cost = (op.price || 0) + (op.material_price || 0);
+                        return (
+                          <View key={op.tooth} style={{
+                            flexDirection: 'row', alignItems: 'center', paddingVertical: 6,
+                            borderBottomWidth: i < ops.length - 1 ? 1 : 0, borderBottomColor: NO.borderSoft,
+                          }}>
+                            <View style={{
+                              width: 26, height: 20, borderRadius: 5,
+                              backgroundColor: NO.saffronSoft, alignItems: 'center', justifyContent: 'center', marginRight: 10,
+                            }}>
+                              <Text style={{ fontSize: 10, fontWeight: '700', color: NO.inkStrong, fontFamily: 'monospace' }}>{op.tooth}</Text>
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 11, fontWeight: '500', color: NO.inkStrong }} numberOfLines={1}>{op.work_type}</Text>
+                              {detail ? <Text style={{ fontSize: 9, color: NO.inkMute }} numberOfLines={1}>{detail}</Text> : null}
+                            </View>
+                            <Text style={{ fontSize: 11, fontWeight: '600', color: cost > 0 ? NO.inkStrong : NO.inkMute }}>
+                              {cost > 0 ? `₺${cost.toLocaleString('tr-TR')}` : '—'}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                      {/* Maliyet özeti */}
+                      <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: NO.inkStrong, gap: 4 }}>
+                        {totalMat > 0 && (
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                            <Text style={{ fontSize: 11, color: NO.inkSoft }}>Materyal</Text>
+                            <Text style={{ fontSize: 11, color: NO.inkSoft }}>₺{totalMat.toLocaleString('tr-TR')}</Text>
+                          </View>
+                        )}
+                        {totalLabor > 0 && (
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                            <Text style={{ fontSize: 11, color: NO.inkSoft }}>İşçilik</Text>
+                            <Text style={{ fontSize: 11, color: NO.inkSoft }}>₺{totalLabor.toLocaleString('tr-TR')}</Text>
+                          </View>
+                        )}
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: NO.inkStrong }}>Toplam</Text>
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: NO.inkStrong }}>₺{grandTotal.toLocaleString('tr-TR')}</Text>
+                        </View>
+                      </View>
+                    </View>
+                  )}
+                </NOCard>
+              );
+            })()}
+
+            {/* ── Kart 3: Dosyalar özeti ── */}
+            {form.attachments.length > 0 && (
+              <NOCard>
+                <NOCardHead num={3} title="Dosyalar" badge={`${form.attachments.length} dosya · ${formatBytes(form.attachments.reduce((s, a) => s + (a.size || 0), 0))}`} />
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {form.attachments.map(a => (
+                    <View key={a.id} style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 6,
+                      paddingVertical: 5, paddingHorizontal: 10,
+                      backgroundColor: NO.bgInput, borderRadius: NORadius.pill,
+                    }}>
+                      <AppIcon name={a.kind === 'photo' ? 'image' : a.kind === 'pdf' ? 'file-text' : a.kind === 'stl' || a.kind === 'ply' ? 'box' : 'paperclip'} size={12} color={NO.inkSoft} />
+                      <Text style={{ fontSize: 11, color: NO.inkMedium, maxWidth: 120 }} numberOfLines={1}>{a.name}</Text>
+                    </View>
+                  ))}
+                </View>
+              </NOCard>
+            )}
+
+            {/* ── Kart 4: Hekime not ── */}
+            <NOCard>
+              <NOCardHead num={form.attachments.length > 0 ? 4 : 3} title="Hekime not" sub="Opsiyonel · vaka kartında gözükür" />
+              <View style={{
+                padding: 12, paddingHorizontal: 14,
+                backgroundColor: NO.bgInput, borderRadius: 11,
+                minHeight: 60,
+              }}>
+                <TextInput
+                  value={form.notes}
+                  onChangeText={set('notes')}
+                  placeholder="Notunuzu yazın..."
+                  placeholderTextColor={NO.inkMute}
+                  multiline
+                  style={{
+                    fontSize: 12, color: NO.inkStrong, minHeight: 40,
+                    ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
+                    textAlignVertical: 'top',
+                  }}
+                />
+              </View>
+            </NOCard>
+
           </View>
         </ScrollView>
       )}
@@ -2602,38 +2847,7 @@ ${form.notes ? `<div class="card">
         </View>
       ) : null}
 
-      {/* Navigation — floating, transparent — her iki buton sağda yan yana.
-          Mobilde alttaki cam tab bar'ın üstüne kaldırılır. */}
-      <View style={{
-        position: 'absolute',
-        bottom: isDesktop ? 16 : 96,
-        right: 16,
-        flexDirection: 'row', gap: 8,
-        pointerEvents: 'box-none',
-      }}>
-        {step > 1 && (
-          <TouchableOpacity style={styles.backBtn} onPress={() => goToStep((step - 1) as Step)}>
-            <Text style={styles.backBtnText}>← Geri</Text>
-          </TouchableOpacity>
-        )}
-        {step < 4 ? (
-          <TouchableOpacity style={styles.nextBtn} onPress={handleNext}>
-            <Text style={styles.nextBtnText}>İleri →</Text>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={[styles.nextBtn, styles.submitBtn, (!isFormValid || loading) && { opacity: 0.45 }]}
-            onPress={handleSubmit}
-            disabled={!isFormValid || loading}
-          >
-            <Text style={styles.nextBtnText}>{loading ? 'Kaydediliyor...' : '✓ İş Emrini Kaydet'}</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-        </View>{/* mainCol */}
-
-      </View>{/* outerWrap */}
+      </NOPageChrome>{/* NOPageChrome */}
 
 {/* Clinic add modal */}
       <ClinicAddModal
@@ -2983,102 +3197,97 @@ const makeFusStyles = (P: string) => StyleSheet.create({
   },
   uploadTriggerBadgeText: { fontSize: 11, fontFamily: F.bold, color: '#FFFFFF' },
 
-  /* ── Upload Modal ── */
+  /* ── Upload Modal — NO design system ── */
   umOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.55)',
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.45)',
     alignItems: 'center', justifyContent: 'center', padding: 20,
   },
   umCard: {
-    backgroundColor: '#FFFFFF', borderRadius: 24,
+    backgroundColor: NO.bgStage, borderRadius: NORadius.xl,
     width: '100%', maxWidth: 1000, maxHeight: '95%' as any,
     overflow: 'hidden',
-    // @ts-ignore
-    boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
   },
   umHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 24, paddingVertical: 18,
-    borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
+    paddingHorizontal: 20, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: NO.borderSoft,
   },
   umHeaderIcon: {
-    width: 38, height: 38, borderRadius: 10,
+    width: 34, height: 34, borderRadius: NORadius.sm,
     alignItems: 'center', justifyContent: 'center',
   },
-  umHeaderTitle: { fontSize: 16, fontFamily: F.bold, color: '#0F172A' },
+  umHeaderTitle: { fontSize: 15, fontFamily: F.bold, color: NO.inkStrong },
   umCloseBtn: {
-    width: 36, height: 36, borderRadius: 10,
-    backgroundColor: '#F8FAFC', alignItems: 'center', justifyContent: 'center',
+    width: 32, height: 32, borderRadius: NORadius.sm,
+    backgroundColor: NO.bgInput, alignItems: 'center', justifyContent: 'center',
   },
   umSectionLabel: {
-    fontSize: 10, fontFamily: F.semibold, color: '#94A3B8',
+    fontSize: 10, fontFamily: F.semibold, color: NO.inkMute,
     letterSpacing: 0.8, marginBottom: 10,
   },
   umFileBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     paddingVertical: 12, paddingHorizontal: 16,
-    borderRadius: 12, borderWidth: 1.5,
-    borderStyle: 'dashed' as any, borderColor: '#CBD5E1',
-    backgroundColor: '#F8FAFC',
+    borderRadius: NORadius.md, borderWidth: 1.5,
+    borderStyle: 'dashed' as any, borderColor: NO.borderMedium,
+    backgroundColor: NO.bgInput,
   },
   umFileBtnText: { fontSize: 13, fontFamily: F.semibold, flex: 1 },
-  umFileBtnHint: { fontSize: 11, fontFamily: F.regular, color: '#94A3B8' },
+  umFileBtnHint: { fontSize: 11, fontFamily: F.regular, color: NO.inkMute },
   umFooter: {
-    padding: 16, borderTopWidth: 1, borderTopColor: '#F1F5F9',
+    padding: 14, borderTopWidth: 1, borderTopColor: NO.borderSoft,
     alignItems: 'flex-end',
   },
   umOkBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingVertical: 12, paddingHorizontal: 28,
-    borderRadius: 12,
+    paddingVertical: 10, paddingHorizontal: 22,
+    borderRadius: NORadius.md,
   },
-  umOkBtnText: { fontSize: 14, fontFamily: F.semibold, color: '#FFFFFF' },
+  umOkBtnText: { fontSize: 13, fontFamily: F.semibold, color: '#FFFFFF' },
 
   /* 2×2 grid layout */
   umGrid: {
-    flexDirection: 'row' as any, flexWrap: 'wrap' as any, gap: 14,
+    flexDirection: 'row' as any, flexWrap: 'wrap' as any, gap: 12,
   },
-  umCol: { flex: 1, minWidth: 0 }, // unused but kept for TS
+  umCol: { flex: 1, minWidth: 0 },
 
   /* Grup — each takes ~half width so 2 per row */
   umGroup: {
-    flexBasis: 'calc(50% - 7px)' as any,
+    flexBasis: 'calc(50% - 6px)' as any,
     flexGrow: 1,
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    borderWidth: 1, borderColor: '#F1F5F9',
+    borderRadius: NORadius.xl,
     padding: 14,
   },
   umGroupHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14,
+    flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12,
   },
   umGroupDot: {
-    width: 8, height: 8, borderRadius: 4,
+    width: 7, height: 7, borderRadius: 4,
   },
   umGroupTitle: {
-    fontSize: 13, fontFamily: F.bold, color: '#0F172A',
+    fontSize: 13, fontFamily: F.bold, color: NO.inkStrong,
   },
 
   /* ── Kapanış Analizi CTA (3 scan yüklüyse görünür) ── */
   occlusionCta: {
     flexDirection: 'row' as any, alignItems: 'center' as any,
-    gap: 12, marginTop: 10, paddingVertical: 12, paddingHorizontal: 14,
-    borderRadius: 12, backgroundColor: '#2563EB',
-    shadowColor: '#2563EB', shadowOpacity: 0.18,
-    shadowRadius: 10, shadowOffset: { width: 0, height: 4 },
+    gap: 12, marginTop: 10, paddingVertical: 10, paddingHorizontal: 14,
+    borderRadius: NORadius.md, backgroundColor: NO.inkStrong,
   },
   occlusionCtaIcon: {
-    width: 36, height: 36, borderRadius: 10,
+    width: 32, height: 32, borderRadius: NORadius.sm,
     alignItems: 'center' as any, justifyContent: 'center' as any,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(255,255,255,0.15)',
   },
   occlusionCtaTitle: {
-    fontSize: 13, fontFamily: F.bold, color: '#FFFFFF',
+    fontSize: 12, fontFamily: F.bold, color: '#FFFFFF',
   },
   occlusionCtaBadge: {
-    fontSize: 11, fontFamily: F.semibold, color: '#BBF7D0',
+    fontSize: 11, fontFamily: F.semibold, color: NO.saffron,
   },
   occlusionCtaSub: {
-    fontSize: 11, color: 'rgba(255,255,255,0.8)', marginTop: 2,
+    fontSize: 11, color: 'rgba(255,255,255,0.7)', marginTop: 2,
   },
 
   /* ── Kare yükleme kartları ── */
@@ -3086,20 +3295,20 @@ const makeFusStyles = (P: string) => StyleSheet.create({
     flexDirection: 'row' as any, flexWrap: 'wrap' as any, gap: 8,
   },
   uploadCard: {
-    width: 100, height: 118, borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1, borderColor: '#E2E8F0',
+    width: 100, height: 118, borderRadius: NORadius.md,
+    backgroundColor: NO.bgInput,
+    borderWidth: 1, borderColor: NO.borderSoft,
     overflow: 'hidden' as any,
     position: 'relative' as any,
   },
   uploadCardDashed: {
     borderStyle: 'dashed' as any,
-    borderColor: '#CBD5E1',
-    backgroundColor: '#FFFFFF',
+    borderColor: NO.borderMedium,
+    backgroundColor: NO.bgInput,
   },
   uploadCardTab: {
-    height: 10, width: '55%', alignSelf: 'center' as any,
-    borderBottomLeftRadius: 6, borderBottomRightRadius: 6,
+    height: 8, width: '50%', alignSelf: 'center' as any,
+    borderBottomLeftRadius: 5, borderBottomRightRadius: 5,
     marginBottom: 0,
   },
   uploadCardBody: {
@@ -3125,19 +3334,19 @@ const makeFusStyles = (P: string) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6,
   },
   uploadCardLabel: {
-    fontSize: 11, fontFamily: F.semibold, color: '#0F172A', textAlign: 'center' as any,
+    fontSize: 11, fontFamily: F.semibold, color: NO.inkStrong, textAlign: 'center' as any,
   },
   uploadCardFileName: {
-    fontSize: 10, fontFamily: F.regular, color: '#059669',
+    fontSize: 10, fontFamily: F.regular, color: NO.success,
     marginTop: 3, width: '100%',
   },
   uploadCardBtn: {
     position: 'absolute' as any, bottom: 8, right: 8,
-    width: 26, height: 26, borderRadius: 13,
+    width: 24, height: 24, borderRadius: 12,
     alignItems: 'center' as any, justifyContent: 'center' as any,
   },
   uploadCardDel: {
-    position: 'absolute' as any, top: 18, right: 8,
+    position: 'absolute' as any, top: 16, right: 8,
     width: 20, height: 20, borderRadius: 10,
     backgroundColor: '#FEE2E2',
     alignItems: 'center' as any, justifyContent: 'center' as any,
@@ -3146,39 +3355,39 @@ const makeFusStyles = (P: string) => StyleSheet.create({
   /* İmplant brand search dropdown card */
   implantBrandCard: {
     flex: 1,
-    borderRadius: 14, backgroundColor: '#FFFFFF',
-    borderWidth: 1, borderColor: '#E2E8F0',
+    borderRadius: NORadius.md, backgroundColor: NO.bgInput,
+    borderWidth: 1, borderColor: NO.borderSoft,
     overflow: 'visible' as any,
   },
   implantSearchRow: {
     flexDirection: 'row' as any, alignItems: 'center', gap: 8,
-    backgroundColor: '#F8FAFC', borderRadius: 10,
-    borderWidth: 1, borderColor: '#E2E8F0',
+    backgroundColor: '#FFFFFF', borderRadius: NORadius.sm,
+    borderWidth: 1, borderColor: NO.borderSoft,
     paddingHorizontal: 10, paddingVertical: 8,
   },
   implantSearchInput: {
-    flex: 1, fontSize: 13, fontFamily: F.regular, color: '#0F172A',
+    flex: 1, fontSize: 13, fontFamily: F.regular, color: NO.inkStrong,
     // @ts-ignore
     outlineStyle: 'none',
   },
   implantDropList: {
-    borderRadius: 12,
-    borderWidth: 1, borderColor: '#E2E8F0',
+    borderRadius: NORadius.md,
+    borderWidth: 1, borderColor: NO.borderSoft,
     backgroundColor: '#FFFFFF',
     overflow: 'hidden' as any,
     // @ts-ignore
-    boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+    boxShadow: '0 8px 20px rgba(0,0,0,0.12)',
   },
   implantDropItem: {
     flexDirection: 'row' as any, alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 14, paddingVertical: 10,
-    borderBottomWidth: 1, borderBottomColor: '#F8FAFC',
+    borderBottomWidth: 1, borderBottomColor: NO.borderSoft,
   },
   implantDropItemActive: {
-    backgroundColor: '#F5F3FF',
+    backgroundColor: NO.saffronSoft,
   },
   implantDropItemText: {
-    fontSize: 13, fontFamily: F.regular, color: '#334155', flex: 1,
+    fontSize: 13, fontFamily: F.regular, color: NO.inkMedium, flex: 1,
   },
   implantDropItemTextActive: {
     fontFamily: F.semibold, color: '#8B5CF6',
@@ -4184,12 +4393,15 @@ function WorkTypeSelector({
   selectedTeeth,
   onNightGuard,
   accentColor,
+  onAutoConfirm,
 }: {
   op: ToothOp;
   updateToothOp: (patch: Partial<Omit<ToothOp, 'tooth'>>) => void;
   selectedTeeth: number[];
   onNightGuard: (jaw: 'upper' | 'lower' | 'both') => void;
   accentColor?: string;
+  /** Called when the last detail field is filled — auto-adds to list */
+  onAutoConfirm?: () => void;
 }) {
   const P = accentColor ?? C.primary;
   const wts = useMemo(() => makeWtsStyles(P), [P]);
@@ -4225,6 +4437,13 @@ function WorkTypeSelector({
     const next = op.work_type === value ? '' : value;
     setPendingMain(null);
     updateToothOp({ work_type: next, shade: '', implant_system: '', abutment: '', screw: '', material: '' });
+    // Auto-confirm for surgical/other — no detail fields needed
+    if (next) {
+      const subCat = OP_CATEGORY[next] ?? null;
+      if (subCat === 'surgical' || subCat === 'other') {
+        setTimeout(() => onAutoConfirm?.(), 0);
+      }
+    }
   };
 
   const FAVORITES: { label: string; value: string; nightGuard?: true }[] = [
@@ -4242,6 +4461,11 @@ function WorkTypeSelector({
     setShowNightGuard(false);
     setPendingMain(null);
     updateToothOp({ work_type: f.value, shade: '', implant_system: '', abutment: '', screw: '', material: '' });
+    // Auto-confirm for surgical/other favorites
+    const favCat = OP_CATEGORY[f.value] ?? null;
+    if (favCat === 'surgical' || favCat === 'other') {
+      setTimeout(() => onAutoConfirm?.(), 0);
+    }
   };
 
   return (
@@ -4371,7 +4595,11 @@ function WorkTypeSelector({
                 <View style={{ flexDirection: 'row', gap: 6, paddingBottom: 4 }}>
                   {ALL_SHADES.map(s => (
                     <TouchableOpacity key={s}
-                      onPress={() => updateToothOp({ shade: op.shade === s ? '' : s })}
+                      onPress={() => {
+                        const next = op.shade === s ? '' : s;
+                        updateToothOp({ shade: next });
+                        if (next) setTimeout(() => onAutoConfirm?.(), 0);
+                      }}
                       style={[styles.shadeChip, op.shade === s && styles.shadeChipActive]}>
                       <Text style={[styles.shadeText, op.shade === s && styles.shadeTextActive]}>{s}</Text>
                     </TouchableOpacity>
@@ -4422,7 +4650,11 @@ function WorkTypeSelector({
                 <View style={{ flexDirection: 'row', gap: 6, paddingBottom: 4 }}>
                   {ALL_SHADES.map(s => (
                     <TouchableOpacity key={s}
-                      onPress={() => updateToothOp({ shade: op.shade === s ? '' : s })}
+                      onPress={() => {
+                        const next = op.shade === s ? '' : s;
+                        updateToothOp({ shade: next });
+                        if (next) setTimeout(() => onAutoConfirm?.(), 0);
+                      }}
                       style={[styles.shadeChip, op.shade === s && styles.shadeChipActive]}>
                       <Text style={[styles.shadeText, op.shade === s && styles.shadeTextActive]}>{s}</Text>
                     </TouchableOpacity>
@@ -4439,7 +4671,11 @@ function WorkTypeSelector({
               <View style={styles.chipRow}>
                 {REMOVABLE_MATS.map(m => (
                   <TouchableOpacity key={m}
-                    onPress={() => updateToothOp({ material: op.material === m ? '' : m })}
+                    onPress={() => {
+                      const next = op.material === m ? '' : m;
+                      updateToothOp({ material: next });
+                      if (next) setTimeout(() => onAutoConfirm?.(), 0);
+                    }}
                     style={[styles.chip, op.material === m && styles.chipActive]}>
                     <Text style={[styles.chipText, op.material === m && styles.chipTextActive]}>{m}</Text>
                   </TouchableOpacity>
@@ -4928,23 +5164,21 @@ function ChatBox({ messages, onAdd, onDelete, hideHeader, accentColor }: {
 
 const makeCbStyles = (P: string) => StyleSheet.create({
   // Container
-  wrap: { borderRadius: 18, overflow: 'hidden', backgroundColor: '#FFFFFF', flex: 1,
-          shadowColor: '#000', shadowOpacity: 0.07, shadowRadius: 12, shadowOffset: { width: 0, height: 4 },
-          borderWidth: 1, borderColor: '#E8EDF2' },
+  wrap: { borderRadius: NORadius.xl, overflow: 'hidden', backgroundColor: '#FFFFFF', flex: 1 },
 
-  // Header — white, clean, like reference
+  // Header — white, clean
   header:      { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16,
                   paddingVertical: 12, backgroundColor: '#fff',
-                  borderBottomWidth: 1, borderBottomColor: '#F0F4F8' },
-  headerIcon:  { width: 36, height: 36, borderRadius: 18, backgroundColor: '#F1F5F9',
+                  borderBottomWidth: 1, borderBottomColor: NO.borderSoft },
+  headerIcon:  { width: 32, height: 32, borderRadius: NORadius.sm, backgroundColor: NO.bgInput,
                   alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 14, fontWeight: '700' as any, color: '#1E293B', marginBottom: 1 },
-  headerSub:   { fontSize: 10, color: '#94A3B8', lineHeight: 14 },
-  headerDot:   { width: 9, height: 9, borderRadius: 5, backgroundColor: '#22C55E',
+  headerTitle: { fontSize: 13, fontWeight: '700' as any, color: NO.inkStrong, marginBottom: 1 },
+  headerSub:   { fontSize: 10, color: NO.inkMute, lineHeight: 14 },
+  headerDot:   { width: 8, height: 8, borderRadius: 4, backgroundColor: NO.success,
                   borderWidth: 1.5, borderColor: '#fff' },
 
   // Messages
-  msgList:    { flex: 1, minHeight: 200, backgroundColor: '#F8FAFC' },
+  msgList:    { flex: 1, minHeight: 200, backgroundColor: NO.bgInput },
   msgContent: { paddingHorizontal: 14, paddingVertical: 12, gap: 6 },
   emptyWrap:  { alignItems: 'center', justifyContent: 'center', paddingTop: 50, gap: 8 },
   emptyTxt:   { fontSize: 12, color: '#CBD5E1' },
@@ -5288,66 +5522,7 @@ const makeVniStyles = (P: string) => StyleSheet.create({
   delBtn:      { padding: 4 },
 });
 
-function SectionCard({ title, subtitle, icon, iconNode, children, errorCount, headerRight, style, accentColor }: {
-  title: string; subtitle?: string; icon?: React.ComponentProps<typeof MaterialCommunityIcons>['name']; iconNode?: React.ReactNode; children: React.ReactNode; errorCount?: number; headerRight?: React.ReactNode; style?: any; accentColor?: string;
-}) {
-  const P = accentColor ?? C.primary;
-  const sc = _staticStyles;
-  return (
-    <View style={[sc.sectionCard, errorCount ? sc.sectionCardError : undefined, style]}>
-      <View style={sc.sectionCardHeader}>
-        <View style={[sc.sectionCardTitleRow, { flex: 1 }]}>
-          {(icon || iconNode) && (
-            <View style={sc.sectionCardIconWrap}>
-              {iconNode ?? <AppIcon name={icon!} size={14} color={errorCount ? '#EF4444' : P} />}
-            </View>
-          )}
-          <Text style={[sc.sectionCardTitle, errorCount ? { color: '#EF4444' } : undefined]}>{title}</Text>
-          {!!errorCount && (
-            <View style={sc.sectionCardErrBadge}>
-              <Text style={sc.sectionCardErrBadgeText}>{errorCount}</Text>
-            </View>
-          )}
-          {headerRight && <View style={{ marginLeft: 'auto' }}>{headerRight}</View>}
-        </View>
-        {subtitle && <Text style={sc.sectionCardSub}>{subtitle}</Text>}
-      </View>
-      {children}
-    </View>
-  );
-}
-
-function FieldError({ msg }: { msg?: string }) {
-  if (!msg) return null;
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 5, marginBottom: 2 }}>
-      <AppIcon name={'alert-circle-outline' as any} size={12} color="#EF4444" />
-      <Text style={{ fontSize: 11, fontFamily: F.medium, color: '#EF4444' }}>{msg}</Text>
-    </View>
-  );
-}
-
-function Field({ label, value, onChangeText, placeholder, multiline, flex, style, required, error }: any) {
-  return (
-    <View style={[_staticStyles.fieldWrap, flex && { flex: 1 }]}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 5 }}>
-        {required && <Text style={{ fontSize: 13, color: error ? '#EF4444' : '#0F172A', fontWeight: '700', lineHeight: 16 }}>*</Text>}
-        <Text style={[_staticStyles.fieldLabel, { marginBottom: 0 }, error && { color: '#EF4444' }]}>{label}</Text>
-      </View>
-      <TextInput
-        style={[
-          _staticStyles.fieldInput,
-          multiline && _staticStyles.fieldInputMulti,
-          error && { borderColor: 'rgba(239,68,68,0.5)', backgroundColor: 'rgba(239,68,68,0.05)' },
-          style,
-        ]}
-        value={value} onChangeText={onChangeText} placeholder={placeholder}
-        placeholderTextColor={C.textMuted}
-        multiline={multiline} textAlignVertical={multiline ? 'top' : 'auto'}
-      />
-    </View>
-  );
-}
+// SectionCard, FieldError, Field → imported from ../components/FormPrimitives
 
 // ── Drum-roll Wheel Picker ──────────────────────────────────────
 
@@ -5791,7 +5966,7 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 
 function InlineSelect({ label, icon, value, options, onSelect, error, accentColor }: {
   label: string;
-  icon: React.ComponentProps<typeof MaterialCommunityIcons>['name'];
+  icon: string;
   value: string;
   options: { value: string; label: string }[];
   onSelect: (v: string) => void;
@@ -5966,251 +6141,7 @@ function InlineDateSelect({ label, value, onChange, minDate, error, accentColor 
   );
 }
 
-// ── SearchableDropdown ──────────────────────────────────────────
-
-interface DropdownOption { id: string; label: string; sublabel?: string; }
-
-function SearchableDropdown({
-  label, placeholder, options, selectedId, onSelect, onAddNew, addNewLabel,
-  disabled, disabledHint, required, error,
-}: {
-  label: string;
-  placeholder: string;
-  options: DropdownOption[];
-  selectedId: string;
-  onSelect: (id: string) => void;
-  onAddNew?: (name: string) => Promise<void>;
-  addNewLabel?: string;
-  disabled?: boolean;
-  disabledHint?: string;
-  required?: boolean;
-  error?: string;
-}) {
-  const [focused, setFocused] = useState(false);
-  const [query, setQuery]     = useState('');
-  const [adding, setAdding]   = useState(false);
-  const [dropPos, setDropPos] = React.useState<{ top?: number; bottom?: number; left: number; width: number } | null>(null);
-  const wrapRef = React.useRef<View>(null);
-
-  const DROP_MAX_H = 260; // dropdown panel max-height + add-row
-
-  const measureWrap = React.useCallback(() => {
-    if (Platform.OS !== 'web' || !wrapRef.current) return;
-    const el = wrapRef.current as any;
-    if (el?.getBoundingClientRect) {
-      const rect = el.getBoundingClientRect();
-      const vh = (typeof window !== 'undefined' ? window.innerHeight : 800);
-      const spaceBelow = vh - rect.bottom;
-      if (spaceBelow < DROP_MAX_H + 8) {
-        // Yukarı aç: dropdown'un alt kenarı trigger'ın üstüne hizalanır
-        setDropPos({ bottom: vh - rect.top + 4, left: rect.left, width: rect.width });
-      } else {
-        // Aşağı aç (normal)
-        setDropPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
-      }
-    }
-  }, []);
-
-  const selected = options.find(o => o.id === selectedId);
-
-  // Keep input text in sync with external selection changes (e.g. clinic reset clears doctor)
-  useEffect(() => {
-    if (!focused) {
-      setQuery(selected ? selected.label : '');
-    }
-  }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Türkçe karakter normalizasyonu: İ→i, Ş→s vb. harmanlama sorunlarını giderir
-  const norm = (s: string) =>
-    s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-      .replace(/ı/g, 'i').replace(/ğ/g, 'g').replace(/ü/g, 'u')
-      .replace(/ş/g, 's').replace(/ö/g, 'o').replace(/ç/g, 'c');
-
-  const filtered = query.trim()
-    ? options.filter(o => norm(o.label).includes(norm(query)))
-    : options;
-
-  const exactMatch = options.some(o => norm(o.label) === norm(query.trim()));
-  // Web'de dropPos hazır olmadan paneli açma (overflow:hidden parent tarafından kırpılır)
-  const showList   = focused && (Platform.OS !== 'web' || dropPos !== null);
-  const showAdd    = !!onAddNew && showList && !exactMatch;
-
-  const handleSelect = (id: string, itemLabel: string) => {
-    onSelect(id);
-    setQuery(itemLabel);
-    setFocused(false);
-  };
-
-  const handleClear = () => {
-    onSelect('');
-    setQuery('');
-    setFocused(false);
-  };
-
-  const handleAdd = async () => {
-    if (!onAddNew || adding) return;
-    setAdding(true);
-    await onAddNew(query.trim());
-    setAdding(false);
-    setFocused(false);
-  };
-
-  // Disabled — must be after all hooks
-  if (disabled) {
-    return (
-      <View style={[dd.wrap, { flex: 1 }]}>
-        {label ? <Text style={dd.label}>{label}</Text> : null}
-        <View style={[dd.inputWrap, { backgroundColor: '#F1F5F9', borderColor: '#F1F5F9' }]}>
-          <AppIcon name="lock-outline" size={14} color="#B0BAC9" />
-          <Text style={[dd.input, { color: '#B0BAC9' } as any]} numberOfLines={1}>
-            {disabledHint ?? placeholder}
-          </Text>
-        </View>
-      </View>
-    );
-  }
-
-  return (
-    <View ref={wrapRef} style={[dd.wrap, { flex: 1 }]}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 5 }}>
-        {required && <Text style={{ fontSize: 13, color: error ? '#EF4444' : '#0F172A', fontWeight: '700', lineHeight: 16 }}>*</Text>}
-        <Text style={[dd.label, { marginBottom: 0 }, error && { color: '#EF4444' }]}>{label}</Text>
-      </View>
-
-      {/* Text input — always visible, acts as both search & display */}
-      <View style={[dd.inputWrap, focused && dd.inputWrapFocused, error && { borderColor: 'rgba(239,68,68,0.5)', backgroundColor: 'rgba(239,68,68,0.05)' }]}>
-        <AppIcon name="magnify" size={15} color="#94A3B8" />
-        <TextInput
-          style={dd.input}
-          value={query}
-          onChangeText={(text) => {
-            setQuery(text);
-            if (!text) onSelect('');
-          }}
-          onFocus={() => { setFocused(true); measureWrap(); }}
-          onBlur={() => setTimeout(() => setFocused(false), 250)}
-          placeholder={placeholder}
-          placeholderTextColor="#B0BAC9"
-          // @ts-ignore
-          outlineStyle="none"
-        />
-        {selectedId ? (
-          <TouchableOpacity onPress={handleClear} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <AppIcon name="close-circle-outline" size={16} color="#B0BAC9" />
-          </TouchableOpacity>
-        ) : null}
-      </View>
-
-      {/* Dropdown list — portal to document.body (bypasses transform containing block) */}
-      {showList && (
-        <WebPortal>
-          <View
-            style={[
-              dd.panel,
-              dropPos
-                ? { position: 'fixed' as any, top: dropPos.top, bottom: dropPos.bottom, left: dropPos.left, width: dropPos.width, marginTop: 0, zIndex: 9999 }
-                : { display: 'none' as any },
-            ]}
-            {...(Platform.OS === 'web' ? { onMouseDown: (e: any) => e.preventDefault() } : {})}
-          >
-            <ScrollView
-              style={dd.list}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-              nestedScrollEnabled
-            >
-              {filtered.length === 0 && !showAdd && (
-                <Text style={dd.emptyText}>Sonuç bulunamadı</Text>
-              )}
-              {filtered.map(item => {
-                const active = item.id === selectedId;
-                return (
-                  <TouchableOpacity
-                    key={item.id}
-                    style={[dd.item, active && dd.itemActive]}
-                    onPress={() => handleSelect(item.id, item.label)}
-                  >
-                    <View style={dd.itemLeft}>
-                      <Text style={[dd.itemLabel, active && dd.itemLabelActive]}>{item.label}</Text>
-                      {item.sublabel && <Text style={dd.itemSub}>{item.sublabel}</Text>}
-                    </View>
-                    {active && <AppIcon name="check" size={16} color="#0F172A" />}
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
-            {showAdd && (
-              <TouchableOpacity style={dd.addRow} onPress={handleAdd} disabled={adding}>
-                <View style={dd.addIcon}>
-                  <AppIcon name="plus" size={16} color="#0F172A" />
-                </View>
-                <Text style={dd.addText}>
-                  {adding ? 'Ekleniyor...' : query.trim() ? `${addNewLabel ?? 'Ekle'}: "${query.trim()}"` : (addNewLabel ?? 'Yeni ekle')}
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </WebPortal>
-      )}
-    </View>
-  );
-}
-
-const dd = StyleSheet.create({
-  wrap:  { position: 'relative' },
-  label: { fontSize: 11, fontWeight: '500', fontFamily: F.medium, color: '#64748B', marginBottom: 7, letterSpacing: 0.5, textTransform: 'none' },
-
-  /* Direct text input */
-  inputWrap: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    borderWidth: 1, borderColor: '#F1F5F9', borderRadius: 10,
-    paddingHorizontal: 14, paddingVertical: 11,
-    backgroundColor: '#FFFFFF',
-  },
-  inputWrapFocused: { borderColor: '#0F172A' },
-  input: {
-    flex: 1, fontSize: 14, fontWeight: '400', fontFamily: F.regular, color: '#0F172A',
-  },
-
-  /* Overlay panel — fixed position on web, doesn't push content */
-  panel: {
-    marginTop: 4,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-    overflow: 'hidden',
-    // @ts-ignore
-    boxShadow: '0 4px 16px rgba(15,23,42,0.10)',
-  },
-
-  list:      { maxHeight: 240 },
-  emptyText: { textAlign: 'center', fontFamily: F.regular, color: '#94A3B8', paddingVertical: 24, fontSize: 13 },
-
-  item: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 20, paddingVertical: 13,
-    borderBottomWidth: 1, borderBottomColor: '#F8FAFC', gap: 10,
-  },
-  itemActive:      { backgroundColor: '#F1F5F9' },
-  itemLeft:        { flex: 1 },
-  itemLabel:       { fontSize: 14, fontWeight: '400', fontFamily: F.regular, color: '#0F172A' },
-  itemLabelActive: { color: '#0F172A', fontWeight: '500', fontFamily: F.medium },
-  itemSub:         { fontSize: 12, fontFamily: F.regular, color: '#94A3B8', marginTop: 1 },
-
-  addRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingHorizontal: 20, paddingVertical: 14,
-    borderTopWidth: 1, borderTopColor: '#F1F5F9',
-    backgroundColor: '#F8FAFF',
-  },
-  addIcon: {
-    width: 28, height: 28, borderRadius: 14,
-    backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center',
-  },
-  addText: { fontSize: 14, fontWeight: '500', fontFamily: F.medium, color: '#0F172A' },
-});
+// SearchableDropdown, DropdownOption → imported from ../components/FormPrimitives
 
 // ── Step Sidebar (desktop) ──────────────────────────────────────
 
@@ -6337,7 +6268,7 @@ const makeSbStyles = (P: string) => StyleSheet.create({
 // ── Styles ──────────────────────────────────────────────────────
 
 const makeStyles = (P: string) => StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#FFFFFF' },
+  safe: { flex: 1, backgroundColor: '#F5F2EA' },
 
   /* Outer layout */
   outerWrap:        { flex: 1, backgroundColor: '#FFFFFF' },

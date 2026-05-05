@@ -6,7 +6,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../../core/store/authStore';
-import { supabase } from '../../lib/supabase';
+import { supabase } from '../../core/api/supabase';
 
 const ACCENT = '#16A34A';
 

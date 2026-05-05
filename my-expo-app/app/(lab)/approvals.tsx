@@ -1,1 +1,3 @@
-export { DesignApprovalsScreen as default } from '../../modules/approvals/DesignApprovalsScreen';
+import { AdminApprovalsScreen } from '../../modules/approvals/AdminApprovalsScreen';
+
+export default AdminApprovalsScreen;

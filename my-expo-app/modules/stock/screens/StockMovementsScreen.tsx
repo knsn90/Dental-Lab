@@ -4,7 +4,7 @@ import {
   ActivityIndicator, RefreshControl, useWindowDimensions, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { supabase } from '../../../lib/supabase';
+import { supabase } from '../../../core/api/supabase';
 
 import { AppIcon } from '../../../core/ui/AppIcon';
 

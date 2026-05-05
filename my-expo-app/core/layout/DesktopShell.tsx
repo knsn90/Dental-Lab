@@ -1040,6 +1040,8 @@ const s = StyleSheet.create({
           '0 8px 24px rgba(0,0,0,0.15),' +
           ' inset 0 1px 0 rgba(255,255,255,0.85),' +
           ' inset 1px 0 0 rgba(255,255,255,0.65)',
+        // @ts-ignore
+        transition: 'width 0.25s ease, border-radius 0.25s ease',
       } as any,
       default: {
         // Native: backdrop-filter yok, klasik gölge

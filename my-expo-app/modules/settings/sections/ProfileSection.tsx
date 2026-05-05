@@ -1,141 +1,214 @@
+/**
+ * ProfileSection — Patterns Design Language (NativeWind)
+ * ──────────────────────────────────────────────────────
+ * Ayarlar > Profil sekmesi. Avatar, kişisel bilgiler, e-posta,
+ * şifre değiştirme, hesap bilgileri.
+ * Patterns cardSolid: bg-white rounded-[24px] p-[22px] + soft shadow.
+ * Lucide ikonlar, Inter Tight Light display.
+ */
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, ActivityIndicator, Alert, Image, Platform,
+  View, Text, ScrollView, Pressable, TextInput,
+  ActivityIndicator, Alert, Image, Platform, Modal,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import {
+  Camera, Edit2, Mail, Phone, Lock, Shield,
+  Calendar, LogOut, ChevronRight, ChevronUp, Eye, EyeOff, X,
+  MapPin, User as UserIcon, Hash, MessageCircle, GraduationCap, Briefcase, Building2,
+} from 'lucide-react-native';
 import { useAuthStore } from '../../../core/store/authStore';
-import { supabase } from '../../../lib/supabase';
+import { supabase } from '../../../core/api/supabase';
 import { toast } from '../../../core/ui/Toast';
 
-import { AppIcon } from '../../../core/ui/AppIcon';
-
-// ── Helpers ────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────
 const ROLE_LABEL: Record<string, string> = {
-  admin:      'Sistem Yöneticisi',
-  manager:    'Mesul Müdür',
-  technician: 'Teknisyen',
-  doctor:     'Hekim',
-  clinic_admin: 'Klinik Müdürü',
-  lab:        'Lab Personeli',
+  admin: 'Sistem Yöneticisi', manager: 'Mesul Müdür',
+  technician: 'Teknisyen', doctor: 'Hekim',
+  clinic_admin: 'Klinik Müdürü', lab: 'Lab Personeli',
 };
-
-function getRoleLabel(profile: any): string {
-  if (profile?.user_type === 'admin')        return ROLE_LABEL.admin;
-  if (profile?.user_type === 'doctor')       return ROLE_LABEL.doctor;
-  if (profile?.user_type === 'clinic_admin') return ROLE_LABEL.clinic_admin;
-  if (profile?.role === 'manager')           return ROLE_LABEL.manager;
-  if (profile?.role === 'technician')        return ROLE_LABEL.technician;
+function getRoleLabel(p: any): string {
+  if (p?.user_type === 'admin')        return ROLE_LABEL.admin;
+  if (p?.user_type === 'doctor')       return ROLE_LABEL.doctor;
+  if (p?.user_type === 'clinic_admin') return ROLE_LABEL.clinic_admin;
+  if (p?.role === 'manager')           return ROLE_LABEL.manager;
+  if (p?.role === 'technician')        return ROLE_LABEL.technician;
   return ROLE_LABEL.lab;
 }
-
-function joinedDate(profile: any): string {
-  if (!profile?.created_at) return '';
-  return new Date(profile.created_at).toLocaleDateString('tr-TR', {
-    day: 'numeric', month: 'short', year: 'numeric',
-  });
+function joinedDate(p: any): string {
+  if (!p?.created_at) return '';
+  return new Date(p.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-// ── Props ──────────────────────────────────────────────────────────────────
-interface Props {
-  accentColor: string;
+// cardSolid shadow (patterns)
+const CARD_SHADOW = Platform.select({
+  web: { boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)' } as any,
+  default: { shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+});
+
+// ── InfoRow (hero card bilgi satırı) ─────────────────────────────────────
+function InfoRow({ icon: Icon, value }: { icon: any; value?: string | null }) {
+  if (!value) return null;
+  return (
+    <View className="flex-row items-center gap-2.5">
+      <Icon size={13} color="#9A9A9A" strokeWidth={1.6} />
+      <Text className="text-[13px] text-ink-500 flex-1" numberOfLines={1}>{value}</Text>
+    </View>
+  );
 }
 
-// ── Component ──────────────────────────────────────────────────────────────
+// ── CardRow (sağ taraf kart satırı — view / edit modları) ────────────────
+function CardRow({ icon: Icon, iconColor, iconBg, label, value, placeholder, editing, editValue, onChangeEdit, inputProps }: {
+  icon: any; iconColor: string; iconBg: string;
+  label: string; value?: string | null; placeholder?: string;
+  editing?: boolean; editValue?: string; onChangeEdit?: (v: string) => void;
+  inputProps?: Record<string, any>;
+}) {
+  return (
+    <View className="flex-row items-center gap-3 py-1">
+      <View className="w-8 h-8 rounded-lg items-center justify-center" style={{ backgroundColor: iconBg }}>
+        <Icon size={14} color={iconColor} strokeWidth={1.8} />
+      </View>
+      <View className="flex-1">
+        <Text className="text-[11px] text-ink-400 mb-0.5">{label}</Text>
+        {editing && onChangeEdit ? (
+          <TextInput
+            className="border border-black/[0.06] rounded-lg px-2.5 py-1.5 text-[13px] text-ink-900 bg-ink-50 mt-0.5"
+            value={editValue ?? ''} onChangeText={onChangeEdit}
+            placeholder={placeholder || label} placeholderTextColor="#C0C0C8"
+            // @ts-ignore web
+            style={{ outlineWidth: 0 }}
+            {...inputProps}
+          />
+        ) : (
+          <Text className={`text-[14px] font-medium ${value ? 'text-ink-900' : 'text-ink-300'}`} numberOfLines={1}>
+            {value || placeholder || '—'}
+          </Text>
+        )}
+      </View>
+    </View>
+  );
+}
+
+// ── Gender picker options ────────────────────────────────────────────────
+const GENDER_OPTIONS = [
+  { value: 'erkek', label: 'Erkek' },
+  { value: 'kadın', label: 'Kadın' },
+  { value: 'belirtilmedi', label: 'Belirtilmedi' },
+] as const;
+
+// ── Props ────────────────────────────────────────────────────────────────
+interface Props { accentColor: string; }
+
+// ── Component ────────────────────────────────────────────────────────────
 export function ProfileSection({ accentColor }: Props) {
   const { profile, signOut, setProfile } = useAuthStore() as any;
   const roleLabel = getRoleLabel(profile);
-  const initial   = (profile?.full_name ?? '?').charAt(0).toUpperCase();
+  const initial = (profile?.full_name ?? '?').charAt(0).toUpperCase();
 
   // Avatar
-  const [avatarUri,       setAvatarUri]       = useState<string | null>(profile?.avatar_url ?? null);
+  const [avatarUri, setAvatarUri] = useState<string | null>(profile?.avatar_url ?? null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
-  // Personal info edit
-  const [editing,    setEditing]    = useState(false);
-  const [fullName,   setFullName]   = useState(profile?.full_name ?? '');
-  const [phone,      setPhone]      = useState(profile?.phone ?? '');
+  // Edit — kişisel
+  const [editing, setEditing] = useState(false);
+  const [fullName, setFullName] = useState(profile?.full_name ?? '');
+  const [phone, setPhone] = useState(profile?.phone ?? '');
+  const [birthDate, setBirthDate] = useState(profile?.birth_date ?? '');
+  const [gender, setGender] = useState(profile?.gender ?? '');
+  const [city, setCity] = useState(profile?.city ?? '');
+  const [address, setAddress] = useState(profile?.address ?? '');
+  const [tcKimlik, setTcKimlik] = useState(profile?.tc_kimlik_no ?? '');
+  const [whatsapp, setWhatsapp] = useState(profile?.whatsapp_phone ?? '');
+  // Edit — mesleki
+  const [diplomaNo, setDiplomaNo] = useState(profile?.diploma_no ?? '');
+  const [specialty, setSpecialty] = useState(profile?.specialty ?? '');
+  const [department, setDepartment] = useState(profile?.department ?? '');
   const [savingInfo, setSavingInfo] = useState(false);
 
   // Email
-  const [email,       setEmail]       = useState(profile?.email ?? '');
-  const [editEmail,   setEditEmail]   = useState(false);
+  const [email, setEmail] = useState(profile?.email ?? '');
+  const [editEmail, setEditEmail] = useState(false);
   const [savingEmail, setSavingEmail] = useState(false);
 
   // Password
-  const [showPass,    setShowPass]    = useState(false);
-  const [newPass,     setNewPass]     = useState('');
+  const [showPass, setShowPass] = useState(false);
+  const [newPass, setNewPass] = useState('');
   const [confirmPass, setConfirmPass] = useState('');
-  const [showNew,     setShowNew]     = useState(false);
+  const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [savingPass,  setSavingPass]  = useState(false);
+  const [savingPass, setSavingPass] = useState(false);
 
   useEffect(() => {
     setFullName(profile?.full_name ?? '');
     setPhone(profile?.phone ?? '');
     setEmail(profile?.email ?? '');
     setAvatarUri(profile?.avatar_url ?? null);
+    setBirthDate(profile?.birth_date ?? '');
+    setGender(profile?.gender ?? '');
+    setCity(profile?.city ?? '');
+    setAddress(profile?.address ?? '');
+    setTcKimlik(profile?.tc_kimlik_no ?? '');
+    setWhatsapp(profile?.whatsapp_phone ?? '');
+    setDiplomaNo(profile?.diploma_no ?? '');
+    setSpecialty(profile?.specialty ?? '');
+    setDepartment(profile?.department ?? '');
   }, [profile]);
 
-  // ── Handlers ──────────────────────────────────────────────────────────────
+  /* ── Handlers ─────────────────────────────────────────────────────── */
   const handlePickAvatar = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) { toast.warning('Galeri erişimi için izin verin.'); return; }
-
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true, aspect: [1, 1], quality: 0.8, base64: true,
+      allowsEditing: true, aspect: [4, 5], quality: 0.8, base64: true,
     });
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
     if (!asset.base64) { toast.error('Görsel okunamadı.'); return; }
-
     setUploadingAvatar(true);
     try {
       const byteStr = atob(asset.base64);
-      const bytes   = new Uint8Array(byteStr.length);
+      const bytes = new Uint8Array(byteStr.length);
       for (let i = 0; i < byteStr.length; i++) bytes[i] = byteStr.charCodeAt(i);
-
       const mime = asset.mimeType ?? 'image/jpeg';
-      const ext  = mime.split('/')[1] ?? 'jpg';
+      const ext = mime.split('/')[1] ?? 'jpg';
       const path = `${profile.id}/avatar.${ext}`;
-
-      const { error: uploadErr } = await supabase.storage
-        .from('avatars').upload(path, bytes, { upsert: true, contentType: mime });
+      const { error: uploadErr } = await supabase.storage.from('avatars').upload(path, bytes, { upsert: true, contentType: mime });
       if (uploadErr) throw new Error(uploadErr.message);
-
       const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
       const publicUrl = `${urlData.publicUrl}?t=${Date.now()}`;
-
-      const { error: dbErr } = await supabase.from('profiles')
-        .update({ avatar_url: urlData.publicUrl }).eq('id', profile.id);
+      const { error: dbErr } = await supabase.from('profiles').update({ avatar_url: urlData.publicUrl }).eq('id', profile.id);
       if (dbErr) throw new Error(dbErr.message);
-
       setAvatarUri(publicUrl);
       if (setProfile) setProfile({ ...profile, avatar_url: urlData.publicUrl });
-    } catch (e: any) {
-      toast.error(e.message ?? 'Fotoğraf yüklenemedi.');
-    } finally {
-      setUploadingAvatar(false);
-    }
+    } catch (e: any) { toast.error(e.message ?? 'Fotoğraf yüklenemedi.'); }
+    finally { setUploadingAvatar(false); }
   };
 
   const handleSaveInfo = async () => {
     if (!fullName.trim()) { toast.error('Ad Soyad boş bırakılamaz.'); return; }
     setSavingInfo(true);
     try {
-      const { error } = await supabase.from('profiles')
-        .update({ full_name: fullName.trim(), phone: phone.trim() || null })
-        .eq('id', profile.id);
+      const updates: Record<string, any> = {
+        full_name: fullName.trim(),
+        phone: phone.trim() || null,
+        birth_date: birthDate.trim() || null,
+        gender: gender || null,
+        city: city.trim() || null,
+        address: address.trim() || null,
+        tc_kimlik_no: tcKimlik.trim() || null,
+        whatsapp_phone: whatsapp.trim() || null,
+        diploma_no: diplomaNo.trim() || null,
+        specialty: specialty.trim() || null,
+        department: department.trim() || null,
+      };
+      const { error } = await supabase.from('profiles').update(updates).eq('id', profile.id);
       if (error) throw new Error(error.message);
-      if (setProfile) setProfile({ ...profile, full_name: fullName.trim(), phone: phone.trim() || null });
-      setEditing(false);
-      toast.success('Bilgileriniz güncellendi.');
-    } catch (e: any) {
-      toast.error(e.message ?? 'Bir hata oluştu.');
-    } finally {
-      setSavingInfo(false);
-    }
+      if (setProfile) setProfile({ ...profile, ...updates });
+      setEditing(false); toast.success('Bilgileriniz güncellendi.');
+    } catch (e: any) { toast.error(e.message ?? 'Bir hata oluştu.'); }
+    finally { setSavingInfo(false); }
   };
 
   const handleSaveEmail = async () => {
@@ -145,17 +218,13 @@ export function ProfileSection({ accentColor }: Props) {
       const { error } = await supabase.auth.updateUser({ email: email.trim() });
       if (error) throw new Error(error.message);
       if (setProfile) setProfile({ ...profile, email: email.trim() });
-      setEditEmail(false);
-      toast.success('Doğrulama e-postası gönderildi.');
-    } catch (e: any) {
-      toast.error(e.message ?? 'E-posta güncellenemedi.');
-    } finally {
-      setSavingEmail(false);
-    }
+      setEditEmail(false); toast.success('Doğrulama e-postası gönderildi.');
+    } catch (e: any) { toast.error(e.message ?? 'E-posta güncellenemedi.'); }
+    finally { setSavingEmail(false); }
   };
 
   const handleChangePassword = async () => {
-    if (newPass.length < 6)     { toast.error('Şifre en az 6 karakter olmalıdır.'); return; }
+    if (newPass.length < 6) { toast.error('Şifre en az 6 karakter olmalıdır.'); return; }
     if (newPass !== confirmPass) { toast.error('Şifreler eşleşmiyor.'); return; }
     setSavingPass(true);
     try {
@@ -163,11 +232,8 @@ export function ProfileSection({ accentColor }: Props) {
       if (error) throw new Error(error.message);
       setNewPass(''); setConfirmPass(''); setShowPass(false);
       toast.success('Şifreniz değiştirildi.');
-    } catch (e: any) {
-      toast.error(e.message ?? 'Şifre değiştirilemedi.');
-    } finally {
-      setSavingPass(false);
-    }
+    } catch (e: any) { toast.error(e.message ?? 'Şifre değiştirilemedi.'); }
+    finally { setSavingPass(false); }
   };
 
   const handleSignOut = () => {
@@ -181,443 +247,375 @@ export function ProfileSection({ accentColor }: Props) {
     }
   };
 
+  const handleCancelEdit = () => {
+    setEditing(false);
+    setFullName(profile?.full_name ?? '');
+    setPhone(profile?.phone ?? '');
+    setBirthDate(profile?.birth_date ?? '');
+    setGender(profile?.gender ?? '');
+    setCity(profile?.city ?? '');
+    setAddress(profile?.address ?? '');
+    setTcKimlik(profile?.tc_kimlik_no ?? '');
+    setWhatsapp(profile?.whatsapp_phone ?? '');
+    setDiplomaNo(profile?.diploma_no ?? '');
+    setSpecialty(profile?.specialty ?? '');
+    setDepartment(profile?.department ?? '');
+  };
+
   const passNoMatch = newPass.length > 0 && confirmPass.length > 0 && newPass !== confirmPass;
+
+  /* ── Avatar sub-component ─────────────────────────────────────────── */
+  const AvatarBlock = () => (
+    <Pressable onPress={handlePickAvatar} className="relative flex-shrink-0">
+      {avatarUri ? (
+        <Image source={{ uri: avatarUri }} className="w-14 h-14 rounded-2xl" />
+      ) : (
+        <View className="w-14 h-14 rounded-2xl items-center justify-center" style={{ backgroundColor: accentColor }}>
+          <Text className="text-[22px] font-extrabold text-white">{initial}</Text>
+        </View>
+      )}
+      <View
+        className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full items-center justify-center border-2 border-white"
+        style={{ backgroundColor: accentColor }}
+      >
+        {uploadingAvatar
+          ? <ActivityIndicator size={8} color="#fff" />
+          : <Camera size={9} color="#FFFFFF" strokeWidth={2.5} />}
+      </View>
+    </Pressable>
+  );
 
   return (
     <ScrollView
-      style={{ flex: 1 }}
-      contentContainerStyle={s.container}
+      className="flex-1"
+      contentContainerStyle={{ paddingHorizontal: 28, paddingTop: 0, paddingBottom: 40 }}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >
+      {/* ═══════ ANA LAYOUT: Sol (Profil hero) — Sağ (Bilgi kartları) ═══════ */}
+      <View className="flex-row gap-5" style={{ alignItems: 'flex-start' }}>
 
-      {/* ── Profile identity card ───────────────────────────────────── */}
-      <View style={s.card}>
-        {editing ? (
-          /* Edit mode */
-          <View style={s.editBlock}>
-            <View style={s.editAvatarRow}>
-              <TouchableOpacity onPress={handlePickAvatar} activeOpacity={0.8} style={s.avatarWrap}>
-                {avatarUri
-                  ? <Image source={{ uri: avatarUri }} style={s.avatarImg} />
-                  : <View style={[s.avatar, { backgroundColor: accentColor }]}>
-                      <Text style={s.avatarLetter}>{initial}</Text>
-                    </View>}
-                <View style={[s.avatarBadge, { backgroundColor: accentColor }]}>
-                  {uploadingAvatar
-                    ? <ActivityIndicator size="small" color="#fff" />
-                    : <AppIcon name="camera" size={11} color="#fff" />}
+        {/* ══ SOL — Profil hero kartı ══ */}
+        <View style={{ width: 280 }}>
+          <View
+            className="bg-white rounded-[24px]"
+            style={CARD_SHADOW}
+          >
+            {/* Avatar — kart içinde padding + rounded */}
+            <Pressable onPress={handlePickAvatar} className="relative p-3 pb-0">
+              {avatarUri ? (
+                <Image
+                  source={{ uri: avatarUri }}
+                  className="w-full rounded-[18px]"
+                  style={{ aspectRatio: 4 / 5 }}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View
+                  className="w-full items-center justify-center rounded-[18px]"
+                  style={{ aspectRatio: 4 / 5, backgroundColor: accentColor }}
+                >
+                  <Text className="text-[72px] font-bold text-white">{initial}</Text>
                 </View>
-              </TouchableOpacity>
-              <View style={{ flex: 1 }}>
-                <Text style={s.editHelp}>Ad, soyad ve telefon bilgilerinizi güncelleyin.</Text>
-                <TouchableOpacity onPress={handlePickAvatar}>
-                  <Text style={[s.editPhotoLink, { color: accentColor }]}>Fotoğrafı değiştir</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <View style={s.fieldGroup}>
-              <Text style={s.fieldLabel}>AD SOYAD</Text>
-              <TextInput
-                style={s.fieldInput as any}
-                value={fullName} onChangeText={setFullName}
-                placeholder="Ad Soyad" placeholderTextColor="#C0C0C8"
-                returnKeyType="next"
-              />
-            </View>
-            <View style={s.fieldGroup}>
-              <Text style={s.fieldLabel}>TELEFON</Text>
-              <TextInput
-                style={s.fieldInput as any}
-                value={phone} onChangeText={setPhone}
-                placeholder="0555 000 00 00" placeholderTextColor="#C0C0C8"
-                keyboardType="phone-pad" returnKeyType="done"
-              />
-            </View>
-            <View style={s.editActions}>
-              <TouchableOpacity
-                style={s.cancelBtn}
-                onPress={() => { setEditing(false); setFullName(profile?.full_name ?? ''); setPhone(profile?.phone ?? ''); }}
+              )}
+              {/* Camera badge */}
+              <View
+                className="absolute bottom-2 right-5 w-8 h-8 rounded-full items-center justify-center border-2 border-white"
+                style={{ backgroundColor: accentColor }}
               >
-                <Text style={s.cancelBtnText}>Vazgeç</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.saveBtn, { backgroundColor: accentColor }, savingInfo && { opacity: 0.6 }]}
-                onPress={handleSaveInfo} disabled={savingInfo}
-              >
-                {savingInfo
-                  ? <ActivityIndicator size="small" color="#fff" />
-                  : <Text style={s.saveBtnText}>Kaydet</Text>}
-              </TouchableOpacity>
-            </View>
-          </View>
-        ) : (
-          /* View mode */
-          <View style={s.profileRow}>
-            <TouchableOpacity onPress={handlePickAvatar} activeOpacity={0.85} style={s.avatarWrap}>
-              {avatarUri
-                ? <Image source={{ uri: avatarUri }} style={s.avatarImg} />
-                : <View style={[s.avatar, { backgroundColor: accentColor }]}>
-                    <Text style={s.avatarLetter}>{initial}</Text>
-                  </View>}
-              <View style={[s.avatarBadge, { backgroundColor: accentColor }]}>
                 {uploadingAvatar
-                  ? <ActivityIndicator size="small" color="#fff" />
-                  : <AppIcon name="camera" size={11} color="#fff" />}
+                  ? <ActivityIndicator size={12} color="#fff" />
+                  : <Camera size={14} color="#FFFFFF" strokeWidth={2} />}
               </View>
-            </TouchableOpacity>
-            <View style={{ flex: 1 }}>
-              <Text style={s.profileName}>{profile?.full_name ?? '—'}</Text>
-              <View style={[s.rolePill, { backgroundColor: accentColor + '14' }]}>
-                <Text style={[s.rolePillText, { color: accentColor }]}>{roleLabel}</Text>
-              </View>
-              {profile?.email ? (
-                <Text style={s.profileEmail}>{profile.email}</Text>
-              ) : null}
-            </View>
-            <TouchableOpacity
-              style={[s.editBtn, { borderColor: accentColor + '40' }]}
-              onPress={() => setEditing(true)}
-            >
-              <AppIcon name="edit-2" size={13} color={accentColor} />
-              <Text style={[s.editBtnText, { color: accentColor }]}>Düzenle</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
+            </Pressable>
 
-      {/* ── İletişim ───────────────────────────────────────────────── */}
-      <Text style={[s.sectionLabel, { marginTop: 24 }]}>İletişim Bilgileri</Text>
-      <View style={s.card}>
-        {/* E-posta */}
-        <View style={s.itemRow}>
-          <View style={[s.itemIcon, { backgroundColor: accentColor + '14' }]}>
-            <AppIcon name="mail" size={14} color={accentColor} />
+            {/* Name + role + info */}
+            <View className="px-5 pt-4 pb-5">
+              <Text
+                className="text-ink-900 mb-1.5"
+                style={{ fontFamily: 'Inter Tight, Inter, system-ui, sans-serif', fontWeight: '300', fontSize: 20, letterSpacing: -0.4 }}
+                numberOfLines={1}
+              >
+                {profile?.full_name ?? '—'}
+              </Text>
+              <View className="self-start rounded-full px-3 py-1 mb-4" style={{ backgroundColor: `${accentColor}18` }}>
+                <Text className="text-[11px] font-semibold" style={{ color: accentColor }}>{roleLabel}</Text>
+              </View>
+
+              {/* Info rows */}
+              <View className="gap-2">
+                <InfoRow icon={Mail} value={profile?.email} />
+                <InfoRow icon={Phone} value={profile?.phone} />
+                {profile?.whatsapp_phone ? <InfoRow icon={MessageCircle} value={profile.whatsapp_phone} /> : null}
+                {profile?.city ? <InfoRow icon={MapPin} value={profile.city} /> : null}
+                {profile?.specialty ? <InfoRow icon={GraduationCap} value={profile.specialty} /> : null}
+                {profile?.department ? <InfoRow icon={Briefcase} value={profile.department} /> : null}
+                <InfoRow icon={Calendar} value={joinedDate(profile)} />
+              </View>
+
+              {/* Edit button */}
+              <Pressable
+                onPress={() => setEditing(true)}
+                className="flex-row items-center justify-center gap-2 py-2.5 rounded-xl mt-4"
+                style={{ backgroundColor: accentColor }}
+              >
+                <Edit2 size={13} color="#FFFFFF" strokeWidth={1.8} />
+                <Text className="text-[13px] font-semibold text-white">Profili Düzenle</Text>
+              </Pressable>
+
+              {/* Hesap bilgileri */}
+              <View className="mt-4 pt-4 border-t border-black/[0.04] gap-2">
+                <View className="flex-row items-center gap-2.5">
+                  <Shield size={13} color="#9A9A9A" strokeWidth={1.6} />
+                  <Text className="text-[13px] text-ink-500">{roleLabel}</Text>
+                </View>
+                <View className="flex-row items-center gap-2.5">
+                  <Calendar size={13} color="#9A9A9A" strokeWidth={1.6} />
+                  <Text className="text-[13px] text-ink-500">{joinedDate(profile) || '—'}</Text>
+                </View>
+              </View>
+
+              {/* Çıkış */}
+              <Pressable onPress={handleSignOut} className="flex-row items-center justify-center gap-2 py-2 rounded-xl mt-3 border border-red-200">
+                <LogOut size={13} color="#EF4444" strokeWidth={1.8} />
+                <Text className="text-[13px] font-semibold text-red-500">Çıkış Yap</Text>
+              </Pressable>
+            </View>
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={s.itemLabel}>E-posta</Text>
-            <Text style={s.itemValue}>{profile?.email ?? '—'}</Text>
-          </View>
-          <TouchableOpacity onPress={() => setEditEmail(v => !v)} style={s.dotBtn}>
-            <AppIcon name={editEmail ? 'x' : 'edit-2'} size={14} color="#94A3B8" />
-          </TouchableOpacity>
+
         </View>
 
-        {editEmail && (
-          <View style={s.subBlock}>
-            <View style={s.fieldGroup}>
-              <Text style={s.fieldLabel}>YENİ E-POSTA</Text>
-              <TextInput
-                style={s.fieldInput as any}
-                value={email} onChangeText={setEmail}
-                placeholder="yeni@email.com" placeholderTextColor="#C0C0C8"
-                keyboardType="email-address" autoCapitalize="none"
-                returnKeyType="done" autoFocus
-              />
-              <Text style={s.fieldHint}>Değişiklik sonrası doğrulama e-postası gönderilir.</Text>
+        {/* ══ SAĞ — Bilgi kartları (her zaman view mode) ══ */}
+        <View className="flex-1 gap-4">
+
+          {/* ROW 1 — Kişisel + İletişim */}
+          <View className="flex-row gap-4" style={{ alignItems: 'flex-start' }}>
+            {/* Kişisel Bilgiler */}
+            <View className="flex-1 bg-white rounded-[24px] p-[22px]" style={CARD_SHADOW}>
+              <Text className="text-[10px] font-semibold tracking-wider uppercase text-ink-400 mb-3">Kişisel Bilgiler</Text>
+              <CardRow icon={UserIcon} iconColor={accentColor} iconBg={`${accentColor}14`} label="Doğum Tarihi" value={profile?.birth_date ? new Date(profile.birth_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) : null} />
+              <View className="h-px bg-black/[0.04] my-2" />
+              <CardRow icon={UserIcon} iconColor={accentColor} iconBg={`${accentColor}14`} label="Cinsiyet" value={profile?.gender === 'erkek' ? 'Erkek' : profile?.gender === 'kadın' ? 'Kadın' : profile?.gender === 'belirtilmedi' ? 'Belirtilmedi' : null} />
+              <View className="h-px bg-black/[0.04] my-2" />
+              <CardRow icon={MapPin} iconColor={accentColor} iconBg={`${accentColor}14`} label="Şehir" value={profile?.city} />
+              <View className="h-px bg-black/[0.04] my-2" />
+              <CardRow icon={Hash} iconColor={accentColor} iconBg={`${accentColor}14`} label="TC Kimlik" value={profile?.tc_kimlik_no ? `***${profile.tc_kimlik_no.slice(-4)}` : null} />
             </View>
-            <TouchableOpacity
-              style={[s.saveBtn, { backgroundColor: accentColor }, savingEmail && { opacity: 0.6 }]}
-              onPress={handleSaveEmail} disabled={savingEmail}
-            >
-              {savingEmail
-                ? <ActivityIndicator size="small" color="#fff" />
-                : <Text style={s.saveBtnText}>E-postayı Güncelle</Text>}
-            </TouchableOpacity>
-          </View>
-        )}
 
-        <View style={s.divider} />
+            {/* İletişim */}
+            <View className="flex-1 bg-white rounded-[24px] p-[22px]" style={CARD_SHADOW}>
+              <Text className="text-[10px] font-semibold tracking-wider uppercase text-ink-400 mb-3">İletişim</Text>
+              <View className="flex-row items-center gap-3 py-1">
+                <View className="w-8 h-8 rounded-lg items-center justify-center" style={{ backgroundColor: `${accentColor}14` }}>
+                  <Mail size={14} color={accentColor} strokeWidth={1.8} />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-[11px] text-ink-400 mb-0.5">E-posta</Text>
+                  <Text className="text-[14px] font-medium text-ink-900" numberOfLines={1}>{profile?.email ?? '—'}</Text>
+                </View>
+                <Pressable onPress={() => setEditEmail(v => !v)} className="p-1.5">
+                  {editEmail ? <X size={14} color="#9A9A9A" strokeWidth={1.8} /> : <Edit2 size={14} color="#9A9A9A" strokeWidth={1.8} />}
+                </Pressable>
+              </View>
+              {editEmail && (
+                <View className="mt-3 pt-3.5 border-t border-black/[0.04] gap-3">
+                  <TextInput className="border border-black/[0.06] rounded-xl px-3.5 py-3 text-[14px] text-ink-900 bg-ink-50" value={email} onChangeText={setEmail} placeholder="yeni@email.com" placeholderTextColor="#C0C0C8" keyboardType="email-address" autoCapitalize="none" autoFocus style={{ outlineWidth: 0 } as any} />
+                  <Pressable onPress={handleSaveEmail} disabled={savingEmail} className="items-center py-3 rounded-xl" style={{ backgroundColor: accentColor, opacity: savingEmail ? 0.6 : 1 }}>
+                    {savingEmail ? <ActivityIndicator size="small" color="#fff" /> : <Text className="text-[13px] font-semibold text-white">Güncelle</Text>}
+                  </Pressable>
+                </View>
+              )}
+              <View className="h-px bg-black/[0.04] my-2" />
+              <CardRow icon={Phone} iconColor={accentColor} iconBg={`${accentColor}14`} label="Telefon" value={profile?.phone} placeholder="Eklenmedi" />
+              <View className="h-px bg-black/[0.04] my-2" />
+              <CardRow icon={MessageCircle} iconColor={accentColor} iconBg={`${accentColor}14`} label="WhatsApp" value={profile?.whatsapp_phone} placeholder="Eklenmedi" />
+              <View className="h-px bg-black/[0.04] my-2" />
+              <CardRow icon={MapPin} iconColor={accentColor} iconBg={`${accentColor}14`} label="Adres" value={profile?.address} placeholder="Eklenmedi" />
+            </View>
+          </View>
 
-        {/* Telefon */}
-        <View style={s.itemRow}>
-          <View style={[s.itemIcon, { backgroundColor: accentColor + '14' }]}>
-            <AppIcon name="phone" size={14} color={accentColor} />
+          {/* ROW 2 — Mesleki + Güvenlik */}
+          <View className="flex-row gap-4" style={{ alignItems: 'flex-start' }}>
+            {/* Mesleki Bilgiler */}
+            <View className="flex-1 bg-white rounded-[24px] p-[22px]" style={CARD_SHADOW}>
+              <Text className="text-[10px] font-semibold tracking-wider uppercase text-ink-400 mb-3">Mesleki Bilgiler</Text>
+              <CardRow icon={GraduationCap} iconColor={accentColor} iconBg={`${accentColor}14`} label="Uzmanlık" value={profile?.specialty} placeholder="Belirtilmedi" />
+              <View className="h-px bg-black/[0.04] my-2" />
+              <CardRow icon={Briefcase} iconColor={accentColor} iconBg={`${accentColor}14`} label="Departman" value={profile?.department} placeholder="Belirtilmedi" />
+              <View className="h-px bg-black/[0.04] my-2" />
+              <CardRow icon={Hash} iconColor={accentColor} iconBg={`${accentColor}14`} label="Diploma No" value={profile?.diploma_no} placeholder="Belirtilmedi" />
+            </View>
+
+            {/* Güvenlik */}
+            <View className="flex-1 bg-white rounded-[24px] p-[22px]" style={CARD_SHADOW}>
+              <Text className="text-[10px] font-semibold tracking-wider uppercase text-ink-400 mb-3">Güvenlik</Text>
+              <Pressable onPress={() => setShowPass(v => !v)} className="flex-row items-center gap-3 py-1">
+                <View className="w-8 h-8 rounded-lg items-center justify-center bg-amber-50">
+                  <Lock size={14} color="#D97706" strokeWidth={1.8} />
+                </View>
+                <Text className="flex-1 text-[14px] font-medium text-ink-700">Şifre Değiştir</Text>
+                {showPass ? <ChevronUp size={16} color="#9A9A9A" strokeWidth={1.8} /> : <ChevronRight size={16} color="#9A9A9A" strokeWidth={1.8} />}
+              </Pressable>
+              {showPass && (
+                <View className="mt-3 pt-3.5 border-t border-black/[0.04] gap-3.5">
+                  <View className="gap-1.5">
+                    <Text className="text-[10px] font-semibold tracking-wider uppercase text-ink-400">Yeni Şifre</Text>
+                    <View className="flex-row items-center border border-black/[0.06] rounded-xl bg-ink-50">
+                      <TextInput className="flex-1 px-3.5 py-3 text-[14px] text-ink-900" value={newPass} onChangeText={setNewPass} placeholder="En az 6 karakter" placeholderTextColor="#C0C0C8" secureTextEntry={!showNew} style={{ outlineWidth: 0 } as any} />
+                      <Pressable onPress={() => setShowNew(v => !v)} className="px-3 py-3">
+                        {showNew ? <EyeOff size={15} color="#C0C0C8" strokeWidth={1.8} /> : <Eye size={15} color="#C0C0C8" strokeWidth={1.8} />}
+                      </Pressable>
+                    </View>
+                  </View>
+                  <View className="gap-1.5">
+                    <Text className={`text-[10px] font-semibold tracking-wider uppercase ${passNoMatch ? 'text-red-500' : 'text-ink-400'}`}>Şifre Tekrar</Text>
+                    <View className="flex-row items-center rounded-xl bg-ink-50" style={{ borderWidth: 1, borderColor: passNoMatch ? '#EF4444' : 'rgba(0,0,0,0.06)' }}>
+                      <TextInput className={`flex-1 px-3.5 py-3 text-[14px] ${passNoMatch ? 'text-red-500' : 'text-ink-900'}`} value={confirmPass} onChangeText={setConfirmPass} placeholder="Tekrar girin" placeholderTextColor="#C0C0C8" secureTextEntry={!showConfirm} style={{ outlineWidth: 0 } as any} />
+                      <Pressable onPress={() => setShowConfirm(v => !v)} className="px-3 py-3">
+                        {showConfirm ? <EyeOff size={15} color="#C0C0C8" strokeWidth={1.8} /> : <Eye size={15} color="#C0C0C8" strokeWidth={1.8} />}
+                      </Pressable>
+                    </View>
+                    {passNoMatch && <Text className="text-[11px] text-red-500 mt-0.5">Şifreler eşleşmiyor</Text>}
+                  </View>
+                  <Pressable onPress={handleChangePassword} disabled={savingPass} className="items-center py-3 rounded-xl" style={{ backgroundColor: accentColor, opacity: savingPass ? 0.6 : 1 }}>
+                    {savingPass ? <ActivityIndicator size="small" color="#fff" /> : <Text className="text-[13px] font-semibold text-white">Güncelle</Text>}
+                  </Pressable>
+                </View>
+              )}
+            </View>
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={s.itemLabel}>Telefon</Text>
-            <Text style={[s.itemValue, !profile?.phone && { color: '#CBD5E1' }]}>
-              {profile?.phone ?? 'Eklenmedi'}
-            </Text>
-          </View>
-          <TouchableOpacity onPress={() => setEditing(true)} style={s.dotBtn}>
-            <AppIcon name="edit-2" size={14} color="#94A3B8" />
-          </TouchableOpacity>
+
+
         </View>
       </View>
 
-      {/* ── Güvenlik ───────────────────────────────────────────────── */}
-      <Text style={[s.sectionLabel, { marginTop: 20 }]}>Güvenlik</Text>
-      <View style={s.card}>
-        <TouchableOpacity
-          style={s.navRow}
-          onPress={() => setShowPass(v => !v)}
+      {/* ═══════ PROFIL DÜZENLE — MODAL / POPUP ═══════ */}
+      <Modal
+        visible={editing}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCancelEdit}
+      >
+        <Pressable
+          onPress={handleCancelEdit}
+          className="flex-1 items-center justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}
         >
-          <View style={[s.itemIcon, { backgroundColor: '#FEF3C720' }]}>
-            <AppIcon name="lock" size={14} color="#D97706" />
-          </View>
-          <Text style={s.navRowText}>Şifre Değiştir</Text>
-          <AppIcon name={showPass ? 'chevron-up' : 'chevron-right'} size={16} color="#CBD5E1" />
-        </TouchableOpacity>
+          <Pressable
+            onPress={() => {}}
+            className="bg-white rounded-[24px] w-full"
+            style={[{ maxWidth: 620, maxHeight: '85%' }, CARD_SHADOW]}
+          >
+            {/* Header */}
+            <View className="flex-row items-center justify-between px-6 pt-5 pb-3">
+              <Text style={{ fontFamily: 'Inter Tight, Inter, system-ui, sans-serif', fontWeight: '300', fontSize: 20, letterSpacing: -0.4, color: '#0A0A0A' }}>
+                Profili Düzenle
+              </Text>
+              <Pressable onPress={handleCancelEdit} className="w-8 h-8 rounded-full items-center justify-center bg-black/[0.04]">
+                <X size={16} color="#6B6B6B" strokeWidth={2} />
+              </Pressable>
+            </View>
 
-        {showPass && (
-          <View style={s.subBlock}>
-            <View style={s.fieldGroup}>
-              <Text style={s.fieldLabel}>YENİ ŞİFRE</Text>
-              <View style={s.passRow}>
-                <TextInput
-                  style={[s.fieldInput, { flex: 1, borderWidth: 0 }] as any}
-                  value={newPass} onChangeText={setNewPass}
-                  placeholder="En az 6 karakter" placeholderTextColor="#C0C0C8"
-                  secureTextEntry={!showNew} returnKeyType="next"
-                />
-                <TouchableOpacity onPress={() => setShowNew(v => !v)} style={s.eyeBtn}>
-                  <AppIcon name={showNew ? 'eye-off' : 'eye'} size={15} color="#C0C0C8" />
-                </TouchableOpacity>
-              </View>
-            </View>
-            <View style={s.fieldGroup}>
-              <Text style={[s.fieldLabel, passNoMatch && { color: '#EF4444' }]}>ŞİFRE TEKRAR</Text>
-              <View style={[s.passRow, passNoMatch && { borderColor: '#EF4444' }]}>
-                <TextInput
-                  style={[s.fieldInput, { flex: 1, borderWidth: 0 }, passNoMatch && { color: '#EF4444' }] as any}
-                  value={confirmPass} onChangeText={setConfirmPass}
-                  placeholder="Şifreyi tekrar girin" placeholderTextColor="#C0C0C8"
-                  secureTextEntry={!showConfirm} returnKeyType="done"
-                />
-                <TouchableOpacity onPress={() => setShowConfirm(v => !v)} style={s.eyeBtn}>
-                  <AppIcon name={showConfirm ? 'eye-off' : 'eye'} size={15} color="#C0C0C8" />
-                </TouchableOpacity>
-              </View>
-              {passNoMatch && <Text style={s.errorHint}>Şifreler eşleşmiyor</Text>}
-            </View>
-            <TouchableOpacity
-              style={[s.saveBtn, { backgroundColor: accentColor }, savingPass && { opacity: 0.6 }]}
-              onPress={handleChangePassword} disabled={savingPass}
+            <ScrollView
+              className="flex-1"
+              contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 24 }}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
             >
-              {savingPass
-                ? <ActivityIndicator size="small" color="#fff" />
-                : <Text style={s.saveBtnText}>Şifreyi Güncelle</Text>}
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
+              {/* Kişisel */}
+              <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: '#6B6B6B', marginTop: 12, marginBottom: 8 }}>Kişisel Bilgiler</Text>
+              {/* 2-kolon form grid */}
+              <View className="flex-row gap-4">
+                <View className="flex-1 gap-4">
+                  <FormField label="Ad Soyad" value={fullName} onChange={setFullName} placeholder="Ad Soyad" />
+                  <FormField label="Doğum Tarihi" value={birthDate} onChange={setBirthDate} placeholder="1990-01-15" />
+                  <FormField label="Şehir" value={city} onChange={setCity} placeholder="İstanbul" />
+                </View>
+                <View className="flex-1 gap-4">
+                  <View style={{ gap: 6 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '500', color: '#2A2A2A' }}>Cinsiyet</Text>
+                    <View className="flex-row gap-2" style={{ height: 44 }}>
+                      {GENDER_OPTIONS.map(opt => (
+                        <Pressable key={opt.value} onPress={() => setGender(opt.value)} style={{ flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 14, borderWidth: 1, borderColor: gender === opt.value ? accentColor : 'rgba(0,0,0,0.08)', backgroundColor: gender === opt.value ? `${accentColor}14` : '#FFFFFF' }}>
+                          <Text style={{ fontSize: 13, fontWeight: '500', color: gender === opt.value ? accentColor : '#6B6B6B' }}>{opt.label}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  </View>
+                  <FormField label="TC Kimlik No" value={tcKimlik} onChange={setTcKimlik} placeholder="11 haneli TC kimlik" keyboardType="number-pad" maxLength={11} />
+                  <FormField label="Adres" value={address} onChange={setAddress} placeholder="Açık adres" multiline />
+                </View>
+              </View>
 
-      {/* ── Hesap Bilgileri ─────────────────────────────────────────── */}
-      <Text style={[s.sectionLabel, { marginTop: 20 }]}>Hesap Bilgileri</Text>
-      <View style={s.card}>
-        <View style={s.itemRow}>
-          <View style={[s.itemIcon, { backgroundColor: accentColor + '14' }]}>
-            <AppIcon name="shield" size={14} color={accentColor} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={s.itemLabel}>Hesap Türü</Text>
-            <Text style={s.itemValue}>{roleLabel}</Text>
-          </View>
-        </View>
-        <View style={s.divider} />
-        <View style={s.itemRow}>
-          <View style={[s.itemIcon, { backgroundColor: accentColor + '14' }]}>
-            <AppIcon name="calendar" size={14} color={accentColor} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={s.itemLabel}>Katılım Tarihi</Text>
-            <Text style={s.itemValue}>{joinedDate(profile) || '—'}</Text>
-          </View>
-        </View>
-        <View style={s.divider} />
-        <TouchableOpacity style={s.dangerRow} onPress={handleSignOut}>
-          <View style={[s.itemIcon, { backgroundColor: '#FEF2F2' }]}>
-            <AppIcon name="log-out" size={14} color="#EF4444" />
-          </View>
-          <Text style={s.dangerText}>Hesaptan Çıkış Yap</Text>
-          <AppIcon name="chevron-right" size={16} color="#FCA5A5" />
-        </TouchableOpacity>
-      </View>
+              {/* İletişim */}
+              <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: '#6B6B6B', marginTop: 20, marginBottom: 8 }}>İletişim</Text>
+              <View className="flex-row gap-4">
+                <View className="flex-1 gap-4">
+                  <FormField label="Telefon" value={phone} onChange={setPhone} placeholder="+90 555 123 45 67" hint="WhatsApp'tan ulaşılabilir" keyboardType="phone-pad" />
+                </View>
+                <View className="flex-1 gap-4">
+                  <FormField label="WhatsApp" value={whatsapp} onChange={setWhatsapp} placeholder="+90 555 123 45 67" keyboardType="phone-pad" />
+                </View>
+              </View>
 
-      <View style={{ height: 40 }} />
+              {/* Mesleki */}
+              <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: '#6B6B6B', marginTop: 20, marginBottom: 8 }}>Mesleki Bilgiler</Text>
+              <View className="flex-row gap-4">
+                <View className="flex-1 gap-4">
+                  <FormField label="Uzmanlık" value={specialty} onChange={setSpecialty} placeholder="Protetik Diş Tedavisi" />
+                  <FormField label="Diploma No" value={diplomaNo} onChange={setDiplomaNo} placeholder="Diploma numarası" />
+                </View>
+                <View className="flex-1 gap-4">
+                  <FormField label="Departman" value={department} onChange={setDepartment} placeholder="Sabit Protez" />
+                </View>
+              </View>
+
+              {/* Form footer — patterns style */}
+              <View style={{ flexDirection: 'row', gap: 12, marginTop: 28, paddingTop: 20, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
+                <Pressable onPress={handleCancelEdit} style={{ flex: 1, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: '#FFFFFF' }}>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: '#6B6B6B' }}>Vazgeç</Text>
+                </Pressable>
+                <Pressable onPress={handleSaveInfo} disabled={savingInfo} style={{ flex: 1, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 14, backgroundColor: accentColor, opacity: savingInfo ? 0.6 : 1 }}>
+                  {savingInfo ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ fontSize: 14, fontWeight: '600', color: '#FFFFFF' }}>Kaydet</Text>}
+                </Pressable>
+              </View>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ScrollView>
   );
 }
 
-// ── Styles ─────────────────────────────────────────────────────────────────
-const s = StyleSheet.create({
-  container: {
-    padding: 0,
-    paddingBottom: 24,
-    gap: 14,
-  },
-
-  sectionLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#94A3B8',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase' as any,
-    marginBottom: 8,
-  },
-
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.95)',
-    padding: 16,
-    ...(Platform.OS === 'web'
-      ? ({ boxShadow: '0 8px 24px rgba(0,0,0,0.15)' } as any)
-      : { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 4 }),
-  },
-
-  // Profile identity
-  profileRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 14,
-  },
-  avatarWrap: { position: 'relative', flexShrink: 0 },
-  avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarImg: { width: 56, height: 56, borderRadius: 16 },
-  avatarLetter: { fontSize: 22, fontWeight: '800', color: '#fff' },
-  avatarBadge: {
-    position: 'absolute',
-    bottom: -4, right: -4,
-    width: 20, height: 20,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#F8FAFC',
-  },
-  profileName:  { fontSize: 16, fontWeight: '700', color: '#0F172A', marginBottom: 4 },
-  rolePill: {
-    alignSelf: 'flex-start' as any,
-    borderRadius: 100,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    marginBottom: 4,
-  },
-  rolePillText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.3 },
-  profileEmail: { fontSize: 12, color: '#94A3B8' },
-  editBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    borderWidth: 1.5,
-    borderRadius: 10,
-    paddingHorizontal: 11,
-    paddingVertical: 7,
-  },
-  editBtnText: { fontSize: 13, fontWeight: '600' },
-
-  // Edit mode
-  editBlock: { gap: 14 },
-  editAvatarRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  editHelp: { fontSize: 13, color: '#64748B', lineHeight: 18, marginBottom: 4 },
-  editPhotoLink: { fontSize: 13, fontWeight: '600', marginTop: 4 },
-  editActions: { flexDirection: 'row', gap: 10, marginTop: 4 },
-  cancelBtn: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  cancelBtnText: { fontSize: 14, fontWeight: '600', color: '#64748B' },
-
-  // Fields
-  fieldGroup: { gap: 6 },
-  fieldLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#94A3B8',
-    letterSpacing: 0.9,
-    textTransform: 'uppercase' as any,
-  },
-  fieldInput: {
-    borderWidth: 1,
-    borderColor: '#E8EDF4',
-    borderRadius: 10,
-    paddingHorizontal: 13,
-    paddingVertical: 11,
-    fontSize: 14,
-    color: '#0F172A',
-    outlineStyle: 'none',
-  },
-  fieldHint: { fontSize: 11, color: '#94A3B8', lineHeight: 16 },
-
-  saveBtn: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    borderRadius: 10,
-    paddingVertical: 12,
-  },
-  saveBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
-
-  // Sub-block (email edit, password)
-  subBlock: {
-    marginTop: 12,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
-    gap: 12,
-  },
-
-  // Item row
-  itemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 4,
-  },
-  itemIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  itemLabel: { fontSize: 11, color: '#94A3B8', marginBottom: 2 },
-  itemValue: { fontSize: 14, fontWeight: '500', color: '#0F172A' },
-  dotBtn: { padding: 6 },
-
-  divider: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 8 },
-
-  // Nav row (password)
-  navRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 4,
-  },
-  navRowText: { fontSize: 14, fontWeight: '500', color: '#334155', flex: 1 },
-
-  // Password
-  passRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E8EDF4',
-    borderRadius: 10,
-    backgroundColor: '#fff',
-  },
-  eyeBtn: { paddingHorizontal: 12, paddingVertical: 11 },
-  errorHint: { fontSize: 11, color: '#EF4444', marginTop: 4 },
-
-  // Danger
-  dangerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 4,
-  },
-  dangerText: { fontSize: 14, fontWeight: '500', color: '#EF4444', flex: 1 },
-});
+/* ── FormField — patterns "05 · Form Elemanları" stiline uygun ──────── */
+function FormField({ label, value, onChange, placeholder, hint, multiline, keyboardType, maxLength }: {
+  label: string; value: string; onChange: (v: string) => void;
+  placeholder?: string; hint?: string; multiline?: boolean; keyboardType?: any; maxLength?: number;
+}) {
+  return (
+    <View style={{ gap: 6 }}>
+      <Text style={{ fontSize: 12, fontWeight: '500', color: '#2A2A2A' }}>{label}</Text>
+      <TextInput
+        value={value} onChangeText={onChange}
+        placeholder={placeholder} placeholderTextColor="#9A9A9A"
+        multiline={multiline} numberOfLines={multiline ? 3 : 1}
+        keyboardType={keyboardType} maxLength={maxLength}
+        style={{
+          height: multiline ? 80 : 44,
+          paddingHorizontal: 14,
+          paddingVertical: multiline ? 12 : 0,
+          fontSize: 14,
+          color: '#0A0A0A',
+          backgroundColor: '#FFFFFF',
+          borderRadius: 14,
+          borderWidth: 1,
+          borderColor: 'rgba(0,0,0,0.08)',
+          // @ts-ignore web
+          outlineWidth: 0,
+          textAlignVertical: multiline ? 'top' : 'center',
+        }}
+      />
+      {hint && <Text style={{ fontSize: 11, color: '#6B6B6B' }}>{hint}</Text>}
+    </View>
+  );
+}

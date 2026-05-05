@@ -1,30 +1,77 @@
+/**
+ * ClinicBalanceScreen — Cari Hesap (Patterns Design Language)
+ *
+ * §10 Hero (glassmorphism), §09 tableCard, §05 cardSolid,
+ * §04 CHIP_TONES, §05.5 search input, Lucide icons.
+ *
+ * Klinik satırına tıklayınca /statement/[clinicId] sayfasına yönlendirir.
+ */
 import React, { useContext, useMemo, useState } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, RefreshControl,
-  TouchableOpacity, TextInput,
+  View, Text, ScrollView, Pressable, RefreshControl,
+  TextInput, useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  ArrowLeft, Search, X, Building2, AlertTriangle,
+  Clock, Inbox, ChevronRight, FileText,
+} from 'lucide-react-native';
 
 import { useClinicBalances } from '../hooks/useInvoices';
-import { C } from '../../../core/theme/colors';
-import { F } from '../../../core/theme/typography';
+import { DS } from '../../../core/theme/dsTokens';
 import { HubContext } from '../../../core/ui/HubContext';
 
-import { AppIcon } from '../../../core/ui/AppIcon';
+// ── Patterns tokens ─────────────────────────────────────────────────
+const DISPLAY = {
+  fontFamily: 'Inter Tight, Inter, system-ui, sans-serif',
+  fontWeight: '300' as const,
+};
 
+const cardSolid = {
+  backgroundColor: '#FFF',
+  borderRadius: 24,
+  padding: 22,
+  // @ts-ignore web
+  boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)',
+};
+
+const tableCard = {
+  backgroundColor: '#FFF',
+  borderRadius: 24,
+  borderWidth: 1,
+  borderColor: 'rgba(0,0,0,0.05)',
+  overflow: 'hidden' as const,
+};
+
+const CHIP_TONES = {
+  success: { bg: 'rgba(45,154,107,0.12)', fg: '#1F6B47' },
+  warning: { bg: 'rgba(232,155,42,0.15)', fg: '#9C5E0E' },
+  danger:  { bg: 'rgba(217,75,75,0.12)',  fg: '#9C2E2E' },
+  info:    { bg: 'rgba(74,143,201,0.12)', fg: '#1F5689' },
+};
+
+// ── Helpers ──────────────────────────────────────────────────────────
 function fmtMoney(n: number | string | null | undefined): string {
   const v = typeof n === 'string' ? Number(n) : (n ?? 0);
   if (!Number.isFinite(v)) return '—';
   return '₺' + v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+function fmtDateShort(d: string | null | undefined): string {
+  if (!d) return '—';
+  return new Date(d + 'T00:00:00').toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' });
+}
 
+// ═════════════════════════════════════════════════════════════════════
+// MAIN
+// ═════════════════════════════════════════════════════════════════════
 export function ClinicBalanceScreen() {
   const router = useRouter();
   const isEmbedded = useContext(HubContext);
   const { balances, loading, refetch } = useClinicBalances();
   const [search, setSearch] = useState('');
   const [overdueOnly, setOverdueOnly] = useState(false);
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 1024;
 
   const filtered = useMemo(() => {
     return balances.filter(b => {
@@ -38,8 +85,8 @@ export function ClinicBalanceScreen() {
 
   const totals = useMemo(() => {
     return balances.reduce((acc, b) => ({
-      billed: acc.billed + Number(b.total_billed),
-      paid:   acc.paid + Number(b.total_paid),
+      billed:  acc.billed  + Number(b.total_billed),
+      paid:    acc.paid    + Number(b.total_paid),
       balance: acc.balance + Number(b.balance),
       overdue: acc.overdue + Number(b.overdue_amount),
       current: acc.current + Number(b.aging_current ?? 0),
@@ -51,344 +98,363 @@ export function ClinicBalanceScreen() {
 
   const hasAging = totals.current + totals.d30 + totals.d60 + totals.d90 > 0;
 
+  const openStatement = (clinicId: string) => {
+    router.push(`/statement/${clinicId}` as any);
+  };
+
   return (
-    <SafeAreaView style={s.safe} edges={isEmbedded ? ([] as any) : (['top'] as any)}>
-      {/* Header — yalnızca standalone modda */}
+    <View style={{ flex: 1 }}>
+      {/* ── Standalone header ─────────────────────────────────── */}
       {!isEmbedded && (
-        <View style={s.header}>
-          <TouchableOpacity onPress={() => router.back()} style={s.iconOnlyBtn}>
-            <AppIcon name={'arrow-left' as any} size={20} color="#0F172A" />
-          </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 }}>
+          <Pressable onPress={() => router.back()} style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}>
+            <ArrowLeft size={18} color={DS.ink[900]} strokeWidth={1.8} />
+          </Pressable>
           <View style={{ flex: 1 }}>
-            <Text style={s.title}>Cari Hesap</Text>
-            <Text style={s.subtitle}>Klinik bazlı bakiye özeti</Text>
+            <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>Cari Hesap</Text>
+            <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 2 }}>Klinik bazlı bakiye özeti</Text>
           </View>
         </View>
       )}
 
-      {/* Summary card */}
-      <View style={s.summaryWrap}>
-        <View style={s.summaryCard}>
-          <Text style={s.summaryLabel}>Toplam Alacak</Text>
-          <Text style={s.summaryTotal}>{fmtMoney(totals.balance)}</Text>
-          <View style={s.summaryDetails}>
-            <View style={s.summaryDetailCol}>
-              <Text style={s.summaryDetailLabel}>Kesilen</Text>
-              <Text style={s.summaryDetailValue}>{fmtMoney(totals.billed)}</Text>
-            </View>
-            <View style={s.summaryDetailCol}>
-              <Text style={s.summaryDetailLabel}>Tahsil Edilen</Text>
-              <Text style={[s.summaryDetailValue, { color: '#047857' }]}>{fmtMoney(totals.paid)}</Text>
-            </View>
-            <View style={s.summaryDetailCol}>
-              <Text style={s.summaryDetailLabel}>Vadesi Geçen</Text>
-              <Text style={[s.summaryDetailValue, { color: '#DC2626' }]}>{fmtMoney(totals.overdue)}</Text>
-            </View>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: isDesktop ? 0 : 16, paddingBottom: 48, gap: 16 }}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={DS.ink[300]} />}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ── Hero — §10 glassmorphism (cream) ──────────────────── */}
+        <View style={{
+          borderRadius: 28, overflow: 'hidden',
+          backgroundColor: DS.lab.bg,
+          padding: isDesktop ? 36 : 24,
+          position: 'relative',
+        }}>
+          <View style={{ position: 'absolute', top: -40, right: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: DS.lab.bgDeep, opacity: 0.6 }} />
+          <View style={{ position: 'absolute', bottom: -50, left: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: DS.lab.bgDeep, opacity: 0.4 }} />
+
+          <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 12 }}>
+            Toplam Alacak
+          </Text>
+          <Text style={{ ...DISPLAY, fontSize: isDesktop ? 48 : 36, letterSpacing: -1.4, color: DS.ink[900] }}>
+            {fmtMoney(totals.balance)}
+          </Text>
+
+          <View style={{ flexDirection: 'row', gap: isDesktop ? 40 : 24, marginTop: 20, flexWrap: 'wrap' }}>
+            <HeroStat label="Kesilen" value={fmtMoney(totals.billed)} color={DS.ink[700]} />
+            <HeroStat label="Tahsil Edilen" value={fmtMoney(totals.paid)} color={CHIP_TONES.success.fg} />
+            <HeroStat label="Vadesi Geçen" value={fmtMoney(totals.overdue)} color={CHIP_TONES.danger.fg} />
           </View>
 
-          {/* Aging buckets — yaşlandırma çubuğu */}
           {hasAging && (
-            <View style={ag.wrap}>
-              <Text style={ag.title}>Yaşlandırma</Text>
-              <View style={ag.bar}>
+            <View style={{ marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)', gap: 8 }}>
+              <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[400] }}>Yaşlandırma</Text>
+              <View style={{ flexDirection: 'row', height: 6, borderRadius: 3, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.06)' }}>
                 {[
-                  { v: totals.current, color: '#10B981' },
-                  { v: totals.d30,     color: '#F59E0B' },
+                  { v: totals.current, color: '#2D9A6B' },
+                  { v: totals.d30,     color: '#E89B2A' },
                   { v: totals.d60,     color: '#F97316' },
-                  { v: totals.d90,     color: '#DC2626' },
+                  { v: totals.d90,     color: '#D94B4B' },
                 ].map((seg, i) => {
                   const total = totals.current + totals.d30 + totals.d60 + totals.d90;
                   const w = total > 0 ? (seg.v / total) * 100 : 0;
                   if (w === 0) return null;
-                  return <View key={i} style={[ag.seg, { width: `${w}%` as any, backgroundColor: seg.color }]} />;
+                  return <View key={i} style={{ width: `${w}%` as any, height: 6, backgroundColor: seg.color }} />;
                 })}
               </View>
-              <View style={ag.legend}>
-                <AgingLegend label="Vadesi var" value={totals.current} color="#10B981" />
-                <AgingLegend label="1–30 gün"   value={totals.d30}     color="#F59E0B" />
-                <AgingLegend label="31–60 gün"  value={totals.d60}     color="#F97316" />
-                <AgingLegend label="61+ gün"    value={totals.d90}     color="#DC2626" />
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 2 }}>
+                {totals.current > 0 && <AgingLegend label="Vadesi var" value={totals.current} color="#2D9A6B" />}
+                {totals.d30 > 0 && <AgingLegend label="1–30 gün" value={totals.d30} color="#E89B2A" />}
+                {totals.d60 > 0 && <AgingLegend label="31–60 gün" value={totals.d60} color="#F97316" />}
+                {totals.d90 > 0 && <AgingLegend label="61+ gün" value={totals.d90} color="#D94B4B" />}
               </View>
             </View>
           )}
         </View>
-      </View>
 
-      {/* Search + Filter */}
-      <View style={s.searchRow}>
-        <View style={s.searchWrap}>
-          <AppIcon name={'magnify' as any} size={17} color={C.textMuted} />
-          <TextInput
-            style={s.searchInput}
-            placeholder="Klinik ara..."
-            placeholderTextColor={C.textMuted}
-            value={search}
-            onChangeText={setSearch}
-          />
-          {search.length > 0 && (
-            <TouchableOpacity onPress={() => setSearch('')}>
-              <AppIcon name={'close-circle' as any} size={16} color={C.textMuted} />
-            </TouchableOpacity>
-          )}
-        </View>
-        <TouchableOpacity
-          style={[s.filterChip, overdueOnly && s.filterChipActive]}
-          onPress={() => setOverdueOnly(v => !v)}
-        >
-          <AppIcon
-            name={'clock-alert-outline' as any}
-            size={13}
-            color={overdueOnly ? '#DC2626' : C.textMuted}
-          />
-          <Text style={[s.filterChipText, overdueOnly && { color: '#DC2626', fontWeight: '700' }]}>
-            Gecikenler
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* List */}
-      <ScrollView
-        style={tbl.page}
-        contentContainerStyle={tbl.pageContent}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor="#AEAEB2" />}
-        showsVerticalScrollIndicator={false}
-      >
-        {filtered.length === 0 ? (
-          <View style={s.empty}>
-            <AppIcon
-              name={(search || overdueOnly ? 'magnify-close' : 'chart-line-variant') as any}
-              size={36}
-              color={C.textMuted}
+        {/* ── Search + Filter — §05.5 ─────────────────────────── */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{
+            flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10,
+            height: 44, paddingHorizontal: 14, borderRadius: 14,
+            borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: '#FFF',
+          }}>
+            <Search size={15} color={DS.ink[400]} strokeWidth={1.8} />
+            <TextInput
+              style={{ flex: 1, fontSize: 14, color: DS.ink[900], outline: 'none' as any }}
+              placeholder="Klinik ara..."
+              placeholderTextColor={DS.ink[400]}
+              value={search}
+              onChangeText={setSearch}
             />
-            <Text style={s.emptyTitle}>
+            {search.length > 0 && (
+              <Pressable onPress={() => setSearch('')} style={{ cursor: 'pointer' as any }}>
+                <X size={14} color={DS.ink[400]} strokeWidth={2} />
+              </Pressable>
+            )}
+          </View>
+          <Pressable
+            onPress={() => setOverdueOnly(v => !v)}
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 6,
+              height: 44, paddingHorizontal: 14, borderRadius: 14,
+              borderWidth: 1,
+              borderColor: overdueOnly ? 'rgba(217,75,75,0.3)' : 'rgba(0,0,0,0.08)',
+              backgroundColor: overdueOnly ? CHIP_TONES.danger.bg : '#FFF',
+              cursor: 'pointer' as any,
+            }}
+          >
+            <Clock size={13} color={overdueOnly ? CHIP_TONES.danger.fg : DS.ink[400]} strokeWidth={1.8} />
+            <Text style={{ fontSize: 13, fontWeight: overdueOnly ? '600' : '500', color: overdueOnly ? CHIP_TONES.danger.fg : DS.ink[500] }}>
+              Gecikenler
+            </Text>
+          </Pressable>
+        </View>
+
+        {/* ── Clinic list ─────────────────────────────────────── */}
+        {filtered.length === 0 ? (
+          <View style={{ ...cardSolid, alignItems: 'center', paddingVertical: 48, gap: 10 }}>
+            <Inbox size={32} color={DS.ink[300]} strokeWidth={1.4} />
+            <Text style={{ fontSize: 14, fontWeight: '500', color: DS.ink[400] }}>
               {search || overdueOnly ? 'Sonuç bulunamadı' : 'Henüz klinik yok'}
             </Text>
           </View>
+        ) : isDesktop ? (
+          /* ── Desktop: tableCard §09 ──────────────────────────── */
+          <View style={tableCard}>
+            {/* Toolbar */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
+              <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>
+                Klinik Bakiyeleri
+              </Text>
+              <View style={{ flex: 1 }} />
+              <Text style={{ fontSize: 12, color: DS.ink[400] }}>
+                {filtered.length} klinik
+              </Text>
+            </View>
+
+            {/* Header */}
+            <View style={{ flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: '#FAFAFA', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
+              {[
+                { label: 'KLİNİK',    flex: 2.5 },
+                { label: 'FATURA',     flex: 0.8 },
+                { label: 'KESİLEN',    flex: 1.3 },
+                { label: 'TAHSİL',     flex: 1.3 },
+                { label: 'BAKİYE',     flex: 1.3, align: 'right' as const },
+                { label: 'GECİKMİŞ',   flex: 1.3, align: 'right' as const },
+                { label: 'TAHSİLAT',   flex: 0.8, align: 'right' as const },
+                { label: '',           flex: 0.4 },
+              ].map((h, i) => (
+                <Text key={i} style={{ flex: h.flex, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textAlign: h.align }}>
+                  {h.label}
+                </Text>
+              ))}
+            </View>
+
+            {/* Rows */}
+            {filtered.map((b, i) => {
+              const balance = Number(b.balance);
+              const overdue = Number(b.overdue_amount);
+              const hasOverdue = overdue > 0;
+              const billed = Number(b.total_billed);
+              const paid = Number(b.total_paid);
+              const pct = billed > 0 ? Math.min(100, (paid / billed) * 100) : 0;
+
+              return (
+                <Pressable
+                  key={b.clinic_id}
+                  onPress={() => openStatement(b.clinic_id)}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center',
+                    paddingHorizontal: 20, paddingVertical: 14,
+                    borderBottomWidth: i < filtered.length - 1 ? 1 : 0,
+                    borderBottomColor: 'rgba(0,0,0,0.04)',
+                    cursor: 'pointer' as any,
+                  }}
+                >
+                  {/* Clinic name + avatar */}
+                  <View style={{ flex: 2.5, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <View style={{
+                      width: 32, height: 32, borderRadius: 10,
+                      backgroundColor: hasOverdue ? CHIP_TONES.danger.bg : CHIP_TONES.info.bg,
+                      alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <Building2 size={14} color={hasOverdue ? CHIP_TONES.danger.fg : CHIP_TONES.info.fg} strokeWidth={1.8} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[900] }} numberOfLines={1}>
+                        {b.clinic_name}
+                      </Text>
+                      {b.oldest_overdue_date && hasOverdue && (
+                        <Text style={{ fontSize: 10, color: CHIP_TONES.danger.fg, marginTop: 1 }}>
+                          vade: {fmtDateShort(b.oldest_overdue_date)}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+
+                  <Text style={{ flex: 0.8, fontSize: 13, color: DS.ink[500] }}>
+                    {Number(b.invoice_count)}
+                  </Text>
+
+                  <Text style={{ flex: 1.3, fontSize: 13, color: DS.ink[800] }}>
+                    {fmtMoney(billed)}
+                  </Text>
+
+                  <Text style={{ flex: 1.3, fontSize: 13, fontWeight: '500', color: CHIP_TONES.success.fg }}>
+                    {fmtMoney(paid)}
+                  </Text>
+
+                  <Text style={{ flex: 1.3, fontSize: 13, fontWeight: '600', color: hasOverdue ? CHIP_TONES.danger.fg : DS.ink[900], textAlign: 'right' }}>
+                    {fmtMoney(balance)}
+                  </Text>
+
+                  <View style={{ flex: 1.3, alignItems: 'flex-end' }}>
+                    {hasOverdue ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: CHIP_TONES.danger.bg }}>
+                        <AlertTriangle size={10} color={CHIP_TONES.danger.fg} strokeWidth={2} />
+                        <Text style={{ fontSize: 11, fontWeight: '600', color: CHIP_TONES.danger.fg }}>
+                          {fmtMoney(overdue)}
+                        </Text>
+                      </View>
+                    ) : (
+                      <Text style={{ fontSize: 11, color: DS.ink[300] }}>—</Text>
+                    )}
+                  </View>
+
+                  {/* Progress % */}
+                  <Text style={{ flex: 0.8, fontSize: 11, fontWeight: '600', color: DS.ink[500], textAlign: 'right' }}>
+                    %{pct.toFixed(0)}
+                  </Text>
+
+                  {/* Arrow */}
+                  <View style={{ flex: 0.4, alignItems: 'flex-end' }}>
+                    <ChevronRight size={14} color={DS.ink[300]} strokeWidth={1.8} />
+                  </View>
+                </Pressable>
+              );
+            })}
+
+            {/* Footer */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)', backgroundColor: '#FAFAFA' }}>
+              <Text style={{ fontSize: 11, color: DS.ink[500] }}>
+                {filtered.length} klinik
+              </Text>
+              <View style={{ flex: 1 }} />
+              <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[900] }}>
+                Toplam: {fmtMoney(totals.balance)}
+              </Text>
+            </View>
+          </View>
         ) : (
+          /* ── Mobile: cardSolid §05 ───────────────────────────── */
           <View style={{ gap: 10 }}>
-            {filtered.map(b => (
-              <BalanceCard
-                key={b.clinic_id}
-                clinicName={b.clinic_name}
-                invoiceCount={Number(b.invoice_count)}
-                billed={Number(b.total_billed)}
-                paid={Number(b.total_paid)}
-                balance={Number(b.balance)}
-                overdueAmount={Number(b.overdue_amount)}
-                oldestOverdue={b.oldest_overdue_date}
-                aging={{
-                  current: Number(b.aging_current ?? 0),
-                  d30:     Number(b.aging_30 ?? 0),
-                  d60:     Number(b.aging_60 ?? 0),
-                  d90:     Number(b.aging_90 ?? 0),
-                }}
-              />
-            ))}
+            {filtered.map(b => {
+              const balance = Number(b.balance);
+              const overdue = Number(b.overdue_amount);
+              const hasOverdue = overdue > 0;
+              const billed = Number(b.total_billed);
+              const paid = Number(b.total_paid);
+              const pct = billed > 0 ? Math.min(100, (paid / billed) * 100) : 0;
+
+              return (
+                <Pressable
+                  key={b.clinic_id}
+                  onPress={() => openStatement(b.clinic_id)}
+                  style={{ ...cardSolid, gap: 14, cursor: 'pointer' as any }}
+                >
+                  {/* Top row */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <View style={{
+                      width: 40, height: 40, borderRadius: 12,
+                      backgroundColor: hasOverdue ? CHIP_TONES.danger.bg : CHIP_TONES.info.bg,
+                      alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <Building2 size={18} color={hasOverdue ? CHIP_TONES.danger.fg : CHIP_TONES.info.fg} strokeWidth={1.6} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+                        {b.clinic_name}
+                      </Text>
+                      <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 2 }}>
+                        {Number(b.invoice_count)} fatura
+                        {b.oldest_overdue_date && hasOverdue
+                          ? ` · vade: ${fmtDateShort(b.oldest_overdue_date)}`
+                          : ''}
+                      </Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end', flexDirection: 'row', gap: 6 }}>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.3, color: hasOverdue ? CHIP_TONES.danger.fg : DS.ink[900] }}>
+                          {fmtMoney(balance)}
+                        </Text>
+                        <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: DS.ink[400] }}>
+                          Bakiye
+                        </Text>
+                      </View>
+                      <ChevronRight size={16} color={DS.ink[300]} strokeWidth={1.8} />
+                    </View>
+                  </View>
+
+                  {/* Progress */}
+                  <View style={{ height: 4, borderRadius: 999, backgroundColor: DS.ink[100], overflow: 'hidden' }}>
+                    <View style={{ width: `${pct}%` as any, height: '100%', borderRadius: 999, backgroundColor: '#2D9A6B' }} />
+                  </View>
+
+                  {/* Stats */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: DS.ink[400] }}>Kesilen</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[800], marginTop: 2 }}>{fmtMoney(billed)}</Text>
+                    </View>
+                    <View style={{ width: 1, height: 24, backgroundColor: DS.ink[100], marginHorizontal: 12 }} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: DS.ink[400] }}>Tahsil</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: CHIP_TONES.success.fg, marginTop: 2 }}>{fmtMoney(paid)}</Text>
+                    </View>
+                    {hasOverdue && (
+                      <>
+                        <View style={{ width: 1, height: 24, backgroundColor: DS.ink[100], marginHorizontal: 12 }} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: DS.ink[400] }}>Gecikmiş</Text>
+                          <Text style={{ fontSize: 13, fontWeight: '600', color: CHIP_TONES.danger.fg, marginTop: 2 }}>{fmtMoney(overdue)}</Text>
+                        </View>
+                      </>
+                    )}
+                  </View>
+                </Pressable>
+              );
+            })}
           </View>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
-// ─── Aging Legend (compact) ────────────────────────────────────────────────
+// ─── Hero Stat ───────────────────────────────────────────────────────
+function HeroStat({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <View>
+      <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[400] }}>
+        {label}
+      </Text>
+      <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.3, color, marginTop: 4 }}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+// ─── Aging Legend (hero bar) ─────────────────────────────────────────
 function AgingLegend({ label, value, color }: { label: string; value: number; color: string }) {
-  if (value <= 0) return null;
   return (
-    <View style={ag.legendItem}>
-      <View style={[ag.dot, { backgroundColor: color }]} />
-      <Text style={ag.legendLabel}>{label}</Text>
-      <Text style={[ag.legendValue, { color }]}>{fmtMoney(value)}</Text>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color }} />
+      <Text style={{ fontSize: 11, color: DS.ink[500], fontWeight: '500' }}>{label}</Text>
+      <Text style={{ fontSize: 11, fontWeight: '700', color }}>{fmtMoney(value)}</Text>
     </View>
   );
 }
 
-// ─── Balance Card ──────────────────────────────────────────────────────────
-interface AgingBreakdown { current: number; d30: number; d60: number; d90: number }
-function BalanceCard({
-  clinicName, invoiceCount, billed, paid, balance, overdueAmount, oldestOverdue, aging,
-}: {
-  clinicName: string; invoiceCount: number;
-  billed: number; paid: number; balance: number;
-  overdueAmount: number; oldestOverdue: string | null;
-  aging?: AgingBreakdown;
-}) {
-  const hasOverdue = overdueAmount > 0;
-  const hasBalance = balance > 0;
-  const pct = billed > 0 ? Math.min(100, (paid / billed) * 100) : 0;
-
-  return (
-    <View style={card.wrap}>
-      <View style={[card.accentStrip, { backgroundColor: hasOverdue ? '#DC2626' : (hasBalance ? '#B45309' : '#10B981') }]} />
-      <View style={card.body}>
-        <View style={card.top}>
-          {/* Klinik avatar (initials) */}
-          <View style={[card.avatar, { backgroundColor: hasOverdue ? '#FEE2E2' : (hasBalance ? '#FEF3C7' : '#ECFDF5') }]}>
-            <Text style={[card.avatarText, { color: hasOverdue ? '#B91C1C' : (hasBalance ? '#B45309' : '#047857') }]}>
-              {clinicName.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
-            </Text>
-          </View>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={card.name} numberOfLines={1}>{clinicName}</Text>
-            <Text style={card.meta}>
-              {invoiceCount} fatura
-              {oldestOverdue && hasOverdue ? ` · en eski vade: ${new Date(oldestOverdue + 'T00:00:00').toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })}` : ''}
-            </Text>
-          </View>
-          <View style={{ alignItems: 'flex-end' }}>
-            <Text style={[card.balance, hasOverdue && { color: '#DC2626' }]}>
-              {fmtMoney(balance)}
-            </Text>
-            <Text style={card.balanceLabel}>Bakiye</Text>
-          </View>
-        </View>
-
-        {/* Progress */}
-        <View style={card.progressTrack}>
-          <View style={[card.progressFill, { width: `${pct}%` }]} />
-        </View>
-
-        <View style={card.footer}>
-          <View style={card.footerItem}>
-            <Text style={card.footerLabel}>Kesilen</Text>
-            <Text style={card.footerValue}>{fmtMoney(billed)}</Text>
-          </View>
-          <View style={card.footerDivider} />
-          <View style={card.footerItem}>
-            <Text style={card.footerLabel}>Tahsil</Text>
-            <Text style={[card.footerValue, { color: '#047857' }]}>{fmtMoney(paid)}</Text>
-          </View>
-          {hasOverdue && (
-            <>
-              <View style={card.footerDivider} />
-              <View style={card.footerItem}>
-                <Text style={card.footerLabel}>Gecikmiş</Text>
-                <Text style={[card.footerValue, { color: '#DC2626' }]}>{fmtMoney(overdueAmount)}</Text>
-              </View>
-            </>
-          )}
-        </View>
-
-        {/* Aging mini-bar (kart bazlı) */}
-        {aging && (aging.d30 + aging.d60 + aging.d90 > 0) && (
-          <View style={card.agingRow}>
-            {aging.d30 > 0 && (
-              <View style={[card.agingChip, { backgroundColor: '#FEF3C7' }]}>
-                <Text style={[card.agingChipText, { color: '#B45309' }]}>1–30g · {fmtMoney(aging.d30)}</Text>
-              </View>
-            )}
-            {aging.d60 > 0 && (
-              <View style={[card.agingChip, { backgroundColor: '#FFEDD5' }]}>
-                <Text style={[card.agingChipText, { color: '#C2410C' }]}>31–60g · {fmtMoney(aging.d60)}</Text>
-              </View>
-            )}
-            {aging.d90 > 0 && (
-              <View style={[card.agingChip, { backgroundColor: '#FEE2E2' }]}>
-                <Text style={[card.agingChipText, { color: '#B91C1C' }]}>61+g · {fmtMoney(aging.d90)}</Text>
-              </View>
-            )}
-          </View>
-        )}
-      </View>
-    </View>
-  );
-}
-
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F1F5F9' },
-  header: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 12, paddingTop: 10, paddingBottom: 8,
-  },
-  iconOnlyBtn: {
-    width: 38, height: 38, borderRadius: 10,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  title: { fontSize: 20, fontWeight: '700', fontFamily: F.bold, color: C.textPrimary, letterSpacing: -0.3 },
-  subtitle: { fontSize: 13, fontFamily: F.regular, color: C.textSecondary, marginTop: 2 },
-
-  summaryWrap: { paddingHorizontal: 16, paddingVertical: 8 },
-  summaryCard: {
-    backgroundColor: '#0F172A', borderRadius: 16,
-    padding: 18, gap: 12,
-  },
-  summaryLabel: { fontSize: 11, fontWeight: '600', color: '#94A3B8', letterSpacing: 0.3, textTransform: 'uppercase' },
-  summaryTotal: { fontSize: 28, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.5 },
-  summaryDetails: { flexDirection: 'row', marginTop: 6 },
-  summaryDetailCol: { flex: 1 },
-  summaryDetailLabel: { fontSize: 10, fontWeight: '600', color: '#64748B' },
-  summaryDetailValue: { fontSize: 14, fontWeight: '700', color: '#FFFFFF', marginTop: 2 },
-
-  searchRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 16, paddingTop: 6, paddingBottom: 8,
-  },
-  searchWrap: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10,
-    borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10,
-    backgroundColor: '#FFFFFF',
-    // @ts-ignore
-    boxShadow: '0 1px 4px rgba(15,23,42,0.06)',
-  },
-  searchInput: { flex: 1, fontSize: 14, fontFamily: F.regular, color: C.textPrimary },
-  filterChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 10, paddingVertical: 8,
-    borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0',
-    backgroundColor: '#FFFFFF',
-  },
-  filterChipActive: { borderColor: '#FECACA', backgroundColor: '#FEF2F2' },
-  filterChipText: { fontSize: 12, fontWeight: '600', color: '#64748B' },
-
-  empty: { alignItems: 'center', paddingVertical: 48, gap: 10 },
-  emptyTitle: { fontSize: 15, fontWeight: '600', color: C.textSecondary },
-});
-
-const tbl = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#F7F9FB' },
-  pageContent: { padding: 16, paddingBottom: 48 },
-});
-
-const card = StyleSheet.create({
-  wrap: {
-    backgroundColor: '#FFFFFF', borderRadius: 14, overflow: 'hidden',
-    position: 'relative', borderWidth: 1, borderColor: '#EEF2F6',
-    // @ts-ignore
-    boxShadow: '0 1px 2px rgba(15,23,42,0.03)',
-  },
-  accentStrip: { position: 'absolute', top: 0, left: 0, bottom: 0, width: 4 },
-  body: { paddingTop: 14, paddingBottom: 14, paddingLeft: 18, paddingRight: 14, gap: 10 },
-  top: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  avatar: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { fontSize: 13, fontWeight: '800', letterSpacing: 0.4 },
-  name: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
-  meta: { fontSize: 11, color: '#94A3B8', marginTop: 2 },
-  balance: { fontSize: 17, fontWeight: '800', color: '#0F172A', letterSpacing: -0.3 },
-  balanceLabel: { fontSize: 10, color: '#94A3B8', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
-  progressTrack: {
-    height: 4, borderRadius: 999,
-    backgroundColor: '#F1F5F9', overflow: 'hidden',
-  },
-  progressFill: { height: '100%', borderRadius: 999, backgroundColor: '#10B981' },
-  footer: { flexDirection: 'row', alignItems: 'center', gap: 0 },
-  footerItem: { flex: 1 },
-  footerLabel: { fontSize: 10, fontWeight: '600', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.3 },
-  footerValue: { fontSize: 12, fontWeight: '700', color: '#0F172A', marginTop: 1 },
-  footerDivider: { width: 1, height: 22, backgroundColor: '#F1F5F9', marginHorizontal: 10 },
-  agingRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
-  agingChip: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
-  agingChipText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.2 },
-});
-
-// ─── Aging totals (top summary bar) ─────────────────────────────────────────
-const ag = StyleSheet.create({
-  wrap: { marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)', gap: 8 },
-  title: { fontSize: 10, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.4, textTransform: 'uppercase' },
-  bar: { flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', backgroundColor: '#1E293B' },
-  seg: { height: 8 },
-  legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 4 },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  dot: { width: 6, height: 6, borderRadius: 3 },
-  legendLabel: { fontSize: 11, color: '#94A3B8', fontWeight: '500' },
-  legendValue: { fontSize: 11, fontWeight: '700' },
-});
+export default ClinicBalanceScreen;

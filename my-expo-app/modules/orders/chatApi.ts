@@ -9,6 +9,8 @@ export interface ChatAttachment {
   size?: number;
 }
 
+export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
+
 export interface OrderMessage {
   id: string;
   work_order_id: string;
@@ -20,6 +22,9 @@ export interface OrderMessage {
   attachment_type?: AttachmentType | null;
   attachment_name?: string | null;
   attachment_size?: number | null;
+  approval_status?: ApprovalStatus;
+  approved_by?: string | null;
+  approved_at?: string | null;
   sender?: { id: string; full_name: string; user_type: string };
 }
 
@@ -29,6 +34,20 @@ export async function fetchMessages(workOrderId: string) {
     .select('*, sender:profiles(id, full_name, user_type)')
     .eq('work_order_id', workOrderId)
     .order('created_at', { ascending: true });
+}
+
+// ── Message approval ─────────────────────────────────────────────────
+
+export async function approveMessage(messageId: string) {
+  return supabase.rpc('approve_message', { p_message_id: messageId });
+}
+
+export async function rejectMessage(messageId: string) {
+  return supabase.rpc('reject_message', { p_message_id: messageId });
+}
+
+export async function approveAllPending(workOrderId: string) {
+  return supabase.rpc('approve_all_pending_messages', { p_work_order_id: workOrderId });
 }
 
 /**

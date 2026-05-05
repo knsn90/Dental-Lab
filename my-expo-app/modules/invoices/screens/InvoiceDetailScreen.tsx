@@ -1,31 +1,90 @@
+/**
+ * InvoiceDetailScreen — Fatura Detayı (Patterns Design Language)
+ *
+ * Patterns showcase §05 cardSolid, §09 tablo, §10 hero,
+ * §04 chip/tag token'larıyla fatura belge görünümü.
+ */
 import React, { useState } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert,
+  View, Text, ScrollView, Pressable, Alert,
   Modal, TextInput, ActivityIndicator, Platform,
+  useWindowDimensions,
 } from 'react-native';
+import {
+  ArrowLeft, Printer, Banknote, CreditCard, Landmark, File,
+  MoreHorizontal, Building2, User, Phone, MapPin, Calendar,
+  ClipboardList, Plus, Trash2, Send, BellRing, CircleX,
+  CircleCheck, X, AlertCircle, ChevronRight, FileText,
+} from 'lucide-react-native';
 import { toast } from '../../../core/ui/Toast';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { DS } from '../../../core/theme/dsTokens';
 import { useInvoice } from '../hooks/useInvoices';
 import {
   recordPayment, setInvoiceStatus, deleteInvoice,
   addInvoiceItem, deleteInvoiceItem,
 } from '../api';
 import {
-  INVOICE_STATUS_LABELS, INVOICE_STATUS_COLORS,
+  INVOICE_STATUS_LABELS,
   PAYMENT_METHOD_LABELS, type PaymentMethod,
 } from '../types';
 import { printInvoice } from '../printInvoice';
 import { PaymentReminderModal } from '../components/PaymentReminderModal';
 import { EFaturaPanel } from '../../efatura/components/EFaturaPanel';
 import { PaymentLinkPanel } from '../../payments/components/PaymentLinkPanel';
-import { C } from '../../../core/theme/colors';
-import { Shadows, CardSpec } from '../../../core/theme/shadows';
-import { F } from '../../../core/theme/typography';
 
-import { AppIcon } from '../../../core/ui/AppIcon';
+// ── Patterns tokens (§05 kartlar) ───────────────────────────────────
+const DISPLAY = {
+  fontFamily: 'Inter Tight, Inter, system-ui, sans-serif',
+  fontWeight: '300' as const,
+};
 
+const cardSolid = {
+  backgroundColor: '#FFF',
+  borderRadius: 24,
+  padding: 22,
+  // @ts-ignore web
+  boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)',
+};
+
+// §09 tablo kartı — borderWidth variant
+const tableCard = {
+  backgroundColor: '#FFF',
+  borderRadius: 24,
+  borderWidth: 1,
+  borderColor: 'rgba(0,0,0,0.05)',
+  overflow: 'hidden' as const,
+};
+
+// §04 chip tones
+const CHIP_TONES = {
+  success: { bg: 'rgba(45,154,107,0.12)', text: '#1F6B47' },
+  warning: { bg: 'rgba(232,155,42,0.15)', text: '#9C5E0E' },
+  danger:  { bg: 'rgba(217,75,75,0.12)',  text: '#9C2E2E' },
+  info:    { bg: 'rgba(74,143,201,0.12)', text: '#1F5689' },
+  neutral: { bg: DS.ink[100],             text: DS.ink[500] },
+};
+
+const modalShadow = '0 24px 48px -12px rgba(0,0,0,0.18)';
+
+const STATUS_CHIP: Record<string, { bg: string; text: string }> = {
+  taslak:       CHIP_TONES.neutral,
+  kesildi:      CHIP_TONES.info,
+  kismi_odendi: CHIP_TONES.warning,
+  odendi:       CHIP_TONES.success,
+  iptal:        CHIP_TONES.danger,
+};
+
+// §09 tablo header stili
+const TH = {
+  fontSize: 10 as const,
+  fontWeight: '600' as const,
+  letterSpacing: 0.7,
+  color: DS.ink[500],
+};
+
+// ── Helpers ─────────────────────────────────────────────────────────
 function fmtMoney(n: number | string | null | undefined): string {
   const v = typeof n === 'string' ? Number(n) : (n ?? 0);
   if (!Number.isFinite(v)) return '—';
@@ -34,13 +93,18 @@ function fmtMoney(n: number | string | null | undefined): string {
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—';
   const d = iso.includes('T') ? new Date(iso) : new Date(iso + 'T00:00:00');
-  return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' });
+  return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' });
 }
 
+// ═════════════════════════════════════════════════════════════════════
+// MAIN
+// ═════════════════════════════════════════════════════════════════════
 export function InvoiceDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { invoice, loading, refetch } = useInvoice(id);
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 1024;
 
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [addItemModalVisible, setAddItemModalVisible] = useState(false);
@@ -49,27 +113,28 @@ export function InvoiceDetailScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={s.safe}>
-        <ActivityIndicator style={{ marginTop: 64 }} color={C.primary} />
-      </SafeAreaView>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator color={DS.ink[400]} />
+      </View>
     );
   }
 
   if (!invoice) {
     return (
-      <SafeAreaView style={s.safe}>
-        <View style={s.emptyWrap}>
-          <AppIcon name={'alert-circle-outline' as any} size={48} color={C.textMuted} />
-          <Text style={s.emptyTitle}>Fatura bulunamadı</Text>
-          <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
-            <Text style={s.backBtnText}>Geri dön</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+        <AlertCircle size={40} strokeWidth={1.4} color={DS.ink[300]} />
+        <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[900] }}>Fatura bulunamadi</Text>
+        <Pressable onPress={() => router.back()} style={{
+          paddingHorizontal: 20, paddingVertical: 10, borderRadius: 9999,
+          backgroundColor: DS.ink[100], cursor: 'pointer' as any,
+        }}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>Geri don</Text>
+        </Pressable>
+      </View>
     );
   }
 
-  const statusColor = INVOICE_STATUS_COLORS[invoice.status];
+  const chip = STATUS_CHIP[invoice.status] ?? CHIP_TONES.neutral;
   const balance = Number(invoice.total) - Number(invoice.paid_amount);
   const today = new Date().toISOString().slice(0, 10);
   const isOverdue = invoice.due_date && invoice.due_date < today
@@ -79,466 +144,499 @@ export function InvoiceDetailScreen() {
     const res = await printInvoice(invoice);
     if (!res.ok && res.error) toast.error(res.error);
   };
-
   const handleMarkSent = async () => {
     setBusy(true);
     const { error } = await setInvoiceStatus(invoice.id, 'kesildi');
     setBusy(false);
-    if (error) toast.error((error as any).message ?? String(error));
-    else refetch();
+    if (error) toast.error((error as any).message ?? String(error)); else refetch();
   };
-
   const handleCancel = () => {
-    Alert.alert(
-      'Fatura İptal',
-      'Bu faturayı iptal etmek istediğinize emin misiniz? İptal sonrası düzenlenemez.',
-      [
-        { text: 'Vazgeç', style: 'cancel' },
-        {
-          text: 'İptal Et', style: 'destructive',
-          onPress: async () => {
-            setBusy(true);
-            const { error } = await setInvoiceStatus(invoice.id, 'iptal');
-            setBusy(false);
-            if (error) toast.error((error as any).message ?? String(error));
-            else refetch();
-          },
-        },
-      ],
-    );
+    Alert.alert('Fatura Iptal', 'Bu faturayi iptal etmek istediginize emin misiniz?', [
+      { text: 'Vazgec', style: 'cancel' },
+      { text: 'Iptal Et', style: 'destructive', onPress: async () => {
+        setBusy(true);
+        const { error } = await setInvoiceStatus(invoice.id, 'iptal');
+        setBusy(false);
+        if (error) toast.error((error as any).message ?? String(error)); else refetch();
+      }},
+    ]);
+  };
+  const handleDelete = () => {
+    Alert.alert('Faturayi Sil', 'Bu taslak fatura silinecek. Geri alinamaz.', [
+      { text: 'Vazgec', style: 'cancel' },
+      { text: 'Sil', style: 'destructive', onPress: async () => {
+        setBusy(true);
+        const { error } = await deleteInvoice(invoice.id);
+        setBusy(false);
+        if (error) toast.error((error as any).message ?? String(error)); else router.back();
+      }},
+    ]);
   };
 
-  const handleDelete = () => {
-    Alert.alert(
-      'Faturayı Sil',
-      'Bu taslak fatura silinecek. Geri alınamaz. Devam?',
-      [
-        { text: 'Vazgeç', style: 'cancel' },
-        {
-          text: 'Sil', style: 'destructive',
-          onPress: async () => {
-            setBusy(true);
-            const { error } = await deleteInvoice(invoice.id);
-            setBusy(false);
-            if (error) toast.error((error as any).message ?? String(error));
-            else router.back();
-          },
-        },
-      ],
-    );
-  };
+  const items = (invoice.items ?? []).slice().sort((a, b) => a.sort_order - b.sort_order);
 
   return (
-    <SafeAreaView style={s.safe} edges={['top']}>
-      {/* Header bar */}
-      <View style={s.topBar}>
-        <TouchableOpacity onPress={() => router.back()} style={s.iconOnlyBtn}>
-          <AppIcon name={'arrow-left' as any} size={20} color="#0F172A" />
-        </TouchableOpacity>
-        <View style={{ flex: 1, alignItems: 'center' }}>
-          <Text style={s.topTitle} numberOfLines={1}>{invoice.invoice_number}</Text>
-          <View style={[s.topStatus, { backgroundColor: statusColor.bg }]}>
-            <Text style={[s.topStatusText, { color: statusColor.fg }]}>
-              {INVOICE_STATUS_LABELS[invoice.status]}
-            </Text>
-          </View>
-        </View>
-        <TouchableOpacity onPress={handlePrint} style={s.iconOnlyBtn}>
-          <AppIcon name={'printer-outline' as any} size={20} color="#0F172A" />
-        </TouchableOpacity>
+    <View style={{ flex: 1 }}>
+
+      {/* ── Toolbar — pill buttons on DS.ink[50] bg ── */}
+      <View style={{
+        flexDirection: 'row', alignItems: 'center', gap: 8,
+        paddingHorizontal: 20, paddingVertical: 10,
+      }}>
+        <Pressable onPress={() => router.back()} style={{
+          width: 36, height: 36, borderRadius: 10,
+          alignItems: 'center', justifyContent: 'center',
+          backgroundColor: '#FFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
+          cursor: 'pointer' as any,
+        }}>
+          <ArrowLeft size={17} strokeWidth={1.8} color={DS.ink[900]} />
+        </Pressable>
+        <View style={{ flex: 1 }} />
+        {invoice.status === 'taslak' && (
+          <PillBtn icon={Send} label="Kesildi Isaretle" color={CHIP_TONES.info.text} bg={CHIP_TONES.info.bg} onPress={handleMarkSent} disabled={busy} />
+        )}
+        {(invoice.status === 'kesildi' || invoice.status === 'kismi_odendi') && (
+          <PillBtn icon={BellRing} label="Hatirlatma" color={CHIP_TONES.warning.text} bg={CHIP_TONES.warning.bg} onPress={() => setReminderOpen(true)} disabled={busy} />
+        )}
+        {balance > 0 && invoice.status !== 'iptal' && (
+          <PillBtn icon={Banknote} label="Tahsilat Ekle" onPress={() => setPaymentModalVisible(true)} dark />
+        )}
+        <PillBtn icon={Printer} onPress={handlePrint} />
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
-        {/* Summary card */}
-        <View style={s.summaryCard}>
-          <View style={s.summaryRow}>
-            <Text style={s.summaryLabel}>Genel Toplam</Text>
-            <Text style={s.summaryTotal}>{fmtMoney(invoice.total)}</Text>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          alignItems: 'center', padding: isDesktop ? 32 : 16, paddingBottom: 80,
+          gap: 20,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ═══════════════════════════════════════════════════════════
+            §10 HERO — Fatura özet kartı (koşullu: overdue=dark, normal=lab.bg)
+            ═══════════════════════════════════════════════════════════ */}
+        <View style={{
+          width: '100%', maxWidth: 800,
+          borderRadius: 28, padding: isDesktop ? 36 : 24,
+          backgroundColor: isOverdue ? DS.ink[900] : DS.lab.bg,
+          position: 'relative', overflow: 'hidden',
+        }}>
+          {/* §10 decorative circles */}
+          <View style={{ position: 'absolute', top: -40, right: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: isOverdue ? 'rgba(255,255,255,0.06)' : DS.lab.bgDeep, opacity: 0.6 }} />
+          <View style={{ position: 'absolute', bottom: -50, left: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: isOverdue ? 'rgba(255,255,255,0.03)' : DS.lab.bgDeep, opacity: 0.4 }} />
+
+          {/* Row 1: FATURA title + number + status */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+            <Text style={{
+              ...DISPLAY, fontSize: isDesktop ? 40 : 28, letterSpacing: -1.4,
+              color: isOverdue ? '#FFF' : DS.ink[900],
+            }}>
+              FATURA
+            </Text>
+            <View style={{
+              paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
+              backgroundColor: isOverdue ? 'rgba(217,75,75,0.25)' : chip.bg,
+            }}>
+              <Text style={{
+                fontSize: 10, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase',
+                color: isOverdue ? '#EF4444' : chip.text,
+              }}>
+                {isOverdue ? 'Vadesi Gecti' : INVOICE_STATUS_LABELS[invoice.status]}
+              </Text>
+            </View>
           </View>
-          <View style={s.summarySub}>
-            <View style={s.summarySubCol}>
-              <Text style={s.summarySubLabel}>Ödenen</Text>
-              <Text style={[s.summarySubValue, { color: '#047857' }]}>
+          <Text style={{
+            fontSize: 13, fontFamily: 'monospace',
+            color: isOverdue ? 'rgba(255,255,255,0.5)' : DS.ink[500],
+            marginBottom: 20,
+          }}>
+            {invoice.invoice_number}
+          </Text>
+
+          {/* Row 2: BigStats — toplam, ödenen, kalan */}
+          <View style={{ flexDirection: 'row', gap: isDesktop ? 48 : 24, flexWrap: 'wrap' }}>
+            <View>
+              <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 1.1, textTransform: 'uppercase', color: isOverdue ? 'rgba(255,255,255,0.5)' : DS.ink[500], marginBottom: 6 }}>
+                Toplam
+              </Text>
+              <Text style={{ ...DISPLAY, fontSize: isDesktop ? 40 : 28, letterSpacing: -1.4, color: isOverdue ? '#FFF' : DS.ink[900] }}>
+                {fmtMoney(invoice.total)}
+              </Text>
+            </View>
+            <View>
+              <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 1.1, textTransform: 'uppercase', color: isOverdue ? 'rgba(255,255,255,0.5)' : DS.ink[500], marginBottom: 6 }}>
+                Odenen
+              </Text>
+              <Text style={{ ...DISPLAY, fontSize: isDesktop ? 40 : 28, letterSpacing: -1.4, color: isOverdue ? CHIP_TONES.success.text : '#059669' }}>
                 {fmtMoney(invoice.paid_amount)}
               </Text>
             </View>
-            <View style={s.summaryDivider} />
-            <View style={s.summarySubCol}>
-              <Text style={s.summarySubLabel}>Kalan Bakiye</Text>
-              <Text style={[s.summarySubValue, { color: balance > 0 ? (isOverdue ? '#DC2626' : '#0F172A') : '#047857' }]}>
+            <View>
+              <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 1.1, textTransform: 'uppercase', color: isOverdue ? 'rgba(255,255,255,0.5)' : DS.ink[500], marginBottom: 6 }}>
+                Kalan
+              </Text>
+              <Text style={{
+                ...DISPLAY, fontSize: isDesktop ? 40 : 28, letterSpacing: -1.4,
+                color: balance <= 0 ? '#059669' : (isOverdue ? '#EF4444' : DS.ink[900]),
+              }}>
                 {fmtMoney(balance)}
               </Text>
             </View>
           </View>
-          {balance > 0 && invoice.status !== 'iptal' && (
-            <TouchableOpacity
-              style={s.payBtn}
-              activeOpacity={0.85}
-              onPress={() => setPaymentModalVisible(true)}
-            >
-              <AppIcon name={'cash-plus' as any} size={16} color="#FFF" />
-              <Text style={s.payBtnText}>Tahsilat Ekle</Text>
-            </TouchableOpacity>
-          )}
+
+          {/* Dates row */}
+          <View style={{
+            flexDirection: 'row', gap: 24, marginTop: 20, paddingTop: 16,
+            borderTopWidth: 1,
+            borderTopColor: isOverdue ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+          }}>
+            <View>
+              <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase', color: isOverdue ? 'rgba(255,255,255,0.4)' : DS.ink[400] }}>Duzenleme</Text>
+              <Text style={{ fontSize: 13, fontWeight: '500', color: isOverdue ? 'rgba(255,255,255,0.7)' : DS.ink[900], marginTop: 3 }}>{fmtDate(invoice.issue_date)}</Text>
+            </View>
+            <View>
+              <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase', color: isOverdue ? 'rgba(255,255,255,0.4)' : DS.ink[400] }}>Vade</Text>
+              <Text style={{ fontSize: 13, fontWeight: '500', color: isOverdue ? '#EF4444' : DS.ink[900], marginTop: 3 }}>{fmtDate(invoice.due_date)}</Text>
+            </View>
+          </View>
         </View>
 
-        {/* Info */}
-        <Text style={s.sectionLabel}>Alıcı</Text>
-        <View style={s.infoCard}>
-          <InfoRow icon="domain" label="Klinik" value={invoice.clinic?.name ?? '—'} />
-          <InfoRow icon="doctor" label="Hekim" value={invoice.doctor?.full_name ?? '—'} />
-          {invoice.doctor?.phone && <InfoRow icon="phone-outline" label="Tel" value={invoice.doctor.phone} />}
-          {invoice.clinic?.address && <InfoRow icon="map-marker-outline" label="Adres" value={invoice.clinic.address} />}
+        {/* ═══════════════════════════════════════════════════════════
+            §05 cardSolid — Alici bilgileri
+            ═══════════════════════════════════════════════════════════ */}
+        <View style={{ width: '100%', maxWidth: 800 }}>
+          <View style={{
+            ...cardSolid,
+            flexDirection: isDesktop ? 'row' : 'column',
+            gap: isDesktop ? 40 : 16,
+          }}>
+            {/* Alici */}
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[400], marginBottom: 10 }}>Alici</Text>
+              <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[900] }}>{invoice.clinic?.name ?? '—'}</Text>
+              {invoice.doctor?.full_name && <Text style={{ fontSize: 13, color: DS.ink[500], marginTop: 4 }}>Dr. {invoice.doctor.full_name}</Text>}
+              {invoice.doctor?.phone && <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 2 }}>{invoice.doctor.phone}</Text>}
+              {invoice.clinic?.address && <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 2, maxWidth: 280 }}>{invoice.clinic.address}</Text>}
+            </View>
+
+            {/* Is emirleri */}
+            {(invoice.linked_orders?.length || invoice.work_order) && (
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[400], marginBottom: 10 }}>Is Emirleri</Text>
+                {(invoice.linked_orders && invoice.linked_orders.length > 0)
+                  ? invoice.linked_orders.map(lo => lo.work_order && (
+                      <Pressable key={lo.work_order_id} onPress={() => router.push(`/(lab)/order/${lo.work_order!.id}` as any)}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6, cursor: 'pointer' as any }}>
+                        <ClipboardList size={12} strokeWidth={1.6} color="#2563EB" />
+                        <Text style={{ fontSize: 13, color: '#2563EB', fontWeight: '500' }}>
+                          {lo.work_order.order_number}{lo.work_order.patient_name ? ` · ${lo.work_order.patient_name}` : ''}
+                        </Text>
+                        <ChevronRight size={11} strokeWidth={1.4} color={DS.ink[300]} />
+                      </Pressable>
+                    ))
+                  : invoice.work_order && (
+                      <Pressable onPress={() => router.push(`/(lab)/order/${invoice.work_order!.id}` as any)}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 6, cursor: 'pointer' as any }}>
+                        <ClipboardList size={12} strokeWidth={1.6} color="#2563EB" />
+                        <Text style={{ fontSize: 13, color: '#2563EB', fontWeight: '500' }}>
+                          {invoice.work_order.order_number}{invoice.work_order.patient_name ? ` · ${invoice.work_order.patient_name}` : ''}
+                        </Text>
+                        <ChevronRight size={11} strokeWidth={1.4} color={DS.ink[300]} />
+                      </Pressable>
+                    )
+                }
+              </View>
+            )}
+          </View>
         </View>
 
-        <Text style={s.sectionLabel}>Tarihler</Text>
-        <View style={s.infoCard}>
-          <InfoRow icon="calendar-start" label="Düzenleme" value={fmtDate(invoice.issue_date)} />
-          <InfoRow
-            icon="calendar-clock"
-            label="Vade"
-            value={fmtDate(invoice.due_date) + (isOverdue ? ' · geçti' : '')}
-            valueColor={isOverdue ? '#DC2626' : undefined}
-          />
-          {/* Tek sipariş (eski stil) ya da toplu fatura */}
-          {(invoice.linked_orders && invoice.linked_orders.length > 0)
-            ? invoice.linked_orders.map((lo) => (
-                lo.work_order && (
-                  <InfoRow
-                    key={lo.work_order_id}
-                    icon="clipboard-text-outline"
-                    label="İş Emri"
-                    value={lo.work_order.order_number + (lo.work_order.patient_name ? ` · ${lo.work_order.patient_name}` : '')}
-                    link
-                    onPress={() => router.push(`/(lab)/order/${lo.work_order!.id}` as any)}
-                  />
-                )
-              ))
-            : invoice.work_order && (
-                <InfoRow
-                  icon="clipboard-text-outline"
-                  label="İş Emri"
-                  value={invoice.work_order.order_number + (invoice.work_order.patient_name ? ` · ${invoice.work_order.patient_name}` : '')}
-                  link
-                  onPress={() => router.push(`/(lab)/order/${invoice.work_order!.id}` as any)}
-                />
-              )
-          }
-        </View>
+        {/* ═══════════════════════════════════════════════════════════
+            §09 TABLO — Kalemler
+            ═══════════════════════════════════════════════════════════ */}
+        <View style={{ width: '100%', maxWidth: 800, ...tableCard }}>
+          {/* Toolbar */}
+          <View style={{
+            flexDirection: 'row', alignItems: 'center',
+            padding: 20, gap: 12,
+            borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
+          }}>
+            <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900], flex: 1 }}>
+              Kalemler · {items.length}
+            </Text>
+            {invoice.status === 'taslak' && (
+              <Pressable onPress={() => setAddItemModalVisible(true)} style={{
+                flexDirection: 'row', alignItems: 'center', gap: 5,
+                paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
+                backgroundColor: DS.ink[900], cursor: 'pointer' as any,
+              }}>
+                <Plus size={13} strokeWidth={2} color="#FFF" />
+                <Text style={{ fontSize: 12, fontWeight: '500', color: '#FFF' }}>Kalem Ekle</Text>
+              </Pressable>
+            )}
+          </View>
 
-        {/* Items */}
-        <View style={s.sectionHeader}>
-          <Text style={s.sectionLabel}>Kalemler ({invoice.items?.length ?? 0})</Text>
-          {invoice.status === 'taslak' && (
-            <TouchableOpacity onPress={() => setAddItemModalVisible(true)} style={s.smallBtn}>
-              <AppIcon name={'plus' as any} size={14} color="#2563EB" />
-              <Text style={s.smallBtnText}>Ekle</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-        <View style={s.infoCard}>
-          {(invoice.items ?? []).length === 0 ? (
-            <Text style={s.emptyListText}>Kalem eklenmemiş</Text>
+          {/* Header — §09 exact: #FAFAFA bg, uppercase 10px */}
+          <View style={{
+            flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12,
+            backgroundColor: '#FAFAFA',
+            borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
+          }}>
+            <Text style={{ flex: 3, ...TH }}>ACIKLAMA</Text>
+            {isDesktop && <Text style={{ flex: 1, ...TH, textAlign: 'center' }}>ADET</Text>}
+            {isDesktop && <Text style={{ flex: 1.5, ...TH, textAlign: 'right' }}>BIRIM FIYAT</Text>}
+            <Text style={{ flex: 1.5, ...TH, textAlign: 'right' }}>TOPLAM</Text>
+            {invoice.status === 'taslak' && <View style={{ width: 32 }} />}
+          </View>
+
+          {/* Rows — §09 exact: paddingHorizontal 20, paddingVertical 14 */}
+          {items.length === 0 ? (
+            <View style={{ paddingVertical: 32, alignItems: 'center' }}>
+              <Text style={{ fontSize: 13, color: DS.ink[400], fontStyle: 'italic' }}>Kalem eklenmemis</Text>
+            </View>
           ) : (
-            invoice.items!.slice().sort((a, b) => a.sort_order - b.sort_order).map((it, idx) => (
-              <View key={it.id} style={[s.itemRow, idx > 0 && s.itemRowBordered]}>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.itemName}>{it.description}</Text>
-                  <Text style={s.itemMeta}>
-                    {Number(it.quantity).toLocaleString('tr-TR')} × {fmtMoney(it.unit_price)}
-                  </Text>
+            items.map((it, idx) => (
+              <View key={it.id} style={{
+                flexDirection: 'row', alignItems: 'center',
+                paddingHorizontal: 20, paddingVertical: 14,
+                borderBottomWidth: idx < items.length - 1 ? 1 : 0,
+                borderBottomColor: 'rgba(0,0,0,0.04)',
+              }}>
+                <View style={{ flex: 3 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[900] }}>{it.description}</Text>
+                  {!isDesktop && (
+                    <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 2 }}>
+                      {Number(it.quantity).toLocaleString('tr-TR')} x {fmtMoney(it.unit_price)}
+                    </Text>
+                  )}
                 </View>
-                <Text style={s.itemTotal}>{fmtMoney(it.total)}</Text>
+                {isDesktop && <Text style={{ flex: 1, fontSize: 13, color: DS.ink[800], textAlign: 'center' }}>{Number(it.quantity).toLocaleString('tr-TR')}</Text>}
+                {isDesktop && <Text style={{ flex: 1.5, fontSize: 13, color: DS.ink[800], textAlign: 'right' }}>{fmtMoney(it.unit_price)}</Text>}
+                <Text style={{ flex: 1.5, fontSize: 13, fontWeight: '500', color: DS.ink[900], textAlign: 'right' }}>{fmtMoney(it.total)}</Text>
                 {invoice.status === 'taslak' && (
-                  <TouchableOpacity
-                    onPress={async () => {
-                      const { error } = await deleteInvoiceItem(it.id);
-                      if (error) toast.error((error as any).message ?? String(error));
-                      else refetch();
-                    }}
-                    style={s.itemDelBtn}
-                  >
-                    <AppIcon name={'trash-can-outline' as any} size={15} color="#DC2626" />
-                  </TouchableOpacity>
+                  <Pressable onPress={async () => {
+                    const { error } = await deleteInvoiceItem(it.id);
+                    if (error) toast.error((error as any).message ?? String(error)); else refetch();
+                  }} style={{ width: 32, alignItems: 'center', cursor: 'pointer' as any }}>
+                    <Trash2 size={13} strokeWidth={1.6} color={CHIP_TONES.danger.text} />
+                  </Pressable>
                 )}
               </View>
             ))
           )}
-          <View style={s.totalsRow}>
-            <Text style={s.totalsLabel}>Ara Toplam</Text>
-            <Text style={s.totalsValue}>{fmtMoney(invoice.subtotal)}</Text>
-          </View>
-          <View style={s.totalsRow}>
-            <Text style={s.totalsLabel}>KDV (%{Number(invoice.tax_rate).toLocaleString('tr-TR')})</Text>
-            <Text style={s.totalsValue}>{fmtMoney(invoice.tax_amount)}</Text>
-          </View>
-          <View style={[s.totalsRow, s.totalsGrand]}>
-            <Text style={[s.totalsLabel, { fontWeight: '800', color: '#0F172A' }]}>Genel Toplam</Text>
-            <Text style={[s.totalsValue, { fontWeight: '800', color: '#0F172A', fontSize: 15 }]}>
-              {fmtMoney(invoice.total)}
-            </Text>
-          </View>
-        </View>
 
-        {/* Payments */}
-        {(invoice.payments ?? []).length > 0 && (
-          <>
-            <Text style={s.sectionLabel}>Tahsilat Geçmişi ({invoice.payments!.length})</Text>
-            <View style={s.infoCard}>
-              {invoice.payments!.map((p, idx) => (
-                <View key={p.id} style={[s.paymentRow, idx > 0 && s.itemRowBordered]}>
-                  <View style={s.paymentIcon}>
-                    <AppIcon name={'cash-check' as any} size={15} color="#047857" />
+          {/* Footer — §09 exact: #FAFAFA bg, borderTop */}
+          <View style={{
+            paddingHorizontal: 20, paddingVertical: 14,
+            backgroundColor: '#FAFAFA',
+            borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
+          }}>
+            {/* Toplamlar — sağa dayalı */}
+            <View style={{ alignSelf: 'flex-end', width: isDesktop ? 260 : '100%', gap: 6 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: 12, color: DS.ink[500] }}>Ara Toplam</Text>
+                <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[900] }}>{fmtMoney(invoice.subtotal)}</Text>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: 12, color: DS.ink[500] }}>KDV (%{Number(invoice.tax_rate).toLocaleString('tr-TR')})</Text>
+                <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[900] }}>{fmtMoney(invoice.tax_amount)}</Text>
+              </View>
+              <View style={{ height: 2, backgroundColor: DS.ink[900], marginVertical: 4 }} />
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>Genel Toplam</Text>
+                <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.5, color: DS.ink[900] }}>{fmtMoney(invoice.total)}</Text>
+              </View>
+              {Number(invoice.paid_amount) > 0 && (
+                <>
+                  <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.06)', marginVertical: 2 }} />
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Text style={{ fontSize: 12, color: DS.ink[500] }}>Odenen</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '500', color: '#059669' }}>{fmtMoney(invoice.paid_amount)}</Text>
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.paymentAmount}>{fmtMoney(p.amount)}</Text>
-                    <Text style={s.paymentMeta}>
-                      {fmtDate(p.payment_date)} · {PAYMENT_METHOD_LABELS[p.payment_method]}
-                      {p.reference_no ? ` · ${p.reference_no}` : ''}
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: isOverdue ? CHIP_TONES.danger.text : DS.ink[900] }}>Kalan</Text>
+                    <Text style={{
+                      ...DISPLAY, fontSize: 18, letterSpacing: -0.3,
+                      color: balance <= 0 ? '#059669' : (isOverdue ? CHIP_TONES.danger.text : DS.ink[900]),
+                    }}>
+                      {fmtMoney(balance)}
                     </Text>
                   </View>
-                  {p.receiver?.full_name && (
-                    <Text style={s.paymentReceiver}>{p.receiver.full_name}</Text>
-                  )}
+                </>
+              )}
+            </View>
+          </View>
+        </View>
+
+        {/* ═══════════════════════════════════════════════════════════
+            §05 cardSolid — Tahsilat Gecmisi
+            ═══════════════════════════════════════════════════════════ */}
+        {(invoice.payments ?? []).length > 0 && (
+          <View style={{ width: '100%', maxWidth: 800, ...tableCard }}>
+            {/* Toolbar */}
+            <View style={{
+              flexDirection: 'row', alignItems: 'center',
+              padding: 20, gap: 12,
+              borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
+            }}>
+              <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>
+                Tahsilat · {invoice.payments!.length}
+              </Text>
+            </View>
+            {invoice.payments!.map((p, idx) => (
+              <View key={p.id} style={{
+                flexDirection: 'row', alignItems: 'center', gap: 12,
+                paddingHorizontal: 20, paddingVertical: 14,
+                borderBottomWidth: idx < invoice.payments!.length - 1 ? 1 : 0,
+                borderBottomColor: 'rgba(0,0,0,0.04)',
+              }}>
+                <View style={{
+                  width: 32, height: 32, borderRadius: 10,
+                  backgroundColor: CHIP_TONES.success.bg,
+                  alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <CircleCheck size={14} strokeWidth={1.8} color={CHIP_TONES.success.text} />
                 </View>
-              ))}
-            </View>
-          </>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: CHIP_TONES.success.text }}>{fmtMoney(p.amount)}</Text>
+                  <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 2 }}>
+                    {fmtDate(p.payment_date)} · {PAYMENT_METHOD_LABELS[p.payment_method]}
+                    {p.reference_no ? ` · ${p.reference_no}` : ''}
+                  </Text>
+                </View>
+                {p.receiver?.full_name && (
+                  <Text style={{ fontSize: 11, color: DS.ink[400] }}>{p.receiver.full_name}</Text>
+                )}
+              </View>
+            ))}
+          </View>
         )}
 
-        {/* Notes */}
+        {/* ═══ Notlar — cardSolid ═══ */}
         {invoice.notes && (
-          <>
-            <Text style={s.sectionLabel}>Notlar</Text>
-            <View style={s.infoCard}>
-              <Text style={s.noteText}>{invoice.notes}</Text>
-            </View>
-          </>
+          <View style={{ width: '100%', maxWidth: 800, ...cardSolid }}>
+            <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[400], marginBottom: 8 }}>Notlar</Text>
+            <Text style={{ fontSize: 13, color: DS.ink[700], lineHeight: 20 }}>{invoice.notes}</Text>
+          </View>
         )}
 
-        {/* Online Ödeme Paneli */}
-        <View style={{ marginTop: 8, marginBottom: 8 }}>
-          <PaymentLinkPanel
-            invoiceId={invoice.id}
-            balance={balance}
-            onChanged={refetch}
-          />
-        </View>
-
-        {/* e-Fatura Paneli */}
-        <View style={{ marginTop: 8, marginBottom: 8 }}>
+        {/* ═══ Paneller ═══ */}
+        <View style={{ width: '100%', maxWidth: 800, gap: 12 }}>
+          <PaymentLinkPanel invoiceId={invoice.id} balance={balance} onChanged={refetch} />
           <EFaturaPanel
-            invoiceId={invoice.id}
-            status={invoice.efatura_status ?? 'pending'}
-            uuid={invoice.efatura_uuid ?? null}
-            type={invoice.efatura_type ?? null}
-            provider={invoice.efatura_provider ?? null}
-            error={invoice.efatura_error ?? null}
+            invoiceId={invoice.id} status={invoice.efatura_status ?? 'pending'}
+            uuid={invoice.efatura_uuid ?? null} type={invoice.efatura_type ?? null}
+            provider={invoice.efatura_provider ?? null} error={invoice.efatura_error ?? null}
             onChanged={refetch}
           />
         </View>
 
-        {/* Actions */}
-        <View style={s.actionsRow}>
-          {invoice.status === 'taslak' && (
-            <TouchableOpacity style={s.actionBtn} onPress={handleMarkSent} disabled={busy}>
-              <AppIcon name={'send-outline' as any} size={16} color="#2563EB" />
-              <Text style={[s.actionBtnText, { color: '#2563EB' }]}>Kesildi Olarak İşaretle</Text>
-            </TouchableOpacity>
-          )}
-          {/* Tahsilat hatırlatması — vadesi dolu / kısmi ödeme */}
-          {(invoice.status === 'kesildi' || invoice.status === 'kismi_odendi') && (
-            <TouchableOpacity
-              style={[s.actionBtn, { borderColor: '#FED7AA', backgroundColor: '#FFF7ED' }]}
-              onPress={() => setReminderOpen(true)}
-              disabled={busy}
-            >
-              <AppIcon name={'bell-ring-outline' as any} size={16} color="#EA580C" />
-              <Text style={[s.actionBtnText, { color: '#EA580C' }]}>Hatırlatma Gönder</Text>
-            </TouchableOpacity>
-          )}
+        {/* ═══ Tehlikeli aksiyonlar ═══ */}
+        <View style={{ width: '100%', maxWidth: 800, flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {invoice.status !== 'iptal' && invoice.status !== 'odendi' && (
-            <TouchableOpacity style={[s.actionBtn, s.actionBtnDanger]} onPress={handleCancel} disabled={busy}>
-              <AppIcon name={'cancel' as any} size={16} color="#DC2626" />
-              <Text style={[s.actionBtnText, { color: '#DC2626' }]}>İptal Et</Text>
-            </TouchableOpacity>
+            <PillBtn icon={CircleX} label="Iptal Et" color={CHIP_TONES.danger.text} bg={CHIP_TONES.danger.bg} onPress={handleCancel} disabled={busy} />
           )}
           {invoice.status === 'taslak' && (
-            <TouchableOpacity style={[s.actionBtn, s.actionBtnDanger]} onPress={handleDelete} disabled={busy}>
-              <AppIcon name={'trash-can-outline' as any} size={16} color="#DC2626" />
-              <Text style={[s.actionBtnText, { color: '#DC2626' }]}>Taslağı Sil</Text>
-            </TouchableOpacity>
+            <PillBtn icon={Trash2} label="Taslagi Sil" color={CHIP_TONES.danger.text} bg={CHIP_TONES.danger.bg} onPress={handleDelete} disabled={busy} />
           )}
         </View>
       </ScrollView>
 
-      {/* Payment modal */}
-      <PaymentModal
-        visible={paymentModalVisible}
-        invoiceId={invoice.id}
-        maxAmount={balance}
-        onClose={() => setPaymentModalVisible(false)}
-        onDone={() => { setPaymentModalVisible(false); refetch(); }}
-      />
-
-      {/* Add item modal */}
-      <AddItemModal
-        visible={addItemModalVisible}
-        invoiceId={invoice.id}
-        onClose={() => setAddItemModalVisible(false)}
-        onDone={() => { setAddItemModalVisible(false); refetch(); }}
-      />
-
-      {/* Tahsilat hatırlatma modalı */}
-      <PaymentReminderModal
-        visible={reminderOpen}
-        invoice={invoice}
-        clinicName={invoice.clinic?.name ?? undefined}
-        onClose={() => setReminderOpen(false)}
-        onSent={() => refetch()}
-      />
-    </SafeAreaView>
+      {/* Modals */}
+      <PaymentModal visible={paymentModalVisible} invoiceId={invoice.id} maxAmount={balance}
+        onClose={() => setPaymentModalVisible(false)} onDone={() => { setPaymentModalVisible(false); refetch(); }} />
+      <AddItemModal visible={addItemModalVisible} invoiceId={invoice.id}
+        onClose={() => setAddItemModalVisible(false)} onDone={() => { setAddItemModalVisible(false); refetch(); }} />
+      <PaymentReminderModal visible={reminderOpen} invoice={invoice}
+        clinicName={invoice.clinic?.name ?? undefined} onClose={() => setReminderOpen(false)} onSent={() => refetch()} />
+    </View>
   );
 }
 
-// ─── InfoRow ──────────────────────────────────────────────────────────────
-function InfoRow({
-  icon, label, value, valueColor, link, onPress,
-}: {
-  icon: string; label: string; value: string; valueColor?: string;
-  link?: boolean; onPress?: () => void;
+// ─── PillBtn (§03 butonlar — pill köşeli) ───────────────────────────
+function PillBtn({ icon: Icon, label, color, bg, onPress, disabled, dark }: {
+  icon: React.ComponentType<any>; label?: string; color?: string; bg?: string;
+  onPress: () => void; disabled?: boolean; dark?: boolean;
 }) {
-  const Wrap: any = link && onPress ? TouchableOpacity : View;
   return (
-    <Wrap
-      style={s.infoRow}
-      onPress={onPress}
-      activeOpacity={link ? 0.7 : 1}
-    >
-      <AppIcon name={icon as any} size={15} color={C.textMuted} />
-      <Text style={s.infoLabel}>{label}</Text>
-      <Text style={[s.infoValue, valueColor ? { color: valueColor, fontWeight: '700' } : null, link ? { color: '#2563EB' } : null]} numberOfLines={2}>
-        {value}
-      </Text>
-    </Wrap>
+    <Pressable onPress={onPress} disabled={disabled} style={{
+      flexDirection: 'row', alignItems: 'center', gap: 6,
+      paddingHorizontal: label ? 14 : 10, paddingVertical: 8, borderRadius: 999,
+      backgroundColor: dark ? DS.ink[900] : (bg ?? '#FFF'),
+      borderWidth: dark || bg ? 0 : 1, borderColor: 'rgba(0,0,0,0.05)',
+      opacity: disabled ? 0.5 : 1, cursor: 'pointer' as any,
+    }}>
+      <Icon size={14} strokeWidth={1.8} color={dark ? '#FFF' : (color ?? DS.ink[900])} />
+      {label && <Text style={{ fontSize: 12, fontWeight: '500', color: dark ? '#FFF' : (color ?? DS.ink[900]) }}>{label}</Text>}
+    </Pressable>
   );
 }
 
-// ─── Payment Modal ────────────────────────────────────────────────────────
-function PaymentModal({
-  visible, invoiceId, maxAmount, onClose, onDone,
-}: { visible: boolean; invoiceId: string; maxAmount: number; onClose: () => void; onDone: () => void }) {
-  const [amount, setAmount]   = useState('');
-  const [method, setMethod]   = useState<PaymentMethod>('nakit');
-  const [refNo, setRefNo]     = useState('');
-  const [notes, setNotes]     = useState('');
-  const [busy, setBusy]       = useState(false);
+// ═════════════════════════════════════════════════════════════════════
+// PAYMENT MODAL (§05.5 form elemanları + §08 dialog)
+// ═════════════════════════════════════════════════════════════════════
+const PAYMENT_METHOD_OPTIONS: { v: PaymentMethod; l: string; icon: React.ComponentType<any> }[] = [
+  { v: 'nakit',  l: 'Nakit',    icon: Banknote },
+  { v: 'kart',   l: 'Kredi K.', icon: CreditCard },
+  { v: 'havale', l: 'Havale',   icon: Landmark },
+  { v: 'cek',    l: 'Cek',      icon: File },
+  { v: 'diger',  l: 'Diger',    icon: MoreHorizontal },
+];
+
+function PaymentModal({ visible, invoiceId, maxAmount, onClose, onDone }: {
+  visible: boolean; invoiceId: string; maxAmount: number; onClose: () => void; onDone: () => void;
+}) {
+  const [amount, setAmount] = useState('');
+  const [method, setMethod] = useState<PaymentMethod>('nakit');
+  const [refNo, setRefNo] = useState('');
+  const [notes, setNotes] = useState('');
+  const [busy, setBusy] = useState(false);
 
   React.useEffect(() => {
-    if (visible) {
-      setAmount(maxAmount > 0 ? maxAmount.toFixed(2) : '');
-      setMethod('nakit'); setRefNo(''); setNotes('');
-    }
+    if (visible) { setAmount(maxAmount > 0 ? maxAmount.toFixed(2) : ''); setMethod('nakit'); setRefNo(''); setNotes(''); }
   }, [visible, maxAmount]);
 
   const handleSave = async () => {
     const amt = Number(amount.replace(',', '.'));
-    if (!Number.isFinite(amt) || amt <= 0) {
-      toast.error('Geçerli bir tutar girin.');
-      return;
-    }
+    if (!Number.isFinite(amt) || amt <= 0) { toast.error('Gecerli bir tutar girin.'); return; }
     setBusy(true);
-    const { error } = await recordPayment({
-      invoice_id: invoiceId,
-      amount: amt,
-      payment_method: method,
-      reference_no: refNo || undefined,
-      notes: notes || undefined,
-    });
+    const { error } = await recordPayment({ invoice_id: invoiceId, amount: amt, payment_method: method, reference_no: refNo || undefined, notes: notes || undefined });
     setBusy(false);
-    if (error) toast.error((error as any).message ?? String(error));
-    else onDone();
+    if (error) toast.error((error as any).message ?? String(error)); else onDone();
   };
-
-  const METHOD_OPTIONS: { v: PaymentMethod; l: string; icon: string }[] = [
-    { v: 'nakit',  l: 'Nakit',     icon: 'cash' },
-    { v: 'kart',   l: 'Kredi K.',  icon: 'credit-card-outline' },
-    { v: 'havale', l: 'Havale',    icon: 'bank-outline' },
-    { v: 'cek',    l: 'Çek',       icon: 'file-document-outline' },
-    { v: 'diger',  l: 'Diğer',     icon: 'dots-horizontal' },
-  ];
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={m.overlay}>
-        <View style={m.sheet}>
-          <View style={m.header}>
-            <Text style={m.title}>Tahsilat Ekle</Text>
-            <TouchableOpacity onPress={onClose}>
-              <AppIcon name={'close' as any} size={22} color={C.textMuted} />
-            </TouchableOpacity>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+        <View style={{ backgroundColor: '#FFF', borderRadius: 24, width: '100%', maxWidth: 520, padding: 28, gap: 8, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', boxShadow: modalShadow } as any}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>Tahsilat Ekle</Text>
+            <Pressable onPress={onClose} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}>
+              <X size={16} strokeWidth={1.8} color={DS.ink[500]} />
+            </Pressable>
           </View>
-
-          <Text style={m.label}>Tutar (₺)</Text>
-          <TextInput
-            value={amount}
-            onChangeText={setAmount}
-            placeholder="0,00"
-            placeholderTextColor={C.textMuted}
-            keyboardType={Platform.OS === 'web' ? 'default' : 'decimal-pad'}
-            style={m.input}
-          />
-          {maxAmount > 0 && (
-            <Text style={m.hint}>Kalan bakiye: {fmtMoney(maxAmount)}</Text>
-          )}
-
-          <Text style={m.label}>Yöntem</Text>
-          <View style={m.chipRow}>
-            {METHOD_OPTIONS.map(opt => {
-              const active = method === opt.v;
-              return (
-                <TouchableOpacity
-                  key={opt.v}
-                  style={[m.chip, active && m.chipActive]}
-                  onPress={() => setMethod(opt.v)}
-                >
-                  <AppIcon name={opt.icon as any} size={12} color={active ? '#0F172A' : '#94A3B8'} />
-                  <Text style={[m.chipText, active && m.chipTextActive]}>{opt.l}</Text>
-                </TouchableOpacity>
-              );
-            })}
+          <FL>Tutar (TL)</FL>
+          <FI value={amount} onChangeText={setAmount} placeholder="0,00" keyboardType={Platform.OS === 'web' ? 'default' : 'decimal-pad'} />
+          {maxAmount > 0 && <Text style={{ fontSize: 10, color: DS.ink[400], marginTop: -4 }}>Kalan bakiye: {fmtMoney(maxAmount)}</Text>}
+          <FL>Yontem</FL>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+            {PAYMENT_METHOD_OPTIONS.map(opt => { const a = method === opt.v; const MI = opt.icon; return (
+              <Pressable key={opt.v} onPress={() => setMethod(opt.v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1.5, borderColor: a ? DS.ink[900] : 'rgba(0,0,0,0.08)', backgroundColor: a ? DS.ink[50] : '#FFF', cursor: 'pointer' as any }}>
+                <MI size={12} strokeWidth={1.6} color={a ? DS.ink[900] : DS.ink[400]} />
+                <Text style={{ fontSize: 12, fontWeight: a ? '600' : '500', color: a ? DS.ink[900] : DS.ink[400] }}>{opt.l}</Text>
+              </Pressable>
+            ); })}
           </View>
-
-          <Text style={m.label}>Referans No (ops.)</Text>
-          <TextInput
-            value={refNo}
-            onChangeText={setRefNo}
-            placeholder="Havale/çek referans no"
-            placeholderTextColor={C.textMuted}
-            style={m.input}
-          />
-
-          <Text style={m.label}>Not (ops.)</Text>
-          <TextInput
-            value={notes}
-            onChangeText={setNotes}
-            placeholder="Ek bilgi…"
-            placeholderTextColor={C.textMuted}
-            multiline
-            style={[m.input, { minHeight: 56, textAlignVertical: 'top' }]}
-          />
-
-          <View style={m.footer}>
-            <TouchableOpacity style={m.cancelBtn} onPress={onClose} disabled={busy}>
-              <Text style={m.cancelText}>İptal</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[m.saveBtn, busy && { opacity: 0.6 }]}
-              onPress={handleSave}
-              disabled={busy}
-            >
-              <Text style={m.saveText}>{busy ? 'Kaydediliyor…' : 'Kaydet'}</Text>
-            </TouchableOpacity>
+          <FL>Referans No (ops.)</FL>
+          <FI value={refNo} onChangeText={setRefNo} placeholder="Havale/cek referans no" />
+          <FL>Not (ops.)</FL>
+          <FI value={notes} onChangeText={setNotes} placeholder="Ek bilgi..." multiline style={{ minHeight: 56, textAlignVertical: 'top' }} />
+          <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end', paddingTop: 16, marginTop: 8, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
+            <Pressable onPress={onClose} disabled={busy} style={{ paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, cursor: 'pointer' as any }}>
+              <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[500] }}>Vazgec</Text>
+            </Pressable>
+            <Pressable onPress={handleSave} disabled={busy} style={{ paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, backgroundColor: DS.ink[900], opacity: busy ? 0.5 : 1, cursor: 'pointer' as any }}>
+              <Text style={{ fontSize: 13, fontWeight: '500', color: '#FFF' }}>{busy ? 'Kaydediliyor...' : 'Kaydet'}</Text>
+            </Pressable>
           </View>
         </View>
       </View>
@@ -546,90 +644,53 @@ function PaymentModal({
   );
 }
 
-// ─── Add Item Modal ───────────────────────────────────────────────────────
-function AddItemModal({
-  visible, invoiceId, onClose, onDone,
-}: { visible: boolean; invoiceId: string; onClose: () => void; onDone: () => void }) {
+// ═════════════════════════════════════════════════════════════════════
+// ADD ITEM MODAL
+// ═════════════════════════════════════════════════════════════════════
+function AddItemModal({ visible, invoiceId, onClose, onDone }: {
+  visible: boolean; invoiceId: string; onClose: () => void; onDone: () => void;
+}) {
   const [desc, setDesc] = useState('');
-  const [qty, setQty]   = useState('1');
+  const [qty, setQty] = useState('1');
   const [price, setPrice] = useState('');
   const [busy, setBusy] = useState(false);
 
-  React.useEffect(() => {
-    if (visible) { setDesc(''); setQty('1'); setPrice(''); }
-  }, [visible]);
+  React.useEffect(() => { if (visible) { setDesc(''); setQty('1'); setPrice(''); } }, [visible]);
 
   const handleSave = async () => {
-    const q = Number(qty.replace(',', '.'));
-    const p = Number(price.replace(',', '.'));
-    if (!desc.trim()) { toast.error('Açıklama girin.'); return; }
-    if (!Number.isFinite(q) || q <= 0) { toast.error('Geçerli bir adet girin.'); return; }
-    if (!Number.isFinite(p) || p < 0)  { toast.error('Geçerli bir birim fiyat girin.'); return; }
+    const q = Number(qty.replace(',', '.')); const p = Number(price.replace(',', '.'));
+    if (!desc.trim()) { toast.error('Aciklama girin.'); return; }
+    if (!Number.isFinite(q) || q <= 0) { toast.error('Gecerli bir adet girin.'); return; }
+    if (!Number.isFinite(p) || p < 0) { toast.error('Gecerli bir birim fiyat girin.'); return; }
     setBusy(true);
-    const { error } = await addInvoiceItem(invoiceId, {
-      description: desc.trim(), quantity: q, unit_price: p,
-    });
+    const { error } = await addInvoiceItem(invoiceId, { description: desc.trim(), quantity: q, unit_price: p });
     setBusy(false);
-    if (error) toast.error((error as any).message ?? String(error));
-    else onDone();
+    if (error) toast.error((error as any).message ?? String(error)); else onDone();
   };
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={m.overlay}>
-        <View style={m.sheet}>
-          <View style={m.header}>
-            <Text style={m.title}>Kalem Ekle</Text>
-            <TouchableOpacity onPress={onClose}>
-              <AppIcon name={'close' as any} size={22} color={C.textMuted} />
-            </TouchableOpacity>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+        <View style={{ backgroundColor: '#FFF', borderRadius: 24, width: '100%', maxWidth: 520, padding: 28, gap: 8, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', boxShadow: modalShadow } as any}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>Kalem Ekle</Text>
+            <Pressable onPress={onClose} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}>
+              <X size={16} strokeWidth={1.8} color={DS.ink[500]} />
+            </Pressable>
           </View>
-
-          <Text style={m.label}>Açıklama</Text>
-          <TextInput
-            value={desc}
-            onChangeText={setDesc}
-            placeholder="Örn: Zirkonya kron"
-            placeholderTextColor={C.textMuted}
-            style={m.input}
-          />
-
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <View style={{ flex: 1 }}>
-              <Text style={m.label}>Adet</Text>
-              <TextInput
-                value={qty}
-                onChangeText={setQty}
-                placeholder="1"
-                placeholderTextColor={C.textMuted}
-                keyboardType={Platform.OS === 'web' ? 'default' : 'decimal-pad'}
-                style={m.input}
-              />
-            </View>
-            <View style={{ flex: 2 }}>
-              <Text style={m.label}>Birim Fiyat (₺)</Text>
-              <TextInput
-                value={price}
-                onChangeText={setPrice}
-                placeholder="0,00"
-                placeholderTextColor={C.textMuted}
-                keyboardType={Platform.OS === 'web' ? 'default' : 'decimal-pad'}
-                style={m.input}
-              />
-            </View>
+          <FL>Aciklama</FL>
+          <FI value={desc} onChangeText={setDesc} placeholder="Orn: Zirkonya kron" />
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <View style={{ flex: 1 }}><FL>Adet</FL><FI value={qty} onChangeText={setQty} placeholder="1" keyboardType={Platform.OS === 'web' ? 'default' : 'decimal-pad'} /></View>
+            <View style={{ flex: 2 }}><FL>Birim Fiyat (TL)</FL><FI value={price} onChangeText={setPrice} placeholder="0,00" keyboardType={Platform.OS === 'web' ? 'default' : 'decimal-pad'} /></View>
           </View>
-
-          <View style={m.footer}>
-            <TouchableOpacity style={m.cancelBtn} onPress={onClose} disabled={busy}>
-              <Text style={m.cancelText}>İptal</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[m.saveBtn, busy && { opacity: 0.6 }]}
-              onPress={handleSave}
-              disabled={busy}
-            >
-              <Text style={m.saveText}>{busy ? 'Ekleniyor…' : 'Ekle'}</Text>
-            </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end', paddingTop: 16, marginTop: 8, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
+            <Pressable onPress={onClose} disabled={busy} style={{ paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, cursor: 'pointer' as any }}>
+              <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[500] }}>Vazgec</Text>
+            </Pressable>
+            <Pressable onPress={handleSave} disabled={busy} style={{ paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, backgroundColor: DS.ink[900], opacity: busy ? 0.5 : 1, cursor: 'pointer' as any }}>
+              <Text style={{ fontSize: 13, fontWeight: '500', color: '#FFF' }}>{busy ? 'Ekleniyor...' : 'Ekle'}</Text>
+            </Pressable>
           </View>
         </View>
       </View>
@@ -637,166 +698,13 @@ function AddItemModal({
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: CardSpec.pageBg },
+// ─── §05.5 Form field components ────────────────────────────────────
+function FL({ children }: { children: string }) {
+  return <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginTop: 8, marginBottom: 4 }}>{children}</Text>;
+}
+function FI(props: React.ComponentProps<typeof TextInput> & { style?: any }) {
+  const { style: extra, ...rest } = props;
+  return <TextInput placeholderTextColor={DS.ink[400]} {...rest} style={[{ height: 44, paddingHorizontal: 14, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: '#FFF', fontSize: 15, color: DS.ink[900], outline: 'none' as any }, extra]} />;
+}
 
-  topBar: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 8, paddingVertical: 10,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
-    gap: 6,
-  },
-  iconOnlyBtn: {
-    width: 38, height: 38, borderRadius: 10,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  topTitle: { fontSize: 15, fontWeight: '800', color: '#0F172A' },
-  topStatus: { marginTop: 3, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999 },
-  topStatusText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase' },
-
-  summaryCard: {
-    backgroundColor: CardSpec.bg, borderRadius: CardSpec.radius,
-    borderWidth: 1, borderColor: CardSpec.border,
-    padding: 18, marginBottom: 16, gap: 14,
-    ...Shadows.card,
-  },
-  summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  summaryLabel: { fontSize: 12, fontWeight: '600', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.5 },
-  summaryTotal: { fontSize: 24, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
-  summarySub: { flexDirection: 'row' },
-  summarySubCol: { flex: 1 },
-  summarySubLabel: { fontSize: 11, fontWeight: '600', color: '#94A3B8' },
-  summarySubValue: { fontSize: 16, fontWeight: '700', marginTop: 2 },
-  summaryDivider: { width: 1, backgroundColor: '#F1F5F9', marginHorizontal: 14 },
-  payBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    paddingVertical: 11, borderRadius: 10, backgroundColor: '#2563EB',
-  },
-  payBtnText: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
-
-  sectionLabel: {
-    fontSize: 11, fontWeight: '700', color: '#94A3B8',
-    textTransform: 'uppercase', letterSpacing: 0.5,
-    marginBottom: 8, marginTop: 8,
-  },
-  sectionHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    marginTop: 8, marginBottom: 8,
-  },
-  smallBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8,
-    backgroundColor: '#DBEAFE',
-  },
-  smallBtnText: { fontSize: 11, fontWeight: '700', color: '#2563EB' },
-
-  infoCard: {
-    backgroundColor: CardSpec.bg, borderRadius: CardSpec.radius,
-    borderWidth: 1, borderColor: CardSpec.border,
-    padding: 6, marginBottom: 6,
-    ...Shadows.card,
-  },
-  infoRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingVertical: 10, paddingHorizontal: 10,
-  },
-  infoLabel: { fontSize: 12, color: '#94A3B8', fontWeight: '600', minWidth: 68 },
-  infoValue: { fontSize: 13, color: '#0F172A', fontWeight: '600', flex: 1, textAlign: 'right' },
-
-  itemRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingVertical: 10, paddingHorizontal: 10,
-  },
-  itemRowBordered: { borderTopWidth: 1, borderTopColor: '#F1F5F9' },
-  itemName: { fontSize: 13, fontWeight: '600', color: '#0F172A' },
-  itemMeta: { fontSize: 11, color: '#94A3B8', marginTop: 1 },
-  itemTotal: { fontSize: 13, fontWeight: '800', color: '#0F172A', minWidth: 80, textAlign: 'right' },
-  itemDelBtn: { padding: 4 },
-  emptyListText: { padding: 20, textAlign: 'center', color: '#94A3B8', fontStyle: 'italic' },
-
-  totalsRow: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    paddingVertical: 7, paddingHorizontal: 10,
-    borderTopWidth: 1, borderTopColor: '#F1F5F9',
-  },
-  totalsGrand: { borderTopWidth: 2, borderTopColor: '#0F172A', paddingTop: 10 },
-  totalsLabel: { fontSize: 12, color: '#475569', fontWeight: '600' },
-  totalsValue: { fontSize: 13, color: '#0F172A', fontWeight: '700' },
-
-  paymentRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingVertical: 10, paddingHorizontal: 10,
-  },
-  paymentIcon: {
-    width: 32, height: 32, borderRadius: 10,
-    backgroundColor: '#D1FAE5', alignItems: 'center', justifyContent: 'center',
-  },
-  paymentAmount: { fontSize: 14, fontWeight: '800', color: '#047857' },
-  paymentMeta: { fontSize: 11, color: '#64748B', marginTop: 1 },
-  paymentReceiver: { fontSize: 11, color: '#94A3B8', fontWeight: '600' },
-
-  noteText: { fontSize: 13, color: '#334155', lineHeight: 20, padding: 12 },
-
-  actionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16 },
-  actionBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10,
-    borderWidth: 1, borderColor: '#DBEAFE', backgroundColor: '#EFF6FF',
-  },
-  actionBtnDanger: { borderColor: '#FECACA', backgroundColor: '#FEF2F2' },
-  actionBtnText: { fontSize: 13, fontWeight: '700' },
-
-  emptyWrap: { alignItems: 'center', paddingVertical: 80, gap: 12 },
-  emptyTitle: { fontSize: 16, fontWeight: '700', color: C.textPrimary },
-  backBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, backgroundColor: '#F1F5F9' },
-  backBtnText: { fontSize: 14, fontWeight: '600', color: '#0F172A' },
-});
-
-const m = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', alignItems: 'center', padding: 24 },
-  sheet: {
-    backgroundColor: '#FFFFFF', borderRadius: 20,
-    width: '100%', maxWidth: 520, maxHeight: '90%', overflow: 'hidden',
-    padding: 20, paddingBottom: 28, gap: 6,
-  },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    marginBottom: 6,
-  },
-  title: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
-  label: {
-    fontSize: 11, fontWeight: '700', color: '#94A3B8',
-    textTransform: 'uppercase', letterSpacing: 0.5,
-    marginTop: 10, marginBottom: 4,
-  },
-  input: {
-    fontSize: 15, color: '#0F172A',
-    borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10,
-    paddingHorizontal: 12, paddingVertical: 10,
-    backgroundColor: '#FFFFFF',
-  },
-  hint: { fontSize: 11, color: '#94A3B8', marginTop: 4 },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  chip: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 10, paddingVertical: 7,
-    borderRadius: 8, borderWidth: 1.5, borderColor: '#F1F5F9', backgroundColor: '#FAFAFA',
-  },
-  chipActive: { borderColor: '#0F172A', backgroundColor: '#F1F5F9' },
-  chipText: { fontSize: 12, fontWeight: '500', color: '#94A3B8' },
-  chipTextActive: { color: '#0F172A', fontWeight: '600' },
-  footer: { flexDirection: 'row', gap: 8, marginTop: 18 },
-  cancelBtn: {
-    flex: 1, paddingVertical: 12, borderRadius: 10,
-    borderWidth: 1, borderColor: '#E2E8F0',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  cancelText: { fontSize: 14, fontWeight: '600', color: '#64748B' },
-  saveBtn: {
-    flex: 2, paddingVertical: 12, borderRadius: 10, backgroundColor: '#2563EB',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  saveText: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
-});
+export default InvoiceDetailScreen;

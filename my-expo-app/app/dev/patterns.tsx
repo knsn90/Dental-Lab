@@ -7,9 +7,12 @@
  *   • Büyük yumuşak köşeler, glassmorphism, ince modern hatlar
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, ScrollView, Pressable, Animated, Easing } from 'react-native';
-import { Svg, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
+import { View, Text, ScrollView, Pressable, Animated, Easing, ImageBackground } from 'react-native';
+import { Svg, Circle, Defs, LinearGradient, Stop, Path, G, Rect, Pattern } from 'react-native-svg';
 import { DS, dsTheme, type DsTheme } from '../../core/theme/dsTokens';
+import {
+  Search, X, Paperclip, Mic, Play, Pin, CheckCheck, Smile,
+} from 'lucide-react-native';
 
 // Tüm display başlıklar — Inter Tight Light (300), sıkı tracking
 const DISPLAY = {
@@ -959,8 +962,9 @@ export default function PatternsScreen() {
       <SecHeader eyebrow="14 · Sidebar Menü" title="Yan navigasyon — açık & kapalı" desc="Logo + yeni sipariş CTA + search + nav (count badge'lerle) + alt user card. Pill köşeli, hafif zemin." />
 
       {/* EXPANDED */}
-      <View style={{ marginBottom: 24, height: 640, backgroundColor: '#F5F2EA', borderRadius: 24, overflow: 'hidden', flexDirection: 'row', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' }}>
-        <View style={{ width: 240, backgroundColor: '#FFFFFF', borderRightWidth: 1, borderRightColor: 'rgba(0,0,0,0.06)', padding: 14, paddingTop: 20 }}>
+      <View style={{ marginBottom: 24, height: 640, backgroundColor: '#F5F2EA', borderRadius: 24, overflow: 'hidden', flexDirection: 'row', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', padding: 14, gap: 14 }}>
+        <View style={{ width: 240, backgroundColor: '#FFFFFF', borderRadius: 20, padding: 14, paddingTop: 20, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', // @ts-ignore web shadow
+          boxShadow: '0 4px 16px rgba(0,0,0,0.04)' }}>
           {/* Logo */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingBottom: 20 }}>
             <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: DS.ink[900], alignItems: 'center', justifyContent: 'center' }}>
@@ -1066,8 +1070,9 @@ export default function PatternsScreen() {
       </View>
 
       {/* COLLAPSED */}
-      <View style={{ marginBottom: 80, height: 520, backgroundColor: '#F5F2EA', borderRadius: 24, overflow: 'hidden', flexDirection: 'row', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' }}>
-        <View style={{ width: 64, backgroundColor: '#FFFFFF', borderRightWidth: 1, borderRightColor: 'rgba(0,0,0,0.06)', alignItems: 'center', paddingVertical: 18 }}>
+      <View style={{ marginBottom: 80, height: 520, backgroundColor: '#F5F2EA', borderRadius: 24, overflow: 'hidden', flexDirection: 'row', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', padding: 14, gap: 14 }}>
+        <View style={{ width: 64, backgroundColor: '#FFFFFF', borderRadius: 20, alignItems: 'center', paddingVertical: 18, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', // @ts-ignore web shadow
+          boxShadow: '0 4px 16px rgba(0,0,0,0.04)' }}>
           {/* Logo */}
           <View style={{ width: 40, height: 40, borderRadius: 11, backgroundColor: DS.ink[900], alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}>
             <Text style={{ fontSize: 18, color: DS.lab.primary }}>🦷</Text>
@@ -1141,6 +1146,15 @@ export default function PatternsScreen() {
         <PillButton variant="light" size="sm">/dev/order-detail</PillButton>
         <PillButton variant="light" size="sm">/(lab)/dashboard</PillButton>
       </View>
+
+      {/* ═════ 15 — CHAT / MESAJLAR PANELİ ═════ */}
+      <Text style={{ ...DISPLAY, fontSize: 32, marginBottom: 12, color: DS.ink[900] }}>
+        15 — Mesajlar Paneli
+      </Text>
+      <Text style={{ fontSize: 14, color: DS.ink[500], marginBottom: 24 }}>
+        Lab ↔ Klinik mesajlaşma · sol konuşma listesi + sağ chat · dental pattern arkaplan
+      </Text>
+      <ChatPanelMockup />
 
       <View style={{ height: 80 }} />
     </ScrollView>
@@ -1585,7 +1599,8 @@ function LinearProgress({
 
   const railH = compact ? 14 : 22;         // Dış kapsül yüksekliği
   const padding = 4;                        // Kapsül iç padding
-  const barH = railH - padding * 2;         // İç bar yüksekliği
+  const barH = railH - padding * 2;         // İç bar (track) yüksekliği
+  const fillInset = compact ? 2 : 3;        // Filled segment için ek iç boşluk → pill kapsül görünür kalsın
   const knobSize = compact ? 16 : 22;       // Knob — kapsülden hafif büyük
 
   return (
@@ -1623,9 +1638,10 @@ function LinearProgress({
             position: 'relative',
             overflow: 'hidden',
           }}>
-            {/* Filled segment — solid accent (referansta siyah) */}
+            {/* Filled segment — solid accent (referansta siyah)
+                Üst/alt iç boşluk: pill kapsül 100% te bile görünür kalsın */}
             <View style={{
-              position: 'absolute', left: 0, top: 0, bottom: 0,
+              position: 'absolute', left: 0, top: fillInset, bottom: fillInset,
               width: `${value}%`,
               backgroundColor: accentFill,
               borderRadius: 999,
@@ -1907,3 +1923,309 @@ const cardFlat = {
 const cardDark = {
   backgroundColor: DS.ink[900], borderRadius: 24, padding: 22,
 };
+
+// ─── Dental Pattern Background — chat zemini için tile'lı görsel ───────────
+//   Görsel: assets/images/chat-bg-dental.png (kullanıcı tarafından eklendi)
+//   Tile şekilde tekrar eder, opacity ile soluklaştırılır
+function DentalPatternBg({ opacity = 0.6 }: { opacity?: number }) {
+  return (
+    <ImageBackground
+      source={require('../../assets/images/chat-bg-dental.png')}
+      // @ts-ignore web absolute fill
+      style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity }}
+      // RN: 'repeat' web + ios + android'de tile eder
+      resizeMode="repeat"
+      pointerEvents="none"
+    />
+  );
+}
+
+// ─── ChatPanelMockup — Mesajlar paneli (handoff stilinde) ──────────────────
+function ChatPanelMockup() {
+  const T = DS.lab;
+  const [activeId, setActiveId] = useState('c1');
+
+  const conversations = [
+    { id: 'c1', name: 'Merkez diş kliniği · Dr. Kaan Esen',  preview: 'hello',         patient: 'Hasta: Kaan Esen',  date: 'Sal',   bg: '#3B82F6', dot: T.primary, unread: true },
+    { id: 'c2', name: 'Merkez Diş Kliniği · Dr. Ahmet K.',    preview: 'Siz: merhaba',  patient: 'Hasta: Kaan Esen',  date: 'Sal',   bg: '#0EA5E9', dot: '#E89B2A' },
+    { id: 'c3', name: 'Merkez Diş Kliniği · Dr. Ahmet K.',    preview: 'Siz: merhaba',  patient: 'Hasta: Kaan Esen',  date: 'Sal',   bg: '#8B5CB8', dot: '#E89B2A' },
+    { id: 'c4', name: 'Merkez Diş Kliniği · Dr. Ahme...',     preview: 'Siz: Sesli mesaj', patient: 'Hasta: asd',     date: '31/03', bg: '#E97757', dot: T.primary },
+    { id: 'c5', name: 'Merkez Diş Kliniği · Dr. Ahme...',     preview: 'Siz: Sesli mesaj', patient: 'Hasta: kaan',    date: '31/03', bg: '#2BA39B', dot: '#0F2840' },
+  ];
+
+  const messages = [
+    { id: 'm1', kind: 'audio',  from: 'them', sender: 'DK', dur: '00:02', time: '14:20' },
+    { id: 'm2', kind: 'text',   from: 'me',   text: 'ok',     time: '14:21' },
+    { id: 'm3', kind: 'text',   from: 'them', sender: 'DK', text: 'hi',    time: '14:22' },
+    { id: 'm4', kind: 'text',   from: 'them', sender: 'DK', text: 'hello', time: '14:25' },
+    { id: 'm5', kind: 'text',   from: 'them', sender: 'DK', text: 'test',  time: '14:57' },
+    { id: 'm6', kind: 'text',   from: 'them', sender: 'DK', text: 'hello', time: '23:00' },
+  ];
+
+  return (
+    <View style={{
+      backgroundColor: '#FFF', borderRadius: 24, overflow: 'hidden',
+      flexDirection: 'row',
+      height: 720,
+      borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+      // @ts-ignore web shadow
+      boxShadow: '0 24px 48px -12px rgba(0,0,0,0.18)',
+    }}>
+
+      {/* ═══════ SOL: KONUŞMA LİSTESİ ═══════ */}
+      <View style={{ width: 360, borderRightWidth: 1, borderRightColor: 'rgba(0,0,0,0.06)', backgroundColor: '#FAFAFA' }}>
+        {/* Başlık */}
+        <View style={{ padding: 24, paddingBottom: 14 }}>
+          <Text style={{ ...DISPLAY, fontSize: 30, letterSpacing: -1.0, color: DS.ink[900] }}>Mesajlar</Text>
+        </View>
+
+        {/* Arama */}
+        <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, height: 44, paddingHorizontal: 14, backgroundColor: '#FFF', borderRadius: 999, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' }}>
+            <Search size={16} color={DS.ink[400]} strokeWidth={1.8} />
+            <Text style={{ flex: 1, fontSize: 13, color: DS.ink[400] }}>Ara…</Text>
+          </View>
+        </View>
+
+        {/* Liste */}
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }}>
+          {conversations.map(c => {
+            const active = c.id === activeId;
+            return (
+              <Pressable
+                key={c.id}
+                onPress={() => setActiveId(c.id)}
+                style={{
+                  flexDirection: 'row', gap: 12, alignItems: 'flex-start',
+                  paddingHorizontal: 16, paddingVertical: 12,
+                  backgroundColor: active ? '#FFF' : 'transparent',
+                  borderLeftWidth: active ? 3 : 0, borderLeftColor: T.primary,
+                }}
+              >
+                {/* Avatar + presence dot */}
+                <View style={{ position: 'relative' }}>
+                  <View style={{
+                    width: 44, height: 44, borderRadius: 22,
+                    backgroundColor: c.bg,
+                    alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFF', letterSpacing: 0.4 }}>MD</Text>
+                  </View>
+                  <View style={{
+                    position: 'absolute', right: -1, bottom: -1,
+                    width: 12, height: 12, borderRadius: 6,
+                    backgroundColor: c.dot,
+                    borderWidth: 2, borderColor: active ? '#FFF' : '#FAFAFA',
+                  }} />
+                </View>
+
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+                    <Text numberOfLines={1} style={{ flex: 1, fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>{c.name}</Text>
+                    <Text style={{ fontSize: 10, color: DS.ink[400], marginLeft: 6 }}>{c.date}</Text>
+                  </View>
+                  <Text numberOfLines={1} style={{ fontSize: 12, color: DS.ink[500], marginTop: 2 }}>{c.preview}</Text>
+                  <Text numberOfLines={1} style={{ fontSize: 11, color: DS.ink[400], marginTop: 2 }}>{c.patient}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {/* ═══════ SAĞ: AKTİF KONUŞMA ═══════ */}
+      <View style={{ flex: 1, backgroundColor: '#FBFAF6' }}>
+
+        {/* Header */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, padding: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)', backgroundColor: '#FFF' }}>
+          <View style={{ position: 'relative' }}>
+            <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: '#3B82F6', alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: '#FFF', letterSpacing: 0.4 }}>MD</Text>
+            </View>
+            <View style={{ position: 'absolute', right: -1, bottom: -1, width: 13, height: 13, borderRadius: 6.5, backgroundColor: T.primary, borderWidth: 2, borderColor: '#FFF' }} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 16, fontWeight: '600', color: DS.ink[900] }}>Merkez diş kliniği · Dr. Kaan Esen</Text>
+            <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 2 }}>Hasta: Kaan Esen · Alındı</Text>
+          </View>
+          <Pressable style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.04)' }}>
+            <X size={16} color={DS.ink[700]} strokeWidth={1.8} />
+          </Pressable>
+        </View>
+
+        {/* Pinned summary banner */}
+        <View style={{ padding: 18, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)', borderLeftWidth: 3, borderLeftColor: T.primary }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+            <Pin size={11} color={T.primaryDeep} strokeWidth={2} />
+            <Text style={{ fontSize: 10, color: T.primaryDeep, letterSpacing: 1.1, textTransform: 'uppercase', fontWeight: '700' }}>Sabitlendi · İş Özeti</Text>
+          </View>
+          <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[900], marginBottom: 10 }}>Metal Destekli Porselen Köprü</Text>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            <SummaryChip glyph="tooth"  label="26" />
+            <SummaryChip glyph="shade"  label="A4" shadeBg="#B07F4A" />
+            <SummaryChip glyph="cog"    label="milling" />
+            <SummaryChip glyph="cal"    label="24 Nis" />
+          </View>
+        </View>
+
+        {/* Mesaj listesi — dental pattern bg */}
+        <View style={{ flex: 1, position: 'relative' }}>
+          <DentalPatternBg color={DS.ink[900]} opacity={0.04} />
+          <ScrollView contentContainerStyle={{ padding: 24, gap: 14 }}>
+            {messages.map(m => {
+              const mine = m.from === 'me';
+              return (
+                <View key={m.id} style={{ flexDirection: 'row', justifyContent: mine ? 'flex-end' : 'flex-start', gap: 10 }}>
+                  {!mine && (
+                    <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: '#2D9A6B', alignItems: 'center', justifyContent: 'center', marginTop: 'auto' }}>
+                      <Text style={{ fontSize: 10, fontWeight: '600', color: '#FFF' }}>{m.sender}</Text>
+                    </View>
+                  )}
+                  {m.kind === 'audio' ? (
+                    <AudioBubble dur={m.dur!} time={m.time} mine={mine} />
+                  ) : (
+                    <TextBubble text={m.text!} time={m.time} mine={mine} />
+                  )}
+                </View>
+              );
+            })}
+          </ScrollView>
+        </View>
+
+        {/* Input bar */}
+        <View style={{ padding: 16, backgroundColor: '#FFF', borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, height: 48, backgroundColor: '#FAFAFA', borderRadius: 999, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' }}>
+              <Paperclip size={16} color={DS.ink[500]} strokeWidth={1.8} />
+              <Text style={{ flex: 1, fontSize: 13, color: DS.ink[400] }}>Mesaj yaz…</Text>
+              <Smile size={16} color={DS.ink[400]} strokeWidth={1.8} />
+            </View>
+            <Pressable style={{
+              width: 48, height: 48, borderRadius: 24,
+              backgroundColor: T.accent, alignItems: 'center', justifyContent: 'center',
+              // @ts-ignore web shadow
+              boxShadow: '0 4px 12px rgba(245,194,75,0.35)',
+            }}>
+              <Mic size={18} color="#FFF" strokeWidth={1.8} />
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ─── Chat helper'ları ─────────────────────────────────────────────────────
+function SummaryChip({ glyph, label, shadeBg }: { glyph: 'tooth' | 'shade' | 'cog' | 'cal'; label: string; shadeBg?: string }) {
+  return (
+    <View style={{
+      flexDirection: 'row', alignItems: 'center', gap: 6,
+      paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
+      backgroundColor: '#F5F5F5', borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
+    }}>
+      {glyph === 'tooth' && <ChipGlyph kind="tooth" />}
+      {glyph === 'shade' && <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: shadeBg ?? '#B07F4A', borderWidth: 1, borderColor: 'rgba(0,0,0,0.1)' }} />}
+      {glyph === 'cog'   && <ChipGlyph kind="cog" />}
+      {glyph === 'cal'   && <ChipGlyph kind="cal" />}
+      <Text style={{ fontSize: 12, fontWeight: '500', color: DS.ink[700] }}>{label}</Text>
+    </View>
+  );
+}
+
+function ChipGlyph({ kind }: { kind: 'tooth' | 'cog' | 'cal' }) {
+  const C = DS.ink[700];
+  if (kind === 'tooth') {
+    return (
+      <Svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke={C} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+        <Path d="M12 2c-3 0-5 2-7 2-1.5 0-2 1-2 3 0 4 2 8 3 11 .5 1.5 1 3 2 3s1.5-2 2-4c.3-1.4 1-2 2-2s1.7.6 2 2c.5 2 1 4 2 4s1.5-1.5 2-3c1-3 3-7 3-11 0-2-.5-3-2-3-2 0-4-2-7-2z" />
+      </Svg>
+    );
+  }
+  if (kind === 'cog') {
+    return (
+      <Svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke={C} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+        <Circle cx="12" cy="12" r="3" />
+        <Path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+      </Svg>
+    );
+  }
+  // cal
+  return (
+    <Svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke={C} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <Rect x="3" y="4" width="18" height="18" rx="2" />
+      <Path d="M16 2v4 M8 2v4 M3 10h18" />
+    </Svg>
+  );
+}
+
+function TextBubble({ text, time, mine }: { text: string; time: string; mine: boolean }) {
+  const T = DS.lab;
+  return (
+    <View style={{
+      maxWidth: '70%',
+      paddingHorizontal: 14, paddingVertical: 10, paddingBottom: 16,
+      backgroundColor: mine ? T.accent : '#FFF',
+      borderRadius: 18,
+      borderBottomRightRadius: mine ? 4 : 18,
+      borderBottomLeftRadius:  mine ? 18 : 4,
+      // @ts-ignore web shadow
+      boxShadow: mine ? '0 1px 2px rgba(0,0,0,0.08)' : '0 1px 2px rgba(0,0,0,0.06)',
+      borderWidth: mine ? 0 : 1, borderColor: 'rgba(0,0,0,0.04)',
+      position: 'relative',
+    }}>
+      <Text style={{ fontSize: 14, color: mine ? '#FFF' : DS.ink[900], lineHeight: 19 }}>{text}</Text>
+      <View style={{ position: 'absolute', right: 10, bottom: 4, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+        <Text style={{ fontSize: 10, color: mine ? 'rgba(255,255,255,0.7)' : DS.ink[400] }}>{time}</Text>
+        {mine && <CheckCheck size={11} color={T.primary} strokeWidth={2.2} />}
+      </View>
+    </View>
+  );
+}
+
+function AudioBubble({ dur, time, mine }: { dur: string; time: string; mine: boolean }) {
+  const T = DS.lab;
+  // Sahte waveform — değişen yükseklikli mini barlar
+  const bars = [4, 9, 14, 8, 12, 18, 10, 6, 14, 20, 12, 8, 16, 10, 5, 11, 18, 14, 9, 6, 12, 16, 10, 7, 13, 18, 11, 6, 14, 9, 5, 10];
+  return (
+    <View style={{
+      maxWidth: '70%',
+      paddingHorizontal: 12, paddingVertical: 10, paddingBottom: 16,
+      backgroundColor: mine ? T.accent : '#FFF',
+      borderRadius: 18,
+      borderBottomLeftRadius: mine ? 18 : 4,
+      borderBottomRightRadius: mine ? 4 : 18,
+      borderWidth: mine ? 0 : 1, borderColor: 'rgba(0,0,0,0.04)',
+      // @ts-ignore web shadow
+      boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      position: 'relative', minWidth: 280,
+    }}>
+      {/* Play button */}
+      <View style={{
+        width: 40, height: 40, borderRadius: 20,
+        backgroundColor: mine ? '#FFF' : T.primary,
+        alignItems: 'center', justifyContent: 'center',
+      }}>
+        <Play size={16} color={mine ? T.accent : T.accent} strokeWidth={2} fill={mine ? T.accent : T.accent as any} />
+      </View>
+
+      {/* Waveform */}
+      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 2, height: 24 }}>
+        {bars.map((h, i) => (
+          <View key={i} style={{
+            width: 2, height: h, borderRadius: 1,
+            backgroundColor: i < 4 ? (mine ? '#FFF' : T.accent) : (mine ? 'rgba(255,255,255,0.4)' : DS.ink[300]),
+          }} />
+        ))}
+      </View>
+
+      {/* Duration */}
+      <Text style={{ fontSize: 11, color: mine ? 'rgba(255,255,255,0.85)' : DS.ink[500], fontVariant: ['tabular-nums'] as any }}>{dur}</Text>
+
+      {/* Time */}
+      <View style={{ position: 'absolute', right: 12, bottom: 4 }}>
+        <Text style={{ fontSize: 10, color: mine ? 'rgba(255,255,255,0.7)' : DS.ink[400] }}>{time}</Text>
+      </View>
+    </View>
+  );
+}

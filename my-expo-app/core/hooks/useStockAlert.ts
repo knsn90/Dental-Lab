@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../../lib/supabase';
+import { supabase } from '../api/supabase';
 
 /** Returns the count of stock items below their minimum quantity. */
 export function useStockAlert() {

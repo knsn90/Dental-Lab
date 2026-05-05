@@ -1,4 +1,4 @@
-import { supabase } from '../../../lib/supabase';
+import { supabase } from '../../../core/api/supabase';
 
 export interface AdminOrder {
   id: string;

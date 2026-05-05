@@ -68,6 +68,65 @@ export async function signUpDoctor(params: SignUpDoctorParams) {
   return authResult;
 }
 
+export interface SignUpClinicParams {
+  email: string;
+  password: string;
+  full_name: string;
+  clinic_name: string;
+  phone: string;
+  address: string;
+  clinic_type: 'klinik' | 'poliklinik' | 'hastane';
+}
+
+export async function signUpClinic(params: SignUpClinicParams) {
+  // 1 — Create auth user (clinic admin)
+  const authResult = await supabase.auth.signUp({
+    email: params.email,
+    password: params.password,
+    options: {
+      data: {
+        user_type: 'doctor' as UserType,
+        full_name: params.full_name,
+        clinic_name: params.clinic_name,
+        phone: params.phone,
+        role: 'clinic_admin',
+      },
+    },
+  });
+
+  if (authResult.error || !authResult.data.user) return authResult;
+
+  // Mark as pending approval
+  await supabase
+    .from('profiles')
+    .update({ is_active: false, approval_status: 'pending' })
+    .eq('id', authResult.data.user.id);
+
+  // 2 — Create clinic record with clinic_type
+  const { data: clinic, error: clinicError } = await supabase
+    .from('clinics')
+    .insert({
+      name: params.clinic_name,
+      phone: params.phone,
+      address: params.address,
+      contact_person: params.full_name,
+      clinic_type: params.clinic_type,
+    })
+    .select()
+    .single();
+
+  if (clinicError || !clinic) return authResult;
+
+  // 3 — Create doctor record (admin hekim)
+  await supabase.from('doctors').insert({
+    full_name: params.full_name,
+    phone: params.phone,
+    clinic_id: clinic.id,
+  });
+
+  return authResult;
+}
+
 export async function signUpLabUser(params: SignUpLabParams) {
   return supabase.auth.signUp({
     email: params.email,

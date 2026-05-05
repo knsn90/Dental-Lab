@@ -1,23 +1,34 @@
 /**
- * OrderDetailMockup — V2 handoff bundle tasarımı
+ * OrderDetailMockup — V2 handoff bundle tasarımı (NativeWind)
  *
- *   Krem + Saffron (Lab teması) + büyük yumuşak köşeler + Inter Tight Light
- *   Sol kolon: Header → Hero → Aktif istasyon → Çalışmalar tablo →
- *              Materyal hareketleri → Hızlı etiket
- *   Sağ kolon: Doktor & Klinik → Diş şeması (placeholder) → Tabs
- *              (Aktivite/Dosya/Yorum) → Mali bilgi (dark) → İlgili siparişler
- *
- *   POC — sadece görsel, gerçek veri yok.
+ *   Patterns design language (krem + saffron + Lab teması).
+ *   Görsel birebir korundu, inline style → className refactor.
  */
 import React, { useState } from 'react';
 import { View, Text, ScrollView, Pressable, useWindowDimensions } from 'react-native';
-import { Svg, Circle, Path } from 'react-native-svg';
 import { DS } from '../../../core/theme/dsTokens';
+import { LivingToothChart } from '../components/LivingToothChart';
+import type { WorkOrder } from '../types';
+import { LinearProgressX, PercentRingX, StepsTimelineX } from '../../../core/ui/ProgressX';
+import { Bell, Printer, Check, ArrowUpRight, Download, ChevronRight } from 'lucide-react-native';
 
 const T = DS.lab;
 const DISPLAY = { fontFamily: 'Inter Tight, Inter, system-ui, sans-serif' as const, fontWeight: '300' as const };
 
-// Mock veriler
+// VITA Classical shade → yaklaşık doğal diş rengi
+const VITA_SHADE_HEX: Record<string, string> = {
+  A1:    '#F0E2C0', A2:   '#E6CFA1', A3:   '#D9B27C', 'A3.5': '#C99A5E', A4: '#B07F4A',
+  B1:    '#EFDFB6', B2:   '#E5CB94', B3:   '#D4AE6F', B4:    '#BC8F4F',
+  C1:    '#D9CFB7', C2:   '#C7B89A', C3:   '#A8987B', C4:    '#897962',
+  D2:    '#D7C2A6', D3:   '#C2A98B', D4:   '#A88E72',
+};
+const readableInk = (hex: string) => {
+  const m = hex.replace('#', '');
+  const r = parseInt(m.slice(0, 2), 16), g = parseInt(m.slice(2, 4), 16), b = parseInt(m.slice(4, 6), 16);
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return lum > 0.62 ? '#3A2E1F' : '#FFFFFF';
+};
+
 const orderData = {
   no: 'LAB-2026-0033',
   patient: 'Kaan Esen',
@@ -43,232 +54,300 @@ export function OrderDetailMockup() {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1024;
   const [sideTab, setSideTab] = useState<'activity' | 'files' | 'comments'>('activity');
+  const [chartW, setChartW] = useState(280);
+  const [activeTooth, setActiveTooth] = useState<number | null>(null);
+  const [jawView, setJawView] = useState<'both' | 'upper' | 'lower'>('both');
+
+  const allTeeth = orderData.works.flatMap(w => w.teeth);
+  const upperTeeth = allTeeth.filter(t => t < 30);
+  const lowerTeeth = allTeeth.filter(t => t >= 30);
+  const visibleTeeth =
+    jawView === 'upper' ? upperTeeth :
+    jawView === 'lower' ? lowerTeeth :
+                          allTeeth;
+
+  const mockOrder = {
+    tooth_numbers: visibleTeeth,
+    photos: [{ tooth_number: 17 }, { tooth_number: 46 }],
+  } as unknown as WorkOrder;
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: '#F5F2EA' }} contentContainerStyle={{ padding: 24 }}>
-      <View style={{ maxWidth: 1200, alignSelf: 'center', width: '100%', flexDirection: isDesktop ? 'row' : 'column', gap: 16 }}>
+    <ScrollView className="flex-1 bg-cream-page" contentContainerStyle={{ padding: 24 }}>
+      <View
+        className={`w-full self-center gap-4 ${isDesktop ? 'flex-row' : 'flex-col'}`}
+        style={{ maxWidth: 1200 }}
+      >
 
         {/* ═══════════════════ SOL KOLON ═══════════════════ */}
-        <View style={{ flex: isDesktop ? 1 : undefined, gap: 16 }}>
+        <View className={`gap-4 ${isDesktop ? 'flex-1' : ''}`}>
 
           {/* HEADER */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 4, flexWrap: 'wrap' }}>
-            <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: 'rgba(0,0,0,0.06)' }}>
-              <Text style={{ fontSize: 11, fontFamily: 'monospace', color: '#3C3C3C' }}>{orderData.no}</Text>
+          <View className="flex-row items-center flex-wrap gap-x-3 gap-y-2 py-1">
+            <View className="px-2.5 py-1 rounded-md bg-black/5">
+              <Text className="text-[11px] font-mono text-ink-700">{orderData.no}</Text>
             </View>
-            <Text style={{ fontSize: 13, color: '#6B6B6B' }}>›</Text>
-            <Text style={{ fontSize: 13, color: '#0A0A0A', fontWeight: '500' }}>Detay</Text>
-            <View style={{ flex: 1 }} />
-            <PillBtn variant="ghost" size="sm">↓ Yazdır</PillBtn>
+            <ChevronRight size={14} color="#6B6B6B" strokeWidth={1.6} />
+            <Text className="text-[13px] text-ink-900 font-medium">Detay</Text>
+            <View className="flex-1" />
+            <PillBtn variant="ghost" size="sm" icon={Printer}>Yazdır</PillBtn>
             <PillBtn variant="surface" size="sm">Yeniden ata</PillBtn>
-            <PillBtn variant="primary" size="sm">✓ Aşamayı tamamla</PillBtn>
+            <PillBtn variant="primary" size="sm" icon={Check}>Aşamayı tamamla</PillBtn>
           </View>
 
-          {/* HERO — sarı gradient, hasta + kalan gün + progress + stages */}
-          <View style={{
-            backgroundColor: '#FFF6D9',
-            // @ts-ignore web gradient
-            backgroundImage: 'linear-gradient(180deg, #FFF6D9 0%, #F5C24B 200%)',
-            borderRadius: 28, padding: 32, position: 'relative', overflow: 'hidden',
-          }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, flexWrap: 'wrap', gap: 16 }}>
+          {/* HERO — saffron gradient */}
+          <View
+            className="rounded-[28px] p-8 relative overflow-hidden"
+            style={{
+              backgroundColor: '#FFF6D9',
+              // @ts-ignore web gradient
+              backgroundImage: 'linear-gradient(180deg, #FFF6D9 0%, #F5C24B 200%)',
+            }}
+          >
+            <View className="flex-row justify-between items-start mb-6 flex-wrap gap-4">
               <View>
-                <Text style={{ fontSize: 11, color: '#6B5A1F', letterSpacing: 1.32, textTransform: 'uppercase', fontWeight: '600', marginBottom: 8 }}>
+                <Text className="text-[11px] font-semibold uppercase mb-2" style={{ letterSpacing: 1.32, color: '#6B5A1F' }}>
                   Hasta · 5 diş çalışması
                 </Text>
-                <Text style={{ ...DISPLAY, fontSize: 54, letterSpacing: -2.16, lineHeight: 51, color: T.accent }}>
+                <Text className="text-ink-900" style={{ ...DISPLAY, fontSize: 54, letterSpacing: -2.16, lineHeight: 51 }}>
                   {orderData.patient}
                 </Text>
-                <Text style={{ fontSize: 13, color: '#3C3C3C', marginTop: 8 }}>
+                <Text className="text-[13px] text-ink-700 mt-2">
                   {orderData.doctor} · {orderData.clinic}
                 </Text>
               </View>
-              <View style={{ alignItems: 'flex-end' }}>
-                <Text style={{ fontSize: 11, color: '#6B5A1F', letterSpacing: 1.32, textTransform: 'uppercase', fontWeight: '600' }}>Kalan</Text>
-                <Text style={{ ...DISPLAY, fontSize: 48, letterSpacing: -1.92, lineHeight: 48, marginTop: 6, color: T.accent }}>
-                  {orderData.daysLeft}<Text style={{ fontSize: 18, marginLeft: 4 }}> gün</Text>
+              <View className="items-end">
+                <Text className="text-[11px] font-semibold uppercase" style={{ letterSpacing: 1.32, color: '#6B5A1F' }}>
+                  Kalan
                 </Text>
-                <Text style={{ fontSize: 12, color: '#3C3C3C', marginTop: 4 }}>Teslim {orderData.due}</Text>
+                <Text className="text-ink-900 mt-1.5" style={{ ...DISPLAY, fontSize: 48, letterSpacing: -1.92, lineHeight: 48 }}>
+                  {orderData.daysLeft}
+                  <Text className="ml-1" style={{ fontSize: 18 }}> gün</Text>
+                </Text>
+                <Text className="text-[12px] text-ink-700 mt-1">Teslim {orderData.due}</Text>
               </View>
             </View>
 
-            {/* Progress bar — knob with double-ring */}
-            <View style={{ backgroundColor: 'rgba(0,0,0,0.08)', borderRadius: 999, padding: 6, position: 'relative' }}>
-              <View style={{ height: 8, backgroundColor: T.accent, borderRadius: 999, width: `${orderData.progress}%`, position: 'relative' }}>
-                <View style={{
-                  position: 'absolute', right: -10, top: -4, width: 20, height: 20, borderRadius: 10,
-                  backgroundColor: T.accent, borderWidth: 4, borderColor: T.primary,
-                  // @ts-ignore web shadow
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-                }} />
-              </View>
-            </View>
-
-            {/* Stages */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 14 }}>
-              {orderData.stages.map((s, i) => (
-                <Text key={i} style={{
-                  fontSize: 11,
-                  color: i <= orderData.currentStage ? T.accent : '#6B5A1F',
-                  fontWeight: i === orderData.currentStage ? '600' : '400',
-                  opacity: i > orderData.currentStage ? 0.5 : 1,
-                }}>{s}</Text>
-              ))}
-            </View>
+            <StepsTimelineX
+              steps={orderData.stages}
+              current={orderData.currentStage}
+              theme="lab"
+              variant="light"
+            />
           </View>
 
           {/* AKTİF İSTASYON */}
-          <View style={{ backgroundColor: '#FFF', borderRadius: 24, padding: 24, flexDirection: 'row', alignItems: 'center', gap: 20 }}>
-            <View style={{ width: 64, height: 64, borderRadius: 18, backgroundColor: T.accent, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ fontSize: 26, color: T.primary }}>⚗</Text>
+          <View className="bg-ink-900 rounded-3xl p-6 flex-row items-center gap-5">
+            <PercentRingX value={38} size={88} theme="lab" />
+            <View className="flex-1">
+              <Text className="text-[11px] font-semibold uppercase text-saffron" style={{ letterSpacing: 1.1 }}>
+                Şu an
+              </Text>
+              <Text className="text-white mt-0.5" style={{ ...DISPLAY, fontSize: 24, letterSpacing: -0.4 }}>
+                {orderData.currentStation} istasyonu
+              </Text>
+              <View className="flex-row items-center gap-1.5 mt-1.5">
+                <View className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#FFD86B' }} />
+                <Text className="text-[12px] font-medium" style={{ color: '#FFD86B' }}>2 saat 10 dakika gecikti</Text>
+              </View>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 11, color: '#9A9A9A', letterSpacing: 1.1, textTransform: 'uppercase', fontWeight: '600' }}>Şu an</Text>
-              <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, marginTop: 2, color: T.accent }}>{orderData.currentStation} istasyonu</Text>
-              <Text style={{ fontSize: 12, color: '#9C5E0E', marginTop: 4, fontWeight: '500' }}>● 2 saat 10 dakika gecikti · 38% tamamlandı</Text>
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 8, paddingLeft: 8, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' }}>
+            <View className="flex-row items-center gap-2.5 pl-2 pr-3.5 py-2 rounded-full bg-white/10">
               <Avatar name={orderData.responsible} size={32} bg={T.primary} fg={T.accent} />
               <View>
-                <Text style={{ fontSize: 13, fontWeight: '500', color: T.accent }}>Navid İ.</Text>
-                <Text style={{ fontSize: 10, color: '#6B6B6B' }}>Sorumlu</Text>
+                <Text className="text-[13px] font-medium text-white">Navid İ.</Text>
+                <Text className="text-[10px] text-white/55">Sorumlu</Text>
               </View>
             </View>
           </View>
 
           {/* ÇALIŞMALAR TABLOSU */}
-          <View style={{ backgroundColor: '#FFF', borderRadius: 24, overflow: 'hidden' }}>
-            <View style={{ paddingHorizontal: 24, paddingVertical: 20, flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <Text style={{ fontSize: 11, color: '#9A9A9A', letterSpacing: 1.1, textTransform: 'uppercase', fontWeight: '600' }}>Çalışmalar</Text>
-              <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: '#FAFAFA' }}>
-                <Text style={{ fontSize: 11, fontWeight: '500' }}>3 grup · 5 diş</Text>
+          <View className="bg-white rounded-3xl overflow-hidden">
+            <View className="px-6 py-5 flex-row items-center flex-wrap gap-3">
+              <Text className="text-[11px] font-semibold uppercase text-ink-400" style={{ letterSpacing: 1.1 }}>Çalışmalar</Text>
+              <View className="px-2 py-0.5 rounded-full bg-ink-50">
+                <Text className="text-[11px] font-medium">3 grup · 5 diş</Text>
               </View>
-              <View style={{ flex: 1 }} />
-              <Chip tone="primary">● A3 renk</Chip>
+              <View className="flex-1" />
+              {(() => {
+                const shade = 'A3';
+                const bg = VITA_SHADE_HEX[shade];
+                const fg = readableInk(bg);
+                return (
+                  <View
+                    className="flex-row items-center gap-1.5 px-2.5 py-1 rounded-full border border-black/[0.08]"
+                    style={{ backgroundColor: bg }}
+                  >
+                    <View className="w-2 h-2 rounded-full opacity-70" style={{ backgroundColor: fg }} />
+                    <Text className="text-[11px] font-semibold" style={{ color: fg, letterSpacing: 0.2 }}>{shade} renk</Text>
+                  </View>
+                );
+              })()}
               <Chip tone="neutral">Frezeleme</Chip>
               <Chip tone="neutral">Manuel</Chip>
             </View>
 
             {/* Table header */}
-            <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: '#FBFAF6' }}>
+            <View className="flex-row px-4 py-2.5 bg-cream-panel">
               {['DİŞ', 'ÇALIŞMA', 'ADET', 'İLERLEME', ''].map((h, i) => (
-                <Text key={i} style={{
-                  flex: i === 1 ? 2 : i === 3 ? 1.4 : i === 4 ? 0.4 : 1,
-                  fontSize: 10, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase', color: '#6B6B6B',
-                }}>{h}</Text>
+                <Text
+                  key={i}
+                  className="text-[10px] font-semibold uppercase text-ink-500"
+                  style={{
+                    flex: i === 1 ? 2 : i === 3 ? 1.4 : i === 4 ? 0.4 : 1,
+                    letterSpacing: 0.8,
+                  }}
+                >
+                  {h}
+                </Text>
               ))}
             </View>
 
             {/* Rows */}
             {orderData.works.map((w, i) => (
-              <View key={i} style={{
-                flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 14,
-                borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)', alignItems: 'center',
-              }}>
-                <View style={{ flex: 1, flexDirection: 'row', gap: 4, flexWrap: 'wrap' }}>
+              <View key={i} className="flex-row px-4 py-3.5 items-center border-t border-black/[0.04]">
+                <View className="flex-1 flex-row gap-1 flex-wrap">
                   {w.teeth.map(t => (
-                    <View key={t} style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: w.color }}>
-                      <Text style={{ fontSize: 11, fontWeight: '600', color: '#FFF', fontFamily: 'monospace' }}>{t}</Text>
+                    <View key={t} className="px-2 py-0.5 rounded-md" style={{ backgroundColor: w.color }}>
+                      <Text className="text-[11px] font-mono font-semibold text-white">{t}</Text>
                     </View>
                   ))}
                 </View>
-                <Text style={{ flex: 2, fontSize: 13, fontWeight: '500', color: T.accent }}>{w.name}</Text>
-                <Text style={{ flex: 1, fontSize: 13, color: '#6B6B6B' }}>{w.count} diş</Text>
-                <View style={{ flex: 1.4, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <View style={{ flex: 1, height: 4, backgroundColor: 'rgba(0,0,0,0.08)', borderRadius: 999, overflow: 'hidden' }}>
-                    <View style={{ width: `${w.progress}%`, height: '100%', backgroundColor: w.color }} />
+                <Text className="text-[13px] font-medium text-ink-900" style={{ flex: 2 }}>{w.name}</Text>
+                <Text className="text-[13px] text-ink-500" style={{ flex: 1 }}>{w.count} diş</Text>
+                <View className="flex-row items-center gap-2.5" style={{ flex: 1.4 }}>
+                  <View className="flex-1">
+                    <LinearProgressX value={w.progress} theme="lab" compact hideLabel animate />
                   </View>
-                  <Text style={{ fontSize: 11, color: '#6B6B6B', width: 32 }}>{w.progress}%</Text>
+                  <Text className="text-[11px] text-ink-500 text-right" style={{ width: 32 }}>{w.progress}%</Text>
                 </View>
-                <Text style={{ flex: 0.4, textAlign: 'right', color: '#9A9A9A', fontSize: 14 }}>↗</Text>
+                <View className="items-end" style={{ flex: 0.4 }}>
+                  <ArrowUpRight size={16} color="#9A9A9A" strokeWidth={1.6} />
+                </View>
               </View>
             ))}
           </View>
 
           {/* MATERYAL HAREKETLERİ */}
-          <View style={{ backgroundColor: '#FFF', borderRadius: 24, padding: 24 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
-              <Text style={{ fontSize: 11, color: '#9A9A9A', letterSpacing: 1.1, textTransform: 'uppercase', fontWeight: '600' }}>Materyal hareketleri</Text>
-              <View style={{ flex: 1 }} />
+          <View className="bg-white rounded-3xl p-6">
+            <View className="flex-row items-center mb-3.5">
+              <Text className="text-[11px] font-semibold uppercase text-ink-400" style={{ letterSpacing: 1.1 }}>
+                Materyal hareketleri
+              </Text>
+              <View className="flex-1" />
               <PillBtn variant="surface" size="sm">+ Stok düş</PillBtn>
             </View>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+            <View className="flex-row flex-wrap gap-2.5">
               {[
-                { name: 'NextDent C&B',  amt: '12.4 g', cost: '₺ 10.54', stage: '3D Baskı' },
-                { name: 'Ortho IBT',      amt: '3.8 g',  cost: '₺ 4.56',  stage: '3D Baskı' },
-                { name: 'Etil alkol',     amt: '50 ml',  cost: '₺ 2.00',  stage: '3D Baskı' },
+                { name: 'NextDent C&B', amt: '12.4 g', cost: '₺ 10.54', stage: '3D Baskı' },
+                { name: 'Ortho IBT',     amt: '3.8 g',  cost: '₺ 4.56',  stage: '3D Baskı' },
+                { name: 'Etil alkol',    amt: '50 ml',  cost: '₺ 2.00',  stage: '3D Baskı' },
               ].map((m, i) => (
-                <View key={i} style={{ flex: 1, minWidth: 200, paddingHorizontal: 16, paddingVertical: 14, backgroundColor: '#FBFAF6', borderRadius: 14 }}>
-                  <Text style={{ fontSize: 13, fontWeight: '500', color: T.accent }}>{m.name}</Text>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
-                    <Text style={{ fontSize: 11, color: '#6B6B6B' }}>{m.amt}</Text>
-                    <Text style={{ fontSize: 11, color: T.accent, fontWeight: '500' }}>{m.cost}</Text>
+                <View key={i} className="flex-1 px-4 py-3.5 bg-cream-panel rounded-2xl" style={{ minWidth: 200 }}>
+                  <Text className="text-[13px] font-medium text-ink-900">{m.name}</Text>
+                  <View className="flex-row justify-between mt-2">
+                    <Text className="text-[11px] text-ink-500">{m.amt}</Text>
+                    <Text className="text-[11px] font-medium text-ink-900">{m.cost}</Text>
                   </View>
-                  <Text style={{ fontSize: 10, color: '#9A9A9A', marginTop: 4 }}>{m.stage}</Text>
+                  <Text className="text-[10px] text-ink-400 mt-1">{m.stage}</Text>
                 </View>
               ))}
             </View>
           </View>
 
           {/* HIZLI ETİKET */}
-          <View style={{ backgroundColor: '#FFF', borderRadius: 24, padding: 20 }}>
-            <Text style={{ fontSize: 11, color: '#9A9A9A', letterSpacing: 1.1, textTransform: 'uppercase', fontWeight: '600', marginBottom: 12 }}>Hızlı işlem · etiket</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          <View className="bg-white rounded-3xl p-5">
+            <Text className="text-[11px] font-semibold uppercase text-ink-400 mb-3" style={{ letterSpacing: 1.1 }}>
+              Hızlı işlem · etiket
+            </Text>
+            <View className="flex-row flex-wrap gap-2">
               <Chip tone="outline">Doktor bekliyor</Chip>
               <Chip tone="outline">Yoğunluk</Chip>
               <Chip tone="outline">Teknisyen sorunu</Chip>
               <Chip tone="outline">Malzeme sorunu</Chip>
               <Chip tone="outline">Yeniden ata</Chip>
-              <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(0,0,0,0.15)', borderStyle: 'dashed' }}>
-                <Text style={{ fontSize: 12, color: '#6B6B6B' }}>+ Not</Text>
+              <View className="px-2.5 py-1 rounded-full border border-dashed border-black/[0.15]">
+                <Text className="text-[12px] text-ink-500">+ Not</Text>
               </View>
-              <Chip tone="danger">● Acil</Chip>
+              <Chip tone="danger" dot>Acil</Chip>
             </View>
           </View>
         </View>
 
         {/* ═══════════════════ SAĞ KOLON ═══════════════════ */}
-        <View style={{ width: isDesktop ? 360 : undefined, gap: 16 }}>
+        <View className="gap-4" style={{ width: isDesktop ? 360 : undefined }}>
 
           {/* DOKTOR & KLİNİK */}
-          <View style={{ backgroundColor: '#FFF', borderRadius: 24, padding: 20 }}>
-            <Text style={{ fontSize: 11, color: '#9A9A9A', letterSpacing: 1.1, textTransform: 'uppercase', fontWeight: '600', marginBottom: 14 }}>Doktor & Klinik</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+          <View className="bg-white rounded-3xl p-5">
+            <Text className="text-[11px] font-semibold uppercase text-ink-400 mb-3.5" style={{ letterSpacing: 1.1 }}>
+              Doktor & Klinik
+            </Text>
+            <View className="flex-row items-center gap-3 mb-3">
               <Avatar name={orderData.doctor.replace('Dr. ', '')} size={40} bg="#3B82F6" fg="#FFF" />
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 13, fontWeight: '500', color: T.accent }}>{orderData.doctor}</Text>
-                <Text style={{ fontSize: 11, color: '#6B6B6B' }}>{orderData.clinic}</Text>
+              <View className="flex-1">
+                <Text className="text-[13px] font-medium text-ink-900">{orderData.doctor}</Text>
+                <Text className="text-[11px] text-ink-500">{orderData.clinic}</Text>
               </View>
-              <View style={{ width: 32, height: 32, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontSize: 13 }}>🔔</Text>
+              <View className="w-8 h-8 rounded-lg border border-black/[0.08] items-center justify-center">
+                <Bell size={15} color={T.accent} strokeWidth={1.6} />
               </View>
             </View>
-            <View style={{ paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#FBFAF6', borderRadius: 10, flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Text style={{ fontSize: 11, color: '#6B6B6B' }}>{orderData.doctorPhone}</Text>
-              <Text style={{ fontSize: 11, color: '#6B6B6B' }}>{orderData.clinicAddr}</Text>
+            <View className="px-3 py-2.5 bg-cream-panel rounded-[10px] flex-row justify-between">
+              <Text className="text-[11px] text-ink-500">{orderData.doctorPhone}</Text>
+              <Text className="text-[11px] text-ink-500">{orderData.clinicAddr}</Text>
             </View>
           </View>
 
-          {/* DİŞ ŞEMASI — placeholder (mevcut bileşen kullanılacak) */}
-          <View style={{ backgroundColor: '#FFF', borderRadius: 24, padding: 20 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-              <Text style={{ fontSize: 11, color: '#9A9A9A', letterSpacing: 1.1, textTransform: 'uppercase', fontWeight: '600' }}>Diş Şeması</Text>
-              <View style={{ flex: 1 }} />
-              <Text style={{ fontSize: 11, color: '#6B6B6B' }}>tıklayın</Text>
+          {/* DİŞ ŞEMASI */}
+          <View
+            className="bg-white rounded-3xl p-4"
+            onLayout={e => {
+              const w = e.nativeEvent.layout.width - 32;
+              if (w > 0 && Math.abs(w - chartW) > 2) setChartW(w);
+            }}
+          >
+            <View className="flex-row items-center mb-2.5 px-1">
+              <Text className="text-[11px] font-semibold uppercase text-ink-400" style={{ letterSpacing: 1.1 }}>
+                Diş Şeması
+              </Text>
+              <View className="flex-1" />
+              <Text className="text-[11px] text-ink-500">{visibleTeeth.length} diş</Text>
             </View>
-            <View style={{ height: 220, backgroundColor: '#FBFAF6', borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)', borderStyle: 'dashed' }}>
-              <Svg width={48} height={48} viewBox="0 0 24 24" fill="none" stroke="#9A9A9A" strokeWidth={1.4}>
-                <Path d="M12 2c-3 0-5 2-7 2-1.5 0-2 1-2 3 0 4 2 8 3 11 .5 1.5 1 3 2 3s1.5-2 2-4c.3-1.4 1-2 2-2s1.7.6 2 2c.5 2 1 4 2 4s1.5-1.5 2-3c1-3 3-7 3-11 0-2-.5-3-2-3-2 0-4-2-7-2z" />
-              </Svg>
-              <Text style={{ fontSize: 12, color: '#9A9A9A', marginTop: 12, fontWeight: '500' }}>Mevcut ToothChart bileşeni</Text>
-              <Text style={{ fontSize: 10, color: '#9A9A9A', marginTop: 4 }}>(prod entegrasyonda buraya gelecek)</Text>
+
+            <LivingToothChart
+              order={mockOrder}
+              containerWidth={chartW}
+              accentColor={T.primary}
+              activeTooth={activeTooth}
+              onToothPress={(fdi) => setActiveTooth(prev => (prev === fdi ? null : fdi))}
+              frameless
+            />
+
+            {/* Jaw toggle */}
+            <View className="flex-row gap-0.5 p-0.5 bg-cream-panel rounded-full mt-3.5 self-center">
+              {([
+                { id: 'both',  label: 'Tümü', count: allTeeth.length },
+                { id: 'upper', label: 'Üst',  count: upperTeeth.length },
+                { id: 'lower', label: 'Alt',  count: lowerTeeth.length },
+              ] as const).map(opt => {
+                const active = jawView === opt.id;
+                return (
+                  <Pressable
+                    key={opt.id}
+                    onPress={() => setJawView(opt.id)}
+                    className={`py-1 px-2.5 rounded-full items-center ${active ? 'bg-ink-900' : ''}`}
+                  >
+                    <Text className={`text-[9px] font-semibold ${active ? 'text-white' : 'text-ink-500'}`}>
+                      {opt.label}{' '}
+                      <Text className={active ? 'text-white/60' : 'text-ink-400'}>({opt.count})</Text>
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
           </View>
 
-          {/* TABS — Aktivite/Dosya/Yorum */}
-          <View style={{ backgroundColor: '#FFF', borderRadius: 24, padding: 20 }}>
-            {/* Tab pills */}
-            <View style={{ flexDirection: 'row', gap: 4, padding: 4, backgroundColor: '#FBFAF6', borderRadius: 12, marginBottom: 14 }}>
+          {/* TABS */}
+          <View className="bg-white rounded-3xl p-5">
+            <View className="flex-row gap-1 p-1 bg-cream-panel rounded-xl mb-3.5">
               {[
                 { id: 'activity', label: 'Aktivite', count: 12 },
                 { id: 'files',    label: 'Dosyalar', count: 8  },
@@ -276,84 +355,87 @@ export function OrderDetailMockup() {
               ].map(tb => {
                 const active = sideTab === tb.id;
                 return (
-                  <Pressable key={tb.id} onPress={() => setSideTab(tb.id as any)} style={{
-                    flex: 1, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 9,
-                    backgroundColor: active ? '#FFF' : 'transparent',
-                    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-                    // @ts-ignore web shadow
-                    boxShadow: active ? '0 1px 3px rgba(0,0,0,0.06)' : undefined,
-                  }}>
-                    <Text style={{ fontSize: 12, fontWeight: '500', color: active ? T.accent : '#6B6B6B' }}>{tb.label}</Text>
-                    <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: active ? T.accent : 'rgba(0,0,0,0.06)' }}>
-                      <Text style={{ fontSize: 10, fontWeight: '600', color: active ? '#FFF' : '#6B6B6B' }}>{tb.count}</Text>
+                  <Pressable
+                    key={tb.id}
+                    onPress={() => setSideTab(tb.id as any)}
+                    className={`flex-1 px-2.5 py-2 rounded-[9px] flex-row items-center justify-center gap-1.5 ${active ? 'bg-white' : ''}`}
+                    style={active ? ({ /* @ts-ignore */ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' } as any) : undefined}
+                  >
+                    <Text className={`text-[12px] font-medium ${active ? 'text-ink-900' : 'text-ink-500'}`}>
+                      {tb.label}
+                    </Text>
+                    <View className={`px-1.5 py-px rounded-full ${active ? 'bg-ink-900' : 'bg-black/5'}`}>
+                      <Text className={`text-[10px] font-semibold ${active ? 'text-white' : 'text-ink-500'}`}>
+                        {tb.count}
+                      </Text>
                     </View>
                   </Pressable>
                 );
               })}
             </View>
 
-            {/* Tab content */}
             {sideTab === 'activity' && <ActivityFeed />}
             {sideTab === 'files'    && <FilesList />}
             {sideTab === 'comments' && <CommentsList />}
           </View>
 
           {/* MALİ BİLGİ — dark */}
-          <View style={{ backgroundColor: T.accent, borderRadius: 24, padding: 20 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
-              <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', letterSpacing: 1.1, textTransform: 'uppercase', fontWeight: '600' }}>Mali Bilgi</Text>
-              <View style={{ flex: 1 }} />
-              <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: 'rgba(245,194,75,0.2)' }}>
-                <Text style={{ fontSize: 10, color: T.primary, fontWeight: '500' }}>● Beklemede</Text>
+          <View className="bg-ink-900 rounded-3xl p-5">
+            <View className="flex-row items-center mb-3.5">
+              <Text className="text-[11px] font-semibold uppercase text-white/50" style={{ letterSpacing: 1.1 }}>
+                Mali Bilgi
+              </Text>
+              <View className="flex-1" />
+              <View className="flex-row items-center gap-1.5 px-2 py-0.5 rounded-full" style={{ backgroundColor: 'rgba(245,194,75,0.2)' }}>
+                <View className="w-1.5 h-1.5 rounded-full bg-saffron" />
+                <Text className="text-[10px] font-medium text-saffron">Beklemede</Text>
               </View>
             </View>
-            <View style={{ gap: 10 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>Satış fiyatı</Text>
-                <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.66, color: '#FFF' }}>₺ 4.200</Text>
+            <View className="gap-2.5">
+              <View className="flex-row justify-between items-baseline">
+                <Text className="text-[12px] text-white/60">Satış fiyatı</Text>
+                <Text className="text-white" style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.66 }}>₺ 4.200</Text>
               </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>Materyal</Text>
-                <Text style={{ fontSize: 12, color: '#FFF' }}>₺ 1.080</Text>
+              <View className="flex-row justify-between">
+                <Text className="text-[12px] text-white/60">Materyal</Text>
+                <Text className="text-[12px] text-white">₺ 1.080</Text>
               </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>İşçilik</Text>
-                <Text style={{ fontSize: 12, color: '#FFF' }}>₺ 850</Text>
+              <View className="flex-row justify-between">
+                <Text className="text-[12px] text-white/60">İşçilik</Text>
+                <Text className="text-[12px] text-white">₺ 850</Text>
               </View>
-              <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginVertical: 2 }} />
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                <Text style={{ fontSize: 12, color: T.primary }}>Net kâr</Text>
-                <Text style={{ ...DISPLAY, fontSize: 28, letterSpacing: -0.84, color: T.primary }}>₺ 2.270</Text>
+              <View className="h-px bg-white/10 my-0.5" />
+              <View className="flex-row justify-between items-baseline">
+                <Text className="text-[12px] text-saffron">Net kâr</Text>
+                <Text className="text-saffron" style={{ ...DISPLAY, fontSize: 28, letterSpacing: -0.84 }}>₺ 2.270</Text>
               </View>
-              <Pressable style={{
-                marginTop: 6, paddingVertical: 10, borderRadius: 12,
-                borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', alignItems: 'center',
-              }}>
-                <Text style={{ fontSize: 12, color: '#FFF' }}>Faturayı oluştur</Text>
+              <Pressable className="mt-1.5 py-2.5 rounded-xl border border-white/15 items-center">
+                <Text className="text-[12px] text-white">Faturayı oluştur</Text>
               </Pressable>
             </View>
           </View>
 
           {/* İLGİLİ SİPARİŞLER */}
-          <View style={{ backgroundColor: '#FFF', borderRadius: 24, padding: 20 }}>
-            <Text style={{ fontSize: 11, color: '#9A9A9A', letterSpacing: 1.1, textTransform: 'uppercase', fontWeight: '600', marginBottom: 12 }}>İlgili siparişler</Text>
+          <View className="bg-white rounded-3xl p-5">
+            <Text className="text-[11px] font-semibold uppercase text-ink-400 mb-3" style={{ letterSpacing: 1.1 }}>
+              İlgili siparişler
+            </Text>
             {[
               { no: 'LAB-2026-0021', what: 'Geçici kron · 24', date: '12.03.26', status: 'Teslim' },
               { no: 'LAB-2025-0188', what: 'Tek kron · 36',     date: '18.11.25', status: 'Teslim' },
             ].map((o, i) => (
-              <View key={i} style={{
-                paddingHorizontal: 12, paddingVertical: 10, marginTop: i > 0 ? 8 : 0,
-                backgroundColor: '#FBFAF6', borderRadius: 12,
-                flexDirection: 'row', alignItems: 'center', gap: 10,
-              }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 11, fontFamily: 'monospace', color: '#9A9A9A' }}>{o.no}</Text>
-                  <Text style={{ fontSize: 12, fontWeight: '500', color: T.accent, marginTop: 2 }}>{o.what}</Text>
+              <View
+                key={i}
+                className={`px-3 py-2.5 bg-cream-panel rounded-xl flex-row items-center gap-2.5 ${i > 0 ? 'mt-2' : ''}`}
+              >
+                <View className="flex-1">
+                  <Text className="text-[11px] font-mono text-ink-400">{o.no}</Text>
+                  <Text className="text-[12px] font-medium text-ink-900 mt-0.5">{o.what}</Text>
                 </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={{ fontSize: 11, color: '#6B6B6B' }}>{o.date}</Text>
-                  <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: 'rgba(16,185,129,0.12)', marginTop: 2 }}>
-                    <Text style={{ fontSize: 10, fontWeight: '500', color: '#0F6E50' }}>{o.status}</Text>
+                <View className="items-end">
+                  <Text className="text-[11px] text-ink-500">{o.date}</Text>
+                  <View className="px-1.5 py-px rounded mt-0.5" style={{ backgroundColor: 'rgba(16,185,129,0.12)' }}>
+                    <Text className="text-[10px] font-medium" style={{ color: '#0F6E50' }}>{o.status}</Text>
                   </View>
                 </View>
               </View>
@@ -374,19 +456,19 @@ function ActivityFeed() {
     { who: 'Sistem',    bg: '#9A9A9A', action: 'Sipariş alındı',         time: '2g önce' },
   ];
   return (
-    <View style={{ position: 'relative' }}>
-      <View style={{ position: 'absolute', left: 13, top: 14, bottom: 14, width: 1.5, backgroundColor: 'rgba(0,0,0,0.06)' }} />
+    <View className="relative">
+      <View className="absolute bg-black/[0.06]" style={{ left: 13, top: 14, bottom: 14, width: 1.5 }} />
       {items.map((a, i) => (
-        <View key={i} style={{ flexDirection: 'row', gap: 12, paddingVertical: 10, position: 'relative', zIndex: 1 }}>
-          <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: a.bg, alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ color: '#FFF', fontSize: 12 }}>•</Text>
+        <View key={i} className="flex-row gap-3 py-2.5 relative z-10">
+          <View className="w-7 h-7 rounded-full items-center justify-center" style={{ backgroundColor: a.bg }}>
+            <Text className="text-white text-[12px]">•</Text>
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 12 }}>
-              <Text style={{ fontWeight: '500', color: T.accent }}>{a.who}</Text>{' '}
-              <Text style={{ color: '#6B6B6B' }}>{a.action}</Text>
+          <View className="flex-1">
+            <Text className="text-[12px]">
+              <Text className="font-medium text-ink-900">{a.who}</Text>{' '}
+              <Text className="text-ink-500">{a.action}</Text>
             </Text>
-            <Text style={{ fontSize: 11, color: '#9A9A9A', marginTop: 2 }}>{a.time}</Text>
+            <Text className="text-[11px] text-ink-400 mt-0.5">{a.time}</Text>
           </View>
         </View>
       ))}
@@ -396,27 +478,27 @@ function ActivityFeed() {
 
 function FilesList() {
   const files = [
-    { name: 'CAD-tasarim-v3.stl',    size: '12.4 MB', type: 'STL', color: '#3B82F6' },
-    { name: 'Hasta-fotograf.jpg',     size: '2.1 MB',  type: 'JPG', color: '#10B981' },
-    { name: 'CBCT-scan.dcm',          size: '48.0 MB', type: 'DCM', color: '#9C2E2E' },
-    { name: 'Renk-A3-referans.jpg',   size: '1.4 MB',  type: 'JPG', color: '#10B981' },
+    { name: 'CAD-tasarim-v3.stl',   size: '12.4 MB', type: 'STL', color: '#3B82F6' },
+    { name: 'Hasta-fotograf.jpg',    size: '2.1 MB',  type: 'JPG', color: '#10B981' },
+    { name: 'CBCT-scan.dcm',         size: '48.0 MB', type: 'DCM', color: '#9C2E2E' },
+    { name: 'Renk-A3-referans.jpg',  size: '1.4 MB',  type: 'JPG', color: '#10B981' },
   ];
   return (
-    <View style={{ gap: 6 }}>
+    <View className="gap-1.5">
       {files.map((f, i) => (
-        <View key={i} style={{ paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#FBFAF6', borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: f.color + '20', alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, color: f.color }}>{f.type}</Text>
+        <View key={i} className="px-3 py-2.5 bg-cream-panel rounded-xl flex-row items-center gap-2.5">
+          <View className="w-8 h-8 rounded-lg items-center justify-center" style={{ backgroundColor: f.color + '20' }}>
+            <Text className="text-[9px] font-bold" style={{ color: f.color, letterSpacing: 0.5 }}>{f.type}</Text>
           </View>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '500', color: T.accent }}>{f.name}</Text>
-            <Text style={{ fontSize: 10, color: '#9A9A9A', marginTop: 1 }}>{f.size}</Text>
+          <View className="flex-1 min-w-0">
+            <Text numberOfLines={1} className="text-[12px] font-medium text-ink-900">{f.name}</Text>
+            <Text className="text-[10px] text-ink-400 mt-px">{f.size}</Text>
           </View>
-          <Text style={{ fontSize: 12, color: '#9A9A9A' }}>↓</Text>
+          <Download size={14} color="#9A9A9A" strokeWidth={1.6} />
         </View>
       ))}
-      <View style={{ paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderStyle: 'dashed', borderColor: 'rgba(0,0,0,0.15)', alignItems: 'center' }}>
-        <Text style={{ fontSize: 12, color: '#6B6B6B' }}>+ Dosya yükle</Text>
+      <View className="py-2.5 rounded-xl border border-dashed border-black/[0.15] items-center">
+        <Text className="text-[12px] text-ink-500">+ Dosya yükle</Text>
       </View>
     </View>
   );
@@ -425,25 +507,25 @@ function FilesList() {
 function CommentsList() {
   const comments = [
     { who: 'Dr. Ahmet K.', bg: '#3B82F6', text: '24 numaralı dişte hafif eğrilik istiyorum, lütfen dikkat edin.', time: '1g önce' },
-    { who: 'Mehmet A.',     bg: T.primary, text: 'Anladım, tasarımda revize ettim. CBCT\'ye baktım, yeterli.',     time: '1g önce' },
-    { who: 'Navid İ.',      bg: '#10B981', text: 'Baskıya geçtim, 2 saat sürer.',                                  time: '2sa önce' },
+    { who: 'Mehmet A.',    bg: T.primary, text: 'Anladım, tasarımda revize ettim. CBCT\'ye baktım, yeterli.',     time: '1g önce' },
+    { who: 'Navid İ.',     bg: '#10B981', text: 'Baskıya geçtim, 2 saat sürer.',                                  time: '2sa önce' },
   ];
   return (
-    <View style={{ gap: 10 }}>
+    <View className="gap-2.5">
       {comments.map((c, i) => (
-        <View key={i} style={{ padding: 12, backgroundColor: '#FBFAF6', borderRadius: 12, flexDirection: 'row', gap: 10 }}>
+        <View key={i} className="p-3 bg-cream-panel rounded-xl flex-row gap-2.5">
           <Avatar name={c.who} size={28} bg={c.bg} fg="#FFF" />
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-              <Text style={{ fontSize: 12, fontWeight: '500', color: T.accent }}>{c.who}</Text>
-              <Text style={{ fontSize: 10, color: '#9A9A9A' }}>{c.time}</Text>
+          <View className="flex-1 min-w-0">
+            <View className="flex-row items-baseline gap-1.5">
+              <Text className="text-[12px] font-medium text-ink-900">{c.who}</Text>
+              <Text className="text-[10px] text-ink-400">{c.time}</Text>
             </View>
-            <Text style={{ fontSize: 12, color: '#3C3C3C', marginTop: 4, lineHeight: 17 }}>{c.text}</Text>
+            <Text className="text-[12px] text-ink-700 mt-1" style={{ lineHeight: 17 }}>{c.text}</Text>
           </View>
         </View>
       ))}
-      <View style={{ paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderStyle: 'dashed', borderColor: 'rgba(0,0,0,0.15)', alignItems: 'center' }}>
-        <Text style={{ fontSize: 12, color: '#6B6B6B' }}>+ Not / yorum ekle</Text>
+      <View className="py-2.5 rounded-xl border border-dashed border-black/[0.15] items-center">
+        <Text className="text-[12px] text-ink-500">+ Not / yorum ekle</Text>
       </View>
     </View>
   );
@@ -453,42 +535,76 @@ function CommentsList() {
 function Avatar({ name, size = 32, bg, fg }: { name: string; size?: number; bg: string; fg: string }) {
   const initials = name.trim().split(/\s+/).slice(0, 2).map(p => p[0]?.toUpperCase() ?? '').join('') || '?';
   return (
-    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: bg, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+    <View
+      className="items-center justify-center shrink-0"
+      style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: bg }}
+    >
       <Text style={{ fontSize: size * 0.38, fontWeight: '600', color: fg, letterSpacing: -0.3 }}>{initials}</Text>
     </View>
   );
 }
 
-function PillBtn({ children, variant = 'primary', size = 'md' }: { children: React.ReactNode; variant?: 'primary' | 'surface' | 'ghost'; size?: 'sm' | 'md' }) {
-  const sizes = {
-    sm: { paddingHorizontal: 12, paddingVertical: 6, fontSize: 12 },
-    md: { paddingHorizontal: 16, paddingVertical: 8, fontSize: 13 },
-  };
-  const variants = {
-    primary: { backgroundColor: T.accent, color: '#FFF',     borderWidth: 1, borderColor: T.accent },
-    surface: { backgroundColor: '#FFF',     color: T.accent,  borderWidth: 1, borderColor: '#EAEAEA' },
-    ghost:   { backgroundColor: 'transparent', color: T.accent, borderWidth: 1, borderColor: 'transparent' },
-  };
-  const v = variants[variant];
-  const sz = sizes[size];
+function PillBtn({ children, variant = 'primary', size = 'md', icon: Icon }: {
+  children: React.ReactNode;
+  variant?: 'primary' | 'surface' | 'ghost';
+  size?: 'sm' | 'md';
+  icon?: React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
+}) {
+  const sizeCls = size === 'sm' ? 'px-3 py-1.5' : 'px-4 py-2';
+  const textSize = size === 'sm' ? 'text-[12px]' : 'text-[13px]';
+  const iconSize = size === 'sm' ? 14 : 16;
+
+  const variantCls =
+    variant === 'primary' ? 'bg-ink-900 border-ink-900' :
+    variant === 'surface' ? 'bg-white border-ink-200' :
+                            'bg-transparent border-transparent';
+  const fgClass =
+    variant === 'primary' ? 'text-white' : 'text-ink-900';
+  const fgHex =
+    variant === 'primary' ? '#FFFFFF' : T.accent;
+
   return (
-    <View style={{ paddingHorizontal: sz.paddingHorizontal, paddingVertical: sz.paddingVertical, borderRadius: 999, backgroundColor: v.backgroundColor, borderWidth: v.borderWidth, borderColor: v.borderColor }}>
-      <Text style={{ fontSize: sz.fontSize, fontWeight: '500', color: v.color }}>{children}</Text>
+    <View className={`flex-row items-center gap-1.5 rounded-full border ${sizeCls} ${variantCls}`}>
+      {Icon && <Icon size={iconSize} color={fgHex} strokeWidth={1.8} />}
+      <Text className={`font-medium ${textSize} ${fgClass}`}>{children}</Text>
     </View>
   );
 }
 
-function Chip({ children, tone }: { children: React.ReactNode; tone: 'primary' | 'neutral' | 'outline' | 'danger' }) {
-  const tones = {
-    primary: { bg: T.primary,         fg: T.accent },
-    neutral: { bg: 'rgba(0,0,0,0.05)', fg: T.accent },
-    outline: { bg: 'transparent',      fg: T.accent, border: '#D4D4D4' },
-    danger:  { bg: 'rgba(217,75,75,0.12)', fg: '#9C2E2E' },
-  };
-  const t = tones[tone] as any;
+function Chip({ children, tone, dot = false }: {
+  children: React.ReactNode;
+  tone: 'primary' | 'neutral' | 'outline' | 'danger';
+  dot?: boolean;
+}) {
+  const cls =
+    tone === 'primary' ? 'bg-saffron'
+    : tone === 'neutral' ? 'bg-black/5'
+    : tone === 'outline' ? 'bg-transparent border border-ink-300'
+    : 'border-0';
+
+  const fgCls =
+    tone === 'danger' ? '' :
+    tone === 'primary' ? 'text-ink-900' :
+                         'text-ink-900';
+
+  // danger tone — özel renkler için inline kalsın
+  if (tone === 'danger') {
+    return (
+      <View
+        className="flex-row items-center gap-1.5 px-3 py-1 rounded-full"
+        style={{ backgroundColor: 'rgba(217,75,75,0.12)' }}
+      >
+        {dot && <View className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#9C2E2E' }} />}
+        <Text className="text-[12px] font-medium" style={{ color: '#9C2E2E' }}>{children}</Text>
+      </View>
+    );
+  }
+
+  const dotColorHex = T.accent;
   return (
-    <View style={{ paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, backgroundColor: t.bg, borderWidth: t.border ? 1 : 0, borderColor: t.border }}>
-      <Text style={{ fontSize: 12, fontWeight: '500', color: t.fg }}>{children}</Text>
+    <View className={`flex-row items-center gap-1.5 px-3 py-1 rounded-full ${cls}`}>
+      {dot && <View className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: dotColorHex }} />}
+      <Text className={`text-[12px] font-medium ${fgCls}`}>{children}</Text>
     </View>
   );
 }

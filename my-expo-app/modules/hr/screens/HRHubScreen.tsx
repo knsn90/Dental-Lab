@@ -17,8 +17,6 @@ import { AppIcon } from '../../../core/ui/AppIcon';
 
 import { EmployeesScreen }   from '../../employees/screens/EmployeesScreen';
 import { HRScreen }          from './HRScreen';
-import { PayrollScreen }     from '../../payroll/screens/PayrollScreen';
-import { SGKScreen }         from '../../sgk/screens/SGKScreen';
 import { PerformanceScreen } from '../../performance/screens/PerformanceScreen';
 import { DocumentsScreen }   from '../../documents/screens/DocumentsScreen';
 
@@ -26,8 +24,6 @@ import { DocumentsScreen }   from '../../documents/screens/DocumentsScreen';
 const TABS = [
   { key: 'employees',   label: 'Çalışanlar',   icon: 'users',         accent: '#0F172A', bg: '#F8FAFC' },
   { key: 'hr',          label: 'İzin & Devam', icon: 'calendar-days', accent: '#2563EB', bg: '#EFF6FF' },
-  { key: 'payroll',     label: 'Bordro',        icon: 'dollar-sign',   accent: '#059669', bg: '#ECFDF5' },
-  { key: 'sgk',         label: 'SGK',           icon: 'shield',        accent: '#7C3AED', bg: '#EDE9FE' },
   { key: 'performance', label: 'Performans',    icon: 'trophy',        accent: '#D97706', bg: '#FFFBEB' },
   { key: 'documents',   label: 'Dosyalar',      icon: 'folder-open',   accent: '#DC2626', bg: '#FEF2F2' },
 ] as const;
@@ -92,8 +88,6 @@ export function HRHubScreen() {
         <View style={s.content}>
           {activeKey === 'employees'   && <EmployeesScreen />}
           {activeKey === 'hr'          && <HRScreen />}
-          {activeKey === 'payroll'     && <PayrollScreen />}
-          {activeKey === 'sgk'         && <SGKScreen />}
           {activeKey === 'performance' && <PerformanceScreen />}
           {activeKey === 'documents'   && <DocumentsScreen />}
         </View>

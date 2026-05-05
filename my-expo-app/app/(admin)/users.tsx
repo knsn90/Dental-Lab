@@ -18,7 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppSwitch } from '../../core/ui/AppSwitch';
 import { SlideTabBar } from '../../core/ui/SlideTabBar';
 import { IconBtn } from '../../core/ui/IconBtn';
-import { supabase } from '../../lib/supabase';
+import { supabase } from '../../core/api/supabase';
 const K   = '#0F172A';
 const ERR = '#FF3B30';
 const BG  = '#F7F9FB';
@@ -29,12 +29,14 @@ import { AppIcon } from '../../core/ui/AppIcon';
 type FilterType = 'all' | 'admin' | 'lab' | 'doctor';
 type StatusFilter = 'all' | 'active' | 'inactive';
 
-type NewUserRole = 'admin' | 'manager' | 'technician';
+type NewUserRole = 'admin' | 'manager' | 'technician' | 'doctor' | 'clinic_admin';
 
 const ROLE_OPTIONS: { key: NewUserRole; label: string; sub: string; icon: string }[] = [
-  { key: 'admin',      label: 'Admin',        sub: 'Tam yönetim yetkisi',    icon: 'shield-outline' },
-  { key: 'manager',    label: 'Mesul Müdür',  sub: 'Lab yöneticisi',         icon: 'account-circle-outline' },
-  { key: 'technician', label: 'Teknisyen',    sub: 'Üretim personeli',       icon: 'wrench-outline' },
+  { key: 'admin',        label: 'Admin',        sub: 'Tam yönetim yetkisi',    icon: 'shield-outline' },
+  { key: 'manager',      label: 'Mesul Müdür',  sub: 'Lab yöneticisi',         icon: 'account-circle-outline' },
+  { key: 'technician',   label: 'Teknisyen',    sub: 'Üretim personeli',       icon: 'wrench-outline' },
+  { key: 'doctor',       label: 'Muayenehane',  sub: 'Tek hekim, kendi kliniği',  icon: 'stethoscope' },
+  { key: 'clinic_admin', label: 'Klinik',       sub: 'Çok hekimli kurum',         icon: 'office-building-outline' },
 ];
 
 function initials(name?: string | null) {
@@ -733,12 +735,22 @@ function AddUserModal({
   const [email,    setEmail]    = useState('');
   const [password, setPassword] = useState('');
   const [selectedRole, setSelectedRole] = useState<NewUserRole>('technician');
+  const [clinicName, setClinicName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [level, setLevel] = useState<'junior' | 'mid' | 'senior'>('mid');
+  const [stagePerms, setStagePerms] = useState<string[]>([]);
+  const [caseTypes, setCaseTypes] = useState<string[]>([]);
+  const [salary, setSalary] = useState('');
   const [saving,  setSaving]  = useState(false);
   const [error,   setError]   = useState('');
 
+  const isDoctorType = selectedRole === 'doctor' || selectedRole === 'clinic_admin';
+  const isTechnician = selectedRole === 'technician';
+
   const reset = () => {
     setFullName(''); setEmail(''); setPassword('');
-    setSelectedRole('technician'); setError('');
+    setSelectedRole('technician'); setClinicName(''); setPhone('');
+    setLevel('mid'); setStagePerms([]); setCaseTypes([]); setSalary(''); setError('');
   };
 
   const handleClose = () => { reset(); onClose(); };
@@ -748,15 +760,35 @@ function AddUserModal({
     if (!fullName.trim())    { setError('Ad Soyad zorunludur'); return; }
     if (!email.trim())       { setError('E-posta zorunludur'); return; }
     if (password.length < 6) { setError('Şifre en az 6 karakter olmalıdır'); return; }
+    if (isDoctorType && !clinicName.trim()) { setError('Klinik adı zorunludur'); return; }
 
-    const user_type = selectedRole === 'admin' ? 'admin' : 'lab';
-    const role      = selectedRole === 'admin' ? null : selectedRole;
+    let user_type: string;
+    let role: string | null;
+
+    if (selectedRole === 'admin') {
+      user_type = 'admin'; role = null;
+    } else if (selectedRole === 'doctor' || selectedRole === 'clinic_admin') {
+      user_type = selectedRole; role = null;
+    } else {
+      user_type = 'lab'; role = selectedRole;
+    }
 
     setSaving(true);
     try {
-      const { data, error: fnError } = await supabase.functions.invoke('admin-create-user', {
-        body: { email: email.trim(), password, full_name: fullName.trim(), user_type, role },
-      });
+      const body: Record<string, any> = {
+        email: email.trim(), password, full_name: fullName.trim(), user_type, role,
+      };
+      if (isDoctorType) {
+        body.clinic_name = clinicName.trim();
+        if (phone.trim()) body.phone = phone.trim();
+      }
+      if (isTechnician) {
+        body.specialty = caseTypes.join(', ') || null;
+        body.department = stagePerms.join(', ') || null;
+        body.level = level;
+        body.monthly_salary = salary ? Number(salary) : null;
+      }
+      const { data, error: fnError } = await supabase.functions.invoke('admin-create-user', { body });
       if (fnError || data?.error) {
         setError(data?.error ?? fnError?.message ?? 'Bir hata oluştu');
       } else {
@@ -818,6 +850,108 @@ function AddUserModal({
             <TextInput style={m.input} value={password} onChangeText={setPassword}
               placeholder="En az 6 karakter" placeholderTextColor={'#AEAEB2'}
               secureTextEntry />
+
+            {isDoctorType && (
+              <>
+                <Text style={m.fieldLabel}>Klinik Adı *</Text>
+                <TextInput style={m.input} value={clinicName} onChangeText={setClinicName}
+                  placeholder="Örn: Yılmaz Diş Kliniği" placeholderTextColor={'#AEAEB2'} />
+
+                <Text style={m.fieldLabel}>Telefon</Text>
+                <TextInput style={m.input} value={phone} onChangeText={setPhone}
+                  placeholder="05XX XXX XX XX" placeholderTextColor={'#AEAEB2'}
+                  keyboardType="phone-pad" />
+
+                <View style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 8,
+                  backgroundColor: 'rgba(107,168,136,0.1)', borderRadius: 10,
+                  paddingHorizontal: 12, paddingVertical: 10, marginBottom: 12,
+                }}>
+                  <AppIcon name="check-circle-outline" size={14} color="#6BA888" />
+                  <Text style={{ fontSize: 11, color: '#6BA888', flex: 1 }}>
+                    Admin tarafından eklenen hekimler otomatik onaylanır. OTP ve laboratuvar onayı atlanır.
+                  </Text>
+                </View>
+              </>
+            )}
+
+            {isTechnician && (
+              <>
+                <Text style={m.sectionLabel}>Teknisyen Bilgileri</Text>
+
+                {/* Seviye */}
+                <Text style={[m.fieldLabel, { color: K }]}>Seviye</Text>
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+                  {([['junior', 'Junior'], ['mid', 'Mid'], ['senior', 'Senior']] as const).map(([key, label]) => {
+                    const active = level === key;
+                    return (
+                      <TouchableOpacity
+                        key={key}
+                        onPress={() => setLevel(key)}
+                        style={{
+                          flex: 1, paddingVertical: 10, borderRadius: 20, alignItems: 'center',
+                          borderWidth: 1.5,
+                          borderColor: active ? K : '#E5E7EB',
+                          backgroundColor: active ? K : '#FAFAFA',
+                        }}
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#FFF' : '#374151' }}>{label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Stage Yetkileri */}
+                <Text style={[m.fieldLabel, { color: K }]}>Stage Yetkileri</Text>
+                <Text style={{ fontSize: 10, color: '#94A3B8', marginBottom: 8, marginTop: -4 }}>Hangi aşamayı yapabilir?</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+                  {['Triyaj', 'Tasarım', 'CAM', 'Frezeleme', 'Sinterleme', 'Bitiş', 'Kalite Kontrol'].map((stage) => {
+                    const active = stagePerms.includes(stage);
+                    return (
+                      <TouchableOpacity
+                        key={stage}
+                        onPress={() => setStagePerms(active ? stagePerms.filter(s => s !== stage) : [...stagePerms, stage])}
+                        style={{
+                          paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
+                          borderWidth: 1.5,
+                          borderColor: active ? '#0F172A' : '#E5E7EB',
+                          backgroundColor: active ? '#F8FAFC' : '#FAFAFA',
+                        }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: '500', color: active ? '#0F172A' : '#6B7280' }}>{stage}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Vaka Türleri */}
+                <Text style={[m.fieldLabel, { color: K }]}>Vaka Türleri</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+                  {['zirconia', 'emax', 'pmma', 'metal', 'pfm'].map((ct) => {
+                    const active = caseTypes.includes(ct);
+                    return (
+                      <TouchableOpacity
+                        key={ct}
+                        onPress={() => setCaseTypes(active ? caseTypes.filter(c => c !== ct) : [...caseTypes, ct])}
+                        style={{
+                          paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
+                          backgroundColor: active ? '#0F172A' : '#FAFAFA',
+                          borderWidth: 1.5,
+                          borderColor: active ? '#0F172A' : '#E5E7EB',
+                        }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: active ? '#FFF' : '#374151' }}>{ct}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Saat Ücreti */}
+                <Text style={[m.fieldLabel, { color: K }]}>Aylık Maaş (₺)</Text>
+                <TextInput style={m.input} value={salary} onChangeText={setSalary}
+                  placeholder="0" placeholderTextColor={'#AEAEB2'} keyboardType="numeric" />
+              </>
+            )}
 
             {error ? (
               <View style={m.errorBox}>

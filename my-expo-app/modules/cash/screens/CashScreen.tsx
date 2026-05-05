@@ -1,48 +1,144 @@
+/**
+ * CashScreen — Kasa / Banka (Patterns Design Language)
+ *
+ * §10 Hero (glassmorphism), §09 tableCard, §05 cardSolid,
+ * §04 CHIP_TONES, §05.5 form, §08 dialog, §03 pill buttons,
+ * Lucide icons.
+ */
 import React, { useState, useMemo, useContext } from 'react';
 import { HubContext } from '../../../core/ui/HubContext';
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  Modal, TextInput, ActivityIndicator, Alert,
+  View, Text, ScrollView, Pressable, TextInput,
+  Modal, Alert, RefreshControl, ActivityIndicator, Platform,
+  useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { toast } from '../../../core/ui/Toast';
 
 import { useCashAccounts, useMovements } from '../hooks/useCash';
 import {
   createCashAccount, updateCashAccount, deleteCashAccount,
   createMovement, deleteMovement,
-  ACCOUNT_TYPE_LABELS, ACCOUNT_TYPE_ICONS,
-  MOVEMENT_CATEGORY_LABELS, MOVEMENT_CATEGORY_ICONS,
+  ACCOUNT_TYPE_LABELS, MOVEMENT_CATEGORY_LABELS,
   type CashAccount, type AccountType, type MovementCategory, type MovementDirection,
 } from '../api';
-import { useBreakpoint } from '../../../core/layout/Responsive';
+import { DS } from '../../../core/theme/dsTokens';
+import { toast } from '../../../core/ui/Toast';
+import {
+  Plus, X, Inbox, Pencil, Trash2, Search,
+  Wallet, Landmark, ArrowDownCircle, ArrowUpCircle,
+  Receipt, Building, Users, Wrench, Package,
+  CircleDot, ChevronRight, Banknote, CreditCard,
+  ArrowDown, ArrowUp,
+} from 'lucide-react-native';
 
-import { AppIcon } from '../../../core/ui/AppIcon';
-import { Shadows, CardSpec } from '../../../core/theme/shadows';
+// ── Patterns tokens ─────────────────────────────────────────────────
+const DISPLAY = {
+  fontFamily: 'Inter Tight, Inter, system-ui, sans-serif',
+  fontWeight: '300' as const,
+};
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-function fmtMoney(n: number | null | undefined): string {
-  const v = Number(n ?? 0);
-  return '₺' + v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-function fmtDate(iso: string): string {
-  const d = iso.includes('T') ? new Date(iso) : new Date(iso + 'T00:00:00');
-  return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' });
-}
+const cardSolid = {
+  backgroundColor: '#FFF',
+  borderRadius: 24,
+  padding: 22,
+  // @ts-ignore web
+  boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)',
+};
+
+const tableCard = {
+  backgroundColor: '#FFF',
+  borderRadius: 24,
+  borderWidth: 1,
+  borderColor: 'rgba(0,0,0,0.05)',
+  overflow: 'hidden' as const,
+};
+
+const CHIP_TONES = {
+  success: { bg: 'rgba(45,154,107,0.12)', fg: '#1F6B47' },
+  warning: { bg: 'rgba(232,155,42,0.15)', fg: '#9C5E0E' },
+  danger:  { bg: 'rgba(217,75,75,0.12)',  fg: '#9C2E2E' },
+  info:    { bg: 'rgba(74,143,201,0.12)', fg: '#1F5689' },
+};
+
+const modalShadow = '0 8px 40px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08)';
+
+// ── Account type icon mapping ───────────────────────────────────────
+const ACCOUNT_ICON: Record<AccountType, React.ComponentType<any>> = {
+  kasa:  Wallet,
+  banka: Landmark,
+};
+
+const ACCOUNT_COLORS: Record<AccountType, string> = {
+  kasa:  '#1F6B47',
+  banka: '#1F5689',
+};
+
+// ── Movement category → Lucide ──────────────────────────────────────
+const CAT_ICON: Record<MovementCategory, React.ComponentType<any>> = {
+  tahsilat: Banknote,
+  odeme:    CreditCard,
+  maas:     Users,
+  kira:     Building,
+  malzeme:  Package,
+  vergi:    Receipt,
+  diger:    CircleDot,
+};
 
 const CATEGORIES: MovementCategory[] = ['tahsilat', 'odeme', 'maas', 'kira', 'malzeme', 'vergi', 'diger'];
-const DIRECTION_COLORS = { giris: '#047857', cikis: '#EF4444' };
+const DIRECTION_COLORS = { giris: '#1F6B47', cikis: '#9C2E2E' };
 
-// ─── Screen ───────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────
+function fmtMoney(n: number | string | null | undefined): string {
+  const v = typeof n === 'string' ? Number(n) : (n ?? 0);
+  return '₺' + v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function fmtDate(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  try {
+    const d = iso.includes('T') ? new Date(iso) : new Date(iso + 'T00:00:00');
+    return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' });
+  } catch { return '—'; }
+}
+
+// ── §03 Pill Button ─────────────────────────────────────────────────
+function PillBtn({ icon: Icon, label, onPress, variant = 'dark', size = 'md', disabled }: {
+  icon: React.ComponentType<any>; label: string; onPress: () => void;
+  variant?: 'dark' | 'ghost'; size?: 'sm' | 'md'; disabled?: boolean;
+}) {
+  const dark = variant === 'dark';
+  const h = size === 'sm' ? 32 : 38;
+  return (
+    <Pressable
+      onPress={onPress} disabled={disabled}
+      style={{
+        flexDirection: 'row', alignItems: 'center', gap: 6,
+        height: h, paddingHorizontal: size === 'sm' ? 12 : 16, borderRadius: 999,
+        backgroundColor: dark ? DS.ink[900] : 'transparent',
+        borderWidth: dark ? 0 : 1, borderColor: 'rgba(0,0,0,0.10)',
+        opacity: disabled ? 0.5 : 1, cursor: 'pointer' as any,
+      }}
+    >
+      <Icon size={size === 'sm' ? 13 : 15} color={dark ? '#FFF' : DS.ink[700]} strokeWidth={1.8} />
+      <Text style={{ fontSize: size === 'sm' ? 11 : 13, fontWeight: '600', color: dark ? '#FFF' : DS.ink[700] }}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// MAIN
+// ═════════════════════════════════════════════════════════════════════
 export function CashScreen() {
-  const { isDesktop, px, gap } = useBreakpoint();
   const isEmbedded = useContext(HubContext);
-  const safeEdges = isEmbedded ? ([] as any) : (['top'] as any);
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 1024;
+
   const { accounts, loading, refetch } = useCashAccounts();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [addAccountOpen, setAddAccountOpen] = useState(false);
   const [editAccount, setEditAccount] = useState<CashAccount | null>(null);
   const [addMovementOpen, setAddMovementOpen] = useState(false);
+  const [search, setSearch] = useState('');
 
   const selectedAccount = useMemo(
     () => accounts.find(a => a.id === selectedId) ?? (accounts[0] ?? null),
@@ -54,6 +150,15 @@ export function CashScreen() {
   const totalBalance = accounts.reduce((s, a) => s + Number(a.balance ?? 0), 0);
   const totalKasa   = accounts.filter(a => a.account_type === 'kasa').reduce((s, a) => s + Number(a.balance ?? 0), 0);
   const totalBanka  = accounts.filter(a => a.account_type === 'banka').reduce((s, a) => s + Number(a.balance ?? 0), 0);
+
+  const filteredMovements = useMemo(() => {
+    if (!search) return movements;
+    const sl = search.toLowerCase();
+    return movements.filter(m =>
+      m.description.toLowerCase().includes(sl) ||
+      MOVEMENT_CATEGORY_LABELS[m.category as MovementCategory]?.toLowerCase().includes(sl),
+    );
+  }, [movements, search]);
 
   const handleDeleteAccount = (acc: CashAccount) => {
     Alert.alert('Hesabı Sil', `"${acc.name}" hesabını silmek istiyor musunuz? Tüm hareketler silinecek.`, [
@@ -83,108 +188,425 @@ export function CashScreen() {
   };
 
   return (
-    <SafeAreaView style={s.safe} edges={safeEdges}>
-      {/* Header — embedded ise başlık gizli */}
-      <View style={[s.header, { paddingHorizontal: px }]}>
-        <View style={{ flex: 1 }}>
-          {!isEmbedded && <Text style={s.title}>Kasa / Banka</Text>}
-          {!isEmbedded && <Text style={s.subtitle}>Nakit ve banka hesap takibi</Text>}
-        </View>
-        <TouchableOpacity style={s.addBtn} onPress={() => setAddAccountOpen(true)} activeOpacity={0.85}>
-          <AppIcon name={'plus' as any} size={16} color="#fff" />
-          <Text style={s.addBtnText}>Hesap Ekle</Text>
-        </TouchableOpacity>
-      </View>
+    <View style={{ flex: 1 }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: isDesktop ? 0 : 16, paddingBottom: 48, gap: 16 }}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={DS.ink[300]} />}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ── Hero — §10 glassmorphism ─────────────────────────── */}
+        <View style={{
+          borderRadius: 28, overflow: 'hidden',
+          backgroundColor: DS.lab.bg, padding: isDesktop ? 36 : 24,
+          position: 'relative',
+        }}>
+          <View style={{ position: 'absolute', top: -40, right: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: DS.lab.bgDeep, opacity: 0.6 }} />
+          <View style={{ position: 'absolute', bottom: -50, left: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: DS.lab.bgDeep, opacity: 0.4 }} />
 
-      {loading ? (
-        <ActivityIndicator style={{ marginTop: 64 }} color="#2563EB" />
-      ) : (
-        <View style={[s.body, isDesktop && { flexDirection: 'row' }]}>
-
-          {/* ── Sol panel: KPI + Hesap listesi ── */}
-          <View style={[s.leftPanel, { paddingHorizontal: isDesktop ? 0 : px }]}>
-
-            {/* KPI özet */}
-            <View style={[s.kpiRow, isDesktop && { paddingHorizontal: px }]}>
-              <KpiBox label="Toplam Bakiye" value={fmtMoney(totalBalance)}
-                color="#2563EB" icon="cash-multiple" />
-              <KpiBox label="Kasa" value={fmtMoney(totalKasa)}
-                color="#047857" icon="safe" />
-              <KpiBox label="Banka" value={fmtMoney(totalBanka)}
-                color="#7C3AED" icon="bank-outline" />
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+            <View>
+              <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 12 }}>
+                Toplam Bakiye
+              </Text>
+              <Text style={{ ...DISPLAY, fontSize: isDesktop ? 48 : 36, letterSpacing: -1.4, color: DS.ink[900] }}>
+                {fmtMoney(totalBalance)}
+              </Text>
+              <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 6 }}>
+                {accounts.length} hesap
+              </Text>
             </View>
 
-            {/* Hesap kartları */}
-            <ScrollView
-              style={{ flex: 1 }}
-              contentContainerStyle={[s.accountList, isDesktop && { paddingHorizontal: px }]}
-              showsVerticalScrollIndicator={false}
-            >
-              {accounts.length === 0 ? (
-                <View style={s.empty}>
-                  <AppIcon name={'safe' as any} size={40} color="#CBD5E1" />
-                  <Text style={s.emptyText}>Henüz hesap yok</Text>
-                  <Text style={s.emptyHint}>+ Hesap Ekle butonuyla başlayın</Text>
-                </View>
-              ) : accounts.map(acc => (
-                <AccountCard
-                  key={acc.id}
-                  account={acc}
-                  selected={acc.id === (activeAccountId)}
-                  onPress={() => setSelectedId(acc.id)}
-                  onEdit={() => setEditAccount(acc)}
-                  onDelete={() => handleDeleteAccount(acc)}
-                />
-              ))}
-            </ScrollView>
+            {/* Action */}
+            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+              <PillBtn icon={Plus} label="Hesap Ekle" onPress={() => setAddAccountOpen(true)} />
+            </View>
           </View>
 
-          {/* ── Sağ panel: Hareket listesi ── */}
-          {activeAccountId && (
-            <View style={[s.rightPanel, isDesktop && { borderLeftWidth: 1, borderLeftColor: '#F1F5F9' }]}>
-              <View style={[s.movHeader, { paddingHorizontal: isDesktop ? px : px }]}>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.movTitle}>{selectedAccount?.name} Hareketleri</Text>
-                  <Text style={s.movSub}>Bakiye: {fmtMoney(selectedAccount?.balance)}</Text>
-                </View>
-                <TouchableOpacity
-                  style={s.addMovBtn}
-                  onPress={() => setAddMovementOpen(true)}
-                  activeOpacity={0.85}
-                >
-                  <AppIcon name={'plus' as any} size={14} color="#2563EB" />
-                  <Text style={s.addMovBtnText}>Hareket Ekle</Text>
-                </TouchableOpacity>
+          {/* Kasa / Banka breakdown */}
+          <View style={{ flexDirection: 'row', gap: isDesktop ? 36 : 20, marginTop: 20 }}>
+            <View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Wallet size={11} color={ACCOUNT_COLORS.kasa} strokeWidth={1.8} />
+                <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: DS.ink[400] }}>
+                  Kasa
+                </Text>
+              </View>
+              <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color: DS.ink[700], marginTop: 2 }}>
+                {fmtMoney(totalKasa)}
+              </Text>
+            </View>
+            <View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Landmark size={11} color={ACCOUNT_COLORS.banka} strokeWidth={1.8} />
+                <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: DS.ink[400] }}>
+                  Banka
+                </Text>
+              </View>
+              <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color: DS.ink[700], marginTop: 2 }}>
+                {fmtMoney(totalBanka)}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* ── Desktop: two-column layout ──────────────────────── */}
+        {isDesktop ? (
+          <View style={{ flexDirection: 'row', gap: 16 }}>
+            {/* Left: Accounts table */}
+            <View style={{ flex: 1, ...tableCard }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
+                <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>Hesaplar</Text>
+                <View style={{ flex: 1 }} />
+                <Text style={{ fontSize: 12, color: DS.ink[400] }}>{accounts.length} hesap</Text>
               </View>
 
-              {movLoading ? (
-                <ActivityIndicator style={{ marginTop: 32 }} color="#2563EB" />
-              ) : (
-                <ScrollView
-                  style={{ flex: 1 }}
-                  contentContainerStyle={{ padding: isDesktop ? px : px, paddingBottom: 48, gap: 8 }}
-                  showsVerticalScrollIndicator={false}
-                >
-                  {movements.length === 0 ? (
-                    <View style={s.empty}>
-                      <AppIcon name={'transfer' as any} size={36} color="#CBD5E1" />
-                      <Text style={s.emptyText}>Hareket yok</Text>
+              {/* Table header */}
+              <View style={{ flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: '#FAFAFA', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
+                {[
+                  { label: 'HESAP',    flex: 2 },
+                  { label: 'TÜR',      flex: 1 },
+                  { label: 'BANKA',    flex: 1.5 },
+                  { label: 'GİRİŞ',   flex: 1, align: 'right' as const },
+                  { label: 'ÇIKIŞ',   flex: 1, align: 'right' as const },
+                  { label: 'BAKİYE',  flex: 1.2, align: 'right' as const },
+                  { label: 'İŞLEM',   flex: 0.8 },
+                ].map((h, i) => (
+                  <Text key={i} style={{ flex: h.flex, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textAlign: h.align }}>
+                    {h.label}
+                  </Text>
+                ))}
+              </View>
+
+              {accounts.length === 0 ? (
+                <View style={{ alignItems: 'center', paddingVertical: 48, gap: 10 }}>
+                  <Inbox size={32} color={DS.ink[300]} strokeWidth={1.4} />
+                  <Text style={{ fontSize: 14, fontWeight: '500', color: DS.ink[400] }}>Henüz hesap yok</Text>
+                </View>
+              ) : accounts.map((acc, i) => {
+                const isActive = acc.id === activeAccountId;
+                const Icon = ACCOUNT_ICON[acc.account_type];
+                const color = ACCOUNT_COLORS[acc.account_type];
+                const bal = Number(acc.balance ?? 0);
+                return (
+                  <Pressable
+                    key={acc.id}
+                    onPress={() => setSelectedId(acc.id)}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center',
+                      paddingHorizontal: 20, paddingVertical: 14,
+                      borderBottomWidth: i < accounts.length - 1 ? 1 : 0,
+                      borderBottomColor: 'rgba(0,0,0,0.04)',
+                      backgroundColor: isActive ? 'rgba(74,143,201,0.06)' : 'transparent',
+                      cursor: 'pointer' as any,
+                    }}
+                  >
+                    <View style={{ flex: 2, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: `${color}18`, alignItems: 'center', justifyContent: 'center' }}>
+                        <Icon size={16} color={color} strokeWidth={1.6} />
+                      </View>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+                        {acc.name}
+                      </Text>
                     </View>
-                  ) : movements.map(mv => (
-                    <MovementRow
-                      key={mv.id}
-                      movement={mv}
-                      onDelete={() => handleDeleteMovement(mv.id)}
-                    />
+                    <View style={{ flex: 1 }}>
+                      <View style={{
+                        alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
+                        backgroundColor: acc.account_type === 'kasa' ? CHIP_TONES.success.bg : CHIP_TONES.info.bg,
+                      }}>
+                        <Text style={{ fontSize: 10, fontWeight: '600', color: acc.account_type === 'kasa' ? CHIP_TONES.success.fg : CHIP_TONES.info.fg }}>
+                          {ACCOUNT_TYPE_LABELS[acc.account_type]}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={{ flex: 1.5, fontSize: 12, color: DS.ink[500] }} numberOfLines={1}>
+                      {acc.bank_name || '—'}
+                    </Text>
+                    <Text style={{ flex: 1, fontSize: 12, fontWeight: '500', color: CHIP_TONES.success.fg, textAlign: 'right' }}>
+                      {acc.total_in ? fmtMoney(acc.total_in) : '—'}
+                    </Text>
+                    <Text style={{ flex: 1, fontSize: 12, fontWeight: '500', color: CHIP_TONES.danger.fg, textAlign: 'right' }}>
+                      {acc.total_out ? fmtMoney(acc.total_out) : '—'}
+                    </Text>
+                    <Text style={{ flex: 1.2, fontSize: 13, fontWeight: '700', color: bal >= 0 ? DS.ink[900] : CHIP_TONES.danger.fg, textAlign: 'right' }}>
+                      {fmtMoney(bal)}
+                    </Text>
+                    <View style={{ flex: 0.8, flexDirection: 'row', gap: 4 }}>
+                      <Pressable
+                        onPress={() => setEditAccount(acc)}
+                        style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: DS.ink[50], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                      >
+                        <Pencil size={13} color={DS.ink[500]} strokeWidth={1.6} />
+                      </Pressable>
+                      <Pressable
+                        onPress={() => handleDeleteAccount(acc)}
+                        style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: CHIP_TONES.danger.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                      >
+                        <Trash2 size={13} color={CHIP_TONES.danger.fg} strokeWidth={1.6} />
+                      </Pressable>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {/* Right: Movements for selected account */}
+            <View style={{ flex: 1.3, ...tableCard }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>
+                    {selectedAccount?.name ?? 'Hareketler'}
+                  </Text>
+                  {selectedAccount && (
+                    <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 2 }}>
+                      Bakiye: {fmtMoney(selectedAccount.balance)}
+                    </Text>
+                  )}
+                </View>
+                {activeAccountId && (
+                  <PillBtn icon={Plus} label="Hareket Ekle" size="sm" onPress={() => setAddMovementOpen(true)} />
+                )}
+              </View>
+
+              {/* Search inside movements */}
+              {activeAccountId && (
+                <View style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 10,
+                  height: 40, paddingHorizontal: 16, marginHorizontal: 16, marginTop: 12, marginBottom: 4,
+                  borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: '#FFF',
+                }}>
+                  <Search size={14} color={DS.ink[400]} strokeWidth={1.8} />
+                  <TextInput
+                    style={{ flex: 1, fontSize: 13, color: DS.ink[900], outline: 'none' as any }}
+                    placeholder="Hareket ara..."
+                    placeholderTextColor={DS.ink[400]}
+                    value={search}
+                    onChangeText={setSearch}
+                  />
+                  {search.length > 0 && (
+                    <Pressable onPress={() => setSearch('')} style={{ cursor: 'pointer' as any }}>
+                      <X size={13} color={DS.ink[400]} strokeWidth={2} />
+                    </Pressable>
+                  )}
+                </View>
+              )}
+
+              {/* Movement table header */}
+              {activeAccountId && (
+                <View style={{ flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: '#FAFAFA', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)', marginTop: 8 }}>
+                  {[
+                    { label: 'TARİH',     flex: 1 },
+                    { label: 'KATEGORİ',  flex: 1 },
+                    { label: 'AÇIKLAMA',  flex: 2 },
+                    { label: 'TUTAR',     flex: 1, align: 'right' as const },
+                    { label: 'İŞLEM',     flex: 0.5 },
+                  ].map((h, i) => (
+                    <Text key={i} style={{ flex: h.flex, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textAlign: h.align }}>
+                      {h.label}
+                    </Text>
                   ))}
+                </View>
+              )}
+
+              {/* Movement rows */}
+              {!activeAccountId ? (
+                <View style={{ alignItems: 'center', paddingVertical: 48, gap: 10 }}>
+                  <Wallet size={32} color={DS.ink[300]} strokeWidth={1.4} />
+                  <Text style={{ fontSize: 14, fontWeight: '500', color: DS.ink[400] }}>Hesap seçin</Text>
+                </View>
+              ) : movLoading ? (
+                <ActivityIndicator style={{ marginTop: 40 }} color={DS.lab.primary} />
+              ) : filteredMovements.length === 0 ? (
+                <View style={{ alignItems: 'center', paddingVertical: 48, gap: 10 }}>
+                  <Inbox size={32} color={DS.ink[300]} strokeWidth={1.4} />
+                  <Text style={{ fontSize: 14, fontWeight: '500', color: DS.ink[400] }}>Hareket yok</Text>
+                </View>
+              ) : (
+                <ScrollView style={{ maxHeight: 500 }} showsVerticalScrollIndicator={false}>
+                  {filteredMovements.map((mv, i) => {
+                    const isIn = mv.direction === 'giris';
+                    const color = isIn ? DIRECTION_COLORS.giris : DIRECTION_COLORS.cikis;
+                    const CIcon = CAT_ICON[mv.category as MovementCategory] ?? CircleDot;
+                    return (
+                      <View key={mv.id} style={{
+                        flexDirection: 'row', alignItems: 'center',
+                        paddingHorizontal: 20, paddingVertical: 14,
+                        borderBottomWidth: i < filteredMovements.length - 1 ? 1 : 0,
+                        borderBottomColor: 'rgba(0,0,0,0.04)',
+                      }}>
+                        <Text style={{ flex: 1, fontSize: 12, color: DS.ink[500], fontFamily: 'monospace' }}>
+                          {fmtDate(mv.movement_date)}
+                        </Text>
+                        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <CIcon size={13} color={color} strokeWidth={1.6} />
+                          <Text style={{ fontSize: 12, color: DS.ink[700] }}>
+                            {MOVEMENT_CATEGORY_LABELS[mv.category as MovementCategory] ?? mv.category}
+                          </Text>
+                        </View>
+                        <Text style={{ flex: 2, fontSize: 12, color: DS.ink[700] }} numberOfLines={1}>
+                          {mv.description}
+                        </Text>
+                        <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color, textAlign: 'right' }}>
+                          {isIn ? '+' : '−'}{fmtMoney(mv.amount)}
+                        </Text>
+                        <View style={{ flex: 0.5, alignItems: 'flex-end' }}>
+                          <Pressable
+                            onPress={() => handleDeleteMovement(mv.id)}
+                            style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: DS.ink[50], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                          >
+                            <Trash2 size={12} color={DS.ink[400]} strokeWidth={1.6} />
+                          </Pressable>
+                        </View>
+                      </View>
+                    );
+                  })}
                 </ScrollView>
               )}
             </View>
-          )}
-        </View>
-      )}
+          </View>
+        ) : (
+          /* ── Mobile layout ─────────────────────────────────── */
+          <>
+            {/* Account cards */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingVertical: 2 }}>
+              {accounts.map(acc => {
+                const isActive = acc.id === activeAccountId;
+                const Icon = ACCOUNT_ICON[acc.account_type];
+                const color = ACCOUNT_COLORS[acc.account_type];
+                const bal = Number(acc.balance ?? 0);
+                return (
+                  <Pressable
+                    key={acc.id}
+                    onPress={() => setSelectedId(acc.id)}
+                    style={{
+                      ...cardSolid,
+                      padding: 16, width: 180,
+                      borderWidth: isActive ? 1.5 : 0,
+                      borderColor: isActive ? color : 'transparent',
+                      cursor: 'pointer' as any,
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                      <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: `${color}18`, alignItems: 'center', justifyContent: 'center' }}>
+                        <Icon size={14} color={color} strokeWidth={1.6} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>{acc.name}</Text>
+                        <Text style={{ fontSize: 10, color: DS.ink[400] }}>{ACCOUNT_TYPE_LABELS[acc.account_type]}</Text>
+                      </View>
+                    </View>
+                    <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.5, color: bal >= 0 ? DS.ink[900] : CHIP_TONES.danger.fg }}>
+                      {fmtMoney(bal)}
+                    </Text>
+                    <View style={{ flexDirection: 'row', gap: 4, marginTop: 8 }}>
+                      <Pressable
+                        onPress={() => setEditAccount(acc)}
+                        style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: DS.ink[50], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                      >
+                        <Pencil size={12} color={DS.ink[500]} strokeWidth={1.6} />
+                      </Pressable>
+                      <Pressable
+                        onPress={() => handleDeleteAccount(acc)}
+                        style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: CHIP_TONES.danger.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                      >
+                        <Trash2 size={12} color={CHIP_TONES.danger.fg} strokeWidth={1.6} />
+                      </Pressable>
+                    </View>
+                  </Pressable>
+                );
+              })}
+              {accounts.length === 0 && (
+                <View style={{ ...cardSolid, alignItems: 'center', paddingVertical: 32, paddingHorizontal: 32, gap: 8 }}>
+                  <Wallet size={28} color={DS.ink[300]} strokeWidth={1.4} />
+                  <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[400] }}>Henüz hesap yok</Text>
+                </View>
+              )}
+            </ScrollView>
 
-      {/* Hesap ekle/düzenle modal */}
+            {/* Selected account movements */}
+            {activeAccountId && (
+              <View style={{ gap: 10 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[900] }}>
+                      {selectedAccount?.name} Hareketleri
+                    </Text>
+                    <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 1 }}>
+                      Bakiye: {fmtMoney(selectedAccount?.balance)}
+                    </Text>
+                  </View>
+                  <PillBtn icon={Plus} label="Hareket" size="sm" onPress={() => setAddMovementOpen(true)} />
+                </View>
+
+                {/* Search */}
+                <View style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 10,
+                  height: 44, paddingHorizontal: 14, borderRadius: 14,
+                  borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: '#FFF',
+                }}>
+                  <Search size={15} color={DS.ink[400]} strokeWidth={1.8} />
+                  <TextInput
+                    style={{ flex: 1, fontSize: 14, color: DS.ink[900], outline: 'none' as any }}
+                    placeholder="Hareket ara..."
+                    placeholderTextColor={DS.ink[400]}
+                    value={search}
+                    onChangeText={setSearch}
+                  />
+                  {search.length > 0 && (
+                    <Pressable onPress={() => setSearch('')} style={{ cursor: 'pointer' as any }}>
+                      <X size={14} color={DS.ink[400]} strokeWidth={2} />
+                    </Pressable>
+                  )}
+                </View>
+
+                {movLoading ? (
+                  <ActivityIndicator style={{ marginTop: 24 }} color={DS.lab.primary} />
+                ) : filteredMovements.length === 0 ? (
+                  <View style={{ ...cardSolid, alignItems: 'center', paddingVertical: 36, gap: 10 }}>
+                    <Inbox size={28} color={DS.ink[300]} strokeWidth={1.4} />
+                    <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[400] }}>Hareket yok</Text>
+                  </View>
+                ) : filteredMovements.map(mv => {
+                  const isIn = mv.direction === 'giris';
+                  const color = isIn ? DIRECTION_COLORS.giris : DIRECTION_COLORS.cikis;
+                  const CIcon = CAT_ICON[mv.category as MovementCategory] ?? CircleDot;
+                  return (
+                    <View key={mv.id} style={{
+                      ...cardSolid, padding: 16,
+                      flexDirection: 'row', alignItems: 'center', gap: 12,
+                    }}>
+                      <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: `${color}14`, alignItems: 'center', justifyContent: 'center' }}>
+                        <CIcon size={16} color={color} strokeWidth={1.6} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+                          {mv.description}
+                        </Text>
+                        <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 2 }}>
+                          {MOVEMENT_CATEGORY_LABELS[mv.category as MovementCategory]} · {fmtDate(mv.movement_date)}
+                        </Text>
+                      </View>
+                      <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                        <Text style={{ ...DISPLAY, fontSize: 16, fontWeight: '400', letterSpacing: -0.3, color }}>
+                          {isIn ? '+' : '−'}{fmtMoney(mv.amount)}
+                        </Text>
+                        <Pressable
+                          onPress={() => handleDeleteMovement(mv.id)}
+                          style={{ width: 26, height: 26, borderRadius: 8, backgroundColor: DS.ink[50], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                        >
+                          <Trash2 size={11} color={DS.ink[400]} strokeWidth={1.6} />
+                        </Pressable>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+          </>
+        )}
+      </ScrollView>
+
+      {/* ── Account Modal — §08 ───────────────────────────────── */}
       <AccountModal
         visible={addAccountOpen || !!editAccount}
         account={editAccount}
@@ -192,7 +614,7 @@ export function CashScreen() {
         onSaved={() => { setAddAccountOpen(false); setEditAccount(null); refetch(); }}
       />
 
-      {/* Hareket ekle modal */}
+      {/* ── Movement Modal — §08 ──────────────────────────────── */}
       {activeAccountId && (
         <MovementModal
           visible={addMovementOpen}
@@ -202,96 +624,13 @@ export function CashScreen() {
           onSaved={() => { setAddMovementOpen(false); refetchMov(); refetch(); }}
         />
       )}
-    </SafeAreaView>
-  );
-}
-
-// ─── KPI Box ─────────────────────────────────────────────────────────────────
-function KpiBox({ label, value, color, icon }: { label: string; value: string; color: string; icon: string }) {
-  return (
-    <View style={[kpi.card, { flex: 1 }]}>
-      <View style={[kpi.icon, { backgroundColor: color + '18' }]}>
-        <AppIcon name={icon as any} size={16} color={color} />
-      </View>
-      <Text style={kpi.label}>{label}</Text>
-      <Text style={[kpi.value, { color }]}>{value}</Text>
     </View>
   );
 }
 
-// ─── Account Card ─────────────────────────────────────────────────────────────
-function AccountCard({
-  account, selected, onPress, onEdit, onDelete,
-}: {
-  account: CashAccount; selected: boolean;
-  onPress: () => void; onEdit: () => void; onDelete: () => void;
-}) {
-  const isKasa = account.account_type === 'kasa';
-  const color = isKasa ? '#047857' : '#7C3AED';
-  const bg    = isKasa ? '#ECFDF5' : '#F5F3FF';
-  const bal   = Number(account.balance ?? 0);
-
-  return (
-    <TouchableOpacity
-      style={[ac.card, selected && ac.cardActive]}
-      onPress={onPress}
-      activeOpacity={0.85}
-    >
-      <View style={[ac.iconWrap, { backgroundColor: bg }]}>
-        <AppIcon name={ACCOUNT_TYPE_ICONS[account.account_type] as any} size={20} color={color} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={ac.name}>{account.name}</Text>
-        {account.bank_name && <Text style={ac.bank}>{account.bank_name}</Text>}
-        <Text style={[ac.type, { color }]}>{ACCOUNT_TYPE_LABELS[account.account_type]}</Text>
-      </View>
-      <View style={{ alignItems: 'flex-end', gap: 6 }}>
-        <Text style={[ac.balance, { color: bal >= 0 ? '#0F172A' : '#EF4444' }]}>
-          {fmtMoney(bal)}
-        </Text>
-        <View style={{ flexDirection: 'row', gap: 6 }}>
-          <TouchableOpacity onPress={onEdit} style={ac.iconBtn}>
-            <AppIcon name={'pencil-outline' as any} size={14} color="#64748B" />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={onDelete} style={ac.iconBtn}>
-            <AppIcon name={'trash-can-outline' as any} size={14} color="#EF4444" />
-          </TouchableOpacity>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
-}
-
-// ─── Movement Row ─────────────────────────────────────────────────────────────
-function MovementRow({ movement: mv, onDelete }: { movement: any; onDelete: () => void }) {
-  const isIn   = mv.direction === 'giris';
-  const color  = isIn ? DIRECTION_COLORS.giris : DIRECTION_COLORS.cikis;
-  const catIcon = MOVEMENT_CATEGORY_ICONS[mv.category as MovementCategory] ?? 'dots-horizontal';
-
-  return (
-    <View style={mr.wrap}>
-      <View style={[mr.iconWrap, { backgroundColor: color + '18' }]}>
-        <AppIcon name={catIcon as any} size={16} color={color} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={mr.desc}>{mv.description}</Text>
-        <Text style={mr.meta}>
-          {MOVEMENT_CATEGORY_LABELS[mv.category as MovementCategory]} · {fmtDate(mv.movement_date)}
-        </Text>
-      </View>
-      <View style={{ alignItems: 'flex-end', gap: 4 }}>
-        <Text style={[mr.amount, { color }]}>
-          {isIn ? '+' : '−'}{fmtMoney(mv.amount)}
-        </Text>
-        <TouchableOpacity onPress={onDelete} style={mr.delBtn}>
-          <AppIcon name={'trash-can-outline' as any} size={13} color="#CBD5E1" />
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-}
-
-// ─── Account Modal ────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════
+// AccountModal — §08 dialog
+// ═════════════════════════════════════════════════════════════════════
 function AccountModal({
   visible, account, onClose, onSaved,
 }: {
@@ -335,71 +674,141 @@ function AccountModal({
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <View style={fm.overlay}>
-        <View style={fm.card}>
-          <View style={fm.header}>
-            <Text style={fm.title}>{account ? 'Hesabı Düzenle' : 'Yeni Hesap'}</Text>
-            <TouchableOpacity onPress={onClose} style={fm.closeBtn}>
-              <AppIcon name={'close' as any} size={18} color="#94A3B8" />
-            </TouchableOpacity>
+      <View style={{ flex: 1, backgroundColor: 'rgba(10,10,10,0.45)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+        <View style={{
+          backgroundColor: '#FFF', borderRadius: 24, width: '100%', maxWidth: 480,
+          maxHeight: '90%', overflow: 'hidden',
+          borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
+          // @ts-ignore web
+          boxShadow: modalShadow,
+        }}>
+          {/* Header */}
+          <View style={{
+            flexDirection: 'row', alignItems: 'center', gap: 12,
+            paddingHorizontal: 24, paddingTop: 22, paddingBottom: 16,
+            borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
+          }}>
+            <Text style={{ ...DISPLAY, flex: 1, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>
+              {account ? 'Hesabı Düzenle' : 'Yeni Hesap'}
+            </Text>
+            <Pressable onPress={onClose} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}>
+              <X size={16} color={DS.ink[500]} strokeWidth={2} />
+            </Pressable>
           </View>
 
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={fm.body}>
-            {/* Hesap türü */}
-            <Text style={fm.label}>Hesap Türü</Text>
-            <View style={fm.chipRow}>
-              {(['kasa', 'banka'] as AccountType[]).map(t => (
-                <TouchableOpacity
-                  key={t}
-                  style={[fm.chip, type === t && fm.chipActive]}
-                  onPress={() => setType(t)}
-                >
-                  <AppIcon
-                    name={ACCOUNT_TYPE_ICONS[t] as any}
-                    size={14}
-                    color={type === t ? '#2563EB' : '#94A3B8'}
-                  />
-                  <Text style={[fm.chipText, type === t && fm.chipTextActive]}>
-                    {ACCOUNT_TYPE_LABELS[t]}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+          {/* Body */}
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 24, gap: 4 }}>
+            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 8 }}>
+              Hesap Türü
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+              {(['kasa', 'banka'] as AccountType[]).map(t => {
+                const active = type === t;
+                const Icon = ACCOUNT_ICON[t];
+                const color = ACCOUNT_COLORS[t];
+                return (
+                  <Pressable
+                    key={t}
+                    onPress={() => setType(t)}
+                    style={{
+                      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+                      paddingVertical: 12, borderRadius: 14,
+                      borderWidth: 1.5,
+                      borderColor: active ? color : 'rgba(0,0,0,0.08)',
+                      backgroundColor: active ? `${color}12` : '#FFF',
+                      cursor: 'pointer' as any,
+                    }}
+                  >
+                    <Icon size={16} color={active ? color : DS.ink[400]} strokeWidth={1.6} />
+                    <Text style={{ fontSize: 13, fontWeight: active ? '700' : '500', color: active ? color : DS.ink[500] }}>
+                      {ACCOUNT_TYPE_LABELS[t]}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
 
-            <Text style={fm.label}>Hesap Adı *</Text>
-            <TextInput style={fm.input} value={name} onChangeText={setName}
-              placeholder="Örn: Ana Kasa, İş Bankası Hesabı" placeholderTextColor="#94A3B8" />
+            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 6 }}>
+              Hesap Adı *
+            </Text>
+            <TextInput
+              style={{
+                height: 44, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
+                paddingHorizontal: 14, fontSize: 14, color: DS.ink[900], backgroundColor: '#FFF',
+                marginBottom: 14,
+              }}
+              value={name} onChangeText={setName}
+              placeholder="Örn: Ana Kasa, İş Bankası Hesabı" placeholderTextColor={DS.ink[400]}
+            />
 
             {type === 'banka' && (
               <>
-                <Text style={fm.label}>Banka Adı</Text>
-                <TextInput style={fm.input} value={bankName} onChangeText={setBankName}
-                  placeholder="Örn: İş Bankası" placeholderTextColor="#94A3B8" />
-                <Text style={fm.label}>IBAN</Text>
-                <TextInput style={fm.input} value={iban} onChangeText={setIban}
-                  placeholder="TR00 0000 0000 0000 0000 0000 00" placeholderTextColor="#94A3B8"
-                  autoCapitalize="characters" />
+                <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 6 }}>
+                  Banka Adı
+                </Text>
+                <TextInput
+                  style={{
+                    height: 44, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
+                    paddingHorizontal: 14, fontSize: 14, color: DS.ink[900], backgroundColor: '#FFF',
+                    marginBottom: 14,
+                  }}
+                  value={bankName} onChangeText={setBankName}
+                  placeholder="Örn: İş Bankası" placeholderTextColor={DS.ink[400]}
+                />
+
+                <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 6 }}>
+                  IBAN
+                </Text>
+                <TextInput
+                  style={{
+                    height: 44, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
+                    paddingHorizontal: 14, fontSize: 14, color: DS.ink[900], backgroundColor: '#FFF',
+                    marginBottom: 14,
+                  }}
+                  value={iban} onChangeText={setIban}
+                  placeholder="TR00 0000 0000 0000 0000 0000 00" placeholderTextColor={DS.ink[400]}
+                  autoCapitalize="characters"
+                />
               </>
             )}
 
-            <Text style={fm.label}>Açılış Bakiyesi (₺)</Text>
-            <TextInput style={fm.input} value={opening} onChangeText={setOpening}
-              placeholder="0,00" placeholderTextColor="#94A3B8" keyboardType="decimal-pad" />
+            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 6 }}>
+              Açılış Bakiyesi (₺)
+            </Text>
+            <TextInput
+              style={{
+                height: 44, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
+                paddingHorizontal: 14, fontSize: 14, color: DS.ink[900], backgroundColor: '#FFF',
+              }}
+              value={opening} onChangeText={setOpening}
+              placeholder="0,00" placeholderTextColor={DS.ink[400]} keyboardType="decimal-pad"
+            />
           </ScrollView>
 
-          <View style={fm.footer}>
-            <TouchableOpacity style={fm.cancelBtn} onPress={onClose} disabled={saving}>
-              <Text style={fm.cancelText}>İptal</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[fm.saveBtn, saving && { opacity: 0.5 }]}
-              onPress={handleSave} disabled={saving} activeOpacity={0.85}
+          {/* Footer — ghost + dark pill */}
+          <View style={{
+            flexDirection: 'row', justifyContent: 'flex-end', gap: 8,
+            paddingHorizontal: 24, paddingVertical: 16,
+            borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
+          }}>
+            <PillBtn icon={X} label="İptal" variant="ghost" onPress={onClose} disabled={saving} />
+            <Pressable
+              onPress={handleSave} disabled={saving}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 6,
+                height: 38, paddingHorizontal: 18, borderRadius: 999,
+                backgroundColor: DS.ink[900], opacity: saving ? 0.5 : 1,
+                cursor: 'pointer' as any,
+              }}
             >
-              {saving
-                ? <ActivityIndicator color="#fff" size="small" />
-                : <Text style={fm.saveText}>{account ? 'Güncelle' : 'Oluştur'}</Text>
-              }
-            </TouchableOpacity>
+              {saving ? (
+                <ActivityIndicator color="#FFF" size="small" />
+              ) : (
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFF' }}>
+                  {account ? 'Güncelle' : 'Oluştur'}
+                </Text>
+              )}
+            </Pressable>
           </View>
         </View>
       </View>
@@ -407,7 +816,9 @@ function AccountModal({
   );
 }
 
-// ─── Movement Modal ───────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════
+// MovementModal — §08 dialog
+// ═════════════════════════════════════════════════════════════════════
 function MovementModal({
   visible, accountId, accountName, onClose, onSaved,
 }: {
@@ -428,7 +839,6 @@ function MovementModal({
     }
   }, [visible]);
 
-  // Yönle uyumlu kategori varsayılanı
   React.useEffect(() => {
     setCategory(direction === 'giris' ? 'tahsilat' : 'odeme');
   }, [direction]);
@@ -455,209 +865,170 @@ function MovementModal({
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <View style={fm.overlay}>
-        <View style={fm.card}>
-          <View style={fm.header}>
-            <Text style={fm.title}>Hareket Ekle</Text>
-            <Text style={fm.headerSub}>{accountName}</Text>
-            <TouchableOpacity onPress={onClose} style={fm.closeBtn}>
-              <AppIcon name={'close' as any} size={18} color="#94A3B8" />
-            </TouchableOpacity>
+      <View style={{ flex: 1, backgroundColor: 'rgba(10,10,10,0.45)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+        <View style={{
+          backgroundColor: '#FFF', borderRadius: 24, width: '100%', maxWidth: 480,
+          maxHeight: '90%', overflow: 'hidden',
+          borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
+          // @ts-ignore web
+          boxShadow: modalShadow,
+        }}>
+          {/* Header */}
+          <View style={{
+            flexDirection: 'row', alignItems: 'center', gap: 12,
+            paddingHorizontal: 24, paddingTop: 22, paddingBottom: 16,
+            borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
+          }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>
+                Hareket Ekle
+              </Text>
+              <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 2 }}>{accountName}</Text>
+            </View>
+            <Pressable onPress={onClose} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}>
+              <X size={16} color={DS.ink[500]} strokeWidth={2} />
+            </Pressable>
           </View>
 
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={fm.body}>
-            {/* Giriş / Çıkış */}
-            <Text style={fm.label}>Hareket Türü</Text>
-            <View style={fm.dirRow}>
-              <TouchableOpacity
-                style={[fm.dirBtn, direction === 'giris' && fm.dirBtnIn]}
+          {/* Body */}
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 24, gap: 4 }}>
+            {/* Direction toggle */}
+            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 8 }}>
+              Hareket Türü
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+              <Pressable
                 onPress={() => setDirection('giris')}
+                style={{
+                  flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  paddingVertical: 12, borderRadius: 14, borderWidth: 1.5,
+                  borderColor: direction === 'giris' ? DIRECTION_COLORS.giris : 'rgba(0,0,0,0.08)',
+                  backgroundColor: direction === 'giris' ? `${DIRECTION_COLORS.giris}12` : '#FFF',
+                  cursor: 'pointer' as any,
+                }}
               >
-                <AppIcon name={'arrow-down-circle-outline' as any} size={16}
-                  color={direction === 'giris' ? '#047857' : '#94A3B8'} />
-                <Text style={[fm.dirText, direction === 'giris' && { color: '#047857', fontWeight: '700' }]}>
+                <ArrowDownCircle size={16} color={direction === 'giris' ? DIRECTION_COLORS.giris : DS.ink[400]} strokeWidth={1.6} />
+                <Text style={{ fontSize: 13, fontWeight: direction === 'giris' ? '700' : '500', color: direction === 'giris' ? DIRECTION_COLORS.giris : DS.ink[500] }}>
                   Para Girişi
                 </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[fm.dirBtn, direction === 'cikis' && fm.dirBtnOut]}
+              </Pressable>
+              <Pressable
                 onPress={() => setDirection('cikis')}
+                style={{
+                  flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  paddingVertical: 12, borderRadius: 14, borderWidth: 1.5,
+                  borderColor: direction === 'cikis' ? DIRECTION_COLORS.cikis : 'rgba(0,0,0,0.08)',
+                  backgroundColor: direction === 'cikis' ? `${DIRECTION_COLORS.cikis}12` : '#FFF',
+                  cursor: 'pointer' as any,
+                }}
               >
-                <AppIcon name={'arrow-up-circle-outline' as any} size={16}
-                  color={direction === 'cikis' ? '#EF4444' : '#94A3B8'} />
-                <Text style={[fm.dirText, direction === 'cikis' && { color: '#EF4444', fontWeight: '700' }]}>
+                <ArrowUpCircle size={16} color={direction === 'cikis' ? DIRECTION_COLORS.cikis : DS.ink[400]} strokeWidth={1.6} />
+                <Text style={{ fontSize: 13, fontWeight: direction === 'cikis' ? '700' : '500', color: direction === 'cikis' ? DIRECTION_COLORS.cikis : DS.ink[500] }}>
                   Para Çıkışı
                 </Text>
-              </TouchableOpacity>
+              </Pressable>
             </View>
 
-            {/* Tutar */}
-            <Text style={fm.label}>Tutar (₺)</Text>
-            <TextInput style={fm.input} value={amount} onChangeText={setAmount}
-              placeholder="0,00" placeholderTextColor="#94A3B8" keyboardType="decimal-pad" />
+            {/* Amount */}
+            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 6 }}>
+              Tutar (₺)
+            </Text>
+            <TextInput
+              style={{
+                height: 44, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
+                paddingHorizontal: 14, fontSize: 14, color: DS.ink[900], backgroundColor: '#FFF',
+                marginBottom: 14,
+              }}
+              value={amount} onChangeText={setAmount}
+              placeholder="0,00" placeholderTextColor={DS.ink[400]} keyboardType="decimal-pad"
+            />
 
-            {/* Kategori */}
-            <Text style={fm.label}>Kategori</Text>
-            <View style={fm.chipRow}>
-              {catOptions.map(cat => (
-                <TouchableOpacity
-                  key={cat}
-                  style={[fm.chip, category === cat && fm.chipActive]}
-                  onPress={() => setCategory(cat)}
-                >
-                  <AppIcon
-                    name={MOVEMENT_CATEGORY_ICONS[cat] as any} size={12}
-                    color={category === cat ? '#2563EB' : '#94A3B8'}
-                  />
-                  <Text style={[fm.chipText, category === cat && fm.chipTextActive]}>
-                    {MOVEMENT_CATEGORY_LABELS[cat]}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+            {/* Category pills */}
+            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 8 }}>
+              Kategori
+            </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
+              {catOptions.map(cat => {
+                const active = category === cat;
+                const CIcon = CAT_ICON[cat];
+                return (
+                  <Pressable
+                    key={cat}
+                    onPress={() => setCategory(cat)}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 5,
+                      paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: active ? DS.ink[900] : 'rgba(0,0,0,0.08)',
+                      backgroundColor: active ? DS.ink[50] : '#FFF',
+                      cursor: 'pointer' as any,
+                    }}
+                  >
+                    <CIcon size={12} color={active ? DS.ink[900] : DS.ink[400]} strokeWidth={1.6} />
+                    <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? DS.ink[900] : DS.ink[500] }}>
+                      {MOVEMENT_CATEGORY_LABELS[cat]}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
 
-            {/* Açıklama */}
-            <Text style={fm.label}>Açıklama *</Text>
-            <TextInput style={fm.input} value={desc} onChangeText={setDesc}
-              placeholder="Kısa not…" placeholderTextColor="#94A3B8" />
+            {/* Description */}
+            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 6 }}>
+              Açıklama *
+            </Text>
+            <TextInput
+              style={{
+                height: 44, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
+                paddingHorizontal: 14, fontSize: 14, color: DS.ink[900], backgroundColor: '#FFF',
+                marginBottom: 14,
+              }}
+              value={desc} onChangeText={setDesc}
+              placeholder="Kısa not…" placeholderTextColor={DS.ink[400]}
+            />
 
-            {/* Tarih */}
-            <Text style={fm.label}>Tarih</Text>
-            <TextInput style={fm.input} value={date} onChangeText={setDate}
-              placeholder="YYYY-AA-GG" placeholderTextColor="#94A3B8" />
+            {/* Date */}
+            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 6 }}>
+              Tarih
+            </Text>
+            <TextInput
+              style={{
+                height: 44, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
+                paddingHorizontal: 14, fontSize: 14, color: DS.ink[900], backgroundColor: '#FFF',
+              }}
+              value={date} onChangeText={setDate}
+              placeholder="YYYY-AA-GG" placeholderTextColor={DS.ink[400]}
+            />
           </ScrollView>
 
-          <View style={fm.footer}>
-            <TouchableOpacity style={fm.cancelBtn} onPress={onClose} disabled={saving}>
-              <Text style={fm.cancelText}>İptal</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[fm.saveBtn, saving && { opacity: 0.5 },
-                direction === 'cikis' && { backgroundColor: '#EF4444' }]}
-              onPress={handleSave} disabled={saving} activeOpacity={0.85}
+          {/* Footer — ghost + dark pill */}
+          <View style={{
+            flexDirection: 'row', justifyContent: 'flex-end', gap: 8,
+            paddingHorizontal: 24, paddingVertical: 16,
+            borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
+          }}>
+            <PillBtn icon={X} label="İptal" variant="ghost" onPress={onClose} disabled={saving} />
+            <Pressable
+              onPress={handleSave} disabled={saving}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 6,
+                height: 38, paddingHorizontal: 18, borderRadius: 999,
+                backgroundColor: direction === 'cikis' ? CHIP_TONES.danger.fg : DS.ink[900],
+                opacity: saving ? 0.5 : 1,
+                cursor: 'pointer' as any,
+              }}
             >
-              {saving
-                ? <ActivityIndicator color="#fff" size="small" />
-                : <Text style={fm.saveText}>Kaydet</Text>
-              }
-            </TouchableOpacity>
+              {saving ? (
+                <ActivityIndicator color="#FFF" size="small" />
+              ) : (
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFF' }}>
+                  Kaydet
+                </Text>
+              )}
+            </Pressable>
           </View>
         </View>
       </View>
     </Modal>
   );
 }
-
-// ─── Styles ───────────────────────────────────────────────────────────────────
-const s = StyleSheet.create({
-  safe:    { flex: 1, backgroundColor: CardSpec.pageBg },
-  header:  { flexDirection: 'row', alignItems: 'center', paddingTop: 18, paddingBottom: 10, gap: 12 },
-  title:   { fontSize: 20, fontWeight: '800', color: '#0F172A', letterSpacing: -0.3 },
-  subtitle:{ fontSize: 13, color: '#64748B', marginTop: 2 },
-  addBtn:  {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12, backgroundColor: '#2563EB',
-  },
-  addBtnText: { fontSize: 13, fontWeight: '700', color: '#fff' },
-  body:    { flex: 1 },
-  leftPanel:  { flex: 1 },
-  rightPanel: { flex: 1.2, backgroundColor: '#FAFAFA' },
-  kpiRow:  { flexDirection: 'row', gap: 10, paddingVertical: 12 },
-  accountList: { gap: 10, paddingBottom: 48 },
-  movHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
-  },
-  movTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
-  movSub:   { fontSize: 12, color: '#64748B', marginTop: 1 },
-  addMovBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
-    backgroundColor: '#EFF6FF',
-  },
-  addMovBtnText: { fontSize: 12, fontWeight: '700', color: '#2563EB' },
-  empty: { alignItems: 'center', paddingVertical: 48, gap: 8 },
-  emptyText: { fontSize: 14, color: '#94A3B8', fontWeight: '600' },
-  emptyHint: { fontSize: 12, color: '#CBD5E1' },
-});
-
-const kpi = StyleSheet.create({
-  card:  { backgroundColor: CardSpec.bg, borderRadius: CardSpec.radius, padding: 14, borderWidth: 1, borderColor: CardSpec.border, gap: 6, ...Shadows.card },
-  icon:  { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  label: { fontSize: 10, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.5 },
-  value: { fontSize: 17, fontWeight: '800', letterSpacing: -0.4 },
-});
-
-const ac = StyleSheet.create({
-  card: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: CardSpec.bg, borderRadius: CardSpec.radius, padding: 14,
-    borderWidth: 1, borderColor: CardSpec.border,
-    ...Shadows.card,
-  },
-  cardActive: { borderColor: '#2563EB', backgroundColor: '#F0F7FF' },
-  iconWrap: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  name:    { fontSize: 14, fontWeight: '700', color: '#0F172A' },
-  bank:    { fontSize: 11, color: '#64748B', marginTop: 1 },
-  type:    { fontSize: 10, fontWeight: '700', marginTop: 2 },
-  balance: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
-  iconBtn: { width: 28, height: 28, borderRadius: 8, backgroundColor: '#F8FAFC', alignItems: 'center', justifyContent: 'center' },
-});
-
-const mr = StyleSheet.create({
-  wrap: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: '#fff', borderRadius: 12, padding: 12,
-    borderWidth: 1, borderColor: '#F1F5F9',
-  },
-  iconWrap: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  desc:   { fontSize: 13, fontWeight: '600', color: '#0F172A' },
-  meta:   { fontSize: 11, color: '#94A3B8', marginTop: 2 },
-  amount: { fontSize: 14, fontWeight: '800', letterSpacing: -0.3 },
-  delBtn: { padding: 4 },
-});
-
-const fm = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', alignItems: 'center', padding: 24 },
-  card:    { backgroundColor: '#fff', borderRadius: 20, width: '100%', maxWidth: 480, maxHeight: '90%', overflow: 'hidden' },
-  header:  {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14,
-    borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
-  },
-  title:    { flex: 1, fontSize: 16, fontWeight: '700', color: '#0F172A' },
-  headerSub:{ fontSize: 11, color: '#64748B', marginRight: 8 },
-  closeBtn: { width: 28, height: 28, borderRadius: 8, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
-  body:     { padding: 20, gap: 4 },
-  label:    { fontSize: 10, fontWeight: '700', color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 12, marginBottom: 6 },
-  input:    {
-    borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10,
-    paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: '#0F172A', backgroundColor: '#fff',
-  },
-  chipRow:  { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  chip:     {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
-    borderWidth: 1.5, borderColor: '#E2E8F0', backgroundColor: '#F8FAFC',
-  },
-  chipActive: { borderColor: '#2563EB', backgroundColor: '#EFF6FF' },
-  chipText:   { fontSize: 12, color: '#94A3B8', fontWeight: '500' },
-  chipTextActive: { color: '#2563EB', fontWeight: '700' },
-  dirRow: { flexDirection: 'row', gap: 10 },
-  dirBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    paddingVertical: 12, borderRadius: 12, borderWidth: 1.5, borderColor: '#E2E8F0', backgroundColor: '#F8FAFC',
-  },
-  dirBtnIn:  { borderColor: '#047857', backgroundColor: '#ECFDF5' },
-  dirBtnOut: { borderColor: '#EF4444', backgroundColor: '#FEF2F2' },
-  dirText:   { fontSize: 13, fontWeight: '600', color: '#94A3B8' },
-  footer:    {
-    flexDirection: 'row', gap: 10,
-    paddingHorizontal: 20, paddingVertical: 14,
-    borderTopWidth: 1, borderTopColor: '#F1F5F9',
-  },
-  cancelBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center' },
-  cancelText:{ fontSize: 14, fontWeight: '600', color: '#64748B' },
-  saveBtn:   { flex: 2, paddingVertical: 12, borderRadius: 10, backgroundColor: '#2563EB', alignItems: 'center' },
-  saveText:  { fontSize: 14, fontWeight: '700', color: '#fff' },
-});

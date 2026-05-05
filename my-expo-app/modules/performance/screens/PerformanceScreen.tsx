@@ -1,400 +1,423 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+/**
+ * PerformanceScreen — Teknisyen Performans Tablosu (Patterns Design Language)
+ *
+ * Desktop-first table/grid. Multiple technicians in one view.
+ * Uses report_technician_performance RPC for real operational data.
+ * Sorting, date range filters, material type filter.
+ *
+ * Patterns: cardSolid, tableCard (§09), DISPLAY font, DS tokens, CHIP_TONES,
+ *           §03 pill buttons, Lucide icons.
+ */
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, Modal, TextInput, Switch, Alert,
+  View, Text, ScrollView, Pressable,
+  ActivityIndicator, Platform, useWindowDimensions,
 } from 'react-native';
-import { C } from '../../../core/theme/colors';
-import { F } from '../../../core/theme/typography';
-import { useIsDesktop } from '../../../core/layout/DesktopShell';
-import { useAuthStore } from '../../../core/store/authStore';
-import { toast } from '../../../core/ui/Toast';
-import { useEmployees } from '../../employees/hooks/useEmployees';
-import { AppIcon } from '../../../core/ui/AppIcon';
-
 import {
-  fetchPerformanceList, fetchPerformance, calculatePerformance,
-  calculateBonuses, fetchBonuses, lockPerformance, fetchRules,
-  saveRule, toggleRule, deleteRule,
-  METRIC_LABELS, THRESHOLD_TYPE_LABELS, BONUS_TYPE_LABELS,
-  getScoreLevel, fmtPeriod, currentPeriod, shiftPeriod,
-  type EmployeePerformance, type PerformanceBonus, type PerformanceRule,
-  type PerfMetric, type ThresholdType, type BonusType,
-} from '../api';
+  Calendar, Users, AlertTriangle, Wrench,
+  TrendingUp, TrendingDown, Clock, Filter,
+  ChevronDown, ChevronUp, BarChart3, Flame,
+  DollarSign, Timer, Zap, ArrowUpDown,
+} from 'lucide-react-native';
 
-const fmtMoney = (n: number) =>
-  '₺' + Number(n).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+import { supabase }     from '../../../core/api/supabase';
+import { useAuthStore } from '../../../core/store/authStore';
+import { DS }           from '../../../core/theme/dsTokens';
+import { HubContext } from '../../../core/ui/HubContext';
 
-// ─── Main Screen ──────────────────────────────────────────────────────────────
-export function PerformanceScreen({ accentColor = C.primary }: { accentColor?: string }) {
+// ── Patterns design tokens ──────────────────────────────────────────
+const DISPLAY = {
+  fontFamily: 'Inter Tight, Inter, system-ui, sans-serif' as const,
+  fontWeight: '300' as const,
+};
+
+const cardSolid: any = {
+  backgroundColor: '#FFF',
+  borderRadius: 24,
+  padding: 22,
+  ...(Platform.OS === 'web'
+    ? { boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)' }
+    : {}),
+};
+
+const tableCard: any = {
+  backgroundColor: '#FFF',
+  borderRadius: 24,
+  borderWidth: 1,
+  borderColor: 'rgba(0,0,0,0.05)',
+  overflow: 'hidden',
+};
+
+const CHIP_TONES = {
+  success: { bg: 'rgba(45,154,107,0.12)', fg: '#1F6B47' },
+  warning: { bg: 'rgba(232,155,42,0.15)', fg: '#9C5E0E' },
+  danger:  { bg: 'rgba(217,75,75,0.12)',  fg: '#9C2E2E' },
+  info:    { bg: 'rgba(74,143,201,0.12)', fg: '#1F5689' },
+  neutral: { bg: 'rgba(0,0,0,0.05)',      fg: DS.ink[800] },
+};
+
+// ── Types ───────────────────────────────────────────────────────────
+interface PerfRow {
+  user_id:             string;
+  user_name:           string | null;
+  hourly_rate:         number;
+  used_qty:            number;
+  used_cost:           number;
+  waste_qty:           number;
+  waste_cost:          number;
+  efficiency_pct:      number | null;
+  labor_minutes:       number;
+  labor_hours:         number;
+  labor_cost:          number;
+  orders_worked:       number;
+  profit_contribution: number;
+}
+
+type Range   = 'thisWeek' | 'thisMonth' | 'thisYear' | 'all';
+type SortKey = 'efficiency' | 'profit' | 'waste' | 'labor' | 'orders';
+type SortDir = 'asc' | 'desc';
+
+const RANGE_OPTIONS: { key: Range; label: string }[] = [
+  { key: 'thisWeek',  label: 'Bu Hafta' },
+  { key: 'thisMonth', label: 'Bu Ay'    },
+  { key: 'thisYear',  label: 'Bu Yıl'   },
+  { key: 'all',       label: 'Tümü'     },
+];
+
+const MATERIAL_TYPES = [
+  { key: 'all',      label: 'Tüm Materyal' },
+  { key: 'zirconia', label: 'Zirkonya' },
+  { key: 'emax',     label: 'E-max' },
+  { key: 'pmma',     label: 'PMMA' },
+  { key: 'metal',    label: 'Metal' },
+  { key: 'glaze',    label: 'Glaze' },
+];
+
+const fmt  = (n: number) => n.toLocaleString('tr-TR', { maximumFractionDigits: 0 });
+const fmt1 = (n: number) => n.toLocaleString('tr-TR', { maximumFractionDigits: 1 });
+const fmtCur = (n: number) =>
+  (n >= 0 ? '' : '−') + fmt(Math.abs(n)) + ' ₺';
+
+function getRange(r: Range): { from: string | null; to: string | null } {
+  const now  = new Date();
+  const yyyy = now.getFullYear();
+  const mm   = now.getMonth();
+  const pad  = (n: number) => String(n).padStart(2, '0');
+  const ymd  = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  if (r === 'thisWeek') {
+    const day = now.getDay() || 7;
+    const start = new Date(now); start.setDate(now.getDate() - day + 1);
+    return { from: ymd(start), to: ymd(now) };
+  }
+  if (r === 'thisMonth') return { from: ymd(new Date(yyyy, mm, 1)), to: ymd(new Date(yyyy, mm + 1, 0)) };
+  if (r === 'thisYear')  return { from: `${yyyy}-01-01`,            to: `${yyyy}-12-31` };
+  return { from: null, to: null };
+}
+
+function effTone(eff: number | null) {
+  if (eff === null) return CHIP_TONES.neutral;
+  if (eff < 85) return CHIP_TONES.danger;
+  if (eff < 95) return CHIP_TONES.warning;
+  return CHIP_TONES.success;
+}
+
+function profitTone(p: number) {
+  if (p > 0) return CHIP_TONES.success;
+  if (p < 0) return CHIP_TONES.danger;
+  return CHIP_TONES.neutral;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// MAIN
+// ═══════════════════════════════════════════════════════════════════════
+export function PerformanceScreen() {
   const { profile } = useAuthStore();
-  const isDesktop   = useIsDesktop();
-  const canManage   = profile?.user_type === 'admin' || profile?.role === 'manager';
+  const { width }   = useWindowDimensions();
+  const isWide      = width >= 900;
+  const labId       = profile?.lab_id ?? profile?.id ?? null;
+  const isHub       = useHubContext();
 
-  const [period, setPeriod]         = useState(currentPeriod);
-  const [selectedEmpId, setSelected] = useState<string | null>(null);
-  const [rulesOpen, setRulesOpen]   = useState(false);
-  const [list, setList]             = useState<EmployeePerformance[]>([]);
-  const [listLoading, setListLoading] = useState(true);
+  const [range, setRange]       = useState<Range>('thisMonth');
+  const [matType, setMatType]   = useState('all');
+  const [sortKey, setSortKey]   = useState<SortKey>('profit');
+  const [sortDir, setSortDir]   = useState<SortDir>('desc');
+  const [rows, setRows]         = useState<PerfRow[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [matOpen, setMatOpen]   = useState(false);
 
-  const { employees } = useEmployees();
-
-  const loadList = useCallback(async () => {
-    setListLoading(true);
-    const { data } = await fetchPerformanceList(period);
-    setList((data as EmployeePerformance[]) ?? []);
-    setListLoading(false);
-  }, [period]);
-
-  useEffect(() => { loadList(); }, [loadList]);
-
-  const empRows = useMemo(() => {
-    const active = employees.filter(e => e.is_active);
-    return active.map(emp => ({
-      emp,
-      perf: list.find(p => p.employee_id === emp.id) ?? null,
-    }));
-  }, [employees, list]);
-
-  const selectedRow = empRows.find(r => r.emp.id === selectedEmpId);
-
-  // Period-level stats
-  const avgScore = list.length > 0
-    ? Math.round(list.reduce((s, p) => s + p.score, 0) / list.length) : 0;
-  const totalBonus = list.reduce((s, p) => s + Number(p.total_bonus ?? 0), 0);
-
-  return (
-    <View style={s.root}>
-      {/* LEFT: employee list */}
-      <View style={s.left}>
-        {/* Period selector */}
-        <View style={s.periodBar}>
-          <TouchableOpacity onPress={() => { setPeriod(p => shiftPeriod(p, -1)); setSelected(null); }} style={s.arrow}>
-            <AppIcon name="chevron-left" size={20} color={C.textSecondary} />
-          </TouchableOpacity>
-          <Text style={[s.periodLabel, { color: accentColor }]}>{fmtPeriod(period)}</Text>
-          <TouchableOpacity onPress={() => { setPeriod(p => shiftPeriod(p, 1)); setSelected(null); }} style={s.arrow}>
-            <AppIcon name="chevron-right" size={20} color={C.textSecondary} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Period summary */}
-        <View style={s.summaryRow}>
-          <SummaryChip label="Ort. Skor" value={`${avgScore}`} color={getScoreLevel(avgScore).color} />
-          <SummaryChip label="Top. Prim" value={fmtMoney(totalBonus)} color={C.success} />
-          <SummaryChip label="Çalışan" value={`${list.length}`} color={accentColor} />
-        </View>
-
-        {/* Rules button */}
-        {canManage && (
-          <TouchableOpacity style={[s.rulesBtn, { borderColor: accentColor }]} onPress={() => setRulesOpen(true)}>
-            <AppIcon name="sliders" size={14} color={accentColor} />
-            <Text style={[s.rulesBtnTxt, { color: accentColor }]}>Prim Kuralları</Text>
-          </TouchableOpacity>
-        )}
-
-        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-          {listLoading && empRows.filter(r => r.perf).length === 0
-            ? <View style={s.loadingBox}><ActivityIndicator color={accentColor} /></View>
-            : empRows.map(({ emp, perf }) => (
-                <EmpRow
-                  key={emp.id}
-                  name={emp.full_name}
-                  role={emp.role}
-                  perf={perf}
-                  selected={selectedEmpId === emp.id}
-                  onPress={() => setSelected(emp.id)}
-                  accentColor={accentColor}
-                />
-              ))
-          }
-        </ScrollView>
-      </View>
-
-      {/* RIGHT: detail */}
-      <View style={s.right}>
-        {selectedRow ? (
-          <DetailPanel
-            employeeId={selectedRow.emp.id}
-            employeeName={selectedRow.emp.full_name}
-            employeeRole={selectedRow.emp.role}
-            period={period}
-            accentColor={accentColor}
-            canManage={canManage}
-            onRefresh={loadList}
-          />
-        ) : (
-          <EmptyState accentColor={accentColor} />
-        )}
-      </View>
-
-      {/* Rules modal */}
-      {rulesOpen && (
-        <RulesModal accentColor={accentColor} onClose={() => setRulesOpen(false)} />
-      )}
-    </View>
-  );
-}
-
-// ─── Summary chip ─────────────────────────────────────────────────────────────
-function SummaryChip({ label, value, color }: { label: string; value: string; color: string }) {
-  return (
-    <View style={sc.chip}>
-      <Text style={[sc.val, { color }]}>{value}</Text>
-      <Text style={sc.lbl}>{label}</Text>
-    </View>
-  );
-}
-const sc = StyleSheet.create({
-  chip: { flex: 1, alignItems: 'center', backgroundColor: C.surfaceAlt, borderRadius: 10, paddingVertical: 8 },
-  val:  { fontSize: 14, fontWeight: '700', fontFamily: F.bold },
-  lbl:  { fontSize: 10, fontFamily: F.medium, color: C.textMuted, marginTop: 2 },
-});
-
-// ─── Employee row ─────────────────────────────────────────────────────────────
-function EmpRow({ name, role, perf, selected, onPress, accentColor }: {
-  name: string; role: string; perf: EmployeePerformance | null;
-  selected: boolean; onPress: () => void; accentColor: string;
-}) {
-  const lvl = perf ? getScoreLevel(perf.score) : null;
-  return (
-    <TouchableOpacity
-      style={[er.row, selected && { backgroundColor: `${accentColor}10`, borderRightWidth: 3, borderRightColor: accentColor }]}
-      onPress={onPress}
-      activeOpacity={0.75}
-    >
-      <View style={[er.avatar, { backgroundColor: `${accentColor}15` }]}>
-        <Text style={[er.avatarTxt, { color: accentColor }]}>{name[0]?.toUpperCase()}</Text>
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={er.name} numberOfLines={1}>{name}</Text>
-        <Text style={er.role}>{role}</Text>
-      </View>
-      {perf ? (
-        <View style={er.scoreArea}>
-          <Text style={[er.score, { color: lvl!.color }]}>{perf.score.toFixed(0)}</Text>
-          <View style={[er.scoreDot, { backgroundColor: lvl!.color }]} />
-        </View>
-      ) : (
-        <Text style={er.noCalc}>—</Text>
-      )}
-    </TouchableOpacity>
-  );
-}
-const er = StyleSheet.create({
-  row:       { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: C.border },
-  avatar:    { width: 34, height: 34, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  avatarTxt: { fontSize: 14, fontWeight: '700', fontFamily: F.bold },
-  name:      { fontSize: 13, fontWeight: '600', fontFamily: F.semibold, color: C.textPrimary },
-  role:      { fontSize: 11, fontFamily: F.regular, color: C.textSecondary, marginTop: 1 },
-  scoreArea: { alignItems: 'center', gap: 3 },
-  score:     { fontSize: 18, fontWeight: '800', fontFamily: F.bold },
-  scoreDot:  { width: 6, height: 6, borderRadius: 3 },
-  noCalc:    { fontSize: 14, color: C.textMuted },
-});
-
-// ─── Detail panel ─────────────────────────────────────────────────────────────
-function DetailPanel({ employeeId, employeeName, employeeRole, period, accentColor, canManage, onRefresh }: {
-  employeeId: string; employeeName: string; employeeRole: string;
-  period: string; accentColor: string; canManage: boolean; onRefresh: () => void;
-}) {
-  const [perf, setPerf]       = useState<EmployeePerformance | null>(null);
-  const [bonuses, setBonuses] = useState<PerformanceBonus[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [calcLoading, setCalc] = useState(false);
-
-  const load = useCallback(async () => {
+  // ── Data fetch ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (!labId) return;
+    let cancelled = false;
     setLoading(true);
-    const { data: p } = await fetchPerformance(employeeId, period);
-    setPerf(p ?? null);
-    if (p?.id) {
-      const { data: b } = await fetchBonuses(p.id);
-      setBonuses(b ?? []);
+    const { from, to } = getRange(range);
+    supabase.rpc('report_technician_performance', {
+      p_lab_id:        labId,
+      p_from:          from,
+      p_to:            to,
+      p_material_type: matType === 'all' ? null : matType,
+    }).then(({ data }) => {
+      if (cancelled) return;
+      setRows((data ?? []) as PerfRow[]);
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [labId, range, matType]);
+
+  // ── Sort ───────────────────────────────────────────────────────
+  const toggleSort = useCallback((key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     } else {
-      setBonuses([]);
+      setSortKey(key);
+      setSortDir(key === 'waste' ? 'desc' : 'desc');
     }
-    setLoading(false);
-  }, [employeeId, period]);
+  }, [sortKey]);
 
-  useEffect(() => { load(); }, [load]);
+  const sorted = useMemo(() => {
+    const arr = [...rows];
+    const dir = sortDir === 'asc' ? 1 : -1;
+    arr.sort((a, b) => {
+      switch (sortKey) {
+        case 'efficiency': return dir * ((a.efficiency_pct ?? 100) - (b.efficiency_pct ?? 100));
+        case 'profit':     return dir * (a.profit_contribution - b.profit_contribution);
+        case 'waste':      return dir * (a.waste_qty - b.waste_qty);
+        case 'labor':      return dir * (a.labor_hours - b.labor_hours);
+        case 'orders':     return dir * (a.orders_worked - b.orders_worked);
+        default:           return 0;
+      }
+    });
+    return arr;
+  }, [rows, sortKey, sortDir]);
 
-  const handleCalc = async () => {
-    setCalc(true);
-    const { data: p } = await calculatePerformance(employeeId, period);
-    if (p) {
-      setPerf(p as EmployeePerformance);
-      // Calculate bonuses
-      const { data: b } = await calculateBonuses((p as EmployeePerformance).id);
-      setBonuses((b as PerformanceBonus[]) ?? []);
-    }
-    await load();
-    onRefresh();
-    setCalc(false);
-    toast.success('Performans hesaplandı');
-  };
-
-  const handleLock = async () => {
-    if (!perf?.id) return;
-    await lockPerformance(perf.id);
-    setPerf(prev => prev ? { ...prev, is_locked: true } : prev);
-    toast.success('Performans onaylandı ve kilitlendi');
-  };
-
-  const lvl = perf ? getScoreLevel(perf.score) : null;
-  const totalBonus = bonuses.reduce((s, b) => s + Number(b.bonus_amount), 0);
+  // ── Aggregates ─────────────────────────────────────────────────
+  const totals = useMemo(() => {
+    if (rows.length === 0) return null;
+    const t = {
+      totalProfit:  rows.reduce((s, r) => s + r.profit_contribution, 0),
+      totalWaste:   rows.reduce((s, r) => s + r.waste_cost, 0),
+      totalLabor:   rows.reduce((s, r) => s + r.labor_hours, 0),
+      totalOrders:  rows.reduce((s, r) => s + r.orders_worked, 0),
+      avgEfficiency: rows.filter(r => r.efficiency_pct !== null).length > 0
+        ? rows.filter(r => r.efficiency_pct !== null).reduce((s, r) => s + (r.efficiency_pct ?? 0), 0) /
+          rows.filter(r => r.efficiency_pct !== null).length
+        : null,
+      techCount: rows.length,
+    };
+    return t;
+  }, [rows]);
 
   return (
-    <ScrollView style={dp.scroll} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
-      {/* Header */}
-      <View style={dp.header}>
-        <View style={[dp.avatarLg, { backgroundColor: `${accentColor}18` }]}>
-          <Text style={[dp.avatarTxt, { color: accentColor }]}>{employeeName[0]?.toUpperCase()}</Text>
+    <ScrollView
+      style={{ flex: 1 }}
+      contentContainerStyle={{ paddingHorizontal: isHub ? 0 : 20, paddingTop: 4, paddingBottom: 40, gap: 14 }}
+      showsVerticalScrollIndicator={false}
+    >
+      {/* ── KPI Summary Row ────────────────────────────────────── */}
+      {totals && !loading && (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+          <KPIChip
+            icon={DollarSign} iconColor={CHIP_TONES.success.fg}
+            label="Toplam Kar Katkısı"
+            value={fmtCur(totals.totalProfit)}
+            tone={profitTone(totals.totalProfit)}
+          />
+          <KPIChip
+            icon={Flame} iconColor={CHIP_TONES.danger.fg}
+            label="Toplam Fire"
+            value={`−${fmt(totals.totalWaste)} ₺`}
+            tone={CHIP_TONES.danger}
+          />
+          <KPIChip
+            icon={Zap} iconColor={CHIP_TONES.info.fg}
+            label="Ort. Verim"
+            value={totals.avgEfficiency !== null ? `%${fmt1(totals.avgEfficiency)}` : '—'}
+            tone={totals.avgEfficiency !== null ? effTone(totals.avgEfficiency) : CHIP_TONES.neutral}
+          />
+          <KPIChip
+            icon={Timer} iconColor={DS.ink[500]}
+            label="Toplam Süre"
+            value={`${fmt1(totals.totalLabor)} sa`}
+            tone={CHIP_TONES.neutral}
+          />
+          <KPIChip
+            icon={BarChart3} iconColor={DS.ink[500]}
+            label="Teknisyen"
+            value={`${totals.techCount}`}
+            tone={CHIP_TONES.neutral}
+          />
         </View>
-        <View style={{ flex: 1 }}>
-          <Text style={dp.empName}>{employeeName}</Text>
-          <Text style={dp.empRole}>{employeeRole} · {fmtPeriod(period)}</Text>
+      )}
+
+      {/* ── Filters — dönem pills + materyal dropdown ─────────── */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center', zIndex: 20 }}>
+        {/* Dönem pill strip */}
+        {RANGE_OPTIONS.map(opt => {
+          const active = range === opt.key;
+          return (
+            <Pressable
+              key={opt.key}
+              onPress={() => setRange(opt.key)}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 6,
+                paddingHorizontal: active ? 14 : 12, paddingVertical: 6,
+                borderRadius: 9999,
+                backgroundColor: active ? DS.ink[900] : '#FFFFFF',
+                borderWidth: active ? 0 : 1, borderColor: DS.ink[300],
+                // @ts-ignore web
+                cursor: 'pointer',
+              }}
+            >
+              {active && <Calendar size={11} color="#FFFFFF" strokeWidth={2} />}
+              <Text style={{ fontSize: 12, fontWeight: '500', color: active ? '#FFFFFF' : DS.ink[500] }}>
+                {opt.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+
+        {/* Separator */}
+        <View style={{ width: 1, height: 20, backgroundColor: 'rgba(0,0,0,0.08)', marginHorizontal: 2 }} />
+
+        {/* Materyal dropdown */}
+        <View style={{ position: 'relative', zIndex: 30 }}>
+          <Pressable
+            onPress={() => setMatOpen(o => !o)}
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 6,
+              paddingHorizontal: 12, paddingVertical: 6,
+              borderRadius: 9999,
+              backgroundColor: matType !== 'all' ? DS.ink[900] : '#FFFFFF',
+              borderWidth: matType !== 'all' ? 0 : 1, borderColor: DS.ink[300],
+              // @ts-ignore web
+              cursor: 'pointer',
+            }}
+          >
+            <Wrench size={11} color={matType !== 'all' ? '#FFFFFF' : DS.ink[500]} strokeWidth={1.8} />
+            <Text style={{ fontSize: 12, fontWeight: '500', color: matType !== 'all' ? '#FFFFFF' : DS.ink[500] }}>
+              {MATERIAL_TYPES.find(m => m.key === matType)?.label ?? 'Materyal'}
+            </Text>
+            <ChevronDown size={11} color={matType !== 'all' ? '#FFFFFF' : DS.ink[400]} strokeWidth={2} />
+          </Pressable>
+          {matOpen && (
+            <View style={{
+              position: 'absolute', top: '100%', left: 0, marginTop: 4,
+              backgroundColor: '#FFFFFF', borderRadius: 14,
+              borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
+              ...(Platform.OS === 'web' ? { boxShadow: '0 4px 20px rgba(0,0,0,0.12)' } : {}),
+              minWidth: 160, zIndex: 50,
+              overflow: 'hidden',
+            }}>
+              {MATERIAL_TYPES.map(opt => (
+                <Pressable
+                  key={opt.key}
+                  onPress={() => { setMatType(opt.key); setMatOpen(false); }}
+                  style={{
+                    paddingHorizontal: 14, paddingVertical: 10,
+                    backgroundColor: matType === opt.key ? DS.ink[50] : 'transparent',
+                    // @ts-ignore web
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Text style={{
+                    fontSize: 13,
+                    fontWeight: matType === opt.key ? '600' : '400',
+                    color: matType === opt.key ? DS.ink[900] : DS.ink[500],
+                  }}>
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
         </View>
-        {perf?.is_locked && (
-          <View style={dp.lockedBadge}>
-            <AppIcon name="lock" size={12} color={C.success} />
-            <Text style={dp.lockedTxt}>Onaylandı</Text>
-          </View>
-        )}
       </View>
 
-      {loading || calcLoading ? (
-        <View style={dp.loadingBox}>
-          <ActivityIndicator size="large" color={accentColor} />
-          <Text style={dp.loadingTxt}>{calcLoading ? 'Hesaplanıyor…' : 'Yükleniyor…'}</Text>
+      {/* ── Table ──────────────────────────────────────────────── */}
+      {loading ? (
+        <View style={{ paddingVertical: 60, alignItems: 'center', zIndex: 1 }}>
+          <ActivityIndicator color={DS.ink[900]} />
+          <Text style={{ fontSize: 13, color: DS.ink[400], marginTop: 12 }}>Yükleniyor…</Text>
         </View>
-      ) : perf ? (
-        <>
-          {/* Score card */}
-          <View style={dp.scoreCard}>
-            <View style={dp.scoreLeft}>
-              <Text style={[dp.scoreBig, { color: lvl!.color }]}>{perf.score.toFixed(1)}</Text>
-              <Text style={dp.scoreMax}>/100</Text>
-            </View>
-            <View style={dp.scoreMid}>
-              <View style={[dp.scoreLevelBadge, { backgroundColor: `${lvl!.color}18` }]}>
-                <AppIcon name={lvl!.icon as any} size={14} color={lvl!.color} />
-                <Text style={[dp.scoreLevelTxt, { color: lvl!.color }]}>{lvl!.label}</Text>
-              </View>
-              {/* Score bar */}
-              <View style={dp.barBg}>
-                <View style={[dp.barFill, { width: `${Math.min(perf.score, 100)}%` as any, backgroundColor: lvl!.color }]} />
-              </View>
-            </View>
+      ) : sorted.length === 0 ? (
+        <View style={{ ...cardSolid, alignItems: 'center', paddingVertical: 60 }}>
+          <View style={{
+            width: 48, height: 48, borderRadius: 24,
+            backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', marginBottom: 12,
+          }}>
+            <Users size={22} color={DS.ink[400]} strokeWidth={1.5} />
           </View>
-
-          {/* Metrics grid */}
-          <View style={dp.section}>
-            <Text style={dp.sectionTitle}>Performans Metrikleri</Text>
-            <View style={dp.metricsGrid}>
-              <MetricCard
-                label="Tamamlanan"
-                value={`${perf.orders_completed}`}
-                sub={`/ ${perf.orders_assigned} atanan`}
-                icon="check-square" color={C.success}
-                rate={perf.completion_rate}
-              />
-              <MetricCard
-                label="Zamanında"
-                value={`%${perf.on_time_rate.toFixed(1)}`}
-                sub={`${perf.orders_on_time}/${perf.orders_completed} sipariş`}
-                icon="clock" color={C.primary}
-                rate={perf.on_time_rate}
-              />
-              <MetricCard
-                label="Kalite"
-                value={`%${perf.quality_pass_rate.toFixed(1)}`}
-                sub={`${perf.orders_quality_ok} sipariş`}
-                icon="star" color={C.warning}
-                rate={perf.quality_pass_rate}
-              />
-              <MetricCard
-                label="Geciken"
-                value={`${perf.orders_late}`}
-                sub="sipariş"
-                icon="alert-circle" color={perf.orders_late > 0 ? C.danger : C.textMuted}
-                rate={null}
-              />
-            </View>
-          </View>
-
-          {/* Bonuses */}
-          {bonuses.length > 0 && (
-            <View style={dp.section}>
-              <Text style={dp.sectionTitle}>Prim Hesabı</Text>
-              <View style={dp.bonusCard}>
-                {bonuses.map((b, i) => (
-                  <View key={b.id} style={[dp.bonusRow, i > 0 && { borderTopWidth: 1, borderTopColor: C.border }]}>
-                    <View style={dp.bonusLeft}>
-                      <Text style={dp.bonusDesc}>{b.description}</Text>
-                      <Text style={dp.bonusMeta}>Gerçekleşen: {b.metric_value.toFixed(1)}</Text>
-                    </View>
-                    <Text style={dp.bonusAmt}>{fmtMoney(b.bonus_amount)}</Text>
-                  </View>
-                ))}
-                <View style={dp.bonusTotal}>
-                  <Text style={dp.bonusTotalLabel}>Toplam Prim</Text>
-                  <Text style={[dp.bonusTotalAmt, { color: accentColor }]}>{fmtMoney(totalBonus)}</Text>
-                </View>
-              </View>
-            </View>
-          )}
-
-          {/* Revenue */}
-          {perf.revenue_generated > 0 && (
-            <View style={dp.section}>
-              <View style={dp.revenueCard}>
-                <AppIcon name="trending-up" size={18} color={C.success} />
-                <View style={{ flex: 1 }}>
-                  <Text style={dp.revenueLabel}>Üretilen Ciro</Text>
-                  <Text style={dp.revenueValue}>{fmtMoney(perf.revenue_generated)}</Text>
-                </View>
-              </View>
-            </View>
-          )}
-
-          {/* Actions */}
-          {canManage && (
-            <View style={dp.actions}>
-              {!perf.is_locked && (
-                <>
-                  <TouchableOpacity
-                    style={[dp.btn, dp.btnOutline]}
-                    onPress={handleCalc}
-                    disabled={calcLoading}
-                  >
-                    <AppIcon name="refresh-cw" size={14} color={accentColor} />
-                    <Text style={[dp.btnTxt, { color: accentColor }]}>Yeniden Hesapla</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[dp.btn, { backgroundColor: accentColor }]} onPress={handleLock}>
-                    <AppIcon name="lock" size={14} color="#FFF" />
-                    <Text style={[dp.btnTxt, { color: '#FFF' }]}>Onayla & Kilitle</Text>
-                  </TouchableOpacity>
-                </>
-              )}
-              {perf.is_locked && (
-                <View style={dp.lockedInfo}>
-                  <AppIcon name="check-circle" size={16} color={C.success} />
-                  <Text style={dp.lockedInfoTxt}>Bu dönem performansı onaylandı</Text>
-                </View>
-              )}
-            </View>
-          )}
-        </>
+          <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[900], marginBottom: 4 }}>
+            Veri yok
+          </Text>
+          <Text style={{ fontSize: 13, color: DS.ink[400], textAlign: 'center', maxWidth: 280, lineHeight: 19 }}>
+            Bu aralıkta teknisyen aktivitesi bulunamadı.
+          </Text>
+        </View>
       ) : (
-        <View style={dp.noData}>
-          <AppIcon name="bar-chart-2" size={40} color={C.textMuted} />
-          <Text style={dp.noDataTxt}>Bu dönem için performans hesaplanmamış</Text>
-          {canManage && (
-            <TouchableOpacity style={[dp.calcBtn, { backgroundColor: accentColor }]} onPress={handleCalc} disabled={calcLoading}>
-              {calcLoading
-                ? <ActivityIndicator size="small" color="#FFF" />
-                : <><AppIcon name="zap" size={16} color="#FFF" /><Text style={dp.calcBtnTxt}>Hesapla</Text></>
-              }
-            </TouchableOpacity>
+        <View style={{ ...tableCard, zIndex: 1 }}>
+
+          {/* Desktop table header */}
+          {isWide && (
+            <View style={{
+              flexDirection: 'row', alignItems: 'center',
+              paddingHorizontal: 20, paddingVertical: 10,
+              backgroundColor: '#FAFAFA',
+              borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)',
+            }}>
+              <Text style={{ ...colH, flex: 2.4 }}>TEKNİSYEN</Text>
+              <SortableHeader label="SİPARİŞ" flex={0.9} sortKey="orders" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} />
+              <Text style={{ ...colH, flex: 1.2, textAlign: 'right' }}>KULLANIM</Text>
+              <SortableHeader label="FİRE" flex={1.2} sortKey="waste" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="right" />
+              <SortableHeader label="VERİM" flex={1} sortKey="efficiency" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="center" />
+              <SortableHeader label="SÜRE" flex={1} sortKey="labor" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="right" />
+              <SortableHeader label="KAR KATKISI" flex={1.4} sortKey="profit" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="right" />
+            </View>
+          )}
+
+          {sorted.map((row, i) => (
+            <RowView key={row.user_id} row={row} isLast={i === sorted.length - 1} isWide={isWide} />
+          ))}
+
+          {/* Totals row — desktop only */}
+          {isWide && totals && (
+            <View style={{
+              flexDirection: 'row', alignItems: 'center',
+              paddingHorizontal: 20, paddingVertical: 12,
+              backgroundColor: '#FAFAFA',
+              borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
+            }}>
+              <Text style={{ ...colH, flex: 2.4, fontSize: 11, fontWeight: '700', color: DS.ink[700] }}>
+                TOPLAM ({totals.techCount} teknisyen)
+              </Text>
+              <View style={{ flex: 0.9, alignItems: 'center' }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: DS.ink[700] }}>{fmt(totals.totalOrders)}</Text>
+              </View>
+              <View style={{ flex: 1.2 }} />
+              <View style={{ flex: 1.2, alignItems: 'flex-end', paddingRight: 8 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: CHIP_TONES.danger.fg }}>
+                  −{fmt(totals.totalWaste)} ₺
+                </Text>
+              </View>
+              <View style={{ flex: 1, alignItems: 'center' }}>
+                {totals.avgEfficiency !== null && (
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: effTone(totals.avgEfficiency).fg }}>
+                    %{fmt1(totals.avgEfficiency)}
+                  </Text>
+                )}
+              </View>
+              <View style={{ flex: 1, alignItems: 'flex-end', paddingRight: 8 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: DS.ink[700] }}>{fmt1(totals.totalLabor)} sa</Text>
+              </View>
+              <View style={{ flex: 1.4, alignItems: 'flex-end' }}>
+                <Text style={{
+                  fontSize: 13, fontWeight: '700',
+                  color: totals.totalProfit >= 0 ? CHIP_TONES.success.fg : CHIP_TONES.danger.fg,
+                }}>
+                  {totals.totalProfit >= 0 ? '+' : '−'}{fmt(Math.abs(totals.totalProfit))} ₺
+                </Text>
+              </View>
+            </View>
           )}
         </View>
       )}
@@ -402,371 +425,239 @@ function DetailPanel({ employeeId, employeeName, employeeRole, period, accentCol
   );
 }
 
-const dp = StyleSheet.create({
-  scroll: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 24, borderBottomWidth: 1, borderBottomColor: C.border },
-  avatarLg: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  avatarTxt: { fontSize: 20, fontWeight: '800', fontFamily: F.bold },
-  empName:  { fontSize: 18, fontWeight: '700', fontFamily: F.bold, color: C.textPrimary },
-  empRole:  { fontSize: 12, fontFamily: F.regular, color: C.textSecondary, marginTop: 2 },
-  lockedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.successBg, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 5 },
-  lockedTxt: { fontSize: 11, fontWeight: '600', fontFamily: F.semibold, color: C.success },
-
-  loadingBox: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60, gap: 12 },
-  loadingTxt: { fontSize: 13, fontFamily: F.regular, color: C.textSecondary },
-
-  scoreCard: { flexDirection: 'row', alignItems: 'center', gap: 20, margin: 20, backgroundColor: '#FAFBFC', borderRadius: 16, borderWidth: 1, borderColor: C.border, padding: 20 },
-  scoreLeft: { flexDirection: 'row', alignItems: 'flex-end', gap: 2 },
-  scoreBig:  { fontSize: 48, fontWeight: '800', fontFamily: F.bold, lineHeight: 52 },
-  scoreMax:  { fontSize: 16, fontFamily: F.medium, color: C.textMuted, paddingBottom: 6 },
-  scoreMid:  { flex: 1, gap: 10 },
-  scoreLevelBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, alignSelf: 'flex-start' },
-  scoreLevelTxt: { fontSize: 13, fontWeight: '700', fontFamily: F.bold },
-  barBg:  { height: 8, backgroundColor: '#E2E8F0', borderRadius: 4 },
-  barFill:{ height: 8, borderRadius: 4 },
-
-  section:      { paddingHorizontal: 20, paddingTop: 20 },
-  sectionTitle: { fontSize: 11, fontWeight: '600', fontFamily: F.semibold, color: C.textMuted, letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 12 },
-  metricsGrid:  { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-
-  bonusCard: { backgroundColor: '#FAFBFC', borderRadius: 14, borderWidth: 1, borderColor: C.border, overflow: 'hidden' },
-  bonusRow:  { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12 },
-  bonusLeft: { flex: 1 },
-  bonusDesc: { fontSize: 13, fontWeight: '600', fontFamily: F.semibold, color: C.textPrimary },
-  bonusMeta: { fontSize: 11, fontFamily: F.regular, color: C.textMuted, marginTop: 2 },
-  bonusAmt:  { fontSize: 14, fontWeight: '700', fontFamily: F.bold, color: C.success },
-  bonusTotal: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderTopWidth: 1, borderTopColor: C.borderMid, backgroundColor: '#FFFFFF' },
-  bonusTotalLabel: { fontSize: 14, fontWeight: '700', fontFamily: F.bold, color: C.textPrimary },
-  bonusTotalAmt:   { fontSize: 18, fontWeight: '800', fontFamily: F.bold },
-
-  revenueCard: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: C.successBg, borderRadius: 14, borderWidth: 1, borderColor: C.successBorder, padding: 16 },
-  revenueLabel: { fontSize: 12, fontFamily: F.medium, color: C.textSecondary },
-  revenueValue: { fontSize: 20, fontWeight: '800', fontFamily: F.bold, color: C.success },
-
-  actions:    { flexDirection: 'row', gap: 10, paddingHorizontal: 20, paddingTop: 16 },
-  btn:        { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: 12, paddingVertical: 13 },
-  btnOutline: { borderWidth: 1.5, borderColor: C.borderMid },
-  btnTxt:     { fontSize: 13, fontWeight: '600', fontFamily: F.semibold },
-  lockedInfo: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.successBg, borderRadius: 10, padding: 13 },
-  lockedInfoTxt: { fontSize: 13, fontFamily: F.medium, color: C.success },
-
-  noData:   { alignItems: 'center', paddingVertical: 56, paddingHorizontal: 24, gap: 12 },
-  noDataTxt:{ fontSize: 14, fontFamily: F.regular, color: C.textSecondary, textAlign: 'center' },
-  calcBtn:  { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 13, marginTop: 8 },
-  calcBtnTxt: { fontSize: 14, fontWeight: '700', fontFamily: F.bold, color: '#FFF' },
-});
-
-// ─── Metric card ──────────────────────────────────────────────────────────────
-function MetricCard({ label, value, sub, icon, color, rate }: {
-  label: string; value: string; sub: string; icon: string; color: string; rate: number | null;
+// ── KPI Chip ─────────────────────────────────────────────────────────
+function KPIChip({ icon: Icon, iconColor, label, value, tone }: {
+  icon: React.ComponentType<any>; iconColor: string;
+  label: string; value: string;
+  tone: { bg: string; fg: string };
 }) {
   return (
-    <View style={mc.card}>
-      <View style={[mc.iconBox, { backgroundColor: `${color}12` }]}>
-        <AppIcon name={icon as any} size={16} color={color} />
+    <View style={{
+      ...cardSolid,
+      padding: 14,
+      paddingHorizontal: 16,
+      flex: 1,
+      minWidth: 140,
+      gap: 6,
+    }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <Icon size={13} color={iconColor} strokeWidth={1.8} />
+        <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[400], letterSpacing: 0.3 }}>
+          {label}
+        </Text>
       </View>
-      <Text style={[mc.value, { color }]}>{value}</Text>
-      <Text style={mc.label}>{label}</Text>
-      <Text style={mc.sub}>{sub}</Text>
-      {rate !== null && (
-        <View style={mc.barBg}>
-          <View style={[mc.barFill, { width: `${Math.min(rate, 100)}%` as any, backgroundColor: color }]} />
-        </View>
-      )}
+      <Text style={{ fontSize: 18, fontWeight: '600', color: tone.fg, letterSpacing: -0.3 }}>
+        {value}
+      </Text>
     </View>
   );
 }
-const mc = StyleSheet.create({
-  card:   { width: '47%', backgroundColor: '#FAFBFC', borderRadius: 12, borderWidth: 1, borderColor: C.border, padding: 14, gap: 4 },
-  iconBox:{ width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
-  value:  { fontSize: 20, fontWeight: '800', fontFamily: F.bold },
-  label:  { fontSize: 11, fontWeight: '600', fontFamily: F.semibold, color: C.textSecondary },
-  sub:    { fontSize: 10, fontFamily: F.regular, color: C.textMuted },
-  barBg:  { height: 3, backgroundColor: '#E2E8F0', borderRadius: 2, marginTop: 6 },
-  barFill:{ height: 3, borderRadius: 2 },
-});
 
-// ─── Rules modal ──────────────────────────────────────────────────────────────
-function RulesModal({ accentColor, onClose }: { accentColor: string; onClose: () => void }) {
-  const [rules, setRules]   = useState<PerformanceRule[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [editRule, setEdit] = useState<PerformanceRule | null>(null);
-  const [addOpen, setAdd]   = useState(false);
-
-  const load = async () => {
-    setLoading(true);
-    const { data } = await fetchRules();
-    setRules((data as PerformanceRule[]) ?? []);
-    setLoading(false);
-  };
-
-  useEffect(() => { load(); }, []);
-
-  const handleToggle = async (rule: PerformanceRule) => {
-    await toggleRule(rule.id, !rule.is_active);
-    setRules(prev => prev.map(r => r.id === rule.id ? { ...r, is_active: !r.is_active } : r));
-  };
-
-  const handleDelete = (rule: PerformanceRule) => {
-    Alert.alert('Kuralı Sil', `"${rule.name}" kuralı silinsin mi?`, [
-      { text: 'İptal', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: async () => {
-        await deleteRule(rule.id);
-        setRules(prev => prev.filter(r => r.id !== rule.id));
-        toast.success('Kural silindi');
-      }},
-    ]);
-  };
-
+// ── Sortable Header ──────────────────────────────────────────────────
+function SortableHeader({ label, flex, sortKey, currentSort, currentDir, onPress, align = 'left' }: {
+  label: string; flex: number; sortKey: SortKey;
+  currentSort: SortKey; currentDir: SortDir;
+  onPress: (key: SortKey) => void;
+  align?: 'left' | 'center' | 'right';
+}) {
+  const active = currentSort === sortKey;
   return (
-    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={rm.root}>
-        <View style={rm.header}>
-          <View style={{ flex: 1 }}>
-            <Text style={rm.title}>Prim Kuralları</Text>
-            <Text style={rm.sub}>Performans kriterlerini ve prim miktarlarını ayarlayın</Text>
+    <Pressable
+      onPress={() => onPress(sortKey)}
+      style={{
+        flex, flexDirection: 'row', alignItems: 'center', gap: 3,
+        justifyContent: align === 'right' ? 'flex-end' : align === 'center' ? 'center' : 'flex-start',
+        paddingRight: align === 'right' ? 8 : 0,
+        // @ts-ignore web
+        cursor: 'pointer',
+      }}
+    >
+      <Text style={{
+        ...colH,
+        color: active ? DS.ink[900] : DS.ink[500],
+        fontWeight: active ? '700' : '600',
+      }}>
+        {label}
+      </Text>
+      {active ? (
+        currentDir === 'asc'
+          ? <ChevronUp size={10} color={DS.ink[900]} strokeWidth={2.5} />
+          : <ChevronDown size={10} color={DS.ink[900]} strokeWidth={2.5} />
+      ) : (
+        <ArrowUpDown size={9} color={DS.ink[300]} strokeWidth={2} />
+      )}
+    </Pressable>
+  );
+}
+
+// ── Column header style ──────────────────────────────────────────────
+const colH: any = {
+  fontSize: 10, fontWeight: '600', letterSpacing: 0.7,
+  textTransform: 'uppercase', color: DS.ink[500],
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// ROW
+// ═══════════════════════════════════════════════════════════════════════
+function RowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWide: boolean }) {
+  const eff  = row.efficiency_pct;
+  const chip = effTone(eff);
+  const initials = (row.user_name ?? '??').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+  const wasteHigh = row.waste_qty > 0 && (eff ?? 100) < 90;
+
+  if (isWide) {
+    return (
+      <View style={{
+        flexDirection: 'row', alignItems: 'center',
+        paddingHorizontal: 20, paddingVertical: 14,
+        borderBottomWidth: isLast ? 0 : 1, borderBottomColor: 'rgba(0,0,0,0.04)',
+      }}>
+        {/* Teknisyen */}
+        <View style={{ flex: 2.4, flexDirection: 'row', alignItems: 'center', gap: 10, paddingRight: 8 }}>
+          <View style={{
+            width: 34, height: 34, borderRadius: 17,
+            backgroundColor: 'rgba(139,92,184,0.12)',
+            alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: '#6B3F94' }}>{initials}</Text>
           </View>
-          <TouchableOpacity onPress={onClose} style={rm.closeBtn}>
-            <AppIcon name="x" size={20} color={C.textSecondary} />
-          </TouchableOpacity>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+              {row.user_name ?? '—'}
+            </Text>
+            <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }} numberOfLines={1}>
+              {row.hourly_rate > 0 ? `${fmt(row.hourly_rate)} ₺/sa` : '—'}
+            </Text>
+          </View>
         </View>
 
-        <TouchableOpacity style={[rm.addBtn, { borderColor: accentColor }]} onPress={() => setAdd(true)}>
-          <AppIcon name="plus" size={14} color={accentColor} />
-          <Text style={[rm.addBtnTxt, { color: accentColor }]}>Yeni Kural Ekle</Text>
-        </TouchableOpacity>
+        {/* Sipariş */}
+        <View style={{ flex: 0.9, alignItems: 'center' }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }}>{row.orders_worked}</Text>
+        </View>
 
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 10 }}>
-          {loading ? (
-            <ActivityIndicator color={accentColor} style={{ marginTop: 40 }} />
-          ) : rules.length === 0 ? (
-            <View style={rm.empty}>
-              <AppIcon name="sliders" size={32} color={C.textMuted} />
-              <Text style={rm.emptyTxt}>Henüz prim kuralı tanımlanmamış</Text>
+        {/* Kullanım */}
+        <View style={{ flex: 1.2, alignItems: 'flex-end', paddingRight: 8 }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }}>{fmt1(row.used_qty)}</Text>
+          {row.used_cost > 0 && (
+            <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }}>{fmt(row.used_cost)} ₺</Text>
+          )}
+        </View>
+
+        {/* Fire */}
+        <View style={{ flex: 1.2, alignItems: 'flex-end', paddingRight: 8 }}>
+          <Text style={{
+            fontSize: 14, fontWeight: '600',
+            color: wasteHigh ? CHIP_TONES.danger.fg : DS.ink[900],
+          }}>
+            {fmt1(row.waste_qty)}
+          </Text>
+          {row.waste_cost > 0 && (
+            <Text style={{ fontSize: 11, color: CHIP_TONES.danger.fg, marginTop: 1 }}>
+              −{fmt(row.waste_cost)} ₺
+            </Text>
+          )}
+        </View>
+
+        {/* Verim */}
+        <View style={{ flex: 1, alignItems: 'center', paddingRight: 8 }}>
+          {eff !== null ? (
+            <View style={{
+              paddingHorizontal: 12, paddingVertical: 5,
+              borderRadius: 9999, backgroundColor: chip.bg,
+              minWidth: 60, alignItems: 'center',
+            }}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: chip.fg }}>%{fmt1(eff)}</Text>
             </View>
-          ) : rules.map(rule => {
-            const metCfg = METRIC_LABELS[rule.metric];
-            return (
-              <View key={rule.id} style={[rm.ruleCard, !rule.is_active && { opacity: 0.5 }]}>
-                <View style={rm.ruleTop}>
-                  <View style={[rm.ruleIcon, { backgroundColor: `${accentColor}12` }]}>
-                    <AppIcon name={metCfg.icon as any} size={14} color={accentColor} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={rm.ruleName}>{rule.name}</Text>
-                    <Text style={rm.ruleMeta}>{metCfg.label} · {THRESHOLD_TYPE_LABELS[rule.threshold_type]}</Text>
-                  </View>
-                  <Switch
-                    value={rule.is_active}
-                    onValueChange={() => handleToggle(rule)}
-                    trackColor={{ true: accentColor }}
-                  />
-                </View>
-                <View style={rm.ruleDetails}>
-                  <Text style={rm.ruleDetailTxt}>
-                    Eşik: {rule.threshold_value} {metCfg.unit} → Prim: {rule.bonus_type === 'percent'
-                      ? `%${rule.bonus_amount} maaş`
-                      : `₺${rule.bonus_amount}`}
-                  </Text>
-                  <Text style={rm.ruleDetailTxt}>
-                    Uygulanır: {rule.applies_to === 'all' ? 'Tüm çalışanlar' : rule.applies_to.replace('role_', '')}
-                  </Text>
-                </View>
-                <View style={rm.ruleActions}>
-                  <TouchableOpacity onPress={() => setEdit(rule)} style={rm.ruleActionBtn}>
-                    <AppIcon name="edit-2" size={13} color={accentColor} />
-                    <Text style={[rm.ruleActionTxt, { color: accentColor }]}>Düzenle</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleDelete(rule)} style={rm.ruleActionBtn}>
-                    <AppIcon name="trash-2" size={13} color={C.danger} />
-                    <Text style={[rm.ruleActionTxt, { color: C.danger }]}>Sil</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            );
-          })}
-        </ScrollView>
+          ) : (
+            <Text style={{ fontSize: 11, color: DS.ink[400] }}>—</Text>
+          )}
+        </View>
+
+        {/* Süre */}
+        <View style={{ flex: 1, alignItems: 'flex-end', paddingRight: 8 }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }}>
+            {fmt1(row.labor_hours)}<Text style={{ fontSize: 10, color: DS.ink[400], fontWeight: '500' }}> sa</Text>
+          </Text>
+          {row.labor_cost > 0 && (
+            <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }}>{fmt(row.labor_cost)} ₺</Text>
+          )}
+        </View>
+
+        {/* Kar Katkısı */}
+        <View style={{ flex: 1.4, alignItems: 'flex-end' }}>
+          <Text style={{
+            fontSize: 14, fontWeight: '600',
+            color: row.profit_contribution >= 0 ? CHIP_TONES.success.fg : CHIP_TONES.danger.fg,
+          }}>
+            {row.profit_contribution >= 0 ? '+' : '−'}{fmt(Math.abs(row.profit_contribution))} ₺
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  // ── Mobile: stacked card row ──────────────────────────────────
+  return (
+    <View style={{
+      paddingHorizontal: 20, paddingVertical: 14, gap: 10,
+      borderBottomWidth: isLast ? 0 : 1, borderBottomColor: 'rgba(0,0,0,0.04)',
+    }}>
+      {/* Top — avatar + name + efficiency chip */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <View style={{
+          width: 34, height: 34, borderRadius: 17,
+          backgroundColor: 'rgba(139,92,184,0.12)',
+          alignItems: 'center', justifyContent: 'center',
+        }}>
+          <Text style={{ fontSize: 11, fontWeight: '600', color: '#6B3F94' }}>{initials}</Text>
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+            {row.user_name ?? '—'}
+          </Text>
+          <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }}>
+            {row.orders_worked} sipariş · {row.hourly_rate > 0 ? `${fmt(row.hourly_rate)} ₺/sa` : '—'}
+          </Text>
+        </View>
+        {eff !== null ? (
+          <View style={{
+            paddingHorizontal: 10, paddingVertical: 4,
+            borderRadius: 9999, backgroundColor: chip.bg,
+          }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: chip.fg }}>%{fmt1(eff)}</Text>
+          </View>
+        ) : null}
       </View>
 
-      {(addOpen || editRule) && (
-        <RuleFormModal
-          rule={editRule}
-          accentColor={accentColor}
-          onClose={() => { setAdd(false); setEdit(null); }}
-          onSaved={() => { setAdd(false); setEdit(null); load(); }}
+      {/* Bottom — metric strip */}
+      <View style={{ flexDirection: 'row', gap: 12, paddingLeft: 44 }}>
+        <MiniStat label="Kullanım" value={fmt1(row.used_qty)} />
+        <MiniStat label="Fire" value={fmt1(row.waste_qty)} color={wasteHigh ? CHIP_TONES.danger.fg : undefined} />
+        <MiniStat label="Süre" value={`${fmt1(row.labor_hours)} sa`} />
+        <MiniStat
+          label="Kar"
+          value={`${row.profit_contribution >= 0 ? '+' : '−'}${fmt(Math.abs(row.profit_contribution))}`}
+          color={row.profit_contribution >= 0 ? CHIP_TONES.success.fg : CHIP_TONES.danger.fg}
         />
-      )}
-    </Modal>
-  );
-}
-
-const rm = StyleSheet.create({
-  root:   { flex: 1, backgroundColor: '#FAFBFC' },
-  header: { flexDirection: 'row', alignItems: 'flex-start', padding: 20, paddingTop: 28, borderBottomWidth: 1, borderBottomColor: C.border, gap: 12 },
-  title:  { fontSize: 18, fontWeight: '700', fontFamily: F.bold, color: C.textPrimary },
-  sub:    { fontSize: 12, fontFamily: F.regular, color: C.textSecondary, marginTop: 2 },
-  closeBtn: { padding: 8 },
-  addBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, margin: 16, borderWidth: 1.5, borderRadius: 12, paddingVertical: 11, paddingHorizontal: 16 },
-  addBtnTxt: { fontSize: 14, fontWeight: '600', fontFamily: F.semibold },
-  empty:  { alignItems: 'center', paddingVertical: 40, gap: 10 },
-  emptyTxt: { fontSize: 13, fontFamily: F.regular, color: C.textSecondary },
-  ruleCard: { backgroundColor: '#FFFFFF', borderRadius: 14, borderWidth: 1, borderColor: C.border, padding: 14, gap: 10 },
-  ruleTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  ruleIcon: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  ruleName: { fontSize: 14, fontWeight: '600', fontFamily: F.semibold, color: C.textPrimary },
-  ruleMeta: { fontSize: 11, fontFamily: F.regular, color: C.textSecondary, marginTop: 1 },
-  ruleDetails: { gap: 3 },
-  ruleDetailTxt: { fontSize: 12, fontFamily: F.regular, color: C.textSecondary },
-  ruleActions: { flexDirection: 'row', gap: 16, paddingTop: 6, borderTopWidth: 1, borderTopColor: C.border },
-  ruleActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  ruleActionTxt: { fontSize: 12, fontWeight: '600', fontFamily: F.semibold },
-});
-
-// ─── Rule form modal ──────────────────────────────────────────────────────────
-function RuleFormModal({ rule, accentColor, onClose, onSaved }: {
-  rule: PerformanceRule | null; accentColor: string; onClose: () => void; onSaved: () => void;
-}) {
-  const [name, setName]           = useState(rule?.name ?? '');
-  const [metric, setMetric]       = useState<PerfMetric>(rule?.metric ?? 'orders_completed');
-  const [threshType, setThreshType] = useState<ThresholdType>(rule?.threshold_type ?? 'min');
-  const [threshVal, setThreshVal] = useState(String(rule?.threshold_value ?? ''));
-  const [bonusType, setBonusType] = useState<BonusType>(rule?.bonus_type ?? 'fixed');
-  const [bonusAmt, setBonusAmt]   = useState(String(rule?.bonus_amount ?? ''));
-  const [saving, setSaving]       = useState(false);
-
-  const metrics: PerfMetric[] = ['orders_completed', 'on_time_rate', 'quality_pass_rate', 'revenue_generated'];
-  const threshTypes: ThresholdType[] = ['min', 'target', 'per_unit'];
-  const bonusTypes: BonusType[] = ['fixed', 'percent', 'per_unit'];
-
-  const handleSave = async () => {
-    if (!name.trim() || !threshVal || !bonusAmt) return;
-    setSaving(true);
-    await saveRule({
-      id: rule?.id,
-      name: name.trim(),
-      description: null,
-      metric,
-      threshold_type: threshType,
-      threshold_value: parseFloat(threshVal),
-      bonus_type: bonusType,
-      bonus_amount: parseFloat(bonusAmt),
-      applies_to: 'all',
-      is_active: rule?.is_active ?? true,
-    } as any);
-    onSaved();
-    toast.success(rule ? 'Kural güncellendi' : 'Kural eklendi');
-  };
-
-  return (
-    <Modal visible animationType="slide" presentationStyle="formSheet" onRequestClose={onClose}>
-      <View style={rf.root}>
-        <View style={rf.header}>
-          <Text style={rf.title}>{rule ? 'Kuralı Düzenle' : 'Yeni Prim Kuralı'}</Text>
-          <TouchableOpacity onPress={onClose}><AppIcon name="x" size={20} color={C.textSecondary} /></TouchableOpacity>
-        </View>
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, gap: 18 }}>
-          <FieldGroup label="Kural Adı">
-            <TextInput style={rf.input} value={name} onChangeText={setName} placeholder="örn. Teslim Primi" placeholderTextColor={C.textMuted} />
-          </FieldGroup>
-          <FieldGroup label="Metrik">
-            <View style={rf.optionGrid}>
-              {metrics.map(m => (
-                <TouchableOpacity key={m} style={[rf.option, metric === m && { backgroundColor: accentColor, borderColor: accentColor }]} onPress={() => setMetric(m)}>
-                  <AppIcon name={METRIC_LABELS[m].icon as any} size={12} color={metric === m ? '#FFF' : C.textSecondary} />
-                  <Text style={[rf.optionTxt, metric === m && { color: '#FFF' }]}>{METRIC_LABELS[m].label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </FieldGroup>
-          <FieldGroup label="Eşik Türü">
-            {threshTypes.map(t => (
-              <TouchableOpacity key={t} style={[rf.radio, threshType === t && { borderColor: accentColor }]} onPress={() => setThreshType(t)}>
-                <View style={[rf.radioDot, threshType === t && { backgroundColor: accentColor }]} />
-                <Text style={rf.radioTxt}>{THRESHOLD_TYPE_LABELS[t]}</Text>
-              </TouchableOpacity>
-            ))}
-          </FieldGroup>
-          <FieldGroup label={`Eşik Değeri (${METRIC_LABELS[metric].unit})`}>
-            <TextInput style={rf.input} value={threshVal} onChangeText={setThreshVal} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={C.textMuted} />
-          </FieldGroup>
-          <FieldGroup label="Prim Türü">
-            <View style={rf.optionGrid}>
-              {bonusTypes.map(b => (
-                <TouchableOpacity key={b} style={[rf.option, bonusType === b && { backgroundColor: accentColor, borderColor: accentColor }]} onPress={() => setBonusType(b)}>
-                  <Text style={[rf.optionTxt, bonusType === b && { color: '#FFF' }]}>{BONUS_TYPE_LABELS[b]}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </FieldGroup>
-          <FieldGroup label="Prim Miktarı">
-            <TextInput style={rf.input} value={bonusAmt} onChangeText={setBonusAmt} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={C.textMuted} />
-          </FieldGroup>
-        </ScrollView>
-        <View style={{ padding: 20, borderTopWidth: 1, borderTopColor: C.border }}>
-          <TouchableOpacity
-            style={[rf.saveBtn, { backgroundColor: accentColor, opacity: saving || !name.trim() || !threshVal || !bonusAmt ? 0.6 : 1 }]}
-            onPress={handleSave}
-            disabled={saving || !name.trim() || !threshVal || !bonusAmt}
-          >
-            {saving ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={rf.saveTxt}>Kaydet</Text>}
-          </TouchableOpacity>
-        </View>
       </View>
-    </Modal>
-  );
-}
-
-function FieldGroup({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <View style={{ gap: 8 }}>
-      <Text style={rf.fieldLabel}>{label}</Text>
-      {children}
     </View>
   );
 }
 
-const rf = StyleSheet.create({
-  root:   { flex: 1, backgroundColor: '#FAFBFC' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, paddingTop: 28, borderBottomWidth: 1, borderBottomColor: C.border },
-  title:  { fontSize: 17, fontWeight: '700', fontFamily: F.bold, color: C.textPrimary },
-  fieldLabel: { fontSize: 13, fontWeight: '600', fontFamily: F.semibold, color: C.textPrimary },
-  input:  { backgroundColor: '#FFFFFF', borderWidth: 1.5, borderColor: C.borderMid, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, fontFamily: F.regular, color: C.textPrimary },
-  optionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  option: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1.5, borderColor: C.borderMid, borderRadius: 9, paddingVertical: 7, paddingHorizontal: 10 },
-  optionTxt: { fontSize: 11, fontWeight: '600', fontFamily: F.semibold, color: C.textSecondary },
-  radio:  { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 4 },
-  radioDot: { width: 16, height: 16, borderRadius: 8, borderWidth: 2, borderColor: C.borderMid },
-  radioTxt: { fontSize: 13, fontFamily: F.regular, color: C.textPrimary, flex: 1 },
-  saveBtn: { borderRadius: 14, paddingVertical: 15, alignItems: 'center' },
-  saveTxt: { fontSize: 15, fontWeight: '700', fontFamily: F.bold, color: '#FFF' },
-});
-
-// ─── Empty state ──────────────────────────────────────────────────────────────
-function EmptyState({ accentColor }: { accentColor: string }) {
+// ── Mini stat for mobile ─────────────────────────────────────────────
+function MiniStat({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
-    <View style={es.root}>
-      <AppIcon name="bar-chart-2" size={48} color={C.textMuted} />
-      <Text style={es.title}>Çalışan Seçin</Text>
-      <Text style={es.sub}>Sol panelden bir çalışan seçerek performansını görüntüleyin</Text>
+    <View style={{ gap: 2 }}>
+      <Text style={{ fontSize: 10, color: DS.ink[400], fontWeight: '500', letterSpacing: 0.3 }}>{label}</Text>
+      <Text style={{ fontSize: 13, fontWeight: '600', color: color ?? DS.ink[900] }}>{value}</Text>
     </View>
   );
 }
-const es = StyleSheet.create({
-  root:  { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 40 },
-  title: { fontSize: 16, fontWeight: '600', fontFamily: F.semibold, color: C.textPrimary },
-  sub:   { fontSize: 13, fontFamily: F.regular, color: C.textSecondary, textAlign: 'center', lineHeight: 20 },
-});
 
-// ─── Layout styles ────────────────────────────────────────────────────────────
-const s = StyleSheet.create({
-  root:      { flex: 1, flexDirection: 'row', backgroundColor: '#FAFBFC' },
-  left:      { width: 280, borderRightWidth: 1, borderRightColor: C.border, backgroundColor: '#FFFFFF', flexDirection: 'column' },
-  right:     { flex: 1 },
-  periodBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.border, gap: 12 },
-  periodLabel: { fontSize: 16, fontWeight: '700', fontFamily: F.bold, minWidth: 120, textAlign: 'center' },
-  arrow:     { padding: 6 },
-  summaryRow:{ flexDirection: 'row', paddingHorizontal: 10, paddingVertical: 10, gap: 6, borderBottomWidth: 1, borderBottomColor: C.border },
-  rulesBtn:  { flexDirection: 'row', alignItems: 'center', gap: 7, marginHorizontal: 12, marginTop: 10, borderWidth: 1.5, borderRadius: 10, paddingVertical: 9, paddingHorizontal: 14 },
-  rulesBtnTxt: { fontSize: 12, fontWeight: '600', fontFamily: F.semibold },
-  loadingBox:{ paddingVertical: 40, alignItems: 'center' },
-});
+// ── HubContext consumer ──────────────────────────────────────────────
+function useHubContext(): boolean {
+  return React.useContext(HubContext) === true;
+}
+
+export default PerformanceScreen;

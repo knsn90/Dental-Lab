@@ -90,6 +90,25 @@ interface Props {
    * boş çeneyi gizler ve SVG'yi yarıya küçültür.
    */
   hideEmptyJaw?: boolean;
+  /**
+   * Açıkça hangi çenenin gösterileceğini zorla.
+   * 'upper' | 'lower' | 'both' — verilirse `hideEmptyJaw` heuristic'inin
+   * önüne geçer ve seçili dişten bağımsız olarak ilgili çene render edilir.
+   */
+  forceJawMode?: 'upper' | 'lower' | 'both';
+  /**
+   * Opsiyonel: SVG yüksekliğini override et (aspect-ratio kilidini kır).
+   * Verilirse `preserveAspectRatio` ile birlikte kullanılır.
+   * Default: dW * (vbH / vbW) — aspect korunur.
+   */
+  containerHeight?: number;
+  /**
+   * SVG `preserveAspectRatio` davranışı.
+   *  - 'meet'  (default): aspect korunur, boş alan oluşabilir
+   *  - 'slice': aspect korunur, fazlalık kırpılır → dişler büyür
+   *  - 'none' : aspect korunmaz → dişler çarpık görünebilir
+   */
+  fit?: 'meet' | 'slice' | 'none';
 }
 
 // ── Component ────────────────────────────────────────────────────────
@@ -104,6 +123,9 @@ export function ToothNumberPicker({
   colorMap,
   accentColor,
   hideEmptyJaw = false,
+  forceJawMode,
+  containerHeight,
+  fit = 'meet',
 }: Props) {
   const PRIMARY = accentColor ?? C.primary;
   const { width: screenWidth } = useWindowDimensions();
@@ -112,17 +134,19 @@ export function ToothNumberPicker({
   useEffect(() => { injectToothPulseKeyframes(); }, []);
 
   const dW = containerWidth
-    ? Math.max(Math.round((containerWidth - 16) * 0.96), 160)
-    : Math.min(Math.max(screenWidth - 80, 160), 340);
+    ? Math.max(Math.round(containerWidth - 16), 160)
+    : Math.min(Math.max(screenWidth - 80, 160), 500);
 
   // ── Çene tespiti ─────────────────────────────────────────────────
   const hasUpper = selected.some(t => UPPER_SET.has(t));
   const hasLower = selected.some(t => LOWER_SET.has(t));
 
   const jawMode: 'both' | 'upper' | 'lower' =
-    hideEmptyJaw && selected.length > 0 && !(hasUpper && hasLower)
-      ? hasUpper ? 'upper' : 'lower'
-      : 'both';
+    forceJawMode
+      ? forceJawMode
+      : hideEmptyJaw && selected.length > 0 && !(hasUpper && hasLower)
+        ? hasUpper ? 'upper' : 'lower'
+        : 'both';
 
   // ── Yatay tightening: sadece bir kadran seçiliyse boş tarafı kırp ──
   // SVG GÖRSEL düzeni (hasta karşımızdaymış gibi):
@@ -416,7 +440,16 @@ export function ToothNumberPicker({
 
   return (
     <View style={{ alignItems: 'center' }}>
-      <Svg width={dW} height={dH} viewBox={viewBox}>
+      <Svg
+        width={dW}
+        height={containerHeight ?? dH}
+        viewBox={viewBox}
+        preserveAspectRatio={
+          fit === 'none'  ? 'none'                :
+          fit === 'slice' ? 'xMidYMid slice'      :
+                            'xMidYMid meet'
+        }
+      >
         {/* Üst çene: jawMode lower değilse göster */}
         {jawMode !== 'lower' && [...Q1, ...Q2].map(renderTooth)}
         {/* Alt çene: jawMode upper değilse göster */}

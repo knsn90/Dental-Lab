@@ -12,7 +12,10 @@ export interface ColorTheme {
 }
 
 export const COLOR_THEMES: ColorTheme[] = [
-  { key: 'blue',    name: 'Mavi',      description: 'Profesyonel mavi, varsayılan', primary: '#2563EB', dark: '#1E40AF', muted: '#94A3B8' },
+  { key: 'saffron', name: 'Saffron',   description: 'Patterns lab — sıcak sarı',    primary: '#F5C24B', dark: '#E0A82E', muted: '#9A9A9A' },
+  { key: 'sage',    name: 'Sage',      description: 'Patterns clinic — yumuşak yeşil', primary: '#6BA888', dark: '#4D8A6B', muted: '#9A9A9A' },
+  { key: 'coral',   name: 'Coral',     description: 'Patterns exec — sıcak mercan', primary: '#E97757', dark: '#D15A3A', muted: '#9A9A9A' },
+  { key: 'blue',    name: 'Mavi',      description: 'Profesyonel mavi',             primary: '#2563EB', dark: '#1E40AF', muted: '#94A3B8' },
   { key: 'teal',    name: 'Teal',      description: 'Medikal yeşil-mavi',           primary: '#0891B2', dark: '#0E7490', muted: '#94A3B8' },
   { key: 'green',   name: 'Yeşil',     description: 'Sağlık ve doğa teması',        primary: '#059669', dark: '#047857', muted: '#94A3B8' },
   { key: 'purple',  name: 'Mor',       description: 'Zarif ve özgün',               primary: '#7C3AED', dark: '#6D28D9', muted: '#94A3B8' },
@@ -20,17 +23,18 @@ export const COLOR_THEMES: ColorTheme[] = [
   { key: 'slate',   name: 'Antrasit',  description: 'Premium, minimal gri',         primary: '#475569', dark: '#334155', muted: '#94A3B8' },
 ];
 
-// Default per panel
+// Default per panel — patterns dili
 export const PANEL_DEFAULTS: Record<string, string> = {
-  lab:          'blue',
-  admin:        'slate',
-  doctor:       'teal',
-  clinic_admin: 'teal',
+  lab:          'saffron',
+  admin:        'coral',
+  doctor:       'sage',
+  clinic_admin: 'sage',
 };
 
 // ── Storage keys per panel ────────────────────────────────────────────
 function storageKey(panelType: string) {
-  return `dental_app_theme_${panelType}_v1`;
+  // v2: patterns dili default (saffron/sage/coral) — eski v1 'blue' kayıtları otomatik reset
+  return `dental_app_theme_${panelType}_v2`;
 }
 
 export function getThemeByKey(key: string): ColorTheme {

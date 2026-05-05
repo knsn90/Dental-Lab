@@ -1,415 +1,394 @@
-import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+/**
+ * DoctorDashboardScreen — Patterns design language (matching Lab/Admin layout)
+ *
+ * Layout:
+ *   1. Hero — Serif greeting + stat pills + big numbers
+ *   2. Pending approvals banner (unique to doctor)
+ *   3. 4-card grid (AnimatedAktifVaka, Sipariş Trendi, PercentRing, TasksCard)
+ *   4. Bottom row — WeeklyStrip + AnimatedCTACard
+ *   5. Extra sections — Orders table, Status dist, Work type
+ *
+ * Theme: DS.clinic (Sage #6BA888) — doctor & clinic share the same green
+ * Patterns NativeWind — NO StyleSheet.create().
+ */
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet,
-  TouchableOpacity, useWindowDimensions, RefreshControl,
-  Animated, Platform,
+  View, Text, ScrollView, Pressable,
+  useWindowDimensions, RefreshControl,
+  Animated, Easing,
 } from 'react-native';
+import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, {
-  Path, Circle, Line, Polyline,
-  Defs, RadialGradient, Stop, Rect,
-} from 'react-native-svg';
+import {
+  Package, Plus, Clock, CheckCircle, Activity,
+  Calendar, TrendingUp, AlertTriangle, ArrowUpRight,
+  ArrowRight, Check, Layers,
+} from 'lucide-react-native';
 import { useAuthStore } from '../../../core/store/authStore';
 import { supabase } from '../../../core/api/supabase';
 import { useOrders } from '../../orders/hooks/useOrders';
-import { ResponsiveCanvas } from '../../../core/layout/ResponsiveCanvas';
-import { HeroX } from '../../../core/ui/HeroX';
-import { KPICardX } from '../../../core/ui/KPICardX';
 import { isOrderOverdue, STATUS_CONFIG } from '../../orders/constants';
 import { WorkOrderStatus } from '../../../lib/types';
-import { BlurFade } from '../../../core/ui/BlurFade';
+import { DS } from '../../../core/theme/dsTokens';
+import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 
-// ── Design tokens (frontend-design: intentional spacing + layered depth) ──
-const P         = '#0EA5E9'; // doctor accent — sky blue
-const P_DARK    = '#0284C7';
-const P_TINT_5  = 'rgba(14,165,233,0.05)';
-const P_TINT_8  = 'rgba(14,165,233,0.08)';
-const P_TINT_12 = 'rgba(14,165,233,0.12)';
-const BG        = '#F7F9FB';
-
-const CLR = {
-  green:  '#16A34A', greenBg:  '#DCFCE7',
-  red:    '#EF4444', redBg:    '#FEE2E2',
-  amber:  '#F59E0B', amberBg:  '#FEF3C7',
-  purple: '#7C3AED', purpleBg: '#EDE9FE',
-  teal:   '#0D9488', tealBg:   '#CCFBF1',
+// ── Display font — Patterns: Inter Tight Light (300) ──
+const SERIF = {
+  fontFamily: DS.font.display as string,
+  fontWeight: '300' as const,
 };
 
+// ── Theme: Doctor sage green (same as clinic) ──
+const P     = DS.clinic.primary;      // #6BA888
+const P_DEEP = DS.clinic.primaryDeep; // #4D8A6B
+const SURFACE_ALT = DS.clinic.surfaceAlt; // #0F2A1F
+const INK   = DS.ink[900];
+
+const CLR = {
+  green:  DS.clinic.success,
+  orange: DS.clinic.warning,
+  red:    DS.clinic.danger,
+  blue:   DS.clinic.info,
+  purple: '#7C3AED',
+  teal:   '#0D9488',
+};
+
+const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
+  alindi:          { label: 'Alındı',          color: DS.ink[500],  bg: 'rgba(0,0,0,0.05)' },
+  uretimde:        { label: 'Üretimde',        color: '#9C5E0E',   bg: 'rgba(232,155,42,0.15)' },
+  kalite_kontrol:  { label: 'Kalite Kontrol',  color: '#1F5689',   bg: 'rgba(74,143,201,0.12)' },
+  teslimata_hazir: { label: 'Teslimata Hazır', color: '#1F6B47',   bg: 'rgba(45,154,107,0.12)' },
+  teslim_edildi:   { label: 'Teslim Edildi',   color: DS.ink[400],  bg: 'rgba(0,0,0,0.04)' },
+};
+const STATUS_KEYS = ['alindi', 'uretimde', 'kalite_kontrol', 'teslimata_hazir', 'teslim_edildi'];
+
 const MONTHS_TR = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
+const DAYS_SHORT = ['Pz','Pa','Sa','Ça','Pe','Cu','Ct'];
 
-// ── SVG Icons (Lucide-style, outline) ─────────────────────────────────
-type IconName =
-  | 'plus' | 'clock' | 'alert-triangle' | 'trending-up' | 'arrow-right'
-  | 'package' | 'calendar' | 'activity' | 'check-circle' | 'layers'
-  | 'zap' | 'file-text' | 'message-circle' | 'bar-chart' | 'user';
+const PIPELINE_STAGES = [
+  { key: 'alindi',          label: 'Alındı'   },
+  { key: 'uretimde',        label: 'Üretimde' },
+  { key: 'kalite_kontrol',  label: 'KK'       },
+  { key: 'teslimata_hazir', label: 'Hazır'    },
+] as const;
 
-function Icon({ name, size = 18, color = '#0F172A', strokeWidth = 1.8 }: {
-  name: IconName; size?: number; color?: string; strokeWidth?: number;
-}) {
-  const p = { stroke: color, strokeWidth, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, fill: 'none' };
-  switch (name) {
-    case 'plus':           return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M12 5v14M5 12h14" {...p}/></Svg>;
-    case 'clock':          return <Svg width={size} height={size} viewBox="0 0 24 24"><Circle cx="12" cy="12" r="10" {...p}/><Polyline points="12 6 12 12 16 14" {...p}/></Svg>;
-    case 'alert-triangle': return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" {...p}/><Line x1="12" y1="9" x2="12" y2="13" {...p}/><Line x1="12" y1="17" x2="12.01" y2="17" {...p}/></Svg>;
-    case 'trending-up':    return <Svg width={size} height={size} viewBox="0 0 24 24"><Polyline points="23 6 13.5 15.5 8.5 10.5 1 18" {...p}/><Polyline points="17 6 23 6 23 12" {...p}/></Svg>;
-    case 'arrow-right':    return <Svg width={size} height={size} viewBox="0 0 24 24"><Line x1="5" y1="12" x2="19" y2="12" {...p}/><Polyline points="12 5 19 12 12 19" {...p}/></Svg>;
-    case 'package':        return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M16.5 9.4l-9-5.19M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" {...p}/><Polyline points="3.27 6.96 12 12.01 20.73 6.96" {...p}/><Line x1="12" y1="22.08" x2="12" y2="12" {...p}/></Svg>;
-    case 'calendar':       return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M3 9h18M21 10V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-8" {...p}/><Polyline points="8 2 8 6" {...p}/><Polyline points="16 2 16 6" {...p}/></Svg>;
-    case 'activity':       return <Svg width={size} height={size} viewBox="0 0 24 24"><Polyline points="22 12 18 12 15 21 9 3 6 12 2 12" {...p}/></Svg>;
-    case 'check-circle':   return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" {...p}/><Polyline points="22 4 12 14.01 9 11.01" {...p}/></Svg>;
-    case 'layers':         return <Svg width={size} height={size} viewBox="0 0 24 24"><Polyline points="12 2 2 7 12 12 22 7 12 2" {...p}/><Polyline points="2 17 12 22 22 17" {...p}/><Polyline points="2 12 12 17 22 12" {...p}/></Svg>;
-    case 'zap':            return <Svg width={size} height={size} viewBox="0 0 24 24"><Polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" {...p}/></Svg>;
-    case 'file-text':      return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" {...p}/><Polyline points="14 2 14 8 20 8" {...p}/><Line x1="16" y1="13" x2="8" y2="13" {...p}/><Line x1="16" y1="17" x2="8" y2="17" {...p}/></Svg>;
-    case 'message-circle': return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" {...p}/></Svg>;
-    case 'bar-chart':      return <Svg width={size} height={size} viewBox="0 0 24 24"><Line x1="12" y1="20" x2="12" y2="10" {...p}/><Line x1="18" y1="20" x2="18" y2="4" {...p}/><Line x1="6" y1="20" x2="6" y2="16" {...p}/></Svg>;
-    case 'user':           return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" {...p}/><Circle cx="12" cy="7" r="4" {...p}/></Svg>;
-    default: return null;
-  }
+// ── Helpers ──
+function getTodayLabel() {
+  const now = new Date();
+  const days   = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
+  const months = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+  return `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]}`;
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────
-function hexA(hex: string, a: number) {
+function todayStr() { return new Date().toISOString().split('T')[0]; }
+function fmtDate(date: string) {
+  const d = new Date(date);
+  return `${d.getDate().toString().padStart(2, '0')}.${(d.getMonth() + 1).toString().padStart(2, '0')}.${d.getFullYear()}`;
+}
+function initials(name?: string | null) {
+  if (!name) return '--';
+  return name.trim().split(/\s+/).slice(0, 2).map(p => p[0]?.toUpperCase() ?? '').join('') || '--';
+}
+function hexA(hex: string, alpha: number) {
   try {
     const r = parseInt(hex.slice(1, 3), 16);
     const g = parseInt(hex.slice(3, 5), 16);
     const b = parseInt(hex.slice(5, 7), 16);
-    return `rgba(${r},${g},${b},${a})`;
+    return `rgba(${r},${g},${b},${alpha})`;
   } catch { return hex; }
 }
 
-function getTodayLabel() {
-  const d = new Date();
-  const days   = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
-  const months = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
-  return `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]}`;
+function getWeekDays(): { label: string; date: string; isToday: boolean }[] {
+  const now = new Date();
+  const dayOfWeek = now.getDay();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - ((dayOfWeek + 6) % 7));
+  const result: { label: string; date: string; isToday: boolean }[] = [];
+  const todayISO = todayStr();
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const iso = d.toISOString().split('T')[0];
+    result.push({ label: `${DAYS_SHORT[d.getDay()]} ${d.getDate()}`, date: iso, isToday: iso === todayISO });
+  }
+  return result;
 }
 
-// ── Hero — layered radial gradients (frontend-design: depth via gradients) ──
-function Hero({ firstName, clinicName, overdueCount, onPressOverdue }: {
-  firstName: string; clinicName: string | null;
-  overdueCount: number; onPressOverdue: () => void;
-}) {
+// ══════════════════════════════════════════════════════════════════
+//  ANIMATION HOOKS
+// ══════════════════════════════════════════════════════════════════
+
+function useCountUp(target: number, duration = 1400) {
+  const [v, setV] = useState(0);
+  useEffect(() => {
+    if (duration === 0) { setV(target); return; }
+    const start = Date.now();
+    let raf: any;
+    const tick = () => {
+      const elapsed = Date.now() - start;
+      const t = Math.min(1, elapsed / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setV(target * eased);
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => raf && cancelAnimationFrame(raf);
+  }, [target, duration]);
+  return v;
+}
+
+function usePulse({ duration = 1600 }: { duration?: number } = {}) {
+  const v = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(v, { toValue: 1, duration, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(v, { toValue: 0, duration, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [v, duration]);
+  return {
+    scale: v.interpolate({ inputRange: [0, 1], outputRange: [1, 1.5] }),
+    opacity: v.interpolate({ inputRange: [0, 1], outputRange: [0.4, 0] }),
+  };
+}
+
+function PulseDot({ color, size, x, y }: { color: string; size: number; x: number; y: number }) {
+  const { scale, opacity } = usePulse({ duration: 1400 });
   return (
-    <View style={hero.wrap}>
-      {/* Layer 1 — base gradient background */}
-      <Svg
-        width="100%" height="100%"
-        viewBox="0 0 400 200"
-        preserveAspectRatio="none"
-        style={StyleSheet.absoluteFillObject}
-      >
-        <Defs>
-          <RadialGradient id="g1" cx="15%" cy="20%" r="55%">
-            <Stop offset="0%"   stopColor={P} stopOpacity="0.18" />
-            <Stop offset="100%" stopColor={P} stopOpacity="0" />
-          </RadialGradient>
-          <RadialGradient id="g2" cx="95%" cy="90%" r="60%">
-            <Stop offset="0%"   stopColor={P_DARK} stopOpacity="0.10" />
-            <Stop offset="100%" stopColor={P_DARK} stopOpacity="0" />
-          </RadialGradient>
-        </Defs>
-        <Rect width="400" height="200" fill="url(#g1)" />
-        <Rect width="400" height="200" fill="url(#g2)" />
-      </Svg>
-
-      {/* Layer 2 — content */}
-      <View style={hero.content}>
-        <BlurFade duration={500} delay={0} yOffset={6}>
-          <Text style={hero.greeting}>Merhaba{firstName ? `, Dr. ${firstName}` : ''}</Text>
-        </BlurFade>
-        <BlurFade duration={500} delay={70} yOffset={6}>
-          <Text style={hero.title}>İyi çalışmalar</Text>
-        </BlurFade>
-        <BlurFade duration={500} delay={140} yOffset={6}>
-          <View style={hero.metaRow}>
-            <View style={hero.metaChip}>
-              <Icon name="calendar" size={11} color={P_DARK} strokeWidth={2} />
-              <Text style={hero.metaText}>{getTodayLabel()}</Text>
-            </View>
-            {clinicName && (
-              <View style={hero.metaChip}>
-                <Icon name="activity" size={11} color={P_DARK} strokeWidth={2} />
-                <Text style={hero.metaText}>{clinicName}</Text>
-              </View>
-            )}
-          </View>
-        </BlurFade>
-      </View>
-
-      {/* Layer 3 — overdue alert (if any) — floating with tinted shadow */}
-      {overdueCount > 0 && (
-        <TouchableOpacity
-          onPress={onPressOverdue}
-          activeOpacity={0.85}
-          style={hero.alertBadge}
-        >
-          <View style={hero.alertIcon}>
-            <Icon name="alert-triangle" size={16} color={CLR.red} strokeWidth={2} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={hero.alertCount}>{overdueCount}</Text>
-            <Text style={hero.alertLabel}>geciken sipariş</Text>
-          </View>
-          <Icon name="arrow-right" size={14} color={CLR.red} strokeWidth={2.2} />
-        </TouchableOpacity>
-      )}
-    </View>
+    <Animated.View style={{
+      position: 'absolute', left: x - size / 2, top: y - size / 2,
+      width: size, height: size, borderRadius: size / 2,
+      backgroundColor: color, transform: [{ scale }], opacity,
+    }} pointerEvents="none" />
   );
 }
 
-const hero = StyleSheet.create({
-  wrap: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-    overflow: 'hidden',
-    position: 'relative',
-    marginBottom: 20,
-    ...(Platform.OS === 'web'
-      ? ({ boxShadow: `0 1px 2px ${hexA(P, 0.04)}, 0 8px 24px ${hexA(P, 0.06)}` } as any)
-      : { shadowColor: P, shadowOpacity: 0.08, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 3 }),
-  },
-  content:   { padding: 24, paddingBottom: 20, zIndex: 1 },
-  greeting:  { fontSize: 13, color: '#64748B', fontWeight: '500' },
-  title:     { fontSize: 26, fontWeight: '800', color: '#0F172A', letterSpacing: -0.6, marginTop: 2 },
-  metaRow:   { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
-  metaChip:  {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: P_TINT_8,
-    paddingHorizontal: 10, paddingVertical: 5,
-    borderRadius: 20,
-  },
-  metaText:  { fontSize: 11, fontWeight: '700', color: P_DARK, letterSpacing: 0.1 },
+// ══════════════════════════════════════════════════════════════════
+//  SUB-COMPONENTS
+// ══════════════════════════════════════════════════════════════════
 
-  /* Floating alert badge with color-tinted shadow */
-  alertBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    marginHorizontal: 16, marginBottom: 16, marginTop: -4,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1, borderColor: hexA(CLR.red, 0.18),
-    borderRadius: 14,
-    paddingVertical: 12, paddingHorizontal: 14,
-    ...(Platform.OS === 'web'
-      ? ({ boxShadow: `0 2px 4px ${hexA(CLR.red, 0.06)}, 0 12px 28px ${hexA(CLR.red, 0.12)}` } as any)
-      : { shadowColor: CLR.red, shadowOpacity: 0.12, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 4 }),
-  },
-  alertIcon: {
-    width: 34, height: 34, borderRadius: 11,
-    backgroundColor: CLR.redBg,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  alertCount: { fontSize: 18, fontWeight: '900', color: CLR.red, letterSpacing: -0.3, lineHeight: 20 },
-  alertLabel: { fontSize: 11, color: '#64748B', fontWeight: '600', marginTop: 1 },
-});
-
-// ── KPI Card ───────────────────────────────────────────────────────
-function KPICard({ label, value, icon, accent, delta }: {
-  label: string; value: string | number; icon: IconName; accent: string; delta?: string;
-}) {
-  return (
-    <View style={kpi.card}>
-      <View style={[kpi.icon, { backgroundColor: hexA(accent, 0.10) }]}>
-        <Icon name={icon} size={16} color={accent} strokeWidth={2} />
-      </View>
-      <Text style={kpi.label} numberOfLines={1}>{label}</Text>
-      <View style={kpi.valueRow}>
-        <Text style={[kpi.value, { color: accent }]}>{value}</Text>
-        {delta && (
-          <View style={kpi.delta}>
-            <Icon name="trending-up" size={9} color={CLR.green} strokeWidth={2.5} />
-            <Text style={kpi.deltaText}>{delta}</Text>
-          </View>
-        )}
-      </View>
-    </View>
-  );
-}
-const kpi = StyleSheet.create({
-  card: {
-    flex: 1, minWidth: 140,
-    backgroundColor: '#FFFFFF', borderRadius: 16, padding: 14,
-    borderWidth: 1, borderColor: '#F1F5F9',
-    gap: 8,
-  },
-  icon:     { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  label:    { fontSize: 10, color: '#94A3B8', fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase' },
-  valueRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 6 },
-  value:    { fontSize: 22, fontWeight: '800', letterSpacing: -0.6, lineHeight: 26 },
-  delta:    { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: CLR.greenBg, marginBottom: 4 },
-  deltaText:{ fontSize: 9, color: CLR.green, fontWeight: '800' },
-});
-
-// ── Card wrapper ────────────────────────────────────────────────────
 function Card({ children, style }: { children: React.ReactNode; style?: any }) {
-  return <View style={[cd.wrap, style]}>{children}</View>;
-}
-function CardHeader({ title, icon, right }: { title: string; icon?: IconName; right?: React.ReactNode }) {
   return (
-    <View style={cd.header}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        {icon && <Icon name={icon} size={15} color="#94A3B8" strokeWidth={1.8} />}
-        <Text style={cd.title}>{title}</Text>
-      </View>
+    <View className="bg-white overflow-hidden"
+      style={[{ borderRadius: DS.radius.xl, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' }, style]}
+    >{children}</View>
+  );
+}
+
+function CardHeader({ title, right, display }: { title: string; right?: React.ReactNode; display?: boolean }) {
+  return (
+    <View className="flex-row items-center justify-between" style={{ marginBottom: 12 }}>
+      {display ? (
+        <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: INK }}>{title}</Text>
+      ) : (
+        <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500] }}>{title}</Text>
+      )}
       {right}
     </View>
   );
 }
-const cd = StyleSheet.create({
-  wrap:   { backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#F1F5F9', overflow: 'hidden' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 14 },
-  title:  { fontSize: 15, fontWeight: '700', color: '#0F172A' },
-});
 
-// ── Section label ───────────────────────────────────────────────────
-function Section({ text }: { text: string }) {
-  return <Text style={sec.text}>{text}</Text>;
-}
-const sec = StyleSheet.create({
-  text: { fontSize: 10, fontWeight: '700', color: '#94A3B8', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 10, marginTop: 2 },
-});
-
-// ── Quick Action tile (bento) — frontend-design: interactive states ──
-function QuickAction({ icon, label, accent, onPress, primary = false }: {
-  icon: IconName; label: string; accent: string; onPress: () => void; primary?: boolean;
-}) {
-  const scale = useRef(new Animated.Value(1)).current;
-  const pressIn  = () => Animated.spring(scale, { toValue: 0.96, useNativeDriver: true, damping: 14 }).start();
-  const pressOut = () => Animated.spring(scale, { toValue: 1,    useNativeDriver: true, damping: 14 }).start();
+function StatusBadge({ status }: { status: string }) {
+  const c = STATUS_CFG[status] ?? { label: status, color: DS.ink[500], bg: 'rgba(0,0,0,0.05)' };
   return (
-    <TouchableOpacity onPress={onPress} onPressIn={pressIn} onPressOut={pressOut} activeOpacity={1} style={{ flex: 1 }}>
-      <Animated.View style={[qa.card, primary && qa.cardPrimary, { transform: [{ scale }] }]}>
-        <View style={[qa.iconWrap, primary ? qa.iconWrapPrimary : { backgroundColor: hexA(accent, 0.10) }]}>
-          <Icon name={icon} size={20} color={primary ? '#FFFFFF' : accent} strokeWidth={2} />
-        </View>
-        <Text style={[qa.label, primary && qa.labelPrimary]} numberOfLines={1}>{label}</Text>
-      </Animated.View>
-    </TouchableOpacity>
-  );
-}
-const qa = StyleSheet.create({
-  card: {
-    backgroundColor: '#FFFFFF', borderRadius: 14,
-    borderWidth: 1, borderColor: '#F1F5F9',
-    padding: 14, gap: 10, minHeight: 96, justifyContent: 'space-between',
-  },
-  cardPrimary: {
-    backgroundColor: P, borderColor: P,
-    ...(Platform.OS === 'web'
-      ? ({ boxShadow: `0 6px 16px ${hexA(P, 0.28)}` } as any)
-      : { shadowColor: P, shadowOpacity: 0.30, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 6 }),
-  },
-  iconWrap:        { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  iconWrapPrimary: { backgroundColor: 'rgba(255,255,255,0.18)' },
-  label:           { fontSize: 12, fontWeight: '700', color: '#0F172A', letterSpacing: -0.2 },
-  labelPrimary:    { color: '#FFFFFF', fontSize: 13 },
-});
-
-// ── Monthly Bar Chart ───────────────────────────────────────────────
-function AnimatedBar({ pct, isActive, count, label, delay }: {
-  pct: number; isActive: boolean; count: number; label: string; delay: number;
-}) {
-  const h = useRef(new Animated.Value(0)).current;
-  const o = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    Animated.parallel([
-      Animated.spring(h, { toValue: pct, damping: 14, stiffness: 120, delay, useNativeDriver: false }),
-      Animated.timing(o, { toValue: 1, duration: 300, delay, useNativeDriver: false }),
-    ]).start();
-  }, [pct]);
-  const aH = h.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] });
-  return (
-    <Animated.View style={{ flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end', opacity: o }}>
-      {count > 0 && (
-        <Text style={[ch.barLabel, isActive && { color: P, fontWeight: '800' }]}>{count}</Text>
-      )}
-      <View style={ch.track}>
-        <Animated.View style={[ch.fill, { height: aH }, isActive ? ch.fillActive : ch.fillInactive]} />
-      </View>
-      <Text style={[ch.monthLabel, isActive && ch.monthLabelActive]}>{label}</Text>
-    </Animated.View>
-  );
-}
-
-function MonthlyChart({ data }: { data: { label: string; count: number }[] }) {
-  const max = Math.max(...data.map(d => d.count), 1);
-  const lastIdx = data.length - 1;
-  return (
-    <View style={ch.container}>
-      {data.map((d, i) => (
-        <AnimatedBar
-          key={i}
-          pct={Math.max((d.count / max) * 100, 4)}
-          isActive={i === lastIdx}
-          count={d.count}
-          label={d.label}
-          delay={i * 60}
-        />
-      ))}
+    <View className="flex-row items-center self-start rounded-full"
+      style={{ paddingHorizontal: 8, paddingVertical: 4, backgroundColor: c.bg, gap: 4 }}>
+      <View className="rounded-full" style={{ width: 6, height: 6, backgroundColor: c.color }} />
+      <Text style={{ fontSize: 11, fontWeight: '600', color: c.color }}>{c.label}</Text>
     </View>
   );
 }
-const ch = StyleSheet.create({
-  container: { flexDirection: 'row', alignItems: 'flex-end', height: 160, gap: 8, paddingHorizontal: 18, paddingBottom: 18, paddingTop: 24 },
-  track:     { width: '100%', flex: 1, justifyContent: 'flex-end', borderRadius: 10, overflow: 'hidden', backgroundColor: P_TINT_5 },
-  fill:      { width: '100%', borderRadius: 10 },
-  fillActive:   { backgroundColor: P },
-  fillInactive: { backgroundColor: hexA(P, 0.25) },
-  barLabel:        { fontSize: 10, fontWeight: '700', color: '#94A3B8', marginBottom: 5 },
-  monthLabel:      { fontSize: 10, color: '#94A3B8', marginTop: 8, fontWeight: '500' },
-  monthLabelActive:{ color: P, fontWeight: '800' },
-});
 
-// ── Upcoming delivery row ──────────────────────────────────────────
-function UpcomingRow({ order, onPress, last }: { order: any; onPress: () => void; last: boolean }) {
-  const days = Math.ceil((new Date(order.delivery_date + 'T00:00:00').getTime() - Date.now()) / 86_400_000);
-  const critical = days <= 1;
+function StatPill({ label, value, bg, color }: { label: string; value: string; bg: string; color: string }) {
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.75} style={[up.row, !last && up.border]}>
-      <View style={[up.dayBadge, critical && { backgroundColor: CLR.redBg }]}>
-        <Text style={[up.dayNum, critical && { color: CLR.red }]}>{days}</Text>
-        <Text style={[up.dayLabel, critical && { color: CLR.red }]}>gün</Text>
+    <View className="flex-row items-center" style={{ gap: 8 }}>
+      <Text style={{ fontSize: 11, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.06 * 11 }}>{label}</Text>
+      <View className="rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 3, backgroundColor: bg }}>
+        <Text style={{ fontSize: 11, fontWeight: '500', color }}>{value}</Text>
       </View>
-      <View style={{ flex: 1 }}>
-        <Text style={up.orderNo} numberOfLines={1}>{order.work_type || '—'}</Text>
-        <Text style={up.patientName} numberOfLines={1}>
-          {order.patient_name || 'Hasta belirtilmemiş'} · #{order.order_number}
-        </Text>
-      </View>
-    </TouchableOpacity>
+    </View>
   );
 }
-const up = StyleSheet.create({
-  row:        { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 12, gap: 12 },
-  border:     { borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  dayBadge:   { width: 44, height: 44, borderRadius: 12, backgroundColor: P_TINT_8, alignItems: 'center', justifyContent: 'center' },
-  dayNum:     { fontSize: 17, fontWeight: '800', color: P, lineHeight: 19 },
-  dayLabel:   { fontSize: 8, fontWeight: '700', color: P, letterSpacing: 0.3 },
-  orderNo:    { fontSize: 13, fontWeight: '700', color: '#0F172A' },
-  patientName:{ fontSize: 11, color: '#94A3B8', marginTop: 2 },
-});
 
-// ── Status Distribution ────────────────────────────────────────────
-function StatusDist({ orders, total }: { orders: any[]; total: number }) {
-  const keys = ['alindi','uretimde','kalite_kontrol','teslimata_hazir','teslim_edildi'] as WorkOrderStatus[];
+function BigStat({ value, label }: { value: string | number; label: string }) {
   return (
-    <View style={{ paddingHorizontal: 18, paddingBottom: 18, gap: 10 }}>
-      {keys.map(k => {
-        const count = orders.filter(o => o.status === k).length;
-        const pct   = total > 0 ? Math.round((count / total) * 100) : 0;
-        const cfg   = STATUS_CONFIG[k];
+    <View style={{ alignItems: 'flex-end' }}>
+      <Text style={{ ...SERIF, fontSize: DS.size.h2, letterSpacing: -0.025 * DS.size.h2, lineHeight: DS.size.h2, color: INK }}>{value}</Text>
+      <Text style={{ fontSize: DS.size.micro, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.06 * DS.size.micro, marginTop: 4 }}>{label}</Text>
+    </View>
+  );
+}
+
+// ── PercentRingHero ──
+function PercentRingHero({ value: targetValue, size = 200, darkText = false }: { value: number; size?: number; darkText?: boolean }) {
+  const animatedValue = useCountUp(targetValue, 1400);
+  const value = animatedValue;
+  const outerStroke = Math.max(8, Math.round(size * 0.12));
+  const innerStroke = outerStroke - 6;
+  const r = (size - outerStroke - Math.max(3, size * 0.04)) / 2;
+  const c = 2 * Math.PI * r;
+  const dash = (value / 100) * c;
+  const id = `pr-hero-doc-${targetValue}-${size}`;
+  const outerPillColor = darkText ? P + '30' : P + '22';
+  const innerTrackColor = darkText ? 'rgba(0,0,0,0.06)' : P + '15';
+  const angleDeg = (value / 100) * 360 - 90;
+  const angleRad = (angleDeg * Math.PI) / 180;
+  const knobX = size / 2 + r * Math.cos(angleRad);
+  const knobY = size / 2 + r * Math.sin(angleRad);
+  const knobR = innerStroke * 0.85;
+  const knobColor = darkText ? INK : '#FFFFFF';
+  const textColor = darkText ? INK : '#FFFFFF';
+  const pctColor = darkText ? DS.ink[400] : P;
+  const displayValue = Math.round(value);
+
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <Svg width={size} height={size}>
+        <Defs>
+          <LinearGradient id={id} x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0%" stopColor={P} stopOpacity="0.95" />
+            <Stop offset="100%" stopColor={P_DEEP} stopOpacity="1" />
+          </LinearGradient>
+        </Defs>
+        <Circle cx={size / 2} cy={size / 2} r={r} stroke={outerPillColor} strokeWidth={outerStroke} fill="none" />
+        <Circle cx={size / 2} cy={size / 2} r={r} stroke={innerTrackColor} strokeWidth={innerStroke} fill="none" />
+        {value > 0 && (
+          <Circle cx={size / 2} cy={size / 2} r={r} stroke={`url(#${id})`} strokeWidth={innerStroke} fill="none"
+            strokeDasharray={`${dash} ${c}`} strokeLinecap="round" transform={`rotate(-90 ${size / 2} ${size / 2})`} />
+        )}
+        {value > 0 && value < 100 && size >= 56 && (
+          <>
+            <Circle cx={knobX} cy={knobY} r={knobR + Math.max(2, innerStroke * 0.4)} fill={knobColor} fillOpacity={0.18} />
+            <Circle cx={knobX} cy={knobY} r={knobR} fill={knobColor} />
+          </>
+        )}
+      </Svg>
+      {value > 0 && value < 100 && size >= 100 && (
+        <PulseDot color={knobColor} size={knobR * 2.6} x={knobX} y={knobY} />
+      )}
+      <View style={{ position: 'absolute', alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+          <Text style={{ fontFamily: DS.font.display as string, fontWeight: '300', fontSize: size * 0.28, color: textColor, letterSpacing: size * 0.28 * -0.04, lineHeight: size * 0.28 }}>{displayValue}</Text>
+          {size >= 56 && <Text style={{ fontFamily: DS.font.display as string, fontWeight: '400', fontSize: size * 0.13, color: pctColor, marginLeft: 3, lineHeight: size * 0.13 }}>%</Text>}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ── Animated Aktif Vaka Card ──
+function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, router }: {
+  isDesktop: boolean; pipelineCounts: Record<string, number>; latestOrder: any; router: any;
+}) {
+  const dotAnim = useRef(new Animated.Value(0)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
+  const breatheAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.loop(Animated.sequence([
+      Animated.timing(dotAnim, { toValue: 1, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      Animated.timing(dotAnim, { toValue: 0, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      Animated.delay(400),
+    ])).start();
+    Animated.loop(Animated.sequence([
+      Animated.timing(glowAnim, { toValue: 1, duration: 2400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      Animated.timing(glowAnim, { toValue: 0, duration: 2400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+    ])).start();
+    Animated.loop(Animated.sequence([
+      Animated.timing(breatheAnim, { toValue: 1, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      Animated.timing(breatheAnim, { toValue: 0, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+    ])).start();
+  }, [dotAnim, glowAnim, breatheAnim]);
+
+  const dotOpacity = dotAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.3] });
+  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.12] });
+  const glowScale = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1.2] });
+  const breatheScale = breatheAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] });
+
+  return (
+    <Card style={{ flex: isDesktop ? 1.1 : undefined, marginBottom: isDesktop ? 0 : 14 }}>
+      <View style={{
+        flex: 1,
+        // @ts-ignore web gradient
+        backgroundImage: `linear-gradient(180deg, ${DS.ink[700]} 0%, ${DS.ink[900]} 100%)`,
+        backgroundColor: SURFACE_ALT,
+        alignItems: 'center', justifyContent: 'center',
+        minHeight: 160, position: 'relative', overflow: 'hidden',
+      }}>
+        <Animated.View style={{
+          position: 'absolute', width: 160, height: 160, borderRadius: 80,
+          backgroundColor: P, opacity: glowOpacity, transform: [{ scale: glowScale }],
+        }} pointerEvents="none" />
+
+        <View className="absolute rounded-full" style={{
+          top: 14, left: 14, paddingHorizontal: 10, paddingVertical: 4,
+          backgroundColor: `${P}E6`, flexDirection: 'row', alignItems: 'center', gap: 6,
+        }}>
+          <Animated.View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFF', opacity: dotOpacity }} />
+          <Text style={{ fontSize: 10, fontWeight: '500', color: '#FFF', letterSpacing: 0.5 }}>CANLI</Text>
+        </View>
+
+        <View className="flex-row items-center" style={{ gap: 12 }}>
+          {PIPELINE_STAGES.map((stage) => {
+            const count = pipelineCounts[stage.key] ?? 0;
+            const active = count > 0;
+            return (
+              <Pressable key={stage.key} onPress={() => router.push('/(doctor)/orders' as any)} className="items-center" style={{ gap: 4 }}>
+                <Animated.View style={{
+                  width: 40, height: 40, borderRadius: 20,
+                  backgroundColor: active ? hexA(P, 0.2) : 'rgba(255,255,255,0.06)',
+                  borderWidth: active ? 1.5 : 1, borderColor: active ? P : 'rgba(255,255,255,0.1)',
+                  alignItems: 'center', justifyContent: 'center',
+                  transform: active ? [{ scale: breatheScale }] : [],
+                }}>
+                  <Text style={{ ...SERIF, fontSize: 16, letterSpacing: -0.5, color: active ? '#FFF' : 'rgba(255,255,255,0.3)' }}>{count}</Text>
+                </Animated.View>
+                <Text style={{ fontSize: 8, fontWeight: '600', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>{stage.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
+      <View style={{ padding: 16 }}>
+        {latestOrder ? (
+          <Pressable onPress={() => router.push(`/(doctor)/order/${latestOrder.id}` as any)} style={{ gap: 2 }}>
+            <Text style={{ fontSize: 15, fontWeight: '500', color: INK }} numberOfLines={1}>
+              {latestOrder.patient_name ?? latestOrder.work_type ?? 'Sipariş'}
+            </Text>
+            <Text style={{ fontSize: 11, color: DS.ink[500], marginBottom: 10 }} numberOfLines={1}>
+              #{latestOrder.order_number} · {latestOrder.work_type ?? ''}
+            </Text>
+            <StatusBadge status={latestOrder.status} />
+          </Pressable>
+        ) : (
+          <Text style={{ fontSize: 13, color: DS.ink[400] }}>Yükleniyor...</Text>
+        )}
+      </View>
+    </Card>
+  );
+}
+
+// ── Production Bar Chart ──
+function ProductionBarChart({ data }: { data: { label: string; count: number }[] }) {
+  const max = Math.max(...data.map(d => d.count), 1);
+  const highestIdx = data.reduce((best, d, i) => d.count > data[best].count ? i : best, 0);
+  return (
+    <View className="flex-row items-end" style={{ flex: 1, gap: 6 }}>
+      {data.map((d, i) => {
+        const h = Math.max((d.count / max) * 100, 6);
+        const isHighlight = i === highestIdx;
         return (
-          <View key={k}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 5 }}>
-              <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: cfg.color, marginRight: 8 }} />
-              <Text style={{ flex: 1, fontSize: 12, color: '#64748B', fontWeight: '500' }}>{cfg.label}</Text>
-              <Text style={{ fontSize: 12, fontWeight: '700', color: '#0F172A' }}>{count}</Text>
-              <Text style={{ fontSize: 10, color: '#94A3B8', marginLeft: 6, width: 32, textAlign: 'right' }}>{pct}%</Text>
-            </View>
-            <View style={{ height: 4, backgroundColor: '#F1F5F9', borderRadius: 4, overflow: 'hidden' }}>
-              <View style={{ height: 4, borderRadius: 4, backgroundColor: cfg.color, width: `${pct}%` as any }} />
-            </View>
+          <View key={i} style={{ flex: 1, alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
+            {isHighlight && d.count > 0 && (
+              <View style={{ paddingHorizontal: 8, paddingVertical: 2, backgroundColor: INK, borderRadius: 6 }}>
+                <Text style={{ fontSize: 10, color: '#FFF', fontWeight: '500' }}>{d.count}</Text>
+              </View>
+            )}
+            <View style={{ width: '100%', height: `${h}%` as any, backgroundColor: isHighlight ? P : INK, borderRadius: 4, minHeight: 4 }} />
+            <Text style={{ fontSize: 9, color: DS.ink[400], textTransform: 'uppercase' }}>{d.label}</Text>
           </View>
         );
       })}
@@ -417,35 +396,251 @@ function StatusDist({ orders, total }: { orders: any[]; total: number }) {
   );
 }
 
-// ── Main Screen ────────────────────────────────────────────────────
+// ── Animated Overdue Alert Card ──
+function AnimatedOverdueCard({ count, onPress }: { count: number; onPress: () => void }) {
+  const pulseAnim = useRef(new Animated.Value(0)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.loop(Animated.sequence([
+      Animated.timing(pulseAnim, { toValue: 1, duration: 1000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      Animated.timing(pulseAnim, { toValue: 0, duration: 1000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      Animated.delay(600),
+    ])).start();
+    Animated.loop(Animated.sequence([
+      Animated.timing(glowAnim, { toValue: 1, duration: 2400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      Animated.timing(glowAnim, { toValue: 0, duration: 2400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+    ])).start();
+  }, [pulseAnim, glowAnim]);
+
+  const dotOpacity = pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.3] });
+  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.06, 0.18] });
+  const glowScale = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1.2] });
+
+  return (
+    <Pressable onPress={onPress}
+      onHoverIn={() => Animated.spring(scaleAnim, { toValue: 1.015, friction: 8, tension: 200, useNativeDriver: true }).start()}
+      onHoverOut={() => Animated.spring(scaleAnim, { toValue: 1, friction: 8, tension: 200, useNativeDriver: true }).start()}
+    >
+      <Animated.View style={{
+        borderRadius: DS.radius.xl, overflow: 'hidden', marginBottom: 14,
+        // @ts-ignore web gradient
+        backgroundImage: 'linear-gradient(135deg, #7F1D1D 0%, #991B1B 50%, #B91C1C 100%)',
+        backgroundColor: '#7F1D1D',
+        transform: [{ scale: scaleAnim }], position: 'relative',
+      }}>
+        <Animated.View style={{
+          position: 'absolute', top: -30, right: -30, width: 160, height: 160, borderRadius: 80,
+          backgroundColor: '#EF4444', opacity: glowOpacity, transform: [{ scale: glowScale }],
+        }} pointerEvents="none" />
+        <View style={{ paddingHorizontal: 20, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+          <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' }}>
+            <Animated.View style={{ opacity: dotOpacity }}>
+              <AlertTriangle size={18} color="#FCA5A5" strokeWidth={1.8} />
+            </Animated.View>
+          </View>
+          <View style={{ flex: 1 }}>
+            <View className="flex-row items-center" style={{ gap: 6 }}>
+              <Animated.View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: '#FCA5A5', opacity: dotOpacity }} />
+              <Text style={{ fontSize: 9, fontWeight: '500', color: '#FCA5A5', letterSpacing: 0.5, textTransform: 'uppercase' }}>Acil</Text>
+              <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.5, lineHeight: 24, color: '#FFF', marginLeft: 4 }}>
+                {count}
+              </Text>
+              <Text style={{ fontSize: 13, color: '#FCA5A5', marginLeft: 2 }}>geciken sipariş</Text>
+            </View>
+          </View>
+          <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' }}>
+            <ArrowUpRight size={14} color="#FCA5A5" strokeWidth={1.8} />
+          </View>
+        </View>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+// ── Weekly Calendar Strip ──
+function WeeklyStrip({ weekDays, weekCounts, onPress }: {
+  weekDays: { label: string; date: string; isToday: boolean }[];
+  weekCounts: Record<string, number>; onPress: () => void;
+}) {
+  const totalProduction = Object.values(weekCounts).reduce((a, b) => a + b, 0);
+  const first = weekDays[0]; const last = weekDays[6];
+  const fd = new Date(first.date); const ld = new Date(last.date);
+  const rangeLabel = `${fd.getDate()}–${ld.getDate()} ${MONTHS_TR[ld.getMonth()]} ${ld.getFullYear()}`;
+
+  return (
+    <Card style={{ padding: 18, flex: 2 }}>
+      <View className="flex-row items-center" style={{ gap: 12, marginBottom: 14 }}>
+        <Text style={{ fontSize: 15, fontWeight: '500', color: INK }}>Bu hafta</Text>
+        <Text style={{ fontSize: 12, color: DS.ink[400] }}>{rangeLabel}</Text>
+        <View style={{ flex: 1 }} />
+        <View className="rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: hexA(P, 0.1) }}>
+          <Text style={{ fontSize: 11, fontWeight: '500', color: P }}>Toplam {totalProduction}</Text>
+        </View>
+      </View>
+      <View className="flex-row" style={{ gap: 8, flex: 1 }}>
+        {weekDays.map((day, i) => {
+          const count = weekCounts[day.date] ?? 0;
+          return (
+            <Pressable key={i} onPress={onPress} style={{
+              flex: 1, backgroundColor: day.isToday ? INK : DS.ink[50],
+              borderRadius: 14, padding: 12, gap: 8, position: 'relative',
+            }}>
+              <Text style={{ fontSize: 10, opacity: 0.6, letterSpacing: 0.5, textTransform: 'uppercase', color: day.isToday ? '#FFF' : INK }}>{day.label}</Text>
+              <Text style={{ ...SERIF, fontSize: 24, letterSpacing: -0.48, lineHeight: 24, color: day.isToday ? '#FFF' : INK }}>{count}</Text>
+              <Text style={{ fontSize: 9, opacity: 0.5, color: day.isToday ? '#FFF' : INK }}>sipariş</Text>
+              {day.isToday && <View className="absolute rounded-full" style={{ top: 10, right: 10, width: 6, height: 6, backgroundColor: P }} />}
+            </Pressable>
+          );
+        })}
+      </View>
+    </Card>
+  );
+}
+
+// ── Animated CTA Card ──
+function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDesktop: boolean }) {
+  const floatAnim = useRef(new Animated.Value(0)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
+  const arrowAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.loop(Animated.sequence([
+      Animated.timing(floatAnim, { toValue: 1, duration: 3000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      Animated.timing(floatAnim, { toValue: 0, duration: 3000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+    ])).start();
+    Animated.loop(Animated.sequence([
+      Animated.timing(glowAnim, { toValue: 1, duration: 2200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      Animated.timing(glowAnim, { toValue: 0, duration: 2200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+    ])).start();
+    Animated.loop(Animated.sequence([
+      Animated.delay(2000),
+      Animated.timing(arrowAnim, { toValue: 1, duration: 400, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+      Animated.timing(arrowAnim, { toValue: 0, duration: 400, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+    ])).start();
+  }, [floatAnim, glowAnim, arrowAnim]);
+
+  const floatY = floatAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 8] });
+  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.10, 0.28] });
+  const glowScale = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.15] });
+  const arrowX = arrowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 6] });
+
+  return (
+    <Pressable onPress={onPress}
+      onHoverIn={() => Animated.spring(scaleAnim, { toValue: 1.02, friction: 8, tension: 200, useNativeDriver: true }).start()}
+      onHoverOut={() => Animated.spring(scaleAnim, { toValue: 1, friction: 8, tension: 200, useNativeDriver: true }).start()}
+      style={{ flex: 1 }}>
+      <Animated.View style={{
+        flex: 1, borderRadius: DS.radius.xl, padding: 22, position: 'relative', overflow: 'hidden',
+        // @ts-ignore web gradient
+        backgroundImage: `linear-gradient(135deg, ${P} 0%, ${P_DEEP} 100%)`,
+        backgroundColor: P, minHeight: isDesktop ? undefined : 160,
+        transform: [{ scale: scaleAnim }],
+      }}>
+        <Animated.View style={{ position: 'absolute', top: -20, right: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.18)', transform: [{ translateY: floatY }] }} />
+        <Animated.View style={{ position: 'absolute', top: -40, right: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,1)', opacity: glowOpacity, transform: [{ scale: glowScale }] }} pointerEvents="none" />
+        <View style={{ position: 'relative' }}>
+          <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 1.1, textTransform: 'uppercase', color: '#FFF', marginBottom: 14 }}>Hızlı işlem</Text>
+          <Text style={{ ...SERIF, fontSize: 32, letterSpacing: -0.64, lineHeight: 35, color: '#FFF', marginBottom: 16 }}>Yeni sipariş{'\n'}oluştur</Text>
+          <View className="flex-row items-center self-start rounded-full" style={{ paddingHorizontal: 18, paddingVertical: 10, backgroundColor: '#FFF', gap: 8 }}>
+            <Text style={{ fontSize: 13, fontWeight: '500', color: INK }}>Başla</Text>
+            <Animated.View style={{ transform: [{ translateX: arrowX }] }}>
+              <ArrowRight size={14} color={INK} strokeWidth={2} />
+            </Animated.View>
+          </View>
+        </View>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+// ── Tasks Card (dark) ──
+function TasksCard({ tasks }: { tasks: { icon: React.FC<any>; label: string; time: string; done: boolean; onPress?: () => void }[] }) {
+  const doneCount = tasks.filter(t => t.done).length;
+  return (
+    <View style={{
+      backgroundColor: SURFACE_ALT,
+      // @ts-ignore web gradient
+      backgroundImage: `linear-gradient(135deg, ${SURFACE_ALT} 0%, ${P_DEEP}33 100%)`,
+      borderRadius: DS.radius.xl, padding: 22, flex: 1, gap: 0,
+    }}>
+      <View className="flex-row items-center justify-between" style={{ marginBottom: 14 }}>
+        <Text style={{ fontSize: 14, fontWeight: '500', color: '#FFF' }}>Bugünkü görevler</Text>
+        <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{doneCount}/{tasks.length}</Text>
+      </View>
+      <View style={{ gap: 10, flex: 1 }}>
+        {tasks.map((t, i) => {
+          const IconComp = t.icon;
+          return (
+            <Pressable key={i} onPress={t.onPress} className="flex-row items-center" style={{
+              gap: 10, paddingBottom: 10,
+              borderBottomWidth: i < tasks.length - 1 ? 1 : 0, borderBottomColor: 'rgba(255,255,255,0.08)',
+            }}>
+              <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' }}>
+                <IconComp size={14} color="#FFF" strokeWidth={1.8} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '500', color: '#FFF', textDecorationLine: t.done ? 'line-through' : 'none', opacity: t.done ? 0.4 : 1 }}>{t.label}</Text>
+                <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>{t.time}</Text>
+              </View>
+              <View style={{
+                width: 18, height: 18, borderRadius: 9,
+                backgroundColor: t.done ? P : 'transparent',
+                borderWidth: t.done ? 0 : 1.5, borderColor: t.done ? undefined : 'rgba(255,255,255,0.2)',
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                {t.done && <Check size={10} color="#FFF" strokeWidth={2.5} />}
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  MAIN SCREEN
+// ══════════════════════════════════════════════════════════════════
 export function DoctorDashboardScreen() {
   const router = useRouter();
   const { profile } = useAuthStore();
   const { orders, loading, refetch } = useOrders('doctor', profile?.id);
   const { width } = useWindowDimensions();
-
   const isDesktop = width >= 900;
-  const isTablet  = width >= 600 && width < 900;
+  const { setTitle, clear } = usePageTitleStore();
 
-  const firstName  = profile?.full_name?.split(' ')[0] ?? '';
+  useEffect(() => { setTitle(getTodayLabel()); return clear; }, []);
 
-  // ── Computations ────────────────────────────────────────────────
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const total        = orders.length;
-  const active       = orders.filter(o => o.status !== 'teslim_edildi').length;
-  const overdueCount = orders.filter(o => isOrderOverdue(o.delivery_date, o.status)).length;
-  const delivered    = orders.filter(o => o.status === 'teslim_edildi').length;
-  const thisWeekDel  = orders.filter(o => {
-    const d = new Date(o.delivery_date + 'T00:00:00');
-    const diff = (d.getTime() - today.getTime()) / 86_400_000;
-    return diff >= 0 && diff <= 7 && o.status !== 'teslim_edildi';
-  }).length;
+  const firstName = profile?.full_name?.split(' ')[0] ?? '';
+  const today = todayStr();
+
+  // ── Derived stats ──
+  const total = orders.length;
+  const active = orders.filter(o => o.status !== 'teslim_edildi').length;
+  const overdueList = orders.filter(o => isOrderOverdue(o.delivery_date, o.status));
+  const overdueCount = overdueList.length;
+  const delivered = orders.filter(o => o.status === 'teslim_edildi').length;
   const thisMonthNew = orders.filter(o => {
     const d = new Date(o.created_at); d.setHours(0, 0, 0, 0);
-    return d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
+    const now = new Date(); now.setHours(0, 0, 0, 0);
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
   }).length;
 
-  // Monthly trend (last 6 months)
+  // Pipeline counts
+  const pipelineCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    STATUS_KEYS.forEach(k => { counts[k] = orders.filter(o => o.status === k).length; });
+    return counts;
+  }, [orders]);
+
+  const totalPipe = Object.values(pipelineCounts).reduce((s, v) => s + v, 0) || 1;
+  const productionPct = Math.round(((pipelineCounts['uretimde'] ?? 0) / totalPipe) * 100);
+  const deliveryPct = Math.round(((pipelineCounts['teslim_edildi'] ?? 0) / totalPipe) * 100);
+
+  // Monthly trend
   const monthly = useMemo(() => {
     const bars: { label: string; count: number }[] = [];
     for (let i = 5; i >= 0; i--) {
@@ -453,30 +648,47 @@ export function DoctorDashboardScreen() {
       const y = d.getFullYear(), m = d.getMonth();
       bars.push({
         label: MONTHS_TR[m],
-        count: orders.filter(o => {
-          const c = new Date(o.created_at);
-          return c.getFullYear() === y && c.getMonth() === m;
-        }).length,
+        count: orders.filter(o => { const c = new Date(o.created_at); return c.getFullYear() === y && c.getMonth() === m; }).length,
       });
     }
     return bars;
   }, [orders]);
 
-  // Upcoming deliveries (next 7 days, not delivered)
+  // Week counts
+  const weekDays = getWeekDays();
+  const weekCounts = useMemo(() => {
+    const wc: Record<string, number> = {};
+    weekDays.forEach(wd => { wc[wd.date] = orders.filter(o => o.created_at?.startsWith(wd.date)).length; });
+    return wc;
+  }, [orders]);
+
+  // Latest active order
+  const recentOrders = useMemo(() =>
+    orders.slice().sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? '')).slice(0, 8),
+    [orders]);
+  const latestOrder = recentOrders.find(o => o.status !== 'teslim_edildi') ?? recentOrders[0];
+
+  // Upcoming deliveries
   const upcoming = useMemo(() => orders
     .filter(o => o.status !== 'teslim_edildi')
-    .filter(o => {
-      const d = new Date(o.delivery_date + 'T00:00:00');
-      return (d.getTime() - today.getTime()) / 86_400_000 >= 0;
-    })
+    .filter(o => { const d = new Date(o.delivery_date + 'T00:00:00'); return d.getTime() >= Date.now() - 86400000; })
     .sort((a, b) => a.delivery_date.localeCompare(b.delivery_date))
     .slice(0, 5), [orders]);
 
-  // Pending design approvals (token-based, doctor must approve)
-  const [pendingApprovals, setPendingApprovals] = useState<{
-    id: string; order_number: string; token: string; patient_name: string | null;
-  }[]>([]);
+  // Tasks
+  const taskItems: { icon: React.FC<any>; label: string; time: string; done: boolean; onPress?: () => void }[] = [];
+  overdueList.slice(0, 2).forEach(o => {
+    taskItems.push({ icon: Clock as React.FC<any>, label: `${o.patient_name ?? o.work_type ?? 'Sipariş'} · gecikmiş`, time: fmtDate(o.delivery_date), done: false, onPress: () => router.push(`/(doctor)/order/${o.id}` as any) });
+  });
+  upcoming.slice(0, 2).forEach(o => {
+    taskItems.push({ icon: Package as React.FC<any>, label: `${o.patient_name ?? 'Sipariş'} · teslim`, time: fmtDate(o.delivery_date), done: false, onPress: () => router.push(`/(doctor)/order/${o.id}` as any) });
+  });
+  if (taskItems.length === 0) {
+    taskItems.push({ icon: CheckCircle as React.FC<any>, label: 'Bekleyen görev yok', time: '', done: true, onPress: undefined });
+  }
 
+  // Pending design approvals
+  const [pendingApprovals, setPendingApprovals] = useState<{ id: string; order_number: string; token: string; patient_name: string | null }[]>([]);
   const loadApprovals = useCallback(async () => {
     if (!profile?.id) return;
     const { data } = await supabase
@@ -486,314 +698,234 @@ export function DoctorDashboardScreen() {
       .eq('doctor_approval_status', 'pending')
       .not('doctor_approval_token', 'is', null);
     setPendingApprovals(((data ?? []) as any[]).map(r => ({
-      id: r.id, order_number: r.order_number,
-      token: r.doctor_approval_token, patient_name: r.patient_name,
+      id: r.id, order_number: r.order_number, token: r.doctor_approval_token, patient_name: r.patient_name,
     })));
   }, [profile?.id]);
-
   useEffect(() => { loadApprovals(); }, [loadApprovals]);
 
-  // Recent orders
-  const recent = useMemo(() => orders.slice().sort((a, b) =>
-    (b.created_at ?? '').localeCompare(a.created_at ?? '')).slice(0, 5), [orders]);
+  // Status distribution
+  const byStatus = useMemo(() =>
+    STATUS_KEYS.map(k => ({ key: k, label: STATUS_CFG[k]?.label ?? k, count: orders.filter(o => o.status === k).length })),
+    [orders]);
 
-  // Work type breakdown
-  const workTypes = useMemo(() => {
+  // Work type
+  const byWorkType = useMemo(() => {
     const map: Record<string, number> = {};
     orders.forEach(o => { if (o.work_type) map[o.work_type] = (map[o.work_type] ?? 0) + 1; });
-    return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([label, count]) => ({ label, count }));
   }, [orders]);
 
+  // ══════════════════════════════════════════════════════════════
+  //  RENDER
+  // ══════════════════════════════════════════════════════════════
   return (
-    <SafeAreaView style={s.safe} edges={['top']}>
-      <ResponsiveCanvas
-        size="xl"
-        bgClassName="bg-page"
-        padClassName="px-4 sm:px-6 lg:px-10 pt-5 pb-32"
-        scrollProps={{
-          refreshControl: <RefreshControl refreshing={loading} onRefresh={refetch} tintColor={P} />,
-        }}
-      >
-        {/* Hero — canonical HeroX */}
-        <HeroX
-          kicker={getTodayLabel()}
-          title={`Merhaba${firstName ? `, Dr. ${firstName}` : ''}`}
-          description={profile?.clinic_name ? `${profile.clinic_name} · Bugünkü siparişlerinize göz atın` : 'Bugünkü siparişlerinize göz atın'}
-          actions={[
-            { leftIcon: 'zap',         label: 'Yeni İş Emri',                          onPress: () => router.push('/(doctor)/new-order' as any) },
-            { leftIcon: 'file-text',   label: 'Siparişlerim',     variant: 'outline',  onPress: () => router.push('/(doctor)/orders' as any) },
-            ...(overdueCount > 0 ? [{ leftIcon: 'alert-triangle', label: `${overdueCount} Geciken`, variant: 'destructive' as const, onPress: () => router.push('/(doctor)/orders' as any) }] : []),
-          ]}
-        />
-
-        {/* ── Onay Bekleyen Tasarımlar Banner ── */}
-        {pendingApprovals.length > 0 && (
-          <View style={apv.banner}>
-            <View style={apv.iconWrap}>
-              <Icon name={'clipboard' as any} size={18} color="#FFFFFF" />
+    <ScrollView
+      className="flex-1"
+      contentContainerStyle={{ padding: isDesktop ? 10 : 16, paddingBottom: 120 }}
+      refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={P} />}
+    >
+      {/* ════════ HERO ════════ */}
+      <View className="mb-5">
+        <View className={`${isDesktop ? 'flex-row justify-between items-end' : ''}`} style={{ gap: 32, paddingTop: 8 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{
+              ...SERIF, fontSize: isDesktop ? 56 : 40,
+              letterSpacing: -0.025 * (isDesktop ? 56 : 40),
+              lineHeight: isDesktop ? 56 : 42, color: INK,
+            }}>
+              Merhaba,{' '}
+              <Text style={{ fontStyle: 'italic', color: DS.ink[400] }}>Dr. {firstName}</Text>
+            </Text>
+            <View className="flex-row flex-wrap items-center" style={{ gap: 14, marginTop: 14 }}>
+              <StatPill label="Üretim" value={`${productionPct}%`} bg={INK} color="#FFF" />
+              <StatPill label="Aktif" value={`${active}`} bg={P} color="#FFF" />
+              {overdueCount > 0 && <StatPill label="Geciken" value={`${overdueCount}`} bg="rgba(217,75,75,0.12)" color="#9C2E2E" />}
+              <StatPill label="Bu ay" value={`${thisMonthNew}`} bg="rgba(0,0,0,0.08)" color={INK} />
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={apv.title}>{pendingApprovals.length} tasarım onayınızı bekliyor</Text>
-              <Text style={apv.sub}>
-                {pendingApprovals.slice(0, 2).map(p =>
-                  p.order_number + (p.patient_name ? ' · ' + p.patient_name : '')
-                ).join(' · ')}
-                {pendingApprovals.length > 2 && ` · +${pendingApprovals.length - 2} daha`}
-              </Text>
-            </View>
-            <TouchableOpacity
-              style={apv.cta}
-              onPress={() => {
-                if (pendingApprovals.length === 1) {
-                  router.push(`/doctor-approval/${pendingApprovals[0].token}` as any);
-                } else {
-                  // Birden fazla varsa orders ekranına git, oradan seçsin
-                  router.push('/(doctor)/orders' as any);
-                }
-              }}
-              activeOpacity={0.85}
-            >
-              <Text style={apv.ctaText}>İncele</Text>
-              <Icon name="arrow-right" size={14} color="#7C3AED" />
-            </TouchableOpacity>
           </View>
-        )}
-
-        {/* KPI grid — KPICardX (canonical NativeWind) */}
-        <View className="flex-row flex-wrap gap-3 mt-2 mb-6">
-          <KPICardX label="Toplam"     value={total}         icon="package"        accent={P} />
-          <KPICardX label="Aktif"      value={active}        icon="activity"       accent={CLR.teal} />
-          <KPICardX label="Geciken"    value={overdueCount}  icon="alert-triangle" accent={overdueCount > 0 ? CLR.red : '#94A3B8'} danger={overdueCount > 0} />
-          <KPICardX label="Bu Hafta"   value={thisWeekDel}   icon="calendar"       accent={CLR.amber} />
-          <KPICardX label="Bu Ay Yeni" value={thisMonthNew}  icon="trending-up"    accent={CLR.green} />
-          <KPICardX label="Tamamlanan" value={delivered}     icon="check-circle"   accent="#64748B" />
-        </View>
-
-        {/* Quick Actions — primary first, then 3 secondary */}
-        <Section text="Hızlı İşlemler" />
-        <View style={s.qaGrid}>
-          <QuickAction
-            icon="zap"
-            label="Yeni İş Emri"
-            accent={P}
-            primary
-            onPress={() => router.push('/(doctor)/new-order' as any)}
-          />
-          <QuickAction
-            icon="file-text"
-            label="Siparişlerim"
-            accent={CLR.teal}
-            onPress={() => router.push('/(doctor)/orders' as any)}
-          />
-          <QuickAction
-            icon="user"
-            label="Profilim"
-            accent={CLR.purple}
-            onPress={() => router.push('/(doctor)/profile' as any)}
-          />
-        </View>
-
-        {/* Main grid — responsive */}
-        <View style={[s.grid, isDesktop && s.gridDesktop]}>
-
-          {/* Col 1 — Trend chart + Work types */}
-          <View style={[s.col, isDesktop && { flex: 1.4 }]}>
-            <Section text="Sipariş Trendi" />
-            <Card style={{ marginBottom: 20 }}>
-              <CardHeader title="Son 6 Ay" icon="bar-chart" />
-              {monthly.some(m => m.count > 0)
-                ? <MonthlyChart data={monthly} />
-                : <View style={s.emptyChart}>
-                    <Text style={s.emptyText}>Henüz veri yok</Text>
-                  </View>
-              }
-            </Card>
-
-            {workTypes.length > 0 && (
-              <>
-                <Section text="İş Tipi Dağılımı" />
-                <Card>
-                  <CardHeader title="En çok kullanılan" icon="layers" />
-                  <View style={{ paddingHorizontal: 18, paddingBottom: 18, gap: 10 }}>
-                    {workTypes.map(([label, count], i) => {
-                      const palette = [P, CLR.teal, CLR.purple, CLR.amber, CLR.green];
-                      const max = Math.max(...workTypes.map(w => w[1]), 1);
-                      const pct = Math.round((count / max) * 100);
-                      return (
-                        <View key={i}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 5 }}>
-                            <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: palette[i], marginRight: 8 }} />
-                            <Text style={{ flex: 1, fontSize: 12, color: '#0F172A', fontWeight: '500' }} numberOfLines={1}>{label}</Text>
-                            <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B' }}>{count}</Text>
-                          </View>
-                          <View style={{ height: 3, backgroundColor: '#F1F5F9', borderRadius: 4 }}>
-                            <View style={{ height: 3, borderRadius: 4, backgroundColor: palette[i], width: `${pct}%` as any, opacity: 0.75 }} />
-                          </View>
-                        </View>
-                      );
-                    })}
-                  </View>
-                </Card>
-              </>
-            )}
-          </View>
-
-          {/* Col 2 — Upcoming + Status + Recent */}
-          <View style={[s.col, isDesktop && { flex: 1 }]}>
-            <Section text="Yaklaşan Teslimler" />
-            <Card style={{ marginBottom: 20 }}>
-              <CardHeader
-                title="Önümüzdeki 7 gün"
-                icon="clock"
-                right={
-                  <View style={s.chip}>
-                    <Text style={s.chipText}>{upcoming.length}</Text>
-                  </View>
-                }
-              />
-              {upcoming.length === 0
-                ? <Text style={s.emptyText}>Yaklaşan teslimat yok</Text>
-                : upcoming.map((o, i) =>
-                    <UpcomingRow
-                      key={o.id}
-                      order={o}
-                      last={i === upcoming.length - 1}
-                      onPress={() => router.push(`/(doctor)/order/${o.id}` as any)}
-                    />
-                  )
-              }
-            </Card>
-
-            <Section text="Statü Dağılımı" />
-            <Card style={{ marginBottom: 20 }}>
-              <CardHeader title="Durum" icon="layers" />
-              <StatusDist orders={orders} total={total} />
-            </Card>
-
-            <Section text="Son Siparişler" />
-            <Card>
-              <CardHeader
-                title="Son 5"
-                icon="file-text"
-                right={
-                  <TouchableOpacity onPress={() => router.push('/(doctor)/orders' as any)} activeOpacity={0.7}>
-                    <Text style={s.link}>Tümünü Gör →</Text>
-                  </TouchableOpacity>
-                }
-              />
-              {recent.length === 0
-                ? <Text style={s.emptyText}>Henüz sipariş yok</Text>
-                : recent.map((o, i) => {
-                    const cfg = STATUS_CONFIG[o.status as WorkOrderStatus];
-                    const od  = isOrderOverdue(o.delivery_date, o.status);
-                    const last = i === recent.length - 1;
-                    return (
-                      <TouchableOpacity
-                        key={o.id}
-                        onPress={() => router.push(`/(doctor)/order/${o.id}` as any)}
-                        activeOpacity={0.75}
-                        style={[rec.row, !last && rec.border]}
-                      >
-                        <View style={[rec.dot, { backgroundColor: od ? CLR.red : cfg.color }]} />
-                        <View style={{ flex: 1 }}>
-                          <Text style={rec.title} numberOfLines={1}>{o.work_type || 'Belirtilmemiş'}</Text>
-                          <Text style={rec.sub} numberOfLines={1}>
-                            {o.patient_name || '—'} · #{o.order_number}
-                          </Text>
-                        </View>
-                        <Text style={[rec.date, od && { color: CLR.red, fontWeight: '700' }]}>
-                          {new Date(o.delivery_date).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })
-              }
-            </Card>
+          <View className="flex-row" style={{ gap: 32, alignItems: 'flex-end' }}>
+            <BigStat value={total} label="Toplam sipariş" />
+            <BigStat value={active} label="Aktif" />
+            <BigStat value={delivered} label="Teslim" />
           </View>
         </View>
+      </View>
 
-        <View style={{ height: 40 }} />
-      </ResponsiveCanvas>
-
-      {/* FAB — only on mobile */}
-      {!isDesktop && (
-        <TouchableOpacity
-          style={s.fab}
-          onPress={() => router.push('/(doctor)/new-order' as any)}
-          activeOpacity={0.85}
+      {/* ════════ PENDING APPROVALS BANNER ════════ */}
+      {pendingApprovals.length > 0 && (
+        <Pressable
+          onPress={() => {
+            if (pendingApprovals.length === 1) router.push(`/doctor-approval/${pendingApprovals[0].token}` as any);
+            else router.push('/(doctor)/orders' as any);
+          }}
+          style={{
+            backgroundColor: CLR.purple, borderRadius: DS.radius.xl,
+            padding: 20, marginBottom: 14, flexDirection: 'row', alignItems: 'center', gap: 14,
+          }}
         >
-          <Icon name="plus" size={24} color="#FFFFFF" strokeWidth={2.6} />
-        </TouchableOpacity>
+          <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' }}>
+            <Layers size={20} color="#FFF" strokeWidth={1.75} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: '#FFF' }}>{pendingApprovals.length} tasarım onayınızı bekliyor</Text>
+            <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)', marginTop: 2 }}>
+              {pendingApprovals.slice(0, 2).map(p => p.order_number + (p.patient_name ? ' · ' + p.patient_name : '')).join(' · ')}
+            </Text>
+          </View>
+          <ArrowUpRight size={16} color="#FFF" strokeWidth={1.8} />
+        </Pressable>
       )}
-    </SafeAreaView>
+
+      {/* ════════ OVERDUE ALERT ════════ */}
+      {overdueCount > 0 && (
+        <AnimatedOverdueCard count={overdueCount} onPress={() => router.push('/(doctor)/orders' as any)} />
+      )}
+
+      {/* ════════ 4-CARD GRID ════════ */}
+      <View className={isDesktop ? 'flex-row' : ''} style={{ gap: 14, marginBottom: 14 }}>
+        <AnimatedAktifVakaCard isDesktop={isDesktop} pipelineCounts={pipelineCounts} latestOrder={latestOrder} router={router} />
+
+        <Card style={{ flex: isDesktop ? 1.2 : undefined, padding: 22, marginBottom: isDesktop ? 0 : 14 }}>
+          <View className="flex-row items-start justify-between" style={{ marginBottom: 12 }}>
+            <View>
+              <Text style={{ fontSize: 18, fontWeight: '500', letterSpacing: -0.27, color: INK }}>Sipariş Trendi</Text>
+              <Text style={{ ...SERIF, fontSize: 42, letterSpacing: -1.05, lineHeight: 42, marginTop: 8, color: INK }}>
+                {monthly[monthly.length - 1]?.count ?? 0}
+                <Text style={{ fontSize: 14, color: DS.ink[400] }}> bu ay</Text>
+              </Text>
+              <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 4 }}>Son 6 aylık trend</Text>
+            </View>
+            <Pressable onPress={() => router.push('/(doctor)/orders' as any)} className="items-center justify-center rounded-full" style={{ width: 32, height: 32, backgroundColor: DS.ink[100] }}>
+              <ArrowUpRight size={14} color={DS.ink[500]} strokeWidth={1.8} />
+            </Pressable>
+          </View>
+          {monthly.length > 0 && <View style={{ flex: 1, minHeight: 120 }}><ProductionBarChart data={monthly} /></View>}
+        </Card>
+
+        <Card style={{ flex: isDesktop ? 1 : undefined, padding: 22, alignItems: 'center', marginBottom: isDesktop ? 0 : 14 }}>
+          <View className="w-full flex-row items-center justify-between" style={{ marginBottom: 8 }}>
+            <Text style={{ fontSize: 14, fontWeight: '500', color: INK }}>Teslim Oranı</Text>
+            <Pressable onPress={() => router.push('/(doctor)/orders' as any)}>
+              <ArrowUpRight size={14} color={DS.ink[500]} strokeWidth={1.8} />
+            </Pressable>
+          </View>
+          <PercentRingHero value={deliveryPct} size={140} darkText />
+          <Text style={{ fontSize: 9, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.72, marginTop: 10 }}>Teslim</Text>
+          <View className="flex-row" style={{ gap: 8, marginTop: 12 }}>
+            <View className="items-center rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: DS.ink[100] }}>
+              <Text style={{ fontSize: 10, fontWeight: '500', color: DS.ink[500] }}>{pipelineCounts['uretimde'] ?? 0} üretimde</Text>
+            </View>
+            <View className="items-center rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: hexA(P, 0.15) }}>
+              <Text style={{ fontSize: 10, fontWeight: '500', color: P }}>{pipelineCounts['teslimata_hazir'] ?? 0} hazır</Text>
+            </View>
+          </View>
+        </Card>
+
+        <View style={{ flex: isDesktop ? 1.4 : undefined }}>
+          <TasksCard tasks={taskItems} />
+        </View>
+      </View>
+
+      {/* ════════ BOTTOM ROW — Weekly + CTA ════════ */}
+      <View className={isDesktop ? 'flex-row' : ''} style={{ gap: 14, marginBottom: 14 }}>
+        <WeeklyStrip weekDays={weekDays} weekCounts={weekCounts} onPress={() => router.push('/(doctor)/orders' as any)} />
+        <AnimatedCTACard onPress={() => router.push('/(doctor)/new-order' as any)} isDesktop={isDesktop} />
+      </View>
+
+      {/* ════════ ORDERS TABLE ════════ */}
+      <Card style={{ marginBottom: 14 }}>
+        <View className="flex-row items-center justify-between" style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
+          <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: INK }}>Son Siparişler</Text>
+          <Pressable onPress={() => router.push('/(doctor)/orders' as any)}>
+            <Text style={{ fontSize: 13, color: P, fontWeight: '700' }}>Tümünü Gör →</Text>
+          </Pressable>
+        </View>
+        <View className="flex-row items-center" style={{ paddingHorizontal: 20, paddingVertical: 11, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)', backgroundColor: DS.ink[50] }}>
+          <Text style={{ flex: 1.2, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>No</Text>
+          <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Hasta</Text>
+          {isDesktop && <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>İş Tipi</Text>}
+          <Text style={{ flex: 1.4, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Durum</Text>
+          {isDesktop && <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, textAlign: 'right' }}>Teslim</Text>}
+        </View>
+        {recentOrders.length === 0
+          ? <Text className="p-6 text-center" style={{ fontSize: 13, color: DS.ink[400] }}>Yükleniyor...</Text>
+          : recentOrders.map((order, idx) => {
+              const overdue = order.delivery_date < today && order.status !== 'teslim_edildi';
+              const isLast = idx === recentOrders.length - 1;
+              return (
+                <Pressable key={order.id} className="flex-row items-center" style={{
+                  paddingHorizontal: 20, paddingVertical: 13, gap: 8, minHeight: 54,
+                  borderBottomWidth: !isLast ? 1 : 0, borderBottomColor: 'rgba(0,0,0,0.04)',
+                  backgroundColor: overdue ? 'rgba(217,75,75,0.06)' : undefined,
+                }} onPress={() => router.push(`/(doctor)/order/${order.id}` as any)}>
+                  <Text style={{ flex: 1.2, fontSize: 12, fontWeight: '800', color: P }} numberOfLines={1}>#{order.order_number}</Text>
+                  <View className="flex-row items-center" style={{ flex: 2, gap: 8 }}>
+                    <View className="items-center justify-center rounded-full" style={{ width: 28, height: 28, backgroundColor: hexA(P, 0.1), borderWidth: 1, borderColor: hexA(P, 0.15) }}>
+                      <Text style={{ fontSize: 9, fontWeight: '800', color: P }}>{initials(order.patient_name)}</Text>
+                    </View>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: INK }} numberOfLines={1}>{order.patient_name || '—'}</Text>
+                  </View>
+                  {isDesktop && <Text style={{ flex: 2, fontSize: 11, color: DS.ink[500] }} numberOfLines={1}>{order.work_type || '--'}</Text>}
+                  <View style={{ flex: 1.4 }}><StatusBadge status={order.status} /></View>
+                  {isDesktop && <Text style={{ flex: 1, fontSize: 11, fontWeight: overdue ? '700' : '500', textAlign: 'right', color: overdue ? '#9C2E2E' : DS.ink[400] }}>{fmtDate(order.delivery_date)}</Text>}
+                </Pressable>
+              );
+            })
+        }
+      </Card>
+
+      {/* ════════ EXTRA: Status + Work Type ════════ */}
+      {(byStatus.length > 0 || byWorkType.length > 0) && (
+        <View className={isDesktop ? 'flex-row' : ''} style={{ gap: 14, marginBottom: 14 }}>
+          <Card style={{ flex: isDesktop ? 1 : undefined, padding: 22, marginBottom: isDesktop ? 0 : 14 }}>
+            <CardHeader title="Statü Dağılımı" display />
+            <View style={{ gap: 12 }}>
+              {byStatus.map(item => {
+                const pct = Math.round((item.count / (total || 1)) * 100);
+                const cfg = STATUS_CFG[item.key];
+                return (
+                  <View key={item.key}>
+                    <View className="flex-row items-center" style={{ marginBottom: 5 }}>
+                      <View className="rounded-full" style={{ width: 7, height: 7, backgroundColor: cfg?.color ?? INK, marginRight: 8 }} />
+                      <Text style={{ flex: 1, fontSize: 11, color: DS.ink[500], fontWeight: '500' }}>{item.label}</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: INK }}>{item.count}</Text>
+                      <Text style={{ fontSize: 10, color: DS.ink[400], marginLeft: 6, width: 28, textAlign: 'right' }}>{pct}%</Text>
+                    </View>
+                    <View className="rounded overflow-hidden" style={{ height: 4, backgroundColor: DS.ink[100] }}>
+                      <View className="rounded" style={{ height: 4, backgroundColor: cfg?.color ?? INK, width: `${pct}%` as any }} />
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </Card>
+          {byWorkType.length > 0 && (
+            <Card style={{ flex: isDesktop ? 1 : undefined, padding: 22 }}>
+              <CardHeader title="İş Tipi Dağılımı" display />
+              <View style={{ gap: 10 }}>
+                {byWorkType.map((w, i) => {
+                  const max = Math.max(...byWorkType.map(d => d.count), 1);
+                  const palette = [P, CLR.blue, CLR.purple, CLR.teal, CLR.orange];
+                  return (
+                    <View key={i}>
+                      <View className="flex-row items-center" style={{ marginBottom: 5 }}>
+                        <View className="rounded-full" style={{ width: 7, height: 7, backgroundColor: palette[i], marginRight: 8 }} />
+                        <Text style={{ flex: 1, fontSize: 11, color: INK, fontWeight: '500' }} numberOfLines={1}>{w.label}</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: DS.ink[500] }}>{w.count}</Text>
+                      </View>
+                      <View className="rounded overflow-hidden" style={{ height: 3, backgroundColor: DS.ink[100] }}>
+                        <View className="rounded" style={{ height: 3, backgroundColor: palette[i], width: `${Math.round((w.count / max) * 100)}%` as any, opacity: 0.7 }} />
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </Card>
+          )}
+        </View>
+      )}
+
+      <View style={{ height: 40 }} />
+    </ScrollView>
   );
 }
-
-// ── Recent order row ──────────────────────────────────────────────
-const rec = StyleSheet.create({
-  row:    { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 12, gap: 10 },
-  border: { borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  dot:    { width: 7, height: 7, borderRadius: 4 },
-  title:  { fontSize: 13, fontWeight: '600', color: '#0F172A' },
-  sub:    { fontSize: 11, color: '#94A3B8', marginTop: 2 },
-  date:   { fontSize: 11, fontWeight: '600', color: '#64748B' },
-});
-
-// ── Root styles ───────────────────────────────────────────────────
-const s = StyleSheet.create({
-  safe:   { flex: 1, backgroundColor: BG },
-  // scroll: artık ResponsiveCanvas yönetiyor (NativeWind padding + maxWidth)
-
-  kpiStrip: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 24 },
-
-  qaGrid: { flexDirection: 'row', gap: 10, marginBottom: 24 },
-
-  grid:        { gap: 20 },
-  gridDesktop: { flexDirection: 'row', alignItems: 'flex-start' },
-  col:         { gap: 0 },
-
-  chip:      { backgroundColor: P_TINT_12, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3, minWidth: 26, alignItems: 'center' },
-  chipText:  { fontSize: 11, fontWeight: '800', color: P_DARK },
-
-  link:      { fontSize: 12, color: P, fontWeight: '700' },
-  emptyText: { fontSize: 13, color: '#94A3B8', padding: 24, textAlign: 'center' },
-  emptyChart:{ height: 160, alignItems: 'center', justifyContent: 'center' },
-
-  fab: {
-    position: 'absolute', right: 20, bottom: 100,
-    width: 56, height: 56, borderRadius: 28,
-    backgroundColor: P,
-    alignItems: 'center', justifyContent: 'center',
-    ...(Platform.OS === 'web'
-      ? ({ boxShadow: `0 4px 8px ${hexA(P, 0.18)}, 0 14px 36px ${hexA(P, 0.42)}` } as any)
-      : { shadowColor: P, shadowOpacity: 0.40, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 10 }),
-  },
-});
-
-// ─── Pending approvals banner ────────────────────────────────────────────
-const apv = StyleSheet.create({
-  banner: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingHorizontal: 14, paddingVertical: 14,
-    marginHorizontal: 16, marginTop: 4, marginBottom: -4,
-    borderRadius: 16,
-    backgroundColor: '#7C3AED',
-    ...(Platform.OS === 'web'
-      ? ({ boxShadow: '0 8px 20px rgba(124,58,237,0.30)' } as any)
-      : { shadowColor: '#7C3AED', shadowOpacity: 0.30, shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, elevation: 6 }),
-  },
-  iconWrap: {
-    width: 36, height: 36, borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.20)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  title:  { fontSize: 13, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.1 },
-  sub:    { fontSize: 11, color: 'rgba(255,255,255,0.85)', marginTop: 2 },
-  cta: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 12, paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: '#FFFFFF',
-  },
-  ctaText: { fontSize: 12, fontWeight: '800', color: '#7C3AED' },
-});

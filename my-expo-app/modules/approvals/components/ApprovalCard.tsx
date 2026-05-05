@@ -1,33 +1,71 @@
+/**
+ * ApprovalCard — Patterns design language
+ *
+ * Tasarım onayı kartı: step adı + durum badge + onayla/reddet aksiyonları.
+ * DS tokens, DISPLAY typography, inline styles.
+ */
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, Pressable, TextInput, ActivityIndicator, Platform } from 'react-native';
+import {
+  Clock, CheckCircle2, XCircle, Pencil, Cog,
+  Flame, Package, Truck, ScanSearch, FileDown, Box, Gem, CookingPot,
+  Check, X,
+} from 'lucide-react-native';
 import { toast } from '../../../core/ui/Toast';
 import { Approval } from '../types';
 import { useApprove } from '../hooks/useApprove';
-import { STEP_ICONS, MANUAL_STEPS, DIGITAL_STEPS } from '../../workflow/templates';
+import { MANUAL_STEPS, DIGITAL_STEPS } from '../../workflow/templates';
+import { DS } from '../../../core/theme/dsTokens';
 
+const R = { sm: 8, md: 14, lg: 20, xl: 24, pill: 999 };
+const CARD = {
+  backgroundColor: '#FFFFFF',
+  borderRadius: R.xl,
+  borderWidth: 1,
+  borderColor: 'rgba(0,0,0,0.05)',
+} as const;
+
+// ── Step label map ──
 const STEP_LABELS: Record<string, string> = Object.fromEntries(
-  [...MANUAL_STEPS, ...DIGITAL_STEPS].map(s => [s.name, s.label])
+  [...MANUAL_STEPS, ...DIGITAL_STEPS].map(s => [s.name, s.label]),
 );
+
+// ── Lucide icon map ──
+const STEP_ICON_MAP: Record<string, React.ComponentType<any>> = {
+  receive_impression: FileDown,
+  model_cast:         Box,
+  scan:               ScanSearch,
+  receive_file:       FileDown,
+  design:             Pencil,
+  milling:            Cog,
+  sinter:             Flame,
+  porcelain:          Gem,
+  oven:               CookingPot,
+  qc:                 CheckCircle2,
+  packaging:          Package,
+  delivery:           Truck,
+};
+
+// ── Status config ──
+const STATUS_CFG = {
+  pending:  { label: 'Bekliyor',   bg: 'rgba(232,155,42,0.12)', color: '#9C5E0E' },
+  approved: { label: 'Onaylandı',  bg: 'rgba(45,154,107,0.1)',  color: '#1F6B47' },
+  rejected: { label: 'Reddedildi', bg: 'rgba(217,75,75,0.1)',   color: '#9C2E2E' },
+};
 
 interface Props {
   approval: Approval;
   onResolved?: () => void;
-  canApprove?: boolean; // true only for admin
+  canApprove?: boolean;
 }
-
-const STATUS_CFG = {
-  pending:  { label: 'Bekliyor',   bg: '#FEF3C7', color: '#D97706' },
-  approved: { label: 'Onaylandı',  bg: '#ECFDF5', color: '#059669' },
-  rejected: { label: 'Reddedildi', bg: '#FEF2F2', color: '#DC2626' },
-};
 
 export function ApprovalCard({ approval, onResolved, canApprove = false }: Props) {
   const { approve, reject, loading } = useApprove();
   const [showReject, setShowReject]  = useState(false);
   const [reason, setReason]          = useState('');
-  const sc   = STATUS_CFG[approval.status];
-  const icon = STEP_ICONS[approval.step_name] ?? '⏳';
 
+  const sc        = STATUS_CFG[approval.status];
+  const StepIcon  = STEP_ICON_MAP[approval.step_name] ?? Clock;
   const stepLabel = STEP_LABELS[approval.step_name] ?? approval.step_name.replace(/_/g, ' ');
 
   const handleApprove = async () => {
@@ -44,127 +82,171 @@ export function ApprovalCard({ approval, onResolved, canApprove = false }: Props
   };
 
   return (
-    <View style={styles.card}>
-      <View style={styles.header}>
-        <Text style={styles.icon}>{icon}</Text>
-        <View style={styles.info}>
-          <Text style={styles.stepName}>{stepLabel}</Text>
-          <Text style={styles.requester}>
+    <View style={{ ...CARD, padding: 24, gap: 16 }}>
+      {/* ── Header: icon + info + status badge ── */}
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 14 }}>
+        {/* Step icon */}
+        <View style={{
+          width: 44, height: 44, borderRadius: 14,
+          backgroundColor: DS.ink[100],
+          alignItems: 'center', justifyContent: 'center',
+        }}>
+          <StepIcon size={18} color={DS.ink[700]} strokeWidth={1.8} />
+        </View>
+
+        {/* Info */}
+        <View style={{ flex: 1, gap: 3 }}>
+          <Text style={{
+            fontSize: 15, fontWeight: '600',
+            color: DS.ink[900], textTransform: 'capitalize',
+          }}>
+            {stepLabel}
+          </Text>
+          <Text style={{ fontSize: 12, color: DS.ink[500] }}>
             Talep: {approval.requester?.full_name ?? '—'}
           </Text>
-          <Text style={styles.date}>
-            {new Date(approval.requested_at).toLocaleDateString('tr-TR')}
+          <Text style={{ fontSize: 11, color: DS.ink[300] }}>
+            {new Date(approval.requested_at).toLocaleDateString('tr-TR', {
+              day: 'numeric', month: 'short', year: 'numeric',
+            })}
           </Text>
         </View>
-        <View style={[styles.badge, { backgroundColor: sc.bg }]}>
-          <Text style={[styles.badgeText, { color: sc.color }]}>{sc.label}</Text>
+
+        {/* Status chip */}
+        <View style={{
+          paddingHorizontal: 10, paddingVertical: 5,
+          borderRadius: R.pill, backgroundColor: sc.bg,
+        }}>
+          <Text style={{ fontSize: 11, fontWeight: '600', color: sc.color }}>
+            {sc.label}
+          </Text>
         </View>
       </View>
 
+      {/* ── Rejection note ── */}
       {approval.status === 'rejected' && approval.rejection_reason && (
-        <View style={styles.rejectNote}>
-          <Text style={styles.rejectNoteText}>❌ {approval.rejection_reason}</Text>
+        <View style={{
+          flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+          padding: 12, borderRadius: R.md,
+          backgroundColor: 'rgba(217,75,75,0.06)',
+        }}>
+          <XCircle size={14} color="#9C2E2E" strokeWidth={1.8} style={{ marginTop: 1 }} />
+          <Text style={{ flex: 1, fontSize: 12, color: '#9C2E2E', lineHeight: 18 }}>
+            {approval.rejection_reason}
+          </Text>
         </View>
       )}
 
+      {/* ── Approved by note ── */}
       {approval.status === 'approved' && approval.approver && (
-        <Text style={styles.resolvedBy}>✅ Onaylayan: {approval.approver.full_name}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <CheckCircle2 size={13} color="#1F6B47" strokeWidth={1.8} />
+          <Text style={{ fontSize: 12, color: '#1F6B47' }}>
+            Onaylayan: {approval.approver.full_name}
+          </Text>
+        </View>
       )}
 
+      {/* ── Action buttons ── */}
       {canApprove && approval.status === 'pending' && !showReject && (
-        <View style={styles.actions}>
-          <TouchableOpacity
-            style={styles.btnApprove}
-            onPress={handleApprove}
-            disabled={loading}
-          >
-            <Text style={styles.btnApproveText}>✓ Onayla</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.btnReject}
+        <View style={{
+          flexDirection: 'row', gap: 10,
+          borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)',
+          paddingTop: 14,
+        }}>
+          <Pressable
             onPress={() => setShowReject(true)}
             disabled={loading}
+            style={{
+              flex: 1, flexDirection: 'row', alignItems: 'center',
+              justifyContent: 'center', gap: 6,
+              paddingVertical: 10, borderRadius: R.pill,
+              borderWidth: 1.5, borderColor: 'rgba(217,75,75,0.2)',
+              backgroundColor: 'rgba(217,75,75,0.06)',
+              opacity: loading ? 0.5 : 1,
+            }}
           >
-            <Text style={styles.btnRejectText}>✕ Reddet</Text>
-          </TouchableOpacity>
+            <X size={14} color="#9C2E2E" strokeWidth={2} />
+            <Text style={{ fontSize: 13, fontWeight: '600', color: '#9C2E2E' }}>Reddet</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={handleApprove}
+            disabled={loading}
+            style={{
+              flex: 1, flexDirection: 'row', alignItems: 'center',
+              justifyContent: 'center', gap: 6,
+              paddingVertical: 10, borderRadius: R.pill,
+              backgroundColor: DS.ink[900],
+              opacity: loading ? 0.5 : 1,
+            }}
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color="#FFF" />
+            ) : (
+              <>
+                <Check size={14} color="#FFFFFF" strokeWidth={2} />
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFFFFF' }}>Onayla</Text>
+              </>
+            )}
+          </Pressable>
         </View>
       )}
 
+      {/* ── Reject form ── */}
       {showReject && (
-        <View style={styles.rejectForm}>
+        <View style={{
+          gap: 10, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)',
+          paddingTop: 14,
+        }}>
           <TextInput
-            style={styles.rejectInput}
+            style={{
+              backgroundColor: DS.ink[50], borderRadius: R.md,
+              padding: 14, fontSize: 13, color: DS.ink[900],
+              borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+              minHeight: 72, textAlignVertical: 'top',
+              ...(Platform.OS === 'web' ? { outlineStyle: 'none' as any } : {}),
+            }}
             placeholder="Red gerekçesi..."
-            placeholderTextColor="#94A3B8"
+            placeholderTextColor={DS.ink[400]}
             value={reason}
             onChangeText={setReason}
             multiline
           />
-          <View style={styles.rejectActions}>
-            <TouchableOpacity style={styles.btnCancel} onPress={() => setShowReject(false)}>
-              <Text style={styles.btnCancelText}>İptal</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.btnConfirmReject} onPress={handleReject} disabled={loading}>
-              <Text style={styles.btnConfirmRejectText}>Reddet</Text>
-            </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <Pressable
+              onPress={() => setShowReject(false)}
+              style={{
+                flex: 1, alignItems: 'center',
+                paddingVertical: 10, borderRadius: R.pill,
+                backgroundColor: DS.ink[100],
+              }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500] }}>İptal</Text>
+            </Pressable>
+            <Pressable
+              onPress={handleReject}
+              disabled={loading}
+              style={{
+                flex: 2, flexDirection: 'row', alignItems: 'center',
+                justifyContent: 'center', gap: 6,
+                paddingVertical: 10, borderRadius: R.pill,
+                backgroundColor: DS.lab.danger,
+                opacity: loading ? 0.5 : 1,
+              }}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <>
+                  <X size={14} color="#FFFFFF" strokeWidth={2} />
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>Reddet</Text>
+                </>
+              )}
+            </Pressable>
           </View>
         </View>
       )}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-    // @ts-ignore
-    boxShadow: '0 1px 6px rgba(0,0,0,0.06)',
-  },
-  header: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  icon:   { fontSize: 24, marginTop: 2 },
-  info:   { flex: 1 },
-  stepName:  { fontSize: 14, fontWeight: '700', color: '#0F172A', textTransform: 'capitalize' },
-  requester: { fontSize: 12, color: '#64748B', marginTop: 2 },
-  date:      { fontSize: 11, color: '#94A3B8', marginTop: 1 },
-  badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  badgeText: { fontSize: 11, fontWeight: '700' },
-  rejectNote: {
-    backgroundColor: '#FEF2F2', borderRadius: 8,
-    padding: 8, marginTop: 8,
-  },
-  rejectNoteText: { fontSize: 12, color: '#DC2626' },
-  resolvedBy: { fontSize: 12, color: '#059669', marginTop: 6 },
-  actions: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  btnApprove: {
-    flex: 1, backgroundColor: '#ECFDF5', borderRadius: 8,
-    paddingVertical: 8, alignItems: 'center',
-  },
-  btnApproveText: { fontSize: 13, color: '#059669', fontWeight: '700' },
-  btnReject: {
-    flex: 1, backgroundColor: '#FEF2F2', borderRadius: 8,
-    paddingVertical: 8, alignItems: 'center',
-  },
-  btnRejectText: { fontSize: 13, color: '#DC2626', fontWeight: '700' },
-  rejectForm: { marginTop: 10 },
-  rejectInput: {
-    backgroundColor: '#F8FAFC', borderRadius: 8, borderWidth: 1,
-    borderColor: '#F1F5F9', padding: 10, fontSize: 13,
-    color: '#0F172A', minHeight: 60,
-  },
-  rejectActions: { flexDirection: 'row', gap: 8, marginTop: 8 },
-  btnCancel: {
-    flex: 1, backgroundColor: '#F1F5F9', borderRadius: 8,
-    paddingVertical: 8, alignItems: 'center',
-  },
-  btnCancelText: { fontSize: 13, color: '#64748B', fontWeight: '600' },
-  btnConfirmReject: {
-    flex: 1, backgroundColor: '#DC2626', borderRadius: 8,
-    paddingVertical: 8, alignItems: 'center',
-  },
-  btnConfirmRejectText: { fontSize: 13, color: '#FFFFFF', fontWeight: '700' },
-});

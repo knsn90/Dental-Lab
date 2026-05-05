@@ -1,61 +1,95 @@
+/**
+ * AdminDashboard — Patterns design language (matching Lab dashboard layout)
+ *
+ * Layout:
+ *   1. Hero — Serif greeting + stat pills + big numbers
+ *   2. 4-card grid (AnimatedAktifVaka, Sipariş Trendi, PercentRing, TasksCard)
+ *   3. Bottom row — WeeklyStrip + AnimatedCTACard
+ *   4. Extra sections — Orders table, Finance, Status dist, Work type
+ *
+ * Theme: DS.exec (coral #E97757)
+ * Patterns NativeWind — NO StyleSheet.create().
+ */
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  useWindowDimensions, ActivityIndicator, Animated, Platform,
+  View, Text, ScrollView, Pressable,
+  useWindowDimensions, ActivityIndicator, Animated,
+  Platform, RefreshControl, Easing,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { useRouter } from 'expo-router';
-import Svg, { Path, Circle, Line, Polyline } from 'react-native-svg';
-import { supabase } from '../../lib/supabase';
-import { BlurFade } from '../../core/ui/BlurFade';
+import {
+  Package, Plus, Clock, CheckCircle, Activity, Users,
+  CreditCard, Calendar, BarChart3, Layers, TrendingUp,
+  AlertTriangle, ArrowUpRight, ArrowRight, Check, Trophy,
+} from 'lucide-react-native';
+import { supabase } from '../../core/api/supabase';
+import { DS } from '../../core/theme/dsTokens';
+import { useIsDesktop } from '../../core/layout/PatternsShell';
+import { usePageTitleStore } from '../../core/store/pageTitleStore';
+import { useAuthStore } from '../../core/store/authStore';
 
-const K  = '#0F172A';
-const BG = '#F8FAFC';
+// ── Display font — Patterns: Inter Tight Light (300), tight tracking ──
+const SERIF = {
+  fontFamily: DS.font.display as string,
+  fontWeight: '300' as const,
+};
+
+// ── Shorthand aliases from DS tokens ──
+const P   = DS.exec.primary;      // #E97757 coral
+const INK = DS.ink[900];          // #0A0A0A
 
 const CLR = {
-  green:  '#16A34A', greenBg:  '#DCFCE7',
-  orange: '#D97706', orangeBg: '#FEF3C7',
-  red:    '#EF4444', redBg:    '#FEF2F2',
-  purple: '#7C3AED', purpleBg: '#EDE9FE',
-  blue:   '#2563EB', blueBg:   '#EFF6FF',
-  teal:   '#0D9488', tealBg:   '#CCFBF1',
+  green:  DS.exec.success,   // #2D9A6B
+  orange: DS.exec.warning,   // #E89B2A
+  red:    DS.exec.danger,    // #D94B4B
+  blue:   DS.exec.info,      // #4A8FC9
+  purple: '#7C3AED',
+  teal:   '#0D9488',
 };
 
 const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
-  alindi:          { label: 'Alındı',         color: '#64748B', bg: '#F1F5F9' },
-  uretimde:        { label: 'Üretimde',        color: CLR.orange, bg: CLR.orangeBg },
-  kalite_kontrol:  { label: 'Kalite Kontrol',  color: CLR.purple, bg: CLR.purpleBg },
-  teslimata_hazir: { label: 'Teslimata Hazır', color: CLR.green,  bg: CLR.greenBg },
-  teslim_edildi:   { label: 'Teslim Edildi',   color: '#94A3B8',  bg: '#F8FAFC' },
+  alindi:          { label: 'Alındı',          color: DS.ink[500],  bg: 'rgba(0,0,0,0.05)' },
+  uretimde:        { label: 'Üretimde',        color: '#9C5E0E',   bg: 'rgba(232,155,42,0.15)' },
+  kalite_kontrol:  { label: 'Kalite Kontrol',  color: '#1F5689',   bg: 'rgba(74,143,201,0.12)' },
+  teslimata_hazir: { label: 'Teslimata Hazır', color: '#1F6B47',   bg: 'rgba(45,154,107,0.12)' },
+  teslim_edildi:   { label: 'Teslim Edildi',   color: DS.ink[400],  bg: 'rgba(0,0,0,0.04)' },
 };
-const STATUS_KEYS = ['alindi','uretimde','kalite_kontrol','teslimata_hazir','teslim_edildi'];
+const STATUS_KEYS = ['alindi', 'uretimde', 'kalite_kontrol', 'teslimata_hazir', 'teslim_edildi'];
 
 const MONTHS_TR = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
+const DAYS_SHORT = ['Pz','Pa','Sa','Ça','Pe','Cu','Ct'];
 
+const PIPELINE_STAGES = [
+  { key: 'alindi',          label: 'Alındı'   },
+  { key: 'uretimde',        label: 'Üretimde' },
+  { key: 'kalite_kontrol',  label: 'KK'       },
+  { key: 'teslimata_hazir', label: 'Hazır'    },
+] as const;
+
+// ── Helpers ──
 function getTodayLabel() {
   const now = new Date();
-  const days = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
+  const days   = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
   const months = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
   return `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]}`;
 }
 function todayStr() { return new Date().toISOString().split('T')[0]; }
 function fmtDate(date: string) {
   const d = new Date(date);
-  return `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}.${d.getFullYear()}`;
+  return `${d.getDate().toString().padStart(2, '0')}.${(d.getMonth() + 1).toString().padStart(2, '0')}.${d.getFullYear()}`;
 }
 function initials(name?: string | null) {
-  if (!name) return '—';
-  return name.trim().split(/\s+/).slice(0,2).map(p => p[0]?.toUpperCase() ?? '').join('') || '—';
+  if (!name) return '--';
+  return name.trim().split(/\s+/).slice(0, 2).map(p => p[0]?.toUpperCase() ?? '').join('') || '--';
 }
 function fmtMoney(n: number) {
   try {
     return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(n);
   } catch {
-    return `₺${Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')}`;
+    return `${Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')} TL`;
   }
 }
-
-/** Convert 6-char hex + 0-1 alpha → rgba() string (safe for all platforms) */
 function hexA(hex: string, alpha: number) {
   try {
     const r = parseInt(hex.slice(1, 3), 16);
@@ -65,394 +99,756 @@ function hexA(hex: string, alpha: number) {
   } catch { return hex; }
 }
 
-// ── SVG Icons (Lucide-style) ──────────────────────────────────────────
-type IconName =
-  | 'arrow-up-right' | 'plus' | 'receipt' | 'activity'
-  | 'users' | 'user' | 'trending-up' | 'alert-triangle'
-  | 'package' | 'calendar' | 'bar-chart' | 'credit-card'
-  | 'clock' | 'check-circle' | 'layers';
-
-function Icon({ name, size = 24, color = '#0F172A', strokeWidth = 1.75 }: {
-  name: IconName; size?: number; color?: string; strokeWidth?: number;
-}) {
-  const p = { stroke: color, strokeWidth, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, fill: 'none' };
-  switch (name) {
-    case 'arrow-up-right':
-      return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M7 17L17 7" {...p}/><Path d="M7 7H17V17" {...p}/></Svg>;
-    case 'plus':
-      return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M12 5v14M5 12h14" {...p}/></Svg>;
-    case 'receipt':
-      return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1-2-1Z" {...p}/><Path d="M16 8H8M16 12H8M13 16H8" {...p}/></Svg>;
-    case 'activity':
-      return <Svg width={size} height={size} viewBox="0 0 24 24"><Polyline points="22 12 18 12 15 21 9 3 6 12 2 12" {...p}/></Svg>;
-    case 'users':
-      return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" {...p}/><Circle cx="9" cy="7" r="4" {...p}/><Path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" {...p}/></Svg>;
-    case 'user':
-      return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" {...p}/><Circle cx="12" cy="7" r="4" {...p}/></Svg>;
-    case 'trending-up':
-      return <Svg width={size} height={size} viewBox="0 0 24 24"><Polyline points="23 6 13.5 15.5 8.5 10.5 1 18" {...p}/><Polyline points="17 6 23 6 23 12" {...p}/></Svg>;
-    case 'alert-triangle':
-      return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" {...p}/><Line x1="12" y1="9" x2="12" y2="13" {...p}/><Line x1="12" y1="17" x2="12.01" y2="17" {...p}/></Svg>;
-    case 'package':
-      return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M16.5 9.4l-9-5.19M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" {...p}/><Polyline points="3.27 6.96 12 12.01 20.73 6.96" {...p}/><Line x1="12" y1="22.08" x2="12" y2="12" {...p}/></Svg>;
-    case 'calendar':
-      return <Svg width={size} height={size} viewBox="0 0 24 24"><Polyline points="8 2 8 6" {...p}/><Polyline points="16 2 16 6" {...p}/><Path d="M3 9h18M21 10V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7" {...p}/><Path d="M18 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM22 22l-1.5-1.5" {...p}/></Svg>;
-    case 'bar-chart':
-      return <Svg width={size} height={size} viewBox="0 0 24 24"><Line x1="12" y1="20" x2="12" y2="10" {...p}/><Line x1="18" y1="20" x2="18" y2="4" {...p}/><Line x1="6" y1="20" x2="6" y2="16" {...p}/></Svg>;
-    case 'credit-card':
-      return <Svg width={size} height={size} viewBox="0 0 24 24"><Polyline points="2 6 2 18 22 18 22 6 2 6" {...p}/><Line x1="2" y1="10" x2="22" y2="10" {...p}/></Svg>;
-    case 'clock':
-      return <Svg width={size} height={size} viewBox="0 0 24 24"><Circle cx="12" cy="12" r="10" {...p}/><Polyline points="12 6 12 12 16 14" {...p}/></Svg>;
-    case 'check-circle':
-      return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" {...p}/><Polyline points="22 4 12 14.01 9 11.01" {...p}/></Svg>;
-    case 'layers':
-      return <Svg width={size} height={size} viewBox="0 0 24 24"><Polyline points="12 2 2 7 12 12 22 7 12 2" {...p}/><Polyline points="2 17 12 22 22 17" {...p}/><Polyline points="2 12 12 17 22 12" {...p}/></Svg>;
-    default: return null;
+/** Get the 7-day window for "Bu hafta" strip (Mon–Sun) */
+function getWeekDays(): { label: string; date: string; isToday: boolean }[] {
+  const now = new Date();
+  const dayOfWeek = now.getDay();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - ((dayOfWeek + 6) % 7));
+  const result: { label: string; date: string; isToday: boolean }[] = [];
+  const todayISO = todayStr();
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const iso = d.toISOString().split('T')[0];
+    result.push({
+      label: `${DAYS_SHORT[d.getDay()]} ${d.getDate()}`,
+      date: iso,
+      isToday: iso === todayISO,
+    });
   }
+  return result;
 }
 
-// ── Status Badge ──────────────────────────────────────────────────────
-function StatusBadge({ status }: { status: string }) {
-  const c = STATUS_CFG[status] ?? { label: status, color: '#64748B', bg: '#F1F5F9' };
+// ══════════════════════════════════════════════════════════════════
+//  ANIMATION HOOKS
+// ══════════════════════════════════════════════════════════════════
+
+function useCountUp(target: number, duration = 1400) {
+  const [v, setV] = useState(0);
+  useEffect(() => {
+    if (duration === 0) { setV(target); return; }
+    const start = Date.now();
+    let raf: any;
+    const tick = () => {
+      const elapsed = Date.now() - start;
+      const t = Math.min(1, elapsed / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setV(target * eased);
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => raf && cancelAnimationFrame(raf);
+  }, [target, duration]);
+  return v;
+}
+
+function usePulse({ duration = 1600 }: { duration?: number } = {}) {
+  const v = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(v, { toValue: 1, duration, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(v, { toValue: 0, duration, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [v, duration]);
+  const scale = v.interpolate({ inputRange: [0, 1], outputRange: [1, 1.5] });
+  const opacity = v.interpolate({ inputRange: [0, 1], outputRange: [0.4, 0] });
+  return { scale, opacity };
+}
+
+function PulseDot({ color, size, x, y }: { color: string; size: number; x: number; y: number }) {
+  const { scale, opacity } = usePulse({ duration: 1400 });
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20, backgroundColor: c.bg, gap: 4, alignSelf: 'flex-start' }}>
-      <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: c.color }} />
-      <Text style={{ fontSize: 10, fontWeight: '600', color: c.color }}>{c.label}</Text>
-    </View>
+    <Animated.View style={{
+      position: 'absolute',
+      left: x - size / 2, top: y - size / 2,
+      width: size, height: size, borderRadius: size / 2,
+      backgroundColor: color,
+      transform: [{ scale }],
+      opacity,
+    }} pointerEvents="none" />
   );
 }
 
-// ── Quick Actions Bento ───────────────────────────────────────────────
-interface QAItem {
-  icon: IconName; label: string; onPress: () => void;
-  accent: string; accentBg: string; primary?: boolean;
-}
+// ══════════════════════════════════════════════════════════════════
+//  SUB-COMPONENTS
+// ══════════════════════════════════════════════════════════════════
 
-function BentoCard({ item, style, iconSize = 24, showArrow = true }: {
-  item: QAItem; style?: any; iconSize?: number; showArrow?: boolean;
-}) {
-  const scaleRef = useRef(new Animated.Value(1)).current;
-  const onPressIn  = () => Animated.spring(scaleRef, { toValue: 0.95, useNativeDriver: true, damping: 15 }).start();
-  const onPressOut = () => Animated.spring(scaleRef, { toValue: 1,    useNativeDriver: true, damping: 15 }).start();
-
-  return (
-    <TouchableOpacity onPress={item.onPress} onPressIn={onPressIn} onPressOut={onPressOut} activeOpacity={1} style={[{ flex: 1 }, style]}>
-      <Animated.View style={[bento.card, item.primary && bento.cardPrimary, { transform: [{ scale: scaleRef }] }]}>
-        {item.primary && <View style={bento.primarySheen} pointerEvents="none" />}
-        {showArrow && (
-          <View style={[bento.arrowBadge, item.primary && bento.arrowBadgePrimary]}>
-            <Icon name="arrow-up-right" size={11} color={item.primary ? 'rgba(255,255,255,0.6)' : '#CBD5E1'} strokeWidth={2.5} />
-          </View>
-        )}
-        <View style={[bento.iconWrap, { backgroundColor: item.primary ? 'rgba(255,255,255,0.14)' : item.accentBg }]}>
-          <Icon name={item.icon} size={iconSize} color={item.primary ? '#FFFFFF' : item.accent} strokeWidth={1.75} />
-        </View>
-        <Text style={[bento.label, item.primary && bento.labelPrimary]} numberOfLines={1}>{item.label}</Text>
-      </Animated.View>
-    </TouchableOpacity>
-  );
-}
-
-function QuickActionsSection({ onNewOrder, onUsers, onDoctors, onOrders, onProfile }: {
-  onNewOrder: () => void; onUsers: () => void; onDoctors: () => void;
-  onOrders: () => void; onProfile: () => void;
-}) {
-  const items: QAItem[] = [
-    { icon: 'plus',        label: 'Yeni İş',      onPress: onNewOrder, accent: '#FFFFFF', accentBg: 'rgba(255,255,255,0.14)', primary: true },
-    { icon: 'receipt',     label: 'Siparişler',   onPress: onOrders,   accent: CLR.blue,  accentBg: CLR.blueBg },
-    { icon: 'activity',    label: 'Hekimler',     onPress: onDoctors,  accent: CLR.green, accentBg: CLR.greenBg },
-    { icon: 'users',       label: 'Kullanıcılar', onPress: onUsers,    accent: CLR.purple,accentBg: CLR.purpleBg },
-    { icon: 'user',        label: 'Profil',       onPress: onProfile,  accent: CLR.orange,accentBg: CLR.orangeBg },
-  ];
-  return (
-    <View style={bento.grid}>
-      <View style={bento.row}>
-        <BentoCard item={items[0]} style={{ flex: 3 }} iconSize={28} />
-        <View style={bento.col}>
-          <BentoCard item={items[1]} showArrow={false} />
-          <BentoCard item={items[2]} showArrow={false} />
-        </View>
-      </View>
-      <View style={bento.row}>
-        <BentoCard item={items[3]} />
-        <BentoCard item={items[4]} />
-      </View>
-    </View>
-  );
-}
-
-const bento = StyleSheet.create({
-  grid: { gap: 10, marginBottom: 0 },
-  row:  { flexDirection: 'row', gap: 10 },
-  col:  { flex: 2, gap: 10 },
-  card: {
-    backgroundColor: '#FFFFFF', borderRadius: 20, padding: 18, gap: 12,
-    minHeight: 100, justifyContent: 'space-between', overflow: 'hidden', position: 'relative',
-    ...Platform.select({
-      web: { boxShadow: '0 1px 3px rgba(15,23,42,0.05), 0 4px 16px rgba(15,23,42,0.03)' } as any,
-      default: { shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
-    }),
-  },
-  cardPrimary:      { backgroundColor: K, minHeight: 200 },
-  primarySheen:     { position: 'absolute', top: -40, right: -40, width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.06)' },
-  arrowBadge:       { position: 'absolute', top: 14, right: 14, width: 22, height: 22, borderRadius: 11, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
-  arrowBadgePrimary:{ backgroundColor: 'rgba(255,255,255,0.12)' },
-  iconWrap:         { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  label:            { fontSize: 12, fontWeight: '700', color: '#0F172A', letterSpacing: -0.2 },
-  labelPrimary:     { color: '#FFFFFF', fontSize: 14 },
-});
-
-// ── KPI Card (top strip) ──────────────────────────────────────────────
-function KPICard({ label, value, icon, accent, trend }: {
-  label: string; value: string | number; icon: IconName; accent: string; trend?: string;
-}) {
-  return (
-    <View style={kpi.card}>
-      <View style={[kpi.iconWrap, { backgroundColor: hexA(accent, 0.09) }]}>
-        <Icon name={icon} size={18} color={accent} strokeWidth={1.75} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={kpi.label} numberOfLines={1}>{label}</Text>
-        <Text style={[kpi.value, { color: accent === K ? '#0F172A' : accent }]}>{value}</Text>
-        {trend && (
-          <View style={kpi.trendRow}>
-            <Icon name="trending-up" size={9} color={CLR.green} strokeWidth={2.5} />
-            <Text style={kpi.trendText}>{trend}</Text>
-          </View>
-        )}
-      </View>
-    </View>
-  );
-}
-const kpi = StyleSheet.create({
-  card: {
-    flex: 1, minWidth: 140,
-    backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16,
-    borderWidth: 1, borderColor: '#F1F5F9',
-    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
-  },
-  iconWrap: { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  label:    { fontSize: 10, color: '#94A3B8', fontWeight: '600', letterSpacing: 0.3, marginBottom: 4 },
-  value:    { fontSize: 22, fontWeight: '800', letterSpacing: -0.6, lineHeight: 26 },
-  trendRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 3 },
-  trendText:{ fontSize: 9, color: CLR.green, fontWeight: '700' },
-});
-
-// ── Card wrap ─────────────────────────────────────────────────────────
+/** Generic card — Patterns: white bg, radius xl, 1px border */
 function Card({ children, style }: { children: React.ReactNode; style?: any }) {
-  return <View style={[card.wrap, style]}>{children}</View>;
-}
-function CardHeader({ title, right, icon }: { title: string; right?: React.ReactNode; icon?: IconName }) {
   return (
-    <View style={card.header}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        {icon && <Icon name={icon} size={15} color="#94A3B8" strokeWidth={1.75} />}
-        <Text style={card.title}>{title}</Text>
-      </View>
+    <View
+      className="bg-white overflow-hidden"
+      style={[{ borderRadius: DS.radius.xl, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' }, style]}
+    >
+      {children}
+    </View>
+  );
+}
+
+/** Card header — display serif or uppercase micro */
+function CardHeader({ title, right, display }: { title: string; right?: React.ReactNode; display?: boolean }) {
+  return (
+    <View className="flex-row items-center justify-between" style={{ marginBottom: 12 }}>
+      {display ? (
+        <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>{title}</Text>
+      ) : (
+        <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500] }}>
+          {title}
+        </Text>
+      )}
       {right}
     </View>
   );
 }
-const card = StyleSheet.create({
-  wrap: { backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#F1F5F9', overflow: 'hidden' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14 },
-  title: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
-});
 
-// ── Section Title ─────────────────────────────────────────────────────
-function SectionTitle({ text }: { text: string }) {
-  return <Text style={sec.text}>{text}</Text>;
-}
-const sec = StyleSheet.create({
-  text: { fontSize: 10, fontWeight: '700', color: '#94A3B8', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 10, marginTop: 2 },
-});
-
-// ── Animated Bar ──────────────────────────────────────────────────────
-function AnimatedBar({ pct, isActive, isHighest, count, label, delay }: {
-  pct: number; isActive: boolean; isHighest: boolean; count: number; label: string; delay: number;
-}) {
-  const heightAnim  = useRef(new Animated.Value(0)).current;
-  const opacityAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.spring(heightAnim, { toValue: pct, damping: 14, stiffness: 120, delay, useNativeDriver: false }),
-      Animated.timing(opacityAnim, { toValue: 1, duration: 300, delay, useNativeDriver: false }),
-    ]).start();
-  }, [pct]);
-
-  const animH = heightAnim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] });
-
+/** Status badge with dot */
+function StatusBadge({ status }: { status: string }) {
+  const c = STATUS_CFG[status] ?? { label: status, color: DS.ink[500], bg: 'rgba(0,0,0,0.05)' };
   return (
-    <Animated.View style={{ flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end', opacity: opacityAnim }}>
-      {isHighest && count > 0 && (
-        <View style={ch.tooltipWrap}>
-          <View style={[ch.tooltipBubble, isActive && ch.tooltipBubbleActive]}>
-            <Text style={ch.tooltipText}>{count}</Text>
-          </View>
-          <View style={[ch.tooltipArrow, isActive && ch.tooltipArrowActive]} />
-        </View>
-      )}
-      {!isHighest && count > 0 && <Text style={[ch.barLabel, isActive && { color: K }]}>{count}</Text>}
-      <View style={ch.track}>
-        <Animated.View style={[ch.fill, { height: animH }, isActive ? ch.fillActive : ch.fillInactive]}>
-          <View style={ch.fillGloss} />
-        </Animated.View>
-      </View>
-      <Text style={[ch.monthLabel, isActive && ch.monthLabelActive]}>{label}</Text>
-    </Animated.View>
-  );
-}
-
-function MonthlyChart({ data }: { data: { label: string; count: number }[] }) {
-  const max = Math.max(...data.map(d => d.count), 1);
-  const highestIdx = data.reduce((best, d, i) => d.count > data[best].count ? i : best, 0);
-  const lastIdx = data.length - 1;
-
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    const id = 'candy-stripe-admin';
-    if (document.getElementById(id)) return;
-    const el = document.createElement('style');
-    el.id = id;
-    el.textContent = `.candy-stripe::before{content:'';position:absolute;inset:0;background-image:repeating-linear-gradient(135deg,rgba(15,23,42,0.04) 0px,rgba(15,23,42,0.04) 1px,transparent 1px,transparent 8px);border-radius:10px;pointer-events:none;}`;
-    document.head.appendChild(el);
-  }, []);
-
-  return (
-    <View style={ch.container}>
-      {data.map((d, i) => (
-        <AnimatedBar key={i} pct={Math.max((d.count / max) * 100, 4)}
-          isActive={i === lastIdx} isHighest={i === highestIdx}
-          count={d.count} label={d.label} delay={i * 60} />
-      ))}
+    <View
+      className="flex-row items-center self-start rounded-full"
+      style={{ paddingHorizontal: 8, paddingVertical: 4, backgroundColor: c.bg, gap: 4 }}
+    >
+      <View className="rounded-full" style={{ width: 6, height: 6, backgroundColor: c.color }} />
+      <Text style={{ fontSize: 11, fontWeight: '600', color: c.color }}>{c.label}</Text>
     </View>
   );
 }
 
-const ch = StyleSheet.create({
-  container: { flexDirection: 'row', alignItems: 'flex-end', height: 160, gap: 8, paddingHorizontal: 20, paddingBottom: 20, paddingTop: 36 },
-  track: { width: '100%', flex: 1, justifyContent: 'flex-end', borderRadius: 10, overflow: 'hidden', backgroundColor: 'rgba(15,23,42,0.05)', position: 'relative' },
-  fill: { width: '100%', borderRadius: 10, overflow: 'hidden', position: 'relative' },
-  fillActive:   { backgroundColor: K },
-  fillInactive: { backgroundColor: 'rgba(15,23,42,0.15)' },
-  fillGloss: { position: 'absolute', top: 0, left: 0, right: 0, height: 6, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.15)' },
-  barLabel:  { fontSize: 9, fontWeight: '700', color: '#94A3B8', marginBottom: 5 },
-  monthLabel:{ fontSize: 9, color: '#94A3B8', marginTop: 8, fontWeight: '500', textAlign: 'center' },
-  monthLabelActive: { color: K, fontWeight: '800' },
-  tooltipWrap:   { alignItems: 'center', marginBottom: 6, position: 'absolute', top: -32, left: 0, right: 0 },
-  tooltipBubble: { backgroundColor: 'rgba(15,23,42,0.18)', borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3 },
-  tooltipBubbleActive: { backgroundColor: K },
-  tooltipText:   { fontSize: 10, fontWeight: '800', color: '#FFFFFF' },
-  tooltipArrow:  { width: 6, height: 6, borderRadius: 1, backgroundColor: 'rgba(15,23,42,0.18)', transform: [{ rotate: '45deg' }], marginTop: -3 },
-  tooltipArrowActive: { backgroundColor: K },
-});
-
-// ── Finance Card ──────────────────────────────────────────────────────
-function FinanceCard({ monthly, pending, paid }: { monthly: number; pending: number; paid: number }) {
+/** Stat Pill (hero) */
+function StatPill({ label, value, bg, color }: { label: string; value: string; bg: string; color: string }) {
   return (
-    <Card>
-      <CardHeader title="Finansal Özet" icon="credit-card" />
-      <View style={{ paddingHorizontal: 20, paddingBottom: 20, gap: 14 }}>
-        {/* Monthly Revenue */}
-        <View style={fin.row}>
-          <View style={[fin.dot, { backgroundColor: CLR.green }]} />
-          <View style={{ flex: 1 }}>
-            <Text style={fin.rowLabel}>Bu Ay Tahsilat</Text>
-            <Text style={[fin.rowValue, { color: CLR.green }]}>{fmtMoney(monthly)}</Text>
-          </View>
+    <View className="flex-row items-center" style={{ gap: 8 }}>
+      <Text style={{ fontSize: 11, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.06 * 11 }}>
+        {label}
+      </Text>
+      <View className="rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 3, backgroundColor: bg }}>
+        <Text style={{ fontSize: 11, fontWeight: '500', color }}>{value}</Text>
+      </View>
+    </View>
+  );
+}
+
+/** Big Stat — Patterns hero right side */
+function BigStat({ value, label }: { value: string | number; label: string }) {
+  return (
+    <View style={{ alignItems: 'flex-end' }}>
+      <Text style={{ ...SERIF, fontSize: DS.size.h2, letterSpacing: -0.025 * DS.size.h2, lineHeight: DS.size.h2, color: DS.ink[900] }}>
+        {value}
+      </Text>
+      <Text style={{ fontSize: DS.size.micro, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.06 * DS.size.micro, marginTop: 4 }}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+// ── PercentRingHero — gradient arc + knob + pulse ──
+function PercentRingHero({
+  value: targetValue, size = 200, weight = '300', animate = true, darkText = false,
+}: { value: number; size?: number; weight?: '200' | '300' | '400' | '500' | '600' | '700'; animate?: boolean; darkText?: boolean }) {
+  const animatedValue = useCountUp(targetValue, animate ? 1400 : 0);
+  const value = animate ? animatedValue : targetValue;
+
+  const outerStroke = Math.max(8, Math.round(size * 0.12));
+  const innerStroke = outerStroke - 6;
+  const r = (size - outerStroke - Math.max(3, size * 0.04)) / 2;
+  const c = 2 * Math.PI * r;
+  const dash = (value / 100) * c;
+
+  const lightColor = P;
+  const deepColor = DS.exec.primaryDeep;
+  const id = `pr-hero-exec-${targetValue}-${size}`;
+
+  const outerPillColor = darkText ? lightColor + '30' : lightColor + '22';
+  const innerTrackColor = darkText ? 'rgba(0,0,0,0.06)' : lightColor + '15';
+
+  const angleDeg = (value / 100) * 360 - 90;
+  const angleRad = (angleDeg * Math.PI) / 180;
+  const knobX = size / 2 + r * Math.cos(angleRad);
+  const knobY = size / 2 + r * Math.sin(angleRad);
+  const knobR = innerStroke * 0.85;
+  const showKnob = size >= 56;
+  const showPulse = size >= 100;
+  const displayValue = Math.round(value);
+
+  const knobColor = darkText ? INK : '#FFFFFF';
+  const textColor = darkText ? INK : '#FFFFFF';
+  const pctColor = darkText ? DS.ink[400] : lightColor;
+
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <Svg width={size} height={size}>
+        <Defs>
+          <LinearGradient id={id} x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0%" stopColor={lightColor} stopOpacity="0.95" />
+            <Stop offset="100%" stopColor={deepColor} stopOpacity="1" />
+          </LinearGradient>
+        </Defs>
+        <Circle cx={size / 2} cy={size / 2} r={r}
+                stroke={outerPillColor} strokeWidth={outerStroke} fill="none" />
+        <Circle cx={size / 2} cy={size / 2} r={r}
+                stroke={innerTrackColor} strokeWidth={innerStroke} fill="none" />
+        {value > 0 && (
+          <Circle cx={size / 2} cy={size / 2} r={r}
+                  stroke={`url(#${id})`} strokeWidth={innerStroke} fill="none"
+                  strokeDasharray={`${dash} ${c}`} strokeLinecap="round"
+                  transform={`rotate(-90 ${size / 2} ${size / 2})`} />
+        )}
+        {value > 0 && value < 100 && showKnob && (
+          <Circle cx={knobX} cy={knobY} r={knobR + Math.max(2, innerStroke * 0.4)}
+                  fill={knobColor} fillOpacity={0.18} />
+        )}
+        {value > 0 && value < 100 && showKnob && (
+          <Circle cx={knobX} cy={knobY} r={knobR}
+                  fill={knobColor} />
+        )}
+      </Svg>
+      {value > 0 && value < 100 && showPulse && (
+        <PulseDot color={knobColor} size={knobR * 2.6} x={knobX} y={knobY} />
+      )}
+      <View style={{ position: 'absolute', alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+          <Text style={{
+            fontFamily: DS.font.display as string,
+            fontWeight: weight,
+            fontSize: size * 0.28,
+            color: textColor,
+            letterSpacing: size * 0.28 * -0.04,
+            lineHeight: size * 0.28,
+          }}>
+            {displayValue}
+          </Text>
+          {size >= 56 && (
+            <Text style={{
+              fontFamily: DS.font.display as string,
+              fontWeight: '400',
+              fontSize: size * 0.13,
+              color: pctColor,
+              marginLeft: 3,
+              lineHeight: size * 0.13,
+            }}>
+              %
+            </Text>
+          )}
         </View>
-        <View style={fin.divider} />
-        {/* Pending */}
-        <View style={fin.row}>
-          <View style={[fin.dot, { backgroundColor: CLR.orange }]} />
-          <View style={{ flex: 1 }}>
-            <Text style={fin.rowLabel}>Bekleyen Fatura</Text>
-            <Text style={[fin.rowValue, { color: CLR.orange }]}>{fmtMoney(pending)}</Text>
-          </View>
+      </View>
+    </View>
+  );
+}
+
+// ── Animated Aktif Vaka Card — pulsing CANLI dot + glow + breathing circles ──
+function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, router }: {
+  isDesktop: boolean;
+  pipelineCounts: Record<string, number>;
+  latestOrder: any;
+  router: any;
+}) {
+  const dotAnim = useRef(new Animated.Value(0)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
+  const breatheAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(dotAnim, { toValue: 1, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(dotAnim, { toValue: 0, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.delay(400),
+      ]),
+    ).start();
+
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowAnim, { toValue: 1, duration: 2400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(glowAnim, { toValue: 0, duration: 2400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ]),
+    ).start();
+
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(breatheAnim, { toValue: 1, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(breatheAnim, { toValue: 0, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ]),
+    ).start();
+  }, [dotAnim, glowAnim, breatheAnim]);
+
+  const dotOpacity = dotAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.3] });
+  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.12] });
+  const glowScale = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1.2] });
+  const breatheScale = breatheAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] });
+
+  return (
+    <Card style={{ flex: isDesktop ? 1.1 : undefined, marginBottom: isDesktop ? 0 : 14 }}>
+      {/* Dark section */}
+      <View style={{
+        flex: 1,
+        // @ts-ignore web gradient
+        backgroundImage: `linear-gradient(180deg, ${DS.ink[700]} 0%, ${DS.ink[900]} 100%)`,
+        backgroundColor: DS.exec.surfaceAlt,
+        alignItems: 'center', justifyContent: 'center',
+        minHeight: 160, position: 'relative',
+        overflow: 'hidden',
+      }}>
+        {/* Ambient glow */}
+        <Animated.View style={{
+          position: 'absolute', width: 160, height: 160, borderRadius: 80,
+          backgroundColor: P,
+          opacity: glowOpacity,
+          transform: [{ scale: glowScale }],
+        }} pointerEvents="none" />
+
+        {/* CANLI badge */}
+        <View className="absolute rounded-full" style={{
+          top: 14, left: 14,
+          paddingHorizontal: 10, paddingVertical: 4,
+          backgroundColor: `${P}E6`,
+          flexDirection: 'row', alignItems: 'center', gap: 6,
+        }}>
+          <Animated.View style={{
+            width: 6, height: 6, borderRadius: 3,
+            backgroundColor: '#FFF',
+            opacity: dotOpacity,
+          }} />
+          <Text style={{ fontSize: 10, fontWeight: '500', color: '#FFF', letterSpacing: 0.05 * 10 }}>
+            CANLI
+          </Text>
         </View>
-        <View style={fin.divider} />
-        {/* Paid count */}
-        <View style={fin.row}>
-          <View style={[fin.dot, { backgroundColor: K }]} />
-          <View style={{ flex: 1 }}>
-            <Text style={fin.rowLabel}>Ödenen Fatura Adedi</Text>
-            <Text style={fin.rowValue}>{paid}</Text>
-          </View>
+
+        {/* Pipeline circles */}
+        <View className="flex-row items-center" style={{ gap: 12 }}>
+          {PIPELINE_STAGES.map((stage) => {
+            const count = pipelineCounts[stage.key] ?? 0;
+            const active = count > 0;
+            return (
+              <Pressable
+                key={stage.key}
+                onPress={() => router.push('/(admin)/orders' as any)}
+                className="items-center"
+                style={{ gap: 4 }}
+              >
+                <Animated.View
+                  style={{
+                    width: 40, height: 40, borderRadius: 20,
+                    backgroundColor: active ? hexA(P, 0.2) : 'rgba(255,255,255,0.06)',
+                    borderWidth: active ? 1.5 : 1,
+                    borderColor: active ? P : 'rgba(255,255,255,0.1)',
+                    alignItems: 'center', justifyContent: 'center',
+                    transform: active ? [{ scale: breatheScale }] : [],
+                  }}
+                >
+                  <Text style={{
+                    ...SERIF, fontSize: 16, letterSpacing: -0.5,
+                    color: active ? '#FFF' : 'rgba(255,255,255,0.3)',
+                  }}>
+                    {count}
+                  </Text>
+                </Animated.View>
+                <Text style={{ fontSize: 8, fontWeight: '600', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>
+                  {stage.label}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
+      </View>
+
+      {/* White section — latest order info */}
+      <View style={{ padding: 16 }}>
+        {latestOrder ? (
+          <Pressable
+            onPress={() => router.push(`/(admin)/order/${latestOrder.id}` as any)}
+            style={{ gap: 2 }}
+          >
+            <Text style={{ fontSize: 15, fontWeight: '500', color: INK }} numberOfLines={1}>
+              {latestOrder.doctor_name ?? 'Sipariş'}
+            </Text>
+            <Text style={{ fontSize: 11, color: DS.ink[500], marginBottom: 10 }} numberOfLines={1}>
+              #{latestOrder.order_number} · {latestOrder.work_type ?? ''}
+            </Text>
+            <StatusBadge status={latestOrder.status} />
+          </Pressable>
+        ) : (
+          <Text style={{ fontSize: 13, color: DS.ink[400] }}>Yükleniyor...</Text>
+        )}
       </View>
     </Card>
   );
 }
-const fin = StyleSheet.create({
-  row:      { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  dot:      { width: 8, height: 8, borderRadius: 4 },
-  rowLabel: { fontSize: 11, color: '#64748B', fontWeight: '500', marginBottom: 2 },
-  rowValue: { fontSize: 16, fontWeight: '800', color: '#0F172A', letterSpacing: -0.4 },
-  divider:  { height: 1, backgroundColor: '#F1F5F9' },
-});
 
-// ── Upcoming Deliveries Card ──────────────────────────────────────────
-function UpcomingCard({ orders }: { orders: any[] }) {
+// ── Production Bar Chart (simple) ──
+function ProductionBarChart({ data }: { data: { label: string; count: number }[] }) {
+  const max = Math.max(...data.map(d => d.count), 1);
+  const highestIdx = data.reduce((best, d, i) => d.count > data[best].count ? i : best, 0);
+
   return (
-    <Card>
-      <CardHeader title="Yaklaşan Teslimler" icon="calendar"
-        right={<View style={{ backgroundColor: CLR.orangeBg, borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2 }}>
-          <Text style={{ fontSize: 10, fontWeight: '800', color: CLR.orange }}>{orders.length} sipariş</Text>
-        </View>}
-      />
-      {orders.length === 0
-        ? <Text style={{ fontSize: 12, color: '#94A3B8', padding: 20, textAlign: 'center' }}>Yaklaşan teslimat yok</Text>
-        : orders.slice(0, 5).map((o, i) => {
-            const isLast = i === Math.min(orders.length, 5) - 1;
-            const daysLeft = Math.ceil((new Date(o.delivery_date).getTime() - Date.now()) / 86400000);
-            return (
-              <View key={o.id} style={[upc.row, !isLast && { borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }]}>
-                <View style={[upc.dayBadge, daysLeft <= 1 && { backgroundColor: CLR.redBg }]}>
-                  <Text style={[upc.dayNum, daysLeft <= 1 && { color: CLR.red }]}>{daysLeft}</Text>
-                  <Text style={[upc.dayLabel, daysLeft <= 1 && { color: CLR.red }]}>gün</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={upc.orderNo} numberOfLines={1}>#{o.order_number}</Text>
-                  <Text style={upc.doctorName} numberOfLines={1}>{o.doctor_name ?? '—'}</Text>
-                </View>
-                <StatusBadge status={o.status} />
+    <View className="flex-row items-end" style={{ flex: 1, gap: 6 }}>
+      {data.map((d, i) => {
+        const h = Math.max((d.count / max) * 100, 6);
+        const isHighlight = i === highestIdx;
+        return (
+          <View key={i} style={{ flex: 1, alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
+            {isHighlight && d.count > 0 && (
+              <View style={{ paddingHorizontal: 8, paddingVertical: 2, backgroundColor: INK, borderRadius: 6 }}>
+                <Text style={{ fontSize: 10, color: '#FFF', fontWeight: '500' }}>{d.count}</Text>
               </View>
-            );
-          })
-      }
+            )}
+            <View style={{
+              width: '100%',
+              height: `${h}%` as any,
+              backgroundColor: isHighlight ? P : INK,
+              borderRadius: 4,
+              minHeight: 4,
+            }} />
+            <Text style={{ fontSize: 9, color: DS.ink[400], textTransform: 'uppercase' }}>
+              {d.label}
+            </Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+// ── Weekly Calendar Strip ──
+function WeeklyStrip({
+  weekDays, weekCounts, onPress,
+}: {
+  weekDays: { label: string; date: string; isToday: boolean }[];
+  weekCounts: Record<string, number>;
+  onPress: () => void;
+}) {
+  const totalProduction = Object.values(weekCounts).reduce((a, b) => a + b, 0);
+
+  const first = weekDays[0];
+  const last  = weekDays[6];
+  const fd = new Date(first.date);
+  const ld = new Date(last.date);
+  const rangeLabel = `${fd.getDate()}–${ld.getDate()} ${MONTHS_TR[ld.getMonth()]} ${ld.getFullYear()}`;
+
+  return (
+    <Card style={{ padding: 18, flex: 2 }}>
+      <View className="flex-row items-center" style={{ gap: 12, marginBottom: 14 }}>
+        <Text style={{ fontSize: 15, fontWeight: '500', color: INK }}>Bu hafta</Text>
+        <Text style={{ fontSize: 12, color: DS.ink[400] }}>{rangeLabel}</Text>
+        <View style={{ flex: 1 }} />
+        <View className="rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: DS.exec.bgSoft }}>
+          <Text style={{ fontSize: 11, fontWeight: '500', color: P }}>Toplam {totalProduction}</Text>
+        </View>
+      </View>
+
+      <View className="flex-row" style={{ gap: 8, flex: 1 }}>
+        {weekDays.map((day, i) => {
+          const count = weekCounts[day.date] ?? 0;
+          return (
+            <Pressable
+              key={i}
+              onPress={onPress}
+              style={{
+                flex: 1,
+                backgroundColor: day.isToday ? INK : DS.ink[50],
+                borderRadius: 14,
+                padding: 12,
+                gap: 8,
+                position: 'relative',
+              }}
+            >
+              <Text style={{
+                fontSize: 10, opacity: 0.6, letterSpacing: 0.05 * 10,
+                textTransform: 'uppercase',
+                color: day.isToday ? '#FFF' : INK,
+              }}>
+                {day.label}
+              </Text>
+              <Text style={{
+                ...SERIF, fontSize: 24, letterSpacing: -0.02 * 24, lineHeight: 24,
+                color: day.isToday ? '#FFF' : INK,
+              }}>
+                {count}
+              </Text>
+              <Text style={{ fontSize: 9, opacity: 0.5, color: day.isToday ? '#FFF' : INK }}>
+                sipariş
+              </Text>
+              {day.isToday && (
+                <View
+                  className="absolute rounded-full"
+                  style={{ top: 10, right: 10, width: 6, height: 6, backgroundColor: P }}
+                />
+              )}
+            </Pressable>
+          );
+        })}
+      </View>
     </Card>
   );
 }
-const upc = StyleSheet.create({
-  row:       { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, gap: 12 },
-  dayBadge:  { width: 40, height: 40, borderRadius: 10, backgroundColor: CLR.orangeBg, alignItems: 'center', justifyContent: 'center' },
-  dayNum:    { fontSize: 16, fontWeight: '800', color: CLR.orange, lineHeight: 18 },
-  dayLabel:  { fontSize: 8, fontWeight: '600', color: CLR.orange },
-  orderNo:   { fontSize: 12, fontWeight: '700', color: '#0F172A' },
-  doctorName:{ fontSize: 11, color: '#64748B', marginTop: 1 },
-});
 
-// ── Status Distribution ───────────────────────────────────────────────
+// ── Animated CTA Card — floating circle + shimmer glow + arrow bounce ──
+function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDesktop: boolean }) {
+  const floatAnim = useRef(new Animated.Value(0)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
+  const arrowAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatAnim, { toValue: 1, duration: 3000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(floatAnim, { toValue: 0, duration: 3000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ]),
+    ).start();
+
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowAnim, { toValue: 1, duration: 2200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(glowAnim, { toValue: 0, duration: 2200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ]),
+    ).start();
+
+    Animated.loop(
+      Animated.sequence([
+        Animated.delay(2000),
+        Animated.timing(arrowAnim, { toValue: 1, duration: 400, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+        Animated.timing(arrowAnim, { toValue: 0, duration: 400, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+      ]),
+    ).start();
+  }, [floatAnim, glowAnim, arrowAnim]);
+
+  const floatY = floatAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 8] });
+  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.10, 0.28] });
+  const glowScale = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.15] });
+  const arrowX = arrowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 6] });
+
+  const handleHoverIn = () => {
+    Animated.spring(scaleAnim, { toValue: 1.02, friction: 8, tension: 200, useNativeDriver: true }).start();
+  };
+  const handleHoverOut = () => {
+    Animated.spring(scaleAnim, { toValue: 1, friction: 8, tension: 200, useNativeDriver: true }).start();
+  };
+
+  return (
+    <Pressable onPress={onPress} onHoverIn={handleHoverIn} onHoverOut={handleHoverOut} style={{ flex: 1 }}>
+      <Animated.View style={{
+        flex: 1,
+        borderRadius: DS.radius.xl,
+        padding: 22,
+        position: 'relative',
+        overflow: 'hidden',
+        // @ts-ignore web gradient
+        backgroundImage: `linear-gradient(135deg, ${P} 0%, ${DS.exec.warning} 100%)`,
+        backgroundColor: P,
+        minHeight: isDesktop ? undefined : 160,
+        transform: [{ scale: scaleAnim }],
+      }}>
+        {/* Decorative floating circle */}
+        <Animated.View style={{
+          position: 'absolute', top: -20, right: -20,
+          width: 140, height: 140, borderRadius: 70,
+          backgroundColor: 'rgba(255,255,255,0.18)',
+          transform: [{ translateY: floatY }],
+        }} />
+        {/* Glow pulse circle */}
+        <Animated.View style={{
+          position: 'absolute', top: -40, right: -40,
+          width: 180, height: 180, borderRadius: 90,
+          backgroundColor: 'rgba(255,255,255,1)',
+          opacity: glowOpacity,
+          transform: [{ scale: glowScale }],
+        }} pointerEvents="none" />
+        {/* Content */}
+        <View style={{ position: 'relative' }}>
+          <Text style={{
+            fontSize: 11, fontWeight: '500', letterSpacing: 0.1 * 11,
+            textTransform: 'uppercase', color: '#FFF', marginBottom: 14,
+          }}>
+            Hızlı işlem
+          </Text>
+          <Text style={{
+            ...SERIF, fontSize: 32, letterSpacing: -0.02 * 32, lineHeight: 35,
+            color: '#FFF', marginBottom: 16,
+          }}>
+            Yeni sipariş{'\n'}oluştur
+          </Text>
+          <View
+            className="flex-row items-center self-start rounded-full"
+            style={{ paddingHorizontal: 18, paddingVertical: 10, backgroundColor: '#FFF', gap: 8 }}
+          >
+            <Text style={{ fontSize: 13, fontWeight: '500', color: INK }}>Başla</Text>
+            <Animated.View style={{ transform: [{ translateX: arrowX }] }}>
+              <ArrowRight size={14} color={INK} strokeWidth={2} />
+            </Animated.View>
+          </View>
+        </View>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+// ── Animated Overdue Alert Card — danger gradient + pulse + glow ──
+function AnimatedOverdueCard({ count, onPress }: { count: number; onPress: () => void }) {
+  const pulseAnim = useRef(new Animated.Value(0)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.loop(Animated.sequence([
+      Animated.timing(pulseAnim, { toValue: 1, duration: 1000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      Animated.timing(pulseAnim, { toValue: 0, duration: 1000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      Animated.delay(600),
+    ])).start();
+    Animated.loop(Animated.sequence([
+      Animated.timing(glowAnim, { toValue: 1, duration: 2400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      Animated.timing(glowAnim, { toValue: 0, duration: 2400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+    ])).start();
+  }, [pulseAnim, glowAnim]);
+
+  const dotOpacity = pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.3] });
+  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.06, 0.18] });
+  const glowScale = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1.2] });
+
+  return (
+    <Pressable onPress={onPress}
+      onHoverIn={() => Animated.spring(scaleAnim, { toValue: 1.015, friction: 8, tension: 200, useNativeDriver: true }).start()}
+      onHoverOut={() => Animated.spring(scaleAnim, { toValue: 1, friction: 8, tension: 200, useNativeDriver: true }).start()}
+    >
+      <Animated.View style={{
+        borderRadius: DS.radius.xl, overflow: 'hidden', marginBottom: 14,
+        // @ts-ignore web gradient
+        backgroundImage: 'linear-gradient(135deg, #7F1D1D 0%, #991B1B 50%, #B91C1C 100%)',
+        backgroundColor: '#7F1D1D',
+        transform: [{ scale: scaleAnim }],
+        position: 'relative',
+      }}>
+        {/* Ambient glow */}
+        <Animated.View style={{
+          position: 'absolute', top: -30, right: -30,
+          width: 160, height: 160, borderRadius: 80,
+          backgroundColor: '#EF4444',
+          opacity: glowOpacity, transform: [{ scale: glowScale }],
+        }} pointerEvents="none" />
+
+        <View style={{ paddingHorizontal: 20, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+          {/* Pulsing icon */}
+          <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' }}>
+            <Animated.View style={{ opacity: dotOpacity }}>
+              <AlertTriangle size={18} color="#FCA5A5" strokeWidth={1.8} />
+            </Animated.View>
+          </View>
+
+          <View style={{ flex: 1 }}>
+            <View className="flex-row items-center" style={{ gap: 6 }}>
+              <Animated.View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: '#FCA5A5', opacity: dotOpacity }} />
+              <Text style={{ fontSize: 9, fontWeight: '500', color: '#FCA5A5', letterSpacing: 0.5, textTransform: 'uppercase' }}>Acil</Text>
+              <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.5, lineHeight: 24, color: '#FFF', marginLeft: 4 }}>
+                {count}
+              </Text>
+              <Text style={{ fontSize: 13, color: '#FCA5A5', marginLeft: 2 }}>geciken sipariş</Text>
+            </View>
+          </View>
+
+          <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' }}>
+            <ArrowUpRight size={14} color="#FCA5A5" strokeWidth={1.8} />
+          </View>
+        </View>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+// ── Bugünkü Görevler — Dark card ──
+function TasksCard({
+  tasks,
+}: {
+  tasks: { icon: React.FC<any>; label: string; time: string; done: boolean; onPress?: () => void }[];
+}) {
+  const doneCount = tasks.filter(t => t.done).length;
+  return (
+    <View style={{
+      backgroundColor: DS.exec.surfaceAlt,
+      // @ts-ignore web gradient
+      backgroundImage: `linear-gradient(135deg, ${DS.exec.surfaceAlt} 0%, ${DS.exec.primaryDeep}33 100%)`,
+      borderRadius: DS.radius.xl, padding: 22,
+      flex: 1, gap: 0,
+    }}>
+      <View className="flex-row items-center justify-between" style={{ marginBottom: 14 }}>
+        <Text style={{ fontSize: 14, fontWeight: '500', color: '#FFF' }}>Bugünkü görevler</Text>
+        <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{doneCount}/{tasks.length}</Text>
+      </View>
+      <View style={{ gap: 10, flex: 1 }}>
+        {tasks.map((t, i) => {
+          const IconComp = t.icon;
+          return (
+            <Pressable
+              key={i}
+              onPress={t.onPress}
+              className="flex-row items-center"
+              style={{
+                gap: 10, paddingBottom: 10,
+                borderBottomWidth: i < tasks.length - 1 ? 1 : 0,
+                borderBottomColor: 'rgba(255,255,255,0.08)',
+              }}
+            >
+              <View style={{
+                width: 28, height: 28, borderRadius: 8,
+                backgroundColor: 'rgba(255,255,255,0.08)',
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                <IconComp size={14} color="#FFF" strokeWidth={1.8} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    fontSize: 12, fontWeight: '500', color: '#FFF',
+                    textDecorationLine: t.done ? 'line-through' : 'none',
+                    opacity: t.done ? 0.4 : 1,
+                  }}
+                >
+                  {t.label}
+                </Text>
+                <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>{t.time}</Text>
+              </View>
+              <View style={{
+                width: 18, height: 18, borderRadius: 9,
+                backgroundColor: t.done ? P : 'transparent',
+                borderWidth: t.done ? 0 : 1.5,
+                borderColor: t.done ? undefined : 'rgba(255,255,255,0.2)',
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                {t.done && <Check size={10} color="#FFF" strokeWidth={2.5} />}
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+// ── Status Distribution Card ──
 function StatusDistCard({ byStatus }: { byStatus: { label: string; count: number; key: string }[] }) {
   const total = byStatus.reduce((s, x) => s + x.count, 0) || 1;
   return (
-    <Card>
-      <CardHeader title="Statü Dağılımı" icon="layers" />
-      <View style={{ paddingHorizontal: 20, paddingBottom: 18, gap: 12 }}>
+    <Card style={{ padding: 22 }}>
+      <CardHeader title="Statü Dağılımı" display />
+      <View style={{ gap: 12 }}>
         {byStatus.map(item => {
           const pct = Math.round((item.count / total) * 100);
           const cfg = STATUS_CFG[item.key];
           return (
             <View key={item.key}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 5 }}>
-                <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: cfg?.color ?? K, marginRight: 8 }} />
-                <Text style={{ flex: 1, fontSize: 11, color: '#64748B', fontWeight: '500' }}>{item.label}</Text>
-                <Text style={{ fontSize: 12, fontWeight: '700', color: '#0F172A' }}>{item.count}</Text>
-                <Text style={{ fontSize: 10, color: '#94A3B8', marginLeft: 6, width: 28, textAlign: 'right' }}>{pct}%</Text>
+              <View className="flex-row items-center" style={{ marginBottom: 5 }}>
+                <View className="rounded-full" style={{ width: 7, height: 7, backgroundColor: cfg?.color ?? INK, marginRight: 8 }} />
+                <Text style={{ flex: 1, fontSize: 11, color: DS.ink[500], fontWeight: '500' }}>{item.label}</Text>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: INK }}>{item.count}</Text>
+                <Text style={{ fontSize: 10, color: DS.ink[400], marginLeft: 6, width: 28, textAlign: 'right' }}>{pct}%</Text>
               </View>
-              <View style={{ height: 4, backgroundColor: '#F1F5F9', borderRadius: 4, overflow: 'hidden' }}>
-                <View style={{ height: 4, borderRadius: 4, backgroundColor: cfg?.color ?? K, width: `${pct}%` as any }} />
+              <View className="rounded overflow-hidden" style={{ height: 4, backgroundColor: DS.ink[100] }}>
+                <View className="rounded" style={{ height: 4, backgroundColor: cfg?.color ?? INK, width: `${pct}%` as any }} />
               </View>
             </View>
           );
@@ -462,24 +858,24 @@ function StatusDistCard({ byStatus }: { byStatus: { label: string; count: number
   );
 }
 
-// ── Work Type Card ────────────────────────────────────────────────────
+// ── Work Type Card ──
 function WorkTypeCard({ data }: { data: { label: string; count: number }[] }) {
   if (!data.length) return null;
   const max = Math.max(...data.map(d => d.count), 1);
-  const palette = [K, CLR.blue, CLR.purple, CLR.teal, CLR.orange];
+  const palette = [P, CLR.blue, CLR.purple, CLR.teal, CLR.orange];
   return (
-    <Card>
-      <CardHeader title="İş Tipi Dağılımı" icon="bar-chart" />
-      <View style={{ paddingHorizontal: 20, paddingBottom: 18, gap: 10 }}>
+    <Card style={{ padding: 22 }}>
+      <CardHeader title="İş Tipi Dağılımı" display />
+      <View style={{ gap: 10 }}>
         {data.slice(0, 5).map((w, i) => (
           <View key={i}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 5 }}>
-              <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: palette[i], marginRight: 8 }} />
-              <Text style={{ flex: 1, fontSize: 11, color: '#0F172A', fontWeight: '500' }} numberOfLines={1}>{w.label}</Text>
-              <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B' }}>{w.count}</Text>
+            <View className="flex-row items-center" style={{ marginBottom: 5 }}>
+              <View className="rounded-full" style={{ width: 7, height: 7, backgroundColor: palette[i], marginRight: 8 }} />
+              <Text style={{ flex: 1, fontSize: 11, color: INK, fontWeight: '500' }} numberOfLines={1}>{w.label}</Text>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: DS.ink[500] }}>{w.count}</Text>
             </View>
-            <View style={{ height: 3, backgroundColor: '#F1F5F9', borderRadius: 4, overflow: 'hidden' }}>
-              <View style={{ height: 3, borderRadius: 4, backgroundColor: palette[i], width: `${Math.round((w.count / max) * 100)}%` as any, opacity: 0.7 }} />
+            <View className="rounded overflow-hidden" style={{ height: 3, backgroundColor: DS.ink[100] }}>
+              <View className="rounded" style={{ height: 3, backgroundColor: palette[i], width: `${Math.round((w.count / max) * 100)}%` as any, opacity: 0.7 }} />
             </View>
           </View>
         ))}
@@ -488,30 +884,73 @@ function WorkTypeCard({ data }: { data: { label: string; count: number }[] }) {
   );
 }
 
-// ── Main Screen ───────────────────────────────────────────────────────
-export default function AdminDashboard() {
-  const { width }  = useWindowDimensions();
-  const isDesktop  = width >= 900;
-  const router     = useRouter();
+// ── Finance Card ──
+function FinanceCard({ monthly, pending, paid }: { monthly: number; pending: number; paid: number }) {
+  return (
+    <Card style={{ padding: 22 }}>
+      <CardHeader title="Finansal Özet" display />
+      <View style={{ gap: 14 }}>
+        <View className="flex-row items-center" style={{ gap: 12 }}>
+          <View className="rounded-full" style={{ width: 8, height: 8, backgroundColor: CLR.green }} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 11, color: DS.ink[500], fontWeight: '500', marginBottom: 2 }}>Bu Ay Tahsilat</Text>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: CLR.green, letterSpacing: -0.4 }}>{fmtMoney(monthly)}</Text>
+          </View>
+        </View>
+        <View style={{ height: 1, backgroundColor: DS.ink[100] }} />
+        <View className="flex-row items-center" style={{ gap: 12 }}>
+          <View className="rounded-full" style={{ width: 8, height: 8, backgroundColor: CLR.orange }} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 11, color: DS.ink[500], fontWeight: '500', marginBottom: 2 }}>Bekleyen Fatura</Text>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: CLR.orange, letterSpacing: -0.4 }}>{fmtMoney(pending)}</Text>
+          </View>
+        </View>
+        <View style={{ height: 1, backgroundColor: DS.ink[100] }} />
+        <View className="flex-row items-center" style={{ gap: 12 }}>
+          <View className="rounded-full" style={{ width: 8, height: 8, backgroundColor: INK }} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 11, color: DS.ink[500], fontWeight: '500', marginBottom: 2 }}>Ödenen Fatura Adedi</Text>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: INK, letterSpacing: -0.4 }}>{paid}</Text>
+          </View>
+        </View>
+      </View>
+    </Card>
+  );
+}
 
-  const [loading, setLoading]           = useState(true);
-  const [totalOrders, setTotalOrders]   = useState(0);
-  const [todayOrders, setTodayOrders]   = useState(0);
-  const [overdueOrders, setOverdue]     = useState(0);
-  const [totalDoctors, setDoctors]      = useState(0);
-  const [totalLabUsers, setLabUsers]    = useState(0);
+// ══════════════════════════════════════════════════════════════════
+//  MAIN SCREEN
+// ══════════════════════════════════════════════════════════════════
+export default function AdminDashboard() {
+  const router    = useRouter();
+  const isDesktop = useIsDesktop();
+  const { profile } = useAuthStore();
+  const { setTitle, clear } = usePageTitleStore();
+  const firstName = profile?.full_name?.split(' ')[0] ?? '';
+
+  useEffect(() => { setTitle(getTodayLabel()); return clear; }, [setTitle, clear]);
+
+  const [loading, setLoading]             = useState(true);
+  const [refreshing, setRefreshing]       = useState(false);
+  const [totalOrders, setTotalOrders]     = useState(0);
+  const [todayOrders, setTodayOrders]     = useState(0);
+  const [overdueCount, setOverdue]        = useState(0);
+  const [totalDoctors, setDoctors]        = useState(0);
+  const [totalLabUsers, setLabUsers]      = useState(0);
   const [todayDelivery, setTodayDelivery] = useState(0);
-  const [byStatus, setByStatus]         = useState<{ label: string; count: number; key: string }[]>([]);
-  const [byWorkType, setByWorkType]     = useState<{ label: string; count: number }[]>([]);
-  const [monthly, setMonthly]           = useState<{ label: string; count: number }[]>([]);
-  const [recentOrders, setRecentOrders] = useState<any[]>([]);
-  const [upcoming, setUpcoming]         = useState<any[]>([]);
-  const [hovered, setHovered]           = useState<string | null>(null);
+  const [byStatus, setByStatus]           = useState<{ label: string; count: number; key: string }[]>([]);
+  const [byWorkType, setByWorkType]       = useState<{ label: string; count: number }[]>([]);
+  const [monthly, setMonthly]             = useState<{ label: string; count: number }[]>([]);
+  const [recentOrders, setRecentOrders]   = useState<any[]>([]);
+  const [upcoming, setUpcoming]           = useState<any[]>([]);
+  const [hovered, setHovered]             = useState<string | null>(null);
+  const [pipelineCounts, setPipelineCounts] = useState<Record<string, number>>({});
+  const [weekCounts, setWeekCounts]       = useState<Record<string, number>>({});
 
   // Finance state
-  const [finMonthly, setFinMonthly] = useState(0);
-  const [finPending, setFinPending] = useState(0);
-  const [finPaidCount, setFinPaidCount] = useState(0);
+  const [finMonthly, setFinMonthly]       = useState(0);
+  const [finPending, setFinPending]       = useState(0);
+  const [finPaidCount, setFinPaidCount]   = useState(0);
 
   const loadStats = useCallback(async () => {
     setLoading(true);
@@ -532,63 +971,76 @@ export default function AdminDashboard() {
       const recent   = (recentRes.data ?? []) as any[];
       const upcomingData = (upcomingRes.data ?? []) as any[];
 
-      let todayCount = 0, overdueCount = 0, todayDel = 0;
+      let todayCount = 0, overdueC = 0, todayDel = 0;
       const statusMap: Record<string, number> = {};
       const wtMap: Record<string, number>     = {};
       const monthMap: Record<string, number>  = {};
 
       for (let i = 5; i >= 0; i--) {
         const d = new Date(); d.setMonth(d.getMonth() - i);
-        monthMap[`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`] = 0;
+        monthMap[`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`] = 0;
       }
 
       for (const o of orders) {
         if (o.created_at?.startsWith(today)) todayCount++;
-        if (o.delivery_date < today && o.status !== 'teslim_edildi') overdueCount++;
+        if (o.delivery_date < today && o.status !== 'teslim_edildi') overdueC++;
         if (o.delivery_date === today && o.status !== 'teslim_edildi') todayDel++;
         statusMap[o.status] = (statusMap[o.status] ?? 0) + 1;
         if (o.work_type) wtMap[o.work_type] = (wtMap[o.work_type] ?? 0) + 1;
         if (o.created_at) {
           const d = new Date(o.created_at);
-          const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+          const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
           if (key in monthMap) monthMap[key] += 1;
         }
       }
 
+      // Pipeline counts
+      const pipeCounts: Record<string, number> = {};
+      STATUS_KEYS.forEach(k => { pipeCounts[k] = statusMap[k] ?? 0; });
+      setPipelineCounts(pipeCounts);
+
+      // Week counts
+      const weekDays = getWeekDays();
+      const wc: Record<string, number> = {};
+      weekDays.forEach(wd => {
+        wc[wd.date] = orders.filter(o => o.created_at?.startsWith(wd.date)).length;
+      });
+      setWeekCounts(wc);
+
       setTotalOrders(orders.length);
       setTodayOrders(todayCount);
-      setOverdue(overdueCount);
+      setOverdue(overdueC);
       setTodayDelivery(todayDel);
       setDoctors(profiles.filter((p: any) => p.user_type === 'doctor').length);
-      setLabUsers(profiles.filter((p: any) => ['lab','lab_user','mesul_mudur'].includes(p.user_type)).length);
+      setLabUsers(profiles.filter((p: any) => ['lab', 'lab_user', 'mesul_mudur'].includes(p.user_type)).length);
 
       setByStatus(STATUS_KEYS.map(k => ({ key: k, label: STATUS_CFG[k]?.label ?? k, count: statusMap[k] ?? 0 })));
-      setByWorkType(Object.entries(wtMap).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([label,count])=>({label,count})));
-      setMonthly(Object.entries(monthMap).map(([key,count])=>({ label: MONTHS_TR[parseInt(key.split('-')[1])-1], count })));
+      setByWorkType(Object.entries(wtMap).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([label, count]) => ({ label, count })));
+      setMonthly(Object.entries(monthMap).map(([key, count]) => ({ label: MONTHS_TR[parseInt(key.split('-')[1]) - 1], count })));
       setRecentOrders(recent.map(o => ({
         id: o.id, order_number: o.order_number, work_type: o.work_type,
         status: o.status, delivery_date: o.delivery_date, is_urgent: o.is_urgent ?? false,
-        doctor_name: (o.doctor as any)?.full_name ?? '—',
+        doctor_name: (o.doctor as any)?.full_name ?? '--',
       })));
       setUpcoming(upcomingData.map(o => ({
         id: o.id, order_number: o.order_number, status: o.status,
-        delivery_date: o.delivery_date, doctor_name: (o.doctor as any)?.full_name ?? '—',
+        delivery_date: o.delivery_date, doctor_name: (o.doctor as any)?.full_name ?? '--',
       })));
 
-      // Finance data (with fallback)
+      // Finance data
       try {
-        const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
+        const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
         const [invRes, pendRes] = await Promise.all([
           supabase.from('invoices').select('total_amount, status').gte('created_at', monthStart.toISOString()),
           supabase.from('invoices').select('total_amount').eq('status', 'sent'),
         ]);
         if (invRes.data) {
-          const paid = invRes.data.filter((i:any) => i.status === 'paid');
-          setFinMonthly(paid.reduce((s:number, i:any) => s + (i.total_amount ?? 0), 0));
+          const paid = invRes.data.filter((i: any) => i.status === 'paid');
+          setFinMonthly(paid.reduce((s: number, i: any) => s + (i.total_amount ?? 0), 0));
           setFinPaidCount(paid.length);
         }
         if (pendRes.data) {
-          setFinPending(pendRes.data.reduce((s:number, i:any) => s + (i.total_amount ?? 0), 0));
+          setFinPending(pendRes.data.reduce((s: number, i: any) => s + (i.total_amount ?? 0), 0));
         }
       } catch { /* invoices table may not exist */ }
     } catch (e) {
@@ -599,231 +1051,309 @@ export default function AdminDashboard() {
   }, []);
 
   useEffect(() => { loadStats(); }, [loadStats]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadStats();
+    setRefreshing(false);
+  };
+
   const today = todayStr();
 
-  return (
-    <SafeAreaView style={s.safe} edges={['bottom']}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
+  // Derived stats
+  const totalActive = totalOrders - (byStatus.find(s => s.key === 'teslim_edildi')?.count ?? 0);
+  const totalPipe = Object.values(pipelineCounts).reduce((s, v) => s + v, 0) || 1;
+  const productionPct = Math.round(((pipelineCounts['uretimde'] ?? 0) / totalPipe) * 100);
+  const deliveryPct   = Math.round(((pipelineCounts['teslim_edildi'] ?? 0) / totalPipe) * 100);
 
-        {/* ── Welcome + Alert ─────────────────────────────────────── */}
-        <View style={[s.heroRow, isDesktop && s.heroRowDesktop]}>
-          <View style={[s.welcomeCard, isDesktop && { flex: 1 }]}>
-            <BlurFade duration={600} delay={0} yOffset={8}>
-              <Text style={s.welcomeGreet}>Hoş geldiniz,</Text>
-            </BlurFade>
-            <BlurFade duration={600} delay={80} yOffset={8}>
-              <Text style={s.welcomeDate}>{getTodayLabel()}</Text>
-            </BlurFade>
-            <BlurFade duration={600} delay={160} yOffset={8}>
-              <Text style={s.welcomeSub}>Yönetici paneline hoş geldiniz. Genel özetiniz hazır.</Text>
-            </BlurFade>
+  // Latest active order for AnimatedAktifVakaCard
+  const latestOrder = recentOrders.find(o => o.status !== 'teslim_edildi') ?? recentOrders[0];
+
+  // Tasks for dark card
+  const taskItems: { icon: React.FC<any>; label: string; time: string; done: boolean; onPress?: () => void }[] = [];
+
+  // Overdue orders as tasks
+  const overdueOrdersFromRecent = recentOrders.filter(o => o.delivery_date < today && o.status !== 'teslim_edildi');
+  overdueOrdersFromRecent.slice(0, 2).forEach(o => {
+    taskItems.push({
+      icon: Clock as React.FC<any>,
+      label: `${o.doctor_name ?? 'Sipariş'} · gecikmiş`,
+      time: fmtDate(o.delivery_date),
+      done: false,
+      onPress: () => router.push(`/(admin)/order/${o.id}` as any),
+    });
+  });
+
+  // Upcoming deliveries as tasks
+  upcoming.slice(0, 2).forEach(o => {
+    taskItems.push({
+      icon: Package as React.FC<any>,
+      label: `${o.doctor_name ?? 'Sipariş'} · teslim`,
+      time: fmtDate(o.delivery_date),
+      done: false,
+      onPress: () => router.push(`/(admin)/order/${o.id}` as any),
+    });
+  });
+
+  // Today's orders as tasks
+  const todayOrdersFromRecent = recentOrders.filter(o => o.delivery_date === today && o.status !== 'teslim_edildi');
+  todayOrdersFromRecent.slice(0, 1).forEach(o => {
+    taskItems.push({
+      icon: Calendar as React.FC<any>,
+      label: `${o.doctor_name ?? 'Sipariş'} · bugün`,
+      time: 'Bugün',
+      done: false,
+      onPress: () => router.push(`/(admin)/order/${o.id}` as any),
+    });
+  });
+
+  if (taskItems.length === 0) {
+    taskItems.push(
+      { icon: CheckCircle as React.FC<any>, label: 'Bekleyen görev yok', time: '', done: true, onPress: undefined },
+    );
+  }
+
+  const weekDays = getWeekDays();
+
+  // ══════════════════════════════════════════════════════════════
+  //  RENDER
+  // ══════════════════════════════════════════════════════════════
+  return (
+    <ScrollView
+      className="flex-1"
+      contentContainerStyle={{ padding: isDesktop ? 10 : 16, paddingBottom: 120 }}
+      refreshControl={<RefreshControl refreshing={refreshing || loading} onRefresh={handleRefresh} tintColor={P} />}
+    >
+      {/* ════════ HERO ════════ */}
+      <View className="mb-5">
+        <View className={`${isDesktop ? 'flex-row justify-between items-end' : ''}`} style={{ gap: 32, paddingTop: 8 }}>
+          {/* Left: greeting + stat pills */}
+          <View style={{ flex: 1 }}>
+            <Text style={{
+              ...SERIF, fontSize: isDesktop ? 56 : 40,
+              letterSpacing: -0.025 * (isDesktop ? 56 : 40),
+              lineHeight: isDesktop ? 56 : 42,
+              color: INK,
+            }}>
+              Hoş geldin,{' '}
+              <Text style={{ fontStyle: 'italic', color: DS.ink[400] }}>{firstName}</Text>
+            </Text>
+
+            {/* Stat pills row */}
+            <View className="flex-row flex-wrap items-center" style={{ gap: 14, marginTop: 14 }}>
+              <StatPill label="Üretim" value={`${productionPct}%`} bg={INK} color="#FFF" />
+              <StatPill label="Aktif" value={`${totalActive}`} bg={P} color="#FFF" />
+              {overdueCount > 0 && (
+                <StatPill label="Geciken" value={`${overdueCount}`} bg="rgba(217,75,75,0.12)" color="#9C2E2E" />
+              )}
+              <StatPill label="Bugün" value={`${todayOrders}`} bg="rgba(0,0,0,0.08)" color={INK} />
+            </View>
           </View>
 
-          {overdueOrders > 0 && (
-            <View style={[s.alertCard, isDesktop && { width: 280 }]}>
-              <View style={s.alertDecorIcon} pointerEvents="none">
-                <Icon name="alert-triangle" size={180} color={CLR.red} strokeWidth={0.6} />
-              </View>
-              <View style={s.alertTop}><Text style={s.alertPill}>KRİTİK</Text></View>
-              <Text style={s.alertTitle}><Text style={s.alertCount}>{overdueOrders}</Text>{' geciken sipariş'}</Text>
-              <Text style={s.alertSub}>Acil müdahale gerektiren vakalar.</Text>
-              <TouchableOpacity style={s.alertBtn} onPress={() => router.push('/(admin)/orders' as any)} activeOpacity={0.9}>
-                <Text style={s.alertBtnText}>Detayları Gör</Text>
-              </TouchableOpacity>
+          {/* Right: big stats */}
+          <View className="flex-row" style={{ gap: 32, alignItems: 'flex-end' }}>
+            <BigStat value={totalOrders.toLocaleString('tr-TR')} label="Toplam sipariş" />
+            <BigStat value={totalDoctors} label="Hekim" />
+            <BigStat value={totalLabUsers} label="Lab kullanıcı" />
+          </View>
+        </View>
+      </View>
+
+      {/* ════════ OVERDUE ALERT ════════ */}
+      {overdueCount > 0 && (
+        <AnimatedOverdueCard count={overdueCount} onPress={() => router.push('/(admin)/orders' as any)} />
+      )}
+
+      {/* ════════ 4-CARD GRID ════════ */}
+      <View
+        className={isDesktop ? 'flex-row' : ''}
+        style={{ gap: 14, marginBottom: 14 }}
+      >
+        {/* Card 1: Aktif Vaka — dark top + white bottom + animations */}
+        <AnimatedAktifVakaCard
+          isDesktop={isDesktop}
+          pipelineCounts={pipelineCounts}
+          latestOrder={latestOrder}
+          router={router}
+        />
+
+        {/* Card 2: Sipariş Trendi (bar chart) */}
+        <Card style={{ flex: isDesktop ? 1.2 : undefined, padding: 22, marginBottom: isDesktop ? 0 : 14 }}>
+          <View className="flex-row items-start justify-between" style={{ marginBottom: 12 }}>
+            <View>
+              <Text style={{ fontSize: 18, fontWeight: '500', letterSpacing: -0.015 * 18, color: INK }}>Sipariş Trendi</Text>
+              <Text style={{ ...SERIF, fontSize: 42, letterSpacing: -0.025 * 42, lineHeight: 42, marginTop: 8, color: INK }}>
+                {monthly[monthly.length - 1]?.count ?? 0}
+                <Text style={{ fontSize: 14, color: DS.ink[400] }}> bu ay</Text>
+              </Text>
+              <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 4 }}>Son 6 aylık trend</Text>
+            </View>
+            <Pressable
+              onPress={() => router.push('/(admin)/orders' as any)}
+              className="items-center justify-center rounded-full"
+              style={{ width: 32, height: 32, backgroundColor: DS.ink[100] }}
+            >
+              <ArrowUpRight size={14} color={DS.ink[500]} strokeWidth={1.8} />
+            </Pressable>
+          </View>
+          {monthly.length > 0 && (
+            <View style={{ flex: 1, minHeight: 120 }}>
+              <ProductionBarChart data={monthly} />
             </View>
           )}
-        </View>
+        </Card>
 
-        {/* ── KPI Strip ───────────────────────────────────────────── */}
-        <View style={[s.kpiStrip, isDesktop && s.kpiStripDesktop]}>
-          <KPICard label="TOPLAM SİPARİŞ" value={totalOrders.toLocaleString('tr-TR')} icon="package" accent={K} trend="+12%" />
-          <KPICard label="BUGÜN YENİ"    value={todayOrders}   icon="plus"        accent={CLR.blue} />
-          <KPICard label="GECİKEN"       value={overdueOrders} icon="clock"       accent={overdueOrders > 0 ? CLR.red : '#94A3B8'} />
-          <KPICard label="BUGÜN TESLİM"  value={todayDelivery} icon="check-circle" accent={CLR.green} />
-          <KPICard label="KAYITLI HEKİM" value={totalDoctors}  icon="activity"    accent={CLR.teal} />
-          <KPICard label="LAB KULLANICI" value={totalLabUsers} icon="users"       accent={CLR.purple} />
-        </View>
-
-        {loading ? (
-          <View style={s.loadingBox}><ActivityIndicator color={K} size="large" /></View>
-        ) : (
-          <View style={[s.mainGrid, isDesktop && s.mainGridDesktop]}>
-
-            {/* ── Column 1: Quick Actions + Status ─────────────── */}
-            <View style={[s.col1, isDesktop && { flex: 1.1 }]}>
-              <SectionTitle text="Hızlı İşlemler" />
-              <QuickActionsSection
-                onNewOrder={() => router.push('/(admin)/new-order' as any)}
-                onUsers={() => router.push('/(admin)/users' as any)}
-                onDoctors={() => router.push('/(admin)/doctors' as any)}
-                onOrders={() => router.push('/(admin)/orders' as any)}
-                onProfile={() => router.push('/(admin)/profile' as any)}
-              />
-              <View style={{ height: 20 }} />
-              <SectionTitle text="Statü Dağılımı" />
-              <StatusDistCard byStatus={byStatus} />
+        {/* Card 3: Üretim Ring — PercentRingHero on white bg */}
+        <Card style={{ flex: isDesktop ? 1 : undefined, padding: 22, alignItems: 'center', marginBottom: isDesktop ? 0 : 14 }}>
+          <View className="w-full flex-row items-center justify-between" style={{ marginBottom: 8 }}>
+            <Text style={{ fontSize: 14, fontWeight: '500', color: INK }}>Teslim Oranı</Text>
+            <Pressable onPress={() => router.push('/(admin)/orders' as any)}>
+              <ArrowUpRight size={14} color={DS.ink[500]} strokeWidth={1.8} />
+            </Pressable>
+          </View>
+          <PercentRingHero value={deliveryPct} size={140} darkText />
+          <Text style={{ fontSize: 9, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.08 * 9, marginTop: 10 }}>
+            Teslim
+          </Text>
+          {/* Mini pipeline stats */}
+          <View className="flex-row" style={{ gap: 8, marginTop: 12 }}>
+            <View className="items-center rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: DS.ink[100] }}>
+              <Text style={{ fontSize: 10, fontWeight: '500', color: DS.ink[500] }}>
+                {pipelineCounts['uretimde'] ?? 0} üretimde
+              </Text>
             </View>
-
-            {/* ── Column 2: Chart + Recent Orders ──────────────── */}
-            <View style={[s.col2, isDesktop && { flex: 2 }]}>
-              <SectionTitle text="Sipariş Trendi" />
-              <Card style={{ marginBottom: 20 }}>
-                <CardHeader title="Son 6 Ay" icon="bar-chart"
-                  right={<View style={s.chip}><Text style={s.chipText}>Aylık</Text></View>}
-                />
-                {monthly.length > 0
-                  ? <MonthlyChart data={monthly} />
-                  : <View style={{ height: 140, alignItems: 'center', justifyContent: 'center' }}>
-                      <Text style={{ color: '#94A3B8', fontSize: 13 }}>Veri yok</Text>
-                    </View>
-                }
-              </Card>
-
-              <SectionTitle text="Son Siparişler" />
-              <Card>
-                <CardHeader title="Tüm Siparişler"
-                  right={<TouchableOpacity onPress={() => router.push('/(admin)/orders' as any)}><Text style={s.linkBtn}>Tümünü Gör →</Text></TouchableOpacity>}
-                />
-                <View style={s.tableHead}>
-                  <Text style={[s.thCell, { flex: 1.2 }]}>Sipariş No</Text>
-                  <Text style={[s.thCell, { flex: 2 }]}>Hekim</Text>
-                  {isDesktop && <Text style={[s.thCell, { flex: 2 }]}>İş Tipi</Text>}
-                  <Text style={[s.thCell, { flex: 1.4 }]}>Statü</Text>
-                  {isDesktop && <Text style={[s.thCell, { flex: 1, textAlign: 'right' }]}>Teslim</Text>}
-                </View>
-                {recentOrders.length === 0
-                  ? <Text style={s.loadingText}>Henüz sipariş yok</Text>
-                  : recentOrders.map((order, idx) => {
-                      const overdue = order.delivery_date < today && order.status !== 'teslim_edildi';
-                      const isLast  = idx === recentOrders.length - 1;
-                      return (
-                        <TouchableOpacity
-                          key={order.id}
-                          style={[s.tableRow, !isLast && s.rowBorder, overdue && s.tableRowOverdue, hovered === order.id && s.tableRowHover]}
-                          onPress={() => router.push(`/(admin)/order/${order.id}` as any)}
-                          activeOpacity={0.9}
-                          // @ts-ignore
-                          onMouseEnter={() => setHovered(order.id)}
-                          onMouseLeave={() => setHovered(null)}
-                        >
-                          <View style={{ flex: 1.2, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                            <Text style={s.orderNo} numberOfLines={1}>#{order.order_number}</Text>
-                            {order.is_urgent && <Text style={s.urgentTag}>ACİL</Text>}
-                          </View>
-                          <View style={{ flex: 2, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                            <View style={s.avatar}><Text style={s.avatarText}>{initials(order.doctor_name)}</Text></View>
-                            <Text style={s.cellMain} numberOfLines={1}>{order.doctor_name}</Text>
-                          </View>
-                          {isDesktop && <Text style={[s.cellSub, { flex: 2 }]} numberOfLines={1}>{order.work_type || '—'}</Text>}
-                          <View style={{ flex: 1.4 }}><StatusBadge status={order.status} /></View>
-                          {isDesktop && (
-                            <Text style={[s.cellDate, { flex: 1, textAlign: 'right' }, overdue && s.cellDateOverdue]}>
-                              {fmtDate(order.delivery_date)}
-                            </Text>
-                          )}
-                        </TouchableOpacity>
-                      );
-                    })
-                }
-              </Card>
-            </View>
-
-            {/* ── Column 3: Finance + Upcoming + Work Type ─────── */}
-            <View style={[s.col3, isDesktop && { flex: 1.1 }]}>
-              <SectionTitle text="Finansal Özet" />
-              <FinanceCard monthly={finMonthly} pending={finPending} paid={finPaidCount} />
-
-              <View style={{ height: 20 }} />
-              <SectionTitle text="Yaklaşan Teslimler" />
-              <UpcomingCard orders={upcoming} />
-
-              {byWorkType.length > 0 && (
-                <>
-                  <View style={{ height: 20 }} />
-                  <SectionTitle text="İş Tipi Analizi" />
-                  <WorkTypeCard data={byWorkType} />
-                </>
-              )}
+            <View className="items-center rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: hexA(P, 0.15) }}>
+              <Text style={{ fontSize: 10, fontWeight: '500', color: P }}>
+                {pipelineCounts['teslimata_hazir'] ?? 0} hazır
+              </Text>
             </View>
           </View>
-        )}
+        </Card>
 
-        <View style={{ height: 40 }} />
-      </ScrollView>
-    </SafeAreaView>
+        {/* Card 4: Bugünkü Görevler — Dark */}
+        <View style={{ flex: isDesktop ? 1.4 : undefined }}>
+          <TasksCard tasks={taskItems} />
+        </View>
+      </View>
+
+      {/* ════════ BOTTOM ROW — Weekly + Hızlı İşlem CTA ════════ */}
+      <View className={isDesktop ? 'flex-row' : ''} style={{ gap: 14, marginBottom: 14 }}>
+        <WeeklyStrip
+          weekDays={weekDays}
+          weekCounts={weekCounts}
+          onPress={() => router.push('/(admin)/orders' as any)}
+        />
+        <AnimatedCTACard onPress={() => router.push('/(admin)/new-order' as any)} isDesktop={isDesktop} />
+      </View>
+
+      {/* ════════ EXTRA SECTIONS (below fold) ════════ */}
+
+      {loading ? (
+        <View style={{ alignItems: 'center', paddingVertical: 80 }}>
+          <ActivityIndicator color={P} size="large" />
+        </View>
+      ) : (
+        <>
+          {/* Son Siparişler — Patterns table */}
+          <Card style={{ marginBottom: 14 }}>
+            <View className="flex-row items-center justify-between" style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
+              <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>Son Siparişler</Text>
+              <Pressable onPress={() => router.push('/(admin)/orders' as any)}>
+                <Text style={{ fontSize: 13, color: P, fontWeight: '700' }}>Tümünü Gör →</Text>
+              </Pressable>
+            </View>
+
+            {/* Table header */}
+            <View
+              className="flex-row items-center"
+              style={{
+                paddingHorizontal: 20, paddingVertical: 11,
+                borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)',
+                backgroundColor: DS.ink[50],
+              }}
+            >
+              <Text style={{ flex: 1.2, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>No</Text>
+              <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Hekim</Text>
+              {isDesktop && <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>İş Tipi</Text>}
+              <Text style={{ flex: 1.4, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Durum</Text>
+              {isDesktop && <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, textAlign: 'right' }}>Teslim</Text>}
+            </View>
+
+            {recentOrders.length === 0
+              ? <Text className="p-6 text-center" style={{ fontSize: 13, color: DS.ink[400] }}>Yükleniyor...</Text>
+              : recentOrders.map((order, idx) => {
+                  const overdue = order.delivery_date < today && order.status !== 'teslim_edildi';
+                  const isLast  = idx === recentOrders.length - 1;
+                  return (
+                    <Pressable
+                      key={order.id}
+                      className="flex-row items-center"
+                      style={{
+                        paddingHorizontal: 20, paddingVertical: 13, gap: 8, minHeight: 54,
+                        borderBottomWidth: !isLast ? 1 : 0,
+                        borderBottomColor: 'rgba(0,0,0,0.04)',
+                        backgroundColor: overdue
+                          ? 'rgba(217,75,75,0.06)'
+                          : hovered === order.id
+                            ? 'rgba(233,119,87,0.06)'
+                            : undefined,
+                      }}
+                      onPress={() => router.push(`/(admin)/order/${order.id}` as any)}
+                      // @ts-ignore web hover
+                      onMouseEnter={() => setHovered(order.id)}
+                      onMouseLeave={() => setHovered(null)}
+                    >
+                      <View className="flex-row items-center" style={{ flex: 1.2, gap: 6 }}>
+                        <Text style={{ fontSize: 12, fontWeight: '800', color: P }} numberOfLines={1}>#{order.order_number}</Text>
+                        {order.is_urgent && (
+                          <View className="rounded" style={{ paddingHorizontal: 4, paddingVertical: 1, backgroundColor: 'rgba(217,75,75,0.1)' }}>
+                            <Text style={{ fontSize: 9, fontWeight: '800', color: CLR.red }}>ACİL</Text>
+                          </View>
+                        )}
+                      </View>
+                      <View className="flex-row items-center" style={{ flex: 2, gap: 8 }}>
+                        <View
+                          className="items-center justify-center rounded-full"
+                          style={{ width: 28, height: 28, backgroundColor: hexA(P, 0.1), borderWidth: 1, borderColor: hexA(P, 0.15) }}
+                        >
+                          <Text style={{ fontSize: 9, fontWeight: '800', color: P }}>{initials(order.doctor_name)}</Text>
+                        </View>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: INK }} numberOfLines={1}>{order.doctor_name}</Text>
+                      </View>
+                      {isDesktop && (
+                        <Text style={{ flex: 2, fontSize: 11, color: DS.ink[500] }} numberOfLines={1}>{order.work_type || '--'}</Text>
+                      )}
+                      <View style={{ flex: 1.4 }}>
+                        <StatusBadge status={order.status} />
+                      </View>
+                      {isDesktop && (
+                        <Text style={{
+                          flex: 1, fontSize: 11, fontWeight: overdue ? '700' : '500', textAlign: 'right',
+                          color: overdue ? '#9C2E2E' : DS.ink[400],
+                        }}>
+                          {fmtDate(order.delivery_date)}
+                        </Text>
+                      )}
+                    </Pressable>
+                  );
+                })
+            }
+          </Card>
+
+          {/* Finance + Status + Work Type — 2-column below fold */}
+          <View className={isDesktop ? 'flex-row' : ''} style={{ gap: 14, marginBottom: 14 }}>
+            <View style={{ flex: isDesktop ? 1 : undefined, gap: 14 }}>
+              <FinanceCard monthly={finMonthly} pending={finPending} paid={finPaidCount} />
+              {byWorkType.length > 0 && <WorkTypeCard data={byWorkType} />}
+            </View>
+            <View style={{ flex: isDesktop ? 1 : undefined, gap: 14, marginTop: isDesktop ? 0 : 14 }}>
+              <StatusDistCard byStatus={byStatus} />
+            </View>
+          </View>
+        </>
+      )}
+
+      <View style={{ height: 40 }} />
+    </ScrollView>
   );
 }
-
-const s = StyleSheet.create({
-  safe:   { flex: 1, backgroundColor: BG },
-  scroll: { padding: 20, paddingBottom: 40, maxWidth: 1600, alignSelf: 'stretch' },
-
-  // Hero
-  heroRow:        { gap: 16, marginBottom: 20 },
-  heroRowDesktop: { flexDirection: 'row' },
-  welcomeCard: {
-    backgroundColor: '#FFFFFF', borderRadius: 16, padding: 28,
-    borderWidth: 1, borderColor: '#F1F5F9', overflow: 'hidden',
-  },
-  welcomeGreet: { fontSize: 26, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
-  welcomeDate:  { fontSize: 26, fontWeight: '300', color: K, letterSpacing: -0.5, marginTop: 2 },
-  welcomeSub:   { fontSize: 13, color: '#64748B', marginTop: 8 },
-
-  alertCard: {
-    backgroundColor: '#FFF1F2', borderRadius: 16, padding: 20, gap: 8,
-    position: 'relative', overflow: 'hidden',
-  },
-  alertDecorIcon: { position: 'absolute', top: -30, left: -30, opacity: 0.08 } as any,
-  alertTop:  { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'flex-end' },
-  alertPill: { fontSize: 10, fontWeight: '800', color: CLR.red, backgroundColor: '#FEE2E2', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, letterSpacing: 0.8 },
-  alertTitle:{ fontSize: 18, fontWeight: '800', color: '#7F1D1D', marginTop: 6, letterSpacing: -0.4 },
-  alertCount:{ fontSize: 32, fontWeight: '900', letterSpacing: -1 },
-  alertSub:  { fontSize: 12, color: '#B91C1C' },
-  alertBtn:  { marginTop: 6, backgroundColor: CLR.red, borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
-  alertBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
-
-  // KPI strip
-  kpiStrip:        { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 20 },
-  kpiStripDesktop: { flexWrap: 'nowrap' },
-
-  // 3-col grid
-  mainGrid:        { gap: 20 },
-  mainGridDesktop: { flexDirection: 'row', alignItems: 'flex-start' },
-  col1: { gap: 0 },
-  col2: { gap: 0 },
-  col3: { gap: 0 },
-
-  // Chips
-  chip:     { backgroundColor: '#F1F5F9', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
-  chipText: { fontSize: 10, color: '#64748B', fontWeight: '600' },
-
-  linkBtn: { fontSize: 12, color: K, fontWeight: '700' },
-
-  // Table
-  tableHead: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 20, paddingVertical: 10,
-    borderTopWidth: 1, borderTopColor: '#F1F5F9',
-    backgroundColor: '#FAFBFC',
-  },
-  thCell: { fontSize: 9, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.6 },
-
-  tableRow:        { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, gap: 10, minHeight: 52 },
-  tableRowHover:   { backgroundColor: '#FAFBFD' },
-  tableRowOverdue: { backgroundColor: '#FEF2F2' },
-  rowBorder:       { borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-
-  orderNo:   { fontSize: 12, fontWeight: '700', color: K },
-  urgentTag: { fontSize: 9, fontWeight: '800', color: CLR.red, backgroundColor: CLR.redBg, borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1 },
-
-  avatar:     { width: 26, height: 26, borderRadius: 13, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
-  avatarText: { fontSize: 9, fontWeight: '700', color: '#64748B' },
-
-  cellMain:        { fontSize: 12, fontWeight: '600', color: '#0F172A' },
-  cellSub:         { fontSize: 11, color: '#64748B' },
-  cellDate:        { fontSize: 11, color: '#94A3B8', fontWeight: '500' },
-  cellDateOverdue: { color: CLR.red, fontWeight: '700' },
-
-  loadingBox:  { alignItems: 'center', paddingVertical: 80 },
-  loadingText: { fontSize: 13, color: '#94A3B8', padding: 24, textAlign: 'center' },
-});

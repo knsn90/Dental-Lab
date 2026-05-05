@@ -4,8 +4,9 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Platform, View } from 'react-native';
 import { ToastContainer } from '../core/ui/Toast';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../core/api/supabase';
 import { useAuthStore } from '../core/store/authStore';
+import { usePermissionStore } from '../core/store/permissionStore';
 import { useFonts } from 'expo-font';
 import {
   Outfit_300Light,
@@ -134,13 +135,14 @@ export default function RootLayout() {
   });
 
   const { session, profile, loading, setSession, setLoading, fetchProfile } = useAuthStore();
+  const { fetchPermissions: fetchPerms, clear: clearPerms } = usePermissionStore();
   const segments = useSegments();
   const router = useRouter();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session?.user) fetchProfile(session.user.id);
+      if (session?.user) { fetchProfile(session.user.id); fetchPerms(); }
       setLoading(false);
     });
 
@@ -148,7 +150,9 @@ export default function RootLayout() {
       setSession(session);
       if (session?.user) {
         fetchProfile(session.user.id);
+        fetchPerms();
       } else {
+        clearPerms();
         setLoading(false);
       }
     });
@@ -185,7 +189,20 @@ export default function RootLayout() {
                         : '(lab)';
     const currentGroup  = segments[0];
 
+    // Onaylanmamış hekim — giriş engelle
+    if (userType === 'doctor' && profile?.approval_status && profile.approval_status !== 'approved') {
+      if (!inAuthGroup) {
+        supabase.auth.signOut();
+        router.replace('/(auth)/login');
+      }
+      return;
+    }
+
     if (inAuthGroup) {
+      // Kayıt sonrası doğrulama/onay bekleme ekranlarında kalmasına izin ver
+      const isPostRegistration = segments[1] === 'verify-phone' || segments[1] === 'approval-waiting';
+      if (isPostRegistration) return;
+
       // Auth sayfasındayken oturum açıldıysa doğru panele gönder
       if (!isAdminLogin) {
         if (userType === 'doctor')            router.replace('/(doctor)');

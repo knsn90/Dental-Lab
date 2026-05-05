@@ -1,1 +1,1 @@
-export { OrdersListScreen as default } from '../../modules/orders/screens/OrdersListScreen';
+export { OrdersListScreenV2 as default } from '../../modules/orders/screens/OrdersListScreenV2';

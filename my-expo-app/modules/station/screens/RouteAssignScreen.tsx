@@ -219,10 +219,10 @@ export function RouteAssignScreen() {
 
     if (stationsRes.data)   setStations(stationsRes.data as Station[]);
     if (techRes.data)       setTechnicians(techRes.data as Technician[]);
-    if (stagesRes.data)     setExisting(stagesRes.data as ExistingStage[]);
+    if (stagesRes.data)     setExisting(stagesRes.data as unknown as ExistingStage[]);
 
     // Mevcut bekleyen aşamaları rota editörüne prefill et
-    const pending = ((stagesRes.data ?? []) as ExistingStage[])
+    const pending = ((stagesRes.data ?? []) as unknown as ExistingStage[])
       .filter(s => s.status === 'bekliyor')
       .sort((a, b) => a.sequence_order - b.sequence_order);
 
@@ -330,7 +330,7 @@ export function RouteAssignScreen() {
     if (error) {
       Alert.alert('Hata', error.message);
     } else {
-      toast('Rota başarıyla kaydedildi ✓', 'success');
+      toast.success('Rota başarıyla kaydedildi ✓');
       router.back();
     }
   }

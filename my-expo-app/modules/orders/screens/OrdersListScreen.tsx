@@ -24,8 +24,7 @@ import { HubContext } from '../../../core/ui/HubContext';
 
 import { useOrders } from '../hooks/useOrders';
 import { useAssignTechnician } from '../../admin/orders/hooks';
-import { advanceOrderStatus, deleteOrder } from '../api';
-import { deleteOrder as adminDeleteOrder } from '../../admin/orders/service';
+import { advanceOrderStatus } from '../api';
 import { StatusUpdateModal } from '../components/StatusUpdateModal';
 import { KanbanBoard } from '../components/KanbanBoard';
 import { WorkOrder, WorkOrderStatus } from '../types';

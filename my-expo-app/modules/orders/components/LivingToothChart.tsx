@@ -13,17 +13,29 @@ import type { WorkOrder } from '../types';
 interface LivingToothChartProps {
   order:         WorkOrder;
   containerWidth: number;        // tooth picker'ın iç genişliği
+  containerHeight?: number;      // opsiyonel: aspect kilidini kır
+  fit?:          'meet' | 'slice' | 'none';
+  frameless?:    boolean;        // dış kart kabuğunu kaldır (parent zaten kart ise)
   accentColor?:  string;
   activeTooth?:  number | null;
   onToothPress?: (fdi: number) => void;
+  /** Hangi çene gösterilsin? — undefined = auto (hideEmptyJaw heuristic) */
+  forceJawMode?: 'upper' | 'lower' | 'both';
+  /** Per-tooth fill color override — örn: işlem grubuna göre farklı renkler */
+  colorMap?: Record<number, string>;
 }
 
 export function LivingToothChart({
   order,
   containerWidth,
+  containerHeight,
+  fit,
+  frameless     = false,
   accentColor   = '#2563EB',
   activeTooth,
   onToothPress,
+  forceJawMode,
+  colorMap,
 }: LivingToothChartProps) {
   const sorted = useMemo(
     () => [...(order.tooth_numbers ?? [])].sort((a, b) => a - b),
@@ -39,18 +51,22 @@ export function LivingToothChart({
   }, [photos]);
 
   return (
-    <View style={s.card}>
+    <View style={frameless ? undefined : s.card}>
 
       {/* Title kaldırıldı — picker doğrudan görünür */}
 
       {/* ── Picker ── */}
-      <View style={s.pickerWrap}>
+      <View style={frameless ? { alignItems: 'center', justifyContent: 'center' } : s.pickerWrap}>
         <ToothNumberPicker
           selected={order.tooth_numbers ?? []}
           onChange={() => {}}
           containerWidth={containerWidth}
-          hideEmptyJaw
+          containerHeight={containerHeight}
+          fit={fit}
+          hideEmptyJaw={!forceJawMode}
+          forceJawMode={forceJawMode}
           accentColor={accentColor}
+          colorMap={colorMap}
           activeTooth={activeTooth}
           onToothPress={onToothPress}
         />

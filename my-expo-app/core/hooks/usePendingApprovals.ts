@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../../lib/supabase';
+import { supabase } from '../api/supabase';
 
 export function usePendingApprovals() {
   const [count, setCount] = useState(0);

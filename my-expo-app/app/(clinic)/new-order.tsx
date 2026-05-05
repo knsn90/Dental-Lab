@@ -3,7 +3,7 @@ import { useRouter } from 'expo-router';
 import { useAuthStore } from '../../core/store/authStore';
 import { NewOrderScreen } from '../../modules/orders/screens/NewOrderScreen';
 
-const CLINIC_ACCENT = '#0369A1';
+const CLINIC_ACCENT = '#6BA888';
 
 export default function ClinicNewOrderRoute() {
   const router = useRouter();

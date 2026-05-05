@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../../../lib/supabase';
+import { supabase } from '../../../core/api/supabase';
 
 export interface SalesReport {
   period: string;
@@ -124,7 +124,7 @@ export function useOverviewReport() {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      const orders = (data ?? []) as RawOrder[];
+      const orders = (data ?? []) as unknown as RawOrder[];
       const stats = computeStats(orders, 0); // all time
 
       setReport({ period: 'Tüm Zamanlar', ...stats });
@@ -156,7 +156,7 @@ export function useSalesReport() {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      const orders = (data ?? []) as RawOrder[];
+      const orders = (data ?? []) as unknown as RawOrder[];
       const stats = computeStats(orders, 0); // already filtered by cutoff
 
       setReport({ period: `Son ${days} Gün`, ...stats });
@@ -192,7 +192,7 @@ export function useOverdueReport() {
         .order('delivery_date', { ascending: true });
 
       if (error) throw error;
-      const raw = (data ?? []) as RawOrder[];
+      const raw = (data ?? []) as unknown as RawOrder[];
 
       const now = new Date();
       const orders = raw.map((o) => {

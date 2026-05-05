@@ -13,15 +13,29 @@
       "backgroundColor": "#1A56DB"
     },
     "ios": {
-      "supportsTablet": false,
-      "bundleIdentifier": "com.dentallab.app"
+      "supportsTablet": true,
+      "bundleIdentifier": "com.dentallab.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "İş emri fotoğrafı çekmek ve QR okutmak için kamera erişimi gerekiyor.",
+        "NSPhotoLibraryUsageDescription": "Fotoğraf galerinize erişmek için izin gerekiyor.",
+        "UIBackgroundModes": ["remote-notification"]
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#1A56DB"
       },
-      "package": "com.dentallab.app"
+      "package": "com.dentallab.app",
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "ACCESS_NETWORK_STATE",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE"
+      ],
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "bundler": "metro",
@@ -35,6 +49,19 @@
         {
           "photosPermission": "Fotoğraf galerinize erişmek için izin gerekiyor.",
           "cameraPermission": "Kamera ile fotoğraf çekmek için izin gerekiyor."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "QR kod okutmak ve iş emri fotoğrafı çekmek için kamera gerekiyor."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#1A56DB"
         }
       ],
       "expo-asset",

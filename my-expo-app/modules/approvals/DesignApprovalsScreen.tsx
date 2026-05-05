@@ -1,66 +1,76 @@
+/**
+ * DesignApprovalsScreen — Patterns design language
+ *
+ * Tasarım adımı onay listesi. Admin onaylayabilir, lab/doctor sadece görür.
+ * DS tokens, DISPLAY typography, inline styles.
+ */
 import React from 'react';
-import {
-  View, Text, StyleSheet, FlatList,
-  ActivityIndicator, RefreshControl,
-} from 'react-native';
+import { View, Text, FlatList, ActivityIndicator, RefreshControl, useWindowDimensions } from 'react-native';
+import { ClipboardCheck } from 'lucide-react-native';
 import { usePendingApprovals } from './hooks/usePendingApprovals';
 import { ApprovalCard } from './components/ApprovalCard';
 import { useAuthStore } from '../../core/store/authStore';
-import { C } from '../../core/theme/colors';
-import { F } from '../../core/theme/typography';
+import { DS } from '../../core/theme/dsTokens';
 
-import { AppIcon } from '../../core/ui/AppIcon';
+const DISPLAY: any = { fontFamily: DS.font.display, fontWeight: '300' };
 
 export function DesignApprovalsScreen() {
   const { profile } = useAuthStore();
   const { approvals, loading, refetch } = usePendingApprovals();
   const isAdmin = profile?.user_type === 'admin';
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 768;
 
   return (
-    <View style={s.safe}>
+    <View style={{ flex: 1 }}>
       {loading ? (
-        <View style={s.center}>
-          <ActivityIndicator size="large" color={C.primary} />
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator size="large" color={DS.ink[500]} />
         </View>
       ) : approvals.length === 0 ? (
-        <View style={s.empty}>
-          <AppIcon name="check-all" size={52} color={C.success} />
-          <Text style={s.emptyTitle}>Bekleyen Onay Yok</Text>
-          <Text style={s.emptySub}>
+        /* ── Empty state ── */
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, paddingHorizontal: 40 }}>
+          <View style={{
+            width: 64, height: 64, borderRadius: 32,
+            backgroundColor: 'rgba(45,154,107,0.1)',
+            alignItems: 'center', justifyContent: 'center',
+          }}>
+            <ClipboardCheck size={28} color="#1F6B47" strokeWidth={1.6} />
+          </View>
+          <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>
+            Bekleyen onay yok
+          </Text>
+          <Text style={{ fontSize: 13, color: DS.ink[400], textAlign: 'center', lineHeight: 20 }}>
             Tasarım adımı tamamlandığında onay istekleri burada görünür.
           </Text>
         </View>
       ) : (
+        /* ── Approval list ── */
         <FlatList
           data={approvals}
           keyExtractor={a => a.id}
-          contentContainerStyle={s.list}
+          numColumns={isDesktop ? 2 : 1}
+          key={isDesktop ? 'grid-2' : 'grid-1'}
+          contentContainerStyle={{
+            padding: isDesktop ? 40 : 16,
+            paddingTop: 16,
+            gap: 14,
+          }}
+          columnWrapperStyle={isDesktop ? { gap: 14 } : undefined}
           refreshControl={
-            <RefreshControl refreshing={false} onRefresh={refetch} />
+            <RefreshControl refreshing={false} onRefresh={refetch} tintColor={DS.ink[500]} />
           }
           renderItem={({ item }) => (
-            <ApprovalCard
-              approval={item}
-              canApprove={isAdmin}
-              onResolved={refetch}
-            />
+            <View style={isDesktop ? { flex: 1, maxWidth: '50%' } : undefined}>
+              <ApprovalCard
+                approval={item}
+                canApprove={isAdmin}
+                onResolved={refetch}
+              />
+            </View>
           )}
         />
       )}
     </View>
   );
 }
-
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#FFFFFF' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-
-  list: { padding: 16, gap: 12 },
-
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 40 },
-  emptyTitle: { fontSize: 18, fontWeight: '700', fontFamily: F.bold, color: '#0F172A' },
-  emptySub: {
-    fontSize: 14, fontFamily: F.regular, color: '#94A3B8',
-    textAlign: 'center', lineHeight: 20,
-  },
-});

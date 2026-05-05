@@ -147,7 +147,7 @@ export function CourierDeliveryScreen() {
     if (error) {
       Alert.alert('Hata', error instanceof Error ? error.message : 'Güncelleme başarısız');
     } else {
-      toast(`${nextFlow.label} ✓`, 'success');
+      toast.success(`${nextFlow.label} ✓`);
       setShowRecipient(false);
       setRecipientName('');
     }

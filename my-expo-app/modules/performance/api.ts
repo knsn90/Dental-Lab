@@ -54,8 +54,6 @@ export interface PerformanceBonus {
   description: string;
   metric_value: number;
   bonus_amount: number;
-  transferred_to_payroll: boolean;
-  payroll_id: string | null;
   created_at: string;
 }
 
@@ -153,13 +151,6 @@ export async function lockPerformance(performanceId: string) {
     .from('employee_performance')
     .update({ is_locked: true, updated_at: new Date().toISOString() })
     .eq('id', performanceId);
-}
-
-export async function transferBonusToPayroll(bonusId: string, payrollId: string) {
-  return supabase
-    .from('performance_bonuses')
-    .update({ transferred_to_payroll: true, payroll_id: payrollId })
-    .eq('id', bonusId);
 }
 
 // ── Prim kuralları ────────────────────────────────────────────────────────────

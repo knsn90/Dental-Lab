@@ -1,174 +1,236 @@
 /**
- * SettingsHubScreen — Cards Design System
- * ─────────────────────────────────────────
- * Tek seviyeli ayar paneli. Sol sidebar (gruplu nav) + sağ içerik kartları.
- * Tüm kartlar: bg #FFFFFF · radius 14 · shadow 0 8px 24px rgba(0,0,0,0.15)
- * Page bg: #F1F5F9
+ * SettingsHubScreen — Patterns Design Language
+ * ─────────────────────────────────────────────
+ * Tek seviyeli ayar paneli. Sol sidebar (minimal vertical tabs) + sağ içerik.
+ * Patterns /dev/patterns "Dikey (settings sidebar)" referansına birebir uyumlu.
+ *
+ * Tüm paneller (lab, admin, doctor, clinic) aynı ekranı kullanır.
  */
-import React, { useEffect, useState } from 'react';
-import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, Pressable } from 'react-native';
+import { useSegments } from 'expo-router';
 
-import { AppIcon } from '../../../core/ui/AppIcon';
 import { HubContext } from '../../../core/ui/HubContext';
 import { useColorThemeStore } from '../../../core/store/colorThemeStore';
+import { usePageTitleStore } from '../../../core/store/pageTitleStore';
+import { usePermissionStore } from '../../../core/store/permissionStore';
 
 import { LabUsersManagement } from '../../admin/users/LabUsersManagement';
 import { LabCheckinSettings } from '../../hr/screens/LabCheckinSettings';
 import { StationsSection } from '../sections/StationsSection';
 import { ProfileSection } from '../sections/ProfileSection';
-import { AppearanceSection } from '../sections/AppearanceSection';
 import { NotificationsSection } from '../sections/NotificationsSection';
 import { GeneralSection } from '../sections/GeneralSection';
 import { IntegrationsScreen } from '../../integrations/screens/IntegrationsScreen';
+import { LogsSection } from '../sections/LogsSection';
+import { PermissionsScreen } from '../../admin/permissions/PermissionsScreen';
+import { EquipmentSection } from '../sections/EquipmentSection';
 
-// ── Types ─────────────────────────────────────────────────────────────────
+// ── Display font token ──────────────────────────────────────────────────
+const DISPLAY = {
+  fontFamily: 'Inter Tight, Inter, system-ui, sans-serif',
+  fontWeight: '300' as const,
+};
+
+// ── Types ────────────────────────────────────────────────────────────────
 type SectionKey =
-  | 'profile' | 'appearance' | 'notifications' | 'general'
-  | 'users'   | 'checkin'    | 'stations'      | 'integrations';
+  | 'profile' | 'notifications' | 'general'
+  | 'users'   | 'checkin'    | 'stations'      | 'integrations' | 'logs'
+  | 'permissions' | 'equipment';
 
-interface NavGroup {
-  title: string;
-  items: NavItem[];
-}
+type PanelKind = 'lab' | 'admin' | 'doctor' | 'clinic';
+
 interface NavItem {
   key:   SectionKey;
   label: string;
   sub:   string;
-  icon:  string;
+  /** If set, only show this tab when user has this permission */
+  requiresPermission?: string;
 }
 
-const NAV_GROUPS: NavGroup[] = [
-  {
-    title: 'HESAP',
-    items: [
-      { key: 'profile',       label: 'Profil',      sub: 'Kişisel bilgiler ve güvenlik', icon: 'user'  },
-      { key: 'appearance',    label: 'Görünüm',     sub: 'Tema ve yazı boyutu',          icon: 'sun'   },
-      { key: 'notifications', label: 'Bildirimler', sub: 'Uyarı ve bildirim tercihleri', icon: 'bell'  },
-      { key: 'general',       label: 'Genel',       sub: 'Dil, saat dilimi, format',     icon: 'globe' },
-    ],
-  },
-  {
-    title: 'LABORATUVAR',
-    items: [
-      { key: 'users',    label: 'Kullanıcılar', sub: 'Personel ve stage yetkileri', icon: 'users'           },
-      { key: 'checkin',  label: 'QR Check-in',  sub: 'Mesai takip ayarları',        icon: 'qr-code'         },
-      { key: 'stations', label: 'İstasyonlar',  sub: 'Üretim aşamaları',            icon: 'sitemap-outline' },
-    ],
-  },
-  {
-    title: 'ENTEGRASYONLAR',
-    items: [
-      { key: 'integrations', label: 'e-Fatura & POS', sub: 'Sağlayıcı API anahtarları', icon: 'plug' },
-    ],
-  },
+// ── Panel accent mapping ─────────────────────────────────────────────────
+const PANEL_ACCENTS: Record<PanelKind, string> = {
+  lab:    '#F5C24B',
+  admin:  '#E97757',
+  doctor: '#6BA888',
+  clinic: '#6BA888',
+};
+
+function detectPanel(segments: string[]): PanelKind {
+  const seg = segments?.[0] ?? '';
+  if (seg === '(clinic)') return 'clinic';
+  if (seg === '(doctor)') return 'doctor';
+  if (seg === '(admin)')  return 'admin';
+  return 'lab';
+}
+
+// ── Nav items ────────────────────────────────────────────────────────────
+const ACCOUNT_ITEMS: NavItem[] = [
+  { key: 'profile',       label: 'Profil',      sub: 'Kişisel bilgiler ve güvenlik' },
+  { key: 'notifications', label: 'Bildirimler', sub: 'Uyarı ve bildirim tercihleri' },
+  { key: 'general',       label: 'Genel',       sub: 'Dil, saat dilimi, format'     },
 ];
 
-// ── Props ─────────────────────────────────────────────────────────────────
+const LAB_ITEMS: NavItem[] = [
+  { key: 'users',        label: 'Kullanıcılar',  sub: 'Personel ve stage yetkileri',  requiresPermission: 'manage_users'    },
+  { key: 'permissions',  label: 'Yetkiler',      sub: 'Rol bazli erisim yonetimi',    requiresPermission: 'manage_settings' },
+  { key: 'checkin',      label: 'QR Check-in',   sub: 'Mesai takip ayarları',         requiresPermission: 'manage_settings' },
+  { key: 'stations',     label: 'İstasyonlar',   sub: 'Üretim aşamaları',             requiresPermission: 'manage_settings' },
+  { key: 'equipment',   label: 'Demirbaşlar',   sub: 'Cihaz, marka, model ve atamalar', requiresPermission: 'manage_settings' },
+  { key: 'integrations', label: 'Entegrasyonlar', sub: 'e-Fatura & POS ayarları',     requiresPermission: 'manage_settings' },
+  { key: 'logs',         label: 'Loglar',         sub: 'Sistem aktivite kayıtları',   requiresPermission: 'manage_settings' },
+];
+
+function getNavItems(panel: PanelKind): NavItem[] {
+  if (panel === 'lab' || panel === 'admin') {
+    return [...ACCOUNT_ITEMS, ...LAB_ITEMS];
+  }
+  return ACCOUNT_ITEMS;
+}
+
+// ── Props ────────────────────────────────────────────────────────────────
 export interface SettingsHubScreenProps {
-  panelType?:    'lab' | 'admin' | 'doctor' | 'clinic';
-  panelLabel?:   string;
+  panelType?:     PanelKind;
+  panelLabel?:    string;
   defaultAccent?: string;
 }
 
-// ── Component ─────────────────────────────────────────────────────────────
+// ── Component ────────────────────────────────────────────────────────────
 export function SettingsHubScreen({
-  panelType    = 'lab',
-  panelLabel   = 'Laboratuvar',
-  defaultAccent = '#7C3AED',
+  panelType: panelTypeProp,
+  defaultAccent,
 }: SettingsHubScreenProps = {}) {
-  const insets = useSafeAreaInsets();
-  const { getTheme, loadTheme } = useColorThemeStore();
-  const [active, setActive] = useState<SectionKey>('profile');
+  const segments = useSegments();
+  const panel = panelTypeProp ?? detectPanel(segments);
+  const accent = PANEL_ACCENTS[panel];
 
-  useEffect(() => { loadTheme(panelType); }, [panelType]);
-  const theme  = getTheme(panelType);
-  const accent = theme.primary;
+  const { loadTheme } = useColorThemeStore();
+  const [active, setActive] = useState<SectionKey>('profile');
+  const permStore = usePermissionStore();
+
+  useEffect(() => { loadTheme(panel); }, [panel]);
+
+  // Page title for PatternsShell top bar
+  const setPageTitle = usePageTitleStore(s => s.setTitle);
+  useEffect(() => {
+    setPageTitle('Ayarlar', undefined);
+    return () => setPageTitle('', undefined);
+  }, []);
+
+  // Filter nav items by RBAC permissions
+  const allNavItems = getNavItems(panel);
+  const navItems = allNavItems.filter(item => {
+    if (!item.requiresPermission) return true;
+    if (!permStore.loaded) return true; // show all while loading
+    return permStore.permissions.has(item.requiresPermission);
+  });
+  const activeItem = navItems.find(i => i.key === active);
 
   return (
-    <View style={[s.root, { paddingTop: insets.top + 8 }]}>
-      {/* ── Body: sidebar + content ───────────────────────────────────── */}
-      <View style={s.body}>
-        {/* ── Sidebar Card ─────────────────────────────────────────── */}
-        <View style={s.sidebarWrap}>
-          <View style={s.sidebarCard}>
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ padding: 10, gap: 14 }}
-            >
-              {NAV_GROUPS.map(group => (
-                <View key={group.title} style={{ gap: 4 }}>
-                  <Text style={s.groupTitle}>{group.title}</Text>
-                  {group.items.map(item => {
-                    const isActive = active === item.key;
-                    return (
-                      <TouchableOpacity
-                        key={item.key}
-                        style={[s.navItem, isActive && { backgroundColor: accent + '12' }]}
-                        onPress={() => setActive(item.key)}
-                        activeOpacity={0.75}
-                      >
-                        <View
-                          style={[
-                            s.navIcon,
-                            { backgroundColor: isActive ? accent : '#F1F5F9' },
-                          ]}
-                        >
-                          <AppIcon
-                            name={item.icon as any}
-                            size={14}
-                            color={isActive ? '#FFFFFF' : '#64748B'}
-                          />
-                        </View>
-                        <View style={{ flex: 1, minWidth: 0 }}>
-                          <Text
-                            style={[
-                              s.navLabel,
-                              isActive && { color: accent, fontWeight: '700' },
-                            ]}
-                            numberOfLines={1}
-                          >
-                            {item.label}
-                          </Text>
-                          <Text style={s.navSub} numberOfLines={1}>{item.sub}</Text>
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              ))}
-            </ScrollView>
-          </View>
-        </View>
+    <View style={{ flex: 1, flexDirection: 'row', backgroundColor: '#F5F2EA' }}>
+      {/* ── Sidebar — patterns "Dikey (settings sidebar)" ────── */}
+      <View style={{ width: 200, paddingTop: 24, paddingBottom: 16 }}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ gap: 2, paddingHorizontal: 8 }}
+        >
+          {navItems.map(item => {
+            const isActive = active === item.key;
+            return (
+              <Pressable
+                key={item.key}
+                onPress={() => setActive(item.key)}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 10,
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                  borderRadius: 12,
+                  backgroundColor: isActive ? '#FFFFFF' : 'transparent',
+                  // @ts-ignore web
+                  cursor: 'pointer',
+                }}
+              >
+                {/* Active bar indicator */}
+                {isActive && (
+                  <View
+                    style={{
+                      width: 3,
+                      height: 16,
+                      borderRadius: 2,
+                      backgroundColor: accent,
+                      marginLeft: -6,
+                      marginRight: 4,
+                    }}
+                  />
+                )}
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontWeight: isActive ? '600' : '400',
+                    color: isActive ? '#0A0A0A' : '#6B6B6B',
+                  }}
+                >
+                  {item.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
 
-        {/* ── Content Area (no extra header — sidebar shows what's active) */}
-        <View style={s.contentWrap}>
+      {/* ── Content — patterns style ─────────────────────────── */}
+      <View style={{ flex: 1, paddingHorizontal: 0, paddingTop: 0 }}>
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: '#F5F2EA',
+            borderRadius: 16,
+            overflow: 'hidden',
+          }}
+        >
+          {/* Section header */}
+          {activeItem && (
+            <View style={{ paddingHorizontal: 28, paddingTop: 16, paddingBottom: 12 }}>
+              <Text
+                style={{
+                  ...DISPLAY,
+                  fontSize: 24,
+                  letterSpacing: -0.5,
+                  color: '#0A0A0A',
+                  marginBottom: 4,
+                }}
+              >
+                {activeItem.label}
+              </Text>
+              <Text style={{ fontSize: 13, color: '#9A9A9A', lineHeight: 19 }}>
+                {activeItem.sub}
+              </Text>
+            </View>
+          )}
+
+          {/* Section body */}
           <HubContext.Provider value={true}>
-            <View style={s.sectionBody}>
+            <View style={{ flex: 1, minHeight: 0 }}>
               {active === 'profile' && (
                 <ProfileSection accentColor={accent} />
               )}
-              {active === 'appearance' && (
-                <AppearanceSection
-                  panelType={panelType}
-                  accentColor={accent}
-                  defaultAccent={defaultAccent}
-                />
-              )}
-              {active === 'notifications' && (
-                <NotificationsSection panelType={panelType} accentColor={accent} />
+{active === 'notifications' && (
+                <NotificationsSection panelType={panel} accentColor={accent} />
               )}
               {active === 'general' && (
-                <GeneralSection panelType={panelType} accentColor={accent} />
+                <GeneralSection panelType={panel} accentColor={accent} />
               )}
-              {active === 'users' && <LabUsersManagement />}
+              {active === 'users' && <LabUsersManagement accentColor={accent} />}
               {active === 'checkin' && (
                 <LabCheckinSettings accentColor={accent} />
               )}
-              {active === 'stations' && <StationsSection />}
-              {active === 'integrations' && <IntegrationsScreen />}
+              {active === 'stations' && <StationsSection accentColor={accent} />}
+              {active === 'equipment' && <EquipmentSection accentColor={accent} />}
+              {active === 'integrations' && <IntegrationsScreen accentColor={accent} />}
+              {active === 'logs' && <LogsSection accentColor={accent} />}
+              {active === 'permissions' && <PermissionsScreen embedded accentColor={accent} />}
             </View>
           </HubContext.Provider>
         </View>
@@ -176,93 +238,3 @@ export function SettingsHubScreen({
     </View>
   );
 }
-
-// ── Cards Design System ───────────────────────────────────────────────────
-const CARD_SHADOW = Platform.select({
-  web:     { boxShadow: '0 8px 24px rgba(0,0,0,0.15)' } as any,
-  default: {
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
-  },
-});
-
-const s = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: '#F1F5F9',
-  },
-
-  // ── Body Layout ─────────────────────────────────────────────────────────
-  body: {
-    flex: 1,
-    flexDirection: 'row',
-    paddingHorizontal: 24,
-    paddingBottom: 24,
-    gap: 16,
-  },
-
-  // ── Sidebar Card ────────────────────────────────────────────────────────
-  sidebarWrap: {
-    width: 260,
-    flexShrink: 0,
-  },
-  sidebarCard: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.95)',
-    overflow: 'hidden',
-    ...CARD_SHADOW,
-  },
-
-  groupTitle: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#94A3B8',
-    letterSpacing: 1,
-    paddingHorizontal: 8,
-    paddingTop: 4,
-    paddingBottom: 4,
-  },
-
-  navItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  navIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  navLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#0F172A',
-  },
-  navSub: {
-    fontSize: 11,
-    color: '#94A3B8',
-    marginTop: 1,
-  },
-
-  // ── Content Area ────────────────────────────────────────────────────────
-  contentWrap: {
-    flex: 1,
-    minWidth: 0,
-  },
-  sectionBody: {
-    flex: 1,
-    minHeight: 0,
-  },
-});

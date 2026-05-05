@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../../core/api/supabase';
-import { fetchMessages, markMessagesAsRead, sendMessage, OrderMessage, ChatAttachment } from '../chatApi';
+import {
+  fetchMessages, markMessagesAsRead, sendMessage,
+  approveMessage, rejectMessage, approveAllPending,
+  OrderMessage, ChatAttachment,
+} from '../chatApi';
 
 export function useChatMessages(workOrderId: string, currentUserId?: string | null) {
   const [messages, setMessages] = useState<OrderMessage[]>([]);
@@ -117,5 +121,25 @@ export function useChatMessages(workOrderId: string, currentUserId?: string | nu
     return null;
   };
 
-  return { messages, loading, sending, send, sendWithAttachment };
+  const approve = async (messageId: string) => {
+    const { error } = await approveMessage(messageId);
+    if (error) console.warn('[chat] approve error:', error.message);
+    else await load();
+  };
+
+  const reject = async (messageId: string) => {
+    const { error } = await rejectMessage(messageId);
+    if (error) console.warn('[chat] reject error:', error.message);
+    else await load();
+  };
+
+  const approveAll = async () => {
+    const { error } = await approveAllPending(workOrderId);
+    if (error) console.warn('[chat] approveAll error:', error.message);
+    else await load();
+  };
+
+  const pendingCount = messages.filter(m => m.approval_status === 'pending').length;
+
+  return { messages, loading, sending, send, sendWithAttachment, approve, reject, approveAll, pendingCount };
 }

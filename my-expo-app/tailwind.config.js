@@ -74,6 +74,47 @@ module.exports = {
         page:    '#F1F5F9',
         surface: '#FFFFFF',
         danger:  'hsl(var(--destructive))',
+
+        // ── Patterns Design Language (DS tokens — /dev/patterns) ─────────
+        // Mevcut HSL `lab` token'ı (mavi) bozulmasın diye ayrı isim alanı
+        ink: {
+          50:  '#FAFAFA',
+          100: '#F5F5F5',
+          200: '#EAEAEA',
+          300: '#D4D4D4',
+          400: '#9A9A9A',
+          500: '#6B6B6B',
+          700: '#2C2C2C',
+          800: '#1A1A1A',
+          900: '#0A0A0A',
+        },
+        cream: {
+          DEFAULT: '#F5EFD9',  // DS.lab.bg
+          soft:    '#FBF7E8',  // DS.lab.bgSoft
+          deep:    '#E8DDB5',  // DS.lab.bgDeep
+          page:    '#F5F2EA',  // page bg (order-detail / sidebar)
+          panel:   '#FBFAF6',  // soft inner panel
+        },
+        saffron: {
+          DEFAULT: '#F5C24B',  // DS.lab.primary
+          deep:    '#E0A82E',  // DS.lab.primaryDeep
+        },
+        sage: {
+          DEFAULT: '#6BA888',  // DS.clinic.primary
+          deep:    '#4D8A6B',
+          ink:     '#0F2A1F',
+          tint:    '#EDF2EE',  // DS.clinic.bg
+          soft:    '#F5F8F5',  // DS.clinic.bgSoft
+          panel:   '#D9E5DC',  // DS.clinic.bgDeep
+        },
+        coral: {
+          DEFAULT: '#E97757',  // DS.exec.primary
+          deep:    '#D15A3A',
+        },
+        // Patterns status tones
+        ok:   '#2D9A6B',
+        warn: '#E89B2A',
+        bad:  '#D94B4B',
       },
 
       borderRadius: {

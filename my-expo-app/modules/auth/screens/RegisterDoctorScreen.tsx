@@ -1,43 +1,170 @@
-import React, { useState } from 'react';
+/**
+ * RegisterDoctorScreen — Muayenehane (tek hekim) kayıt formu
+ *
+ * V3 Editorial layout (LoginScreen uyumlu) — yeşil (clinic) tema
+ * Desktop: dark green left panel + krem right form card
+ * Mobile: dark green header + krem form card sliding up
+ */
+import React, { useState, useRef, useEffect } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-  TouchableOpacity,
-  TextInput,
-  ActivityIndicator,
+  View, Text, ScrollView, Pressable, TextInput, Platform,
+  KeyboardAvoidingView, ActivityIndicator, Animated, Easing,
+  useWindowDimensions, Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { signUpDoctor } from '../api';
-import { supabase } from '../../../lib/supabase';
-import { C } from '../../../core/theme/colors';
-import { F } from '../../../core/theme/typography';
+import { DS } from '../../../core/theme/dsTokens';
+import {
+  Mail, Lock, Eye, EyeOff, ArrowRight, Check,
+  AlertCircle, ChevronLeft, Stethoscope, User, Building2, Phone,
+} from 'lucide-react-native';
+import { AddressFields, AddressData, buildAddressString } from '../components/AddressFields';
 
-import { AppIcon } from '../../../core/ui/AppIcon';
-import { CustomIcon } from '../../../core/ui/CustomIcon';
+// ── Design tokens — clinic green ──
+const INK   = DS.ink[900];
+const GREEN = DS.clinic.primary;     // #6BA888 sage
+const GREEN_DEEP = DS.clinic.accent; // #0F2A1F dark forest
+const KREM  = '#F5F2EA';
+const DISPLAY: any = { fontFamily: DS.font.display, fontWeight: '300' };
 
+const isDesktopWidth = (w: number) => w >= 900;
+
+// ── Pulsing dot ──
+function PulseDot({ color }: { color: string }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(anim, { toValue: 1, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 0, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.delay(400),
+      ]),
+    ).start();
+  }, [anim]);
+  const opacity = anim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.3] });
+  return <Animated.View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: color, opacity, marginRight: 8 }} />;
+}
+
+// ── InputField — LoginScreen ile aynı stil ──
+function InputField({
+  label, value, onChangeText, placeholder, secureTextEntry, keyboardType, autoCapitalize,
+  returnKeyType, onSubmitEditing, error, rightElement, icon, multiline,
+}: {
+  label: string; value: string; onChangeText: (v: string) => void;
+  placeholder?: string; secureTextEntry?: boolean; keyboardType?: 'default' | 'email-address' | 'phone-pad';
+  autoCapitalize?: 'none' | 'sentences'; returnKeyType?: 'next' | 'go' | 'done';
+  onSubmitEditing?: () => void; error?: string; rightElement?: React.ReactNode;
+  icon?: React.ReactNode; multiline?: boolean;
+}) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <View style={{ marginBottom: 14 }}>
+      <Text style={{ fontSize: 11, color: DS.ink[500], fontWeight: '500', marginBottom: 6, paddingHorizontal: 4 }}>
+        {label}
+      </Text>
+      <View style={{
+        flexDirection: 'row', alignItems: multiline ? 'flex-start' : 'center', gap: 10,
+        paddingHorizontal: 16, paddingVertical: 13,
+        backgroundColor: '#FFFFFF', borderRadius: 12,
+        borderWidth: focused ? 1.5 : 1,
+        borderColor: error ? DS.clinic.danger : focused ? GREEN : 'rgba(0,0,0,0.08)',
+        ...(multiline ? { minHeight: 80 } : {}),
+      }}>
+        {icon && <View style={multiline ? { paddingTop: 2 } : undefined}>{icon}</View>}
+        <TextInput
+          style={{
+            flex: 1, fontSize: 13, color: INK,
+            fontFamily: secureTextEntry ? 'monospace' : (DS.font.display as string),
+            letterSpacing: secureTextEntry ? 2 : 0,
+            ...(multiline ? { textAlignVertical: 'top' as const, minHeight: 52 } : {}),
+            // @ts-ignore
+            outlineStyle: 'none',
+          }}
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={DS.ink[400]}
+          secureTextEntry={secureTextEntry}
+          keyboardType={keyboardType}
+          autoCapitalize={autoCapitalize}
+          autoCorrect={false}
+          multiline={multiline}
+          returnKeyType={returnKeyType}
+          onSubmitEditing={onSubmitEditing}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+        />
+        {rightElement}
+      </View>
+      {error && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 5, paddingHorizontal: 4 }}>
+          <AlertCircle size={11} color={DS.clinic.danger} strokeWidth={2} />
+          <Text style={{ fontSize: 11, color: DS.clinic.danger }}>{error}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ── Section divider ──
+function SectionDivider({ icon, label }: { icon: React.ReactNode; label: string }) {
+  return (
+    <View style={{
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      paddingTop: 10, paddingBottom: 8,
+    }}>
+      <View style={{
+        width: 24, height: 24, borderRadius: 7,
+        backgroundColor: `${GREEN}25`, alignItems: 'center', justifyContent: 'center',
+      }}>
+        {icon}
+      </View>
+      <Text style={{ fontSize: 11, color: DS.ink[400], fontWeight: '600', letterSpacing: 1.1, textTransform: 'uppercase' }}>
+        {label}
+      </Text>
+      <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(0,0,0,0.06)', marginLeft: 8 }} />
+    </View>
+  );
+}
+
+// ── Main ──
 export function RegisterDoctorScreen() {
-  const router = useRouter();
+  const router  = useRouter();
+  const insets  = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isDesktop = isDesktopWidth(width);
+
   const [form, setForm] = useState({
     full_name: '',
     clinic_name: '',
-    address: '',
     phone: '',
     email: '',
     password: '',
     passwordConfirm: '',
   });
-  const [focused, setFocused] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState<Partial<typeof form>>({});
-  const [successMsg, setSuccessMsg] = useState('');
-  const [errorMsg, setErrorMsg] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
+  const [address, setAddress] = useState<AddressData>({ il: '', ilce: '', mahalle: '', sokak: '' });
+  const [addressErrors, setAddressErrors] = useState<Partial<Record<keyof AddressData, string>>>({});
+  const [loading, setLoading]     = useState(false);
+  const [errors, setErrors]       = useState<Partial<typeof form>>({});
+  const [errorMsg, setErrorMsg]   = useState('');
+  const [showPass, setShowPass]   = useState(false);
+  const [showPassC, setShowPassC] = useState(false);
+
+  // Animations
+  const shakeX      = useRef(new Animated.Value(0)).current;
+  const btnScale    = useRef(new Animated.Value(1)).current;
+  const cardSlide   = useRef(new Animated.Value(isDesktop ? 0 : 40)).current;
+  const cardOpacity = useRef(new Animated.Value(isDesktop ? 1 : 0)).current;
+
+  useEffect(() => {
+    if (!isDesktop) {
+      Animated.parallel([
+        Animated.spring(cardSlide,   { toValue: 0, tension: 60, friction: 11, useNativeDriver: true }),
+        Animated.timing(cardOpacity, { toValue: 1, duration: 350, useNativeDriver: true }),
+      ]).start();
+    }
+  }, []);
 
   const set = (key: keyof typeof form) => (val: string) => {
     setForm((prev) => ({ ...prev, [key]: val }));
@@ -45,25 +172,41 @@ export function RegisterDoctorScreen() {
     setErrorMsg('');
   };
 
+  const triggerShake = () => {
+    shakeX.setValue(0);
+    Animated.sequence([
+      Animated.timing(shakeX, { toValue: 10,  duration: 55, useNativeDriver: true }),
+      Animated.timing(shakeX, { toValue: -10, duration: 55, useNativeDriver: true }),
+      Animated.timing(shakeX, { toValue: 7,   duration: 55, useNativeDriver: true }),
+      Animated.timing(shakeX, { toValue: -7,  duration: 55, useNativeDriver: true }),
+      Animated.timing(shakeX, { toValue: 0,   duration: 55, useNativeDriver: true }),
+    ]).start();
+  };
+
   const validate = () => {
     const e: Partial<typeof form> = {};
+    const ae: Partial<Record<keyof AddressData, string>> = {};
     if (!form.full_name.trim()) e.full_name = 'Ad soyad zorunludur';
     if (!form.phone.trim()) e.phone = 'Telefon zorunludur';
     if (!form.clinic_name.trim()) e.clinic_name = 'Klinik adı zorunludur';
-    if (!form.address.trim()) e.address = 'Adres zorunludur';
+    if (!address.il) ae.il = 'İl seçiniz';
+    if (!address.ilce) ae.ilce = 'İlçe seçiniz';
+    if (!address.mahalle.trim()) ae.mahalle = 'Mahalle zorunludur';
     if (!form.email.trim()) e.email = 'E-posta zorunludur';
     else if (!/\S+@\S+\.\S+/.test(form.email)) e.email = 'Geçerli bir e-posta girin';
     if (form.password.length < 8) e.password = 'Şifre en az 8 karakter olmalı';
     if (form.password !== form.passwordConfirm) e.passwordConfirm = 'Şifreler eşleşmiyor';
     setErrors(e);
-    return Object.keys(e).length === 0;
+    setAddressErrors(ae);
+    const hasErrors = Object.keys(e).length > 0 || Object.keys(ae).length > 0;
+    if (hasErrors) triggerShake();
+    return !hasErrors;
   };
 
   const handleRegister = async () => {
     if (!validate()) return;
     setLoading(true);
     setErrorMsg('');
-    setSuccessMsg('');
 
     const { data, error } = await signUpDoctor({
       email: form.email.trim().toLowerCase(),
@@ -71,7 +214,7 @@ export function RegisterDoctorScreen() {
       full_name: form.full_name.trim(),
       clinic_name: form.clinic_name.trim(),
       phone: form.phone.trim(),
-      address: form.address.trim(),
+      address: buildAddressString(address),
     });
 
     setLoading(false);
@@ -84,493 +227,239 @@ export function RegisterDoctorScreen() {
       } else {
         setErrorMsg(error.message);
       }
+      triggerShake();
       return;
     }
 
-    // Sign out immediately - doctor needs approval before accessing the app
-    await supabase.auth.signOut();
-    setSuccessMsg('Kaydınız alındı! Laborant yöneticisi onayından sonra giriş yapabilirsiniz.');
+    // Kayıt başarılı — telefon doğrulamaya yönlendir (oturum açık kalır)
+    router.replace({
+      pathname: '/(auth)/verify-phone',
+      params: { phone: form.phone.trim() },
+    } as any);
   };
 
-  return (
-    <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.flex}
+  // ── Form card ──
+  const formCard = (
+    <Animated.View style={{ transform: [{ translateX: shakeX }] }}>
+      {/* Back */}
+      <Pressable
+        onPress={() => router.back()}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', marginBottom: 20, paddingVertical: 4 }}
       >
-        <ScrollView
-          contentContainerStyle={styles.container}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Card */}
-          <View style={styles.card}>
+        <ChevronLeft size={16} color={DS.ink[500]} strokeWidth={2} />
+        <Text style={{ fontSize: 12, color: DS.ink[500], fontWeight: '500' }}>Kayıt türü</Text>
+      </Pressable>
 
-            {/* Card Header */}
-            <View style={styles.cardHeader}>
-              <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                <AppIcon name="chevron-left" size={18} color={C.textSecondary} />
-                <Text style={styles.backText}>Geri</Text>
-              </TouchableOpacity>
-              <View style={styles.headerCenter}>
-                <View style={styles.iconWrap}>
-                  <CustomIcon n={26} size={22} color="#FFFFFF" />
-                </View>
-                <View>
-                  <Text style={styles.cardTitle}>Hekim Kaydı</Text>
-                  <Text style={styles.cardSubtitle}>Yeni hekim hesabı oluşturun</Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Messages */}
-            {errorMsg ? (
-              <View style={styles.alertBox}>
-                <AppIcon name="alert-circle-outline" size={16} color={C.danger} />
-                <Text style={styles.alertText}>{errorMsg}</Text>
-              </View>
-            ) : null}
-
-            {successMsg ? (
-              <View style={[styles.alertBox, styles.alertSuccess]}>
-                <AppIcon name="check-circle-outline" size={16} color={C.success} />
-                <Text style={[styles.alertText, { color: C.success }]}>{successMsg}</Text>
-              </View>
-            ) : null}
-
-            {/* ── Section: Kişisel Bilgiler ── */}
-            <SectionHeader icon="person-outline" title="Kişisel Bilgiler" />
-
-            <FieldGroup label="Ad Soyad *" error={errors.full_name}>
-              <TextInput
-                style={[styles.input, focused === 'full_name' && styles.inputFocused, !!errors.full_name && styles.inputError]}
-                value={form.full_name}
-                onChangeText={set('full_name')}
-                placeholder="Dr. Ahmet Yılmaz"
-                placeholderTextColor={C.textMuted}
-                onFocus={() => setFocused('full_name')}
-                onBlur={() => setFocused(null)}
-                // @ts-ignore
-                outlineStyle="none"
-              />
-            </FieldGroup>
-
-            <FieldGroup label="Telefon *" error={errors.phone}>
-              <TextInput
-                style={[styles.input, focused === 'phone' && styles.inputFocused, !!errors.phone && styles.inputError]}
-                value={form.phone}
-                onChangeText={set('phone')}
-                placeholder="0532 000 00 00"
-                placeholderTextColor={C.textMuted}
-                keyboardType="phone-pad"
-                onFocus={() => setFocused('phone')}
-                onBlur={() => setFocused(null)}
-                // @ts-ignore
-                outlineStyle="none"
-              />
-            </FieldGroup>
-
-            {/* ── Section: Klinik Bilgisi ── */}
-            <SectionHeader icon="business-outline" title="Klinik Bilgisi" />
-
-            <FieldGroup label="Klinik / Muayenehane Adı *" error={errors.clinic_name}>
-              <TextInput
-                style={[styles.input, focused === 'clinic_name' && styles.inputFocused, !!errors.clinic_name && styles.inputError]}
-                value={form.clinic_name}
-                onChangeText={set('clinic_name')}
-                placeholder="Yılmaz Diş Kliniği"
-                placeholderTextColor={C.textMuted}
-                onFocus={() => setFocused('clinic_name')}
-                onBlur={() => setFocused(null)}
-                // @ts-ignore
-                outlineStyle="none"
-              />
-            </FieldGroup>
-
-            <FieldGroup label="Adres *" error={errors.address}>
-              <TextInput
-                style={[styles.input, styles.inputMulti, focused === 'address' && styles.inputFocused, !!errors.address && styles.inputError]}
-                value={form.address}
-                onChangeText={set('address')}
-                placeholder="Mahalle, sokak, il/ilçe..."
-                placeholderTextColor={C.textMuted}
-                multiline
-                textAlignVertical="top"
-                onFocus={() => setFocused('address')}
-                onBlur={() => setFocused(null)}
-                // @ts-ignore
-                outlineStyle="none"
-              />
-            </FieldGroup>
-
-            {/* ── Section: Hesap Bilgileri ── */}
-            <SectionHeader icon="lock-closed-outline" title="Hesap Bilgileri" />
-
-            <FieldGroup label="E-posta *" error={errors.email}>
-              <TextInput
-                style={[styles.input, focused === 'email' && styles.inputFocused, !!errors.email && styles.inputError]}
-                value={form.email}
-                onChangeText={set('email')}
-                placeholder="ornek@email.com"
-                placeholderTextColor={C.textMuted}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                onFocus={() => setFocused('email')}
-                onBlur={() => setFocused(null)}
-                // @ts-ignore
-                outlineStyle="none"
-              />
-            </FieldGroup>
-
-            <FieldGroup label="Şifre *" error={errors.password}>
-              <View style={styles.inputRow}>
-                <TextInput
-                  style={[styles.input, styles.inputFlex, focused === 'password' && styles.inputFocused, !!errors.password && styles.inputError]}
-                  value={form.password}
-                  onChangeText={set('password')}
-                  placeholder="En az 8 karakter"
-                  placeholderTextColor={C.textMuted}
-                  secureTextEntry={!showPassword}
-                  onFocus={() => setFocused('password')}
-                  onBlur={() => setFocused(null)}
-                  // @ts-ignore
-                  outlineStyle="none"
-                />
-                <TouchableOpacity
-                  style={[styles.eyeBtn, focused === 'password' && styles.eyeBtnFocused, !!errors.password && styles.eyeBtnError]}
-                  onPress={() => setShowPassword(!showPassword)}
-                >
-                  <AppIcon name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color={C.textMuted} />
-                </TouchableOpacity>
-              </View>
-            </FieldGroup>
-
-            <FieldGroup label="Şifre Tekrar *" error={errors.passwordConfirm}>
-              <View style={styles.inputRow}>
-                <TextInput
-                  style={[styles.input, styles.inputFlex, focused === 'passwordConfirm' && styles.inputFocused, !!errors.passwordConfirm && styles.inputError]}
-                  value={form.passwordConfirm}
-                  onChangeText={set('passwordConfirm')}
-                  placeholder="Şifrenizi tekrar girin"
-                  placeholderTextColor={C.textMuted}
-                  secureTextEntry={!showPasswordConfirm}
-                  onFocus={() => setFocused('passwordConfirm')}
-                  onBlur={() => setFocused(null)}
-                  // @ts-ignore
-                  outlineStyle="none"
-                />
-                <TouchableOpacity
-                  style={[styles.eyeBtn, focused === 'passwordConfirm' && styles.eyeBtnFocused, !!errors.passwordConfirm && styles.eyeBtnError]}
-                  onPress={() => setShowPasswordConfirm(!showPasswordConfirm)}
-                >
-                  <AppIcon name={showPasswordConfirm ? 'eye-off-outline' : 'eye-outline'} size={18} color={C.textMuted} />
-                </TouchableOpacity>
-              </View>
-            </FieldGroup>
-
-            {/* Submit */}
-            <TouchableOpacity
-              style={[styles.submitBtn, loading && styles.submitBtnDisabled]}
-              onPress={handleRegister}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <>
-                  <AppIcon name="check" size={18} color="#FFFFFF" />
-                  <Text style={styles.submitText}>Kayıt Ol</Text>
-                </>
-              )}
-            </TouchableOpacity>
-
-            {/* Login link */}
-            <TouchableOpacity
-              onPress={() => router.replace('/(auth)/login')}
-              style={styles.loginLink}
-            >
-              <Text style={styles.loginLinkText}>
-                Zaten hesabınız var mı?{' '}
-                <Text style={styles.loginLinkBold}>Giriş yapın</Text>
-              </Text>
-            </TouchableOpacity>
-
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
-  );
-}
-
-// ── Sub-components ──────────────────────────────────────────────
-
-function SectionHeader({ icon, title }: { icon: string; title: string }) {
-  return (
-    <View style={sh.row}>
-      <View style={sh.iconBox}>
-        <AppIcon name={icon as any} size={14} color={C.primary} />
+      {/* Header */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+        <View style={{
+          width: 28, height: 28, borderRadius: 8,
+          backgroundColor: `${GREEN}25`, alignItems: 'center', justifyContent: 'center',
+        }}>
+          <User size={14} color={GREEN} strokeWidth={2} />
+        </View>
+        <Text style={{ fontSize: 11, color: GREEN, letterSpacing: 1.1, textTransform: 'uppercase', fontWeight: '600' }}>
+          Muayenehane · Tek Hekim
+        </Text>
       </View>
-      <Text style={sh.title}>{title}</Text>
-    </View>
-  );
-}
+      <Text style={{ ...DISPLAY, fontSize: 28, letterSpacing: -0.03 * 28, color: INK, marginBottom: 6 }}>
+        Hekim kaydı
+      </Text>
+      <Text style={{ fontSize: 13, color: DS.ink[500], lineHeight: 19, marginBottom: 24 }}>
+        Bilgilerinizi girin. Kayıt sonrası yönetici onayı gerekir.
+      </Text>
 
-function FieldGroup({
-  label,
-  error,
-  children,
-}: {
-  label: string;
-  error?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <View style={fg.wrap}>
-      <Text style={fg.label}>{label}</Text>
-      {children}
-      {error ? (
-        <View style={fg.errorRow}>
-          <AppIcon name="alert-circle-outline" size={12} color={C.danger} />
-          <Text style={fg.errorText}>{error}</Text>
+      {/* Error / Success */}
+      {errorMsg ? (
+        <View style={{
+          flexDirection: 'row', alignItems: 'center', gap: 10,
+          backgroundColor: 'rgba(217,75,75,0.08)', borderRadius: 12,
+          paddingHorizontal: 14, paddingVertical: 12, marginBottom: 18,
+          borderWidth: 1, borderColor: 'rgba(217,75,75,0.15)',
+        }}>
+          <AlertCircle size={15} color={DS.clinic.danger} strokeWidth={2} />
+          <Text style={{ flex: 1, fontSize: 13, color: DS.clinic.danger, lineHeight: 18 }}>{errorMsg}</Text>
         </View>
       ) : null}
+
+      {/* ── Kişisel Bilgiler ── */}
+      <SectionDivider icon={<User size={12} color={GREEN} strokeWidth={2} />} label="Kişisel Bilgiler" />
+
+      <InputField label="Ad Soyad *" value={form.full_name} onChangeText={set('full_name')}
+        placeholder="Dr. Ahmet Yılmaz" error={errors.full_name}
+        icon={<User size={14} color={DS.ink[400]} strokeWidth={1.8} />} />
+
+      <InputField label="Telefon *" value={form.phone} onChangeText={set('phone')}
+        placeholder="0532 000 00 00" keyboardType="phone-pad" error={errors.phone}
+        icon={<Phone size={14} color={DS.ink[400]} strokeWidth={1.8} />} />
+
+      {/* ── Klinik Bilgisi ── */}
+      <SectionDivider icon={<Building2 size={12} color={GREEN} strokeWidth={2} />} label="Klinik Bilgisi" />
+
+      <InputField label="Muayenehane Adı *" value={form.clinic_name} onChangeText={set('clinic_name')}
+        placeholder="Yılmaz Diş Kliniği" error={errors.clinic_name}
+        icon={<Building2 size={14} color={DS.ink[400]} strokeWidth={1.8} />} />
+
+      <AddressFields
+        value={address}
+        onChange={(v) => { setAddress(v); setAddressErrors({}); }}
+        errors={addressErrors}
+      />
+
+      {/* ── Hesap Bilgileri ── */}
+      <SectionDivider icon={<Lock size={12} color={GREEN} strokeWidth={2} />} label="Hesap Bilgileri" />
+
+      <InputField label="E-posta *" value={form.email} onChangeText={set('email')}
+        placeholder="ornek@email.com" keyboardType="email-address" autoCapitalize="none" error={errors.email}
+        icon={<Mail size={14} color={DS.ink[400]} strokeWidth={1.8} />} />
+
+      <InputField label="Şifre *" value={form.password} onChangeText={set('password')}
+        placeholder="En az 8 karakter" secureTextEntry={!showPass} error={errors.password}
+        icon={<Lock size={14} color={DS.ink[400]} strokeWidth={1.8} />}
+        rightElement={
+          <Pressable onPress={() => setShowPass(!showPass)} hitSlop={8}>
+            {showPass ? <EyeOff size={14} color={DS.ink[400]} strokeWidth={1.8} /> : <Eye size={14} color={DS.ink[400]} strokeWidth={1.8} />}
+          </Pressable>
+        } />
+
+      <InputField label="Şifre Tekrar *" value={form.passwordConfirm} onChangeText={set('passwordConfirm')}
+        placeholder="Şifrenizi tekrar girin" secureTextEntry={!showPassC} error={errors.passwordConfirm}
+        icon={<Lock size={14} color={DS.ink[400]} strokeWidth={1.8} />}
+        rightElement={
+          <Pressable onPress={() => setShowPassC(!showPassC)} hitSlop={8}>
+            {showPassC ? <EyeOff size={14} color={DS.ink[400]} strokeWidth={1.8} /> : <Eye size={14} color={DS.ink[400]} strokeWidth={1.8} />}
+          </Pressable>
+        } />
+
+      {/* CTA */}
+      <Animated.View style={{ transform: [{ scale: btnScale }], marginTop: 10 }}>
+        <Pressable
+          onPress={handleRegister}
+          onPressIn={() => Animated.spring(btnScale, { toValue: 0.96, useNativeDriver: true }).start()}
+          onPressOut={() => Animated.spring(btnScale, { toValue: 1, useNativeDriver: true }).start()}
+          disabled={loading}
+          style={{
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+            gap: 8, borderRadius: 14, paddingVertical: 15,
+            backgroundColor: GREEN_DEEP, opacity: loading ? 0.7 : 1,
+          }}
+        >
+          {loading ? (
+            <ActivityIndicator size="small" color="#FFF" />
+          ) : (
+            <>
+              <Text style={{ fontSize: 14, fontWeight: '500', color: '#FFF' }}>Kayıt Ol</Text>
+              <ArrowRight size={14} color="#FFF" strokeWidth={2} />
+            </>
+          )}
+        </Pressable>
+      </Animated.View>
+
+      {/* Login link */}
+      <Text style={{ fontSize: 11, color: DS.ink[400], textAlign: 'center', marginTop: 18 }}>
+        Zaten hesabınız var mı?{' '}
+        <Text onPress={() => router.replace('/(auth)/login')}
+          style={{ color: INK, fontWeight: '500', textDecorationLine: 'underline' }}>
+          Giriş yapın
+        </Text>
+      </Text>
+
+      <View style={{ height: 24 }} />
+
+      {/* Footer trust */}
+      <View style={{
+        borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)', paddingTop: 18,
+        flexDirection: 'row', alignItems: 'center', gap: 10,
+      }}>
+        <Check size={11} color={DS.ink[400]} strokeWidth={2} />
+        <Text style={{ fontSize: 10, color: DS.ink[400] }}>SOC 2 · KVKK · ISO 27001</Text>
+      </View>
+    </Animated.View>
+  );
+
+  // ════════ DESKTOP ════════
+  if (isDesktop) {
+    return (
+      <View style={{ flex: 1, flexDirection: 'row', backgroundColor: GREEN_DEEP }}>
+        {/* Left — dark green editorial panel */}
+        <View style={{ flex: 1, padding: 48, justifyContent: 'space-between', position: 'relative', overflow: 'hidden' }}>
+          <View style={{ position: 'absolute', right: -60, top: 80, opacity: 0.06 }} pointerEvents="none">
+            <Image source={require('../../../assets/images/icon.png')}
+              style={{ width: 380, height: 380, tintColor: '#FFFFFF' }} resizeMode="contain" />
+          </View>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: GREEN, alignItems: 'center', justifyContent: 'center' }}>
+              <Image source={require('../../../assets/images/icon.png')} style={{ width: 22, height: 22 }} resizeMode="contain" />
+            </View>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: '#FFF', letterSpacing: -0.02 * 14 }}>Dental Lab</Text>
+          </View>
+
+          <View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+              <PulseDot color={GREEN} />
+              <Text style={{ fontSize: 11, color: GREEN, letterSpacing: 1.6, textTransform: 'uppercase', fontWeight: '600' }}>
+                Muayenehane kaydı
+              </Text>
+            </View>
+            <Text style={{
+              ...DISPLAY, fontSize: 72, letterSpacing: -0.045 * 72, lineHeight: 72 * 0.92,
+              color: '#FFFFFF', marginBottom: 24,
+            }}>
+              Tek hekim,{'\n'}
+              <Text style={{ color: GREEN }}>güçlü</Text>{'\n'}
+              bağlantı.
+            </Text>
+            <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)', maxWidth: 420, lineHeight: 21 }}>
+              Muayenehanenizi kaydedin, laboratuvarla doğrudan çalışmaya başlayın.
+            </Text>
+          </View>
+
+          <View />
+        </View>
+
+        {/* Right — krem form */}
+        <View style={{ width: 440, backgroundColor: KREM, borderRadius: 28, borderTopRightRadius: 0, borderBottomRightRadius: 0, padding: 40, marginTop: 24, marginBottom: 24, marginLeft: 24 }}>
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
+            {formCard}
+          </ScrollView>
+        </View>
+      </View>
+    );
+  }
+
+  // ════════ MOBILE ════════
+  return (
+    <View style={{ flex: 1, backgroundColor: GREEN_DEEP }}>
+      <View style={{
+        paddingTop: insets.top + 16, paddingHorizontal: 24, paddingBottom: 24, alignItems: 'center',
+      }}>
+        <View style={{
+          width: 52, height: 52, borderRadius: 16, backgroundColor: GREEN,
+          alignItems: 'center', justifyContent: 'center', marginBottom: 10,
+        }}>
+          <User size={24} color="#FFFFFF" strokeWidth={1.8} />
+        </View>
+        <Text style={{ fontSize: 16, fontWeight: '600', color: '#FFF', letterSpacing: 1.5, marginBottom: 4 }}>
+          MUAYENEHANE
+        </Text>
+        <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>Tek hekim kaydı</Text>
+      </View>
+
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <Animated.View style={{
+          flex: 1, backgroundColor: KREM,
+          borderTopLeftRadius: 28, borderTopRightRadius: 28,
+          paddingHorizontal: 24, paddingTop: 28, paddingBottom: insets.bottom + 24,
+          transform: [{ translateY: cardSlide }], opacity: cardOpacity,
+        }}>
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ flexGrow: 1 }}>
+            {formCard}
+          </ScrollView>
+        </Animated.View>
+      </KeyboardAvoidingView>
     </View>
   );
 }
-
-// ── Styles ───────────────────────────────────────────────────────
-
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#FFFFFF' },
-  flex: { flex: 1 },
-  container: {
-    flexGrow: 1,
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    padding: 24,
-    paddingTop: 16,
-    paddingBottom: 40,
-  },
-
-  card: {
-    width: '100%',
-    maxWidth: 460,
-  },
-
-  // Card header
-  cardHeader: {
-    paddingHorizontal: 0,
-    paddingTop: 8,
-    paddingBottom: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-    marginBottom: 4,
-  },
-  backBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginBottom: 20,
-    alignSelf: 'flex-start',
-  },
-  backText: {
-    fontSize: 13,
-    fontFamily: F.medium,
-    fontWeight: '500',
-    color: C.textSecondary,
-  },
-  headerCenter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  iconWrap: {
-    width: 46,
-    height: 46,
-    borderRadius: 13,
-    backgroundColor: C.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    fontFamily: F.bold,
-    color: C.textPrimary,
-    letterSpacing: -0.3,
-  },
-  cardSubtitle: {
-    fontSize: 12,
-    fontFamily: F.regular,
-    color: C.textMuted,
-    marginTop: 2,
-  },
-
-  // Alerts
-  alertBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    marginHorizontal: 0,
-    marginTop: 16,
-    padding: 12,
-    borderRadius: 10,
-    backgroundColor: C.dangerBg,
-    borderWidth: 1,
-    borderColor: '#FECACA',
-  },
-  alertSuccess: {
-    backgroundColor: C.successBg,
-    borderColor: '#6EE7B7',
-  },
-  alertText: {
-    flex: 1,
-    fontSize: 13,
-    fontFamily: F.regular,
-    color: C.danger,
-    lineHeight: 18,
-  },
-
-  // Inputs
-  input: {
-    borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    fontSize: 14,
-    fontFamily: F.regular,
-    color: C.textPrimary,
-    backgroundColor: '#FAFBFC',
-  },
-  inputFocused: {
-    borderColor: C.primary,
-    backgroundColor: C.surface,
-  },
-  inputError: {
-    borderColor: C.danger,
-  },
-  inputRow: {
-    flexDirection: 'row',
-  },
-  inputFlex: {
-    flex: 1,
-    borderTopRightRadius: 0,
-    borderBottomRightRadius: 0,
-    borderRightWidth: 0,
-  },
-  inputMulti: {
-    minHeight: 80,
-    textAlignVertical: 'top',
-  },
-  eyeBtn: {
-    borderWidth: 1,
-    borderColor: C.border,
-    borderTopRightRadius: 10,
-    borderBottomRightRadius: 10,
-    paddingHorizontal: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FAFBFC',
-  },
-  eyeBtnFocused: {
-    borderColor: C.primary,
-    backgroundColor: C.surface,
-  },
-  eyeBtnError: {
-    borderColor: C.danger,
-  },
-
-  // Submit
-  submitBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginHorizontal: 0,
-    marginTop: 24,
-    marginBottom: 12,
-    paddingVertical: 14,
-    borderRadius: 12,
-    backgroundColor: C.primary,
-  },
-  submitBtnDisabled: { opacity: 0.65 },
-  submitText: {
-    fontSize: 15,
-    fontWeight: '600',
-    fontFamily: F.semibold,
-    color: '#FFFFFF',
-    letterSpacing: 0.2,
-  },
-
-  loginLink: {
-    alignItems: 'center',
-    paddingBottom: 24,
-    paddingTop: 4,
-  },
-  loginLinkText: {
-    fontSize: 13,
-    fontFamily: F.regular,
-    color: C.textSecondary,
-  },
-  loginLinkBold: {
-    color: C.primary,
-    fontFamily: F.semibold,
-    fontWeight: '600',
-  },
-});
-
-const sh = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 0,
-    paddingTop: 20,
-    paddingBottom: 4,
-  },
-  iconBox: {
-    width: 24,
-    height: 24,
-    borderRadius: 7,
-    backgroundColor: C.primaryBg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    fontSize: 11,
-    fontWeight: '600',
-    fontFamily: F.semibold,
-    color: C.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-});
-
-const fg = StyleSheet.create({
-  wrap: {
-    paddingHorizontal: 0,
-    marginBottom: 14,
-  },
-  label: {
-    fontSize: 11,
-    fontWeight: '500',
-    fontFamily: F.medium,
-    color: '#64748B',
-    marginBottom: 6,
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-  },
-  errorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 5,
-  },
-  errorText: {
-    fontSize: 11,
-    fontFamily: F.regular,
-    color: C.danger,
-  },
-});

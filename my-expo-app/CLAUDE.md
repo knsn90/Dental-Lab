@@ -200,6 +200,28 @@ text-info    bg-info    → #0EA5E9
 
 görsel olarak inceleyebilirsin. Yeni komponent eklediğinde buraya örneğini ekle.
 
+### 🎯 İkon Kuralı (zorunlu)
+
+**Her zaman flat 2D linear (line/stroke) ikon kullan.** Pattern showcase, mockup ve yeni
+ekranlardaki her ikon bu stilde olmalı.
+
+- ✅ **Kullanılacak**: tek renk, ince stroke, dolgusuz / hafif dolgulu line ikonlar
+  (Lucide, Feather, Tabler Icons, Heroicons outline)
+- ❌ **Kullanılmayacak**:
+  - Emoji (🔔, ⚗, ↗, ✓ vb.) — production veya pattern showcase'inde **yasak**
+  - Solid / filled ikon (Material filled, FontAwesome solid)
+  - 3D / izometrik / colorful illustration ikonları
+  - Skeuomorphic veya gradient'li ikonlar
+  - Hand-drawn SVG path'leri (önceki AppIcon glyph'leri yerine library tercih edilecek)
+
+Tek tip kütüphane: **Lucide React Native** (proje standardı). Boyut, stroke-width,
+renk panel accent'inden gelir.
+
+```tsx
+import { Bell, Printer, Check, ArrowUpRight } from 'lucide-react-native';
+<Bell size={16} color={DS.lab.accent} strokeWidth={1.6} />
+```
+
 ## 📂 Klasör Standardı
 
 ```

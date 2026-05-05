@@ -12,12 +12,13 @@ interface ClinicWorkOrder extends WorkOrder {
  * RLS "clinic_admin_view_clinic_orders" policy'si filtreyi yapar.
  * Doctor bilgisi için profiles tablosundan ayrı sorgu.
  */
-export function useClinicOrders() {
+export function useClinicOrders(enabled = true) {
   const [orders,  setOrders]  = useState<ClinicWorkOrder[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(enabled);
   const [error,   setError]   = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    if (!enabled) return;
     setLoading(true);
     setError(null);
     const { data, error: err } = await fetchClinicOrders();
@@ -40,9 +41,10 @@ export function useClinicOrders() {
     }));
     setOrders(enriched);
     setLoading(false);
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
+    if (!enabled) return;
     load();
 
     // Realtime — kendi kliniğin herhangi bir siparişi değiştiğinde güncelle
@@ -54,7 +56,7 @@ export function useClinicOrders() {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [load]);
+  }, [load, enabled]);
 
   return { orders, loading, error, refetch: load };
 }

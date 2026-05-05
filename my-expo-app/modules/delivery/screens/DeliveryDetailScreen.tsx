@@ -121,7 +121,7 @@ export function DeliveryDetailScreen() {
     const { error } = await updateDeliveryStatus(delivery.id, next);
     setAdvancing(false);
     if (error) Alert.alert('Hata', error.message);
-    else { toast(`Durum güncellendi: ${STATUS_STEPS[current + 1]?.label}`, 'success'); load(); }
+    else { toast.success(`Durum güncellendi: ${STATUS_STEPS[current + 1]?.label}`); load(); }
   }
 
   if (loading) {

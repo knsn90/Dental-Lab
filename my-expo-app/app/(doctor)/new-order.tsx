@@ -24,5 +24,5 @@ export default function DoctorNewOrderRoute() {
   if (profile.user_type !== 'doctor') return null;
 
   // Doktor paneli teması: sky blue (lab #2563EB ve admin #0F172A'dan ayrıştırılmış)
-  return <NewOrderScreen doctorMode accentColor="#0EA5E9" />;
+  return <NewOrderScreen doctorMode accentColor="#6BA888" />;
 }

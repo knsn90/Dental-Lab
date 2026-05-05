@@ -1,18 +1,148 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  View, Text, ScrollView, Pressable,
   TextInput, ActivityIndicator, Modal, useWindowDimensions, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
-import { supabase } from '../../../lib/supabase';
-import { SlideTabBar } from '../../../core/ui/SlideTabBar';
-import { IconBtn } from '../../../core/ui/IconBtn';
+import { supabase } from '../../../core/api/supabase';
 import { StockMovementsScreen } from './StockMovementsScreen';
 import { WasteReportModal } from '../components/WasteReportModal';
 import { useAuthStore } from '../../../core/store/authStore';
+import { DS } from '../../../core/theme/dsTokens';
+import { usePageTitleStore } from '../../../core/store/pageTitleStore';
+import {
+  Package, Plus, Search, X, Pencil, Trash2,
+  ArrowDownCircle, ArrowUpCircle, AlertTriangle, AlertCircle,
+  CheckCircle, XCircle, Filter, ChevronDown, ChevronUp,
+  ChevronRight, Tag, Grid3x3, ShoppingCart, Clock,
+  TrendingDown, Flame, PlusCircle, Check, ArrowLeftRight,
+  DatabaseZap, Inbox, BarChart3, TrendingUp, Users,
+  Calendar, Zap, Layers, MapPin, QrCode, Copy, Warehouse,
+} from 'lucide-react-native';
 
-import { AppIcon } from '../../../core/ui/AppIcon';
+// ─── Patterns Design Language Tokens ─────────────────────────────────────────
+
+const DISPLAY = {
+  fontFamily: 'Inter Tight, Inter, system-ui, sans-serif',
+  fontWeight: '300' as const,
+};
+
+const cardSolid: any = {
+  backgroundColor: '#FFF',
+  borderRadius: 24,
+  padding: 22,
+  ...(Platform.OS === 'web' ? { boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)' } : {}),
+};
+
+const tableCard: any = {
+  backgroundColor: '#FFF',
+  borderRadius: 24,
+  borderWidth: 1,
+  borderColor: 'rgba(0,0,0,0.05)',
+  overflow: 'hidden',
+};
+
+const CHIP_TONES = {
+  success: { bg: 'rgba(45,154,107,0.12)', fg: '#1F6B47' },
+  warning: { bg: 'rgba(232,155,42,0.15)', fg: '#9C5E0E' },
+  danger:  { bg: 'rgba(217,75,75,0.12)',  fg: '#9C2E2E' },
+  info:    { bg: 'rgba(74,143,201,0.12)', fg: '#1F5689' },
+  neutral: { bg: 'rgba(0,0,0,0.05)',      fg: '#0A0A0A' },
+};
+
+const modalOverlay: any = {
+  flex: 1,
+  backgroundColor: 'rgba(15,23,42,0.4)',
+  justifyContent: 'center',
+  alignItems: 'center',
+  padding: 24,
+};
+
+const modalSheet: any = {
+  backgroundColor: '#FFFFFF',
+  borderRadius: 24,
+  width: '100%',
+  maxWidth: 540,
+  maxHeight: '92%',
+  overflow: 'hidden',
+  borderWidth: 1,
+  borderColor: 'rgba(0,0,0,0.05)',
+  ...(Platform.OS === 'web' ? { boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)' } : {}),
+};
+
+const modalHeader: any = {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  paddingHorizontal: 24,
+  paddingTop: 22,
+  paddingBottom: 18,
+  borderBottomWidth: 1,
+  borderBottomColor: 'rgba(0,0,0,0.04)',
+};
+
+const modalFooter: any = {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'flex-end',
+  gap: 10,
+  paddingHorizontal: 24,
+  paddingVertical: 16,
+  borderTopWidth: 1,
+  borderTopColor: 'rgba(0,0,0,0.04)',
+};
+
+const fieldInput: any = {
+  height: 44,
+  borderRadius: 14,
+  borderWidth: 1,
+  borderColor: 'rgba(0,0,0,0.08)',
+  paddingHorizontal: 14,
+  fontSize: 14,
+  color: DS.ink[900],
+  backgroundColor: '#FFFFFF',
+  ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
+};
+
+const ghostBtn: any = {
+  paddingHorizontal: 14,
+  paddingVertical: 6,
+  borderRadius: 9999,
+  borderWidth: 1,
+  borderColor: 'rgba(0,0,0,0.08)',
+  ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+};
+
+const darkPillBtn: any = {
+  paddingHorizontal: 14,
+  paddingVertical: 6,
+  borderRadius: 9999,
+  backgroundColor: DS.ink[900],
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 6,
+  minWidth: 80,
+  justifyContent: 'center',
+  ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+};
+
+const colHeader: any = {
+  textTransform: 'uppercase',
+  fontSize: 10,
+  fontWeight: '600',
+  letterSpacing: 0.7,
+  color: DS.ink[500],
+};
+
+const sectionCard: any = {
+  backgroundColor: '#FFFFFF',
+  borderRadius: 14,
+  borderWidth: 1,
+  borderColor: 'rgba(0,0,0,0.05)',
+  padding: 16,
+  marginBottom: 12,
+};
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -25,66 +155,60 @@ interface StockItem {
   category?: string;
   supplier?: string;
   brand?: string;
-  // ── Production-aware fields (Migration 052) ────────────────────────────
-  type?: string | null;                  // zirconia / metal / emax / pmma / glaze / ...
+  type?: string | null;
   usage_category?: 'production' | 'office' | 'misc' | null;
-  units_per_tooth?: number | null;       // null/0 = no auto-consume
-  consume_at_stage?: string | null;      // default 'MILLING'
-  unit_cost?: number | null;             // future cost tracking
+  units_per_tooth?: number | null;
+  consume_at_stage?: string | null;
+  unit_cost?: number | null;
+  location?: string | null;
+  barcode?: string | null;
 }
 
 const USAGE_CATEGORY_OPTIONS: { key: 'all' | 'production' | 'office' | 'misc'; label: string }[] = [
-  { key: 'all',        label: 'Tümü'     },
-  { key: 'production', label: 'Üretim'   },
-  { key: 'office',     label: 'Ofis'     },
-  { key: 'misc',       label: 'Diğer'    },
+  { key: 'all',        label: 'Tumu' },
+  { key: 'production', label: 'Uretim' },
+  { key: 'office',     label: 'Ofis' },
+  { key: 'misc',       label: 'Diger' },
 ];
 
 const STAGE_OPTIONS = ['TRIAGE', 'DESIGN', 'CAM', 'MILLING', 'SINTER', 'FINISH', 'QC'];
 
 type MovType = 'IN' | 'OUT' | 'WASTE';
 type StatusFilter = 'all' | 'critical' | 'ok' | 'empty';
+type TabKey = 'dashboard' | 'list' | 'movements' | 'suggestions' | 'analytics' | 'locations' | 'cost' | 'forecast' | 'settings';
 
 // ─── StatusBadge ──────────────────────────────────────────────────────────────
 
 function StatusBadge({ quantity, min }: { quantity: number; min: number }) {
   const pct = min > 0 ? quantity / min : 1;
   if (quantity === 0) return (
-    <View style={[sb.pill, { backgroundColor: '#FEE2E2' }]}>
-      <Text style={[sb.text, { color: '#DC2626' }]}>Tükendi</Text>
+    <View style={{ borderRadius: 9999, paddingHorizontal: 10, paddingVertical: 3, backgroundColor: CHIP_TONES.danger.bg }}>
+      <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.3, color: CHIP_TONES.danger.fg }}>Tukendi</Text>
     </View>
   );
   if (pct < 1) return (
-    <View style={[sb.pill, { backgroundColor: '#FEF3C7' }]}>
-      <Text style={[sb.text, { color: '#D97706' }]}>Kritik</Text>
+    <View style={{ borderRadius: 9999, paddingHorizontal: 10, paddingVertical: 3, backgroundColor: CHIP_TONES.warning.bg }}>
+      <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.3, color: CHIP_TONES.warning.fg }}>Kritik</Text>
     </View>
   );
   return (
-    <View style={[sb.pill, { backgroundColor: '#D1FAE5' }]}>
-      <Text style={[sb.text, { color: '#059669' }]}>Normal</Text>
+    <View style={{ borderRadius: 9999, paddingHorizontal: 10, paddingVertical: 3, backgroundColor: CHIP_TONES.success.bg }}>
+      <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.3, color: CHIP_TONES.success.fg }}>Normal</Text>
     </View>
   );
 }
-const sb = StyleSheet.create({
-  pill: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, alignSelf: 'flex-start' },
-  text: { fontSize: 10, fontWeight: '700', letterSpacing: 0.3 },
-});
 
 // ─── StockBar ─────────────────────────────────────────────────────────────────
 
 function StockBar({ quantity, min }: { quantity: number; min: number }) {
   const pct = min > 0 ? Math.min(quantity / min, 1) : 1;
-  const barColor = pct === 0 ? '#EF4444' : pct < 1 ? '#F59E0B' : '#10B981';
+  const barColor = pct === 0 ? CHIP_TONES.danger.fg : pct < 1 ? CHIP_TONES.warning.fg : CHIP_TONES.success.fg;
   return (
-    <View style={bar.track}>
-      <View style={[bar.fill, { width: `${Math.round(pct * 100)}%` as any, backgroundColor: barColor }]} />
+    <View style={{ height: 4, backgroundColor: DS.ink[100], borderRadius: 3, overflow: 'hidden', flex: 1, minWidth: 48 }}>
+      <View style={{ height: 4, borderRadius: 3, width: `${Math.round(pct * 100)}%` as any, backgroundColor: barColor }} />
     </View>
   );
 }
-const bar = StyleSheet.create({
-  track: { height: 4, backgroundColor: '#F1F5F9', borderRadius: 3, overflow: 'hidden', flex: 1, minWidth: 48 },
-  fill:  { height: 4, borderRadius: 3 },
-});
 
 // ─── ProductModal ─────────────────────────────────────────────────────────────
 
@@ -111,13 +235,14 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
   const [minQty, setMinQty]     = useState('');
   const [unit, setUnit]         = useState('');
   const [supplier, setSupplier] = useState('');
-  // ── Production-aware fields (Migration 052/054) ───────────────────────
-  const [matType, setMatType]             = useState('');             // zirconia/metal/...
+  const [matType, setMatType]             = useState('');
   const [usageCategory, setUsageCategory] = useState<'production' | 'office' | 'misc'>('misc');
   const [unitsPerTooth, setUnitsPerTooth] = useState('');
   const [consumeStage, setConsumeStage]   = useState<string>('MILLING');
   const [unitCost, setUnitCost]           = useState('');
   const [consumptionType, setConsumptionType] = useState<'fixed' | 'per_tooth' | 'manual'>('manual');
+  const [location, setLocation] = useState('');
+  const [barcode, setBarcode]   = useState('');
   const [saving, setSaving]     = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError]       = useState('');
@@ -139,16 +264,18 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
       setConsumeStage(item?.consume_at_stage ?? 'MILLING');
       setUnitCost(item?.unit_cost != null ? String(item.unit_cost) : '');
       setConsumptionType(((item as any)?.consumption_type as any) ?? 'manual');
+      setLocation(item?.location ?? '');
+      setBarcode(item?.barcode ?? '');
       setError('');
     }
   }, [visible, item]);
 
   const handleSave = async () => {
-    if (!name.trim()) { setError('Ürün adı zorunlu'); return; }
+    if (!name.trim()) { setError('Urun adi zorunlu'); return; }
     const qty = parseFloat(quantity);
     const min = parseFloat(minQty);
-    if (isNaN(qty) || qty < 0) { setError('Geçerli bir miktar girin'); return; }
-    if (isNaN(min) || min < 0) { setError('Geçerli bir minimum girin'); return; }
+    if (isNaN(qty) || qty < 0) { setError('Gecerli bir miktar girin'); return; }
+    if (isNaN(min) || min < 0) { setError('Gecerli bir minimum girin'); return; }
     setSaving(true); setError('');
     try {
       const brandName = brand.trim() || null;
@@ -162,13 +289,14 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
         min_quantity: min,
         unit: unit.trim() || null,
         supplier: supplier.trim() || null,
-        // Production-aware
         type: matType.trim() || null,
         usage_category: usageCategory,
         consumption_type: consumptionType,
         units_per_tooth: !isNaN(upt) && upt > 0 ? upt : null,
         consume_at_stage: usageCategory === 'production' ? consumeStage : 'MILLING',
         unit_cost: !isNaN(cost) && cost >= 0 ? cost : 0,
+        location: location.trim() || null,
+        barcode: barcode.trim() || null,
       };
       if (isEdit) {
         const { error: e } = await supabase.from('stock_items').update(payload).eq('id', item!.id);
@@ -182,7 +310,7 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
       if (categoryName) await supabase.from('categories').upsert({ name: categoryName }, { onConflict: 'name', ignoreDuplicates: true });
       onSaved(); onClose();
     } catch (e: any) {
-      setError(e.message ?? 'Kayıt hatası');
+      setError(e.message ?? 'Kayit hatasi');
     } finally { setSaving(false); }
   };
 
@@ -197,236 +325,291 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={m.overlay}>
-        <View style={m.sheet}>
-          <View style={m.header}>
-            <Text style={m.title}>{isEdit ? 'Ürünü Düzenle' : 'Yeni Ürün Ekle'}</Text>
-            <TouchableOpacity style={m.closeBtn} onPress={onClose}>
-              <AppIcon name="x" size={16} color="#64748B" />
-            </TouchableOpacity>
+      <View style={modalOverlay}>
+        <View style={modalSheet}>
+          <View style={modalHeader}>
+            <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.3, color: DS.ink[900] }}>
+              {isEdit ? 'Urunu Duzenle' : 'Yeni Urun Ekle'}
+            </Text>
+            <Pressable
+              onPress={onClose}
+              style={{ width: 32, height: 32, borderRadius: 9999, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+            >
+              <X size={16} color={DS.ink[500]} strokeWidth={1.6} />
+            </Pressable>
           </View>
 
-          <ScrollView style={m.body} showsVerticalScrollIndicator={false}>
-            <View style={m.sectionCard}>
-              <Text style={m.sectionTitle}>Ürün Bilgileri</Text>
-              <View style={m.fieldWrap}>
-                <Text style={m.fieldLabel}>ÜRÜN ADI <Text style={m.req}>*</Text></Text>
-                <TextInput style={m.fieldInput} value={name} onChangeText={setName} placeholder="örn. Zirkonyum Blok" placeholderTextColor="#C7C7CC" />
+          <ScrollView style={{ padding: 16 }} showsVerticalScrollIndicator={false}>
+            <View style={sectionCard}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[800], marginBottom: 14 }}>Urun Bilgileri</Text>
+
+              {/* Urun Adi */}
+              <View style={{ marginBottom: 12 }}>
+                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>
+                  URUN ADI <Text style={{ color: CHIP_TONES.danger.fg }}>*</Text>
+                </Text>
+                <TextInput style={fieldInput} value={name} onChangeText={setName} placeholder="orn. Zirkonyum Blok" placeholderTextColor={DS.ink[400]} />
               </View>
 
-              {/* Kategori — searchable dropdown */}
-              <View style={m.fieldWrap}>
-                <Text style={m.fieldLabel}>KATEGORİ</Text>
-                <TouchableOpacity
-                  style={[m.fieldInput, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+              {/* Kategori dropdown */}
+              <View style={{ marginBottom: 12 }}>
+                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>KATEGORI</Text>
+                <Pressable
                   onPress={() => { setCatDropOpen(v => !v); setBrandDropOpen(false); }}
-                  activeOpacity={0.8}
+                  style={{ ...fieldInput, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                 >
-                  <Text style={category ? { fontSize: 14, color: '#0F172A' } : { fontSize: 14, color: '#C7C7CC' }}>
-                    {category || 'Kategori seçin veya yazın…'}
+                  <Text style={category ? { fontSize: 14, color: DS.ink[900] } : { fontSize: 14, color: DS.ink[400] }}>
+                    {category || 'Kategori secin veya yazin...'}
                   </Text>
-                  <AppIcon name={catDropOpen ? 'chevron-up' : 'chevron-down'} size={14} color="#94A3B8" />
-                </TouchableOpacity>
+                  {catDropOpen
+                    ? <ChevronUp size={14} color={DS.ink[400]} strokeWidth={1.6} />
+                    : <ChevronDown size={14} color={DS.ink[400]} strokeWidth={1.6} />
+                  }
+                </Pressable>
                 {catDropOpen && (
-                  <View style={m.dropPanel}>
+                  <View style={{ marginTop: 6, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', borderRadius: 14, backgroundColor: '#FFFFFF', overflow: 'hidden' }}>
                     <TextInput
-                      style={m.dropSearch}
+                      style={{ ...fieldInput, borderWidth: 0, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)', borderRadius: 0 }}
                       value={catSearch}
                       onChangeText={setCatSearch}
-                      placeholder="Ara veya yeni ekle…"
-                      placeholderTextColor="#C7C7CC"
+                      placeholder="Ara veya yeni ekle..."
+                      placeholderTextColor={DS.ink[400]}
                       autoFocus
                     />
                     <ScrollView style={{ maxHeight: 180 }} keyboardShouldPersistTaps="handled">
                       {existingCategories
                         .filter(c => !catSearch || c.toLowerCase().includes(catSearch.toLowerCase()))
                         .map(c => (
-                          <TouchableOpacity key={c} style={[m.dropItem, category === c && m.dropItemActive]} onPress={() => { setCategory(c); setCatSearch(''); setCatDropOpen(false); }} activeOpacity={0.7}>
-                            <Text style={[m.dropItemText, category === c && { color: accentColor, fontWeight: '700' }]}>{c}</Text>
-                            {category === c && <AppIcon name="check" size={13} color={accentColor} />}
-                          </TouchableOpacity>
+                          <Pressable
+                            key={c}
+                            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 11, backgroundColor: category === c ? DS.ink[50] : 'transparent', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                            onPress={() => { setCategory(c); setCatSearch(''); setCatDropOpen(false); }}
+                          >
+                            <Text style={{ fontSize: 14, color: category === c ? accentColor : DS.ink[700], fontWeight: category === c ? '700' : '500' }}>{c}</Text>
+                            {category === c && <Check size={13} color={accentColor} strokeWidth={2} />}
+                          </Pressable>
                         ))}
                       {catSearch.trim() && !existingCategories.some(c => c.toLowerCase() === catSearch.trim().toLowerCase()) && (
-                        <TouchableOpacity style={m.dropAddItem} onPress={() => { setCategory(catSearch.trim()); setCatSearch(''); setCatDropOpen(false); }} activeOpacity={0.7}>
-                          <AppIcon name="plus-circle" size={14} color={accentColor} />
-                          <Text style={[m.dropAddText, { color: accentColor }]}>"{catSearch.trim()}" ekle</Text>
-                        </TouchableOpacity>
+                        <Pressable
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 11, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                          onPress={() => { setCategory(catSearch.trim()); setCatSearch(''); setCatDropOpen(false); }}
+                        >
+                          <PlusCircle size={14} color={accentColor} strokeWidth={1.6} />
+                          <Text style={{ fontSize: 14, fontWeight: '600', color: accentColor }}>"{catSearch.trim()}" ekle</Text>
+                        </Pressable>
                       )}
                       {existingCategories.filter(c => !catSearch || c.toLowerCase().includes(catSearch.toLowerCase())).length === 0 && !catSearch.trim() && (
-                        <Text style={m.dropEmpty}>Henüz kategori yok</Text>
+                        <Text style={{ paddingHorizontal: 14, paddingVertical: 14, fontSize: 13, color: DS.ink[400], textAlign: 'center' }}>Henuz kategori yok</Text>
                       )}
                     </ScrollView>
                     {category ? (
-                      <TouchableOpacity style={m.dropClear} onPress={() => { setCategory(''); setCatDropOpen(false); }} activeOpacity={0.7}>
-                        <Text style={m.dropClearText}>Temizle</Text>
-                      </TouchableOpacity>
+                      <Pressable
+                        style={{ borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)', paddingHorizontal: 14, paddingVertical: 10, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                        onPress={() => { setCategory(''); setCatDropOpen(false); }}
+                      >
+                        <Text style={{ fontSize: 13, color: DS.ink[400], fontWeight: '500' }}>Temizle</Text>
+                      </Pressable>
                     ) : null}
                   </View>
                 )}
               </View>
 
-              {/* Marka — searchable dropdown */}
-              <View style={m.fieldWrap}>
-                <Text style={m.fieldLabel}>MARKA</Text>
-                <TouchableOpacity
-                  style={[m.fieldInput, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+              {/* Marka dropdown */}
+              <View style={{ marginBottom: 12 }}>
+                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>MARKA</Text>
+                <Pressable
                   onPress={() => { setBrandDropOpen(v => !v); setCatDropOpen(false); }}
-                  activeOpacity={0.8}
+                  style={{ ...fieldInput, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                 >
-                  <Text style={brand ? { fontSize: 14, color: '#0F172A' } : { fontSize: 14, color: '#C7C7CC' }}>
-                    {brand || 'Marka seçin veya yazın…'}
+                  <Text style={brand ? { fontSize: 14, color: DS.ink[900] } : { fontSize: 14, color: DS.ink[400] }}>
+                    {brand || 'Marka secin veya yazin...'}
                   </Text>
-                  <AppIcon name={brandDropOpen ? 'chevron-up' : 'chevron-down'} size={14} color="#94A3B8" />
-                </TouchableOpacity>
+                  {brandDropOpen
+                    ? <ChevronUp size={14} color={DS.ink[400]} strokeWidth={1.6} />
+                    : <ChevronDown size={14} color={DS.ink[400]} strokeWidth={1.6} />
+                  }
+                </Pressable>
                 {brandDropOpen && (
-                  <View style={m.dropPanel}>
+                  <View style={{ marginTop: 6, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', borderRadius: 14, backgroundColor: '#FFFFFF', overflow: 'hidden' }}>
                     <TextInput
-                      style={m.dropSearch}
+                      style={{ ...fieldInput, borderWidth: 0, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)', borderRadius: 0 }}
                       value={brandSearch}
                       onChangeText={setBrandSearch}
-                      placeholder="Ara veya yeni ekle…"
-                      placeholderTextColor="#C7C7CC"
+                      placeholder="Ara veya yeni ekle..."
+                      placeholderTextColor={DS.ink[400]}
                       autoFocus
                     />
                     <ScrollView style={{ maxHeight: 180 }} keyboardShouldPersistTaps="handled">
                       {existingBrands
                         .filter(b => !brandSearch || b.toLowerCase().includes(brandSearch.toLowerCase()))
                         .map(b => (
-                          <TouchableOpacity key={b} style={[m.dropItem, brand === b && m.dropItemActive]} onPress={() => { setBrand(b); setBrandSearch(''); setBrandDropOpen(false); }} activeOpacity={0.7}>
-                            <Text style={[m.dropItemText, brand === b && { color: accentColor, fontWeight: '700' }]}>{b}</Text>
-                            {brand === b && <AppIcon name="check" size={13} color={accentColor} />}
-                          </TouchableOpacity>
+                          <Pressable
+                            key={b}
+                            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 11, backgroundColor: brand === b ? DS.ink[50] : 'transparent', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                            onPress={() => { setBrand(b); setBrandSearch(''); setBrandDropOpen(false); }}
+                          >
+                            <Text style={{ fontSize: 14, color: brand === b ? accentColor : DS.ink[700], fontWeight: brand === b ? '700' : '500' }}>{b}</Text>
+                            {brand === b && <Check size={13} color={accentColor} strokeWidth={2} />}
+                          </Pressable>
                         ))}
                       {brandSearch.trim() && !existingBrands.some(b => b.toLowerCase() === brandSearch.trim().toLowerCase()) && (
-                        <TouchableOpacity style={m.dropAddItem} onPress={() => { setBrand(brandSearch.trim()); setBrandSearch(''); setBrandDropOpen(false); }} activeOpacity={0.7}>
-                          <AppIcon name="plus-circle" size={14} color={accentColor} />
-                          <Text style={[m.dropAddText, { color: accentColor }]}>"{brandSearch.trim()}" ekle</Text>
-                        </TouchableOpacity>
+                        <Pressable
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 11, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                          onPress={() => { setBrand(brandSearch.trim()); setBrandSearch(''); setBrandDropOpen(false); }}
+                        >
+                          <PlusCircle size={14} color={accentColor} strokeWidth={1.6} />
+                          <Text style={{ fontSize: 14, fontWeight: '600', color: accentColor }}>"{brandSearch.trim()}" ekle</Text>
+                        </Pressable>
                       )}
                       {existingBrands.filter(b => !brandSearch || b.toLowerCase().includes(brandSearch.toLowerCase())).length === 0 && !brandSearch.trim() && (
-                        <Text style={m.dropEmpty}>Henüz marka yok</Text>
+                        <Text style={{ paddingHorizontal: 14, paddingVertical: 14, fontSize: 13, color: DS.ink[400], textAlign: 'center' }}>Henuz marka yok</Text>
                       )}
                     </ScrollView>
                     {brand ? (
-                      <TouchableOpacity style={m.dropClear} onPress={() => { setBrand(''); setBrandDropOpen(false); }} activeOpacity={0.7}>
-                        <Text style={m.dropClearText}>Temizle</Text>
-                      </TouchableOpacity>
+                      <Pressable
+                        style={{ borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)', paddingHorizontal: 14, paddingVertical: 10, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                        onPress={() => { setBrand(''); setBrandDropOpen(false); }}
+                      >
+                        <Text style={{ fontSize: 13, color: DS.ink[400], fontWeight: '500' }}>Temizle</Text>
+                      </Pressable>
                     ) : null}
                   </View>
                 )}
               </View>
 
-              <View style={m.fieldWrap}>
-                <Text style={m.fieldLabel}>BİRİM</Text>
-                <TextInput style={m.fieldInput} value={unit} onChangeText={setUnit} placeholder="adet / ml / gr / kutu…" placeholderTextColor="#C7C7CC" />
+              <View style={{ marginBottom: 12 }}>
+                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>BIRIM</Text>
+                <TextInput style={fieldInput} value={unit} onChangeText={setUnit} placeholder="adet / ml / gr / kutu..." placeholderTextColor={DS.ink[400]} />
               </View>
-              <View style={[m.fieldWrap, { marginBottom: 0 }]}>
-                <Text style={m.fieldLabel}>TEDARİKÇİ</Text>
-                <TextInput style={m.fieldInput} value={supplier} onChangeText={setSupplier} placeholder="Tedarikçi firma adı…" placeholderTextColor="#C7C7CC" />
+              <View style={{ marginBottom: 0 }}>
+                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>TEDARIKCI</Text>
+                <TextInput style={fieldInput} value={supplier} onChangeText={setSupplier} placeholder="Tedarikci firma adi..." placeholderTextColor={DS.ink[400]} />
               </View>
             </View>
 
-            <View style={m.sectionCard}>
-              <Text style={m.sectionTitle}>Stok Miktarları</Text>
+            {/* Konum & Barkod */}
+            <View style={sectionCard}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[800], marginBottom: 14 }}>Konum & Barkod</Text>
               <View style={{ flexDirection: 'row', gap: 12 }}>
-                <View style={[m.fieldWrap, { flex: 1 }]}>
-                  <Text style={m.fieldLabel}>{isEdit ? 'MEVCUT MİKTAR' : 'BAŞLANGIÇ MİKTARI'} <Text style={m.req}>*</Text></Text>
-                  <TextInput style={m.fieldInput} value={quantity} onChangeText={setQuantity} keyboardType="numeric" placeholder="0" placeholderTextColor="#C7C7CC" />
+                <View style={{ flex: 1, marginBottom: 0 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>LOKASYON / RAF</Text>
+                  <TextInput style={fieldInput} value={location} onChangeText={setLocation} placeholder="orn. A-1, Raf B-3" placeholderTextColor={DS.ink[400]} />
                 </View>
-                <View style={[m.fieldWrap, { flex: 1 }]}>
-                  <Text style={m.fieldLabel}>MİNİMUM STOK <Text style={m.req}>*</Text></Text>
-                  <TextInput style={m.fieldInput} value={minQty} onChangeText={setMinQty} keyboardType="numeric" placeholder="0" placeholderTextColor="#C7C7CC" />
+                <View style={{ flex: 1, marginBottom: 0 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>BARKOD / QR</Text>
+                  <TextInput style={fieldInput} value={barcode} onChangeText={setBarcode} placeholder="orn. STK-00123" placeholderTextColor={DS.ink[400]} />
+                </View>
+              </View>
+            </View>
+
+            {/* Stok Miktarlari */}
+            <View style={sectionCard}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[800], marginBottom: 14 }}>Stok Miktarlari</Text>
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>
+                    {isEdit ? 'MEVCUT MIKTAR' : 'BASLANGIC MIKTARI'} <Text style={{ color: CHIP_TONES.danger.fg }}>*</Text>
+                  </Text>
+                  <TextInput style={fieldInput} value={quantity} onChangeText={setQuantity} keyboardType="numeric" placeholder="0" placeholderTextColor={DS.ink[400]} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>
+                    MINIMUM STOK <Text style={{ color: CHIP_TONES.danger.fg }}>*</Text>
+                  </Text>
+                  <TextInput style={fieldInput} value={minQty} onChangeText={setMinQty} keyboardType="numeric" placeholder="0" placeholderTextColor={DS.ink[400]} />
                 </View>
               </View>
               {error ? (
-                <View style={m.errorBox}>
-                  <AppIcon name="alert-circle" size={14} color="#DC2626" />
-                  <Text style={m.errorText}>{error}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(217,75,75,0.08)', borderRadius: 14, padding: 12, marginTop: 10 }}>
+                  <AlertCircle size={14} color={CHIP_TONES.danger.fg} strokeWidth={1.6} />
+                  <Text style={{ fontSize: 13, color: CHIP_TONES.danger.fg, flex: 1 }}>{error}</Text>
                 </View>
               ) : null}
             </View>
 
-            {/* ── Üretim Entegrasyonu ─────────────────────────────────── */}
-            <View style={m.sectionCard}>
-              <Text style={m.sectionTitle}>Üretim Entegrasyonu</Text>
+            {/* Uretim Entegrasyonu */}
+            <View style={sectionCard}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[800], marginBottom: 14 }}>Uretim Entegrasyonu</Text>
 
-              {/* Usage category — segmented */}
-              <View style={[m.fieldWrap, { marginBottom: 12 }]}>
-                <Text style={m.fieldLabel}>KULLANIM KATEGORİSİ</Text>
+              {/* Usage category */}
+              <View style={{ marginBottom: 12 }}>
+                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>KULLANIM KATEGORISI</Text>
                 <View style={{ flexDirection: 'row', gap: 6 }}>
-                  {(['production','office','misc'] as const).map(cat => {
+                  {(['production', 'office', 'misc'] as const).map(cat => {
                     const active = usageCategory === cat;
-                    const label  = cat === 'production' ? 'Üretim' : cat === 'office' ? 'Ofis' : 'Diğer';
+                    const label = cat === 'production' ? 'Uretim' : cat === 'office' ? 'Ofis' : 'Diger';
                     return (
-                      <TouchableOpacity
+                      <Pressable
                         key={cat}
                         onPress={() => setUsageCategory(cat)}
                         style={{
-                          paddingHorizontal: 12, paddingVertical: 8,
-                          borderRadius: 999,
+                          paddingHorizontal: 14, paddingVertical: 6,
+                          borderRadius: 9999,
                           borderWidth: 1,
-                          borderColor: active ? '#2563EB' : '#E5E5EA',
-                          backgroundColor: active ? '#EFF6FF' : '#FFFFFF',
+                          borderColor: active ? DS.ink[900] : 'rgba(0,0,0,0.08)',
+                          backgroundColor: active ? DS.ink[900] : '#FFFFFF',
+                          ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
                         }}
                       >
-                        <Text style={{ fontSize: 13, fontWeight: active ? '700' : '500', color: active ? '#2563EB' : '#3C3C43' }}>
+                        <Text style={{ fontSize: 13, fontWeight: active ? '700' : '500', color: active ? '#FFFFFF' : DS.ink[700] }}>
                           {label}
                         </Text>
-                      </TouchableOpacity>
+                      </Pressable>
                     );
                   })}
                 </View>
               </View>
 
-              {/* Type — only meaningful for production */}
-              <View style={[m.fieldWrap, { marginBottom: 12 }]}>
-                <Text style={m.fieldLabel}>MATERYAL TÜRÜ</Text>
+              {/* Material type */}
+              <View style={{ marginBottom: 12 }}>
+                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>MATERYAL TURU</Text>
                 <TextInput
-                  style={m.fieldInput}
+                  style={fieldInput}
                   value={matType}
                   onChangeText={setMatType}
-                  placeholder="zirconia / metal / emax / pmma / glaze…"
-                  placeholderTextColor="#C7C7CC"
+                  placeholder="zirconia / metal / emax / pmma / glaze..."
+                  placeholderTextColor={DS.ink[400]}
                 />
-                <Text style={{ fontSize: 11, color: '#8E8E93', marginTop: 4 }}>
-                  Sipariş türüyle eşleşir (zirconia siparişi → zirconia disk).
+                <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 4 }}>
+                  {'Sipariş türüyle eşleşir (zirconia siparişi → zirconia disk).'}
                 </Text>
               </View>
 
-              {/* Consumption type selector — production-only */}
+              {/* Consumption type */}
               {usageCategory === 'production' && (
-                <View style={[m.fieldWrap, { marginBottom: 12 }]}>
-                  <Text style={m.fieldLabel}>TÜKETİM MODELİ</Text>
+                <View style={{ marginBottom: 12 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>TUKETIM MODELI</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                     {([
-                      { key: 'per_tooth',     label: 'Diş Başı',  hint: 'tooth × units' },
-                      { key: 'fixed',         label: 'Sabit',     hint: '1 birim/sipariş' },
+                      { key: 'per_tooth',     label: 'Dis Basi',  hint: 'tooth x units' },
+                      { key: 'fixed',         label: 'Sabit',     hint: '1 birim/siparis' },
                       { key: 'manual',        label: 'Manuel',    hint: 'her seferde gir' },
                     ] as const).map(opt => {
                       const active = consumptionType === opt.key;
                       return (
-                        <TouchableOpacity
+                        <Pressable
                           key={opt.key}
                           onPress={() => setConsumptionType(opt.key)}
                           style={{
                             paddingHorizontal: 10, paddingVertical: 6,
-                            borderRadius: 999,
+                            borderRadius: 9999,
                             borderWidth: 1,
-                            borderColor: active ? '#7C3AED' : '#E5E5EA',
-                            backgroundColor: active ? '#F5F3FF' : '#FFFFFF',
+                            borderColor: active ? DS.ink[900] : 'rgba(0,0,0,0.08)',
+                            backgroundColor: active ? DS.ink[900] : '#FFFFFF',
+                            ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
                           }}
                         >
-                          <Text style={{ fontSize: 12, fontWeight: active ? '700' : '500', color: active ? '#7C3AED' : '#3C3C43' }}>
+                          <Text style={{ fontSize: 12, fontWeight: active ? '700' : '500', color: active ? '#FFFFFF' : DS.ink[700] }}>
                             {opt.label}
                           </Text>
-                        </TouchableOpacity>
+                        </Pressable>
                       );
                     })}
                   </View>
-                  <Text style={{ fontSize: 11, color: '#8E8E93', marginTop: 4 }}>
-                    {consumptionType === 'per_tooth' && 'Diş sayısı × diş başına tüketim formülü.'}
-                    {consumptionType === 'fixed'     && 'Aşama tamamlanınca 1 birim düşer.'}
-                    {consumptionType === 'manual'    && 'Her aşamada manuel miktar girilir.'}
+                  <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 4 }}>
+                    {consumptionType === 'per_tooth' && 'Dis sayisi x dis basina tuketim formulu.'}
+                    {consumptionType === 'fixed'     && 'Asama tamamlaninca 1 birim duser.'}
+                    {consumptionType === 'manual'    && 'Her asamada manuel miktar girilir.'}
                   </Text>
                 </View>
               )}
@@ -435,78 +618,83 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
               {usageCategory === 'production' && (
                 <>
                   <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
-                    <View style={[m.fieldWrap, { flex: 1, marginBottom: 0 }]}>
-                      <Text style={m.fieldLabel}>DİŞ BAŞINA TÜKETİM</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>DIS BASINA TUKETIM</Text>
                       <TextInput
-                        style={m.fieldInput}
+                        style={fieldInput}
                         value={unitsPerTooth}
                         onChangeText={setUnitsPerTooth}
                         keyboardType="numeric"
                         placeholder="0.5"
-                        placeholderTextColor="#C7C7CC"
+                        placeholderTextColor={DS.ink[400]}
                       />
                     </View>
-                    <View style={[m.fieldWrap, { flex: 1, marginBottom: 0 }]}>
-                      <Text style={m.fieldLabel}>TÜKETİM AŞAMASI</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>TUKETIM ASAMASI</Text>
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
                         {STAGE_OPTIONS.map(st => {
                           const active = consumeStage === st;
                           return (
-                            <TouchableOpacity
+                            <Pressable
                               key={st}
                               onPress={() => setConsumeStage(st)}
                               style={{
                                 paddingHorizontal: 8, paddingVertical: 4,
-                                borderRadius: 999,
+                                borderRadius: 9999,
                                 borderWidth: 1,
-                                borderColor: active ? '#2563EB' : '#E5E5EA',
-                                backgroundColor: active ? '#EFF6FF' : '#FFFFFF',
+                                borderColor: active ? DS.ink[900] : 'rgba(0,0,0,0.08)',
+                                backgroundColor: active ? DS.ink[900] : '#FFFFFF',
+                                ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
                               }}
                             >
-                              <Text style={{ fontSize: 11, fontWeight: '700', color: active ? '#2563EB' : '#8E8E93' }}>
+                              <Text style={{ fontSize: 11, fontWeight: '700', color: active ? '#FFFFFF' : DS.ink[400] }}>
                                 {st}
                               </Text>
-                            </TouchableOpacity>
+                            </Pressable>
                           );
                         })}
                       </View>
                     </View>
                   </View>
-                  <Text style={{ fontSize: 11, color: '#8E8E93', marginBottom: 12 }}>
-                    Sipariş bu aşamayı tamamlayınca: diş sayısı × tüketim = stoktan otomatik düşülür.
+                  <Text style={{ fontSize: 11, color: DS.ink[400], marginBottom: 12 }}>
+                    Siparis bu asamayi tamamlayinca: dis sayisi x tuketim = stoktan otomatik dusulur.
                   </Text>
                 </>
               )}
 
-              {/* Unit cost — always visible (future cost tracking) */}
-              <View style={[m.fieldWrap, { marginBottom: 0 }]}>
-                <Text style={m.fieldLabel}>BİRİM MALİYET (₺)</Text>
+              {/* Unit cost */}
+              <View style={{ marginBottom: 0 }}>
+                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>BIRIM MALIYET (TL)</Text>
                 <TextInput
-                  style={m.fieldInput}
+                  style={fieldInput}
                   value={unitCost}
                   onChangeText={setUnitCost}
                   keyboardType="numeric"
                   placeholder="0.00"
-                  placeholderTextColor="#C7C7CC"
+                  placeholderTextColor={DS.ink[400]}
                 />
               </View>
             </View>
           </ScrollView>
 
-          <View style={m.footer}>
+          <View style={modalFooter}>
             {isEdit && (
-              <TouchableOpacity style={m.deleteBtn} onPress={handleDelete} disabled={deleting}>
-                {deleting ? <ActivityIndicator size="small" color="#DC2626" /> : <AppIcon name="trash-2" size={14} color="#DC2626" />}
-                <Text style={m.deleteBtnText}>Sil</Text>
-              </TouchableOpacity>
+              <Pressable
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 9999, borderWidth: 1, borderColor: 'rgba(217,75,75,0.2)', backgroundColor: 'rgba(217,75,75,0.08)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                onPress={handleDelete}
+                disabled={deleting}
+              >
+                {deleting ? <ActivityIndicator size="small" color={CHIP_TONES.danger.fg} /> : <Trash2 size={14} color={CHIP_TONES.danger.fg} strokeWidth={1.6} />}
+                <Text style={{ fontSize: 13, fontWeight: '600', color: CHIP_TONES.danger.fg }}>Sil</Text>
+              </Pressable>
             )}
             <View style={{ flex: 1 }} />
-            <TouchableOpacity style={m.cancelBtn} onPress={onClose}>
-              <Text style={m.cancelText}>İptal</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[m.saveBtn, { backgroundColor: accentColor }]} onPress={handleSave} disabled={saving}>
-              {saving ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={m.saveText}>{isEdit ? 'Güncelle' : 'Ekle'}</Text>}
-            </TouchableOpacity>
+            <Pressable style={ghostBtn} onPress={onClose}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[700] }}>Iptal</Text>
+            </Pressable>
+            <Pressable style={{ ...darkPillBtn, backgroundColor: accentColor }} onPress={handleSave} disabled={saving}>
+              {saving ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>{isEdit ? 'Guncelle' : 'Ekle'}</Text>}
+            </Pressable>
           </View>
         </View>
       </View>
@@ -516,16 +704,16 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
 
 // ─── MovementModal ────────────────────────────────────────────────────────────
 
-const MOV_TYPES: { key: MovType; label: string; color: string; bg: string; icon: string }[] = [
-  { key: 'IN',    label: 'Giriş',  color: '#059669', bg: '#D1FAE5', icon: 'arrow-down-circle-outline' },
-  { key: 'OUT',   label: 'Çıkış',  color: '#2563EB', bg: '#DBEAFE', icon: 'arrow-up-circle-outline' },
-  { key: 'WASTE', label: 'Fire',   color: '#DC2626', bg: '#FEE2E2', icon: 'alert-circle-outline' },
+const MOV_TYPES: { key: MovType; label: string; color: string; bg: string }[] = [
+  { key: 'IN',    label: 'Giris',  color: CHIP_TONES.success.fg, bg: CHIP_TONES.success.bg },
+  { key: 'OUT',   label: 'Cikis',  color: CHIP_TONES.info.fg,    bg: CHIP_TONES.info.bg },
+  { key: 'WASTE', label: 'Fire',   color: CHIP_TONES.danger.fg,  bg: CHIP_TONES.danger.bg },
 ];
 
 interface MovementModalProps {
   visible: boolean;
-  item: StockItem | null;       // null = standalone mode (item picker shown)
-  items?: StockItem[];          // required when item is null
+  item: StockItem | null;
+  items?: StockItem[];
   accentColor: string;
   defaultType?: MovType;
   onClose: () => void;
@@ -554,9 +742,9 @@ function MovementModal({ visible, item, items = [], accentColor, defaultType = '
     : items;
 
   const handleSave = async () => {
-    if (!resolvedItem) { setError('Ürün seçin'); return; }
+    if (!resolvedItem) { setError('Urun secin'); return; }
     const amount = parseFloat(qty);
-    if (!amount || amount <= 0) { setError('Geçerli bir miktar girin'); return; }
+    if (!amount || amount <= 0) { setError('Gecerli bir miktar girin'); return; }
     setSaving(true); setError('');
     try {
       const next = type === 'IN' ? resolvedItem.quantity + amount : Math.max(0, resolvedItem.quantity - amount);
@@ -566,63 +754,69 @@ function MovementModal({ visible, item, items = [], accentColor, defaultType = '
       });
       onSaved(); onClose();
     } catch (e: any) {
-      setError(e.message ?? 'İşlem hatası');
+      setError(e.message ?? 'Islem hatasi');
     } finally { setSaving(false); }
   };
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={m.overlay}>
-        <View style={[m.sheet, { maxWidth: 420 }]}>
-          <View style={m.header}>
+      <View style={modalOverlay}>
+        <View style={{ ...modalSheet, maxWidth: 420 }}>
+          <View style={modalHeader}>
             <View>
-              <Text style={m.title}>Stok Hareketi</Text>
-              {resolvedItem && <Text style={{ fontSize: 12, color: '#94A3B8', marginTop: 2 }}>{resolvedItem.name}</Text>}
+              <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.3, color: DS.ink[900] }}>Stok Hareketi</Text>
+              {resolvedItem && <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 2 }}>{resolvedItem.name}</Text>}
             </View>
-            <TouchableOpacity style={m.closeBtn} onPress={onClose}>
-              <AppIcon name="x" size={16} color="#64748B" />
-            </TouchableOpacity>
+            <Pressable
+              onPress={onClose}
+              style={{ width: 32, height: 32, borderRadius: 9999, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+            >
+              <X size={16} color={DS.ink[500]} strokeWidth={1.6} />
+            </Pressable>
           </View>
 
-          <View style={[m.body, { paddingBottom: 0 }]}>
-            {/* Item picker — only in standalone mode */}
+          <View style={{ padding: 16, paddingBottom: 0 }}>
+            {/* Item picker */}
             {standalone && (
-              <View style={m.sectionCard}>
-                <Text style={m.sectionTitle}>Ürün Seç <Text style={m.req}>*</Text></Text>
-                <TouchableOpacity
-                  style={[m.fieldInput, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+              <View style={sectionCard}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[800], marginBottom: 14 }}>
+                  Urun Sec <Text style={{ color: CHIP_TONES.danger.fg }}>*</Text>
+                </Text>
+                <Pressable
+                  style={{ ...fieldInput, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                   onPress={() => setPickerOpen(v => !v)}
-                  activeOpacity={0.8}
                 >
-                  <Text style={resolvedItem ? { fontSize: 14, color: '#0F172A' } : { fontSize: 14, color: '#C7C7CC' }}>
-                    {resolvedItem ? resolvedItem.name : 'Ürün seçin…'}
+                  <Text style={resolvedItem ? { fontSize: 14, color: DS.ink[900] } : { fontSize: 14, color: DS.ink[400] }}>
+                    {resolvedItem ? resolvedItem.name : 'Urun secin...'}
                   </Text>
-                  <AppIcon name={pickerOpen ? 'chevron-up' : 'chevron-down'} size={15} color="#94A3B8" />
-                </TouchableOpacity>
+                  {pickerOpen
+                    ? <ChevronUp size={15} color={DS.ink[400]} strokeWidth={1.6} />
+                    : <ChevronDown size={15} color={DS.ink[400]} strokeWidth={1.6} />
+                  }
+                </Pressable>
                 {pickerOpen && (
-                  <View style={{ borderWidth: 1, borderColor: '#E9EEF4', borderRadius: 10, backgroundColor: '#FAFAFA', marginTop: 4, overflow: 'hidden' }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
-                      <AppIcon name="search" size={13} color="#AEAEB2" />
+                  <View style={{ borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', borderRadius: 14, backgroundColor: DS.ink[50], marginTop: 4, overflow: 'hidden' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' }}>
+                      <Search size={13} color={DS.ink[400]} strokeWidth={1.6} />
                       <TextInput
-                        style={{ flex: 1, fontSize: 13, color: '#0F172A', outlineStyle: 'none' } as any}
+                        style={{ flex: 1, fontSize: 13, color: DS.ink[900], ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) } as any}
                         value={pickerSearch}
                         onChangeText={setPickerSearch}
-                        placeholder="Ürün ara…"
-                        placeholderTextColor="#AEAEB2"
+                        placeholder="Urun ara..."
+                        placeholderTextColor={DS.ink[400]}
                         autoFocus
                       />
                     </View>
                     <ScrollView style={{ maxHeight: 160 }} showsVerticalScrollIndicator={false}>
                       {pickerItems.map((i, idx) => (
-                        <TouchableOpacity
+                        <Pressable
                           key={i.id}
-                          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: idx < pickerItems.length - 1 ? 1 : 0, borderBottomColor: '#F8FAFC', backgroundColor: selectedId === i.id ? '#F8FAFC' : 'transparent' }}
+                          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: idx < pickerItems.length - 1 ? 1 : 0, borderBottomColor: 'rgba(0,0,0,0.04)', backgroundColor: selectedId === i.id ? DS.ink[50] : 'transparent', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                           onPress={() => { setSelectedId(i.id); setPickerOpen(false); setPickerSearch(''); }}
-                          activeOpacity={0.7}
                         >
-                          <Text style={{ fontSize: 14, color: '#0F172A', fontWeight: selectedId === i.id ? '600' : '400' }}>{i.name}</Text>
-                          {selectedId === i.id && <AppIcon name="check" size={14} color="#0F172A" />}
-                        </TouchableOpacity>
+                          <Text style={{ fontSize: 14, color: DS.ink[900], fontWeight: selectedId === i.id ? '600' : '400' }}>{i.name}</Text>
+                          {selectedId === i.id && <Check size={14} color={DS.ink[900]} strokeWidth={2} />}
+                        </Pressable>
                       ))}
                     </ScrollView>
                   </View>
@@ -630,52 +824,63 @@ function MovementModal({ visible, item, items = [], accentColor, defaultType = '
               </View>
             )}
 
-            <View style={m.sectionCard}>
-              <Text style={m.sectionTitle}>İşlem Tipi</Text>
+            {/* Type selector */}
+            <View style={sectionCard}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[800], marginBottom: 14 }}>Islem Tipi</Text>
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 {MOV_TYPES.map(t => (
-                  <TouchableOpacity
+                  <Pressable
                     key={t.key}
-                    style={[mv.typeBtn, type === t.key && { backgroundColor: t.bg, borderColor: t.color }]}
+                    style={{
+                      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+                      paddingVertical: 10, borderRadius: 14, borderWidth: 1.5,
+                      borderColor: type === t.key ? t.color : 'rgba(0,0,0,0.08)',
+                      backgroundColor: type === t.key ? t.bg : DS.ink[50],
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                    }}
                     onPress={() => setType(t.key)}
-                    activeOpacity={0.8}
                   >
-                    <AppIcon name={t.icon as any} size={15} color={type === t.key ? t.color : '#94A3B8'} />
-                    <Text style={[mv.typeBtnText, type === t.key && { color: t.color, fontWeight: '700' }]}>{t.label}</Text>
-                  </TouchableOpacity>
+                    {t.key === 'IN' && <ArrowDownCircle size={15} color={type === t.key ? t.color : DS.ink[400]} strokeWidth={1.6} />}
+                    {t.key === 'OUT' && <ArrowUpCircle size={15} color={type === t.key ? t.color : DS.ink[400]} strokeWidth={1.6} />}
+                    {t.key === 'WASTE' && <AlertCircle size={15} color={type === t.key ? t.color : DS.ink[400]} strokeWidth={1.6} />}
+                    <Text style={{ fontSize: 12, fontWeight: type === t.key ? '700' : '500', color: type === t.key ? t.color : DS.ink[400] }}>{t.label}</Text>
+                  </Pressable>
                 ))}
               </View>
             </View>
 
-            <View style={m.sectionCard}>
-              <View style={m.fieldWrap}>
-                <Text style={m.fieldLabel}>MİKTAR <Text style={m.req}>*</Text></Text>
-                <TextInput style={m.fieldInput} value={qty} onChangeText={setQty} keyboardType="numeric" placeholder="0" placeholderTextColor="#C7C7CC" />
+            {/* Quantity + Note */}
+            <View style={sectionCard}>
+              <View style={{ marginBottom: 12 }}>
+                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>
+                  MIKTAR <Text style={{ color: CHIP_TONES.danger.fg }}>*</Text>
+                </Text>
+                <TextInput style={fieldInput} value={qty} onChangeText={setQty} keyboardType="numeric" placeholder="0" placeholderTextColor={DS.ink[400]} />
               </View>
-              <View style={[m.fieldWrap, { marginBottom: 0 }]}>
-                <Text style={m.fieldLabel}>NOT</Text>
+              <View style={{ marginBottom: 0 }}>
+                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>NOT</Text>
                 <TextInput
-                  style={[m.fieldInput, { minHeight: 56 }]}
+                  style={{ ...fieldInput, height: undefined, minHeight: 56 }}
                   value={note} onChangeText={setNote}
-                  placeholder="İsteğe bağlı açıklama…" placeholderTextColor="#C7C7CC" multiline
+                  placeholder="Istege bagli aciklama..." placeholderTextColor={DS.ink[400]} multiline
                 />
               </View>
               {error ? (
-                <View style={[m.errorBox, { marginTop: 10 }]}>
-                  <AppIcon name="alert-circle" size={14} color="#DC2626" />
-                  <Text style={m.errorText}>{error}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(217,75,75,0.08)', borderRadius: 14, padding: 12, marginTop: 10 }}>
+                  <AlertCircle size={14} color={CHIP_TONES.danger.fg} strokeWidth={1.6} />
+                  <Text style={{ fontSize: 13, color: CHIP_TONES.danger.fg, flex: 1 }}>{error}</Text>
                 </View>
               ) : null}
             </View>
           </View>
 
-          <View style={m.footer}>
-            <TouchableOpacity style={m.cancelBtn} onPress={onClose}>
-              <Text style={m.cancelText}>İptal</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[m.saveBtn, { backgroundColor: accentColor }]} onPress={handleSave} disabled={saving}>
-              {saving ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={m.saveText}>Kaydet</Text>}
-            </TouchableOpacity>
+          <View style={modalFooter}>
+            <Pressable style={ghostBtn} onPress={onClose}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[700] }}>Iptal</Text>
+            </Pressable>
+            <Pressable style={{ ...darkPillBtn, backgroundColor: accentColor }} onPress={handleSave} disabled={saving}>
+              {saving ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>Kaydet</Text>}
+            </Pressable>
           </View>
         </View>
       </View>
@@ -692,7 +897,7 @@ function DonutChart({ pct, color, size = 80, stroke = 9 }: { pct: number; color:
   const off  = circ * (1 - Math.min(Math.max(pct, 0), 1));
   return (
     <Svg width={size} height={size}>
-      <Circle cx={cx} cy={cx} r={r} fill="none" stroke="#F1F5F9" strokeWidth={stroke} />
+      <Circle cx={cx} cy={cx} r={r} fill="none" stroke={DS.ink[100]} strokeWidth={stroke} />
       <Circle
         cx={cx} cy={cx} r={r}
         fill="none"
@@ -710,7 +915,7 @@ function DonutChart({ pct, color, size = 80, stroke = 9 }: { pct: number; color:
 
 // ─── PetalChart ──────────────────────────────────────────────────────────────
 
-const PIE_COLORS = ['#0F172A', '#2563EB', '#059669', '#F59E0B', '#DC2626'];
+const PIE_COLORS = [DS.ink[900], '#2563EB', CHIP_TONES.success.fg, CHIP_TONES.warning.fg, CHIP_TONES.danger.fg];
 
 function polarXY(cx: number, cy: number, r: number, deg: number) {
   const rad = (deg * Math.PI) / 180;
@@ -721,7 +926,7 @@ function PetalChart({ data, size = 216 }: { data: { label: string; value: number
   const cx     = size / 2;
   const maxR   = cx - 8;
   const innerR = maxR * 0.25;
-  const gap    = 7; // degrees gap between petals
+  const gap    = 7;
   const n      = data.length;
   if (n === 0) return null;
 
@@ -739,7 +944,6 @@ function PetalChart({ data, size = 216 }: { data: { label: string; value: number
     return `M ${s.x.toFixed(2)} ${s.y.toFixed(2)} A ${midR} ${midR} 0 ${lg} 1 ${e.x.toFixed(2)} ${e.y.toFixed(2)}`;
   };
 
-  // Fixed label radius at 72% of the way between inner and max
   const labelR = innerR + 0.72 * (maxR - innerR);
 
   return (
@@ -748,27 +952,22 @@ function PetalChart({ data, size = 216 }: { data: { label: string; value: number
         {data.map((d, idx) => {
           const s0 = idx * sliceDeg - 90 + gap / 2;
           const e0 = s0 + sliceDeg - gap;
-
-          // Background track
           const bgPath = arcPath(bgMidR, s0, e0);
-
-          // Value petal
-          const pct    = d.value / maxVal;
-          const outerR = innerR + pct * (maxR - innerR);
+          const pctVal = d.value / maxVal;
+          const outerR = innerR + pctVal * (maxR - innerR);
           const midR   = (innerR + outerR) / 2;
           const sw     = Math.max(outerR - innerR, 6);
           const valPath = arcPath(midR, s0, e0);
 
           return (
             <React.Fragment key={idx}>
-              <Path d={bgPath}  fill="none" stroke="#EAECF0" strokeWidth={bgStroke} strokeLinecap="round" />
+              <Path d={bgPath}  fill="none" stroke={DS.ink[200]} strokeWidth={bgStroke} strokeLinecap="round" />
               <Path d={valPath} fill="none" stroke={d.color} strokeWidth={sw}       strokeLinecap="round" />
             </React.Fragment>
           );
         })}
       </Svg>
 
-      {/* Labels inside petals */}
       {data.map((d, idx) => {
         const midAngle = idx * sliceDeg - 90 + sliceDeg / 2;
         const pos = polarXY(cx, cx, labelR, midAngle);
@@ -795,7 +994,6 @@ function PetalChart({ data, size = 216 }: { data: { label: string; value: number
 }
 
 // ─── StockDashboard ──────────────────────────────────────────────────────────
-
 
 interface DashboardProps {
   items: StockItem[];
@@ -837,70 +1035,79 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
 
   if (total === 0) {
     return (
-      <View style={db.emptyWrap}>
-        <AppIcon name="package-variant-closed" size={44} color="#E2E8F0" />
-        <Text style={db.emptyTitle}>Henüz ürün yok</Text>
-        <Text style={db.emptySub}>Stok yönetimine başlamak için ilk ürününüzü ekleyin.</Text>
-        <TouchableOpacity style={[db.emptyBtn, { backgroundColor: accentColor }]} onPress={onAddProduct}>
-          <AppIcon name="plus" size={14} color="#FFFFFF" />
-          <Text style={db.emptyBtnText}>İlk Ürünü Ekle</Text>
-        </TouchableOpacity>
+      <View style={{ alignItems: 'center', paddingVertical: 50, gap: 10 }}>
+        <Package size={44} color={DS.ink[200]} strokeWidth={1.2} />
+        <Text style={{ fontSize: 16, fontWeight: '700', color: DS.ink[900] }}>Henuz urun yok</Text>
+        <Text style={{ fontSize: 13, color: DS.ink[400], textAlign: 'center' }}>Stok yonetimine baslamak icin ilk urununuzu ekleyin.</Text>
+        <Pressable
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 9999, backgroundColor: accentColor, marginTop: 6, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+          onPress={onAddProduct}
+        >
+          <Plus size={14} color="#FFFFFF" strokeWidth={2} />
+          <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>Ilk Urunu Ekle</Text>
+        </Pressable>
       </View>
     );
   }
 
   return (
     <View style={{ gap: 16 }}>
-
-      {/* ── 4 Stat kartları (Stitch tarzı — temiz beyaz kart, yuvarlak ikon) ── */}
-      <View style={db.statRow}>
+      {/* 4 Stat cards */}
+      <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
         {([
-          { label: 'TOPLAM ÜRÜN',   value: total,           sub: `${catStats.length} kategori`,                                                   icon: 'package'        as const, tone: 'neutral' as const },
-          { label: 'NORMAL STOK',   value: normal.length,   sub: total > 0 ? `%${Math.round(normal.length/total*100)} yeterli` : 'yeterli stok',   icon: 'check-circle'   as const, tone: 'success' as const },
-          { label: 'KRİTİK SEVİYE', value: critical.length, sub: critical.length > 0 ? 'minimum altında' : 'tümü normal',                          icon: 'alert-triangle' as const, tone: 'warning' as const },
-          { label: 'TÜKENDİ',       value: empty.length,    sub: empty.length > 0 ? 'acil sipariş gerekli' : 'eksik ürün yok',                     icon: 'x-circle'       as const, tone: 'danger'  as const },
+          { label: 'TOPLAM URUN',    value: total,           sub: `${catStats.length} kategori`,                                                    icon: Package,       tone: 'neutral' as const },
+          { label: 'NORMAL STOK',    value: normal.length,   sub: total > 0 ? `%${Math.round(normal.length/total*100)} yeterli` : 'yeterli stok',   icon: CheckCircle,   tone: 'success' as const },
+          { label: 'KRITIK SEVIYE',  value: critical.length, sub: critical.length > 0 ? 'minimum altinda' : 'tumu normal',                          icon: AlertTriangle, tone: 'warning' as const },
+          { label: 'TUKENDI',        value: empty.length,    sub: empty.length > 0 ? 'acil siparis gerekli' : 'eksik urun yok',                     icon: XCircle,       tone: 'danger'  as const },
         ] as const).map((stat, i) => {
           const isAlert    = stat.tone === 'danger' && stat.value > 0;
-          const iconBgMap  = { neutral: '#F1F5F9', success: '#ECFDF5', warning: '#FFFBEB', danger: isAlert ? '#FEE2E2' : '#F1F5F9' };
-          const iconColMap = { neutral: '#64748B', success: '#059669', warning: '#D97706', danger: isAlert ? '#DC2626' : '#94A3B8' };
+          const iconBgMap  = { neutral: DS.ink[100], success: CHIP_TONES.success.bg, warning: CHIP_TONES.warning.bg, danger: isAlert ? CHIP_TONES.danger.bg : DS.ink[100] };
+          const iconColMap = { neutral: DS.ink[500], success: CHIP_TONES.success.fg, warning: CHIP_TONES.warning.fg, danger: isAlert ? CHIP_TONES.danger.fg : DS.ink[400] };
+          const Icon = stat.icon;
           return (
-            <View key={i} style={[db.statCard, isAlert && db.statCardAlert]}>
-              <View style={db.statCardTop}>
-                <Text style={[db.statLabel, isAlert && { color: '#DC2626' }]}>{stat.label}</Text>
-                <View style={[db.statIcon, { backgroundColor: iconBgMap[stat.tone] }]}>
-                  <AppIcon name={stat.icon} size={18} color={iconColMap[stat.tone]} />
+            <View key={i} style={{
+              ...cardSolid,
+              flex: 1,
+              minWidth: 150,
+              gap: 4,
+              ...(isAlert ? { borderWidth: 1, borderColor: 'rgba(217,75,75,0.2)', backgroundColor: 'rgba(217,75,75,0.04)' } : {}),
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: isAlert ? CHIP_TONES.danger.fg : DS.ink[400], letterSpacing: 0.8, flex: 1, paddingRight: 8, paddingTop: 4 }}>
+                  {stat.label}
+                </Text>
+                <View style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: iconBgMap[stat.tone] }}>
+                  <Icon size={18} color={iconColMap[stat.tone]} strokeWidth={1.6} />
                 </View>
               </View>
-              <Text style={[db.statValue, isAlert && { color: '#DC2626' }]}>{stat.value}</Text>
-              <Text style={db.statSub}>{stat.sub}</Text>
+              <Text style={{ fontSize: 32, fontWeight: '800', color: isAlert ? CHIP_TONES.danger.fg : DS.ink[900], letterSpacing: -1 }}>{stat.value}</Text>
+              <Text style={{ fontSize: 11, color: DS.ink[400], fontWeight: '500' }}>{stat.sub}</Text>
             </View>
           );
         })}
       </View>
 
-      {/* ── Orta satır: Kategori bar grafik + Durum donuts ── */}
-      <View style={db.splitRow}>
-
-        {/* Kategori yatay bar grafik */}
+      {/* Category bar chart + status donut */}
+      <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
         {catStats.length > 0 && (
-          <View style={[db.card, db.splitLeft]}>
-            <View style={db.cardHead}>
-              <Text style={db.sectionTitle}>Kategori Dağılımı</Text>
-              <Text style={db.mutedText}>İlk {catStats.length}</Text>
+          <View style={{ ...cardSolid, flex: 1.2, minWidth: 200 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[900] }}>Kategori Dagilimi</Text>
+              <Text style={{ fontSize: 12, color: DS.ink[400] }}>Ilk {catStats.length}</Text>
             </View>
             <View style={{ gap: 14 }}>
               {catStats.map(([cat, count], idx) => {
                 const maxCount = catStats[0][1];
-                const pct = maxCount > 0 ? count / maxCount : 0;
+                const pctVal = maxCount > 0 ? count / maxCount : 0;
                 const clr = PIE_COLORS[idx % PIE_COLORS.length];
                 return (
                   <View key={cat} style={{ gap: 7 }}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text style={db.barCatLabel} numberOfLines={1}>{cat}</Text>
-                      <Text style={[db.barCatCount, { color: clr }]}>{Math.round(pct * 100)}%</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[700], flex: 1 }} numberOfLines={1}>{cat}</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: clr }}>{Math.round(pctVal * 100)}%</Text>
                     </View>
-                    <View style={db.barTrack}>
-                      <View style={[db.barFill, { width: `${Math.round(pct * 100)}%` as any, backgroundColor: clr }]} />
+                    <View style={{ height: 8, backgroundColor: DS.ink[100], borderRadius: 4, overflow: 'hidden' }}>
+                      <View style={{ height: 8, borderRadius: 4, width: `${Math.round(pctVal * 100)}%` as any, backgroundColor: clr }} />
                     </View>
                   </View>
                 );
@@ -909,70 +1116,72 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
           </View>
         )}
 
-        {/* Stok durumu büyük donut */}
-        <View style={[db.card, db.splitRight]}>
-          <View style={db.cardHead}>
-            <Text style={db.sectionTitle}>Stok Durumu</Text>
+        <View style={{ ...cardSolid, flex: 1, minWidth: 160 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[900] }}>Stok Durumu</Text>
           </View>
           <View style={{ alignItems: 'center', paddingVertical: 8 }}>
             <View style={{ position: 'relative', width: 150, height: 150, alignItems: 'center', justifyContent: 'center' }}>
-              <DonutChart pct={total > 0 ? normal.length / total : 0} color="#10B981" size={150} stroke={20} />
+              <DonutChart pct={total > 0 ? normal.length / total : 0} color={CHIP_TONES.success.fg} size={150} stroke={20} />
               <View style={{ position: 'absolute', alignItems: 'center' }}>
-                <Text style={{ fontSize: 34, fontWeight: '800', color: '#0F172A', letterSpacing: -1 }}>
+                <Text style={{ fontSize: 34, fontWeight: '800', color: DS.ink[900], letterSpacing: -1 }}>
                   {total > 0 ? Math.round(normal.length / total * 100) : 0}
                   <Text style={{ fontSize: 16, fontWeight: '600' }}>%</Text>
                 </Text>
-                <Text style={{ fontSize: 12, color: '#94A3B8', fontWeight: '600' }}>Normal</Text>
+                <Text style={{ fontSize: 12, color: DS.ink[400], fontWeight: '600' }}>Normal</Text>
               </View>
             </View>
           </View>
           <View style={{ gap: 10 }}>
             {([
-              { label: 'Normal',  count: normal.length,   color: '#10B981' },
-              { label: 'Kritik',  count: critical.length, color: '#F59E0B' },
-              { label: 'Tükendi', count: empty.length,    color: '#EF4444' },
+              { label: 'Normal',  count: normal.length,   color: CHIP_TONES.success.fg },
+              { label: 'Kritik',  count: critical.length, color: CHIP_TONES.warning.fg },
+              { label: 'Tukendi', count: empty.length,    color: CHIP_TONES.danger.fg },
             ] as const).map(l => (
               <View key={l.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <View style={[db.pieLegDot, { backgroundColor: l.color }]} />
-                <Text style={[db.pieLegName, { flex: 1 }]}>{l.label}</Text>
-                <Text style={db.pieLegMeta}>{l.count}</Text>
+                <View style={{ width: 10, height: 10, borderRadius: 5, flexShrink: 0, backgroundColor: l.color }} />
+                <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[800], flex: 1 }}>{l.label}</Text>
+                <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }}>{l.count}</Text>
               </View>
             ))}
           </View>
         </View>
-
       </View>
 
-      {/* ── Acil Dikkat listesi ── */}
+      {/* Urgent items */}
       {urgentItems.length > 0 && (
-        <View style={db.card}>
-          <View style={db.cardHead}>
-            <Text style={db.sectionTitle}>Acil Dikkat</Text>
-            <View style={db.redBadge}><Text style={db.redBadgeText}>{urgentItems.length} ürün</Text></View>
+        <View style={cardSolid}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[900] }}>Acil Dikkat</Text>
+            <View style={{ backgroundColor: CHIP_TONES.danger.bg, borderRadius: 9999, paddingHorizontal: 9, paddingVertical: 3 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: CHIP_TONES.danger.fg }}>{urgentItems.length} urun</Text>
+            </View>
           </View>
           {urgentItems.map((item, idx) => {
             const isEmpty = item.quantity === 0;
             const isLast  = idx === urgentItems.length - 1;
-            const clr     = isEmpty ? '#EF4444' : '#F59E0B';
-            const bg      = isEmpty ? '#FFF1F2' : '#FFFBEB';
+            const clr     = isEmpty ? CHIP_TONES.danger.fg : CHIP_TONES.warning.fg;
+            const bg      = isEmpty ? CHIP_TONES.danger.bg : CHIP_TONES.warning.bg;
             return (
-              <View key={item.id} style={[db.urgRow, !isLast && db.urgDivider]}>
-                <View style={[db.urgIconBox, { backgroundColor: bg }]}>
-                  <AppIcon name={isEmpty ? 'alert-circle' : 'alert-triangle'} size={22} color={clr} />
+              <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, ...(!isLast ? { borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' } : {}) }}>
+                <View style={{ width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexShrink: 0, backgroundColor: bg }}>
+                  {isEmpty
+                    ? <AlertCircle size={22} color={clr} strokeWidth={1.6} />
+                    : <AlertTriangle size={22} color={clr} strokeWidth={1.6} />
+                  }
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={db.urgName} numberOfLines={1}>{item.name}</Text>
-                  <Text style={db.urgMeta}>
-                    {isEmpty ? 'Stok tükendi' : `${item.quantity}${item.unit ? ` ${item.unit}` : ''} kaldı · minimum: ${item.min_quantity}`}
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[900] }} numberOfLines={1}>{item.name}</Text>
+                  <Text style={{ fontSize: 12, color: DS.ink[400], fontWeight: '500', marginTop: 2 }}>
+                    {isEmpty ? 'Stok tukendi' : `${item.quantity}${item.unit ? ` ${item.unit}` : ''} kaldi - minimum: ${item.min_quantity}`}
                   </Text>
                 </View>
-                <TouchableOpacity
-                  style={[db.urgReorderBtn, { backgroundColor: accentColor }]}
+                <Pressable
+                  style={{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999, backgroundColor: accentColor, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                   onPress={() => onMovement(item, 'IN')}
-                  activeOpacity={0.85}
                 >
-                  <Text style={db.urgReorderText}>Yeniden Sipariş</Text>
-                </TouchableOpacity>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>Yeniden Siparis</Text>
+                </Pressable>
               </View>
             );
           })}
@@ -983,76 +1192,6 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
     </View>
   );
 }
-
-const db = StyleSheet.create({
-  // Quick actions
-  qaGrid:            { flexDirection: 'row', gap: 10 },
-  qaCard:            { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: '#FFFFFF', borderRadius: 14, paddingVertical: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)', ...(Platform.OS === 'web' ? ({ boxShadow: '0 8px 24px rgba(0,0,0,0.15)' } as any) : { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 4 }) },
-  qaCardPrimary:     { borderWidth: 0 },
-  qaIconWrap:        { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1F5F9' },
-  qaIconWrapWhite:   { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.2)' },
-  qaCardLabel:       { fontSize: 12, fontWeight: '700', color: '#334155', textAlign: 'center', lineHeight: 17 },
-  qaCardLabelWhite:  { fontSize: 12, fontWeight: '700', color: '#FFFFFF', textAlign: 'center', lineHeight: 17 },
-
-  // Stat cards (Stitch style — clean white cards with circular icon)
-  statRow:        { flexDirection: 'row', gap: 12, flexWrap: 'wrap' },
-  statCard:       { flex: 1, minWidth: 150, backgroundColor: '#FFFFFF', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)', padding: 18, gap: 4, ...(Platform.OS === 'web' ? ({ boxShadow: '0 8px 24px rgba(0,0,0,0.15)' } as any) : { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 4 }) },
-  statCardAlert:  { borderColor: '#FECACA', backgroundColor: '#FFF5F5' },
-  statCardTop:    { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 },
-  statIcon:       { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  statBadge:      { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 100 },
-  statBadgeText:  { fontSize: 10, fontWeight: '700' },
-  statValue:      { fontSize: 32, fontWeight: '800', color: '#0F172A', letterSpacing: -1 },
-  statLabel:      { fontSize: 11, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.8, flex: 1, paddingRight: 8, paddingTop: 4 },
-  statSub:        { fontSize: 11, color: '#94A3B8', fontWeight: '500' },
-
-  // Category bar chart
-  barTrack:    { height: 8, backgroundColor: '#F1F5F9', borderRadius: 4, overflow: 'hidden' },
-  barFill:     { height: 8, borderRadius: 4 },
-  barCatLabel: { fontSize: 13, fontWeight: '600', color: '#334155', flex: 1 },
-  barCatCount: { fontSize: 12, fontWeight: '700' },
-
-  // Generic card
-  card:         { backgroundColor: '#FFFFFF', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)', padding: 16, ...(Platform.OS === 'web' ? ({ boxShadow: '0 8px 24px rgba(0,0,0,0.15)' } as any) : { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 4 }) },
-  cardHead:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  sectionTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
-  mutedText:    { fontSize: 12, color: '#94A3B8' },
-
-  // Red badge
-  redBadge:     { backgroundColor: '#FEE2E2', borderRadius: 100, paddingHorizontal: 9, paddingVertical: 3 },
-  redBadgeText: { fontSize: 11, fontWeight: '700', color: '#DC2626' },
-
-  // Urgent list (Stitch — büyük ikon kutusu + "Yeniden Sipariş" butonu)
-  urgRow:         { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14 },
-  urgDivider:     { borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  urgIconBox:     { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  urgName:        { fontSize: 14, fontWeight: '700', color: '#0F172A' },
-  urgMeta:        { fontSize: 12, color: '#94A3B8', fontWeight: '500', marginTop: 2 },
-  urgBadge:       { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
-  urgBadgeText:   { fontSize: 10, fontWeight: '700' },
-  urgReorderBtn:  { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10 },
-  urgReorderText: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
-
-  // Pie chart
-  pieWrap:     { flexDirection: 'row', alignItems: 'center', gap: 20 },
-  pieLegend:   { flex: 1, gap: 10 },
-  pieLegRow:   { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  pieLegDot:   { width: 10, height: 10, borderRadius: 5, flexShrink: 0 },
-  pieLegName:  { fontSize: 12, fontWeight: '600', color: '#1E293B' },
-  pieLegMeta:  { fontSize: 11, color: '#94A3B8', marginTop: 1 },
-
-  // Split layout
-  splitRow:   { flexDirection: 'row', gap: 12, flexWrap: 'wrap' },
-  splitLeft:  { flex: 1.2, minWidth: 200 },
-  splitRight: { flex: 1, minWidth: 160 },
-
-  // Empty
-  emptyWrap:    { alignItems: 'center', paddingVertical: 50, gap: 10 },
-  emptyTitle:   { fontSize: 16, fontWeight: '700', color: '#0F172A' },
-  emptySub:     { fontSize: 13, color: '#94A3B8', textAlign: 'center' },
-  emptyBtn:     { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10, marginTop: 6 },
-  emptyBtnText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
-});
 
 // ─── StockSettings ───────────────────────────────────────────────────────────
 
@@ -1099,7 +1238,7 @@ function BrandModal({ visible, brand, accentColor, onClose, onSaved }: {
 
   const handleSave = async () => {
     const n = name.trim();
-    if (!n) { setError('Marka adı zorunlu'); return; }
+    if (!n) { setError('Marka adi zorunlu'); return; }
     setSaving(true); setError('');
     const payload: any = {
       name: n,
@@ -1114,7 +1253,6 @@ function BrandModal({ visible, brand, accentColor, onClose, onSaved }: {
       if (isEdit) {
         const { error: e } = await supabase.from('brands').update(payload).eq('id', brand!.id);
         if (e) throw e;
-        // rename references in stock_items if name changed
         if (n !== brand!.name) {
           await supabase.from('stock_items').update({ brand: n }).eq('brand', brand!.name);
         }
@@ -1125,20 +1263,20 @@ function BrandModal({ visible, brand, accentColor, onClose, onSaved }: {
         onSaved();
       }
       onClose();
-    } catch (e: any) { setError(e.message ?? 'Kayıt hatası'); }
+    } catch (e: any) { setError(e.message ?? 'Kayit hatasi'); }
     finally { setSaving(false); }
   };
 
-  const Field = ({ label, value, onChange, placeholder, keyboard, multiline }: {
+  const BrandField = ({ label, value, onChange, placeholder, keyboard, multiline }: {
     label: string; value: string; onChange: (t: string) => void;
     placeholder?: string; keyboard?: any; multiline?: boolean;
   }) => (
-    <View style={m.fieldWrap}>
-      <Text style={m.fieldLabel}>{label}</Text>
+    <View style={{ marginBottom: 12 }}>
+      <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>{label}</Text>
       <TextInput
-        style={[m.fieldInput, multiline && { minHeight: 80, textAlignVertical: 'top', paddingTop: 10 }]}
+        style={{ ...fieldInput, ...(multiline ? { height: undefined, minHeight: 80, textAlignVertical: 'top', paddingTop: 10 } : {}) }}
         value={value} onChangeText={onChange}
-        placeholder={placeholder} placeholderTextColor="#C7C7CC"
+        placeholder={placeholder} placeholderTextColor={DS.ink[400]}
         keyboardType={keyboard} multiline={multiline}
       />
     </View>
@@ -1146,71 +1284,78 @@ function BrandModal({ visible, brand, accentColor, onClose, onSaved }: {
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={m.overlay}>
-        <View style={m.sheet}>
-          <View style={m.header}>
-            <Text style={m.title}>{isEdit ? 'Markayı Düzenle' : 'Yeni Marka Ekle'}</Text>
-            <TouchableOpacity style={m.closeBtn} onPress={onClose}>
-              <AppIcon name="x" size={16} color="#64748B" />
-            </TouchableOpacity>
+      <View style={modalOverlay}>
+        <View style={modalSheet}>
+          <View style={modalHeader}>
+            <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.3, color: DS.ink[900] }}>
+              {isEdit ? 'Markayi Duzenle' : 'Yeni Marka Ekle'}
+            </Text>
+            <Pressable
+              onPress={onClose}
+              style={{ width: 32, height: 32, borderRadius: 9999, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+            >
+              <X size={16} color={DS.ink[500]} strokeWidth={1.6} />
+            </Pressable>
           </View>
 
-          <ScrollView style={m.body} showsVerticalScrollIndicator={false}>
-            <View style={m.sectionCard}>
-              <Text style={m.sectionTitle}>Marka Bilgileri</Text>
-              <View style={m.fieldWrap}>
-                <Text style={m.fieldLabel}>MARKA ADI <Text style={m.req}>*</Text></Text>
-                <TextInput style={m.fieldInput} value={name} onChangeText={t => { setName(t); setError(''); }}
-                  placeholder="örn. 3M, GC, Vita…" placeholderTextColor="#C7C7CC" />
+          <ScrollView style={{ padding: 16 }} showsVerticalScrollIndicator={false}>
+            <View style={sectionCard}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[800], marginBottom: 14 }}>Marka Bilgileri</Text>
+              <View style={{ marginBottom: 12 }}>
+                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>
+                  MARKA ADI <Text style={{ color: CHIP_TONES.danger.fg }}>*</Text>
+                </Text>
+                <TextInput style={fieldInput} value={name} onChangeText={t => { setName(t); setError(''); }}
+                  placeholder="orn. 3M, GC, Vita..." placeholderTextColor={DS.ink[400]} />
               </View>
-              <Field label="SATICI / DİSTRİBÜTÖR" value={supplier} onChange={setSupplier} placeholder="Türkiye distribütörü…" />
+              <BrandField label="SATICI / DISTRIBUTOR" value={supplier} onChange={setSupplier} placeholder="Turkiye distributoru..." />
             </View>
 
-            <View style={m.sectionCard}>
-              <Text style={m.sectionTitle}>İletişim Bilgileri</Text>
-              <Field label="İLETİŞİM KİŞİSİ" value={contactPerson} onChange={setContactPerson} placeholder="Ad Soyad…" />
+            <View style={sectionCard}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[800], marginBottom: 14 }}>Iletisim Bilgileri</Text>
+              <BrandField label="ILETISIM KISISI" value={contactPerson} onChange={setContactPerson} placeholder="Ad Soyad..." />
               <View style={{ flexDirection: 'row', gap: 12 }}>
-                <View style={[m.fieldWrap, { flex: 1 }]}>
-                  <Text style={m.fieldLabel}>TELEFON</Text>
-                  <TextInput style={m.fieldInput} value={phone} onChangeText={setPhone}
-                    placeholder="+90 5XX…" placeholderTextColor="#C7C7CC" keyboardType="phone-pad" />
+                <View style={{ flex: 1, marginBottom: 12 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>TELEFON</Text>
+                  <TextInput style={fieldInput} value={phone} onChangeText={setPhone}
+                    placeholder="+90 5XX..." placeholderTextColor={DS.ink[400]} keyboardType="phone-pad" />
                 </View>
-                <View style={[m.fieldWrap, { flex: 1 }]}>
-                  <Text style={m.fieldLabel}>E-POSTA</Text>
-                  <TextInput style={m.fieldInput} value={email} onChangeText={setEmail}
-                    placeholder="info@…" placeholderTextColor="#C7C7CC" keyboardType="email-address" />
+                <View style={{ flex: 1, marginBottom: 12 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>E-POSTA</Text>
+                  <TextInput style={fieldInput} value={email} onChangeText={setEmail}
+                    placeholder="info@..." placeholderTextColor={DS.ink[400]} keyboardType="email-address" />
                 </View>
               </View>
-              <Field label="WEB SİTESİ" value={website} onChange={setWebsite} placeholder="www.marka.com" />
+              <BrandField label="WEB SITESI" value={website} onChange={setWebsite} placeholder="www.marka.com" />
             </View>
 
-            <View style={[m.sectionCard, { marginBottom: 0 }]}>
-              <Text style={m.sectionTitle}>Ek Bilgiler</Text>
-              <View style={[m.fieldWrap, { marginBottom: 0 }]}>
-                <Text style={m.fieldLabel}>NOTLAR</Text>
-                <TextInput style={[m.fieldInput, { minHeight: 80, textAlignVertical: 'top', paddingTop: 10 }]}
+            <View style={{ ...sectionCard, marginBottom: 0 }}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[800], marginBottom: 14 }}>Ek Bilgiler</Text>
+              <View style={{ marginBottom: 0 }}>
+                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>NOTLAR</Text>
+                <TextInput style={{ ...fieldInput, height: undefined, minHeight: 80, textAlignVertical: 'top', paddingTop: 10 }}
                   value={notes} onChangeText={setNotes}
-                  placeholder="Sipariş koşulları, indirim oranı, teslimat süresi…"
-                  placeholderTextColor="#C7C7CC" multiline />
+                  placeholder="Siparis kosullari, indirim orani, teslimat suresi..."
+                  placeholderTextColor={DS.ink[400]} multiline />
               </View>
             </View>
 
             {error ? (
-              <View style={[m.errorBox, { marginTop: 12 }]}>
-                <AppIcon name="alert-circle" size={14} color="#DC2626" />
-                <Text style={m.errorText}>{error}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(217,75,75,0.08)', borderRadius: 14, padding: 12, marginTop: 12 }}>
+                <AlertCircle size={14} color={CHIP_TONES.danger.fg} strokeWidth={1.6} />
+                <Text style={{ fontSize: 13, color: CHIP_TONES.danger.fg, flex: 1 }}>{error}</Text>
               </View>
             ) : null}
           </ScrollView>
 
-          <View style={m.footer}>
+          <View style={modalFooter}>
             <View style={{ flex: 1 }} />
-            <TouchableOpacity style={m.cancelBtn} onPress={onClose}>
-              <Text style={m.cancelText}>İptal</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[m.saveBtn, { backgroundColor: accentColor }]} onPress={handleSave} disabled={saving}>
-              {saving ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={m.saveText}>{isEdit ? 'Güncelle' : 'Ekle'}</Text>}
-            </TouchableOpacity>
+            <Pressable style={ghostBtn} onPress={onClose}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[700] }}>Iptal</Text>
+            </Pressable>
+            <Pressable style={{ ...darkPillBtn, backgroundColor: accentColor }} onPress={handleSave} disabled={saving}>
+              {saving ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>{isEdit ? 'Guncelle' : 'Ekle'}</Text>}
+            </Pressable>
           </View>
         </View>
       </View>
@@ -1241,48 +1386,58 @@ function BrandsList({ accentColor, onReload }: { accentColor: string; onReload: 
 
   return (
     <>
-      <View style={ss.card}>
-        <View style={ss.cardHead}>
+      <View style={tableCard}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <View style={[ss.headIcon, { backgroundColor: accentColor + '12' }]}>
-              <AppIcon name="tag" size={14} color={accentColor} />
+            <View style={{ width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor + '12' }}>
+              <Tag size={14} color={accentColor} strokeWidth={1.6} />
             </View>
-            <Text style={ss.cardTitle}>Markalar</Text>
-            <View style={ss.countBadge}><Text style={ss.countText}>{brands.length}</Text></View>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: DS.ink[900] }}>Markalar</Text>
+            <View style={{ backgroundColor: DS.ink[100], borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: DS.ink[500] }}>{brands.length}</Text>
+            </View>
           </View>
-          <TouchableOpacity style={[ss.addBtn, { backgroundColor: accentColor }]}
-            onPress={() => setModal({ visible: true, brand: null })} activeOpacity={0.85}>
-            <AppIcon name="plus" size={13} color="#FFFFFF" />
-            <Text style={ss.addBtnText}>Ekle</Text>
-          </TouchableOpacity>
+          <Pressable
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 9999, backgroundColor: accentColor, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+            onPress={() => setModal({ visible: true, brand: null })}
+          >
+            <Plus size={13} color="#FFFFFF" strokeWidth={2} />
+            <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>Ekle</Text>
+          </Pressable>
         </View>
 
         {loading ? (
           <ActivityIndicator size="small" color={accentColor} style={{ marginVertical: 20 }} />
         ) : brands.length === 0 ? (
-          <Text style={ss.emptyText}>Henüz marka yok</Text>
+          <Text style={{ fontSize: 13, color: DS.ink[400], textAlign: 'center', paddingVertical: 24 }}>Henuz marka yok</Text>
         ) : (
           brands.map((b, idx) => {
             const isLast = idx === brands.length - 1;
             return (
-              <View key={b.id} style={[ss.row, !isLast && ss.rowBorder]}>
-                <View style={ss.brandIconBox}>
-                  <AppIcon name="tag" size={13} color="#64748B" />
+              <View key={b.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 20, paddingVertical: 14, ...(!isLast ? { borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' } : {}) }}>
+                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: DS.ink[50], alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Tag size={13} color={DS.ink[500]} strokeWidth={1.6} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={ss.rowName} numberOfLines={1}>{b.name}</Text>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[800] }} numberOfLines={1}>{b.name}</Text>
                   {(b.supplier || b.contact_person || b.phone) && (
-                    <Text style={ss.rowMeta} numberOfLines={1}>
-                      {[b.supplier, b.contact_person, b.phone].filter(Boolean).join(' · ')}
+                    <Text style={{ fontSize: 12, color: DS.ink[400], fontWeight: '500', marginTop: 1 }} numberOfLines={1}>
+                      {[b.supplier, b.contact_person, b.phone].filter(Boolean).join(' - ')}
                     </Text>
                   )}
                 </View>
-                <TouchableOpacity style={ss.iconBtn} onPress={() => setModal({ visible: true, brand: b })} activeOpacity={0.7}>
-                  <AppIcon name="edit-2" size={13} color="#64748B" />
-                </TouchableOpacity>
-                <TouchableOpacity style={[ss.iconBtn, { backgroundColor: '#FFF1F2' }]} onPress={() => handleDelete(b.id, b.name)} activeOpacity={0.7}>
-                  <AppIcon name="trash-2" size={13} color="#DC2626" />
-                </TouchableOpacity>
+                <Pressable
+                  style={{ width: 30, height: 30, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: DS.ink[50], ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                  onPress={() => setModal({ visible: true, brand: b })}
+                >
+                  <Pencil size={13} color={DS.ink[500]} strokeWidth={1.6} />
+                </Pressable>
+                <Pressable
+                  style={{ width: 30, height: 30, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: CHIP_TONES.danger.bg, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                  onPress={() => handleDelete(b.id, b.name)}
+                >
+                  <Trash2 size={13} color={CHIP_TONES.danger.fg} strokeWidth={1.6} />
+                </Pressable>
               </View>
             );
           })
@@ -1352,67 +1507,96 @@ function CategoryList({ accentColor, onReload }: { accentColor: string; onReload
   };
 
   return (
-    <View style={ss.card}>
-      <View style={ss.cardHead}>
+    <View style={tableCard}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <View style={[ss.headIcon, { backgroundColor: accentColor + '12' }]}>
-            <AppIcon name="grid" size={14} color={accentColor} />
+          <View style={{ width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor + '12' }}>
+            <Grid3x3 size={14} color={accentColor} strokeWidth={1.6} />
           </View>
-          <Text style={ss.cardTitle}>Kategoriler</Text>
-          <View style={ss.countBadge}><Text style={ss.countText}>{rows.length}</Text></View>
+          <Text style={{ fontSize: 15, fontWeight: '700', color: DS.ink[900] }}>Kategoriler</Text>
+          <View style={{ backgroundColor: DS.ink[100], borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2 }}>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: DS.ink[500] }}>{rows.length}</Text>
+          </View>
         </View>
-        <TouchableOpacity style={[ss.addBtn, { backgroundColor: accentColor }]}
-          onPress={() => { setAddMode(true); setAddText(''); setError(''); setEditName(null); }} activeOpacity={0.85}>
-          <AppIcon name="plus" size={13} color="#FFFFFF" />
-          <Text style={ss.addBtnText}>Ekle</Text>
-        </TouchableOpacity>
+        <Pressable
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 9999, backgroundColor: accentColor, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+          onPress={() => { setAddMode(true); setAddText(''); setError(''); setEditName(null); }}
+        >
+          <Plus size={13} color="#FFFFFF" strokeWidth={2} />
+          <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>Ekle</Text>
+        </Pressable>
       </View>
 
       {addMode && (
-        <View style={ss.inputRow}>
-          <TextInput style={ss.rowInput} value={addText} onChangeText={t => { setAddText(t); setError(''); }}
-            placeholder="Kategori adı…" placeholderTextColor="#C7C7CC" autoFocus onSubmitEditing={handleAdd} />
-          <TouchableOpacity style={[ss.rowActionBtn, { backgroundColor: accentColor }]} onPress={handleAdd} disabled={saving} activeOpacity={0.8}>
-            {saving ? <ActivityIndicator size="small" color="#FFF" /> : <AppIcon name="check" size={14} color="#FFFFFF" />}
-          </TouchableOpacity>
-          <TouchableOpacity style={ss.rowCancelBtn} onPress={() => { setAddMode(false); setError(''); }} activeOpacity={0.8}>
-            <AppIcon name="x" size={14} color="#94A3B8" />
-          </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)', backgroundColor: DS.ink[50] }}>
+          <TextInput
+            style={{ ...fieldInput, flex: 1 }}
+            value={addText} onChangeText={t => { setAddText(t); setError(''); }}
+            placeholder="Kategori adi..." placeholderTextColor={DS.ink[400]} autoFocus onSubmitEditing={handleAdd}
+          />
+          <Pressable
+            style={{ width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+            onPress={handleAdd} disabled={saving}
+          >
+            {saving ? <ActivityIndicator size="small" color="#FFF" /> : <Check size={14} color="#FFFFFF" strokeWidth={2} />}
+          </Pressable>
+          <Pressable
+            style={{ width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: DS.ink[100], ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+            onPress={() => { setAddMode(false); setError(''); }}
+          >
+            <X size={14} color={DS.ink[400]} strokeWidth={1.6} />
+          </Pressable>
         </View>
       )}
 
-      {error ? <Text style={ss.errorText}>{error}</Text> : null}
+      {error ? <Text style={{ fontSize: 12, color: CHIP_TONES.danger.fg, paddingHorizontal: 20, paddingBottom: 8 }}>{error}</Text> : null}
 
       {loading ? (
         <ActivityIndicator size="small" color={accentColor} style={{ marginVertical: 20 }} />
       ) : rows.length === 0 && !addMode ? (
-        <Text style={ss.emptyText}>Henüz kategori yok</Text>
+        <Text style={{ fontSize: 13, color: DS.ink[400], textAlign: 'center', paddingVertical: 24 }}>Henuz kategori yok</Text>
       ) : (
         rows.map((name, idx) => {
           const isEditing = editName === name;
           const isLast = idx === rows.length - 1;
           return (
-            <View key={name} style={[ss.row, !isLast && ss.rowBorder]}>
+            <View key={name} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 20, paddingVertical: 14, ...(!isLast ? { borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' } : {}) }}>
               {isEditing ? (
                 <>
-                  <TextInput style={[ss.rowInput, { flex: 1 }]} value={editText}
-                    onChangeText={t => { setEditText(t); setError(''); }} autoFocus onSubmitEditing={handleEdit} />
-                  <TouchableOpacity style={[ss.rowActionBtn, { backgroundColor: accentColor }]} onPress={handleEdit} disabled={saving} activeOpacity={0.8}>
-                    {saving ? <ActivityIndicator size="small" color="#FFF" /> : <AppIcon name="check" size={14} color="#FFFFFF" />}
-                  </TouchableOpacity>
-                  <TouchableOpacity style={ss.rowCancelBtn} onPress={() => { setEditName(null); setError(''); }} activeOpacity={0.8}>
-                    <AppIcon name="x" size={14} color="#94A3B8" />
-                  </TouchableOpacity>
+                  <TextInput
+                    style={{ ...fieldInput, flex: 1 }}
+                    value={editText}
+                    onChangeText={t => { setEditText(t); setError(''); }}
+                    autoFocus onSubmitEditing={handleEdit}
+                  />
+                  <Pressable
+                    style={{ width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                    onPress={handleEdit} disabled={saving}
+                  >
+                    {saving ? <ActivityIndicator size="small" color="#FFF" /> : <Check size={14} color="#FFFFFF" strokeWidth={2} />}
+                  </Pressable>
+                  <Pressable
+                    style={{ width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: DS.ink[100], ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                    onPress={() => { setEditName(null); setError(''); }}
+                  >
+                    <X size={14} color={DS.ink[400]} strokeWidth={1.6} />
+                  </Pressable>
                 </>
               ) : (
                 <>
-                  <Text style={ss.rowName} numberOfLines={1}>{name}</Text>
-                  <TouchableOpacity style={ss.iconBtn} onPress={() => { setEditName(name); setEditText(name); setError(''); setAddMode(false); }} activeOpacity={0.7}>
-                    <AppIcon name="edit-2" size={13} color="#64748B" />
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[ss.iconBtn, { backgroundColor: '#FFF1F2' }]} onPress={() => handleDelete(name)} activeOpacity={0.7}>
-                    <AppIcon name="trash-2" size={13} color="#DC2626" />
-                  </TouchableOpacity>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[800], flex: 1 }} numberOfLines={1}>{name}</Text>
+                  <Pressable
+                    style={{ width: 30, height: 30, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: DS.ink[50], ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                    onPress={() => { setEditName(name); setEditText(name); setError(''); setAddMode(false); }}
+                  >
+                    <Pencil size={13} color={DS.ink[500]} strokeWidth={1.6} />
+                  </Pressable>
+                  <Pressable
+                    style={{ width: 30, height: 30, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: CHIP_TONES.danger.bg, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                    onPress={() => handleDelete(name)}
+                  >
+                    <Trash2 size={13} color={CHIP_TONES.danger.fg} strokeWidth={1.6} />
+                  </Pressable>
                 </>
               )}
             </View>
@@ -1434,38 +1618,1586 @@ function StockSettings({ accentColor, onReload }: { accentColor: string; onReloa
   );
 }
 
-const ss = StyleSheet.create({
-  card:         { backgroundColor: '#FFFFFF', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)', overflow: 'hidden', ...(Platform.OS === 'web' ? ({ boxShadow: '0 8px 24px rgba(0,0,0,0.15)' } as any) : { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 4 }) },
-  cardHead:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F8FAFC' },
-  headIcon:     { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  cardTitle:    { fontSize: 15, fontWeight: '700', color: '#0F172A' },
-  countBadge:   { backgroundColor: '#F1F5F9', borderRadius: 100, paddingHorizontal: 8, paddingVertical: 2 },
-  countText:    { fontSize: 11, fontWeight: '700', color: '#64748B' },
-  addBtn:       { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8 },
-  addBtnText:   { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
-  inputRow:     { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', backgroundColor: '#F8FAFC' },
-  rowInput:     { flex: 1, fontSize: 14, color: '#0F172A', paddingVertical: 8, paddingHorizontal: 12, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, backgroundColor: '#FFFFFF', outlineStyle: 'none' } as any,
-  rowActionBtn: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  rowCancelBtn: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1F5F9' },
-  errorText:    { fontSize: 12, color: '#DC2626', paddingHorizontal: 16, paddingBottom: 8 },
-  emptyText:    { fontSize: 13, color: '#94A3B8', textAlign: 'center', paddingVertical: 24 },
-  row:          { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 12 },
-  rowBorder:    { borderBottomWidth: 1, borderBottomColor: '#F8FAFC' },
-  brandIconBox: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#F8FAFC', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  rowName:      { fontSize: 14, fontWeight: '600', color: '#1E293B' },
-  rowMeta:      { fontSize: 12, color: '#94A3B8', fontWeight: '500', marginTop: 1 },
-  iconBtn:      { width: 30, height: 30, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8FAFC' },
-});
+// ─── SuggestionTab ──────────────────────────────────────────────────────────
 
-// ─── StockScreen ──────────────────────────────────────────────────────────────
+interface SuggestionItem {
+  item: StockItem;
+  missing: number;
+  estimatedCost: number;
+  dailyConsumption: number;
+  daysRemaining: number | null; // null = infinity
+}
 
-interface Props { accentColor?: string; }
+function SuggestionsTab({
+  items,
+  accentColor,
+  onMovement,
+}: {
+  items: StockItem[];
+  accentColor: string;
+  onMovement: (item: StockItem, defaultType: MovType) => void;
+}) {
+  const [consumptionMap, setConsumptionMap] = useState<Record<string, number>>({});
+  const [loadingConsumption, setLoadingConsumption] = useState(true);
 
-export function StockScreen({ accentColor = '#0F172A' }: Props) {
+  // Fetch 30-day consumption data
+  useEffect(() => {
+    (async () => {
+      setLoadingConsumption(true);
+      const since = new Date();
+      since.setDate(since.getDate() - 30);
+      const { data } = await supabase
+        .from('stock_movements')
+        .select('item_name, quantity, type')
+        .in('type', ['OUT', 'WASTE'])
+        .gte('created_at', since.toISOString());
+
+      const map: Record<string, number> = {};
+      for (const m of (data ?? []) as any[]) {
+        const key = m.item_name ?? '';
+        if (!key) continue;
+        map[key] = (map[key] ?? 0) + Number(m.quantity ?? 0);
+      }
+      setConsumptionMap(map);
+      setLoadingConsumption(false);
+    })();
+  }, [items]);
+
+  // Build suggestion list
+  const suggestions: SuggestionItem[] = items
+    .filter(i => i.quantity < i.min_quantity || i.quantity === 0)
+    .map(item => {
+      const missing = Math.max(0, item.min_quantity - item.quantity);
+      const estimatedCost = missing * (item.unit_cost ?? 0);
+      const totalOut30d = consumptionMap[item.name] ?? 0;
+      const dailyConsumption = totalOut30d / 30;
+      const daysRemaining = dailyConsumption > 0 ? item.quantity / dailyConsumption : null;
+      return { item, missing, estimatedCost, dailyConsumption, daysRemaining };
+    })
+    .sort((a, b) => {
+      // empty items first
+      if (a.item.quantity === 0 && b.item.quantity !== 0) return -1;
+      if (a.item.quantity !== 0 && b.item.quantity === 0) return 1;
+      // then by quantity/min_quantity ascending
+      const ratioA = a.item.min_quantity > 0 ? a.item.quantity / a.item.min_quantity : 0;
+      const ratioB = b.item.min_quantity > 0 ? b.item.quantity / b.item.min_quantity : 0;
+      return ratioA - ratioB;
+    });
+
+  const totalEstimatedCost = suggestions.reduce((sum, s) => sum + s.estimatedCost, 0);
+
+  if (loadingConsumption) {
+    return <ActivityIndicator size="large" color={accentColor} style={{ marginTop: 60 }} />;
+  }
+
+  if (suggestions.length === 0) {
+    return (
+      <View style={{ alignItems: 'center', paddingVertical: 50, gap: 10 }}>
+        <CheckCircle size={44} color={CHIP_TONES.success.fg} strokeWidth={1.2} />
+        <Text style={{ fontSize: 16, fontWeight: '700', color: DS.ink[900] }}>Tum stoklar yeterli</Text>
+        <Text style={{ fontSize: 13, color: DS.ink[400], textAlign: 'center' }}>Minimum seviyenin altinda urun bulunmuyor.</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ gap: 16 }}>
+      {/* Summary card */}
+      <View style={{ ...cardSolid, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+        <View style={{ width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: CHIP_TONES.warning.bg }}>
+          <ShoppingCart size={22} color={CHIP_TONES.warning.fg} strokeWidth={1.6} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 15, fontWeight: '700', color: DS.ink[900] }}>
+            {suggestions.length} urun siparis gerekli
+          </Text>
+          <Text style={{ fontSize: 13, color: DS.ink[500], marginTop: 2 }}>
+            Tahmini toplam: {totalEstimatedCost.toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 0 })}
+          </Text>
+        </View>
+      </View>
+
+      {/* Table */}
+      <View style={tableCard}>
+        {/* Header row */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: '#FAFAFA', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' }}>
+          <Text style={{ ...colHeader, flex: 2.5 }}>URUN</Text>
+          <Text style={{ ...colHeader, flex: 0.8, textAlign: 'center' }}>MEVCUT</Text>
+          <Text style={{ ...colHeader, flex: 0.8, textAlign: 'center' }}>MINIMUM</Text>
+          <Text style={{ ...colHeader, flex: 0.8, textAlign: 'center' }}>EKSIK</Text>
+          <Text style={{ ...colHeader, flex: 1, textAlign: 'center' }}>B. MALIYET</Text>
+          <Text style={{ ...colHeader, flex: 1, textAlign: 'center' }}>T. MALIYET</Text>
+          <Text style={{ ...colHeader, flex: 1, textAlign: 'center' }}>TAH. BITIS</Text>
+          <Text style={{ ...colHeader, flex: 0.8, textAlign: 'center' }}>DURUM</Text>
+          <View style={{ width: 90 }} />
+        </View>
+
+        {/* Data rows */}
+        {suggestions.map((s, idx) => {
+          const isLast = idx === suggestions.length - 1;
+          const isEmpty = s.item.quantity === 0;
+          return (
+            <View
+              key={s.item.id}
+              style={{
+                flexDirection: 'row', alignItems: 'center',
+                paddingHorizontal: 20, paddingVertical: 14,
+                ...(!isLast ? { borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' } : {}),
+              }}
+            >
+              <View style={{ flex: 2.5 }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900], letterSpacing: -0.1 }} numberOfLines={1}>
+                  {s.item.name}
+                </Text>
+                {(s.item.brand || s.item.unit) && (
+                  <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }} numberOfLines={1}>
+                    {[s.item.brand, s.item.unit].filter(Boolean).join(' - ')}
+                  </Text>
+                )}
+              </View>
+              <Text style={{ flex: 0.8, textAlign: 'center', fontSize: 13, fontWeight: isEmpty ? '700' : '500', color: isEmpty ? CHIP_TONES.danger.fg : DS.ink[700] }}>
+                {s.item.quantity}
+              </Text>
+              <Text style={{ flex: 0.8, textAlign: 'center', fontSize: 13, color: DS.ink[500] }}>
+                {s.item.min_quantity}
+              </Text>
+              <Text style={{ flex: 0.8, textAlign: 'center', fontSize: 13, fontWeight: '700', color: CHIP_TONES.danger.fg }}>
+                {s.missing}
+              </Text>
+              <Text style={{ flex: 1, textAlign: 'center', fontSize: 12, color: DS.ink[500] }}>
+                {s.item.unit_cost != null ? `${s.item.unit_cost.toLocaleString('tr-TR')} TL` : '-'}
+              </Text>
+              <Text style={{ flex: 1, textAlign: 'center', fontSize: 12, fontWeight: '600', color: DS.ink[900] }}>
+                {s.estimatedCost > 0 ? `${s.estimatedCost.toLocaleString('tr-TR')} TL` : '-'}
+              </Text>
+              <View style={{ flex: 1, alignItems: 'center' }}>
+                {s.daysRemaining === null ? (
+                  <Text style={{ fontSize: 16, color: DS.ink[400] }}>{'∞'}</Text>
+                ) : (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                    <Clock size={11} color={s.daysRemaining < 3 ? CHIP_TONES.danger.fg : s.daysRemaining < 7 ? CHIP_TONES.warning.fg : DS.ink[500]} strokeWidth={1.6} />
+                    <Text style={{
+                      fontSize: 12, fontWeight: '600',
+                      color: s.daysRemaining < 3 ? CHIP_TONES.danger.fg : s.daysRemaining < 7 ? CHIP_TONES.warning.fg : DS.ink[700],
+                    }}>
+                      {Math.round(s.daysRemaining)} gun
+                    </Text>
+                  </View>
+                )}
+              </View>
+              <View style={{ flex: 0.8, alignItems: 'center' }}>
+                <StatusBadge quantity={s.item.quantity} min={s.item.min_quantity} />
+              </View>
+              <View style={{ width: 90, alignItems: 'flex-end' }}>
+                <Pressable
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 4,
+                    paddingHorizontal: 10, paddingVertical: 6,
+                    borderRadius: 9999, backgroundColor: accentColor,
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                  }}
+                  onPress={() => onMovement(s.item, 'IN')}
+                >
+                  <ShoppingCart size={11} color="#FFFFFF" strokeWidth={2} />
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>Siparis</Text>
+                </Pressable>
+              </View>
+            </View>
+          );
+        })}
+      </View>
+
+      <View style={{ height: 24 }} />
+    </View>
+  );
+}
+
+// ─── AnalyticsTab ────────────────────────────────────────────────────────────
+
+type AnalyticsRange = 'thisWeek' | 'thisMonth' | 'thisYear';
+
+const ANALYTICS_RANGES: { key: AnalyticsRange; label: string }[] = [
+  { key: 'thisWeek',  label: 'Bu Hafta' },
+  { key: 'thisMonth', label: 'Bu Ay' },
+  { key: 'thisYear',  label: 'Bu Yıl' },
+];
+
+interface TechUsageRow {
+  user_id: string; user_name: string;
+  used_qty: number; used_cost: number;
+  waste_qty: number; waste_cost: number;
+  total_qty: number; efficiency_pct: number | null;
+}
+
+interface WasteByMat {
+  item_id: string; item_name: string; type: string | null;
+  waste_qty: number; waste_cost: number; unit: string | null;
+}
+
+interface DailyConsumption {
+  day: string;
+  out_qty: number;
+  waste_qty: number;
+  total_qty: number;
+}
+
+function getAnalyticsRange(r: AnalyticsRange): { from: string; to: string } {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = now.getMonth();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  if (r === 'thisWeek') {
+    const day = now.getDay() || 7;
+    const start = new Date(now); start.setDate(now.getDate() - day + 1);
+    return { from: ymd(start), to: ymd(now) };
+  }
+  if (r === 'thisMonth') return { from: ymd(new Date(yyyy, mm, 1)), to: ymd(new Date(yyyy, mm + 1, 0)) };
+  return { from: `${yyyy}-01-01`, to: `${yyyy}-12-31` };
+}
+
+const fmt = (n: number) => n.toLocaleString('tr-TR', { maximumFractionDigits: 0 });
+const fmt1 = (n: number) => n.toLocaleString('tr-TR', { maximumFractionDigits: 1 });
+
+function AnalyticsTab({ accentColor }: { accentColor: string }) {
+  const { profile } = useAuthStore();
+  const { width } = useWindowDimensions();
+  const isWide = width >= 900;
+  const labId = (profile as any)?.lab_id ?? profile?.id ?? null;
+
+  const [range, setRange] = useState<AnalyticsRange>('thisMonth');
+  const [techRows, setTechRows] = useState<TechUsageRow[]>([]);
+  const [wasteRows, setWasteRows] = useState<WasteByMat[]>([]);
+  const [dailyData, setDailyData] = useState<DailyConsumption[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!labId) return;
+    let cancelled = false;
+    setLoading(true);
+    const { from, to } = getAnalyticsRange(range);
+
+    Promise.all([
+      supabase.rpc('report_technician_usage', { p_lab_id: labId, p_from: from, p_to: to }),
+      supabase.rpc('report_material_waste', { p_lab_id: labId, p_from: from, p_to: to }),
+      supabase
+        .from('stock_movements')
+        .select('type, quantity, created_at')
+        .in('type', ['OUT', 'WASTE'])
+        .gte('created_at', from)
+        .lte('created_at', to + 'T23:59:59')
+        .order('created_at'),
+    ]).then(([techRes, wasteRes, movRes]) => {
+      if (cancelled) return;
+      setTechRows((techRes.data ?? []) as TechUsageRow[]);
+      setWasteRows((wasteRes.data ?? []) as WasteByMat[]);
+
+      // Aggregate movements by day
+      const dayMap = new Map<string, { out: number; waste: number }>();
+      for (const m of (movRes.data ?? []) as any[]) {
+        const day = (m.created_at as string).slice(0, 10);
+        if (!dayMap.has(day)) dayMap.set(day, { out: 0, waste: 0 });
+        const entry = dayMap.get(day)!;
+        if (m.type === 'OUT') entry.out += Number(m.quantity ?? 0);
+        else entry.waste += Number(m.quantity ?? 0);
+      }
+      const daily = Array.from(dayMap.entries())
+        .map(([day, v]) => ({ day, out_qty: v.out, waste_qty: v.waste, total_qty: v.out + v.waste }))
+        .sort((a, b) => a.day.localeCompare(b.day));
+      setDailyData(daily);
+      setLoading(false);
+    });
+
+    return () => { cancelled = true; };
+  }, [labId, range]);
+
+  // Aggregates
+  const totals = useMemo(() => {
+    const totalUsed = techRows.reduce((s, r) => s + r.used_qty, 0);
+    const totalUsedCost = techRows.reduce((s, r) => s + r.used_cost, 0);
+    const totalWaste = wasteRows.reduce((s, r) => s + r.waste_qty, 0);
+    const totalWasteCost = wasteRows.reduce((s, r) => s + r.waste_cost, 0);
+    const avgEff = techRows.filter(r => r.efficiency_pct !== null).length > 0
+      ? techRows.filter(r => r.efficiency_pct !== null).reduce((s, r) => s + (r.efficiency_pct ?? 0), 0) /
+        techRows.filter(r => r.efficiency_pct !== null).length
+      : null;
+    const avgDailyConsumption = dailyData.length > 0
+      ? dailyData.reduce((s, d) => s + d.total_qty, 0) / dailyData.length
+      : 0;
+    return { totalUsed, totalUsedCost, totalWaste, totalWasteCost, avgEff, avgDailyConsumption };
+  }, [techRows, wasteRows, dailyData]);
+
+  // Bar chart max
+  const maxDaily = useMemo(() => Math.max(...dailyData.map(d => d.total_qty), 1), [dailyData]);
+
+  if (loading) {
+    return (
+      <View style={{ paddingVertical: 60, alignItems: 'center' }}>
+        <ActivityIndicator color={DS.ink[900]} />
+        <Text style={{ fontSize: 13, color: DS.ink[400], marginTop: 12 }}>Analiz yükleniyor…</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ gap: 16 }}>
+      {/* ── Range pills ────────────────────────────────────────── */}
+      <View style={{ flexDirection: 'row', gap: 6 }}>
+        {ANALYTICS_RANGES.map(opt => {
+          const active = range === opt.key;
+          return (
+            <Pressable
+              key={opt.key}
+              onPress={() => setRange(opt.key)}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 6,
+                paddingHorizontal: active ? 14 : 12, paddingVertical: 6,
+                borderRadius: 9999,
+                backgroundColor: active ? DS.ink[900] : '#FFFFFF',
+                borderWidth: active ? 0 : 1, borderColor: DS.ink[300],
+                // @ts-ignore web
+                cursor: 'pointer',
+              }}
+            >
+              {active && <Calendar size={11} color="#FFFFFF" strokeWidth={2} />}
+              <Text style={{ fontSize: 12, fontWeight: '500', color: active ? '#FFFFFF' : DS.ink[500] }}>
+                {opt.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {/* ── KPI Summary ────────────────────────────────────────── */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+        <View style={{ ...cardSolid, flex: 1, minWidth: 140, padding: 14, gap: 4 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Layers size={13} color={DS.ink[500]} strokeWidth={1.8} />
+            <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[400] }}>Toplam Kullanım</Text>
+          </View>
+          <Text style={{ fontSize: 18, fontWeight: '600', color: DS.ink[900] }}>{fmt(totals.totalUsed)}</Text>
+          <Text style={{ fontSize: 11, color: DS.ink[400] }}>{fmt(totals.totalUsedCost)} ₺</Text>
+        </View>
+        <View style={{ ...cardSolid, flex: 1, minWidth: 140, padding: 14, gap: 4 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Flame size={13} color={CHIP_TONES.danger.fg} strokeWidth={1.8} />
+            <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[400] }}>Toplam Fire</Text>
+          </View>
+          <Text style={{ fontSize: 18, fontWeight: '600', color: CHIP_TONES.danger.fg }}>{fmt(totals.totalWaste)}</Text>
+          <Text style={{ fontSize: 11, color: CHIP_TONES.danger.fg }}>−{fmt(totals.totalWasteCost)} ₺</Text>
+        </View>
+        <View style={{ ...cardSolid, flex: 1, minWidth: 140, padding: 14, gap: 4 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Zap size={13} color={CHIP_TONES.info.fg} strokeWidth={1.8} />
+            <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[400] }}>Ort. Verim</Text>
+          </View>
+          <Text style={{ fontSize: 18, fontWeight: '600', color: totals.avgEff !== null ? (totals.avgEff >= 95 ? CHIP_TONES.success.fg : totals.avgEff >= 85 ? CHIP_TONES.warning.fg : CHIP_TONES.danger.fg) : DS.ink[400] }}>
+            {totals.avgEff !== null ? `%${fmt1(totals.avgEff)}` : '—'}
+          </Text>
+        </View>
+        <View style={{ ...cardSolid, flex: 1, minWidth: 140, padding: 14, gap: 4 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <TrendingDown size={13} color={DS.ink[500]} strokeWidth={1.8} />
+            <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[400] }}>Günlük Ort. Tüketim</Text>
+          </View>
+          <Text style={{ fontSize: 18, fontWeight: '600', color: DS.ink[900] }}>{fmt1(totals.avgDailyConsumption)}</Text>
+        </View>
+      </View>
+
+      {/* ── Daily Consumption Bar Chart ────────────────────────── */}
+      {dailyData.length > 0 && (
+        <View style={{ ...cardSolid, padding: 20, gap: 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <BarChart3 size={15} color={DS.ink[700]} strokeWidth={1.8} />
+              <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }}>Günlük Tüketim</Text>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: CHIP_TONES.info.fg }} />
+                <Text style={{ fontSize: 10, color: DS.ink[400] }}>Kullanım</Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: CHIP_TONES.danger.fg }} />
+                <Text style={{ fontSize: 10, color: DS.ink[400] }}>Fire</Text>
+              </View>
+            </View>
+          </View>
+
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 3, height: 120, paddingTop: 8 }}>
+              {dailyData.map((d, i) => {
+                const outH = (d.out_qty / maxDaily) * 100;
+                const wasteH = (d.waste_qty / maxDaily) * 100;
+                const dayLabel = d.day.slice(5); // MM-DD
+                return (
+                  <View key={d.day} style={{ alignItems: 'center', gap: 4, width: isWide ? 28 : 22 }}>
+                    <View style={{ height: 100, justifyContent: 'flex-end', gap: 1 }}>
+                      {d.waste_qty > 0 && (
+                        <View style={{
+                          width: isWide ? 18 : 14, height: Math.max(wasteH, 2),
+                          backgroundColor: CHIP_TONES.danger.fg, borderRadius: 3,
+                        }} />
+                      )}
+                      <View style={{
+                        width: isWide ? 18 : 14, height: Math.max(outH, 2),
+                        backgroundColor: CHIP_TONES.info.fg, borderRadius: 3,
+                      }} />
+                    </View>
+                    <Text style={{ fontSize: 8, color: DS.ink[400], transform: [{ rotate: '-45deg' }] }}>
+                      {dayLabel}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </ScrollView>
+        </View>
+      )}
+
+      {/* ── Two-column: Technician Usage + Material Waste ──────── */}
+      <View style={{ flexDirection: isWide ? 'row' : 'column', gap: 12 }}>
+
+        {/* Teknisyen Bazlı Kullanım */}
+        <View style={{ ...tableCard, flex: 1 }}>
+          <View style={{
+            flexDirection: 'row', alignItems: 'center', gap: 8,
+            paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12,
+          }}>
+            <Users size={14} color={DS.ink[700]} strokeWidth={1.8} />
+            <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }}>Teknisyen Kullanımı</Text>
+          </View>
+
+          {/* Header */}
+          <View style={{
+            flexDirection: 'row', alignItems: 'center',
+            paddingHorizontal: 20, paddingVertical: 8,
+            backgroundColor: '#FAFAFA',
+            borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)',
+          }}>
+            <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500] }}>TEKNİSYEN</Text>
+            <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], textAlign: 'right' }}>KULLANIM</Text>
+            <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], textAlign: 'right' }}>FİRE</Text>
+            <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], textAlign: 'center' }}>VERİM</Text>
+          </View>
+
+          {techRows.length === 0 ? (
+            <View style={{ paddingVertical: 30, alignItems: 'center' }}>
+              <Text style={{ fontSize: 13, color: DS.ink[400] }}>Bu dönemde veri yok</Text>
+            </View>
+          ) : (
+            techRows
+              .sort((a, b) => (a.efficiency_pct ?? 100) - (b.efficiency_pct ?? 100))
+              .map((row, i) => {
+                const eff = row.efficiency_pct;
+                const effChip = eff === null ? CHIP_TONES.neutral
+                  : eff < 85 ? CHIP_TONES.danger
+                  : eff < 95 ? CHIP_TONES.warning
+                  : CHIP_TONES.success;
+                return (
+                  <View key={row.user_id} style={{
+                    flexDirection: 'row', alignItems: 'center',
+                    paddingHorizontal: 20, paddingVertical: 12,
+                    borderBottomWidth: i < techRows.length - 1 ? 1 : 0,
+                    borderBottomColor: 'rgba(0,0,0,0.04)',
+                  }}>
+                    <View style={{ flex: 2 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>{row.user_name}</Text>
+                    </View>
+                    <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>{fmt1(row.used_qty)}</Text>
+                      <Text style={{ fontSize: 10, color: DS.ink[400] }}>{fmt(row.used_cost)} ₺</Text>
+                    </View>
+                    <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: row.waste_qty > 0 ? CHIP_TONES.danger.fg : DS.ink[900] }}>
+                        {fmt1(row.waste_qty)}
+                      </Text>
+                      {row.waste_cost > 0 && (
+                        <Text style={{ fontSize: 10, color: CHIP_TONES.danger.fg }}>−{fmt(row.waste_cost)} ₺</Text>
+                      )}
+                    </View>
+                    <View style={{ flex: 1, alignItems: 'center' }}>
+                      {eff !== null ? (
+                        <View style={{
+                          paddingHorizontal: 10, paddingVertical: 4,
+                          borderRadius: 9999, backgroundColor: effChip.bg,
+                        }}>
+                          <Text style={{ fontSize: 12, fontWeight: '600', color: effChip.fg }}>%{fmt1(eff)}</Text>
+                        </View>
+                      ) : (
+                        <Text style={{ fontSize: 11, color: DS.ink[400] }}>—</Text>
+                      )}
+                    </View>
+                  </View>
+                );
+              })
+          )}
+        </View>
+
+        {/* Materyal Bazlı Fire */}
+        <View style={{ ...tableCard, flex: 1 }}>
+          <View style={{
+            flexDirection: 'row', alignItems: 'center', gap: 8,
+            paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12,
+          }}>
+            <Flame size={14} color={CHIP_TONES.danger.fg} strokeWidth={1.8} />
+            <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }}>Materyal Bazlı Fire</Text>
+          </View>
+
+          {/* Header */}
+          <View style={{
+            flexDirection: 'row', alignItems: 'center',
+            paddingHorizontal: 20, paddingVertical: 8,
+            backgroundColor: '#FAFAFA',
+            borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)',
+          }}>
+            <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500] }}>MATERYAL</Text>
+            <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], textAlign: 'right' }}>MİKTAR</Text>
+            <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], textAlign: 'right' }}>MALİYET</Text>
+          </View>
+
+          {wasteRows.length === 0 ? (
+            <View style={{ paddingVertical: 30, alignItems: 'center' }}>
+              <Text style={{ fontSize: 13, color: DS.ink[400] }}>Bu dönemde fire kaydı yok</Text>
+            </View>
+          ) : (
+            wasteRows
+              .sort((a, b) => b.waste_cost - a.waste_cost)
+              .map((row, i) => (
+                <View key={row.item_id} style={{
+                  flexDirection: 'row', alignItems: 'center',
+                  paddingHorizontal: 20, paddingVertical: 12,
+                  borderBottomWidth: i < wasteRows.length - 1 ? 1 : 0,
+                  borderBottomColor: 'rgba(0,0,0,0.04)',
+                }}>
+                  <View style={{ flex: 2 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>{row.item_name}</Text>
+                    {row.type && (
+                      <Text style={{ fontSize: 10, color: DS.ink[400], marginTop: 1 }}>{row.type}</Text>
+                    )}
+                  </View>
+                  <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: CHIP_TONES.danger.fg }}>
+                      {fmt1(row.waste_qty)}{row.unit ? ` ${row.unit}` : ''}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: CHIP_TONES.danger.fg }}>
+                      −{fmt(row.waste_cost)} ₺
+                    </Text>
+                  </View>
+                </View>
+              ))
+          )}
+
+          {/* Total footer */}
+          {wasteRows.length > 0 && (
+            <View style={{
+              flexDirection: 'row', alignItems: 'center',
+              paddingHorizontal: 20, paddingVertical: 12,
+              backgroundColor: '#FAFAFA',
+              borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
+            }}>
+              <Text style={{ flex: 2, fontSize: 11, fontWeight: '700', color: DS.ink[700], letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                TOPLAM ({wasteRows.length} materyal)
+              </Text>
+              <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: CHIP_TONES.danger.fg }}>
+                  {fmt1(totals.totalWaste)}
+                </Text>
+              </View>
+              <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: CHIP_TONES.danger.fg }}>
+                  −{fmt(totals.totalWasteCost)} ₺
+                </Text>
+              </View>
+            </View>
+          )}
+        </View>
+      </View>
+
+      <View style={{ height: 24 }} />
+    </View>
+  );
+}
+
+// ─── ForecastTab ─────────────────────────────────────────────────────────────
+
+interface ForecastRow {
+  item: StockItem;
+  dailyRate: number;       // avg daily consumption
+  daysRemaining: number | null;
+  depletionDate: Date | null;
+  weeklyTrend: number[];   // last 4 weeks consumption
+  trendDirection: 'up' | 'down' | 'stable';
+  upcomingNeed: number;    // estimated need from upcoming orders
+}
+
+function ForecastTab({ items, accentColor }: { items: StockItem[]; accentColor: string }) {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
 
-  const [tab, setTab] = useState<'dashboard' | 'list' | 'movements' | 'settings'>('dashboard');
+  const [movements, setMovements] = useState<{ item_name: string; item_id: string; quantity: number; created_at: string }[]>([]);
+  const [upcomingOrders, setUpcomingOrders] = useState<{ case_type: string; tooth_count: number }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [rangeDays, setRangeDays] = useState(30);
+  const [filterRisk, setFilterRisk] = useState<'all' | 'critical' | 'warning' | 'safe'>('all');
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const since = new Date();
+      since.setDate(since.getDate() - 90); // Always fetch 90 days for trend calc
+
+      const [movRes, ordRes] = await Promise.all([
+        supabase
+          .from('stock_movements')
+          .select('item_name, item_id, quantity, created_at')
+          .in('type', ['OUT', 'WASTE'])
+          .gte('created_at', since.toISOString()),
+        supabase
+          .from('work_orders')
+          .select('case_type, tooth_numbers')
+          .in('status', ['beklemede', 'aktif', 'uretimde'])
+          .gte('delivery_date', new Date().toISOString()),
+      ]);
+
+      if (movRes.data) {
+        setMovements((movRes.data as any[]).map(m => ({
+          item_name: m.item_name ?? '',
+          item_id: m.item_id ?? '',
+          quantity: Number(m.quantity ?? 0),
+          created_at: m.created_at,
+        })));
+      }
+
+      if (ordRes.data) {
+        setUpcomingOrders((ordRes.data as any[]).map(o => ({
+          case_type: o.case_type ?? '',
+          tooth_count: Array.isArray(o.tooth_numbers) ? o.tooth_numbers.length : 0,
+        })));
+      }
+      setLoading(false);
+    })();
+  }, []);
+
+  const forecasts = useMemo(() => {
+    const now = Date.now();
+    const msPerDay = 86400000;
+    const cutoff = now - rangeDays * msPerDay;
+
+    // Group movements by item
+    const byItem = new Map<string, typeof movements>();
+    for (const m of movements) {
+      const key = m.item_id || m.item_name;
+      if (!byItem.has(key)) byItem.set(key, []);
+      byItem.get(key)!.push(m);
+    }
+
+    // Upcoming order material needs — match case_type to item.type
+    const orderNeedByType = new Map<string, number>();
+    for (const o of upcomingOrders) {
+      if (!o.case_type) continue;
+      const key = o.case_type.toLowerCase();
+      orderNeedByType.set(key, (orderNeedByType.get(key) ?? 0) + o.tooth_count);
+    }
+
+    const rows: ForecastRow[] = items.map(item => {
+      const itemMovs = byItem.get(item.id) ?? byItem.get(item.name) ?? [];
+
+      // Daily rate for selected range
+      const rangeMovs = itemMovs.filter(m => new Date(m.created_at).getTime() >= cutoff);
+      const totalQty = rangeMovs.reduce((s, m) => s + m.quantity, 0);
+      const dailyRate = rangeDays > 0 ? totalQty / rangeDays : 0;
+
+      // Days remaining
+      const daysRemaining = dailyRate > 0 ? item.quantity / dailyRate : null;
+      const depletionDate = daysRemaining != null ? new Date(now + daysRemaining * msPerDay) : null;
+
+      // Weekly trend (last 4 weeks)
+      const weeklyTrend: number[] = [];
+      for (let w = 3; w >= 0; w--) {
+        const wStart = now - (w + 1) * 7 * msPerDay;
+        const wEnd = now - w * 7 * msPerDay;
+        const wQty = itemMovs
+          .filter(m => { const t = new Date(m.created_at).getTime(); return t >= wStart && t < wEnd; })
+          .reduce((s, m) => s + m.quantity, 0);
+        weeklyTrend.push(wQty);
+      }
+
+      // Trend direction
+      const recentAvg = (weeklyTrend[2] + weeklyTrend[3]) / 2;
+      const olderAvg = (weeklyTrend[0] + weeklyTrend[1]) / 2;
+      const trendDirection: 'up' | 'down' | 'stable' =
+        olderAvg > 0 && recentAvg > olderAvg * 1.15 ? 'up' :
+        olderAvg > 0 && recentAvg < olderAvg * 0.85 ? 'down' : 'stable';
+
+      // Upcoming order need
+      let upcomingNeed = 0;
+      if (item.type && item.units_per_tooth) {
+        const teeth = orderNeedByType.get(item.type.toLowerCase()) ?? 0;
+        upcomingNeed = teeth * item.units_per_tooth;
+      }
+
+      return { item, dailyRate, daysRemaining, depletionDate, weeklyTrend, trendDirection, upcomingNeed };
+    });
+
+    // Sort by urgency
+    rows.sort((a, b) => {
+      if (a.daysRemaining === null && b.daysRemaining === null) return 0;
+      if (a.daysRemaining === null) return 1;
+      if (b.daysRemaining === null) return -1;
+      return a.daysRemaining - b.daysRemaining;
+    });
+
+    return rows;
+  }, [items, movements, upcomingOrders, rangeDays]);
+
+  const filtered = useMemo(() => {
+    if (filterRisk === 'all') return forecasts;
+    return forecasts.filter(f => {
+      if (filterRisk === 'critical') return f.daysRemaining !== null && f.daysRemaining <= 7;
+      if (filterRisk === 'warning')  return f.daysRemaining !== null && f.daysRemaining > 7 && f.daysRemaining <= 30;
+      return f.daysRemaining === null || f.daysRemaining > 30;
+    });
+  }, [forecasts, filterRisk]);
+
+  // KPI
+  const criticalCount = forecasts.filter(f => f.daysRemaining !== null && f.daysRemaining <= 7).length;
+  const warningCount = forecasts.filter(f => f.daysRemaining !== null && f.daysRemaining > 7 && f.daysRemaining <= 30).length;
+  const safeCount = forecasts.filter(f => f.daysRemaining === null || f.daysRemaining > 30).length;
+  const avgDaysLeft = (() => {
+    const vals = forecasts.filter(f => f.daysRemaining !== null).map(f => f.daysRemaining!);
+    return vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
+  })();
+
+  if (loading) return <ActivityIndicator size="large" color={accentColor} style={{ marginTop: 60 }} />;
+
+  const getRiskColor = (days: number | null) => {
+    if (days === null) return DS.ink[400];
+    if (days <= 7) return CHIP_TONES.danger.fg;
+    if (days <= 30) return CHIP_TONES.warning.fg;
+    return CHIP_TONES.success.fg;
+  };
+
+  const getRiskBg = (days: number | null) => {
+    if (days === null) return DS.ink[100];
+    if (days <= 7) return CHIP_TONES.danger.bg;
+    if (days <= 30) return CHIP_TONES.warning.bg;
+    return CHIP_TONES.success.bg;
+  };
+
+  const getRiskLabel = (days: number | null) => {
+    if (days === null) return 'Belirsiz';
+    if (days <= 0) return 'Tukendi';
+    if (days <= 7) return `${Math.ceil(days)} gun`;
+    if (days <= 30) return `${Math.ceil(days)} gun`;
+    return `${Math.ceil(days)} gun`;
+  };
+
+  return (
+    <View style={{ gap: 16 }}>
+      {/* KPI cards */}
+      <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
+        {[
+          { label: '7 Gun Icinde Bitecek', value: String(criticalCount), icon: AlertCircle, color: '#DC2626' },
+          { label: '30 Gun Icinde Bitecek', value: String(warningCount), icon: AlertTriangle, color: '#D97706' },
+          { label: 'Guvenli', value: String(safeCount), icon: CheckCircle, color: '#059669' },
+          { label: 'Ort. Kalan Gun', value: avgDaysLeft != null ? `${avgDaysLeft} gun` : '—', icon: Clock, color: '#6366F1' },
+        ].map(kpi => {
+          const KIcon = kpi.icon;
+          return (
+            <View key={kpi.label} style={{ ...cardSolid, flex: 1, minWidth: isDesktop ? 160 : 140, flexDirection: 'row', alignItems: 'center', gap: 14, padding: 18 }}>
+              <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: kpi.color + '14', alignItems: 'center', justifyContent: 'center' }}>
+                <KIcon size={18} color={kpi.color} strokeWidth={1.6} />
+              </View>
+              <View>
+                <Text style={{ fontSize: 20, fontWeight: '700', color: DS.ink[900], letterSpacing: -0.3 }}>{kpi.value}</Text>
+                <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }}>{kpi.label}</Text>
+              </View>
+            </View>
+          );
+        })}
+      </View>
+
+      {/* Controls */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        {/* Range pills */}
+        <View style={{ flexDirection: 'row', gap: 4 }}>
+          {[
+            { days: 7, label: '7 Gun' },
+            { days: 30, label: '30 Gun' },
+            { days: 60, label: '60 Gun' },
+            { days: 90, label: '90 Gun' },
+          ].map(r => (
+            <Pressable
+              key={r.days}
+              onPress={() => setRangeDays(r.days)}
+              style={{
+                paddingHorizontal: 12, paddingVertical: 6, borderRadius: 9999,
+                backgroundColor: rangeDays === r.days ? DS.ink[900] : 'transparent',
+                borderWidth: rangeDays === r.days ? 0 : 1, borderColor: DS.ink[300],
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+              }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: rangeDays === r.days ? '700' : '500', color: rangeDays === r.days ? '#FFF' : DS.ink[500] }}>
+                {r.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        {/* Risk filter */}
+        <View style={{ flexDirection: 'row', gap: 4, marginLeft: isDesktop ? 12 : 0 }}>
+          {([
+            { key: 'all' as const, label: 'Tumu', count: forecasts.length },
+            { key: 'critical' as const, label: 'Kritik', count: criticalCount },
+            { key: 'warning' as const, label: 'Uyari', count: warningCount },
+            { key: 'safe' as const, label: 'Guvenli', count: safeCount },
+          ]).map(f => (
+            <Pressable
+              key={f.key}
+              onPress={() => setFilterRisk(f.key)}
+              style={{
+                paddingHorizontal: 10, paddingVertical: 5, borderRadius: 9999,
+                backgroundColor: filterRisk === f.key ? (f.key === 'critical' ? '#DC2626' : f.key === 'warning' ? '#D97706' : f.key === 'safe' ? '#059669' : DS.ink[900]) : 'transparent',
+                borderWidth: filterRisk === f.key ? 0 : 1, borderColor: DS.ink[200],
+                flexDirection: 'row', alignItems: 'center', gap: 4,
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+              }}
+            >
+              <Text style={{ fontSize: 11, fontWeight: filterRisk === f.key ? '700' : '500', color: filterRisk === f.key ? '#FFF' : DS.ink[500] }}>
+                {f.label}
+              </Text>
+              <Text style={{ fontSize: 10, fontWeight: '600', color: filterRisk === f.key ? 'rgba(255,255,255,0.7)' : DS.ink[400] }}>{f.count}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
+      {/* Forecast cards */}
+      {filtered.length === 0 ? (
+        <View style={{ ...cardSolid, alignItems: 'center', paddingVertical: 48, gap: 12 }}>
+          <CheckCircle size={36} color={DS.ink[200]} strokeWidth={1.2} />
+          <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[800] }}>Bu filtrede urun yok</Text>
+        </View>
+      ) : (
+        <View style={{ gap: 8 }}>
+          {filtered.map(f => {
+            const riskColor = getRiskColor(f.daysRemaining);
+            const riskBg = getRiskBg(f.daysRemaining);
+            const maxWeekly = Math.max(...f.weeklyTrend, 1);
+
+            return (
+              <View key={f.item.id} style={{ ...cardSolid, padding: 16 }}>
+                <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: isDesktop ? 20 : 12 }}>
+                  {/* Left: Item info */}
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }}>{f.item.name}</Text>
+                      {f.trendDirection === 'up' && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: CHIP_TONES.danger.bg, borderRadius: 9999, paddingHorizontal: 6, paddingVertical: 1 }}>
+                          <TrendingUp size={9} color={CHIP_TONES.danger.fg} strokeWidth={2} />
+                          <Text style={{ fontSize: 9, fontWeight: '700', color: CHIP_TONES.danger.fg }}>Artiyor</Text>
+                        </View>
+                      )}
+                      {f.trendDirection === 'down' && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: CHIP_TONES.success.bg, borderRadius: 9999, paddingHorizontal: 6, paddingVertical: 1 }}>
+                          <TrendingDown size={9} color={CHIP_TONES.success.fg} strokeWidth={2} />
+                          <Text style={{ fontSize: 9, fontWeight: '700', color: CHIP_TONES.success.fg }}>Azaliyor</Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 12 }}>
+                      <Text style={{ fontSize: 12, color: DS.ink[500] }}>
+                        Stok: <Text style={{ fontWeight: '600', color: DS.ink[800] }}>{f.item.quantity} {f.item.unit || 'adet'}</Text>
+                      </Text>
+                      <Text style={{ fontSize: 12, color: DS.ink[500] }}>
+                        Gunluk tuketim: <Text style={{ fontWeight: '600', color: DS.ink[800] }}>{f.dailyRate.toFixed(1)}</Text>
+                      </Text>
+                    </View>
+                    {f.upcomingNeed > 0 && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
+                        <ShoppingCart size={11} color={CHIP_TONES.info.fg} strokeWidth={1.6} />
+                        <Text style={{ fontSize: 11, color: CHIP_TONES.info.fg }}>
+                          Bekleyen siparisler icin tahmini ihtiyac: <Text style={{ fontWeight: '600' }}>{f.upcomingNeed.toFixed(1)}</Text>
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Middle: Mini sparkline (4 weeks) */}
+                  <View style={{ width: isDesktop ? 100 : undefined, alignItems: 'center' }}>
+                    <Text style={{ fontSize: 9, color: DS.ink[400], marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: '600' }}>Haftalik Tuketim</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 3, height: 32 }}>
+                      {f.weeklyTrend.map((w, idx) => (
+                        <View key={idx} style={{
+                          width: 14,
+                          height: Math.max((w / maxWeekly) * 28, 2),
+                          borderRadius: 3,
+                          backgroundColor: idx === 3 ? riskColor : DS.ink[200],
+                        }} />
+                      ))}
+                    </View>
+                  </View>
+
+                  {/* Right: Depletion badge */}
+                  <View style={{ alignItems: isDesktop ? 'flex-end' : 'flex-start', justifyContent: 'center' }}>
+                    <View style={{
+                      backgroundColor: riskBg,
+                      borderRadius: 14,
+                      paddingHorizontal: 14, paddingVertical: 8,
+                      alignItems: 'center',
+                      minWidth: 100,
+                    }}>
+                      <Text style={{ fontSize: 16, fontWeight: '800', color: riskColor, letterSpacing: -0.3 }}>
+                        {getRiskLabel(f.daysRemaining)}
+                      </Text>
+                      {f.depletionDate && (
+                        <Text style={{ fontSize: 10, color: riskColor, opacity: 0.7, marginTop: 2 }}>
+                          {f.depletionDate.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ─── CostTab ─────────────────────────────────────────────────────────────────
+
+interface CostTabProps {
+  items: StockItem[];
+  accentColor: string;
+}
+
+function CostTab({ items, accentColor }: CostTabProps) {
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 768;
+
+  const [priceHistory, setPriceHistory] = useState<{ item_id: string; item_name: string; unit_cost: number; created_at: string; quantity: number }[]>([]);
+  const [histLoading, setHistLoading] = useState(true);
+  const [selectedItem, setSelectedItem] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<'value' | 'cost' | 'name'>('value');
+
+  // Load IN movements for price history
+  useEffect(() => {
+    (async () => {
+      setHistLoading(true);
+      const { data } = await supabase
+        .from('stock_movements')
+        .select('item_id, item_name, quantity, unit_cost_at_time, created_at')
+        .eq('type', 'IN')
+        .order('created_at', { ascending: true });
+      if (data) {
+        setPriceHistory(
+          (data as any[]).filter(d => d.unit_cost_at_time != null && d.unit_cost_at_time > 0).map(d => ({
+            item_id: d.item_id,
+            item_name: d.item_name ?? '',
+            unit_cost: Number(d.unit_cost_at_time),
+            created_at: d.created_at,
+            quantity: Number(d.quantity ?? 0),
+          }))
+        );
+      }
+      setHistLoading(false);
+    })();
+  }, []);
+
+  // Compute cost metrics
+  const costData = useMemo(() => {
+    const rows = items.map(item => {
+      const cost = Number(item.unit_cost ?? 0);
+      const totalValue = cost * item.quantity;
+      // Price history for this item
+      const hist = priceHistory.filter(h => h.item_id === item.id);
+      const prevCost = hist.length >= 2 ? hist[hist.length - 2].unit_cost : null;
+      const costChange = prevCost != null && prevCost > 0 ? ((cost - prevCost) / prevCost) * 100 : null;
+      return { ...item, totalValue, costChange, historyCount: hist.length };
+    });
+
+    // Sort
+    if (sortBy === 'value')     rows.sort((a, b) => b.totalValue - a.totalValue);
+    else if (sortBy === 'cost') rows.sort((a, b) => (b.unit_cost ?? 0) - (a.unit_cost ?? 0));
+    else                        rows.sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+
+    const totalStockValue = rows.reduce((sum, r) => sum + r.totalValue, 0);
+    const avgUnitCost = rows.length > 0 ? rows.reduce((s, r) => s + (r.unit_cost ?? 0), 0) / rows.length : 0;
+    const highestValueItem = rows[0] ?? null;
+    const costIncreased = rows.filter(r => r.costChange != null && r.costChange > 0).length;
+
+    return { rows, totalStockValue, avgUnitCost, highestValueItem, costIncreased };
+  }, [items, priceHistory, sortBy]);
+
+  // Selected item price history for mini chart
+  const selectedHistory = useMemo(() => {
+    if (!selectedItem) return [];
+    return priceHistory.filter(h => h.item_id === selectedItem);
+  }, [selectedItem, priceHistory]);
+
+  const fmt = (n: number) => n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  return (
+    <View style={{ gap: 16 }}>
+      {/* KPI Cards */}
+      <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
+        {[
+          { label: 'Toplam Stok Degeri', value: `${fmt(costData.totalStockValue)} TL`, icon: Layers, color: '#059669' },
+          { label: 'Ort. Birim Maliyet', value: `${fmt(costData.avgUnitCost)} TL`, icon: BarChart3, color: '#6366F1' },
+          { label: 'Fiyat Artan Urun', value: String(costData.costIncreased), icon: TrendingUp, color: '#D97706' },
+          { label: 'Fiyat Gecmisi', value: `${priceHistory.length} kayit`, icon: Clock, color: '#0EA5E9' },
+        ].map(kpi => {
+          const KIcon = kpi.icon;
+          return (
+            <View key={kpi.label} style={{ ...cardSolid, flex: 1, minWidth: isDesktop ? 160 : 140, flexDirection: 'row', alignItems: 'center', gap: 14, padding: 18 }}>
+              <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: kpi.color + '14', alignItems: 'center', justifyContent: 'center' }}>
+                <KIcon size={18} color={kpi.color} strokeWidth={1.6} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: DS.ink[900], letterSpacing: -0.3 }} numberOfLines={1}>{kpi.value}</Text>
+                <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }}>{kpi.label}</Text>
+              </View>
+            </View>
+          );
+        })}
+      </View>
+
+      {/* Sort pills */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <Text style={{ fontSize: 12, color: DS.ink[400], marginRight: 4 }}>Sirala:</Text>
+        {([
+          { key: 'value' as const, label: 'Deger' },
+          { key: 'cost' as const, label: 'Birim Maliyet' },
+          { key: 'name' as const, label: 'Ad' },
+        ]).map(s => (
+          <Pressable
+            key={s.key}
+            onPress={() => setSortBy(s.key)}
+            style={{
+              paddingHorizontal: 12, paddingVertical: 6, borderRadius: 9999,
+              backgroundColor: sortBy === s.key ? DS.ink[900] : 'transparent',
+              borderWidth: sortBy === s.key ? 0 : 1, borderColor: DS.ink[300],
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+            }}
+          >
+            <Text style={{ fontSize: 12, fontWeight: sortBy === s.key ? '700' : '500', color: sortBy === s.key ? '#FFF' : DS.ink[500] }}>
+              {s.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {/* Cost Table */}
+      <View style={tableCard}>
+        {/* Header */}
+        <View style={{
+          flexDirection: 'row', alignItems: 'center',
+          paddingHorizontal: 16, paddingVertical: 10,
+          backgroundColor: '#FAFAFA',
+          borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)',
+        }}>
+          <Text style={{ ...colHeader, flex: 1 }}>URUN</Text>
+          {isDesktop && <Text style={{ ...colHeader, width: 100 }}>KATEGORI</Text>}
+          <Text style={{ ...colHeader, width: 100, textAlign: 'right' }}>BIRIM MALIYET</Text>
+          <Text style={{ ...colHeader, width: 80, textAlign: 'right' }}>MIKTAR</Text>
+          <Text style={{ ...colHeader, width: 110, textAlign: 'right' }}>TOPLAM DEGER</Text>
+          {isDesktop && <Text style={{ ...colHeader, width: 80, textAlign: 'center' }}>DEGISIM</Text>}
+        </View>
+
+        {/* Rows */}
+        {costData.rows.map(item => (
+          <Pressable
+            key={item.id}
+            onPress={() => setSelectedItem(selectedItem === item.id ? null : item.id)}
+            style={{
+              flexDirection: 'row', alignItems: 'center',
+              paddingHorizontal: 16, paddingVertical: 10,
+              borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)',
+              backgroundColor: selectedItem === item.id ? 'rgba(99,102,241,0.04)' : 'transparent',
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+            }}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[900] }} numberOfLines={1}>{item.name}</Text>
+              {item.brand && <Text style={{ fontSize: 10, color: DS.ink[400], marginTop: 1 }}>{item.brand}</Text>}
+            </View>
+            {isDesktop && (
+              <Text style={{ width: 100, fontSize: 12, color: DS.ink[500] }} numberOfLines={1}>{item.category || '—'}</Text>
+            )}
+            <Text style={{ width: 100, textAlign: 'right', fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>
+              {item.unit_cost != null && item.unit_cost > 0 ? `${fmt(item.unit_cost)}` : '—'}
+            </Text>
+            <Text style={{ width: 80, textAlign: 'right', fontSize: 13, color: DS.ink[700] }}>
+              {item.quantity} {item.unit || ''}
+            </Text>
+            <Text style={{ width: 110, textAlign: 'right', fontSize: 13, fontWeight: '700', color: item.totalValue > 0 ? '#059669' : DS.ink[400] }}>
+              {item.totalValue > 0 ? `${fmt(item.totalValue)} TL` : '—'}
+            </Text>
+            {isDesktop && (
+              <View style={{ width: 80, alignItems: 'center' }}>
+                {item.costChange != null ? (
+                  <View style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 3,
+                    borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2,
+                    backgroundColor: item.costChange > 0 ? CHIP_TONES.danger.bg : item.costChange < 0 ? CHIP_TONES.success.bg : DS.ink[100],
+                  }}>
+                    {item.costChange > 0
+                      ? <TrendingUp size={10} color={CHIP_TONES.danger.fg} strokeWidth={2} />
+                      : item.costChange < 0
+                        ? <TrendingDown size={10} color={CHIP_TONES.success.fg} strokeWidth={2} />
+                        : null
+                    }
+                    <Text style={{
+                      fontSize: 10, fontWeight: '700',
+                      color: item.costChange > 0 ? CHIP_TONES.danger.fg : item.costChange < 0 ? CHIP_TONES.success.fg : DS.ink[500],
+                    }}>
+                      {item.costChange > 0 ? '+' : ''}{item.costChange.toFixed(1)}%
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={{ fontSize: 10, color: DS.ink[300] }}>—</Text>
+                )}
+              </View>
+            )}
+          </Pressable>
+        ))}
+
+        {/* Totals Footer */}
+        <View style={{
+          flexDirection: 'row', alignItems: 'center',
+          paddingHorizontal: 16, paddingVertical: 12,
+          backgroundColor: '#FAFAFA',
+          borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
+        }}>
+          <Text style={{ flex: 1, fontSize: 13, fontWeight: '700', color: DS.ink[900] }}>TOPLAM</Text>
+          {isDesktop && <View style={{ width: 100 }} />}
+          <View style={{ width: 100 }} />
+          <Text style={{ width: 80, textAlign: 'right', fontSize: 13, fontWeight: '600', color: DS.ink[700] }}>
+            {items.length} urun
+          </Text>
+          <Text style={{ width: 110, textAlign: 'right', fontSize: 14, fontWeight: '800', color: '#059669' }}>
+            {fmt(costData.totalStockValue)} TL
+          </Text>
+          {isDesktop && <View style={{ width: 80 }} />}
+        </View>
+      </View>
+
+      {/* Price History Detail — when an item is selected */}
+      {selectedItem && selectedHistory.length > 0 && (
+        <View style={cardSolid}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+            <Clock size={16} color="#6366F1" strokeWidth={1.6} />
+            <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[900] }}>
+              Fiyat Gecmisi — {items.find(i => i.id === selectedItem)?.name ?? ''}
+            </Text>
+            <Pressable onPress={() => setSelectedItem(null)} style={{ marginLeft: 'auto', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}>
+              <X size={14} color={DS.ink[400]} strokeWidth={1.6} />
+            </Pressable>
+          </View>
+
+          {/* Mini price history bar chart */}
+          <View style={{ height: 120, flexDirection: 'row', alignItems: 'flex-end', gap: 2, marginBottom: 14 }}>
+            {(() => {
+              const maxCost = Math.max(...selectedHistory.map(h => h.unit_cost), 1);
+              return selectedHistory.slice(-20).map((h, idx) => {
+                const barH = Math.max((h.unit_cost / maxCost) * 100, 4);
+                return (
+                  <View key={idx} style={{ flex: 1, alignItems: 'center', justifyContent: 'flex-end', height: 120 }}>
+                    <View style={{
+                      width: '80%', height: barH, borderRadius: 4,
+                      backgroundColor: '#6366F1',
+                      minWidth: 6,
+                    }} />
+                    <Text style={{ fontSize: 8, color: DS.ink[400], marginTop: 3 }} numberOfLines={1}>
+                      {new Date(h.created_at).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' })}
+                    </Text>
+                  </View>
+                );
+              });
+            })()}
+          </View>
+
+          {/* History table */}
+          <View style={{ borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)', overflow: 'hidden' }}>
+            <View style={{ flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#FAFAFA' }}>
+              <Text style={{ ...colHeader, flex: 1 }}>TARIH</Text>
+              <Text style={{ ...colHeader, width: 80, textAlign: 'right' }}>MIKTAR</Text>
+              <Text style={{ ...colHeader, width: 100, textAlign: 'right' }}>BIRIM FIYAT</Text>
+              <Text style={{ ...colHeader, width: 100, textAlign: 'right' }}>TOPLAM</Text>
+            </View>
+            {selectedHistory.slice().reverse().slice(0, 20).map((h, idx) => (
+              <View key={idx} style={{
+                flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 8,
+                borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)',
+              }}>
+                <Text style={{ flex: 1, fontSize: 12, color: DS.ink[700] }}>
+                  {new Date(h.created_at).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                </Text>
+                <Text style={{ width: 80, textAlign: 'right', fontSize: 12, color: DS.ink[700] }}>{h.quantity}</Text>
+                <Text style={{ width: 100, textAlign: 'right', fontSize: 12, fontWeight: '600', color: DS.ink[900] }}>{fmt(h.unit_cost)} TL</Text>
+                <Text style={{ width: 100, textAlign: 'right', fontSize: 12, fontWeight: '600', color: '#059669' }}>{fmt(h.unit_cost * h.quantity)} TL</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ─── LocationsTab ────────────────────────────────────────────────────────────
+
+interface LocationsTabProps {
+  items: StockItem[];
+  accentColor: string;
+  onEditProduct: (item: StockItem) => void;
+}
+
+function LocationsTab({ items, accentColor, onEditProduct }: LocationsTabProps) {
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 768;
+  const [locSearch, setLocSearch] = useState('');
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+  const [expandedLoc, setExpandedLoc] = useState<Set<string>>(new Set());
+
+  // Group items by location
+  const locationGroups = useMemo(() => {
+    const q = locSearch.trim().toLowerCase();
+    const filtered = items.filter(i => {
+      if (!q) return true;
+      return (i.location ?? '').toLowerCase().includes(q)
+        || i.name.toLowerCase().includes(q)
+        || (i.barcode ?? '').toLowerCase().includes(q);
+    });
+
+    const map = new Map<string, StockItem[]>();
+    for (const item of filtered) {
+      const loc = item.location?.trim() || '__unassigned__';
+      if (!map.has(loc)) map.set(loc, []);
+      map.get(loc)!.push(item);
+    }
+    // Sort: assigned locations first alphabetically, unassigned last
+    return Array.from(map).sort(([a], [b]) => {
+      if (a === '__unassigned__') return 1;
+      if (b === '__unassigned__') return -1;
+      return a.localeCompare(b, 'tr');
+    });
+  }, [items, locSearch]);
+
+  const assignedCount = items.filter(i => i.location?.trim()).length;
+  const unassignedCount = items.filter(i => !i.location?.trim()).length;
+  const uniqueLocations = new Set(items.map(i => i.location?.trim()).filter(Boolean)).size;
+  const barcodeCount = items.filter(i => i.barcode?.trim()).length;
+
+  const toggleLoc = (key: string) =>
+    setExpandedLoc(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+
+  const copyBarcode = (code: string) => {
+    if (Platform.OS === 'web') {
+      try { navigator.clipboard.writeText(code); } catch {}
+    }
+  };
+
+  return (
+    <View style={{ gap: 16 }}>
+      {/* KPI cards */}
+      <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
+        {[
+          { label: 'Lokasyon', value: String(uniqueLocations), icon: MapPin, color: '#6366F1' },
+          { label: 'Konumlu Urun', value: String(assignedCount), icon: Package, color: '#059669' },
+          { label: 'Konumsuz Urun', value: String(unassignedCount), icon: AlertTriangle, color: unassignedCount > 0 ? '#D97706' : '#9CA3AF' },
+          { label: 'Barkodlu', value: String(barcodeCount), icon: QrCode, color: '#0EA5E9' },
+        ].map(kpi => {
+          const KIcon = kpi.icon;
+          return (
+            <View key={kpi.label} style={{ ...cardSolid, flex: 1, minWidth: isDesktop ? 150 : 140, flexDirection: 'row', alignItems: 'center', gap: 14, padding: 18 }}>
+              <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: kpi.color + '14', alignItems: 'center', justifyContent: 'center' }}>
+                <KIcon size={18} color={kpi.color} strokeWidth={1.6} />
+              </View>
+              <View>
+                <Text style={{ fontSize: 20, fontWeight: '700', color: DS.ink[900], letterSpacing: -0.3 }}>{kpi.value}</Text>
+                <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }}>{kpi.label}</Text>
+              </View>
+            </View>
+          );
+        })}
+      </View>
+
+      {/* Toolbar */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <View style={{
+          flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
+          backgroundColor: '#FFFFFF', borderRadius: 14, borderWidth: 1,
+          borderColor: 'rgba(0,0,0,0.05)', paddingHorizontal: 12, height: 44,
+        }}>
+          <Search size={15} color={DS.ink[400]} strokeWidth={1.6} />
+          <TextInput
+            style={{ flex: 1, fontSize: 14, color: DS.ink[900], height: 44, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) } as any}
+            value={locSearch}
+            onChangeText={setLocSearch}
+            placeholder="Lokasyon, urun veya barkod ara..."
+            placeholderTextColor={DS.ink[400]}
+          />
+          {locSearch.length > 0 && (
+            <Pressable onPress={() => setLocSearch('')} hitSlop={8} style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}}>
+              <X size={14} color={DS.ink[400]} strokeWidth={1.6} />
+            </Pressable>
+          )}
+        </View>
+        {isDesktop && (
+          <View style={{ flexDirection: 'row', gap: 4 }}>
+            {(['grid', 'table'] as const).map(m => (
+              <Pressable
+                key={m}
+                onPress={() => setViewMode(m)}
+                style={{
+                  paddingHorizontal: 14, paddingVertical: 8, borderRadius: 9999,
+                  backgroundColor: viewMode === m ? DS.ink[900] : 'transparent',
+                  borderWidth: viewMode === m ? 0 : 1, borderColor: DS.ink[300],
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: viewMode === m ? '700' : '500', color: viewMode === m ? '#FFF' : DS.ink[500] }}>
+                  {m === 'grid' ? 'Grid' : 'Tablo'}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+      </View>
+
+      {/* Grid View */}
+      {viewMode === 'grid' ? (
+        <View style={{ gap: 12 }}>
+          {locationGroups.length === 0 ? (
+            <View style={{ ...cardSolid, alignItems: 'center', paddingVertical: 48, gap: 12 }}>
+              <MapPin size={36} color={DS.ink[200]} strokeWidth={1.2} />
+              <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[800] }}>Lokasyon bulunamadi</Text>
+              <Text style={{ fontSize: 13, color: DS.ink[400], textAlign: 'center', maxWidth: 280 }}>
+                {'Urunlere lokasyon atamak icin urun duzenle ekranindan "Lokasyon / Raf" alanini doldurun.'}
+              </Text>
+            </View>
+          ) : locationGroups.map(([loc, locItems]) => {
+            const isUnassigned = loc === '__unassigned__';
+            const label = isUnassigned ? 'Konumu Belirsiz' : loc;
+            const expanded = expandedLoc.has(loc) || locationGroups.length <= 3;
+            const criticalInLoc = locItems.filter(i => i.quantity > 0 && i.quantity < i.min_quantity).length;
+            const emptyInLoc = locItems.filter(i => i.quantity === 0).length;
+
+            return (
+              <View key={loc} style={cardSolid}>
+                {/* Location header */}
+                <Pressable
+                  onPress={() => toggleLoc(loc)}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: expanded ? 14 : 0, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                >
+                  <View style={{
+                    width: 36, height: 36, borderRadius: 10,
+                    backgroundColor: isUnassigned ? DS.ink[100] : '#6366F114',
+                    alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {isUnassigned
+                      ? <AlertTriangle size={16} color={DS.ink[400]} strokeWidth={1.6} />
+                      : <MapPin size={16} color="#6366F1" strokeWidth={1.6} />
+                    }
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[900] }}>{label}</Text>
+                    <View style={{ flexDirection: 'row', gap: 10, marginTop: 2 }}>
+                      <Text style={{ fontSize: 11, color: DS.ink[400] }}>{locItems.length} urun</Text>
+                      {criticalInLoc > 0 && (
+                        <Text style={{ fontSize: 11, color: CHIP_TONES.warning.fg }}>{criticalInLoc} kritik</Text>
+                      )}
+                      {emptyInLoc > 0 && (
+                        <Text style={{ fontSize: 11, color: CHIP_TONES.danger.fg }}>{emptyInLoc} tukendi</Text>
+                      )}
+                    </View>
+                  </View>
+                  {expanded
+                    ? <ChevronUp size={16} color={DS.ink[400]} strokeWidth={1.6} />
+                    : <ChevronDown size={16} color={DS.ink[400]} strokeWidth={1.6} />
+                  }
+                </Pressable>
+
+                {/* Items in this location */}
+                {expanded && (
+                  <View style={{ gap: 0 }}>
+                    {locItems.map((item, idx) => {
+                      const pct = item.min_quantity > 0 ? item.quantity / item.min_quantity : 1;
+                      const statusTone = item.quantity === 0 ? 'danger' : pct < 1 ? 'warning' : 'success';
+                      return (
+                        <Pressable
+                          key={item.id}
+                          onPress={() => onEditProduct(item)}
+                          style={{
+                            flexDirection: 'row', alignItems: 'center', gap: 12,
+                            paddingVertical: 10,
+                            borderTopWidth: idx > 0 ? 1 : 0,
+                            borderTopColor: 'rgba(0,0,0,0.04)',
+                            ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                          }}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>{item.name}</Text>
+                            <View style={{ flexDirection: 'row', gap: 8, marginTop: 3 }}>
+                              {item.category && (
+                                <Text style={{ fontSize: 10, color: DS.ink[400] }}>{item.category}</Text>
+                              )}
+                              {item.barcode && (
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                                  <QrCode size={9} color={DS.ink[400]} strokeWidth={1.6} />
+                                  <Text style={{ fontSize: 10, color: DS.ink[400], fontFamily: Platform.OS === 'web' ? 'monospace' : undefined }}>{item.barcode}</Text>
+                                </View>
+                              )}
+                            </View>
+                          </View>
+                          <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900] }}>
+                              {item.quantity} <Text style={{ fontSize: 11, fontWeight: '400', color: DS.ink[400] }}>{item.unit || 'adet'}</Text>
+                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <StockBar quantity={item.quantity} min={item.min_quantity} />
+                              <StatusBadge quantity={item.quantity} min={item.min_quantity} />
+                            </View>
+                          </View>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+            );
+          })}
+        </View>
+      ) : (
+        /* Table View */
+        <View style={tableCard}>
+          {/* Header */}
+          <View style={{
+            flexDirection: 'row', alignItems: 'center',
+            paddingHorizontal: 16, paddingVertical: 10,
+            backgroundColor: '#FAFAFA',
+            borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)',
+          }}>
+            <Text style={{ ...colHeader, width: 120 }}>LOKASYON</Text>
+            <Text style={{ ...colHeader, flex: 1 }}>URUN</Text>
+            <Text style={{ ...colHeader, width: 100 }}>KATEGORI</Text>
+            <Text style={{ ...colHeader, width: 130 }}>BARKOD</Text>
+            <Text style={{ ...colHeader, width: 90, textAlign: 'right' }}>MIKTAR</Text>
+            <Text style={{ ...colHeader, width: 80, textAlign: 'center' }}>DURUM</Text>
+          </View>
+
+          {/* Rows */}
+          {locationGroups.flatMap(([loc, locItems]) =>
+            locItems.map((item, idx) => (
+              <Pressable
+                key={item.id}
+                onPress={() => onEditProduct(item)}
+                style={{
+                  flexDirection: 'row', alignItems: 'center',
+                  paddingHorizontal: 16, paddingVertical: 10,
+                  borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)',
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                }}
+              >
+                <View style={{ width: 120, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <MapPin size={12} color={loc === '__unassigned__' ? DS.ink[300] : '#6366F1'} strokeWidth={1.6} />
+                  <Text style={{ fontSize: 12, color: loc === '__unassigned__' ? DS.ink[400] : DS.ink[800], fontWeight: '500' }} numberOfLines={1}>
+                    {loc === '__unassigned__' ? '—' : loc}
+                  </Text>
+                </View>
+                <Text style={{ flex: 1, fontSize: 13, fontWeight: '500', color: DS.ink[900] }} numberOfLines={1}>{item.name}</Text>
+                <Text style={{ width: 100, fontSize: 12, color: DS.ink[500] }} numberOfLines={1}>{item.category || '—'}</Text>
+                <View style={{ width: 130, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  {item.barcode ? (
+                    <>
+                      <Text style={{ fontSize: 11, color: DS.ink[500], fontFamily: Platform.OS === 'web' ? 'monospace' : undefined }} numberOfLines={1}>
+                        {item.barcode}
+                      </Text>
+                      <Pressable
+                        onPress={(e) => { e.stopPropagation?.(); copyBarcode(item.barcode!); }}
+                        hitSlop={6}
+                        style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}}
+                      >
+                        <Copy size={11} color={DS.ink[400]} strokeWidth={1.6} />
+                      </Pressable>
+                    </>
+                  ) : (
+                    <Text style={{ fontSize: 11, color: DS.ink[300] }}>—</Text>
+                  )}
+                </View>
+                <Text style={{ width: 90, textAlign: 'right', fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>
+                  {item.quantity} {item.unit || ''}
+                </Text>
+                <View style={{ width: 80, alignItems: 'center' }}>
+                  <StatusBadge quantity={item.quantity} min={item.min_quantity} />
+                </View>
+              </Pressable>
+            ))
+          )}
+          {locationGroups.length === 0 && (
+            <View style={{ padding: 32, alignItems: 'center', gap: 8 }}>
+              <MapPin size={28} color={DS.ink[200]} strokeWidth={1.2} />
+              <Text style={{ fontSize: 13, color: DS.ink[400] }}>Sonuc bulunamadi</Text>
+            </View>
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ─── Tab Definitions (Patterns — icon + accent per panel) ───────────────────
+
+import { HubContext } from '../../../core/ui/HubContext';
+import { Settings } from 'lucide-react-native';
+
+interface StockTabDef {
+  key:    TabKey;
+  label:  string;
+  icon:   React.ComponentType<any>;
+  accent: string;
+  hint:   string;
+}
+
+const STOCK_TABS: StockTabDef[] = [
+  { key: 'dashboard',   label: 'Dashboard',     icon: Grid3x3,       accent: '#0F172A', hint: 'Genel bakis, ozet ve kritik durumlar'        },
+  { key: 'list',        label: 'Urunler',       icon: Package,       accent: '#2563EB', hint: 'Urun listesi, kategori ve stok seviyeleri'   },
+  { key: 'movements',   label: 'Hareketler',    icon: ArrowLeftRight,accent: '#6366F1', hint: 'Giris, cikis ve fire hareketleri'            },
+  { key: 'suggestions', label: 'Siparis Oner',  icon: ShoppingCart,  accent: '#D97706', hint: 'Kritik stoklar icin otomatik siparis onerisi' },
+  { key: 'analytics',   label: 'Analiz',        icon: BarChart3,     accent: '#0EA5E9', hint: 'Tuketim ve fire analizi'                     },
+  { key: 'locations',   label: 'Lokasyon',      icon: MapPin,        accent: '#8B5CF6', hint: 'Raf, bolum ve barkod yonetimi'               },
+  { key: 'cost',        label: 'Maliyet',       icon: Layers,        accent: '#059669', hint: 'Stok degeri ve fiyat gecmisi'                },
+  { key: 'forecast',    label: 'Tahmin',        icon: TrendingUp,    accent: '#DC2626', hint: 'Tuketim hizina gore bitis tahmini'           },
+  { key: 'settings',    label: 'Ayarlar',       icon: Settings,      accent: '#6B7280', hint: 'Kategori, marka ve genel yapilandirma'       },
+];
+
+const SIDEBAR_ACCENT = '#F5C24B';
+
+// ─── StockScreen (Patterns Hub — sidebar + per-tab accent) ──────────────────
+
+export function StockScreen() {
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 1024;
+  const { setTitle, clear } = usePageTitleStore();
+
+  useEffect(() => {
+    setTitle('Stok & Depo', '');
+    return clear;
+  }, []);
+
+  const [tab, setTab] = useState<TabKey>('dashboard');
+  const activeTab = STOCK_TABS.find(t => t.key === tab)!;
+  const accentColor = activeTab.accent;
 
   const [items, setItems]               = useState<StockItem[]>([]);
   const [wasteMap, setWasteMap]         = useState<Record<string, { qty: number; cost: number }>>({});
@@ -1498,7 +3230,6 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     try {
-      // 30 gün önce — fire badge için
       const since = new Date(); since.setDate(since.getDate() - 30);
       const sinceISO = since.toISOString();
 
@@ -1522,7 +3253,6 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
       try { if (!brandsRes.error && brandsRes.data) setBrands(brandsRes.data.map((b: any) => b.name)); } catch {}
       try { if (!catsRes.error && catsRes.data)   setDbCategories(catsRes.data.map((c: any) => c.name)); } catch {}
 
-      // Aggregate waste by item_id
       const wm: Record<string, { qty: number; cost: number }> = {};
       for (const m of ((wasteRes.data ?? []) as any[])) {
         if (!m.item_id) continue;
@@ -1593,266 +3323,452 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
   const openFilter = () => { setDraftStatus(statusFilter); setDraftCat(catFilter); setDraftBrand(brandFilter); setDraftUsage(usageFilter); setShowFilter(true); };
   const applyFilter = () => { setStatusFilter(draftStatus); setCatFilter(draftCat); setBrandFilter(draftBrand); setUsageFilter(draftUsage); setShowFilter(false); };
 
-  return (
-    <SafeAreaView style={s.safe} edges={['bottom']}>
-      <ScrollView contentContainerStyle={s.container} showsVerticalScrollIndicator={false}>
+  // ── CTA button config ──
+  const showCta = tab === 'dashboard' || tab === 'list' || tab === 'movements';
+  const ctaLabel = tab === 'movements' ? 'Yeni Hareket' : 'Yeni Urun';
+  const ctaAction = () => {
+    if (tab === 'movements') setMovModal({ visible: true, item: null });
+    else setProductModal({ visible: true, item: null });
+  };
 
-        {/* ── Slide tab bar + CTA ── */}
-        <View style={s.tabBarRow}>
-          <SlideTabBar
-            items={[
-              { key: 'dashboard', label: 'Genel Bakış' },
-              { key: 'list',      label: 'Stok Listesi' },
-              { key: 'movements', label: 'Hareketler' },
-              { key: 'settings',  label: 'Ayarlar' },
-            ] as const}
-            activeKey={tab as any}
-            onChange={(k) => setTab(k as any)}
-            accentColor={accentColor}
-          />
-          {tab !== 'settings' && (
-            <TouchableOpacity
-              style={[s.pageCta, { backgroundColor: accentColor }]}
-              onPress={() => {
-                if (tab === 'movements') setMovModal({ visible: true, item: null });
-                else setProductModal({ visible: true, item: null });
-              }}
-              activeOpacity={0.85}
-            >
-              <AppIcon name="plus" size={15} color="#FFFFFF" />
-              <Text style={s.pageCtaText}>{tab === 'movements' ? 'Yeni Hareket' : 'Yeni Ürün'}</Text>
-            </TouchableOpacity>
+  // ── Tab content renderer ──
+  const renderContent = () => {
+    if (tab === 'settings') return <StockSettings accentColor={accentColor} onReload={load} />;
+    if (tab === 'dashboard') return loading
+      ? <ActivityIndicator size="large" color={accentColor} style={{ marginTop: 60 }} />
+      : <StockDashboard items={items} accentColor={accentColor} onMovement={(item, dt) => setMovModal({ visible: true, item, defaultType: dt })} onAddProduct={() => setProductModal({ visible: true, item: null })} onEditProduct={item => setProductModal({ visible: true, item })} />;
+    if (tab === 'movements') return <StockMovementsScreen accentColor={accentColor} />;
+    if (tab === 'suggestions') return loading
+      ? <ActivityIndicator size="large" color={accentColor} style={{ marginTop: 60 }} />
+      : <SuggestionsTab items={items} accentColor={accentColor} onMovement={(item, dt) => setMovModal({ visible: true, item, defaultType: dt })} />;
+    if (tab === 'analytics') return <AnalyticsTab accentColor={accentColor} />;
+    if (tab === 'locations') return loading
+      ? <ActivityIndicator size="large" color={accentColor} style={{ marginTop: 60 }} />
+      : <LocationsTab items={items} accentColor={accentColor} onEditProduct={item => setProductModal({ visible: true, item })} />;
+    if (tab === 'cost') return loading
+      ? <ActivityIndicator size="large" color={accentColor} style={{ marginTop: 60 }} />
+      : <CostTab items={items} accentColor={accentColor} />;
+    if (tab === 'forecast') return loading
+      ? <ActivityIndicator size="large" color={accentColor} style={{ marginTop: 60 }} />
+      : <ForecastTab items={items} accentColor={accentColor} />;
+
+    // list tab (default)
+    if (loading) return <ActivityIndicator size="large" color={accentColor} style={{ marginTop: 60 }} />;
+    if (!tableExists) return (
+      <View style={{ alignItems: 'center', paddingTop: 60, gap: 10 }}>
+        <DatabaseZap size={40} color={DS.ink[200]} strokeWidth={1.2} />
+        <Text style={{ fontSize: 16, fontWeight: '700', color: DS.ink[900] }}>Stok modulu kurulmadi</Text>
+        <Text style={{ fontSize: 13, color: DS.ink[400] }}>{'Supabase\'de "stock_items" tablosu olusturuldugunda veriler gorunur.'}</Text>
+      </View>
+    );
+
+    return (
+      <>
+        {/* Toolbar */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+          {searchExpanded || search.length > 0 ? (
+            <View style={{
+              flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
+              backgroundColor: '#FFFFFF', borderRadius: 14, borderWidth: 1,
+              borderColor: searchFocused ? accentColor : 'rgba(0,0,0,0.05)',
+              paddingHorizontal: 12, height: 44,
+              ...(Platform.OS === 'web' ? { boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)' } : {}),
+            }}>
+              <Search size={15} color={searchFocused ? accentColor : DS.ink[400]} strokeWidth={1.6} />
+              <TextInput
+                autoFocus
+                style={{ flex: 1, fontSize: 14, color: DS.ink[900], height: 44, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) } as any}
+                value={search}
+                onChangeText={setSearch}
+                onFocus={() => setSearchFocused(true)}
+                onBlur={() => { setSearchFocused(false); if (!search) setSearchExpanded(false); }}
+                placeholder="Urun ara..."
+                placeholderTextColor={DS.ink[400]}
+              />
+              <Pressable onPress={() => { setSearch(''); setSearchExpanded(false); }} hitSlop={8} style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}}>
+                <X size={14} color={DS.ink[400]} strokeWidth={1.6} />
+              </Pressable>
+            </View>
+          ) : (
+            <View style={{ flex: 1 }} />
           )}
+
+          <Pressable
+            onPress={() => setSearchExpanded(true)}
+            style={{
+              width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
+              backgroundColor: searchExpanded || search.length > 0 ? accentColor + '14' : '#FFFFFF',
+              borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+            }}
+          >
+            <Search size={20} color={searchExpanded || search.length > 0 ? accentColor : DS.ink[500]} strokeWidth={1.6} />
+          </Pressable>
+
+          <Pressable
+            onPress={openFilter}
+            style={{
+              width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
+              position: 'relative',
+              backgroundColor: activeFilterCount > 0 ? accentColor + '14' : '#FFFFFF',
+              borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+            }}
+          >
+            <Filter size={20} color={activeFilterCount > 0 ? accentColor : DS.ink[500]} strokeWidth={1.6} />
+            {activeFilterCount > 0 && (
+              <View style={{ position: 'absolute', top: 4, right: 4, minWidth: 14, height: 14, borderRadius: 7, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3, backgroundColor: accentColor }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: '#FFFFFF' }}>{activeFilterCount}</Text>
+              </View>
+            )}
+          </Pressable>
+
+          <Pressable
+            onPress={() => setWasteOpen(true)}
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 6,
+              paddingHorizontal: 12, height: 44,
+              borderRadius: 14,
+              backgroundColor: CHIP_TONES.danger.bg, borderWidth: 1, borderColor: 'rgba(217,75,75,0.2)',
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+            }}
+          >
+            <Flame size={14} color={CHIP_TONES.danger.fg} strokeWidth={1.6} />
+            <Text style={{ fontSize: 12, fontWeight: '700', color: CHIP_TONES.danger.fg }}>Fire Bildir</Text>
+          </Pressable>
         </View>
 
-        {tab === 'settings' ? (
-          <StockSettings accentColor={accentColor} onReload={load} />
-        ) : tab === 'dashboard' ? (
-          loading ? (
-            <ActivityIndicator size="large" color={accentColor} style={{ marginTop: 60 }} />
-          ) : (
-            <StockDashboard
-              items={items}
-              accentColor={accentColor}
-              onMovement={(item, defaultType) => setMovModal({ visible: true, item, defaultType })}
-              onAddProduct={() => setProductModal({ visible: true, item: null })}
-              onEditProduct={item => setProductModal({ visible: true, item })}
-            />
-          )
-        ) : tab === 'movements' ? (
-          <StockMovementsScreen />
-        ) : loading ? (
-          <ActivityIndicator size="large" color={accentColor} style={{ marginTop: 60 }} />
-        ) : !tableExists ? (
-          <View style={s.empty}>
-            <AppIcon name="database-off-outline" size={40} color="#E5E7EB" />
-            <Text style={s.emptyTitle}>Stok modülü kurulmadı</Text>
-            <Text style={s.emptySub}>Supabase'de "stock_items" tablosu oluştuğunda veriler görünür.</Text>
+        {/* Table */}
+        {filtered.length === 0 ? (
+          <View style={{ alignItems: 'center', paddingTop: 60, gap: 10 }}>
+            {total === 0
+              ? <Package size={36} color={DS.ink[200]} strokeWidth={1.2} />
+              : <Search size={36} color={DS.ink[200]} strokeWidth={1.2} />
+            }
+            <Text style={{ fontSize: 16, fontWeight: '700', color: DS.ink[900] }}>
+              {total === 0 ? 'Henuz urun eklenmemis' : 'Sonuc bulunamadi'}
+            </Text>
+            <Text style={{ fontSize: 13, color: DS.ink[400] }}>
+              {total === 0 ? '"Yeni Urun" butonuna tiklayin' : 'Arama veya filtre kriterlerini degistirin'}
+            </Text>
           </View>
         ) : (
           <>
-            {/* ── Toolbar ── */}
-            <View style={s.toolbar}>
-              {searchExpanded || search.length > 0 ? (
-                <View style={[s.searchWrap, searchFocused && s.searchWrapFocused]}>
-                  <AppIcon name="search" size={15} color={searchFocused ? accentColor : '#94A3B8'} />
-                  <TextInput
-                    autoFocus
-                    style={s.searchInput}
-                    value={search}
-                    onChangeText={setSearch}
-                    onFocus={() => setSearchFocused(true)}
-                    onBlur={() => { setSearchFocused(false); if (!search) setSearchExpanded(false); }}
-                    placeholder="Ürün ara…"
-                    placeholderTextColor="#AEAEB2"
-                  />
-                  <TouchableOpacity onPress={() => { setSearch(''); setSearchExpanded(false); }} hitSlop={8}>
-                    <AppIcon name="x" size={14} color="#94A3B8" />
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <View style={{ flex: 1 }} />
-              )}
-
-              <IconBtn active={searchExpanded || search.length > 0} onPress={() => setSearchExpanded(true)}>
-                <AppIcon name="search" size={20} color={searchExpanded || search.length > 0 ? accentColor : '#64748B'} />
-              </IconBtn>
-
-              <IconBtn active={activeFilterCount > 0} onPress={openFilter} style={{ position: 'relative' }}>
-                <AppIcon name={'tune-variant' as any} size={20} color={activeFilterCount > 0 ? accentColor : '#64748B'} />
-                {activeFilterCount > 0 && (
-                  <View style={[s.filterCount, { backgroundColor: accentColor, position: 'absolute', top: 4, right: 4, minWidth: 14, height: 14, borderRadius: 7, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 }]}>
-                    <Text style={s.filterCountText}>{activeFilterCount}</Text>
-                  </View>
-                )}
-              </IconBtn>
-
-              {/* Fire bildir butonu */}
-              <TouchableOpacity
-                onPress={() => setWasteOpen(true)}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 6,
-                  paddingHorizontal: 12, height: 36,
-                  borderRadius: 10,
-                  backgroundColor: '#FEE2E2', borderWidth: 1, borderColor: '#FCA5A5',
-                }}
-                activeOpacity={0.8}
-              >
-                <AppIcon name="alert-triangle" size={14} color="#DC2626" />
-                <Text style={{ fontSize: 12, fontWeight: '700', color: '#DC2626' }}>Fire Bildir</Text>
-              </TouchableOpacity>
+            <View style={{
+              flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12,
+              backgroundColor: '#FAFAFA', borderRadius: 24, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', marginBottom: 8,
+            }}>
+              <Text style={{ ...colHeader, flex: 2.8 }}>URUN ADI</Text>
+              {isDesktop && <Text style={{ ...colHeader, flex: 2.2 }}>STOK SEVIYESI</Text>}
+              <Text style={{ ...colHeader, flex: 1, textAlign: 'center' }}>MIKTAR</Text>
+              <Text style={{ ...colHeader, flex: 1.2, textAlign: 'center' }}>DURUM</Text>
+              <View style={{ width: 76 }} />
             </View>
 
-            {/* ── Table ── */}
-            {filtered.length === 0 ? (
-              <View style={s.empty}>
-                <AppIcon name={total === 0 ? 'package' : 'search'} size={36} color="#E5E7EB" />
-                <Text style={s.emptyTitle}>{total === 0 ? 'Henüz ürün eklenmemiş' : 'Sonuç bulunamadı'}</Text>
-                <Text style={s.emptySub}>{total === 0 ? '"Yeni Ürün" butonuna tıklayın' : 'Arama veya filtre kriterlerini değiştirin'}</Text>
-              </View>
-            ) : (
-              <>
-                {/* Shared table header */}
-                <View style={tbl.headerRow}>
-                  <Text style={[tbl.hCell, { flex: 2.8 }]}>ÜRÜN ADI</Text>
-                  {isDesktop && <Text style={[tbl.hCell, { flex: 2.2 }]}>STOK SEVİYESİ</Text>}
-                  <Text style={[tbl.hCell, { flex: 1, textAlign: 'center' }]}>MİKTAR</Text>
-                  <Text style={[tbl.hCell, { flex: 1.2, textAlign: 'center' }]}>DURUM</Text>
-                  <View style={{ width: 76 }} />
-                </View>
+            {groups.map(([groupKey, groupItems]) => {
+              const label      = groupKey === '__none__' ? 'Kategorisiz' : groupKey;
+              const collapsed  = collapsedGroups.has(groupKey);
+              const groupCrit  = groupItems.filter(i => i.quantity < i.min_quantity).length;
 
-                {groups.map(([groupKey, groupItems]) => {
-                  const label      = groupKey === '__none__' ? 'Kategorisiz' : groupKey;
-                  const collapsed  = collapsedGroups.has(groupKey);
-                  const groupCrit  = groupItems.filter(i => i.quantity < i.min_quantity).length;
+              return (
+                <View key={groupKey} style={{ ...tableCard, marginBottom: 12 }}>
+                  <Pressable
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 8,
+                      paddingHorizontal: 14, paddingVertical: 12,
+                      backgroundColor: DS.ink[50],
+                      borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)',
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                    }}
+                    onPress={() => toggleGroup(groupKey)}
+                  >
+                    {collapsed
+                      ? <ChevronRight size={15} color={DS.ink[400]} strokeWidth={1.6} />
+                      : <ChevronDown size={15} color={DS.ink[400]} strokeWidth={1.6} />
+                    }
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900], flex: 1 }}>{label}</Text>
+                    <View style={{ backgroundColor: DS.ink[100], borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 }}>
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: DS.ink[500] }}>{groupItems.length}</Text>
+                    </View>
+                    {groupCrit > 0 && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: CHIP_TONES.warning.bg, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 }}>
+                        <AlertTriangle size={11} color={CHIP_TONES.warning.fg} strokeWidth={1.6} />
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: CHIP_TONES.warning.fg }}>{groupCrit} kritik</Text>
+                      </View>
+                    )}
+                  </Pressable>
 
-                  return (
-                    <View key={groupKey} style={tbl.group}>
-                      {/* Group header */}
-                      <TouchableOpacity
-                        style={tbl.groupHeader}
-                        onPress={() => toggleGroup(groupKey)}
-                        activeOpacity={0.75}
-                      >
-                        <AppIcon
-                          name={collapsed ? 'chevron-right' : 'chevron-down'}
-                          size={15}
-                          color="#94A3B8"
-                        />
-                        <Text style={tbl.groupLabel}>{label}</Text>
-                        <View style={tbl.groupCount}>
-                          <Text style={tbl.groupCountText}>{groupItems.length}</Text>
+                  {!collapsed && groupItems.map((item, idx) => {
+                    const isCritical = item.quantity < item.min_quantity;
+                    const isEmpty    = item.quantity === 0;
+                    const isLast     = idx === groupItems.length - 1;
+                    const dotColor   = isEmpty ? CHIP_TONES.danger.fg : isCritical ? CHIP_TONES.warning.fg : CHIP_TONES.success.fg;
+
+                    return (
+                      <View key={item.id} style={{
+                        flexDirection: 'row', alignItems: 'center',
+                        paddingLeft: 0, paddingRight: 16, paddingVertical: 9, minHeight: 42,
+                        ...(!isLast ? { borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' } : {}),
+                      }}>
+                        <View style={{ width: 3, alignSelf: 'stretch', borderRadius: 2, marginLeft: 6, marginRight: 0, backgroundColor: dotColor }} />
+
+                        <View style={{ flex: 2.8, flexDirection: 'row', alignItems: 'center', paddingLeft: 10 }}>
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900], letterSpacing: -0.1 }} numberOfLines={1}>{item.name}</Text>
+                              {item.usage_category === 'production' && (
+                                <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 9999, backgroundColor: 'rgba(124,58,237,0.1)' }}>
+                                  <Text style={{ fontSize: 9, fontWeight: '800', color: '#7C3AED', letterSpacing: 0.4 }}>URETIM</Text>
+                                </View>
+                              )}
+                              {item.type && (
+                                <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 9999, backgroundColor: DS.ink[100] }}>
+                                  <Text style={{ fontSize: 9, fontWeight: '800', color: DS.ink[700], letterSpacing: 0.4 }}>{item.type.toUpperCase()}</Text>
+                                </View>
+                              )}
+                              {(wasteMap[item.id]?.cost ?? 0) > 0 && (
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 9999, backgroundColor: CHIP_TONES.danger.bg, borderWidth: 1, borderColor: 'rgba(217,75,75,0.2)' }}>
+                                  <Flame size={8} color={CHIP_TONES.danger.fg} strokeWidth={2} />
+                                  <Text style={{ fontSize: 9, fontWeight: '800', color: CHIP_TONES.danger.fg, letterSpacing: 0.3 }}>{Math.round(wasteMap[item.id].cost).toLocaleString('tr-TR')} TL</Text>
+                                </View>
+                              )}
+                            </View>
+                            {(item.brand || item.unit || item.supplier || item.units_per_tooth) && (
+                              <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }} numberOfLines={1}>
+                                {[item.brand, item.unit, item.supplier, item.units_per_tooth ? `${item.units_per_tooth}/dis -> ${item.consume_at_stage ?? 'MILLING'}` : null].filter(Boolean).join(' - ')}
+                              </Text>
+                            )}
+                          </View>
                         </View>
-                        {groupCrit > 0 && (
-                          <View style={tbl.groupAlert}>
-                            <AppIcon name="alert-outline" size={11} color="#D97706" />
-                            <Text style={tbl.groupAlertText}>{groupCrit} kritik</Text>
+                        {isDesktop && (
+                          <View style={{ flex: 2.2, paddingRight: 16, gap: 3 }}>
+                            <StockBar quantity={item.quantity} min={item.min_quantity} />
+                            <Text style={{ fontSize: 10, color: DS.ink[400], fontWeight: '500' }}>{item.quantity} / {item.min_quantity}{item.unit ? ` ${item.unit}` : ''}</Text>
                           </View>
                         )}
-                      </TouchableOpacity>
-
-                      {/* Group rows */}
-                      {!collapsed && groupItems.map((item, idx) => {
-                        const isCritical = item.quantity < item.min_quantity;
-                        const isEmpty    = item.quantity === 0;
-                        const isLast     = idx === groupItems.length - 1;
-                        const dotColor   = isEmpty ? '#EF4444' : isCritical ? '#F59E0B' : '#10B981';
-
-                        return (
-                          <View key={item.id} style={[tbl.row, !isLast && tbl.rowBorder]}>
-                            {/* Left accent line */}
-                            <View style={[tbl.accentLine, { backgroundColor: dotColor }]} />
-
-                            <View style={[tbl.col, { flex: 2.8, paddingLeft: 10 }]}>
-                              <View style={{ flex: 1 }}>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                  <Text style={tbl.name} numberOfLines={1}>{item.name}</Text>
-                                  {item.usage_category === 'production' && (
-                                    <View style={{
-                                      paddingHorizontal: 6, paddingVertical: 1,
-                                      borderRadius: 999,
-                                      backgroundColor: '#EDE9FE',
-                                    }}>
-                                      <Text style={{ fontSize: 9, fontWeight: '800', color: '#7C3AED', letterSpacing: 0.4 }}>
-                                        ÜRETİM
-                                      </Text>
-                                    </View>
-                                  )}
-                                  {item.type && (
-                                    <View style={{
-                                      paddingHorizontal: 6, paddingVertical: 1,
-                                      borderRadius: 999,
-                                      backgroundColor: '#F1F5F9',
-                                    }}>
-                                      <Text style={{ fontSize: 9, fontWeight: '800', color: '#475569', letterSpacing: 0.4 }}>
-                                        {item.type.toUpperCase()}
-                                      </Text>
-                                    </View>
-                                  )}
-                                  {/* 30 gün fire badge — sadece > 0 ise */}
-                                  {(wasteMap[item.id]?.cost ?? 0) > 0 && (
-                                    <View style={{
-                                      flexDirection: 'row', alignItems: 'center', gap: 3,
-                                      paddingHorizontal: 6, paddingVertical: 1,
-                                      borderRadius: 999,
-                                      backgroundColor: '#FEE2E2',
-                                      borderWidth: 1, borderColor: '#FCA5A5',
-                                    }}>
-                                      <Text style={{ fontSize: 9, fontWeight: '800', color: '#DC2626', letterSpacing: 0.3 }}>
-                                        ⚠ {Math.round(wasteMap[item.id].cost).toLocaleString('tr-TR')} ₺
-                                      </Text>
-                                    </View>
-                                  )}
-                                </View>
-                                {(item.brand || item.unit || item.supplier || item.units_per_tooth) && (
-                                  <Text style={tbl.meta} numberOfLines={1}>
-                                    {[
-                                      item.brand,
-                                      item.unit,
-                                      item.supplier,
-                                      item.units_per_tooth ? `${item.units_per_tooth}/diş → ${item.consume_at_stage ?? 'MILLING'}` : null,
-                                    ].filter(Boolean).join(' · ')}
-                                  </Text>
-                                )}
-                              </View>
-                            </View>
-                            {isDesktop && (
-                              <View style={{ flex: 2.2, paddingRight: 16, gap: 3 }}>
-                                <StockBar quantity={item.quantity} min={item.min_quantity} />
-                                <Text style={tbl.barLabel}>{item.quantity} / {item.min_quantity}{item.unit ? ` ${item.unit}` : ''}</Text>
-                              </View>
-                            )}
-                            <View style={{ flex: 1, alignItems: 'center' }}>
-                              <Text style={[tbl.cell, (isCritical || isEmpty) && { color: dotColor, fontWeight: '700' }]}>
-                                {item.quantity}
-                              </Text>
-                            </View>
-                            <View style={{ flex: 1.2, alignItems: 'center' }}>
-                              <StatusBadge quantity={item.quantity} min={item.min_quantity} />
-                            </View>
-                            <View style={tbl.actions}>
-                              <TouchableOpacity style={tbl.iconBtn} onPress={() => setMovModal({ visible: true, item })} activeOpacity={0.7}>
-                                <AppIcon name="swap-horizontal" size={14} color={accentColor} />
-                              </TouchableOpacity>
-                              <TouchableOpacity style={tbl.iconBtn} onPress={() => setProductModal({ visible: true, item })} activeOpacity={0.7}>
-                                <AppIcon name="edit-2" size={13} color="#6C6C70" />
-                              </TouchableOpacity>
-                            </View>
-                          </View>
-                        );
-                      })}
-                    </View>
-                  );
-                })}
-              </>
-            )}
+                        <View style={{ flex: 1, alignItems: 'center' }}>
+                          <Text style={{ fontSize: 13, color: (isCritical || isEmpty) ? dotColor : DS.ink[700], fontWeight: (isCritical || isEmpty) ? '700' : '500' }}>{item.quantity}</Text>
+                        </View>
+                        <View style={{ flex: 1.2, alignItems: 'center' }}>
+                          <StatusBadge quantity={item.quantity} min={item.min_quantity} />
+                        </View>
+                        <View style={{ width: 76, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
+                          <Pressable
+                            style={{ width: 28, height: 28, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor + '14', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                            onPress={() => setMovModal({ visible: true, item })}
+                          >
+                            <ArrowLeftRight size={14} color={accentColor} strokeWidth={1.6} />
+                          </Pressable>
+                          <Pressable
+                            style={{ width: 28, height: 28, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: DS.ink[50], ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                            onPress={() => setProductModal({ visible: true, item })}
+                          >
+                            <Pencil size={13} color={DS.ink[500]} strokeWidth={1.6} />
+                          </Pressable>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              );
+            })}
           </>
         )}
+      </>
+    );
+  };
 
-        <View style={{ height: 40 }} />
-      </ScrollView>
+  return (
+    <View style={{ flex: 1 }}>
 
-      {/* Modals */}
+      {/* ── Mobile: Horizontal pill bar ─────────────────────────── */}
+      {!isDesktop && (
+        <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 }}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 6, alignItems: 'center' }}
+          >
+            <View style={{ flexDirection: 'row', gap: 3, padding: 3, backgroundColor: DS.ink[50], borderRadius: 9999 }}>
+              {STOCK_TABS.map(t => {
+                const active = t.key === tab;
+                const TabIcon = t.icon;
+                return (
+                  <Pressable
+                    key={t.key}
+                    onPress={() => setTab(t.key)}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 5,
+                      paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9999,
+                      backgroundColor: active ? t.accent : 'transparent',
+                    }}
+                  >
+                    <TabIcon
+                      size={12}
+                      strokeWidth={active ? 2.2 : 1.8}
+                      color={active ? '#FFFFFF' : t.accent}
+                    />
+                    <Text style={{ fontSize: 11, fontWeight: active ? '700' : '600', color: active ? '#FFFFFF' : DS.ink[500] }}>
+                      {t.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+        </View>
+      )}
+
+      {/* ── Layout ──────────────────────────────────────────────── */}
+      {isDesktop ? (
+        <View style={{ flex: 1, flexDirection: 'row' }}>
+
+          {/* ── Desktop Sidebar ─────────────────────────────────── */}
+          <View style={{ width: 220, paddingTop: 24, paddingBottom: 16 }}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ gap: 2, paddingHorizontal: 10 }}
+            >
+              {STOCK_TABS.map(t => {
+                const isActive = t.key === tab;
+                const TabIcon = t.icon;
+                return (
+                  <Pressable
+                    key={t.key}
+                    onPress={() => setTab(t.key)}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 10,
+                      paddingHorizontal: 14,
+                      paddingVertical: 10,
+                      borderRadius: 12,
+                      backgroundColor: isActive ? '#FFFFFF' : 'transparent',
+                      // @ts-ignore web
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {isActive && (
+                      <View
+                        style={{
+                          width: 3,
+                          height: 16,
+                          borderRadius: 2,
+                          backgroundColor: t.accent,
+                          marginLeft: -6,
+                          marginRight: 4,
+                        }}
+                      />
+                    )}
+                    <View style={{
+                      width: 28, height: 28, borderRadius: 8,
+                      backgroundColor: isActive ? t.accent + '14' : 'transparent',
+                      alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <TabIcon
+                        size={15}
+                        strokeWidth={isActive ? 2 : 1.6}
+                        color={isActive ? t.accent : '#9A9A9A'}
+                      />
+                    </View>
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        fontWeight: isActive ? '600' : '400',
+                        color: isActive ? '#0A0A0A' : '#6B6B6B',
+                        flex: 1,
+                      }}
+                    >
+                      {t.label}
+                    </Text>
+                    {isActive && (
+                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: t.accent }} />
+                    )}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+
+          {/* ── Desktop Content ──────────────────────────────────── */}
+          <View style={{ flex: 1, borderRadius: 16, overflow: 'hidden' }}>
+            {/* Title bar */}
+            <View style={{ paddingHorizontal: 28, paddingTop: 16, paddingBottom: 8, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+              <View>
+                <Text
+                  style={{
+                    ...DISPLAY,
+                    fontSize: 24,
+                    letterSpacing: -0.5,
+                    color: '#0A0A0A',
+                    marginBottom: 4,
+                  }}
+                >
+                  {activeTab.label}
+                </Text>
+                <Text style={{ fontSize: 13, color: '#9A9A9A', lineHeight: 19 }}>
+                  {activeTab.hint}
+                </Text>
+              </View>
+              {showCta && (
+                <Pressable
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 6,
+                    paddingHorizontal: 16, paddingVertical: 8,
+                    borderRadius: 9999, backgroundColor: accentColor,
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                  }}
+                  onPress={ctaAction}
+                >
+                  <Plus size={15} color="#FFFFFF" strokeWidth={2} />
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>{ctaLabel}</Text>
+                </Pressable>
+              )}
+            </View>
+
+            <HubContext.Provider value={true}>
+              <ScrollView
+                contentContainerStyle={{ padding: 20, paddingTop: 8, paddingBottom: 60 }}
+                showsVerticalScrollIndicator={false}
+              >
+                {renderContent()}
+                <View style={{ height: 40 }} />
+              </ScrollView>
+            </HubContext.Provider>
+          </View>
+        </View>
+      ) : (
+        /* ── Mobile: full-width content ─────────────────────────── */
+        <View style={{ flex: 1, paddingHorizontal: 12, paddingTop: 4 }}>
+          {/* Mobile CTA */}
+          {showCta && (
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 10 }}>
+              <Pressable
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                  paddingHorizontal: 14, paddingVertical: 6,
+                  borderRadius: 9999, backgroundColor: accentColor,
+                }}
+                onPress={ctaAction}
+              >
+                <Plus size={15} color="#FFFFFF" strokeWidth={2} />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>{ctaLabel}</Text>
+              </Pressable>
+            </View>
+          )}
+          <HubContext.Provider value={true}>
+            <ScrollView
+              contentContainerStyle={{ paddingBottom: 60 }}
+              showsVerticalScrollIndicator={false}
+            >
+              {renderContent()}
+              <View style={{ height: 40 }} />
+            </ScrollView>
+          </HubContext.Provider>
+        </View>
+      )}
+
+      {/* ── Modals ──────────────────────────────────────────────── */}
       <ProductModal
         visible={productModal.visible}
         item={productModal.item}
@@ -1871,9 +3787,6 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
         onClose={() => setMovModal({ visible: false, item: null })}
         onSaved={load}
       />
-
-      {/* Filter Sheet */}
-      {/* Fire bildirim modalı */}
       {labId && authProfile && (
         <WasteReportModal
           visible={wasteOpen}
@@ -1884,57 +3797,71 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
         />
       )}
 
+      {/* ── Filter Modal ────────────────────────────────────────── */}
       <Modal visible={showFilter} transparent animationType="fade" onRequestClose={() => setShowFilter(false)}>
-        <TouchableOpacity style={fp.backdrop} activeOpacity={1} onPress={() => setShowFilter(false)}>
-          <View style={fp.panel} onStartShouldSetResponder={() => true}>
-            <View style={fp.header}>
-              <View style={fp.headerLeft}>
-                <AppIcon name={'tune-variant' as any} size={15} color="#0F172A" />
-                <Text style={fp.headerTitle}>Filtrele</Text>
+        <Pressable style={modalOverlay} onPress={() => setShowFilter(false)}>
+          <View style={{ ...modalSheet, maxWidth: 420, maxHeight: undefined }} onStartShouldSetResponder={() => true}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Filter size={15} color={accentColor} strokeWidth={1.6} />
+                <Text style={{ fontSize: 15, fontWeight: '700', color: DS.ink[900] }}>Filtrele</Text>
                 {activeFilterCount > 0 && (
-                  <View style={fp.countBadge}><Text style={fp.countBadgeText}>{activeFilterCount}</Text></View>
+                  <View style={{ backgroundColor: accentColor, borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>{activeFilterCount}</Text>
+                  </View>
                 )}
               </View>
-              <TouchableOpacity onPress={() => { setDraftStatus('all'); setDraftCat('all'); setDraftBrand('all'); setDraftUsage('all'); }} activeOpacity={0.7}>
-                <Text style={fp.clearText}>Temizle</Text>
-              </TouchableOpacity>
+              <Pressable
+                onPress={() => { setDraftStatus('all'); setDraftCat('all'); setDraftBrand('all'); setDraftUsage('all'); }}
+                style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500] }}>Temizle</Text>
+              </Pressable>
             </View>
-            <View style={fp.divider} />
+            <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.04)' }} />
 
-            <View style={fp.section}>
-              <Text style={fp.sectionLabel}>Durum</Text>
-              <View style={fp.chipRow}>
+            <View style={{ paddingHorizontal: 20, paddingVertical: 16, gap: 12 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.8, textTransform: 'uppercase' }}>Durum</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 {([
-                  { value: 'all', label: 'Tümü' },
+                  { value: 'all', label: 'Tumu' },
                   { value: 'ok', label: 'Normal' },
                   { value: 'critical', label: 'Kritik' },
-                  { value: 'empty', label: 'Tükendi' },
+                  { value: 'empty', label: 'Tukendi' },
                 ] as const).map(it => {
                   const active = draftStatus === it.value;
                   return (
-                    <TouchableOpacity key={it.value} style={[fp.chip, active && fp.chipActive]} onPress={() => setDraftStatus(it.value)} activeOpacity={0.7}>
-                      <Text style={[fp.chipText, active && fp.chipTextActive]}>{it.label}</Text>
-                    </TouchableOpacity>
+                    <Pressable
+                      key={it.value}
+                      style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 9999, backgroundColor: active ? accentColor : DS.ink[100], ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                      onPress={() => setDraftStatus(it.value)}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: active ? '600' : '500', color: active ? '#FFFFFF' : DS.ink[500] }}>{it.label}</Text>
+                    </Pressable>
                   );
                 })}
               </View>
             </View>
 
-            <View style={fp.divider} />
-            <View style={fp.section}>
-              <Text style={fp.sectionLabel}>Kullanım</Text>
-              <View style={fp.chipRow}>
+            <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.04)' }} />
+            <View style={{ paddingHorizontal: 20, paddingVertical: 16, gap: 12 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.8, textTransform: 'uppercase' }}>Kullanim</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 {([
-                  { value: 'all',        label: 'Tümü'    },
-                  { value: 'production', label: 'Üretim'  },
+                  { value: 'all',        label: 'Tumu'    },
+                  { value: 'production', label: 'Uretim'  },
                   { value: 'office',     label: 'Ofis'    },
-                  { value: 'misc',       label: 'Diğer'   },
+                  { value: 'misc',       label: 'Diger'   },
                 ] as const).map(it => {
                   const active = draftUsage === it.value;
                   return (
-                    <TouchableOpacity key={it.value} style={[fp.chip, active && fp.chipActive]} onPress={() => setDraftUsage(it.value)} activeOpacity={0.7}>
-                      <Text style={[fp.chipText, active && fp.chipTextActive]}>{it.label}</Text>
-                    </TouchableOpacity>
+                    <Pressable
+                      key={it.value}
+                      style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 9999, backgroundColor: active ? accentColor : DS.ink[100], ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                      onPress={() => setDraftUsage(it.value)}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: active ? '600' : '500', color: active ? '#FFFFFF' : DS.ink[500] }}>{it.label}</Text>
+                    </Pressable>
                   );
                 })}
               </View>
@@ -1942,16 +3869,20 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
 
             {categories.length > 1 && (
               <>
-                <View style={fp.divider} />
-                <View style={fp.section}>
-                  <Text style={fp.sectionLabel}>Kategori</Text>
-                  <View style={fp.chipRow}>
+                <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.04)' }} />
+                <View style={{ paddingHorizontal: 20, paddingVertical: 16, gap: 12 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.8, textTransform: 'uppercase' }}>Kategori</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                     {categories.map(cat => {
                       const active = draftCat === cat;
                       return (
-                        <TouchableOpacity key={cat} style={[fp.chip, active && fp.chipActive]} onPress={() => setDraftCat(cat)} activeOpacity={0.7}>
-                          <Text style={[fp.chipText, active && fp.chipTextActive]}>{cat === 'all' ? 'Tümü' : cat}</Text>
-                        </TouchableOpacity>
+                        <Pressable
+                          key={cat}
+                          style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 9999, backgroundColor: active ? accentColor : DS.ink[100], ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                          onPress={() => setDraftCat(cat)}
+                        >
+                          <Text style={{ fontSize: 13, fontWeight: active ? '600' : '500', color: active ? '#FFFFFF' : DS.ink[500] }}>{cat === 'all' ? 'Tumu' : cat}</Text>
+                        </Pressable>
                       );
                     })}
                   </View>
@@ -1961,16 +3892,20 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
 
             {brands.length > 0 && (
               <>
-                <View style={fp.divider} />
-                <View style={fp.section}>
-                  <Text style={fp.sectionLabel}>Marka</Text>
-                  <View style={fp.chipRow}>
+                <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.04)' }} />
+                <View style={{ paddingHorizontal: 20, paddingVertical: 16, gap: 12 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.8, textTransform: 'uppercase' }}>Marka</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                     {(['all', ...brands]).map(b => {
                       const active = draftBrand === b;
                       return (
-                        <TouchableOpacity key={b} style={[fp.chip, active && fp.chipActive]} onPress={() => setDraftBrand(b)} activeOpacity={0.7}>
-                          <Text style={[fp.chipText, active && fp.chipTextActive]}>{b === 'all' ? 'Tümü' : b}</Text>
-                        </TouchableOpacity>
+                        <Pressable
+                          key={b}
+                          style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 9999, backgroundColor: active ? accentColor : DS.ink[100], ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                          onPress={() => setDraftBrand(b)}
+                        >
+                          <Text style={{ fontSize: 13, fontWeight: active ? '600' : '500', color: active ? '#FFFFFF' : DS.ink[500] }}>{b === 'all' ? 'Tumu' : b}</Text>
+                        </Pressable>
                       );
                     })}
                   </View>
@@ -1978,169 +3913,18 @@ export function StockScreen({ accentColor = '#0F172A' }: Props) {
               </>
             )}
 
-            <View style={fp.divider} />
-            <View style={fp.footer}>
-              <TouchableOpacity style={fp.cancelBtn} onPress={() => setShowFilter(false)} activeOpacity={0.7}>
-                <Text style={fp.cancelText}>İptal</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[fp.applyBtn, { backgroundColor: accentColor }]} onPress={applyFilter} activeOpacity={0.8}>
-                <Text style={fp.applyText}>Uygula</Text>
-              </TouchableOpacity>
+            <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.04)' }} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 10, paddingHorizontal: 20, paddingVertical: 16 }}>
+              <Pressable style={ghostBtn} onPress={() => setShowFilter(false)}>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[700] }}>Iptal</Text>
+              </Pressable>
+              <Pressable style={{ ...darkPillBtn, backgroundColor: accentColor }} onPress={applyFilter}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>Uygula</Text>
+              </Pressable>
             </View>
           </View>
-        </TouchableOpacity>
+        </Pressable>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
-
-// ─── Styles ───────────────────────────────────────────────────────────────────
-
-const s = StyleSheet.create({
-  safe:      { flex: 1, backgroundColor: '#F1F5F9' },
-  container: { padding: 20, paddingBottom: 60 },
-
-  /* Tab bar + CTA row (Stitch) */
-  tabBarRow:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 18, flexWrap: 'wrap' },
-  pageCta:      { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 },
-  pageCtaText:  { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
-
-  /* Stats header */
-  statsCard:     { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)', paddingHorizontal: 16, paddingVertical: 14, marginBottom: 16, gap: 16, ...(Platform.OS === 'web' ? ({ boxShadow: '0 8px 24px rgba(0,0,0,0.15)' } as any) : { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 4 }) },
-  statsLeft:     { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  statsIconBox:  { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  statsLabel:    { fontSize: 10, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.6, textTransform: 'uppercase' },
-  statsValue:    { fontSize: 20, fontWeight: '800', color: '#0F172A', marginTop: 1 },
-  statsUnit:     { fontSize: 13, fontWeight: '500', color: '#94A3B8' },
-  statsRight:    { flex: 1, gap: 6 },
-  statsBar:      { height: 6, borderRadius: 3, overflow: 'hidden', flexDirection: 'row', backgroundColor: '#F1F5F9' },
-  statsBarSeg:   { height: 6 },
-  statsLegend:   { flexDirection: 'row', gap: 12, flexWrap: 'wrap' },
-  legendItem:    { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  legendDot:     { width: 6, height: 6, borderRadius: 3 },
-  legendText:    { fontSize: 11, color: '#64748B', fontWeight: '500' },
-
-  /* Pill tab bar */
-  tabBarWrap:    { marginBottom: 18 },
-  tabBar: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-
-  /* Toolbar */
-  toolbar:          { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
-  searchWrap:       { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)', paddingHorizontal: 12, height: 40, ...(Platform.OS === 'web' ? ({ boxShadow: '0 4px 12px rgba(0,0,0,0.08)' } as any) : { shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 2 }) },
-  searchWrapFocused:{ borderColor: '#CBD5E1' },
-  searchInput:      { flex: 1, fontSize: 14, color: '#1C1C1E', height: 40, outlineStyle: 'none' } as any,
-
-  filterBtn:        { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#FFFFFF' },
-  filterBtnActive:  { borderColor: '#CBD5E1', backgroundColor: '#F8FAFC' },
-  filterBtnText:    { fontSize: 13, fontWeight: '600', color: '#64748B' },
-  filterCount:      { borderRadius: 10, paddingHorizontal: 6, paddingVertical: 1 },
-  filterCountText:  { fontSize: 10, fontWeight: '700', color: '#FFFFFF' },
-
-  addBtn:           { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10 },
-  addBtnText:       { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
-
-  empty:      { alignItems: 'center', paddingTop: 60, gap: 10 },
-  emptyTitle: { fontSize: 16, fontWeight: '700', color: '#1C1C1E' },
-  emptySub:   { fontSize: 13, color: '#AEAEB2' },
-});
-
-const tbl = StyleSheet.create({
-  headerRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)', marginBottom: 8, ...(Platform.OS === 'web' ? ({ boxShadow: '0 4px 12px rgba(0,0,0,0.08)' } as any) : { shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 2 }) },
-  hCell:     { fontSize: 10, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.6, textTransform: 'uppercase' },
-
-  group:       { backgroundColor: '#FFFFFF', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)', overflow: 'hidden', marginBottom: 12, ...(Platform.OS === 'web' ? ({ boxShadow: '0 8px 24px rgba(0,0,0,0.15)' } as any) : { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 4 }) } as any,
-  groupHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: '#FAFBFC', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  groupLabel:  { fontSize: 13, fontWeight: '700', color: '#0F172A', flex: 1 },
-  groupCount:  { backgroundColor: '#F1F5F9', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
-  groupCountText: { fontSize: 11, fontWeight: '700', color: '#64748B' },
-  groupAlert:     { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#FEF3C7', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
-  groupAlertText: { fontSize: 11, fontWeight: '700', color: '#D97706' },
-
-  row:        { flexDirection: 'row', alignItems: 'center', paddingLeft: 0, paddingRight: 16, paddingVertical: 9, minHeight: 42 },
-  rowBorder:  { borderBottomWidth: 1, borderBottomColor: '#F8FAFC' },
-  col:        { flexDirection: 'row', alignItems: 'center' },
-  accentLine: { width: 3, alignSelf: 'stretch', borderRadius: 2, marginLeft: 6, marginRight: 0 },
-  barLabel:   { fontSize: 10, color: '#94A3B8', fontWeight: '500' },
-
-  name:     { fontSize: 13, fontWeight: '600', color: '#1C1C1E', letterSpacing: -0.1 },
-  meta:     { fontSize: 11, color: '#AEAEB2', marginTop: 1 },
-  cell:     { fontSize: 13, color: '#374151', fontWeight: '500' },
-  cellMuted:{ fontSize: 12, color: '#94A3B8' },
-
-  catBadge:     { backgroundColor: '#F1F5F9', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, alignSelf: 'flex-start' },
-  catBadgeText: { fontSize: 11, fontWeight: '600', color: '#475569' },
-
-  actions: { width: 76, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4 },
-  iconBtn: { width: 28, height: 28, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8FAFC' },
-});
-
-// ─── Modal styles ─────────────────────────────────────────────────────────────
-
-const m = StyleSheet.create({
-  overlay:    { flex: 1, backgroundColor: 'rgba(15,23,42,0.4)', justifyContent: 'center', alignItems: 'center', padding: 24 },
-  sheet:      { backgroundColor: '#FFFFFF', borderRadius: 14, width: '100%', maxWidth: 540, maxHeight: '92%', overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)', ...(Platform.OS === 'web' ? ({ boxShadow: '0 8px 24px rgba(0,0,0,0.15)' } as any) : { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 4 }) },
-  header:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 22, paddingBottom: 18, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  title:      { fontSize: 18, fontWeight: '700', color: '#0F172A' },
-  closeBtn:   { width: 32, height: 32, borderRadius: 8, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
-  body:       { padding: 16 },
-  sectionCard: { backgroundColor: '#FFFFFF', borderRadius: 14, borderWidth: 1, borderColor: '#E9EEF4', padding: 16, marginBottom: 12 },
-  sectionTitle: { fontSize: 13, fontWeight: '600', color: '#1E293B', marginBottom: 14 },
-  fieldWrap:  { marginBottom: 12 },
-  fieldLabel: { fontSize: 11, fontWeight: '500', color: '#64748B', marginBottom: 7, letterSpacing: 0.5 },
-  req:        { color: '#EF4444' },
-  fieldInput: { borderWidth: 1, borderColor: '#F1F5F9', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, color: '#0F172A', backgroundColor: '#FFFFFF', outlineStyle: 'none' } as any,
-  errorBox:   { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FEF2F2', borderRadius: 10, padding: 12 },
-  errorText:  { fontSize: 13, color: '#DC2626', flex: 1 },
-  footer:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 10, paddingHorizontal: 24, paddingVertical: 16, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
-  deleteBtn:  { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, borderWidth: 1, borderColor: '#FEE2E2', backgroundColor: '#FFF5F5' },
-  deleteBtnText: { fontSize: 13, fontWeight: '600', color: '#DC2626' },
-  cancelBtn:  { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, borderColor: '#E2E8F0' },
-  cancelText: { fontSize: 14, fontWeight: '600', color: '#475569' },
-  saveBtn:    { paddingHorizontal: 22, paddingVertical: 10, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 80, justifyContent: 'center' },
-  saveText:   { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
-  chip:         { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#F8FAFC' },
-  chipText:     { fontSize: 12, fontWeight: '600', color: '#475569' },
-  dropPanel:    { marginTop: 6, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, backgroundColor: '#FFFFFF', overflow: 'hidden' },
-  dropSearch:   { paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: '#0F172A', borderBottomWidth: 1, borderBottomColor: '#F1F5F9', outlineStyle: 'none' } as any,
-  dropItem:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 11 },
-  dropItemActive:{ backgroundColor: '#F8FAFC' },
-  dropItemText: { fontSize: 14, color: '#334155', fontWeight: '500' },
-  dropAddItem:  { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 11, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
-  dropAddText:  { fontSize: 14, fontWeight: '600' },
-  dropEmpty:    { paddingHorizontal: 14, paddingVertical: 14, fontSize: 13, color: '#94A3B8', textAlign: 'center' },
-  dropClear:    { borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingHorizontal: 14, paddingVertical: 10 },
-  dropClearText:{ fontSize: 13, color: '#94A3B8', fontWeight: '500' },
-});
-
-// ─── Movement modal styles ─────────────────────────────────────────────────────
-
-const mv = StyleSheet.create({
-  typeBtn:     { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, borderColor: '#E2E8F0', backgroundColor: '#F8FAFC' },
-  typeBtnText: { fontSize: 12, fontWeight: '500', color: '#94A3B8' },
-});
-
-// ─── Filter panel styles ───────────────────────────────────────────────────────
-
-const fp = StyleSheet.create({
-  backdrop:   { flex: 1, backgroundColor: 'rgba(15,23,42,0.3)', justifyContent: 'center', alignItems: 'center', padding: 24 },
-  panel:      { backgroundColor: '#FFFFFF', borderRadius: 16, width: '100%', maxWidth: 420, overflow: 'hidden', boxShadow: '0 8px 32px rgba(0,0,0,0.12)' } as any,
-  header:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16 },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  headerTitle:{ fontSize: 15, fontWeight: '700', color: '#0F172A' },
-  countBadge: { backgroundColor: '#0F172A', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2 },
-  countBadgeText: { fontSize: 11, fontWeight: '700', color: '#FFFFFF' },
-  clearText:  { fontSize: 13, fontWeight: '600', color: '#64748B' },
-  divider:    { height: 1, backgroundColor: '#F1F5F9' },
-  section:    { paddingHorizontal: 20, paddingVertical: 16, gap: 12 },
-  sectionLabel: { fontSize: 11, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.8, textTransform: 'uppercase' },
-  chipRow:    { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip:       { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 100, backgroundColor: '#F1F5F9' },
-  chipActive: { backgroundColor: '#0F172A' },
-  chipText:   { fontSize: 13, fontWeight: '500', color: '#64748B' },
-  chipTextActive: { color: '#FFFFFF', fontWeight: '600' },
-  footer:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 10, paddingHorizontal: 20, paddingVertical: 16 },
-  cancelBtn:  { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, borderColor: '#E2E8F0' },
-  cancelText: { fontSize: 14, fontWeight: '600', color: '#475569' },
-  applyBtn:   { paddingHorizontal: 22, paddingVertical: 10, borderRadius: 10 },
-  applyText:  { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
-});

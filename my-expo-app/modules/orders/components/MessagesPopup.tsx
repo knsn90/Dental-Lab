@@ -470,13 +470,18 @@ function RecordingWave({ color = '#EF4444' }: { color?: string }) {
 }
 
 // ── Message Bubble ───────────────────────────────────────────────────
-function MessageBubble({ msg, isMine, accentColor, showAvatar, senderColor, onImagePress }: {
+function MessageBubble({ msg, isMine, accentColor, showAvatar, senderColor, onImagePress, canApprove, onApprove, onReject }: {
   msg: any; isMine: boolean; accentColor: string; showAvatar: boolean; senderColor: string;
   onImagePress?: (url: string) => void;
+  canApprove?: boolean;
+  onApprove?: (id: string) => void;
+  onReject?: (id: string) => void;
 }) {
   const hasImage = msg.attachment_type === 'image' && msg.attachment_url;
   const hasFile  = msg.attachment_type === 'file'  && msg.attachment_url;
   const hasAudio = msg.attachment_type === 'audio' && msg.attachment_url;
+  const isPending  = msg.approval_status === 'pending';
+  const isRejected = msg.approval_status === 'rejected';
 
   return (
     <View style={[mb.row, isMine ? mb.rowMine : mb.rowOther]}>
@@ -487,12 +492,34 @@ function MessageBubble({ msg, isMine, accentColor, showAvatar, senderColor, onIm
       )}
       {!isMine && !showAvatar && <View style={{ width: 28 }} />}
 
-      <View style={[
-        mb.bubble,
-        isMine
-          ? [mb.bubbleMine, { backgroundColor: accentColor }]
-          : mb.bubbleOther,
-      ]}>
+      <View style={{ flexShrink: 1 }}>
+        {/* Sender name — shown at the start of each sender group */}
+        {!isMine && showAvatar && msg.sender?.full_name && (
+          <Text style={{
+            fontSize: 11,
+            fontWeight: '600',
+            color: senderColor,
+            marginBottom: 2,
+            marginLeft: 4,
+          }}>
+            {msg.sender.full_name}
+            {msg.sender.user_type ? (
+              <Text style={{ fontWeight: '400', color: '#9A9A9A' }}>
+                {' · '}{msg.sender.user_type === 'admin' ? 'Admin'
+                  : msg.sender.user_type === 'lab' ? 'Lab'
+                  : msg.sender.user_type === 'doctor' ? 'Hekim'
+                  : msg.sender.user_type === 'clinic_admin' ? 'Klinik'
+                  : msg.sender.user_type}
+              </Text>
+            ) : null}
+          </Text>
+        )}
+        <View style={[
+          mb.bubble,
+          isMine
+            ? [mb.bubbleMine, { backgroundColor: accentColor }]
+            : mb.bubbleOther,
+        ]}>
         {hasImage && (
           <TouchableOpacity
             onPress={() => onImagePress?.(msg.attachment_url)}
@@ -532,11 +559,23 @@ function MessageBubble({ msg, isMine, accentColor, showAvatar, senderColor, onIm
           <Text style={[mb.text, isMine && { color: '#FFFFFF' }]}>{msg.content}</Text>
         ) : null}
         <View style={mb.bubbleFooter}>
+          {/* Pending / Rejected badge */}
+          {isPending && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+              <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: '#F59E0B' }} />
+              <Text style={{ fontSize: 9, fontWeight: '600', color: '#F59E0B' }}>Onay bekliyor</Text>
+            </View>
+          )}
+          {isRejected && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+              <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: '#EF4444' }} />
+              <Text style={{ fontSize: 9, fontWeight: '600', color: '#EF4444' }}>Reddedildi</Text>
+            </View>
+          )}
           <Text style={[mb.time, isMine && { color: 'rgba(255,255,255,0.75)' }]}>
             {formatTimeFull(msg.created_at)}
           </Text>
           {isMine && (
-            // Çift tık: okunmadı → beyaz (görünür), okundu → açık mavi
             <Icon
               name="check-check"
               size={12}
@@ -545,6 +584,34 @@ function MessageBubble({ msg, isMine, accentColor, showAvatar, senderColor, onIm
             />
           )}
         </View>
+        {/* Approve / Reject buttons for managers — only on pending messages */}
+        {isPending && canApprove && (
+          <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
+            <TouchableOpacity
+              onPress={() => onApprove?.(msg.id)}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 3,
+                paddingHorizontal: 8, paddingVertical: 3, borderRadius: 9999,
+                backgroundColor: 'rgba(16,185,129,0.12)',
+              }}
+            >
+              <Icon name="check" size={11} color="#059669" strokeWidth={2.5} />
+              <Text style={{ fontSize: 10, fontWeight: '700', color: '#059669' }}>Onayla</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => onReject?.(msg.id)}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 3,
+                paddingHorizontal: 8, paddingVertical: 3, borderRadius: 9999,
+                backgroundColor: 'rgba(239,68,68,0.10)',
+              }}
+            >
+              <Icon name="x" size={11} color="#DC2626" strokeWidth={2.5} />
+              <Text style={{ fontSize: 10, fontWeight: '700', color: '#DC2626' }}>Reddet</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
       </View>
     </View>
   );
@@ -607,10 +674,14 @@ interface ChatDetailProps {
 export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerType, onBack }: ChatDetailProps) {
   const scrollRef = useRef<ScrollView>(null);
   const [text, setText] = useState('');
+  const { profile } = useAuthStore();
 
   // useChatMessages: pass currentUserId so hook auto-marks incoming messages as read
   const chat = useChatMessages(selectedOrder?.work_order_id ?? '', currentUserId);
   const workOrderId = selectedOrder?.work_order_id ?? '';
+
+  // Manager/admin can approve technician messages
+  const canApprove = viewerType === 'admin' || (viewerType === 'lab' && profile?.role === 'manager');
 
   // ── Image lightbox ──────────────────────────────────────────────
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
@@ -877,6 +948,35 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
         contentContainerStyle={{ paddingVertical: 12 }}
         showsVerticalScrollIndicator={false}
       >
+        {/* Pending approval banner */}
+        {canApprove && chat.pendingCount > 0 && (
+          <View style={{
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+            marginHorizontal: 12, marginTop: 8, marginBottom: 4,
+            paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12,
+            backgroundColor: 'rgba(245,158,11,0.10)',
+            borderWidth: 1, borderColor: 'rgba(245,158,11,0.20)',
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#F59E0B' }} />
+              <Text style={{ fontSize: 12, fontWeight: '600', color: '#92400E' }}>
+                {chat.pendingCount} mesaj onay bekliyor
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={chat.approveAll}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 4,
+                paddingHorizontal: 10, paddingVertical: 4, borderRadius: 9999,
+                backgroundColor: '#059669',
+              }}
+            >
+              <Icon name="check" size={12} color="#FFFFFF" strokeWidth={2.5} />
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>Tümünü Onayla</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {chat.loading ? (
           <View style={cd.loadingBox}>
             <ActivityIndicator color={accentColor} />
@@ -900,6 +1000,9 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
                 showAvatar={showAvatar}
                 senderColor={senderColor}
                 onImagePress={setPreviewImageUrl}
+                canApprove={canApprove}
+                onApprove={chat.approve}
+                onReject={chat.reject}
               />
             );
           })

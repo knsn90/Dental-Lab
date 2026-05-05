@@ -320,10 +320,18 @@ export async function fetchClinicBalance(clinicId: string) {
     .then(r => r as unknown as { data: ClinicBalance | null; error: any });
 }
 
+const CLINIC_STATEMENT_SELECT = `
+  *,
+  doctor:doctors!invoices_doctor_id_fkey(id, full_name, phone, clinic_id),
+  clinic:clinics!invoices_clinic_id_fkey(id, name, address, phone, email),
+  work_order:work_orders!invoices_work_order_id_fkey(id, order_number, patient_name, delivery_date),
+  payments:payments(*, receiver:profiles!payments_received_by_fkey(id, full_name))
+`;
+
 export async function fetchInvoicesForClinic(clinicId: string) {
   return supabase
     .from('invoices')
-    .select(INVOICE_SELECT)
+    .select(CLINIC_STATEMENT_SELECT)
     .eq('clinic_id', clinicId)
     .order('issue_date', { ascending: false })
     .returns<Invoice[]>();
