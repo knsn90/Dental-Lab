@@ -237,7 +237,7 @@ export function PatternsShell({
   };
 
   return (
-    <View className="flex-1 flex-row bg-cream-page p-3 gap-3">
+    <View className="flex-1 flex-row bg-cream-page p-3 pt-0 pr-0 gap-3">
       {/* ═════════════ SIDEBAR (card) + edge toggle ═════════════ */}
       <View style={{ position: 'relative', alignSelf: 'stretch', overflow: 'visible' }}>
         {collapsed ? (
@@ -292,7 +292,7 @@ export function PatternsShell({
       </View>
 
       {/* ═════════════ RIGHT COLUMN: toolbar + content ═════════════ */}
-      <View style={{ flex: 1, borderRadius: 20, overflow: 'hidden', position: 'relative' as any }}>
+      <View style={{ flex: 1, overflow: 'hidden', position: 'relative' as any }}>
        <ScrollView
          className="flex-1 patterns-scroll"
          contentContainerStyle={{ flexGrow: 1 }}
@@ -346,12 +346,14 @@ export function PatternsShell({
         <Slot />
        </ScrollView>
 
-       {/* ═════════════ STICKY TOOLBAR — absolute, ScrollView dışında ═════════════ */}
+       {/* ═════════════ STICKY TOOLBAR — absolute, başlık satırıyla hizalı ═════════════ */}
+       {/* top: 6 → toolbar dikey merkezi başlığın ilk satırının merkeziyle aynı hizada
+           (paddingTop 12 + fontSize 28/2 = 26 ≈ 6 + 40/2 = 26) */}
        <View
          className="flex-row items-center gap-1 pl-1.5 pr-1.5 py-1.5 rounded-full bg-white border border-black/[0.05]"
          style={{
            position: 'absolute' as any,
-           top: 12,
+           top: 6,
            right: 12,
            zIndex: 200,
            // @ts-ignore web shadow
