@@ -90,12 +90,12 @@ SET currency = COALESCE(currency, 'TRY'),
     amount_base = COALESCE(amount_base, amount)
 WHERE amount_base IS NULL;
 
--- salary_payments: amount kolonu var
+-- salary_payments: gross_amount kolonu var (amount değil)
 UPDATE public.salary_payments
 SET currency = COALESCE(currency, 'TRY'),
     rate_at_time = COALESCE(rate_at_time, 1),
     base_currency_at_time = COALESCE(base_currency_at_time, 'TRY'),
-    amount_base = COALESCE(amount_base, amount)
+    amount_base = COALESCE(amount_base, gross_amount)
 WHERE amount_base IS NULL;
 
 -- checks: amount kolonu var
@@ -118,7 +118,7 @@ WHERE amount_base IS NULL;
 CREATE INDEX IF NOT EXISTS idx_expenses_currency_date
   ON public.expenses (currency, expense_date DESC);
 CREATE INDEX IF NOT EXISTS idx_payments_currency_date
-  ON public.payments (currency, paid_at DESC);
+  ON public.payments (currency, payment_date DESC);
 CREATE INDEX IF NOT EXISTS idx_invoices_currency_date
   ON public.invoices (currency, issue_date DESC);
 
