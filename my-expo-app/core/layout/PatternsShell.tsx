@@ -299,9 +299,9 @@ export function PatternsShell({
          showsVerticalScrollIndicator={false}
        >
         {/* TOP BAR — page title (left) only; toolbar absolute-pinned outside ScrollView */}
-        <View className="flex-row items-center" style={{ zIndex: 1, paddingRight: 10, paddingTop: 8, paddingBottom: 12, backgroundColor: 'transparent' }}>
+        <View className="flex-row items-center" style={{ zIndex: 1, paddingTop: 8, paddingBottom: 12, backgroundColor: 'transparent' }}>
           {/* Page title */}
-          <View className="flex-1" style={{ paddingLeft: 10, paddingRight: 280 }}>
+          <View className="flex-1" style={{ paddingRight: 280 }}>
             {effectiveTitle ? (
               <View className="gap-0.5">
                 <Text
