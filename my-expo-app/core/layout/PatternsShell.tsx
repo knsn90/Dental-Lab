@@ -299,7 +299,7 @@ export function PatternsShell({
          showsVerticalScrollIndicator={false}
        >
         {/* TOP BAR — page title (left) only; toolbar absolute-pinned outside ScrollView */}
-        <View className="flex-row items-center" style={{ zIndex: 1, paddingRight: 10, paddingTop: 12, paddingBottom: 12, backgroundColor: 'transparent' }}>
+        <View className="flex-row items-center" style={{ zIndex: 1, paddingRight: 10, paddingTop: 28, paddingBottom: 12, backgroundColor: 'transparent' }}>
           {/* Page title */}
           <View className="flex-1" style={{ paddingLeft: 10, paddingRight: 280 }}>
             {effectiveTitle ? (
@@ -347,13 +347,13 @@ export function PatternsShell({
        </ScrollView>
 
        {/* ═════════════ STICKY TOOLBAR — absolute, başlık satırıyla hizalı ═════════════ */}
-       {/* top: 6 → toolbar dikey merkezi başlığın ilk satırının merkeziyle aynı hizada
-           (paddingTop 12 + fontSize 28/2 = 26 ≈ 6 + 40/2 = 26) */}
+       {/* top: 22 → toolbar dikey merkezi başlığın ilk satırının merkeziyle aynı hizada
+           (paddingTop 28 + fontSize 28/2 = 42 ≈ 22 + 40/2 = 42) */}
        <View
          className="flex-row items-center gap-1 pl-1.5 pr-1.5 py-1.5 rounded-full bg-white border border-black/[0.05]"
          style={{
            position: 'absolute' as any,
-           top: 6,
+           top: 22,
            right: 12,
            zIndex: 200,
            // @ts-ignore web shadow
