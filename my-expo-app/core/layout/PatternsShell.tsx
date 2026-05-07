@@ -339,10 +339,17 @@ export function PatternsShell({
             ) : null}
           </View>
 
-          {/* Toolbar — transparent (header arka planı kaldırıldı) */}
+          {/* Toolbar — beyaz pill kart, web'de position:fixed ile sabitlendi */}
           <View
-            className="flex-row items-center gap-1 pl-1.5 pr-1.5 py-1.5"
-            style={{ zIndex: 40 }}
+            className="flex-row items-center gap-1 pl-1.5 pr-1.5 py-1.5 rounded-full bg-white border border-black/[0.05]"
+            style={{
+              zIndex: 100,
+              // @ts-ignore web shadow
+              boxShadow: '0 4px 16px rgba(0,0,0,0.06)',
+              ...(Platform.OS === 'web'
+                ? { position: 'fixed' as any, top: 24, right: 22 }
+                : {}),
+            }}
           >
           {/* Search */}
           <View
