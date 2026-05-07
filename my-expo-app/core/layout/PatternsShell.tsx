@@ -299,7 +299,7 @@ export function PatternsShell({
          showsVerticalScrollIndicator={false}
        >
         {/* TOP BAR — page title (left) only; toolbar absolute-pinned outside ScrollView */}
-        <View className="flex-row items-center" style={{ zIndex: 1, paddingTop: 8, paddingBottom: 12, backgroundColor: 'transparent' }}>
+        <View className="flex-row items-center" style={{ zIndex: 1, paddingTop: 8, paddingBottom: 0, backgroundColor: 'transparent' }}>
           {/* Page title */}
           <View className="flex-1" style={{ paddingRight: 280 }}>
             {effectiveTitle ? (
