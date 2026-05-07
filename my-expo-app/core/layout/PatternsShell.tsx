@@ -237,7 +237,7 @@ export function PatternsShell({
   };
 
   return (
-    <View className="flex-1 flex-row p-3 gap-3" style={{ backgroundColor: 'transparent' }}>
+    <View className="flex-1 flex-row bg-cream-page gap-3" style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16 }}>
       {/* ═════════════ SIDEBAR (card) + edge toggle ═════════════ */}
       <View style={{ position: 'relative', alignSelf: 'stretch', overflow: 'visible' }}>
         {collapsed ? (
@@ -347,13 +347,13 @@ export function PatternsShell({
        </ScrollView>
 
        {/* ═════════════ STICKY TOOLBAR — absolute, başlık satırıyla hizalı ═════════════ */}
-       {/* top: -2 → toolbar outer padding'in içine doğru çekildi, üstündeki
-           ekstra çerçeve boşluğu minimize edildi. */}
+       {/* top: -12 → toolbar outer paddingTop'un tam üstüne çekildi, üzerinde
+           cream şerit kalmıyor. */}
        <View
          className="flex-row items-center gap-1 pl-1.5 pr-1.5 py-1.5 rounded-full bg-white border border-black/[0.05]"
          style={{
            position: 'absolute' as any,
-           top: -2,
+           top: -12,
            right: 0,
            zIndex: 200,
            // @ts-ignore web shadow

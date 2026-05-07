@@ -389,7 +389,7 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                             {category === c && <Check size={13} color={accentColor} strokeWidth={2} />}
                           </Pressable>
                         ))}
-                      {catSearch.trim() && !existingCategories.some(c => c.toLowerCase() === catSearch.trim().toLowerCase()) && (
+                      {!!catSearch.trim() && !existingCategories.some(c => c.toLowerCase() === catSearch.trim().toLowerCase()) && (
                         <Pressable
                           style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 11, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                           onPress={() => { setCategory(catSearch.trim()); setCatSearch(''); setCatDropOpen(false); }}
@@ -452,7 +452,7 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                             {brand === b && <Check size={13} color={accentColor} strokeWidth={2} />}
                           </Pressable>
                         ))}
-                      {brandSearch.trim() && !existingBrands.some(b => b.toLowerCase() === brandSearch.trim().toLowerCase()) && (
+                      {!!brandSearch.trim() && !existingBrands.some(b => b.toLowerCase() === brandSearch.trim().toLowerCase()) && (
                         <Pressable
                           style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 11, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                           onPress={() => { setBrand(brandSearch.trim()); setBrandSearch(''); setBrandDropOpen(false); }}
@@ -3185,7 +3185,12 @@ const SIDEBAR_ACCENT = '#F5C24B';
 
 // ─── StockScreen (Patterns Hub — sidebar + per-tab accent) ──────────────────
 
-export function StockScreen() {
+interface StockScreenProps {
+  /** Panel accent color — verilirse tüm tab/accent renkleri panel rengine bağlanır */
+  accentColor?: string;
+}
+
+export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {}) {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1024;
   const { setTitle, clear } = usePageTitleStore();
@@ -3197,7 +3202,11 @@ export function StockScreen() {
 
   const [tab, setTab] = useState<TabKey>('dashboard');
   const activeTab = STOCK_TABS.find(t => t.key === tab)!;
-  const accentColor = activeTab.accent;
+  // Panel accent verilmişse tüm sayfa onu kullanır; aksi halde her tab'ın
+  // kendi accent'i devrede kalır.
+  const accentColor = panelAccent ?? activeTab.accent;
+  // Tab listesindeki accent'leri de override etmek için yardımcı
+  const tabAccent = (t: typeof STOCK_TABS[number]) => panelAccent ?? t.accent;
 
   const [items, setItems]               = useState<StockItem[]>([]);
   const [wasteMap, setWasteMap]         = useState<Record<string, { qty: number; cost: number }>>({});
@@ -3593,6 +3602,7 @@ export function StockScreen() {
               {STOCK_TABS.map(t => {
                 const active = t.key === tab;
                 const TabIcon = t.icon;
+                const tAcc = tabAccent(t);
                 return (
                   <Pressable
                     key={t.key}
@@ -3600,13 +3610,13 @@ export function StockScreen() {
                     style={{
                       flexDirection: 'row', alignItems: 'center', gap: 5,
                       paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9999,
-                      backgroundColor: active ? t.accent : 'transparent',
+                      backgroundColor: active ? tAcc : 'transparent',
                     }}
                   >
                     <TabIcon
                       size={12}
                       strokeWidth={active ? 2.2 : 1.8}
-                      color={active ? '#FFFFFF' : t.accent}
+                      color={active ? '#FFFFFF' : tAcc}
                     />
                     <Text style={{ fontSize: 11, fontWeight: active ? '700' : '600', color: active ? '#FFFFFF' : DS.ink[500] }}>
                       {t.label}
@@ -3632,6 +3642,7 @@ export function StockScreen() {
               {STOCK_TABS.map(t => {
                 const isActive = t.key === tab;
                 const TabIcon = t.icon;
+                const tAcc = tabAccent(t);
                 return (
                   <Pressable
                     key={t.key}
@@ -3654,7 +3665,7 @@ export function StockScreen() {
                           width: 3,
                           height: 16,
                           borderRadius: 2,
-                          backgroundColor: t.accent,
+                          backgroundColor: tAcc,
                           marginLeft: -6,
                           marginRight: 4,
                         }}
@@ -3662,13 +3673,13 @@ export function StockScreen() {
                     )}
                     <View style={{
                       width: 28, height: 28, borderRadius: 8,
-                      backgroundColor: isActive ? t.accent + '14' : 'transparent',
+                      backgroundColor: isActive ? tAcc + '14' : 'transparent',
                       alignItems: 'center', justifyContent: 'center',
                     }}>
                       <TabIcon
                         size={15}
                         strokeWidth={isActive ? 2 : 1.6}
-                        color={isActive ? t.accent : '#9A9A9A'}
+                        color={isActive ? tAcc : '#9A9A9A'}
                       />
                     </View>
                     <Text
@@ -3682,7 +3693,7 @@ export function StockScreen() {
                       {t.label}
                     </Text>
                     {isActive && (
-                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: t.accent }} />
+                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: tAcc }} />
                     )}
                   </Pressable>
                 );
