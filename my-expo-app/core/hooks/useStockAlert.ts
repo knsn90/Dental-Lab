@@ -7,24 +7,19 @@ export function useStockAlert() {
 
   const load = async () => {
     try {
-      // stock_items table: quantity < min_quantity
-      const { count: c } = await supabase
+      // Supabase JS v2'de iki kolon karşılaştırması native desteklenmiyor
+      // (.lt('a', 'b') string olarak yorumlanır). Tüm satırları çek + client-side filtre.
+      // Genelde stok kalemi sayısı düşüktür (~yüzlerce) → performanssal bir dert değil.
+      const { data, error } = await supabase
         .from('stock_items')
-        .select('*', { count: 'exact', head: true })
-        .lt('quantity', supabase.raw('min_quantity') as any);
-
-      // Fallback: if raw() not supported, fetch rows and filter client-side
-      if (c === null) {
-        const { data } = await supabase
-          .from('stock_items')
-          .select('quantity, min_quantity');
-        const low = (data ?? []).filter((r: any) => r.quantity < r.min_quantity).length;
-        setCount(low);
-        return;
-      }
-      setCount(c ?? 0);
+        .select('quantity, min_quantity');
+      if (error) { setCount(0); return; }
+      const low = (data ?? []).filter(
+        (r: any) => Number(r.quantity ?? 0) < Number(r.min_quantity ?? 0),
+      ).length;
+      setCount(low);
     } catch {
-      // Table not yet created — show no badge
+      // Tablo henüz oluşturulmamış — badge gösterme
       setCount(0);
     }
   };

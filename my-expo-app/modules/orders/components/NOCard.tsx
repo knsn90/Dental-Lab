@@ -42,16 +42,27 @@ export interface NOCardHeadProps {
   title: string;
   /** Alt açıklama */
   sub?: string;
-  /** 'done' ise badge siyah bg + saffron check */
+  /** 'done' ise badge siyah bg + accent check */
   state?: 'active' | 'done';
   /** Sağ üst köşede küçük pill badge (ör: "Yeni", "3 eklendi") */
   badge?: string;
   /** Başlık sağ tarafına ek içerik */
   headerRight?: React.ReactNode;
+  /** Panel-özgü accent rengi — numara rozeti & yeni/badge zemin için. Verilmezse saffron (lab) kullanılır. */
+  accent?: string;
 }
 
-export function NOCardHead({ num, title, sub, state, badge, headerRight }: NOCardHeadProps) {
+// Hex'e %15 alpha ekleyerek soft tone üret (#RRGGBB → #RRGGBB26)
+function softTone(hex?: string) {
+  if (!hex) return NO.saffronSoft;
+  if (hex.length === 7) return hex + '26';
+  return hex;
+}
+
+export function NOCardHead({ num, title, sub, state, badge, headerRight, accent }: NOCardHeadProps) {
   const isDone = state === 'done';
+  const accentColor = accent ?? NO.saffron;
+  const accentSoft  = accent ? softTone(accent) : NO.saffronSoft;
 
   return (
     <View
@@ -72,20 +83,20 @@ export function NOCardHead({ num, title, sub, state, badge, headerRight }: NOCar
             width: 26,
             height: 26,
             borderRadius: NORadius.sm,
-            backgroundColor: isDone ? NO.inkStrong : NO.saffron,
+            backgroundColor: isDone ? NO.inkStrong : accentColor,
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0,
           }}
         >
           {isDone ? (
-            <Check size={12} color={NO.saffron} strokeWidth={2.5} />
+            <Check size={12} color={accentColor} strokeWidth={2.5} />
           ) : (
             <Text
               style={{
                 fontSize: 12,
                 fontWeight: '600',
-                color: isDone ? NO.saffron : NO.inkStrong,
+                color: '#FFFFFF',
                 fontFamily: 'monospace',
               }}
             >
@@ -114,7 +125,7 @@ export function NOCardHead({ num, title, sub, state, badge, headerRight }: NOCar
             paddingHorizontal: 8,
             paddingVertical: 3,
             borderRadius: NORadius.pill,
-            backgroundColor: NO.saffronSoft,
+            backgroundColor: accentSoft,
           }}
         >
           <Text

@@ -8,15 +8,18 @@
  */
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  View, Text, ScrollView, Pressable,
   TextInput, Modal, ActivityIndicator, Alert,
+  Platform, useWindowDimensions,
 } from 'react-native';
+import {
+  Search, X, Plus, Tag, Pencil, Info, Building2,
+  ChevronRight, ArrowLeft, PlusCircle, Trash2, Calendar,
+} from 'lucide-react-native';
 import { supabase } from '../../../core/api/supabase';
-import { C } from '../../../core/theme/colors';
-import { Shadows, CardSpec } from '../../../core/theme/shadows';
-import { AppIcon } from '../../../core/ui/AppIcon';
+import { DS } from '../../../core/theme/dsTokens';
+import { DatePicker } from '../../../core/ui/DatePicker';
 import { AppSwitch } from '../../../core/ui/AppSwitch';
-import { SlideTabBar } from '../../../core/ui/SlideTabBar';
 
 import { fetchAllLabServices, createLabService, updateLabService } from '../../services/api';
 import { fetchClinics } from '../../clinics/api';
@@ -24,13 +27,18 @@ import type { LabService } from '../../services/types';
 import type { Clinic } from '../../clinics/types';
 
 // ────────────────────────────────────────────────────────────────────────────
-// Types
+// Constants
 // ────────────────────────────────────────────────────────────────────────────
+const PRIMARY = '#0891B2';
+
 const SERVICE_CATEGORIES = [
   'Sabit Protez', 'Hareketli Protez', 'İmplant',
   'Ortodonti', 'CAD/CAM', 'Seramik', 'Diğer',
 ];
 
+// ────────────────────────────────────────────────────────────────────────────
+// Types
+// ────────────────────────────────────────────────────────────────────────────
 interface PriceOverride {
   id: string;
   clinic_id: string;
@@ -55,6 +63,466 @@ interface Promotion {
   created_at: string;
 }
 
+const web = (style: any) => (Platform.OS === 'web' ? style : {});
+
+// ── Patterns tokens ─────────────────────────────────────────────────
+const DISPLAY = {
+  fontFamily: 'Inter Tight, Inter, system-ui, sans-serif',
+  fontWeight: '300' as const,
+};
+
+const cardSolid = {
+  backgroundColor: '#FFF',
+  borderRadius: 24,
+  padding: 22,
+  // @ts-ignore web
+  boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)',
+};
+
+const tableCard = {
+  backgroundColor: '#FFF',
+  borderRadius: 24,
+  borderWidth: 1,
+  borderColor: 'rgba(0,0,0,0.05)',
+  overflow: 'hidden' as const,
+};
+
+const CHIP_TONES = {
+  success: { bg: 'rgba(45,154,107,0.12)', fg: '#1F6B47' },
+  warning: { bg: 'rgba(232,155,42,0.15)', fg: '#9C5E0E' },
+  danger:  { bg: 'rgba(217,75,75,0.12)',  fg: '#9C2E2E' },
+  info:    { bg: 'rgba(74,143,201,0.12)', fg: '#1F5689' },
+};
+
+// ────────────────────────────────────────────────────────────────────────────
+// Inline style objects
+// ────────────────────────────────────────────────────────────────────────────
+const s = {
+  root: { flex: 1 } as const,
+
+  tabBar: {
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.06)',
+    paddingHorizontal: 12,
+  } as const,
+  tabContent: { flex: 1 } as const,
+
+  // Toolbar
+  toolbar: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.06)',
+  },
+  toolbarTitle: { flex: 1, fontSize: 13, color: DS.ink[500], fontWeight: '500' as const },
+
+  searchWrap: {
+    flex: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+    backgroundColor: DS.ink[50],
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+    paddingHorizontal: 16,
+    height: 44,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: DS.ink[900],
+    // @ts-ignore
+    outlineStyle: 'none',
+  } as const,
+
+  addBtn: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 5,
+    backgroundColor: DS.ink[900],
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 9999,
+    // @ts-ignore web
+    cursor: 'pointer',
+  },
+  addBtnText: { color: '#FFFFFF', fontWeight: '700' as const, fontSize: 13 },
+
+  catBarWrap: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.06)',
+  } as const,
+
+  // Category filter pill container
+  catPillContainer: {
+    flexDirection: 'row' as const,
+    gap: 2,
+    padding: 3,
+    borderRadius: 9999,
+    backgroundColor: DS.ink[100],
+  },
+  catPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 9999,
+  },
+  catPillActive: {
+    backgroundColor: '#FFF',
+    // @ts-ignore web
+    boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+  },
+  catPillText: {
+    fontWeight: '500' as const,
+    color: DS.ink[500],
+    fontSize: 13,
+  },
+  catPillTextActive: {
+    fontWeight: '600' as const,
+    color: DS.ink[900],
+  },
+
+  list: { padding: 22, paddingBottom: 48 } as const,
+
+  groupHeader: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    paddingVertical: 8,
+    paddingHorizontal: 2,
+    marginTop: 6,
+    marginBottom: 2,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.06)',
+  },
+  groupTitle: {
+    fontSize: 10,
+    fontWeight: '600' as const,
+    color: DS.ink[500],
+    letterSpacing: 0.8,
+    textTransform: 'uppercase' as const,
+  },
+  groupCount: { fontSize: 11, color: DS.ink[400] },
+
+  serviceRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.06)',
+    gap: 12,
+  },
+  serviceName: { fontSize: 14, fontWeight: '600' as const, color: DS.ink[900] },
+  servicePrice: { ...DISPLAY, fontSize: 14, color: PRIMARY, marginTop: 2 },
+  editBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 12,
+    backgroundColor: DS.ink[50],
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    // @ts-ignore web
+    cursor: 'pointer',
+  },
+
+  // Empty
+  empty: { alignItems: 'center' as const, paddingVertical: 80, gap: 10 },
+  emptyTitle: { fontSize: 15, fontWeight: '600' as const, color: DS.ink[500] },
+  emptySubtitle: { fontSize: 13, color: DS.ink[400] },
+  emptyBtn: {
+    backgroundColor: DS.ink[900],
+    paddingHorizontal: 22,
+    paddingVertical: 10,
+    borderRadius: 9999,
+    marginTop: 4,
+    // @ts-ignore web
+    cursor: 'pointer',
+  },
+  emptyBtnText: { color: '#FFFFFF', fontWeight: '700' as const, fontSize: 14 },
+
+  // Info card
+  infoCard: {
+    flexDirection: 'row' as const,
+    gap: 10,
+    alignItems: 'flex-start' as const,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    padding: 14,
+    marginBottom: 14,
+  },
+  infoText: { flex: 1, fontSize: 13, color: '#1D4ED8', lineHeight: 20 },
+
+  // Clinic list
+  clinicCard: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 12,
+    ...cardSolid,
+    padding: 16,
+    marginBottom: 12,
+    // @ts-ignore web
+    cursor: 'pointer',
+  },
+  clinicIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: '#EFF6FF',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  clinicName: { fontSize: 14, fontWeight: '600' as const, color: DS.ink[900] },
+  clinicSub: { fontSize: 12, color: DS.ink[500], marginTop: 2 },
+
+  // Clinic override header
+  clinicHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.06)',
+  },
+  backBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: DS.ink[50],
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    // @ts-ignore web
+    cursor: 'pointer',
+  },
+  clinicHeaderTitle: { fontSize: 15, fontWeight: '700' as const, color: DS.ink[900] },
+  clinicHeaderSub: { fontSize: 12, color: DS.ink[500] },
+  overrideBadge: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  overrideBadgeText: { fontSize: 12, color: '#2563EB', fontWeight: '700' as const },
+
+  // Override row
+  overrideRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.06)',
+    // @ts-ignore web
+    cursor: 'pointer',
+  },
+  overridePrice: { fontSize: 13, fontWeight: '700' as const, color: '#2D9A6B' },
+  standardPrice: { fontSize: 12, color: DS.ink[400], textDecorationLine: 'line-through' as const },
+  discountBadge: {
+    backgroundColor: '#DCFCE7',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  discountText: { fontSize: 11, color: '#2D9A6B', fontWeight: '700' as const },
+  stdPriceLabel: { fontSize: 13, color: DS.ink[400] },
+
+  // Toggle chips
+  toggleRow: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 8 },
+  toggleChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 9999,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.08)',
+    backgroundColor: '#FFF',
+    // @ts-ignore web
+    cursor: 'pointer',
+  },
+  toggleChipActive: { borderColor: PRIMARY, backgroundColor: PRIMARY + '12' },
+  toggleChipText: { fontSize: 13, fontWeight: '600' as const, color: DS.ink[400] },
+  toggleChipTextActive: { color: PRIMARY, fontWeight: '700' as const },
+
+  // Promo card
+  promoCard: {
+    ...cardSolid,
+    padding: 20,
+    marginBottom: 14,
+  },
+  promoTop: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 14, marginBottom: 12 },
+  discountCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  discountCircleText: { fontSize: 16, fontWeight: '900' as const },
+  promoName: { fontSize: 15, fontWeight: '700' as const, color: DS.ink[900], marginBottom: 4 },
+  promoMeta: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 5 },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  promoStatus: { fontSize: 12, fontWeight: '700' as const },
+  promoScope: { fontSize: 12, color: DS.ink[500] },
+
+  promoDates: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.06)',
+  },
+  dateChip: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 5 },
+  dateChipText: { fontSize: 12, color: DS.ink[500] },
+  editSmallBtn: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 9999,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.08)',
+    // @ts-ignore web
+    cursor: 'pointer',
+  },
+  editSmallText: { fontSize: 12, color: DS.ink[500], fontWeight: '600' as const },
+};
+
+const m = {
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.4)',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    padding: 24,
+  },
+  sheet: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    width: '100%' as const,
+    maxWidth: 560,
+    maxHeight: '90%' as const,
+    overflow: 'hidden' as const,
+    // @ts-ignore web
+    boxShadow: '0 24px 48px -12px rgba(0,0,0,0.18)',
+  },
+  header: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingHorizontal: 24,
+    paddingTop: 22,
+    paddingBottom: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.06)',
+  },
+  title: { fontSize: 18, fontWeight: '700' as const, color: DS.ink[900] },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: DS.ink[100],
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    // @ts-ignore web
+    cursor: 'pointer',
+  },
+  body: { padding: 16 } as const,
+  sectionCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+    padding: 16,
+    marginBottom: 12,
+  },
+  sectionTitle: { fontSize: 13, fontWeight: '700' as const, color: DS.ink[800], marginBottom: 12 },
+  hint: { fontSize: 12, color: DS.ink[500], lineHeight: 18, marginBottom: 14 },
+  fieldWrap: { marginBottom: 0 } as const,
+  fieldLabel: { fontSize: 11, fontWeight: '500' as const, color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 },
+  fieldInput: {
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.08)',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    fontSize: 14,
+    color: DS.ink[900],
+    backgroundColor: '#FFFFFF',
+    // @ts-ignore
+    outlineStyle: 'none',
+  } as const,
+  twoCol: { flexDirection: 'row' as const, gap: 12 },
+  divider: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10, marginVertical: 14 },
+  dividerLine: { flex: 1, height: 1, backgroundColor: 'rgba(0,0,0,0.06)' } as const,
+  dividerText: { fontSize: 11, color: DS.ink[400], fontWeight: '600' as const },
+  svcInfoCard: {
+    backgroundColor: DS.ink[50],
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+    padding: 14,
+    marginBottom: 12,
+  },
+  svcInfoLabel: { fontSize: 11, color: DS.ink[400], fontWeight: '600' as const, marginBottom: 4 },
+  svcInfoName: { fontSize: 15, fontWeight: '700' as const, color: DS.ink[900], marginBottom: 2 },
+  svcInfoPrice: { fontSize: 13, color: DS.ink[500] },
+  footer: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 10,
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.06)',
+  },
+  cancelBtn: {
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: 'rgba(0,0,0,0.08)',
+    // @ts-ignore web
+    cursor: 'pointer',
+  },
+  cancelText: { fontSize: 14, fontWeight: '600' as const, color: DS.ink[500] },
+  saveBtn: {
+    backgroundColor: DS.ink[900],
+    paddingHorizontal: 22,
+    paddingVertical: 10,
+    borderRadius: 14,
+    // @ts-ignore web
+    cursor: 'pointer',
+  },
+  saveText: { fontSize: 14, fontWeight: '700' as const, color: '#FFFFFF' },
+  deleteBtn: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 5,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#FECACA',
+    // @ts-ignore web
+    cursor: 'pointer',
+  },
+  deleteText: { fontSize: 13, color: '#D94B4B', fontWeight: '600' as const },
+};
+
 // ────────────────────────────────────────────────────────────────────────────
 // Root
 // ────────────────────────────────────────────────────────────────────────────
@@ -63,17 +531,43 @@ export function PriceListScreen() {
 
   return (
     <View style={s.root}>
-      <View style={s.tabBar}>
-        <SlideTabBar
-          items={[
+      {/* ── Tab pills ── */}
+      <View style={{ paddingHorizontal: 22, paddingTop: 14, paddingBottom: 10 }}>
+        <View style={{
+          flexDirection: 'row', gap: 2, padding: 3,
+          borderRadius: 9999, backgroundColor: DS.ink[100],
+          alignSelf: 'flex-start',
+        }}>
+          {([
             { key: 'standard',   label: 'Standart' },
             { key: 'custom',     label: 'Özel Listeler' },
             { key: 'promotions', label: 'Promosyonlar' },
-          ]}
-          activeKey={tab}
-          onChange={setTab}
-          accentColor={C.primary}
-        />
+          ] as const).map(t => {
+            const active = tab === t.key;
+            return (
+              <Pressable
+                key={t.key}
+                onPress={() => setTab(t.key)}
+                style={{
+                  paddingHorizontal: 14, paddingVertical: 7,
+                  borderRadius: 9999,
+                  backgroundColor: active ? '#FFF' : 'transparent',
+                  // @ts-ignore web
+                  boxShadow: active ? '0 1px 3px rgba(0,0,0,0.08)' : undefined,
+                  cursor: 'pointer',
+                }}
+              >
+                <Text style={{
+                  fontSize: 13,
+                  fontWeight: active ? '600' : '500',
+                  color: active ? DS.ink[900] : DS.ink[500],
+                }}>
+                  {t.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
 
       {tab === 'standard'   && <StandardTab />}
@@ -150,41 +644,66 @@ function StandardTab() {
       {/* Toolbar */}
       <View style={s.toolbar}>
         <View style={s.searchWrap}>
-          <AppIcon name="search" size={15} color="#94A3B8" />
+          <Search size={15} color={DS.ink[400]} strokeWidth={1.6} />
           <TextInput
             style={s.searchInput}
             value={search}
             onChangeText={setSearch}
             placeholder="Hizmet ara..."
-            placeholderTextColor="#C7C7CC"
+            placeholderTextColor={DS.ink[300]}
           />
           {search.length > 0 && (
-            <TouchableOpacity onPress={() => setSearch('')}>
-              <AppIcon name="x" size={14} color="#94A3B8" />
-            </TouchableOpacity>
+            <Pressable onPress={() => setSearch('')}>
+              <X size={14} color={DS.ink[400]} strokeWidth={1.6} />
+            </Pressable>
           )}
         </View>
-        <TouchableOpacity style={s.addBtn} onPress={openAdd} activeOpacity={0.85}>
-          <AppIcon name="plus" size={15} color="#FFFFFF" />
+        <Pressable style={s.addBtn} onPress={openAdd}>
+          <Plus size={15} color="#FFFFFF" strokeWidth={2} />
           <Text style={s.addBtnText}>Ekle</Text>
-        </TouchableOpacity>
+        </Pressable>
       </View>
 
-      {/* Category filter */}
-      <View style={s.catBarWrap}>
-        <SlideTabBar
-          items={allCats.map((c) => ({
-            key: c, label: c,
-            count: c === 'Tümü' ? services.length : services.filter((sv) => sv.category === c).length,
-          }))}
-          activeKey={catFilter}
-          onChange={setCatFilter}
-          accentColor={C.primary}
-        />
+      {/* Category filter pills */}
+      <View style={{ paddingHorizontal: 22, paddingVertical: 8 }}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{
+            flexDirection: 'row', gap: 2, padding: 3,
+            borderRadius: 9999, backgroundColor: DS.ink[100],
+          }}
+        >
+          {allCats.map((c) => {
+            const active = catFilter === c;
+            return (
+              <Pressable
+                key={c}
+                onPress={() => setCatFilter(c)}
+                style={{
+                  paddingHorizontal: 12, paddingVertical: 6,
+                  borderRadius: 9999,
+                  backgroundColor: active ? '#FFF' : 'transparent',
+                  // @ts-ignore web
+                  boxShadow: active ? '0 1px 3px rgba(0,0,0,0.08)' : undefined,
+                  cursor: 'pointer',
+                }}
+              >
+                <Text style={{
+                  fontSize: 12,
+                  fontWeight: active ? '600' : '500',
+                  color: active ? DS.ink[900] : DS.ink[500],
+                }}>
+                  {c}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
       </View>
 
       {loading ? (
-        <ActivityIndicator color={C.primary} style={{ marginTop: 40 }} />
+        <ActivityIndicator color={PRIMARY} style={{ marginTop: 40 }} />
       ) : (
         <ScrollView contentContainerStyle={s.list}>
           {Object.entries(grouped).map(([cat, items]) => (
@@ -201,7 +720,7 @@ function StandardTab() {
           {ungrouped.length > 0 && (
             <View>
               <View style={s.groupHeader}>
-                <Text style={s.groupTitle}>Diğer</Text>
+                <Text style={s.groupTitle}>Diger</Text>
                 <Text style={s.groupCount}>{ungrouped.length} hizmet</Text>
               </View>
               {ungrouped.map((sv) => (
@@ -211,12 +730,12 @@ function StandardTab() {
           )}
           {filtered.length === 0 && (
             <View style={s.empty}>
-              <AppIcon name="tag" size={36} color="#CBD5E1" />
-              <Text style={s.emptyTitle}>{search ? 'Sonuç bulunamadı' : 'Henüz hizmet eklenmemiş'}</Text>
+              <Tag size={36} color={DS.ink[300]} strokeWidth={1.4} />
+              <Text style={s.emptyTitle}>{search ? 'Sonuc bulunamadi' : 'Henuz hizmet eklenmemis'}</Text>
               {!search && (
-                <TouchableOpacity style={s.emptyBtn} onPress={openAdd}>
-                  <Text style={s.emptyBtnText}>İlk hizmeti ekle</Text>
-                </TouchableOpacity>
+                <Pressable style={s.emptyBtn} onPress={openAdd}>
+                  <Text style={s.emptyBtnText}>Ilk hizmeti ekle</Text>
+                </Pressable>
               )}
             </View>
           )}
@@ -249,16 +768,16 @@ function ServiceRow({
           {sv.price > 0 ? `${sv.price.toLocaleString('tr-TR')} ${sv.currency}` : '—'}
         </Text>
       </View>
-      <TouchableOpacity style={s.editBtn} onPress={() => onEdit(sv)}>
-        <AppIcon name="pencil" size={14} color="#64748B" />
-      </TouchableOpacity>
-      <AppSwitch value={sv.is_active} onValueChange={() => onToggle(sv)} accentColor={C.primary} />
+      <Pressable style={s.editBtn} onPress={() => onEdit(sv)}>
+        <Pencil size={14} color={DS.ink[500]} strokeWidth={1.6} />
+      </Pressable>
+      <AppSwitch value={sv.is_active} onValueChange={() => onToggle(sv)} accentColor={PRIMARY} />
     </View>
   );
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Tab 2 — Özel Listeler (clinic / doctor-specific prices)
+// Tab 2 — Ozel Listeler (clinic / doctor-specific prices)
 // ────────────────────────────────────────────────────────────────────────────
 function CustomTab() {
   const [clinics, setClinics]         = useState<Clinic[]>([]);
@@ -364,32 +883,32 @@ function CustomTab() {
 
   const activeSvcs = services.filter((sv) => sv.is_active);
 
-  if (loading) return <ActivityIndicator color={C.primary} style={{ marginTop: 40 }} />;
+  if (loading) return <ActivityIndicator color={PRIMARY} style={{ marginTop: 40 }} />;
 
   return (
     <View style={s.tabContent}>
       {!selectedClinic ? (
-        /* ── Clinic picker ── */
+        /* -- Clinic picker -- */
         <ScrollView contentContainerStyle={s.list}>
           <View style={s.infoCard}>
-            <AppIcon name="info" size={15} color="#2563EB" />
+            <Info size={15} color="#2563EB" strokeWidth={1.6} />
             <Text style={s.infoText}>
-              Klinik seçin ve o kliniğe özel fiyatları düzenleyin. Belirlenmemiş hizmetler standart fiyatla uygulanır.
+              Klinik secin ve o klinige ozel fiyatlari duzenleyin. Belirlenmemis hizmetler standart fiyatla uygulanir.
             </Text>
           </View>
 
           {clinics.length === 0 ? (
             <View style={s.empty}>
-              <AppIcon name="building-2" size={36} color="#CBD5E1" />
-              <Text style={s.emptyTitle}>Henüz klinik eklenmemiş</Text>
+              <Building2 size={36} color={DS.ink[300]} strokeWidth={1.4} />
+              <Text style={s.emptyTitle}>Henuz klinik eklenmemis</Text>
             </View>
           ) : (
             clinics.map((c) => {
               const overrideCount = overrideCounts[c.id] ?? 0;
               return (
-                <TouchableOpacity key={c.id} style={s.clinicCard} onPress={() => selectClinic(c)} activeOpacity={0.8}>
+                <Pressable key={c.id} style={s.clinicCard} onPress={() => selectClinic(c)}>
                   <View style={s.clinicIcon}>
-                    <AppIcon name="building-2" size={18} color="#2563EB" />
+                    <Building2 size={18} color="#2563EB" strokeWidth={1.6} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={s.clinicName}>{c.name}</Text>
@@ -402,26 +921,26 @@ function CustomTab() {
                       <Text style={s.overrideBadgeText}>{overrideCount}</Text>
                     </View>
                   )}
-                  <AppIcon name="chevron-right" size={16} color="#94A3B8" />
-                </TouchableOpacity>
+                  <ChevronRight size={16} color={DS.ink[400]} strokeWidth={1.6} />
+                </Pressable>
               );
             })
           )}
         </ScrollView>
       ) : (
-        /* ── Service override list for selected clinic ── */
+        /* -- Service override list for selected clinic -- */
         <View style={{ flex: 1 }}>
           {/* Back + clinic name header */}
           <View style={s.clinicHeader}>
-            <TouchableOpacity style={s.backBtn} onPress={() => setSelected(null)}>
-              <AppIcon name="arrow-left" size={16} color="#2563EB" />
-            </TouchableOpacity>
+            <Pressable style={s.backBtn} onPress={() => setSelected(null)}>
+              <ArrowLeft size={16} color="#2563EB" strokeWidth={1.6} />
+            </Pressable>
             <View style={{ flex: 1 }}>
               <Text style={s.clinicHeaderTitle}>{selectedClinic.name}</Text>
-              <Text style={s.clinicHeaderSub}>Özel fiyat listesi</Text>
+              <Text style={s.clinicHeaderSub}>Ozel fiyat listesi</Text>
             </View>
             <View style={s.overrideBadge}>
-              <Text style={s.overrideBadgeText}>{overrides.length} özel fiyat</Text>
+              <Text style={s.overrideBadgeText}>{overrides.length} ozel fiyat</Text>
             </View>
           </View>
 
@@ -438,11 +957,10 @@ function CustomTab() {
                     const override = overrides.find((o) => o.service_id === sv.id);
                     const effPrice = getEffectivePrice(sv, override);
                     return (
-                      <TouchableOpacity
+                      <Pressable
                         key={sv.id}
                         style={s.overrideRow}
                         onPress={() => openEditOverride(sv)}
-                        activeOpacity={0.8}
                       >
                         <View style={{ flex: 1 }}>
                           <Text style={s.serviceName}>{sv.name}</Text>
@@ -462,12 +980,11 @@ function CustomTab() {
                             )}
                           </View>
                         </View>
-                        <AppIcon
-                          name={override ? 'pencil' : 'plus-circle'}
-                          size={16}
-                          color={override ? '#2563EB' : '#94A3B8'}
-                        />
-                      </TouchableOpacity>
+                        {override
+                          ? <Pencil size={16} color="#2563EB" strokeWidth={1.6} />
+                          : <PlusCircle size={16} color={DS.ink[400]} strokeWidth={1.6} />
+                        }
+                      </Pressable>
                     );
                   })}
                 </View>
@@ -482,10 +999,10 @@ function CustomTab() {
         <View style={m.overlay}>
           <View style={m.sheet}>
             <View style={m.header}>
-              <Text style={m.title}>Özel Fiyat Belirle</Text>
-              <TouchableOpacity style={m.closeBtn} onPress={() => setEditModal(false)}>
-                <AppIcon name="x" size={16} color="#64748B" />
-              </TouchableOpacity>
+              <Text style={m.title}>Ozel Fiyat Belirle</Text>
+              <Pressable style={m.closeBtn} onPress={() => setEditModal(false)}>
+                <X size={16} color={DS.ink[500]} strokeWidth={1.6} />
+              </Pressable>
             </View>
             <ScrollView style={m.body} keyboardShouldPersistTaps="handled">
               {editSvc && (
@@ -497,17 +1014,17 @@ function CustomTab() {
               )}
 
               <View style={m.sectionCard}>
-                <Text style={m.sectionTitle}>Fiyatlandırma Yöntemi</Text>
-                <Text style={m.hint}>Özel fiyat VEYA iskonto oranı belirleyebilirsiniz. İkisi birden girilirse özel fiyat önceliklidir.</Text>
+                <Text style={m.sectionTitle}>Fiyatlandirma Yontemi</Text>
+                <Text style={m.hint}>Ozel fiyat VEYA iskonto orani belirleyebilirsiniz. Ikisi birden girilirse ozel fiyat onceliklidir.</Text>
 
                 <View style={m.fieldWrap}>
-                  <Text style={m.fieldLabel}>Özel Fiyat (₺)</Text>
+                  <Text style={m.fieldLabel}>Ozel Fiyat (₺)</Text>
                   <TextInput
                     style={m.fieldInput}
                     value={oForm.custom_price}
                     onChangeText={(v) => setOForm((f) => ({ ...f, custom_price: v }))}
-                    placeholder="Örn: 850.00"
-                    placeholderTextColor="#C7C7CC"
+                    placeholder="Orn: 850.00"
+                    placeholderTextColor={DS.ink[300]}
                     keyboardType="decimal-pad"
                   />
                 </View>
@@ -519,13 +1036,13 @@ function CustomTab() {
                 </View>
 
                 <View style={m.fieldWrap}>
-                  <Text style={m.fieldLabel}>İskonto Oranı (%)</Text>
+                  <Text style={m.fieldLabel}>Iskonto Orani (%)</Text>
                   <TextInput
                     style={m.fieldInput}
                     value={oForm.discount_percent}
                     onChangeText={(v) => setOForm((f) => ({ ...f, discount_percent: v }))}
-                    placeholder="Örn: 15"
-                    placeholderTextColor="#C7C7CC"
+                    placeholder="Orn: 15"
+                    placeholderTextColor={DS.ink[300]}
                     keyboardType="decimal-pad"
                   />
                 </View>
@@ -537,8 +1054,8 @@ function CustomTab() {
                   style={[m.fieldInput, { minHeight: 72, textAlignVertical: 'top' }]}
                   value={oForm.notes}
                   onChangeText={(v) => setOForm((f) => ({ ...f, notes: v }))}
-                  placeholder="İsteğe bağlı açıklama..."
-                  placeholderTextColor="#C7C7CC"
+                  placeholder="Istege bagli aciklama..."
+                  placeholderTextColor={DS.ink[300]}
                   multiline
                 />
               </View>
@@ -548,22 +1065,22 @@ function CustomTab() {
 
             <View style={m.footer}>
               {overrides.find((o) => o.service_id === editSvc?.id) && (
-                <TouchableOpacity style={m.deleteBtn} onPress={handleDeleteOverride}>
-                  <AppIcon name="trash-2" size={15} color="#DC2626" />
+                <Pressable style={m.deleteBtn} onPress={handleDeleteOverride}>
+                  <Trash2 size={15} color="#D94B4B" strokeWidth={1.6} />
                   <Text style={m.deleteText}>Sil</Text>
-                </TouchableOpacity>
+                </Pressable>
               )}
               <View style={{ flex: 1 }} />
-              <TouchableOpacity style={m.cancelBtn} onPress={() => setEditModal(false)}>
-                <Text style={m.cancelText}>İptal</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
+              <Pressable style={m.cancelBtn} onPress={() => setEditModal(false)}>
+                <Text style={m.cancelText}>Iptal</Text>
+              </Pressable>
+              <Pressable
                 style={[m.saveBtn, saving && { opacity: 0.6 }]}
                 onPress={handleSaveOverride}
                 disabled={saving}
               >
                 <Text style={m.saveText}>{saving ? 'Kaydediliyor...' : 'Kaydet'}</Text>
-              </TouchableOpacity>
+              </Pressable>
             </View>
           </View>
         </View>
@@ -576,9 +1093,9 @@ function CustomTab() {
 // Tab 3 — Promosyonlar
 // ────────────────────────────────────────────────────────────────────────────
 const DISCOUNT_COLORS: Record<string, string> = {
-  active:  '#059669',
-  expired: '#94A3B8',
-  soon:    '#D97706',
+  active:  '#2D9A6B',
+  expired: DS.ink[400],
+  soon:    '#E89B2A',
 };
 
 function PromotionsTab() {
@@ -665,34 +1182,34 @@ function PromotionsTab() {
     return new Date(iso).toLocaleDateString('tr-TR');
   };
 
-  if (loading) return <ActivityIndicator color={C.primary} style={{ marginTop: 40 }} />;
+  if (loading) return <ActivityIndicator color={PRIMARY} style={{ marginTop: 40 }} />;
 
   return (
     <View style={s.tabContent}>
       <View style={s.toolbar}>
         <Text style={s.toolbarTitle}>{promos.length} kampanya / promosyon</Text>
-        <TouchableOpacity style={s.addBtn} onPress={openAdd} activeOpacity={0.85}>
-          <AppIcon name="plus" size={15} color="#FFFFFF" />
+        <Pressable style={s.addBtn} onPress={openAdd}>
+          <Plus size={15} color="#FFFFFF" strokeWidth={2} />
           <Text style={s.addBtnText}>Ekle</Text>
-        </TouchableOpacity>
+        </Pressable>
       </View>
 
       <ScrollView contentContainerStyle={s.list}>
         {promos.length === 0 && (
           <View style={s.empty}>
-            <AppIcon name="tag" size={36} color="#CBD5E1" />
-            <Text style={s.emptyTitle}>Henüz promosyon eklenmemiş</Text>
-            <Text style={s.emptySubtitle}>Kampanya veya toplu iskonto oluşturun</Text>
-            <TouchableOpacity style={s.emptyBtn} onPress={openAdd}>
-              <Text style={s.emptyBtnText}>İlk kampanyayı ekle</Text>
-            </TouchableOpacity>
+            <Tag size={36} color={DS.ink[300]} strokeWidth={1.4} />
+            <Text style={s.emptyTitle}>Henuz promosyon eklenmemis</Text>
+            <Text style={s.emptySubtitle}>Kampanya veya toplu iskonto olusturun</Text>
+            <Pressable style={s.emptyBtn} onPress={openAdd}>
+              <Text style={s.emptyBtnText}>Ilk kampanyayi ekle</Text>
+            </Pressable>
           </View>
         )}
 
         {promos.map((p) => {
           const status  = getStatus(p);
           const color   = DISCOUNT_COLORS[status];
-          const statusLabel = status === 'active' ? 'Aktif' : status === 'expired' ? 'Sona Erdi' : 'Yakında';
+          const statusLabel = status === 'active' ? 'Aktif' : status === 'expired' ? 'Sona Erdi' : 'Yakinda';
 
           return (
             <View key={p.id} style={[s.promoCard, !p.is_active && { opacity: 0.55 }]}>
@@ -711,7 +1228,7 @@ function PromotionsTab() {
                     <View style={[s.statusDot, { backgroundColor: color }]} />
                     <Text style={[s.promoStatus, { color }]}>{statusLabel}</Text>
                     <Text style={s.promoScope}>
-                      · {p.scope === 'all' ? 'Tüm hizmetler' : p.scope === 'category' ? p.category ?? 'Kategori' : 'Seçili hizmetler'}
+                      · {p.scope === 'all' ? 'Tum hizmetler' : p.scope === 'category' ? p.category ?? 'Kategori' : 'Secili hizmetler'}
                     </Text>
                   </View>
                 </View>
@@ -724,13 +1241,13 @@ function PromotionsTab() {
 
               <View style={s.promoDates}>
                 <View style={s.dateChip}>
-                  <AppIcon name="calendar" size={12} color="#94A3B8" />
+                  <Calendar size={12} color={DS.ink[400]} strokeWidth={1.6} />
                   <Text style={s.dateChipText}>{formatDate(p.starts_at)} → {formatDate(p.ends_at)}</Text>
                 </View>
-                <TouchableOpacity style={s.editSmallBtn} onPress={() => openEdit(p)}>
-                  <AppIcon name="pencil" size={13} color="#64748B" />
-                  <Text style={s.editSmallText}>Düzenle</Text>
-                </TouchableOpacity>
+                <Pressable style={s.editSmallBtn} onPress={() => openEdit(p)}>
+                  <Pencil size={13} color={DS.ink[500]} strokeWidth={1.6} />
+                  <Text style={s.editSmallText}>Duzenle</Text>
+                </Pressable>
               </View>
             </View>
           );
@@ -742,47 +1259,47 @@ function PromotionsTab() {
         <View style={m.overlay}>
           <View style={m.sheet}>
             <View style={m.header}>
-              <Text style={m.title}>{editPromo ? 'Promosyon Düzenle' : 'Yeni Promosyon'}</Text>
-              <TouchableOpacity style={m.closeBtn} onPress={() => setModal(false)}>
-                <AppIcon name="x" size={16} color="#64748B" />
-              </TouchableOpacity>
+              <Text style={m.title}>{editPromo ? 'Promosyon Duzenle' : 'Yeni Promosyon'}</Text>
+              <Pressable style={m.closeBtn} onPress={() => setModal(false)}>
+                <X size={16} color={DS.ink[500]} strokeWidth={1.6} />
+              </Pressable>
             </View>
 
             <ScrollView style={m.body} keyboardShouldPersistTaps="handled">
               <View style={m.sectionCard}>
-                <Text style={m.sectionTitle}>Promosyon Adı</Text>
+                <Text style={m.sectionTitle}>Promosyon Adi</Text>
                 <TextInput
                   style={m.fieldInput}
                   value={form.name}
                   onChangeText={(v) => setForm((f) => ({ ...f, name: v }))}
-                  placeholder="Örn: Ağustos Kampanyası"
-                  placeholderTextColor="#C7C7CC"
+                  placeholder="Orn: Agustos Kampanyasi"
+                  placeholderTextColor={DS.ink[300]}
                 />
               </View>
 
               <View style={m.sectionCard}>
-                <Text style={m.sectionTitle}>İskonto Türü</Text>
+                <Text style={m.sectionTitle}>Iskonto Turu</Text>
                 <View style={s.toggleRow}>
                   {(['percent', 'fixed'] as const).map((t) => (
-                    <TouchableOpacity
+                    <Pressable
                       key={t}
                       style={[s.toggleChip, form.discount_type === t && s.toggleChipActive]}
                       onPress={() => setForm((f) => ({ ...f, discount_type: t }))}
                     >
                       <Text style={[s.toggleChipText, form.discount_type === t && s.toggleChipTextActive]}>
-                        {t === 'percent' ? 'Yüzde (%)' : 'Sabit (₺)'}
+                        {t === 'percent' ? 'Yuzde (%)' : 'Sabit (₺)'}
                       </Text>
-                    </TouchableOpacity>
+                    </Pressable>
                   ))}
                 </View>
                 <View style={[m.fieldWrap, { marginTop: 14 }]}>
-                  <Text style={m.fieldLabel}>İskonto Değeri</Text>
+                  <Text style={m.fieldLabel}>Iskonto Degeri</Text>
                   <TextInput
                     style={m.fieldInput}
                     value={form.discount_value}
                     onChangeText={(v) => setForm((f) => ({ ...f, discount_value: v }))}
-                    placeholder={form.discount_type === 'percent' ? 'Örn: 15' : 'Örn: 200'}
-                    placeholderTextColor="#C7C7CC"
+                    placeholder={form.discount_type === 'percent' ? 'Orn: 15' : 'Orn: 200'}
+                    placeholderTextColor={DS.ink[300]}
                     keyboardType="decimal-pad"
                   />
                 </View>
@@ -792,10 +1309,10 @@ function PromotionsTab() {
                 <Text style={m.sectionTitle}>Kapsam</Text>
                 <View style={s.toggleRow}>
                   {([
-                    { key: 'all',      label: 'Tüm Hizmetler' },
+                    { key: 'all',      label: 'Tum Hizmetler' },
                     { key: 'category', label: 'Kategori' },
                   ] as const).map((sc) => (
-                    <TouchableOpacity
+                    <Pressable
                       key={sc.key}
                       style={[s.toggleChip, form.scope === sc.key && s.toggleChipActive]}
                       onPress={() => setForm((f) => ({ ...f, scope: sc.key }))}
@@ -803,7 +1320,7 @@ function PromotionsTab() {
                       <Text style={[s.toggleChipText, form.scope === sc.key && s.toggleChipTextActive]}>
                         {sc.label}
                       </Text>
-                    </TouchableOpacity>
+                    </Pressable>
                   ))}
                 </View>
                 {form.scope === 'category' && (
@@ -811,13 +1328,13 @@ function PromotionsTab() {
                     <Text style={m.fieldLabel}>Kategori</Text>
                     <View style={s.toggleRow}>
                       {SERVICE_CATEGORIES.map((cat) => (
-                        <TouchableOpacity
+                        <Pressable
                           key={cat}
                           style={[s.toggleChip, form.category === cat && s.toggleChipActive]}
                           onPress={() => setForm((f) => ({ ...f, category: cat }))}
                         >
                           <Text style={[s.toggleChipText, form.category === cat && s.toggleChipTextActive]}>{cat}</Text>
-                        </TouchableOpacity>
+                        </Pressable>
                       ))}
                     </View>
                   </View>
@@ -825,26 +1342,22 @@ function PromotionsTab() {
               </View>
 
               <View style={m.sectionCard}>
-                <Text style={m.sectionTitle}>Geçerlilik Tarihleri</Text>
+                <Text style={m.sectionTitle}>Gecerlilik Tarihleri</Text>
                 <View style={m.twoCol}>
                   <View style={{ flex: 1 }}>
-                    <Text style={m.fieldLabel}>Başlangıç</Text>
-                    <TextInput
-                      style={m.fieldInput}
+                    <Text style={m.fieldLabel}>Baslangic</Text>
+                    <DatePicker
                       value={form.starts_at}
-                      onChangeText={(v) => setForm((f) => ({ ...f, starts_at: v }))}
-                      placeholder="YYYY-AA-GG"
-                      placeholderTextColor="#C7C7CC"
+                      onChange={(v) => setForm((f) => ({ ...f, starts_at: v }))}
+                      placeholder="Tarih seç"
                     />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={m.fieldLabel}>Bitiş</Text>
-                    <TextInput
-                      style={m.fieldInput}
+                    <Text style={m.fieldLabel}>Bitis</Text>
+                    <DatePicker
                       value={form.ends_at}
-                      onChangeText={(v) => setForm((f) => ({ ...f, ends_at: v }))}
-                      placeholder="YYYY-AA-GG"
-                      placeholderTextColor="#C7C7CC"
+                      onChange={(v) => setForm((f) => ({ ...f, ends_at: v }))}
+                      placeholder="Tarih seç"
                     />
                   </View>
                 </View>
@@ -854,16 +1367,16 @@ function PromotionsTab() {
             </ScrollView>
 
             <View style={m.footer}>
-              <TouchableOpacity style={m.cancelBtn} onPress={() => setModal(false)}>
-                <Text style={m.cancelText}>İptal</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
+              <Pressable style={m.cancelBtn} onPress={() => setModal(false)}>
+                <Text style={m.cancelText}>Iptal</Text>
+              </Pressable>
+              <Pressable
                 style={[m.saveBtn, saving && { opacity: 0.6 }]}
                 onPress={handleSave}
                 disabled={saving}
               >
-                <Text style={m.saveText}>{saving ? 'Kaydediliyor...' : editPromo ? 'Güncelle' : 'Oluştur'}</Text>
-              </TouchableOpacity>
+                <Text style={m.saveText}>{saving ? 'Kaydediliyor...' : editPromo ? 'Guncelle' : 'Olustur'}</Text>
+              </Pressable>
             </View>
           </View>
         </View>
@@ -893,23 +1406,23 @@ function ServiceModal({
       <View style={m.overlay}>
         <View style={m.sheet}>
           <View style={m.header}>
-            <Text style={m.title}>{edit ? 'Hizmeti Düzenle' : 'Hizmet Ekle'}</Text>
-            <TouchableOpacity style={m.closeBtn} onPress={onClose}>
-              <AppIcon name="x" size={16} color="#64748B" />
-            </TouchableOpacity>
+            <Text style={m.title}>{edit ? 'Hizmeti Duzenle' : 'Hizmet Ekle'}</Text>
+            <Pressable style={m.closeBtn} onPress={onClose}>
+              <X size={16} color={DS.ink[500]} strokeWidth={1.6} />
+            </Pressable>
           </View>
 
           <ScrollView style={m.body} keyboardShouldPersistTaps="handled">
             <View style={m.sectionCard}>
               <Text style={m.sectionTitle}>Hizmet Bilgileri</Text>
               <View style={m.fieldWrap}>
-                <Text style={m.fieldLabel}>Hizmet Adı <Text style={{ color: '#EF4444' }}>*</Text></Text>
+                <Text style={m.fieldLabel}>Hizmet Adi <Text style={{ color: '#D94B4B' }}>*</Text></Text>
                 <TextInput
                   style={m.fieldInput}
                   value={form.name}
                   onChangeText={(v) => { setForm((f) => ({ ...f, name: v })); setError(''); }}
-                  placeholder="Örn: Zirkonyum Kron"
-                  placeholderTextColor="#C7C7CC"
+                  placeholder="Orn: Zirkonyum Kron"
+                  placeholderTextColor={DS.ink[300]}
                 />
               </View>
             </View>
@@ -918,19 +1431,19 @@ function ServiceModal({
               <Text style={m.sectionTitle}>Kategori</Text>
               <View style={s.toggleRow}>
                 {SERVICE_CATEGORIES.map((c) => (
-                  <TouchableOpacity
+                  <Pressable
                     key={c}
                     onPress={() => setForm((f) => ({ ...f, category: c }))}
                     style={[s.toggleChip, form.category === c && s.toggleChipActive]}
                   >
                     <Text style={[s.toggleChipText, form.category === c && s.toggleChipTextActive]}>{c}</Text>
-                  </TouchableOpacity>
+                  </Pressable>
                 ))}
               </View>
             </View>
 
             <View style={m.sectionCard}>
-              <Text style={m.sectionTitle}>Fiyatlandırma</Text>
+              <Text style={m.sectionTitle}>Fiyatlandirma</Text>
               <View style={m.twoCol}>
                 <View style={{ flex: 1 }}>
                   <Text style={m.fieldLabel}>Fiyat</Text>
@@ -939,7 +1452,7 @@ function ServiceModal({
                     value={form.price}
                     onChangeText={(v) => setForm((f) => ({ ...f, price: v }))}
                     placeholder="0.00"
-                    placeholderTextColor="#C7C7CC"
+                    placeholderTextColor={DS.ink[300]}
                     keyboardType="decimal-pad"
                   />
                 </View>
@@ -950,7 +1463,7 @@ function ServiceModal({
                     value={form.currency}
                     onChangeText={(v) => setForm((f) => ({ ...f, currency: v }))}
                     placeholder="TRY"
-                    placeholderTextColor="#C7C7CC"
+                    placeholderTextColor={DS.ink[300]}
                     autoCapitalize="characters"
                   />
                 </View>
@@ -959,7 +1472,7 @@ function ServiceModal({
 
             {error ? (
               <View style={{ backgroundColor: '#FEF2F2', borderRadius: 10, padding: 12, marginBottom: 4 }}>
-                <Text style={{ color: '#DC2626', fontWeight: '600', fontSize: 13 }}>⚠️ {error}</Text>
+                <Text style={{ color: '#D94B4B', fontWeight: '600', fontSize: 13 }}>{error}</Text>
               </View>
             ) : null}
 
@@ -967,270 +1480,19 @@ function ServiceModal({
           </ScrollView>
 
           <View style={m.footer}>
-            <TouchableOpacity style={m.cancelBtn} onPress={onClose}>
-              <Text style={m.cancelText}>İptal</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
+            <Pressable style={m.cancelBtn} onPress={onClose}>
+              <Text style={m.cancelText}>Iptal</Text>
+            </Pressable>
+            <Pressable
               style={[m.saveBtn, saving && { opacity: 0.6 }]}
               onPress={onSave}
               disabled={saving}
             >
-              <Text style={m.saveText}>{saving ? 'Kaydediliyor...' : edit ? 'Güncelle' : 'Ekle'}</Text>
-            </TouchableOpacity>
+              <Text style={m.saveText}>{saving ? 'Kaydediliyor...' : edit ? 'Guncelle' : 'Ekle'}</Text>
+            </Pressable>
           </View>
         </View>
       </View>
     </Modal>
   );
 }
-
-// ────────────────────────────────────────────────────────────────────────────
-// Styles
-// ────────────────────────────────────────────────────────────────────────────
-const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: CardSpec.pageBg },
-
-  tabBar: {
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-    paddingHorizontal: 12,
-  },
-  tabContent: { flex: 1 },
-
-  // Toolbar
-  toolbar: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingHorizontal: 14, paddingVertical: 10,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
-  },
-  toolbarTitle: { flex: 1, fontSize: 13, color: '#64748B', fontWeight: '500' },
-
-  searchWrap: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#F8FAFC', borderRadius: 10,
-    borderWidth: 1, borderColor: '#E2E8F0',
-    paddingHorizontal: 12, height: 38,
-  },
-  searchInput: {
-    flex: 1, fontSize: 14, color: '#0F172A',
-    // @ts-ignore
-    outlineStyle: 'none',
-  },
-
-  addBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: C.primary, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10,
-  },
-  addBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 13 },
-
-  catBarWrap: {
-    backgroundColor: '#FFFFFF', paddingHorizontal: 12,
-    borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
-  },
-
-  list: { padding: 14, paddingBottom: 40 },
-
-  groupHeader: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingVertical: 8, paddingHorizontal: 2,
-    marginTop: 6, marginBottom: 2,
-    borderBottomWidth: 1, borderBottomColor: '#E2E8F0',
-  },
-  groupTitle: { fontSize: 12, fontWeight: '800', color: '#475569', letterSpacing: 0.5, textTransform: 'uppercase' },
-  groupCount: { fontSize: 11, color: '#94A3B8' },
-
-  serviceRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 13, paddingHorizontal: 4,
-    borderBottomWidth: 1, borderBottomColor: '#F1F5F9', gap: 12,
-  },
-  serviceName: { fontSize: 14, fontWeight: '600', color: '#0F172A' },
-  servicePrice: { fontSize: 13, color: C.primary, fontWeight: '700', marginTop: 2 },
-  editBtn: {
-    width: 32, height: 32, borderRadius: 8,
-    backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0',
-    alignItems: 'center', justifyContent: 'center',
-  },
-
-  // Empty
-  empty: { alignItems: 'center', paddingVertical: 60, gap: 10 },
-  emptyTitle: { fontSize: 15, fontWeight: '600', color: '#64748B' },
-  emptySubtitle: { fontSize: 13, color: '#94A3B8' },
-  emptyBtn: { backgroundColor: C.primary, paddingHorizontal: 22, paddingVertical: 10, borderRadius: 10, marginTop: 4 },
-  emptyBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
-
-  // Info card
-  infoCard: {
-    flexDirection: 'row', gap: 10, alignItems: 'flex-start',
-    backgroundColor: '#EFF6FF', borderRadius: 12,
-    borderWidth: 1, borderColor: '#BFDBFE',
-    padding: 14, marginBottom: 14,
-  },
-  infoText: { flex: 1, fontSize: 13, color: '#1D4ED8', lineHeight: 20 },
-
-  // Clinic list
-  clinicCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: CardSpec.bg, borderRadius: CardSpec.radius,
-    borderWidth: 1, borderColor: CardSpec.border,
-    padding: 14, marginBottom: 10,
-    ...Shadows.card,
-  },
-  clinicIcon: {
-    width: 40, height: 40, borderRadius: 10,
-    backgroundColor: '#EFF6FF',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  clinicName: { fontSize: 14, fontWeight: '600', color: '#0F172A' },
-  clinicSub: { fontSize: 12, color: '#64748B', marginTop: 2 },
-
-  // Clinic override header
-  clinicHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingHorizontal: 14, paddingVertical: 12,
-    backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E2E8F0',
-  },
-  backBtn: {
-    width: 34, height: 34, borderRadius: 8,
-    backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center',
-  },
-  clinicHeaderTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
-  clinicHeaderSub: { fontSize: 12, color: '#64748B' },
-  overrideBadge: {
-    backgroundColor: '#EFF6FF', borderRadius: 8,
-    paddingHorizontal: 10, paddingVertical: 5,
-  },
-  overrideBadgeText: { fontSize: 12, color: '#2563EB', fontWeight: '700' },
-
-  // Override row
-  overrideRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingVertical: 13, paddingHorizontal: 4,
-    borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
-  },
-  overridePrice: { fontSize: 13, fontWeight: '700', color: '#059669' },
-  standardPrice: { fontSize: 12, color: '#94A3B8', textDecorationLine: 'line-through' },
-  discountBadge: {
-    backgroundColor: '#DCFCE7', borderRadius: 6,
-    paddingHorizontal: 6, paddingVertical: 2,
-  },
-  discountText: { fontSize: 11, color: '#059669', fontWeight: '700' },
-  stdPriceLabel: { fontSize: 13, color: '#94A3B8' },
-
-  // Toggle chips
-  toggleRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  toggleChip: {
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10,
-    borderWidth: 1.5, borderColor: '#E2E8F0', backgroundColor: '#F8FAFC',
-  },
-  toggleChipActive: { borderColor: C.primary, backgroundColor: '#EFF6FF' },
-  toggleChipText: { fontSize: 13, fontWeight: '600', color: '#94A3B8' },
-  toggleChipTextActive: { color: C.primary, fontWeight: '700' },
-
-  // Promo card
-  promoCard: {
-    backgroundColor: CardSpec.bg, borderRadius: CardSpec.radius,
-    borderWidth: 1, borderColor: CardSpec.border,
-    padding: 16, marginBottom: 12,
-    ...Shadows.card,
-  },
-  promoTop: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 12 },
-  discountCircle: {
-    width: 56, height: 56, borderRadius: 14,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  discountCircleText: { fontSize: 16, fontWeight: '900' },
-  promoName: { fontSize: 15, fontWeight: '700', color: '#0F172A', marginBottom: 4 },
-  promoMeta: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  statusDot: { width: 6, height: 6, borderRadius: 3 },
-  promoStatus: { fontSize: 12, fontWeight: '700' },
-  promoScope: { fontSize: 12, color: '#64748B' },
-
-  promoDates: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingTop: 10, borderTopWidth: 1, borderTopColor: '#F1F5F9',
-  },
-  dateChip: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  dateChipText: { fontSize: 12, color: '#64748B' },
-  editSmallBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 10, paddingVertical: 5,
-    borderRadius: 7, borderWidth: 1, borderColor: '#E2E8F0',
-  },
-  editSmallText: { fontSize: 12, color: '#64748B', fontWeight: '600' },
-});
-
-const m = StyleSheet.create({
-  overlay: {
-    flex: 1, backgroundColor: 'rgba(15,23,42,0.45)',
-    justifyContent: 'center', alignItems: 'center', padding: 24,
-  },
-  sheet: {
-    backgroundColor: '#FFFFFF', borderRadius: 20,
-    width: '100%', maxWidth: 560, maxHeight: '90%', overflow: 'hidden',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.18, shadowRadius: 48,
-  },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 24, paddingTop: 22, paddingBottom: 18,
-    borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
-  },
-  title: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
-  closeBtn: {
-    width: 32, height: 32, borderRadius: 8,
-    backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center',
-  },
-  body: { padding: 16 },
-  sectionCard: {
-    backgroundColor: '#FFFFFF', borderRadius: 14,
-    borderWidth: 1, borderColor: '#E9EEF4',
-    padding: 16, marginBottom: 12,
-  },
-  sectionTitle: { fontSize: 13, fontWeight: '700', color: '#1E293B', marginBottom: 12 },
-  hint: { fontSize: 12, color: '#64748B', lineHeight: 18, marginBottom: 14 },
-  fieldWrap: { marginBottom: 0 },
-  fieldLabel: { fontSize: 11, fontWeight: '500', color: '#64748B', marginBottom: 7, letterSpacing: 0.5 },
-  fieldInput: {
-    borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10,
-    paddingHorizontal: 14, paddingVertical: 11,
-    fontSize: 14, color: '#0F172A', backgroundColor: '#FFFFFF',
-    // @ts-ignore
-    outlineStyle: 'none',
-  },
-  twoCol: { flexDirection: 'row', gap: 12 },
-  divider: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 14 },
-  dividerLine: { flex: 1, height: 1, backgroundColor: '#F1F5F9' },
-  dividerText: { fontSize: 11, color: '#94A3B8', fontWeight: '600' },
-  svcInfoCard: {
-    backgroundColor: '#F8FAFC', borderRadius: 12,
-    borderWidth: 1, borderColor: '#E2E8F0',
-    padding: 14, marginBottom: 12,
-  },
-  svcInfoLabel: { fontSize: 11, color: '#94A3B8', fontWeight: '600', marginBottom: 4 },
-  svcInfoName: { fontSize: 15, fontWeight: '700', color: '#0F172A', marginBottom: 2 },
-  svcInfoPrice: { fontSize: 13, color: '#64748B' },
-  footer: {
-    flexDirection: 'row', alignItems: 'center',
-    gap: 10, paddingHorizontal: 24, paddingVertical: 16,
-    borderTopWidth: 1, borderTopColor: '#F1F5F9',
-  },
-  cancelBtn: {
-    paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10,
-    borderWidth: 1.5, borderColor: '#E2E8F0',
-  },
-  cancelText: { fontSize: 14, fontWeight: '600', color: '#475569' },
-  saveBtn: {
-    backgroundColor: C.primary,
-    paddingHorizontal: 22, paddingVertical: 10, borderRadius: 10,
-  },
-  saveText: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
-  deleteBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10,
-    borderWidth: 1.5, borderColor: '#FECACA',
-  },
-  deleteText: { fontSize: 13, color: '#DC2626', fontWeight: '600' },
-});

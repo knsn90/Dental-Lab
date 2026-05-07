@@ -10,17 +10,41 @@
  */
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal,
+  View, Text, ScrollView, Pressable, Modal,
   TextInput, ActivityIndicator, RefreshControl, Alert,
+  Platform, useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  Plus, PieChart, Wallet, Tag, X, Trash2,
+} from 'lucide-react-native';
 
 import { supabase } from '../../../core/api/supabase';
-import { AppIcon } from '../../../core/ui/AppIcon';
 import { HubContext } from '../../../core/ui/HubContext';
-import { Shadows, CardSpec } from '../../../core/theme/shadows';
+import { DS } from '../../../core/theme/dsTokens';
 import { toast } from '../../../core/ui/Toast';
 import { useAuthStore } from '../../../core/store/authStore';
+
+// ── Patterns tokens ─────────────────────────────────────────────────
+const DISPLAY = {
+  fontFamily: 'Inter Tight, Inter, system-ui, sans-serif',
+  fontWeight: '300' as const,
+};
+
+const cardSolid = {
+  backgroundColor: '#FFF',
+  borderRadius: 24,
+  padding: 22,
+  // @ts-ignore web
+  boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)',
+};
+
+const CHIP_TONES = {
+  success: { bg: 'rgba(45,154,107,0.12)', fg: '#1F6B47' },
+  warning: { bg: 'rgba(232,155,42,0.15)', fg: '#9C5E0E' },
+  danger:  { bg: 'rgba(217,75,75,0.12)',  fg: '#9C2E2E' },
+  info:    { bg: 'rgba(74,143,201,0.12)', fg: '#1F5689' },
+};
 
 type BudgetCategory = 'malzeme' | 'kira' | 'personel' | 'ekipman' | 'vergi' | 'diger' | 'total';
 type BudgetPeriod   = 'monthly' | 'yearly';
@@ -72,10 +96,14 @@ function currentPeriodStart(period: BudgetPeriod): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
 }
 
+const web = (s: any) => Platform.OS === 'web' ? s : {};
+
 export function BudgetScreen() {
   const isEmbedded = useContext(HubContext);
   const safeEdges  = isEmbedded ? ([] as any) : (['top'] as any);
   const labId      = useAuthStore(st => st.profile?.lab_id);
+  const { width }  = useWindowDimensions();
+  const isDesktop  = width >= 900;
 
   const [items, setItems]       = useState<BudgetActual[]>([]);
   const [period, setPeriod]     = useState<BudgetPeriod>('monthly');
@@ -108,61 +136,93 @@ export function BudgetScreen() {
   const overall = totals.budget > 0 ? (totals.actual / totals.budget) * 100 : 0;
 
   return (
-    <SafeAreaView style={s.safe} edges={safeEdges}>
+    <SafeAreaView style={{ flex: 1 }} edges={safeEdges}>
       <ScrollView
-        contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: 60 }}
+        contentContainerStyle={{ padding: 22, gap: 14, paddingBottom: 48 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
       >
         {/* Period switcher + Add button */}
-        <View style={s.toolbar}>
-          <View style={s.periodRow}>
-            {(['monthly','yearly'] as BudgetPeriod[]).map(p => (
-              <TouchableOpacity key={p}
-                style={[s.periodChip, period === p && s.periodChipActive]}
-                onPress={() => setPeriod(p)}
-              >
-                <Text style={[s.periodChipText, period === p && { color: '#FFFFFF' }]}>
-                  {p === 'monthly' ? 'Aylık' : 'Yıllık'}
-                </Text>
-              </TouchableOpacity>
-            ))}
-            <Text style={s.periodMeta}>{periodLabel(period, currentPeriodStart(period))}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <View style={{
+            flexDirection: 'row', gap: 2, padding: 3,
+            borderRadius: 9999, backgroundColor: DS.ink[100],
+          }}>
+            {(['monthly','yearly'] as BudgetPeriod[]).map(p => {
+              const active = period === p;
+              return (
+                <Pressable key={p}
+                  style={{
+                    paddingHorizontal: 14, paddingVertical: 7,
+                    borderRadius: 9999,
+                    backgroundColor: active ? '#FFF' : 'transparent',
+                    // @ts-ignore web
+                    boxShadow: active ? '0 1px 3px rgba(0,0,0,0.08)' : undefined,
+                    cursor: 'pointer',
+                  }}
+                  onPress={() => setPeriod(p)}
+                >
+                  <Text style={{
+                    fontSize: 13,
+                    fontWeight: active ? '600' : '500',
+                    color: active ? DS.ink[900] : DS.ink[500],
+                  }}>
+                    {p === 'monthly' ? 'Aylık' : 'Yıllık'}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
-          <TouchableOpacity
-            style={s.addBtn}
+          <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[400] }}>
+            {periodLabel(period, currentPeriodStart(period))}
+          </Text>
+          <View style={{ flex: 1 }} />
+          <Pressable
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 6,
+              paddingHorizontal: 16, paddingVertical: 8,
+              borderRadius: 9999, backgroundColor: DS.ink[900],
+              // @ts-ignore web
+              cursor: 'pointer',
+            }}
             onPress={() => { setEditing(null); setEditorOpen(true); }}
           >
-            <AppIcon name="plus" size={15} color="#FFFFFF" />
-            <Text style={s.addText}>Bütçe Ekle</Text>
-          </TouchableOpacity>
+            <Plus size={14} color="#FFFFFF" strokeWidth={2.2} />
+            <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFFFFF' }}>Bütçe Ekle</Text>
+          </Pressable>
         </View>
 
         {/* Overall summary */}
         {items.length > 0 && (
-          <View style={s.summary}>
-            <Text style={s.summaryLabel}>{period === 'monthly' ? 'Bu Ayın' : 'Bu Yılın'} Bütçesi</Text>
-            <View style={s.summaryAmounts}>
+          <View style={{ ...cardSolid, gap: 8 } as any}>
+            <Text style={{ fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.8 }}>
+              {period === 'monthly' ? 'Bu Ayın' : 'Bu Yılın'} Bütçesi
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 12 }}>
               <View>
-                <Text style={s.summaryHint}>Gerçekleşen</Text>
-                <Text style={[s.summaryActual, overall > 100 && { color: '#DC2626' }]}>{fmtMoney(totals.actual)}</Text>
+                <Text style={{ fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.8 }}>Gerçekleşen</Text>
+                <Text style={[{ ...DISPLAY, fontSize: 28, color: DS.ink[900], letterSpacing: -0.6 }, overall > 100 && { color: CHIP_TONES.danger.fg }]}>
+                  {fmtMoney(totals.actual)}
+                </Text>
               </View>
-              <Text style={s.summarySep}>/</Text>
+              <Text style={{ ...DISPLAY, fontSize: 24, color: DS.ink[200] }}>/</Text>
               <View>
-                <Text style={s.summaryHint}>Bütçe</Text>
-                <Text style={s.summaryBudget}>{fmtMoney(totals.budget)}</Text>
+                <Text style={{ fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.8 }}>Bütçe</Text>
+                <Text style={{ ...DISPLAY, fontSize: 18, color: DS.ink[500] }}>{fmtMoney(totals.budget)}</Text>
               </View>
             </View>
             <ProgressBar pct={overall} />
-            <Text style={s.summaryPct}>%{overall.toFixed(0)} kullanıldı</Text>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[500] }}>%{overall.toFixed(0)} kullanıldı</Text>
           </View>
         )}
 
         {/* Empty state */}
         {!loading && items.length === 0 && (
-          <View style={s.empty}>
-            <AppIcon name="chart-pie" size={48} color="#CBD5E1" />
-            <Text style={s.emptyTitle}>Bu dönem için bütçe yok</Text>
-            <Text style={s.emptySub}>"Bütçe Ekle" ile kategorilere limit tanımlayın.</Text>
+          <View style={{ alignItems: 'center', paddingVertical: 60, gap: 12 }}>
+            <PieChart size={48} color={DS.ink[300]} strokeWidth={1.4} />
+            <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[500] }}>Bu dönem için bütçe yok</Text>
+            <Text style={{ fontSize: 13, color: DS.ink[400], textAlign: 'center', maxWidth: 260 }}>
+              "Bütçe Ekle" ile kategorilere limit tanımlayın.
+            </Text>
           </View>
         )}
 
@@ -194,26 +254,45 @@ function BudgetCard({ item, onEdit }: { item: BudgetActual; onEdit: () => void }
   const color    = CATEGORY_COLOR[item.category];
 
   return (
-    <TouchableOpacity style={c.card} onPress={onEdit} activeOpacity={0.85}>
-      <View style={c.row}>
-        <View style={[c.iconBox, { backgroundColor: color + '15' }]}>
-          <AppIcon name={item.category === 'total' ? 'wallet' : 'tag'} size={16} color={color} />
+    <Pressable
+      style={[
+        { ...cardSolid, gap: 8 } as any,
+        // @ts-ignore web
+        web({ cursor: 'pointer' }),
+      ]}
+      onPress={onEdit}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <View style={{ width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: color + '15' }}>
+          {item.category === 'total'
+            ? <Wallet size={16} color={color} strokeWidth={1.8} />
+            : <Tag size={16} color={color} strokeWidth={1.8} />
+          }
         </View>
-        <Text style={c.cat}>{CATEGORY_LABEL[item.category]}</Text>
-        <Text style={[c.pct, pct > 100 && { color: '#DC2626' }, pct > 80 && pct <= 100 && { color: '#D97706' }]}>
+        <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: DS.ink[900] }}>
+          {CATEGORY_LABEL[item.category]}
+        </Text>
+        <Text style={[
+          { fontSize: 14, fontWeight: '800', color: CHIP_TONES.success.fg },
+          pct > 100 && { color: CHIP_TONES.danger.fg },
+          pct > 80 && pct <= 100 && { color: CHIP_TONES.warning.fg },
+        ]}>
           %{pct.toFixed(0)}
         </Text>
       </View>
       <ProgressBar pct={pct} accent={color} />
-      <View style={c.footer}>
-        <Text style={c.actualText}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text style={{ fontSize: 12, color: DS.ink[500], fontWeight: '600' }}>
           {fmtMoney(Number(item.actual_amount))} / {fmtMoney(Number(item.budget_amount))}
         </Text>
-        <Text style={[c.remainText, remaining < 0 && { color: '#DC2626' }]}>
+        <Text style={[
+          { fontSize: 12, color: CHIP_TONES.success.fg, fontWeight: '700' },
+          remaining < 0 && { color: CHIP_TONES.danger.fg },
+        ]}>
           {remaining >= 0 ? `Kalan: ${fmtMoney(remaining)}` : `Aşım: ${fmtMoney(-remaining)}`}
         </Text>
       </View>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
@@ -221,14 +300,14 @@ function BudgetCard({ item, onEdit }: { item: BudgetActual; onEdit: () => void }
 function ProgressBar({ pct, accent }: { pct: number; accent?: string }) {
   const clamped = Math.max(0, Math.min(100, pct));
   const color   =
-    pct > 100 ? '#DC2626' :
-    pct > 80  ? '#F59E0B' :
-                (accent ?? '#10B981');
+    pct > 100 ? CHIP_TONES.danger.fg :
+    pct > 80  ? CHIP_TONES.warning.fg :
+                (accent ?? CHIP_TONES.success.fg);
   return (
-    <View style={pb.track}>
-      <View style={[pb.fill, { width: `${clamped}%`, backgroundColor: color }]} />
+    <View style={{ height: 8, borderRadius: 4, overflow: 'hidden', backgroundColor: DS.ink[100] }}>
+      <View style={{ height: 8, borderRadius: 4, width: `${clamped}%`, backgroundColor: color }} />
       {pct > 100 && (
-        <View style={[pb.overflow, { backgroundColor: '#DC2626' }]} />
+        <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 4, backgroundColor: CHIP_TONES.danger.fg }} />
       )}
     </View>
   );
@@ -309,144 +388,167 @@ function BudgetEditor({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={ed.overlay}>
-        <View style={ed.sheet}>
-          <View style={ed.header}>
-            <Text style={ed.title}>{record ? 'Bütçeyi Düzenle' : 'Yeni Bütçe'}</Text>
-            <TouchableOpacity onPress={onClose} style={ed.closeBtn}>
-              <AppIcon name="close" size={18} color="#475569" />
-            </TouchableOpacity>
+      <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.4)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+        <View style={{
+          width: '100%', maxWidth: 480, maxHeight: '92%',
+          backgroundColor: '#FFF', borderRadius: 24,
+          overflow: 'hidden',
+          // @ts-ignore web
+          boxShadow: '0 24px 48px -12px rgba(0,0,0,0.18)',
+        } as any}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
+            <Text style={{ flex: 1, fontSize: 16, fontWeight: '800', color: DS.ink[900] }}>
+              {record ? 'Bütçeyi Düzenle' : 'Yeni Bütçe'}
+            </Text>
+            <Pressable
+              onPress={onClose}
+              style={[
+                { width: 32, height: 32, borderRadius: 8, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center' },
+                // @ts-ignore web
+                web({ cursor: 'pointer' }),
+              ]}
+            >
+              <X size={18} color={DS.ink[500]} strokeWidth={2} />
+            </Pressable>
           </View>
 
           <ScrollView contentContainerStyle={{ padding: 16, gap: 14 }}>
             <View>
-              <Text style={ed.label}>Kategori</Text>
-              <View style={ed.chipRow}>
-                {(['total','kira','personel','malzeme','ekipman','vergi','diger'] as BudgetCategory[]).map(c => (
-                  <TouchableOpacity key={c}
-                    style={[ed.chip, category === c && { borderColor: CATEGORY_COLOR[c], backgroundColor: CATEGORY_COLOR[c] + '15' }]}
-                    onPress={() => setCategory(c)}
-                  >
-                    <Text style={[ed.chipText, category === c && { color: CATEGORY_COLOR[c], fontWeight: '700' }]}>
-                      {CATEGORY_LABEL[c]}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+              <Text style={{ fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>
+                Kategori
+              </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {(['total','kira','personel','malzeme','ekipman','vergi','diger'] as BudgetCategory[]).map(cat => {
+                  const active = category === cat;
+                  const color = CATEGORY_COLOR[cat];
+                  return (
+                    <Pressable key={cat}
+                      style={{
+                        paddingHorizontal: 12, paddingVertical: 7,
+                        borderRadius: 9999,
+                        borderWidth: 1,
+                        borderColor: active ? color : 'rgba(0,0,0,0.08)',
+                        backgroundColor: active ? color + '12' : '#FFF',
+                        // @ts-ignore web
+                        cursor: 'pointer',
+                      }}
+                      onPress={() => setCategory(cat)}
+                    >
+                      <Text style={{
+                        fontSize: 12,
+                        fontWeight: active ? '600' : '500',
+                        color: active ? color : DS.ink[500],
+                      }}>
+                        {CATEGORY_LABEL[cat]}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
             </View>
 
             <View>
-              <Text style={ed.label}>Periyot</Text>
-              <View style={ed.chipRow}>
-                {(['monthly','yearly'] as BudgetPeriod[]).map(p => (
-                  <TouchableOpacity key={p}
-                    style={[ed.chip, period === p && ed.chipActive]}
-                    onPress={() => setPeriod(p)}
-                  >
-                    <Text style={[ed.chipText, period === p && { color: '#2563EB', fontWeight: '700' }]}>
-                      {p === 'monthly' ? 'Aylık' : 'Yıllık'}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+              <Text style={{ fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>
+                Periyot
+              </Text>
+              <View style={{
+                flexDirection: 'row', gap: 2, padding: 3,
+                borderRadius: 9999, backgroundColor: DS.ink[100],
+                alignSelf: 'flex-start',
+              }}>
+                {(['monthly','yearly'] as BudgetPeriod[]).map(p => {
+                  const active = period === p;
+                  return (
+                    <Pressable key={p}
+                      style={{
+                        paddingHorizontal: 14, paddingVertical: 7,
+                        borderRadius: 9999,
+                        backgroundColor: active ? '#FFF' : 'transparent',
+                        // @ts-ignore web
+                        boxShadow: active ? '0 1px 3px rgba(0,0,0,0.08)' : undefined,
+                        cursor: 'pointer',
+                      }}
+                      onPress={() => setPeriod(p)}
+                    >
+                      <Text style={{
+                        fontSize: 12,
+                        fontWeight: active ? '600' : '500',
+                        color: active ? DS.ink[900] : DS.ink[500],
+                      }}>
+                        {p === 'monthly' ? 'Aylık' : 'Yıllık'}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
             </View>
 
             <View>
-              <Text style={ed.label}>Tutar (₺)</Text>
-              <TextInput style={ed.input}
+              <Text style={{ fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>
+                Tutar (₺)
+              </Text>
+              <TextInput
+                style={{ borderWidth: 1, borderColor: DS.ink[200], borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: DS.ink[900], backgroundColor: '#FFFFFF' }}
                 value={amount} onChangeText={setAmount}
-                keyboardType="decimal-pad" placeholder="0" />
+                keyboardType="decimal-pad" placeholder="0"
+              />
             </View>
 
             <View>
-              <Text style={ed.label}>Notlar</Text>
-              <TextInput style={[ed.input, { minHeight: 64 }]}
-                multiline value={notes} onChangeText={setNotes} />
+              <Text style={{ fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>
+                Notlar
+              </Text>
+              <TextInput
+                style={{ borderWidth: 1, borderColor: DS.ink[200], borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: DS.ink[900], backgroundColor: '#FFFFFF', minHeight: 64 }}
+                multiline value={notes} onChangeText={setNotes}
+              />
             </View>
           </ScrollView>
 
-          <View style={ed.footer}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 14, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
             {record ? (
-              <TouchableOpacity style={ed.delBtn} onPress={handleDelete}>
-                <AppIcon name="trash-can-outline" size={14} color="#DC2626" />
-                <Text style={ed.delText}>Sil</Text>
-              </TouchableOpacity>
+              <Pressable
+                style={[
+                  {
+                    flexDirection: 'row', alignItems: 'center', gap: 5,
+                    paddingHorizontal: 12, paddingVertical: 9, borderRadius: 14,
+                    borderWidth: 1, borderColor: '#FECACA', backgroundColor: '#FEF2F2', flex: 1,
+                  },
+                  // @ts-ignore web
+                  web({ cursor: 'pointer' }),
+                ]}
+                onPress={handleDelete}
+              >
+                <Trash2 size={14} color={CHIP_TONES.danger.fg} strokeWidth={2} />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: CHIP_TONES.danger.fg }}>Sil</Text>
+              </Pressable>
             ) : <View style={{ flex: 1 }} />}
-            <TouchableOpacity style={ed.cancelBtn} onPress={onClose}>
-              <Text style={ed.cancelText}>İptal</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[ed.saveBtn, saving && { opacity: 0.6 }]} onPress={handleSave} disabled={saving}>
-              <Text style={ed.saveText}>{saving ? 'Kaydediliyor...' : 'Kaydet'}</Text>
-            </TouchableOpacity>
+            <Pressable
+              style={[
+                { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 14, borderWidth: 1, borderColor: DS.ink[200] },
+                // @ts-ignore web
+                web({ cursor: 'pointer' }),
+              ]}
+              onPress={onClose}
+            >
+              <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[500] }}>İptal</Text>
+            </Pressable>
+            <Pressable
+              style={[
+                { paddingHorizontal: 22, paddingVertical: 10, borderRadius: 14, backgroundColor: DS.ink[900] },
+                saving && { opacity: 0.6 },
+                // @ts-ignore web
+                web({ cursor: 'pointer' }),
+              ]}
+              onPress={handleSave} disabled={saving}
+            >
+              <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>
+                {saving ? 'Kaydediliyor...' : 'Kaydet'}
+              </Text>
+            </Pressable>
           </View>
         </View>
       </View>
     </Modal>
   );
 }
-
-// ─── Styles ───────────────────────────────────────────────────────────────
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: CardSpec.pageBg },
-  toolbar: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
-  periodRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  periodChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#FFFFFF' },
-  periodChipActive: { backgroundColor: '#0F172A', borderColor: '#0F172A' },
-  periodChipText: { fontSize: 12, fontWeight: '700', color: '#475569' },
-  periodMeta: { fontSize: 13, fontWeight: '600', color: '#64748B', marginLeft: 8 },
-  addBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10, backgroundColor: '#2563EB' },
-  addText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
-
-  summary: { backgroundColor: CardSpec.bg, borderRadius: CardSpec.radius, borderWidth: 1, borderColor: CardSpec.border, padding: 18, gap: 8, ...Shadows.card },
-  summaryLabel: { fontSize: 11, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.4 },
-  summaryAmounts: { flexDirection: 'row', alignItems: 'flex-end', gap: 12 },
-  summaryHint: { fontSize: 10, fontWeight: '600', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.3 },
-  summaryActual: { fontSize: 28, fontWeight: '800', color: '#0F172A', letterSpacing: -0.6 },
-  summaryBudget: { fontSize: 18, fontWeight: '700', color: '#64748B' },
-  summarySep: { fontSize: 24, color: '#CBD5E1', fontWeight: '300' },
-  summaryPct: { fontSize: 12, fontWeight: '600', color: '#64748B' },
-
-  empty: { alignItems: 'center', paddingVertical: 60, gap: 12 },
-  emptyTitle: { fontSize: 16, fontWeight: '700', color: '#475569' },
-  emptySub: { fontSize: 13, color: '#94A3B8', textAlign: 'center', maxWidth: 260 },
-});
-
-const c = StyleSheet.create({
-  card: { backgroundColor: CardSpec.bg, borderRadius: CardSpec.radius, borderWidth: 1, borderColor: CardSpec.border, padding: 14, gap: 8, ...Shadows.card } as any,
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  iconBox: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  cat:  { flex: 1, fontSize: 14, fontWeight: '700', color: '#0F172A' },
-  pct:  { fontSize: 14, fontWeight: '800', color: '#10B981' },
-  footer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  actualText: { fontSize: 12, color: '#64748B', fontWeight: '600' },
-  remainText: { fontSize: 12, color: '#10B981', fontWeight: '700' },
-});
-
-const pb = StyleSheet.create({
-  track: { height: 8, borderRadius: 4, overflow: 'hidden', backgroundColor: '#F1F5F9' },
-  fill:  { height: 8, borderRadius: 4 },
-  overflow: { position: 'absolute', right: 0, top: 0, bottom: 0, width: 4 },
-});
-
-const ed = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  sheet:   { width: '100%', maxWidth: 480, maxHeight: '92%', backgroundColor: CardSpec.bg, borderRadius: CardSpec.radius, borderWidth: 1, borderColor: CardSpec.border, overflow: 'hidden', ...Shadows.card } as any,
-  header:  { flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  title:   { flex: 1, fontSize: 16, fontWeight: '800', color: '#0F172A' },
-  closeBtn:{ width: 32, height: 32, borderRadius: 8, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
-
-  label:   { fontSize: 11, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  chip:    { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#FFFFFF' },
-  chipActive: { borderColor: '#2563EB', backgroundColor: '#EFF6FF' },
-  chipText:{ fontSize: 12, color: '#64748B', fontWeight: '600' },
-  input:   { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: '#0F172A', backgroundColor: '#FFFFFF' },
-
-  footer:  { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 14, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
-  delBtn:  { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, borderWidth: 1, borderColor: '#FECACA', backgroundColor: '#FEF2F2', flex: 1 },
-  delText: { fontSize: 13, fontWeight: '700', color: '#DC2626' },
-  cancelBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0' },
-  cancelText: { fontSize: 14, fontWeight: '600', color: '#475569' },
-  saveBtn: { paddingHorizontal: 22, paddingVertical: 10, borderRadius: 10, backgroundColor: '#2563EB' },
-  saveText:{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
-});

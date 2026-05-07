@@ -23,6 +23,6 @@ export default function DoctorNewOrderRoute() {
   // Hekim değilse _layout.tsx redirect alana kadar boş ekran
   if (profile.user_type !== 'doctor') return null;
 
-  // Doktor paneli teması: sky blue (lab #2563EB ve admin #0F172A'dan ayrıştırılmış)
-  return <NewOrderScreen doctorMode accentColor="#6BA888" />;
+  // Doktor paneli teması: sky #0EA5E9 · Başlık: "Yeni Sipariş" · Submit: "Laboratuvara gönder"
+  return <NewOrderScreen panel="doctor" doctorMode />;
 }

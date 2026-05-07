@@ -41,6 +41,8 @@ function fmtMoney(amount: number | string | null | undefined): string {
 
 // ── Statement line builder ───────────────────────────────────────────
 export interface StatementLine {
+  /** Stabil React key için opsiyonel id (örn. fatura/ödeme uuid'si) */
+  id?: string;
   date: string;
   type: 'invoice' | 'payment';
   description: string;

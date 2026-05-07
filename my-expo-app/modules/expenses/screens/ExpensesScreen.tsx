@@ -20,6 +20,7 @@ import {
   type Expense, type ExpenseCategory, type ExpensePaymentMethod, type CreateExpenseParams,
 } from '../api';
 import { DS } from '../../../core/theme/dsTokens';
+import { DatePicker } from '../../../core/ui/DatePicker';
 import { RecurringExpensesPanel } from '../components/RecurringExpensesPanel';
 import { downloadCsv, csvMoney, csvDate } from '../../../core/util/csvExport';
 import { toast } from '../../../core/ui/Toast';
@@ -198,7 +199,7 @@ export function ExpensesScreen() {
               return (
                 <View key={cat}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <Icon size={11} color={EXPENSE_CATEGORY_COLORS[cat]} strokeWidth={1.8} />
+                    <Icon size={11} color={DS.ink[400]} strokeWidth={1.8} />
                     <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: DS.ink[400] }}>
                       {EXPENSE_CATEGORY_LABELS[cat]}
                     </Text>
@@ -230,7 +231,6 @@ export function ExpensesScreen() {
           </Pressable>
           {CATEGORIES.map(cat => {
             const active = catFilter === cat;
-            const color = EXPENSE_CATEGORY_COLORS[cat];
             const Icon = CAT_ICON[cat];
             return (
               <Pressable
@@ -240,17 +240,17 @@ export function ExpensesScreen() {
                   flexDirection: 'row', alignItems: 'center', gap: 5,
                   paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
                   borderWidth: 1,
-                  borderColor: active ? color : 'rgba(0,0,0,0.08)',
-                  backgroundColor: active ? `${color}15` : '#FFF',
+                  borderColor: active ? DS.ink[900] : 'rgba(0,0,0,0.08)',
+                  backgroundColor: active ? DS.ink[50] : '#FFF',
                   cursor: 'pointer' as any,
                 }}
               >
-                <Icon size={12} color={color} strokeWidth={1.8} />
-                <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? color : DS.ink[500] }}>
+                <Icon size={12} color={active ? DS.ink[700] : DS.ink[400]} strokeWidth={1.8} />
+                <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? DS.ink[900] : DS.ink[500] }}>
                   {EXPENSE_CATEGORY_LABELS[cat]}
                 </Text>
                 {(catTotals[cat] ?? 0) > 0 && (
-                  <Text style={{ fontSize: 10, fontWeight: '700', color }}>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: DS.ink[500] }}>
                     {fmtMoney(catTotals[cat])}
                   </Text>
                 )}
@@ -313,7 +313,6 @@ export function ExpensesScreen() {
 
             {/* Rows */}
             {filtered.map((e, i) => {
-              const color = EXPENSE_CATEGORY_COLORS[e.category];
               const Icon = CAT_ICON[e.category];
               return (
                 <View key={e.id} style={{
@@ -324,10 +323,10 @@ export function ExpensesScreen() {
                 }}>
                   {/* Category */}
                   <View style={{ flex: 1.2, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: `${color}15`, alignItems: 'center', justifyContent: 'center' }}>
-                      <Icon size={13} color={color} strokeWidth={1.8} />
+                    <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center' }}>
+                      <Icon size={13} color={DS.ink[500]} strokeWidth={1.8} />
                     </View>
-                    <Text style={{ fontSize: 11, fontWeight: '600', color }}>{EXPENSE_CATEGORY_LABELS[e.category]}</Text>
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: DS.ink[700] }}>{EXPENSE_CATEGORY_LABELS[e.category]}</Text>
                   </View>
 
                   {/* Description */}
@@ -382,16 +381,15 @@ export function ExpensesScreen() {
           /* ── Mobile: cardSolid §05 ──────────────────────────── */
           <View style={{ gap: 10 }}>
             {filtered.map(e => {
-              const color = EXPENSE_CATEGORY_COLORS[e.category];
               const Icon = CAT_ICON[e.category];
               return (
                 <View key={e.id} style={{ ...cardSolid, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                   <View style={{
                     width: 40, height: 40, borderRadius: 12,
-                    backgroundColor: `${color}15`,
+                    backgroundColor: DS.ink[100],
                     alignItems: 'center', justifyContent: 'center',
                   }}>
-                    <Icon size={18} color={color} strokeWidth={1.6} />
+                    <Icon size={18} color={DS.ink[500]} strokeWidth={1.6} />
                   </View>
                   <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
                     <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
@@ -512,7 +510,6 @@ function ExpenseFormModal({
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                 {CATEGORIES.map(cat => {
                   const active = category === cat;
-                  const color = EXPENSE_CATEGORY_COLORS[cat];
                   const Icon = CAT_ICON[cat];
                   return (
                     <Pressable
@@ -521,14 +518,14 @@ function ExpenseFormModal({
                       style={{
                         flexDirection: 'row', alignItems: 'center', gap: 5,
                         paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
-                        borderWidth: 1.5,
-                        borderColor: active ? color : 'rgba(0,0,0,0.08)',
-                        backgroundColor: active ? `${color}15` : '#FFF',
+                        borderWidth: 1,
+                        borderColor: active ? DS.ink[900] : 'rgba(0,0,0,0.08)',
+                        backgroundColor: active ? DS.ink[50] : '#FFF',
                         cursor: 'pointer' as any,
                       }}
                     >
-                      <Icon size={12} color={color} strokeWidth={1.8} />
-                      <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? color : DS.ink[500] }}>
+                      <Icon size={12} color={active ? DS.ink[700] : DS.ink[400]} strokeWidth={1.8} />
+                      <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? DS.ink[900] : DS.ink[500] }}>
                         {EXPENSE_CATEGORY_LABELS[cat]}
                       </Text>
                     </Pressable>
@@ -552,7 +549,7 @@ function ExpenseFormModal({
               </View>
               <View style={{ flex: 1, gap: 6 }}>
                 <FL>Tarih</FL>
-                <FI value={date} onChangeText={setDate} placeholder="YYYY-AA-GG" />
+                <DatePicker value={date} onChange={setDate} placeholder="Tarih seç" />
               </View>
             </View>
 

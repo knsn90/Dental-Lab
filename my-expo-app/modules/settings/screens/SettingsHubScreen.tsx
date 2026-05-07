@@ -51,7 +51,7 @@ interface NavItem {
 // ── Panel accent mapping ─────────────────────────────────────────────────
 const PANEL_ACCENTS: Record<PanelKind, string> = {
   lab:    '#F5C24B',
-  admin:  '#E97757',
+  admin:  '#EA7A4C',
   doctor: '#6BA888',
   clinic: '#6BA888',
 };

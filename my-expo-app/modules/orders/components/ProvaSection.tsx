@@ -16,6 +16,7 @@ import { fetchOrderItems } from '../api';
 import { Prova, ProvaType, PROVA_TYPES } from '../../provas/types';
 import { OrderItem } from '../types';
 import { C } from '../../../core/theme/colors';
+import { DatePicker } from '../../../core/ui/DatePicker';
 
 const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
   planlandı:   { label: '📅 Planlandı',    color: '#1D4ED8', bg: '#F1F5F9' },
@@ -142,13 +143,7 @@ function PlanModal({ visible, orderItems, nextNumber, onClose, onSave }: PlanMod
             {/* Scheduled date */}
             <View style={modal.section}>
               <Text style={modal.label}>Planlanan Tarih *</Text>
-              <TextInput
-                style={modal.input}
-                value={scheduledDate}
-                onChangeText={setScheduledDate}
-                placeholder="YYYY-AA-GG"
-                placeholderTextColor={C.textMuted}
-              />
+              <DatePicker value={scheduledDate} onChange={setScheduledDate} placeholder="Tarih seç" />
             </View>
 
             {/* Quota */}

@@ -40,15 +40,15 @@ export async function uploadPhoto(
   toothNumber?: number | null,
   caption?: string | null,
 ): Promise<{ storagePath: string; error: string | null }> {
-  // Check file size
-  const info = await FileSystem.getInfoAsync(uri, { size: true });
-  if (info.exists && 'size' in info && info.size > MAX_SIZE_MB * 1024 * 1024) {
+  // Check file size — yeni expo-file-system API'sinde size her zaman dönüyor
+  const info = await FileSystem.getInfoAsync(uri);
+  if (info.exists && 'size' in info && info.size && info.size > MAX_SIZE_MB * 1024 * 1024) {
     return { storagePath: '', error: `Fotoğraf ${MAX_SIZE_MB}MB'dan küçük olmalıdır.` };
   }
 
   // Read as base64
   const base64 = await FileSystem.readAsStringAsync(uri, {
-    encoding: FileSystem.EncodingType.Base64,
+    encoding: 'base64' as any,
   });
 
   const ext = uri.split('.').pop()?.toLowerCase() ?? 'jpg';

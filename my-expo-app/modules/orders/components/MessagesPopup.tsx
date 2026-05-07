@@ -1485,6 +1485,11 @@ interface MessagesPopupProps {
   initialOrderId?: string;
 }
 
+// Lazy require to avoid circular issues — only on mobile path.
+function _requireB5() {
+  return require('./MessagesB5Mobile');
+}
+
 export function MessagesPopup({ visible, onClose, accentColor, initialOrderId }: MessagesPopupProps) {
   const { profile } = useAuthStore();
   const { items, loading, totalUnread } = useOrderChatInbox();
@@ -1608,6 +1613,22 @@ export function MessagesPopup({ visible, onClose, accentColor, initialOrderId }:
   }, [items, query]);
 
   if (!mounted) return null;
+
+  // ── Mobile — Variant B B5 inbox + B5b thread ──────────────────────
+  if (!isDesktop) {
+    const { MessagesB5Mobile } = _requireB5();
+    return (
+      <Modal
+        visible={mounted}
+        transparent={false}
+        statusBarTranslucent
+        onRequestClose={onClose}
+        animationType="slide"
+      >
+        <MessagesB5Mobile onClose={onClose} />
+      </Modal>
+    );
+  }
 
   // Mobile: tek pane modu — seçim yoksa liste, varsa chat
   const showListOnMobile = !selected;
@@ -1819,7 +1840,7 @@ const p = StyleSheet.create({
           backdropFilter: 'blur(28px)',
           WebkitBackdropFilter: 'blur(28px)',
           boxShadow: '0 24px 72px rgba(15,23,42,0.28), 0 1px 0 rgba(255,255,255,0.6) inset',
-          outline: '1px solid rgba(255,255,255,0.38)',
+          border: '1px solid rgba(255,255,255,0.38)',
         } as any)
       : {
           backgroundColor: 'rgba(255,255,255,0.94)',

@@ -77,7 +77,7 @@ export function NOPageChrome({
               : {}),
           }}
         >
-          <View style={{ paddingHorizontal: 16, paddingTop: 0, paddingBottom: 80 }}>
+          <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 0, paddingBottom: 80 }}>
             {children}
           </View>
         </View>

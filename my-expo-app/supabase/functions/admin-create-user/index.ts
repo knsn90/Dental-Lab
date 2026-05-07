@@ -29,7 +29,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: callerProfile } = await adminClient
       .from('profiles')
-      .select('user_type')
+      .select('user_type, lab_id')
       .eq('id', userData.user.id)
       .single();
 
@@ -37,6 +37,9 @@ Deno.serve(async (req: Request) => {
     if (!callerProfile || (callerProfile.user_type !== 'admin' && callerProfile.user_type !== 'lab')) {
       throw new Error('Yetkiniz yok');
     }
+
+    // Yeni lab kullanıcısı caller'ın lab_id'sini miras alır
+    const inheritedLabId = callerProfile.lab_id ?? null;
 
     const { email, password, full_name, user_type, role, clinic_name, phone, address, clinic_type, specialty, department, level, monthly_salary } = await req.json();
 
@@ -68,6 +71,9 @@ Deno.serve(async (req: Request) => {
     if (createError) throw new Error(createError.message);
 
     // Profile oluştur
+    // Lab kullanıcısı: caller'ın lab_id'sini miras al + otomatik onaylı
+    // Doktor/klinik: lab_id yok, approval_status = 'approved'
+    const isLabUser = effectiveUserType === 'lab';
     await adminClient
       .from('profiles')
       .upsert({
@@ -84,7 +90,10 @@ Deno.serve(async (req: Request) => {
         allowed_stages: (department && effectiveUserType === 'lab') ? department.split(', ').filter(Boolean) : null,
         monthly_salary: monthly_salary ?? null,
         is_active: true,
-        approval_status: (user_type === 'doctor' || user_type === 'clinic_admin') ? 'approved' : null,
+        // Lab kullanıcısı caller'ın lab_id'sini alır — wizard'a düşmez
+        lab_id: isLabUser ? inheritedLabId : null,
+        // Lab/admin'den eklendiğinde otomatik onaylı (manuel kayıt değil)
+        approval_status: 'approved',
         phone_verified: true,
       });
 

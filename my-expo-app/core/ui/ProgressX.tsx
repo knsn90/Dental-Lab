@@ -135,7 +135,7 @@ export function LinearProgressX({
   const railOuter =
     theme === 'lab'    ? '#FAF5E8' :
     theme === 'clinic' ? '#EDF2EE' :
-    theme === 'exec'   ? '#FAF5F1' :
+    theme === 'exec'   ? '#F5F1EB' :
     theme === 'tech'   ? '#F4F8FC' :
     theme === 'plum'   ? '#F7F3FA' :
     theme === 'teal'   ? '#F1F8F7' :

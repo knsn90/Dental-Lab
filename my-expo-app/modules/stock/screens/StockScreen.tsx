@@ -3170,15 +3170,15 @@ interface StockTabDef {
 }
 
 const STOCK_TABS: StockTabDef[] = [
-  { key: 'dashboard',   label: 'Dashboard',     icon: Grid3x3,       accent: '#0F172A', hint: 'Genel bakis, ozet ve kritik durumlar'        },
-  { key: 'list',        label: 'Urunler',       icon: Package,       accent: '#2563EB', hint: 'Urun listesi, kategori ve stok seviyeleri'   },
-  { key: 'movements',   label: 'Hareketler',    icon: ArrowLeftRight,accent: '#6366F1', hint: 'Giris, cikis ve fire hareketleri'            },
-  { key: 'suggestions', label: 'Siparis Oner',  icon: ShoppingCart,  accent: '#D97706', hint: 'Kritik stoklar icin otomatik siparis onerisi' },
-  { key: 'analytics',   label: 'Analiz',        icon: BarChart3,     accent: '#0EA5E9', hint: 'Tuketim ve fire analizi'                     },
-  { key: 'locations',   label: 'Lokasyon',      icon: MapPin,        accent: '#8B5CF6', hint: 'Raf, bolum ve barkod yonetimi'               },
-  { key: 'cost',        label: 'Maliyet',       icon: Layers,        accent: '#059669', hint: 'Stok degeri ve fiyat gecmisi'                },
-  { key: 'forecast',    label: 'Tahmin',        icon: TrendingUp,    accent: '#DC2626', hint: 'Tuketim hizina gore bitis tahmini'           },
-  { key: 'settings',    label: 'Ayarlar',       icon: Settings,      accent: '#6B7280', hint: 'Kategori, marka ve genel yapilandirma'       },
+  { key: 'dashboard',   label: 'Dashboard',     icon: Grid3x3,       accent: '#0F172A', hint: 'Genel bakış, özet ve kritik durumlar'          },
+  { key: 'list',        label: 'Ürünler',       icon: Package,       accent: '#2563EB', hint: 'Ürün listesi, kategori ve stok seviyeleri'     },
+  { key: 'movements',   label: 'Hareketler',    icon: ArrowLeftRight,accent: '#EA7A4C', hint: 'Giriş, çıkış ve fire hareketleri'             },
+  { key: 'suggestions', label: 'Sipariş Öner',  icon: ShoppingCart,  accent: '#D97706', hint: 'Kritik stoklar için otomatik sipariş önerisi'  },
+  { key: 'analytics',   label: 'Analiz',        icon: BarChart3,     accent: '#0EA5E9', hint: 'Tüketim ve fire analizi'                      },
+  { key: 'locations',   label: 'Lokasyon',      icon: MapPin,        accent: '#8B5CF6', hint: 'Raf, bölüm ve barkod yönetimi'                },
+  { key: 'cost',        label: 'Maliyet',       icon: Layers,        accent: '#059669', hint: 'Stok değeri ve fiyat geçmişi'                 },
+  { key: 'forecast',    label: 'Tahmin',        icon: TrendingUp,    accent: '#DC2626', hint: 'Tüketim hızına göre bitiş tahmini'            },
+  { key: 'settings',    label: 'Ayarlar',       icon: Settings,      accent: '#6B7280', hint: 'Kategori, marka ve genel yapılandırma'        },
 ];
 
 const SIDEBAR_ACCENT = '#F5C24B';

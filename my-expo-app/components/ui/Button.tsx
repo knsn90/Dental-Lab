@@ -55,7 +55,7 @@ export function Button({
           color={variant === 'primary' || variant === 'danger' ? Colors.white : Colors.primary}
         />
       ) : (
-        <Text style={[styles.label, labelStyles[variant], labelSizes[size]]}>{label}</Text>
+        <Text style={[labelStyles[variant], labelSizes[size]]}>{label}</Text>
       )}
     </TouchableOpacity>
   );

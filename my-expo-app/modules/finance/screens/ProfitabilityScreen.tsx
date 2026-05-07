@@ -1,17 +1,18 @@
 // ProfitabilityScreen — Mali İşlemler hub'ında "Karlılık" sekmesi.
 // Aylık özet · En karlı/zararlı siparişler · Doktor bazlı marj.
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  View, Text, ScrollView, Pressable,
   ActivityIndicator, Platform, useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { TrendingUp, TrendingDown, Users, AlertTriangle } from 'lucide-react-native';
 
 import { supabase } from '../../../core/api/supabase';
 import { useAuthStore } from '../../../core/store/authStore';
-import { AppIcon } from '../../../core/ui/AppIcon';
-import { Shadows } from '../../../core/theme/shadows';
+import { DS } from '../../../core/theme/dsTokens';
+import { HubContext } from '../../../core/ui/HubContext';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface SummaryRow {
@@ -91,12 +92,42 @@ const RANGE_OPTIONS: { key: Range; label: string }[] = [
   { key: 'all',        label: 'Tümü'     },
 ];
 
+// ── Patterns tokens ─────────────────────────────────────────────────
+const DISPLAY = {
+  fontFamily: 'Inter Tight, Inter, system-ui, sans-serif',
+  fontWeight: '300' as const,
+};
+
+const cardSolid = {
+  backgroundColor: '#FFF',
+  borderRadius: 24,
+  padding: 22,
+  // @ts-ignore web
+  boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)',
+};
+
+const tableCard = {
+  backgroundColor: '#FFF',
+  borderRadius: 24,
+  borderWidth: 1,
+  borderColor: 'rgba(0,0,0,0.05)',
+  overflow: 'hidden' as const,
+};
+
+const CHIP_TONES = {
+  success: { bg: 'rgba(45,154,107,0.12)', fg: '#1F6B47' },
+  warning: { bg: 'rgba(232,155,42,0.15)', fg: '#9C5E0E' },
+  danger:  { bg: 'rgba(217,75,75,0.12)',  fg: '#9C2E2E' },
+  info:    { bg: 'rgba(74,143,201,0.12)', fg: '#1F5689' },
+};
+
 // ─── Component ───────────────────────────────────────────────────────────────
 export function ProfitabilityScreen() {
+  const isEmbedded = useContext(HubContext);
   const router      = useRouter();
   const { profile } = useAuthStore();
   const { width }   = useWindowDimensions();
-  const isWide      = width >= 900;
+  const isDesktop   = width >= 900;
   const labId       = profile?.lab_id ?? profile?.id ?? null;
 
   const [range, setRange] = useState<Range>('thisMonth');
@@ -143,75 +174,117 @@ export function ProfitabilityScreen() {
 
   return (
     <ScrollView
-      style={s.root}
-      contentContainerStyle={s.scroll}
+      style={{ flex: 1 }}
+      contentContainerStyle={{ padding: 22, paddingTop: 4, paddingBottom: 48, gap: 14 }}
       showsVerticalScrollIndicator={false}
     >
       {/* ── Range filter ─────────────────────────────────────────────────── */}
-      <View style={s.rangeRow}>
+      <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', backgroundColor: DS.ink[100], borderRadius: 9999, padding: 4 }}>
         {RANGE_OPTIONS.map(opt => {
           const active = range === opt.key;
           return (
-            <TouchableOpacity
+            <Pressable
               key={opt.key}
               onPress={() => setRange(opt.key)}
-              style={[s.rangeChip, active && s.rangeChipActive]}
-              activeOpacity={0.75}
+              style={[
+                {
+                  paddingHorizontal: 14,
+                  paddingVertical: 7,
+                  borderRadius: 9999,
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                } as any,
+                active && {
+                  backgroundColor: '#FFF',
+                  // @ts-ignore web
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+                },
+              ]}
             >
-              <Text style={[s.rangeChipText, active && s.rangeChipTextActive]}>{opt.label}</Text>
-            </TouchableOpacity>
+              <Text
+                style={[
+                  { fontSize: 12, fontWeight: '600', color: DS.ink[400] },
+                  active && { color: DS.ink[900], fontWeight: '700' },
+                ]}
+              >
+                {opt.label}
+              </Text>
+            </Pressable>
           );
         })}
       </View>
 
       {loading ? (
         <View style={{ paddingVertical: 60, alignItems: 'center' }}>
-          <ActivityIndicator size="large" color="#7C3AED" />
+          <ActivityIndicator size="large" color={DS.ink[400]} />
         </View>
       ) : (
         <>
-          {/* ── Hero: 2 büyük kart yan yana ───────────────────────────────── */}
-          <View style={[s.heroRow, !isWide && { flexDirection: 'column' }]}>
+          {/* ── 2 büyük Hero kart ────────────────────────────────────────── */}
+          <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: 12 }}>
             {/* Net Kâr */}
-            <View style={[s.heroCard, { borderLeftColor: toneFg, borderLeftWidth: 4 }]}>
-              <Text style={s.heroKicker}>NET KÂR</Text>
-              <Text style={[s.heroValue, { color: toneFg }]}>
+            <View style={{ flex: 1, ...cardSolid, padding: 24 } as any}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: toneBg, alignItems: 'center', justifyContent: 'center' }}>
+                  {profit >= 0
+                    ? <TrendingUp size={20} color={toneFg} strokeWidth={1.6} />
+                    : <TrendingDown size={20} color={toneFg} strokeWidth={1.6} />
+                  }
+                </View>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500] }}>
+                  Net Kâr
+                </Text>
+              </View>
+              <Text style={{ ...DISPLAY, fontSize: 36, letterSpacing: -1, color: toneFg, marginBottom: 8 }}>
                 {profit >= 0 ? '+' : '−'}₺{fmt(Math.abs(profit))}
               </Text>
-              <View style={[s.heroChip, { backgroundColor: toneBg }]}>
-                <Text style={[s.heroChipText, { color: toneFg }]}>
-                  {summary?.total_orders ?? 0} sipariş
-                </Text>
-              </View>
+              <Text style={{ fontSize: 12, color: DS.ink[400] }}>
+                {summary?.total_orders ?? 0} sipariş · bu dönem
+              </Text>
             </View>
 
-            {/* Marj % */}
-            <View style={[s.heroCard, { borderLeftColor: '#7C3AED', borderLeftWidth: 4 }]}>
-              <Text style={s.heroKicker}>ORTALAMA MARJ</Text>
-              <Text style={[s.heroValue, { color: '#7C3AED' }]}>
+            {/* Ortalama Marj */}
+            <View style={{ flex: 1, ...cardSolid, padding: 24 } as any}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center' }}>
+                  <TrendingUp size={20} color={DS.ink[500]} strokeWidth={1.6} />
+                </View>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500] }}>
+                  Ortalama Marj
+                </Text>
+              </View>
+              <Text style={{ ...DISPLAY, fontSize: 36, letterSpacing: -1, color: DS.ink[900], marginBottom: 8 }}>
                 {margin !== null ? `%${margin}` : '—'}
               </Text>
-              <View style={[s.heroChip, { backgroundColor: '#EDE9FE' }]}>
-                <Text style={[s.heroChipText, { color: '#7C3AED' }]}>
-                  {margin !== null && margin >= 30 ? 'Mükemmel'
-                    : margin !== null && margin >= 20 ? 'İyi'
-                    : margin !== null && margin >= 10 ? 'Düşük' : 'Risk'}
-                </Text>
-              </View>
+              <Text style={{ fontSize: 12, color: DS.ink[400] }}>
+                {margin !== null && margin >= 30 ? 'Mükemmel'
+                  : margin !== null && margin >= 20 ? 'İyi'
+                  : margin !== null && margin >= 10 ? 'Düşük' : 'Risk'}
+              </Text>
             </View>
           </View>
 
-          {/* ── 3 kolon mini KPI ─────────────────────────────────────────── */}
-          <View style={s.miniKpiRow}>
-            <MiniKpi label="Gelir"   value={fmt(summary?.total_revenue ?? 0)} icon="trending-up"   accent="#059669" />
-            <MiniKpi label="Maliyet" value={fmt(summary?.total_cost ?? 0)}    icon="trending-down" accent="#DC2626" />
-            <MiniKpi label="İşçilik" value={fmt(summary?.total_labor ?? 0)}   icon="users"         accent="#0EA5E9" />
-          </View>
+          {/* ── 4 küçük KPI kartı ────────────────────────────────────────── */}
+          <ScrollView
+            horizontal={!isDesktop}
+            showsHorizontalScrollIndicator={false}
+            scrollEnabled={!isDesktop}
+            contentContainerStyle={{
+              flexDirection: 'row', gap: 12,
+              ...(isDesktop ? { width: '100%' } : {}),
+            }}
+          >
+            <KpiMini label="Gelir" value={`₺${fmt(summary?.total_revenue ?? 0)}`} icon={TrendingUp} />
+            <KpiMini label="Maliyet" value={`₺${fmt(summary?.total_cost ?? 0)}`} icon={TrendingDown} />
+            <KpiMini label="İşçilik" value={`₺${fmt(summary?.total_labor ?? 0)}`} icon={Users} />
+            <KpiMini label="Materyal" value={`₺${fmt(summary?.total_material ?? 0)}`} icon={TrendingDown} />
+          </ScrollView>
 
           {/* ── Maliyet Dağılımı ─────────────────────────────────────────── */}
-          <View style={s.breakdownCard}>
-            <Text style={s.cardTitle}>Maliyet Dağılımı</Text>
-            <View style={s.summaryBreak}>
+          <View style={{ ...tableCard, padding: 18 } as any}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500], letterSpacing: 0.3, marginBottom: 10 }}>
+              Maliyet Dağılımı
+            </Text>
+            <View style={{ gap: 6 }}>
               <BreakRow label="Materyal"     value={summary?.total_material ?? 0} />
               <BreakRow label="İşçilik"      value={summary?.total_labor ?? 0} />
               <BreakRow label="Genel Gider"  value={summary?.total_overhead ?? 0} />
@@ -219,12 +292,14 @@ export function ProfitabilityScreen() {
           </View>
 
           {/* ── Top best/worst (responsive split) ─────────────────────────── */}
-          <View style={[s.twoCol, !isWide && { flexDirection: 'column' }]}>
-            <View style={[s.col, isWide && { flex: 1 }]}>
-              <Text style={s.sectionTitle}>🟢 EN KARLI 5 SİPARİŞ</Text>
-              <View style={s.listCard}>
+          <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: 14 }}>
+            <View style={[{ gap: 8 }, isDesktop && { flex: 1 }]}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500], letterSpacing: 0.3, marginBottom: 10, paddingHorizontal: 4 }}>
+                EN KÂRLI 5 SİPARİŞ
+              </Text>
+              <View style={{ ...tableCard } as any}>
                 {best.length === 0 ? (
-                  <Text style={s.empty}>Veri yok</Text>
+                  <Text style={{ padding: 24, textAlign: 'center', fontSize: 12, color: DS.ink[400] }}>Veri yok</Text>
                 ) : best.map((o, i) => (
                   <OrderListRow
                     key={o.id}
@@ -236,11 +311,13 @@ export function ProfitabilityScreen() {
               </View>
             </View>
 
-            <View style={[s.col, isWide && { flex: 1 }]}>
-              <Text style={s.sectionTitle}>🔴 EN ZARARLI 5 SİPARİŞ</Text>
-              <View style={s.listCard}>
+            <View style={[{ gap: 8 }, isDesktop && { flex: 1 }]}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500], letterSpacing: 0.3, marginBottom: 10, paddingHorizontal: 4 }}>
+                EN ZARARLI 5 SİPARİŞ
+              </Text>
+              <View style={{ ...tableCard } as any}>
                 {worst.length === 0 ? (
-                  <Text style={s.empty}>Veri yok</Text>
+                  <Text style={{ padding: 24, textAlign: 'center', fontSize: 12, color: DS.ink[400] }}>Veri yok</Text>
                 ) : worst.map((o, i) => (
                   <OrderListRow
                     key={o.id}
@@ -254,11 +331,13 @@ export function ProfitabilityScreen() {
           </View>
 
           {/* ── Per-doctor breakdown ─────────────────────────────────────── */}
-          <View style={s.col}>
-            <Text style={s.sectionTitle}>🩺 DOKTOR BAZLI KARLILIK</Text>
-            <View style={s.listCard}>
+          <View style={{ gap: 8 }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500], letterSpacing: 0.3, marginBottom: 10, paddingHorizontal: 4 }}>
+              DOKTOR BAZLI KÂRLILIK
+            </Text>
+            <View style={{ ...tableCard } as any}>
               {doctors.length === 0 ? (
-                <Text style={s.empty}>Veri yok</Text>
+                <Text style={{ padding: 24, textAlign: 'center', fontSize: 12, color: DS.ink[400] }}>Veri yok</Text>
               ) : doctors.map((d, i) => (
                 <DoctorRowView
                   key={d.doctor_id}
@@ -270,11 +349,13 @@ export function ProfitabilityScreen() {
           </View>
 
           {/* ── Technician usage + efficiency ─────────────────────────── */}
-          <View style={s.col}>
-            <Text style={s.sectionTitle}>👷 TEKNİSYEN VERİMLİLİĞİ</Text>
-            <View style={s.listCard}>
+          <View style={{ gap: 8 }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500], letterSpacing: 0.3, marginBottom: 10, paddingHorizontal: 4 }}>
+              TEKNİSYEN VERİMLİLİĞİ
+            </Text>
+            <View style={{ ...tableCard } as any}>
               {technicians.length === 0 ? (
-                <Text style={s.empty}>Veri yok — teknisyen henüz materyal tüketmedi</Text>
+                <Text style={{ padding: 24, textAlign: 'center', fontSize: 12, color: DS.ink[400] }}>Veri yok — teknisyen henüz materyal tüketmedi</Text>
               ) : technicians.map((t, i) => (
                 <TechRowView
                   key={t.user_id}
@@ -287,9 +368,11 @@ export function ProfitabilityScreen() {
 
           {/* ── Material waste breakdown ──────────────────────────────── */}
           {wasteByMat.length > 0 && (
-            <View style={s.col}>
-              <Text style={s.sectionTitle}>♻️ MATERYAL FİRE RAPORU</Text>
-              <View style={s.listCard}>
+            <View style={{ gap: 8 }}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500], letterSpacing: 0.3, marginBottom: 10, paddingHorizontal: 4 }}>
+                MATERYAL FİRE RAPORU
+              </Text>
+              <View style={{ ...tableCard } as any}>
                 {wasteByMat.map((w, i) => (
                   <WasteRowView
                     key={w.item_id}
@@ -310,38 +393,27 @@ export function ProfitabilityScreen() {
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
-function MiniKpi({ label, value, icon, accent }: { label: string; value: string; icon: string; accent: string }) {
+function KpiMini({ label, value, icon: Icon }: { label: string; value: string; icon: React.ComponentType<any> }) {
   return (
-    <View style={mk.card}>
-      <View style={[mk.iconBox, { backgroundColor: accent + '15' }]}>
-        <AppIcon name={icon as any} size={14} color={accent} />
+    <View style={{ flex: 1, minWidth: 110, ...cardSolid, padding: 16 } as any}>
+      <View style={{ width: 28, height: 28, borderRadius: DS.radius.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: DS.ink[100] }}>
+        <Icon size={14} color={DS.ink[500]} strokeWidth={1.6} />
       </View>
-      <Text style={mk.label}>{label}</Text>
-      <Text style={mk.value} numberOfLines={1}>₺{value}</Text>
-    </View>
-  );
-}
-const mk = StyleSheet.create({
-  card: { flex: 1, minWidth: 110, backgroundColor: '#FFFFFF', borderRadius: 14, padding: 14, gap: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)', ...Shadows.card } as any,
-  iconBox: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  label: { fontSize: 10, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.5, textTransform: 'uppercase', marginTop: 4 },
-  value: { fontSize: 18, fontWeight: '800', color: '#0F172A', letterSpacing: -0.4 },
-});
-
-function SummaryStat({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={st.stat}>
-      <Text style={st.statLabel}>{label}</Text>
-      <Text style={st.statValue} numberOfLines={1}>{value}</Text>
+      <Text style={{ fontSize: 10, fontWeight: '600', color: DS.ink[400], letterSpacing: 0.8, textTransform: 'uppercase', marginTop: 4 }}>
+        {label}
+      </Text>
+      <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }} numberOfLines={1}>
+        {value}
+      </Text>
     </View>
   );
 }
 
 function BreakRow({ label, value }: { label: string; value: number }) {
   return (
-    <View style={st.breakRow}>
-      <Text style={st.breakLabel}>{label}</Text>
-      <Text style={st.breakValue}>{fmt(value)} ₺</Text>
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+      <Text style={{ fontSize: 12, color: DS.ink[500], fontWeight: '600' }}>{label}</Text>
+      <Text style={{ fontSize: 12, color: DS.ink[900], fontWeight: '700' }}>{fmt(value)} {'₺'}</Text>
     </View>
   );
 }
@@ -350,53 +422,71 @@ function OrderListRow({
   order, isLast, onPress,
 }: { order: OrderRow; isLast: boolean; onPress: () => void }) {
   const tone = order.profit < 0 ? 'red' : (order.margin_pct ?? 100) < 20 ? 'yellow' : 'green';
-  const fg   = tone === 'red' ? '#DC2626' : tone === 'yellow' ? '#B45309' : '#059669';
-  const bg   = tone === 'red' ? '#FEE2E2' : tone === 'yellow' ? '#FEF3C7' : '#ECFDF5';
+  const chipTone = tone === 'red' ? CHIP_TONES.danger : tone === 'yellow' ? CHIP_TONES.warning : CHIP_TONES.success;
 
   return (
-    <TouchableOpacity onPress={onPress} style={[ol.row, !isLast && ol.rowDivider]} activeOpacity={0.7}>
+    <Pressable
+      onPress={onPress}
+      style={[
+        {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 10,
+          paddingHorizontal: 18,
+          paddingVertical: 14,
+          ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+        } as any,
+        !isLast && { borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' },
+      ]}
+    >
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={ol.order} numberOfLines={1}>#{order.order_number}</Text>
-        <Text style={ol.meta} numberOfLines={1}>
-          {order.patient_name ?? '—'} · {order.doctor_name ?? '—'}
+        <Text style={{ fontSize: 13, fontWeight: '800', color: DS.ink[900] }} numberOfLines={1}>
+          #{order.order_number}
+        </Text>
+        <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }} numberOfLines={1}>
+          {order.patient_name ?? '—'} {'·'} {order.doctor_name ?? '—'}
           {order.case_type ? ` · ${order.case_type}` : ''}
         </Text>
       </View>
-      <View style={[ol.profitChip, { backgroundColor: bg }]}>
-        <Text style={[ol.profitText, { color: fg }]}>
-          {order.profit >= 0 ? '+' : '−'}{fmt(Math.abs(order.profit))} ₺
+      <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: DS.radius.pill, alignItems: 'center', minWidth: 70, backgroundColor: chipTone.bg }}>
+        <Text style={{ fontSize: 12, fontWeight: '800', color: chipTone.fg }}>
+          {order.profit >= 0 ? '+' : '−'}{fmt(Math.abs(order.profit))} {'₺'}
         </Text>
         {order.margin_pct !== null && (
-          <Text style={[ol.marginText, { color: fg }]}>%{order.margin_pct}</Text>
+          <Text style={{ fontSize: 10, fontWeight: '700', marginTop: 1, color: chipTone.fg }}>%{order.margin_pct}</Text>
         )}
       </View>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
 function TechRowView({ row, isLast }: { row: TechnicianUsageRow; isLast: boolean }) {
   const eff = row.efficiency_pct ?? 100;
   const tone = eff < 80 ? 'red' : eff < 95 ? 'yellow' : 'green';
-  const fg   = tone === 'red' ? '#DC2626' : tone === 'yellow' ? '#B45309' : '#059669';
-  const bg   = tone === 'red' ? '#FEE2E2' : tone === 'yellow' ? '#FEF3C7' : '#ECFDF5';
+  const chipTone = tone === 'red' ? CHIP_TONES.danger : tone === 'yellow' ? CHIP_TONES.warning : CHIP_TONES.success;
 
   return (
-    <View style={[dr.row, !isLast && dr.rowDivider]}>
-      <View style={[dr.avatar, { backgroundColor: '#F5F3FF' }]}>
-        <Text style={[dr.avatarText, { color: '#7C3AED' }]}>
+    <View
+      style={[
+        { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingVertical: 14 },
+        !isLast && { borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' },
+      ]}
+    >
+      <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#F5F3FF', alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ fontSize: 12, fontWeight: '800', color: '#7C3AED' }}>
           {(row.user_name ?? '??').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
         </Text>
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={dr.name} numberOfLines={1}>{row.user_name ?? '—'}</Text>
-        <Text style={dr.meta} numberOfLines={1}>
-          ✓ {fmt(row.used_qty)} kullanım  ·  ⚠ {fmt(row.waste_qty)} fire
+        <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900] }} numberOfLines={1}>{row.user_name ?? '—'}</Text>
+        <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }} numberOfLines={1}>
+          {fmt(row.used_qty)} kullanım  {'·'}  {fmt(row.waste_qty)} fire
           {row.waste_cost > 0 ? `  ·  ${fmt(row.waste_cost)} ₺ kayıp` : ''}
         </Text>
       </View>
-      <View style={[dr.profitChip, { backgroundColor: bg }]}>
-        <Text style={[dr.profitText, { color: fg }]}>%{fmt(eff)}</Text>
-        <Text style={[dr.marginText, { color: fg }]}>verim</Text>
+      <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: DS.radius.pill, alignItems: 'center', minWidth: 90, backgroundColor: chipTone.bg }}>
+        <Text style={{ fontSize: 13, fontWeight: '800', color: chipTone.fg }}>%{fmt(eff)}</Text>
+        <Text style={{ fontSize: 10, fontWeight: '700', marginTop: 1, color: chipTone.fg }}>verim</Text>
       </View>
     </View>
   );
@@ -404,19 +494,24 @@ function TechRowView({ row, isLast }: { row: TechnicianUsageRow; isLast: boolean
 
 function WasteRowView({ row, isLast }: { row: WasteByMaterial; isLast: boolean }) {
   return (
-    <View style={[dr.row, !isLast && dr.rowDivider]}>
-      <View style={[dr.avatar, { backgroundColor: '#FEE2E2' }]}>
-        <Text style={[dr.avatarText, { color: '#DC2626', fontSize: 16 }]}>⚠</Text>
+    <View
+      style={[
+        { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingVertical: 14 },
+        !isLast && { borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' },
+      ]}
+    >
+      <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: CHIP_TONES.danger.bg, alignItems: 'center', justifyContent: 'center' }}>
+        <AlertTriangle size={16} color={CHIP_TONES.danger.fg} strokeWidth={1.6} />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={dr.name} numberOfLines={1}>{row.item_name}</Text>
-        <Text style={dr.meta} numberOfLines={1}>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900] }} numberOfLines={1}>{row.item_name}</Text>
+        <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }} numberOfLines={1}>
           {fmt(row.waste_qty)}{row.unit ? ` ${row.unit}` : ''}
           {row.type ? `  ·  ${row.type}` : ''}
         </Text>
       </View>
-      <View style={[dr.profitChip, { backgroundColor: '#FEE2E2' }]}>
-        <Text style={[dr.profitText, { color: '#DC2626' }]}>−{fmt(row.waste_cost)} ₺</Text>
+      <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: DS.radius.pill, alignItems: 'center', minWidth: 90, backgroundColor: CHIP_TONES.danger.bg }}>
+        <Text style={{ fontSize: 13, fontWeight: '800', color: CHIP_TONES.danger.fg }}>{'−'}{fmt(row.waste_cost)} {'₺'}</Text>
       </View>
     </View>
   );
@@ -424,137 +519,34 @@ function WasteRowView({ row, isLast }: { row: WasteByMaterial; isLast: boolean }
 
 function DoctorRowView({ doc, isLast }: { doc: DoctorRow; isLast: boolean }) {
   const tone = doc.total_profit < 0 ? 'red' : (doc.avg_margin_pct ?? 100) < 20 ? 'yellow' : 'green';
-  const fg   = tone === 'red' ? '#DC2626' : tone === 'yellow' ? '#B45309' : '#059669';
-  const bg   = tone === 'red' ? '#FEE2E2' : tone === 'yellow' ? '#FEF3C7' : '#ECFDF5';
+  const chipTone = tone === 'red' ? CHIP_TONES.danger : tone === 'yellow' ? CHIP_TONES.warning : CHIP_TONES.success;
 
   return (
-    <View style={[dr.row, !isLast && dr.rowDivider]}>
-      <View style={dr.avatar}>
-        <Text style={dr.avatarText}>
+    <View
+      style={[
+        { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingVertical: 14 },
+        !isLast && { borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' },
+      ]}
+    >
+      <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ fontSize: 12, fontWeight: '800', color: '#2563EB' }}>
           {doc.doctor_name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
         </Text>
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={dr.name} numberOfLines={1}>{doc.doctor_name}</Text>
-        <Text style={dr.meta} numberOfLines={1}>
-          {doc.order_count} sipariş · {fmt(doc.total_revenue)} ₺ gelir
+        <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900] }} numberOfLines={1}>{doc.doctor_name}</Text>
+        <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }} numberOfLines={1}>
+          {doc.order_count} sipariş {'·'} {fmt(doc.total_revenue)} {'₺'} gelir
         </Text>
       </View>
-      <View style={[dr.profitChip, { backgroundColor: bg }]}>
-        <Text style={[dr.profitText, { color: fg }]}>
-          {doc.total_profit >= 0 ? '+' : '−'}{fmt(Math.abs(doc.total_profit))} ₺
+      <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: DS.radius.pill, alignItems: 'center', minWidth: 90, backgroundColor: chipTone.bg }}>
+        <Text style={{ fontSize: 13, fontWeight: '800', color: chipTone.fg }}>
+          {doc.total_profit >= 0 ? '+' : '−'}{fmt(Math.abs(doc.total_profit))} {'₺'}
         </Text>
         {doc.avg_margin_pct !== null && (
-          <Text style={[dr.marginText, { color: fg }]}>%{doc.avg_margin_pct}</Text>
+          <Text style={{ fontSize: 10, fontWeight: '700', marginTop: 1, color: chipTone.fg }}>%{doc.avg_margin_pct}</Text>
         )}
       </View>
     </View>
   );
 }
-
-// ─── Styles ──────────────────────────────────────────────────────────────────
-
-const SHADOW = Shadows.card;
-
-const s = StyleSheet.create({
-  root:   { flex: 1, backgroundColor: '#F1F5F9' },
-  scroll: { padding: 16, gap: 14 },
-
-  rangeRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
-  rangeChip: {
-    paddingHorizontal: 12, paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1, borderColor: '#E5E5EA',
-  },
-  rangeChipActive: { backgroundColor: '#0F172A', borderColor: '#0F172A' },
-  rangeChipText:        { fontSize: 12, fontWeight: '700', color: '#475569' },
-  rangeChipTextActive:  { color: '#FFFFFF' },
-
-  summaryCard: {
-    borderRadius: 14, padding: 18, gap: 6,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)',
-    ...SHADOW,
-  },
-  summaryLabel:  { fontSize: 10, fontWeight: '800', color: '#475569', letterSpacing: 0.8 },
-  summaryProfit: { fontSize: 32, fontWeight: '800', letterSpacing: -0.8 },
-  summaryMargin: { fontSize: 13, fontWeight: '700' },
-
-  summaryGrid: { flexDirection: 'row', gap: 8, marginTop: 14 },
-  summaryBreak: { gap: 6 },
-
-  // ── Yeni hero (2 büyük kart yan yana) ──
-  heroRow:  { flexDirection: 'row', gap: 12 },
-  heroCard: { flex: 1, backgroundColor: '#FFFFFF', borderRadius: 16, padding: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)', ...SHADOW },
-  heroKicker: { fontSize: 10, fontWeight: '800', color: '#94A3B8', letterSpacing: 1.2, textTransform: 'uppercase' },
-  heroValue:  { fontSize: 36, fontWeight: '800', letterSpacing: -1.2, marginTop: 8, marginBottom: 10 },
-  heroChip:   { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
-  heroChipText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.2 },
-
-  miniKpiRow: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
-
-  breakdownCard: { backgroundColor: '#FFFFFF', borderRadius: 14, padding: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)', ...SHADOW },
-  cardTitle: { fontSize: 12, fontWeight: '800', color: '#0F172A', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.6 },
-
-  twoCol: { flexDirection: 'row', gap: 14 },
-  col:    { gap: 8 },
-
-  sectionTitle: { fontSize: 11, fontWeight: '800', color: '#475569', letterSpacing: 0.8, paddingHorizontal: 4 },
-  listCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)',
-    overflow: 'hidden',
-    ...SHADOW,
-  },
-  empty: { padding: 24, textAlign: 'center', fontSize: 12, color: '#94A3B8' },
-});
-
-const st = StyleSheet.create({
-  stat:      { flex: 1, padding: 10, backgroundColor: '#FFFFFF80', borderRadius: 10 },
-  statLabel: { fontSize: 9, fontWeight: '800', color: '#64748B', letterSpacing: 0.6 },
-  statValue: { fontSize: 14, fontWeight: '800', color: '#0F172A', marginTop: 2, letterSpacing: -0.2 },
-
-  breakRow:   { flexDirection: 'row', justifyContent: 'space-between' },
-  breakLabel: { fontSize: 12, color: '#475569', fontWeight: '600' },
-  breakValue: { fontSize: 12, color: '#0F172A', fontWeight: '700' },
-});
-
-const ol = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 14, paddingVertical: 10,
-  },
-  rowDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E5E5EA' },
-  order: { fontSize: 13, fontWeight: '800', color: '#0F172A' },
-  meta:  { fontSize: 11, color: '#94A3B8', marginTop: 1 },
-  profitChip: {
-    paddingHorizontal: 10, paddingVertical: 5,
-    borderRadius: 999,
-    alignItems: 'center', minWidth: 70,
-  },
-  profitText: { fontSize: 12, fontWeight: '800' },
-  marginText: { fontSize: 10, fontWeight: '700', marginTop: 1 },
-});
-
-const dr = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 12 },
-  rowDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E5E5EA' },
-  avatar: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: '#EFF6FF',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  avatarText: { fontSize: 12, fontWeight: '800', color: '#2563EB' },
-  name: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
-  meta: { fontSize: 11, color: '#94A3B8', marginTop: 1 },
-  profitChip: {
-    paddingHorizontal: 12, paddingVertical: 6,
-    borderRadius: 999,
-    alignItems: 'center', minWidth: 90,
-  },
-  profitText: { fontSize: 13, fontWeight: '800' },
-  marginText: { fontSize: 10, fontWeight: '700', marginTop: 1 },
-});

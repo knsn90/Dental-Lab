@@ -92,8 +92,8 @@ module.exports = {
           DEFAULT: '#F5EFD9',  // DS.lab.bg
           soft:    '#FBF7E8',  // DS.lab.bgSoft
           deep:    '#E8DDB5',  // DS.lab.bgDeep
-          page:    '#F5F2EA',  // page bg (order-detail / sidebar)
-          panel:   '#FBFAF6',  // soft inner panel
+          page:    '#F5F1EB',  // page bg — admin krem zemin (güncellendi)
+          panel:   '#FAF8F4',  // soft inner panel
         },
         saffron: {
           DEFAULT: '#F5C24B',  // DS.lab.primary
@@ -108,8 +108,9 @@ module.exports = {
           panel:   '#D9E5DC',  // DS.clinic.bgDeep
         },
         coral: {
-          DEFAULT: '#E97757',  // DS.exec.primary
-          deep:    '#D15A3A',
+          DEFAULT: '#EA7A4C',  // DS.exec.primary — mercan
+          deep:    '#F3B37A',  // DS.exec.primaryDeep — ikincil accent
+          dark:    '#243041',  // DS.exec.surfaceAlt — lacivert koyu kart
         },
         // Patterns status tones
         ok:   '#2D9A6B',

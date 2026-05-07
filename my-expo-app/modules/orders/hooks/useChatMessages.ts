@@ -141,5 +141,5 @@ export function useChatMessages(workOrderId: string, currentUserId?: string | nu
 
   const pendingCount = messages.filter(m => m.approval_status === 'pending').length;
 
-  return { messages, loading, sending, send, sendWithAttachment, approve, reject, approveAll, pendingCount };
+  return { messages, loading, sending, send, sendWithAttachment, approve, reject, approveAll, pendingCount, refetch: load };
 }

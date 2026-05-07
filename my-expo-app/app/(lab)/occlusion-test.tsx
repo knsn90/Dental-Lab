@@ -1,3 +1,18 @@
-// Standalone test route for occlusion analysis — no work order ID needed
-// URL: http://localhost:8081/(lab)/occlusion-test
-export { default } from '../../modules/occlusion/screens/OcclusionScreen';
+import React from 'react';
+import { Platform, View, Text } from 'react-native';
+
+const Screen = Platform.OS === 'web'
+  ? React.lazy(() => import('../../modules/occlusion/screens/OcclusionScreen'))
+  : () => (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <Text>Oklüzyon analizi sadece web'de desteklenir.</Text>
+      </View>
+    );
+
+export default function OcclusionTestRoute() {
+  return (
+    <React.Suspense fallback={null}>
+      <Screen />
+    </React.Suspense>
+  );
+}

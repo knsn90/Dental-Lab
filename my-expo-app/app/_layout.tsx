@@ -1,6 +1,15 @@
+// Polyfill WeakRef for Hermes (RN 0.76) — used by @react-navigation/core 7.x
+if (typeof globalThis.WeakRef === 'undefined') {
+  (globalThis as any).WeakRef = class WeakRef<T extends object> {
+    private _value: T | undefined;
+    constructor(value: T) { this._value = value; }
+    deref(): T | undefined { return this._value; }
+  };
+}
+
 import '../global.css'; // NativeWind global stylesheet
 import { useEffect } from 'react';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Stack, useRouter, useSegments, useNavigationContainerRef } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Platform, View } from 'react-native';
 import { ToastContainer } from '../core/ui/Toast';
@@ -15,8 +24,17 @@ import {
   Outfit_600SemiBold,
   Outfit_700Bold,
 } from '@expo-google-fonts/outfit';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import {
+  InterTight_200ExtraLight,
+  InterTight_300Light,
+  InterTight_400Regular,
+  InterTight_500Medium,
+  InterTight_600SemiBold,
+} from '@expo-google-fonts/inter-tight';
+import { InstrumentSerif_400Regular, InstrumentSerif_400Regular_Italic } from '@expo-google-fonts/instrument-serif';
+// NOTE: @expo/vector-icons removed — proje Lucide React Native kullanıyor
 import { useFontStore, applyFontSizeWeb } from '../core/store/fontStore';
+import { useThemeModeStore } from '../core/store/themeModeStore';
 
 // Inject web-only global CSS for the phone-shell layout
 // NOTE: Fonts (Outfit + Material Symbols) are loaded in web/index.html.
@@ -126,18 +144,28 @@ export default function RootLayout() {
   // Web: Outfit Google Fonts CDN ile geliyor.
   // Native: 5 ağırlığı .ttf olarak yüklüyoruz + Material icons.
   const [fontsLoaded] = useFonts({
-    ...MaterialCommunityIcons.font,
     Outfit_300Light,
     Outfit_400Regular,
     Outfit_500Medium,
     Outfit_600SemiBold,
     Outfit_700Bold,
+    InterTight_200ExtraLight,
+    InterTight_300Light,
+    InterTight_400Regular,
+    InterTight_500Medium,
+    InterTight_600SemiBold,
+    InstrumentSerif_400Regular,
+    InstrumentSerif_400Regular_Italic,
   });
 
   const { session, profile, loading, setSession, setLoading, fetchProfile } = useAuthStore();
   const { fetchPermissions: fetchPerms, clear: clearPerms } = usePermissionStore();
   const segments = useSegments();
   const router = useRouter();
+  const navRef = useNavigationContainerRef();
+
+  // Hydrate persisted theme mode (light/dark/system)
+  useEffect(() => { useThemeModeStore.getState().hydrate(); }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -162,8 +190,8 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (loading) return;
+    if (!navRef.isReady()) return;
     const inAuthGroup  = segments[0] === '(auth)';
-    const isAdminLogin = segments[1] === 'admin-login';
 
     // Public routes — auth gerekmez (token bazlı erişim + dev showcase)
     const isPublicRoute = segments[0] === 'pay' || segments[0] === 'doctor-approval' || segments[0] === 'dev';
@@ -174,8 +202,17 @@ export default function RootLayout() {
       return;
     }
 
+    // ── Profil yüklenmesini bekle (auth grubundayken) ──
+    // Session var ama profil henüz null → fetchProfile devam ediyor.
+    // Auth grubundayken profil gelmeden routing yapma — metadata'daki eski
+    // user_type yanlış panele yönlendirebilir. Panel grubunda ise devam et.
+    if (!profile && inAuthGroup) {
+      return;
+    }
+
     const userType = profile?.user_type ?? (session.user.user_metadata?.user_type as string | undefined);
     const userRole = profile?.role;
+
     if (!userType) return;
 
     // Teknisyen → istasyon paneli, diğer lab kullanıcıları → lab paneli
@@ -198,35 +235,44 @@ export default function RootLayout() {
       return;
     }
 
+    // ── Lab/admin kullanıcı — lab_id yoksa wizard'a yönlendir ──
+    // Bu kontrol hem auth grubunda hem panel grubunda geçerli
+    if ((userType === 'lab' || userType === 'admin') && profile && !profile.lab_id) {
+      if (inAuthGroup && segments[1] === 'setup-wizard') return; // zaten wizard'da
+      router.replace('/(auth)/setup-wizard' as any);
+      return;
+    }
+
     if (inAuthGroup) {
       // Kayıt sonrası doğrulama/onay bekleme ekranlarında kalmasına izin ver
       const isPostRegistration = segments[1] === 'verify-phone' || segments[1] === 'approval-waiting';
       if (isPostRegistration) return;
 
-      // Auth sayfasındayken oturum açıldıysa doğru panele gönder
-      if (!isAdminLogin) {
-        if (userType === 'doctor')            router.replace('/(doctor)');
-        else if (userType === 'admin')        router.replace('/(admin)');
-        else if (userType === 'clinic_admin') router.replace('/(clinic)' as any);
-        else if (isTechnician)                router.replace('/(station)' as any);
-        else                                  router.replace('/(lab)');
-      }
-    } else if (currentGroup !== expectedGroup) {
-      // Admin kullanıcılar lab panelini de görüntüleyebilir (çoklu sekme desteği)
-      if (userType === 'admin' && currentGroup === '(lab)') return;
-      // Teknisyenler istasyon panelinde kalabilir
-      if (isTechnician && currentGroup === '(station)') return;
+      // Onboarding wizard'da ise kalmasına izin ver
+      if (segments[1] === 'setup-wizard') return;
 
-      // Yanlış panel grubundaysa (ör. lab kullanıcısı (doctor)/new-order içinde)
-      // Aynı alt sayfayı doğru grup içinde aç: ['(doctor)', 'new-order'] → '/(lab)/new-order'
-      const subPath  = segments.slice(1).join('/');
-      const base     = userType === 'doctor'       ? '/(doctor)'
-                     : userType === 'admin'        ? '/(admin)'
-                     : userType === 'clinic_admin' ? '/(clinic)'
-                     : isTechnician                ? '/(station)'
-                     : '/(lab)';
-      const target   = subPath ? `${base}/${subPath}` : base;
-      router.replace(target as any);
+      // Auth sayfasındayken oturum açıldıysa doğru panele gönder
+      if (userType === 'doctor')            router.replace('/(doctor)');
+      else if (userType === 'admin')        router.replace('/(admin)');
+      else if (userType === 'clinic_admin') router.replace('/(clinic)' as any);
+      else if (isTechnician)                router.replace('/(station)' as any);
+      else                                  router.replace('/(lab)');
+    } else {
+      if (currentGroup !== expectedGroup) {
+        // Admin kullanıcılar lab panelini de görüntüleyebilir (çoklu sekme desteği)
+        if (userType === 'admin' && currentGroup === '(lab)') return;
+        // Teknisyenler istasyon panelinde kalabilir
+        if (isTechnician && currentGroup === '(station)') return;
+
+        // Yanlış panel grubunda — doğru panelin index'ine gönder (subPath taşıma)
+        // Subpath farklı paneller arasında route uyuşmazlığına neden olur (ör. /(lab)/clinics → /(clinic)/clinics yok).
+        const base     = userType === 'doctor'       ? '/(doctor)'
+                       : userType === 'admin'        ? '/(admin)'
+                       : userType === 'clinic_admin' ? '/(clinic)'
+                       : isTechnician                ? '/(station)'
+                       : '/(lab)';
+        router.replace(base as any);
+      }
     }
   }, [session, profile, loading]);
 

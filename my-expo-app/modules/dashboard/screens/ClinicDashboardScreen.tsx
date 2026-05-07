@@ -708,7 +708,46 @@ export function ClinicDashboardScreen() {
     [orders]);
 
   // ══════════════════════════════════════════════════════════════
-  //  RENDER
+  //  MOBILE — Variant B Home (B1)
+  // ══════════════════════════════════════════════════════════════
+  if (!isDesktop) {
+    const { HomeB1: HomeB1Cmp, defaultInsight: defIns } = require('../../../core/ui/HomeB1');
+    const recentOrdersList = orders.slice(0, 3);
+    const kpis = [
+      { label: 'Aktif',    value: String(activeCount), up: true },
+      { label: 'Geciken',  value: String(overdueCount), up: false },
+      { label: 'Teslim',   value: String(delivered) },
+      { label: 'Toplam',   value: String(total) },
+    ];
+    const priority = recentOrdersList.map((o: any) => ({
+      id: String(o.order_number ?? o.id).slice(-5),
+      type: o.work_type ?? 'Sipariş',
+      due: o.delivery_date ? fmtDate(o.delivery_date) : '—',
+      status: o.status,
+      statusLabel: STATUS_CFG[o.status]?.label ?? o.status,
+      clinic: clinicName,
+      avatar: clinicName.slice(0, 2).toUpperCase(),
+    }));
+    return (
+      <HomeB1Cmp
+        kicker={`${activeCount} aktif sipariş`}
+        headline={overdueCount > 0 ? `${overdueCount} geciken vakanız var.` : 'Bugün takipte olun.'}
+        sub={`${total} toplam sipariş, ${delivered} teslim edildi.`}
+        primaryAction={{ label: 'Yeni sipariş', onPress: () => router.push('/(clinic)/new-order' as any) }}
+        secondaryAction={{ label: 'Siparişler', onPress: () => router.push('/(clinic)/orders' as any) }}
+        kpis={kpis}
+        priority={priority}
+        onOpenOrder={(o: any) => router.push(`/(clinic)/order/${o.id}` as any)}
+        onSeeAllOrders={() => router.push('/(clinic)/orders' as any)}
+        insight={defIns('clinic')}
+        refreshing={loading}
+        onRefresh={refetch}
+      />
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  DESKTOP RENDER (mevcut, dokunulmadı)
   // ══════════════════════════════════════════════════════════════
   return (
     <ScrollView

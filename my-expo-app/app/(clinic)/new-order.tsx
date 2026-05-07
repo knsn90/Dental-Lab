@@ -3,8 +3,6 @@ import { useRouter } from 'expo-router';
 import { useAuthStore } from '../../core/store/authStore';
 import { NewOrderScreen } from '../../modules/orders/screens/NewOrderScreen';
 
-const CLINIC_ACCENT = '#6BA888';
-
 export default function ClinicNewOrderRoute() {
   const router = useRouter();
   const { profile, loading } = useAuthStore();
@@ -18,5 +16,6 @@ export default function ClinicNewOrderRoute() {
   if (loading || !profile) return null;
   if (profile.user_type !== 'clinic_admin') return null;
 
-  return <NewOrderScreen clinicMode accentColor={CLINIC_ACCENT} />;
+  // Klinik paneli teması: deeper sky #0369A1 · "Hangi hekim için?" · "Laboratuvara gönder"
+  return <NewOrderScreen panel="clinic" clinicMode />;
 }

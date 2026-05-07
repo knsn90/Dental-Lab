@@ -281,17 +281,22 @@ export function ToothNumberPicker({
     // onToothPress yoksa (seçim modu): hepsi tıklanabilir.
     const isInteractive = onToothPress ? isSelected : true;
 
-    const gProps: any = isInteractive
-      ? { onPress: () => handlePress(fdi) }
-      : { pointerEvents: 'none' };       // tıklamayı/hover'ı engelle
+    // Web'de SVG <g>'ye onPress vermek RN-Web'in Responder sistemini tetikler
+    // → "Unknown event handler property onResponderTerminate" warning'i.
+    // Web'de onClick, native'de onPress kullan.
+    const gProps: any = !isInteractive
+      ? { pointerEvents: 'none' }
+      : Platform.OS === 'web'
+        ? {
+            onClick: () => handlePress(fdi),
+            onMouseEnter: () => handleHoverEnter(fdi),
+            onMouseLeave: handleHoverLeave,
+            // @ts-ignore — RN-Web cursor passthrough
+            style: { cursor: 'pointer' },
+          }
+        : { onPress: () => handlePress(fdi) };
 
-    // Web-only hover handlers — sadece interactive dişlerde
-    if (Platform.OS === 'web' && isInteractive) {
-      gProps.onMouseEnter = () => handleHoverEnter(fdi);
-      gProps.onMouseLeave = handleHoverLeave;
-      // @ts-ignore — RN-Web cursor passthrough
-      gProps.style = { cursor: 'pointer' };
-    } else if (Platform.OS === 'web' && !isInteractive) {
+    if (Platform.OS === 'web' && !isInteractive) {
       // @ts-ignore
       gProps.style = { cursor: 'default' };
     }

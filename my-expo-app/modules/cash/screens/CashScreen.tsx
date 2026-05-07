@@ -21,6 +21,7 @@ import {
   type CashAccount, type AccountType, type MovementCategory, type MovementDirection,
 } from '../api';
 import { DS } from '../../../core/theme/dsTokens';
+import { DatePicker } from '../../../core/ui/DatePicker';
 import { toast } from '../../../core/ui/Toast';
 import {
   Plus, X, Inbox, Pencil, Trash2, Search,
@@ -991,14 +992,7 @@ function MovementModal({
             <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 6 }}>
               Tarih
             </Text>
-            <TextInput
-              style={{
-                height: 44, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
-                paddingHorizontal: 14, fontSize: 14, color: DS.ink[900], backgroundColor: '#FFF',
-              }}
-              value={date} onChangeText={setDate}
-              placeholder="YYYY-AA-GG" placeholderTextColor={DS.ink[400]}
-            />
+            <DatePicker value={date} onChange={setDate} placeholder="Tarih seç" />
           </ScrollView>
 
           {/* Footer — ghost + dark pill */}

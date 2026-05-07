@@ -34,6 +34,7 @@ import { StatusUpdateModal } from '../components/StatusUpdateModal';
 import { KanbanBoard } from '../components/KanbanBoard';
 import { WorkOrder, WorkOrderStatus } from '../types';
 import { STATUS_CONFIG, isOrderOverdue } from '../constants';
+import { OrdersKanbanB2Mobile } from './OrdersKanbanB2Mobile';
 import { mapStationToStage } from '../stationMapping';
 import { STAGE_LABEL, STAGE_COLOR, legacyStatusToStage, type Stage } from '../stages';
 
@@ -240,12 +241,27 @@ export function OrdersListScreenV2() {
   };
 
   // ═══════════════════════════════════════════════════════════════════
-  // RENDER
+  // MOBILE — Variant B B2 Kanban swimlanes (early return)
+  // ═══════════════════════════════════════════════════════════════════
+  if (!isDesktop) {
+    return (
+      <OrdersKanbanB2Mobile
+        orders={orders}
+        loading={loading}
+        refetch={refetch}
+        onOpenOrder={onCardPress}
+      />
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // DESKTOP RENDER (mevcut, dokunulmadı)
   // ═══════════════════════════════════════════════════════════════════
   return (
     <View className="flex-1 bg-cream-page">
 
-      {/* ── Unified Filter Bar — tek satır ────────────────────────── */}
+      {/* ── Unified Filter Bar — DESKTOP ONLY (mobile uses block below) ─── */}
+      {isDesktop && (
       <View className="px-4 pt-3 pb-2">
         <View className="flex-row items-center gap-2">
           {/* Status tabs + Acil/Geciken — tek pill strip */}
@@ -381,9 +397,119 @@ export function OrdersListScreenV2() {
           </View>
         </View>
       </View>
+      )}
+
+      {/* ── Mobile Filter Bar — sade, tek elle kullanım ───────────── */}
+      {!isDesktop && (
+        <View className="px-4 pt-2 pb-3" style={{ gap: 10 }}>
+          {/* Search + Sort row */}
+          <View className="flex-row items-center" style={{ gap: 8 }}>
+            <View
+              className="flex-1 flex-row items-center bg-white rounded-2xl px-3"
+              style={{ height: 40, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' }}
+            >
+              <Search size={16} color="#6B6B6B" strokeWidth={1.8} />
+              <TextInput
+                className="flex-1 ml-2 text-[14px] text-ink-900"
+                placeholder="Sipariş, hasta, hekim ara"
+                placeholderTextColor="#9A9A9A"
+                value={search}
+                onChangeText={setSearch}
+                returnKeyType="search"
+              />
+              {search.length > 0 && (
+                <Pressable onPress={() => setSearch('')} hitSlop={8}>
+                  <X size={15} color="#6B6B6B" strokeWidth={2} />
+                </Pressable>
+              )}
+            </View>
+            <Pressable
+              onPress={() => setSortOpen(true)}
+              className="bg-white items-center justify-center rounded-2xl"
+              style={{ width: 40, height: 40, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' }}
+            >
+              <ArrowUpDown size={16} color="#0A0A0A" strokeWidth={1.8} />
+            </Pressable>
+          </View>
+
+          {/* Status chips — yatay scroll */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 6 }}
+          >
+            {STATUS_FILTERS.map(f => {
+              const active = statusFilter === f.value && !urgentOnly && !overdueOnly;
+              const count = statusCounts[f.value] ?? 0;
+              return (
+                <Pressable
+                  key={f.value}
+                  onPress={() => { setStatusFilter(f.value); setUrgentOnly(false); setOverdueOnly(false); }}
+                  className={`flex-row items-center rounded-full px-3.5 ${active ? 'bg-ink-900' : 'bg-white'}`}
+                  style={{ height: 32, borderWidth: 1, borderColor: active ? 'transparent' : 'rgba(0,0,0,0.06)', gap: 6 }}
+                >
+                  <Text className={`text-[13px] font-semibold ${active ? 'text-white' : 'text-ink-700'}`}>
+                    {f.label}
+                  </Text>
+                  <Text className={`text-[11px] font-bold ${active ? 'text-white/60' : 'text-ink-400'}`}>
+                    {count}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+
+          {/* Acil + Geciken — alt satır */}
+          <View className="flex-row" style={{ gap: 8 }}>
+            <Pressable
+              onPress={() => { setUrgentOnly(v => !v); if (!urgentOnly) setOverdueOnly(false); }}
+              className="flex-row items-center rounded-full px-3"
+              style={{
+                height: 30,
+                gap: 5,
+                backgroundColor: urgentOnly ? 'rgba(217,119,6,0.12)' : '#FFFFFF',
+                borderWidth: 1,
+                borderColor: urgentOnly ? 'rgba(217,119,6,0.25)' : 'rgba(0,0,0,0.06)',
+              }}
+            >
+              <Flame size={13} color={urgentOnly ? '#D97706' : '#9A9A9A'} strokeWidth={1.8} />
+              <Text className={`text-[12px] font-semibold ${urgentOnly ? '' : 'text-ink-500'}`} style={urgentOnly ? { color: '#D97706' } : undefined}>
+                Acil
+              </Text>
+              {urgentCount > 0 && (
+                <Text className={`text-[10px] font-bold ${urgentOnly ? '' : 'text-ink-400'}`} style={urgentOnly ? { color: '#D97706', opacity: 0.7 } : undefined}>
+                  {urgentCount}
+                </Text>
+              )}
+            </Pressable>
+
+            <Pressable
+              onPress={() => { setOverdueOnly(v => !v); if (!overdueOnly) setUrgentOnly(false); }}
+              className="flex-row items-center rounded-full px-3"
+              style={{
+                height: 30,
+                gap: 5,
+                backgroundColor: overdueOnly ? 'rgba(220,38,38,0.12)' : '#FFFFFF',
+                borderWidth: 1,
+                borderColor: overdueOnly ? 'rgba(220,38,38,0.25)' : 'rgba(0,0,0,0.06)',
+              }}
+            >
+              <Clock size={13} color={overdueOnly ? '#DC2626' : '#9A9A9A'} strokeWidth={1.8} />
+              <Text className={`text-[12px] font-semibold ${overdueOnly ? '' : 'text-ink-500'}`} style={overdueOnly ? { color: '#DC2626' } : undefined}>
+                Geciken
+              </Text>
+              {overdueCount > 0 && (
+                <Text className={`text-[10px] font-bold ${overdueOnly ? '' : 'text-ink-400'}`} style={overdueOnly ? { color: '#DC2626', opacity: 0.7 } : undefined}>
+                  {overdueCount}
+                </Text>
+              )}
+            </Pressable>
+          </View>
+        </View>
+      )}
 
       {/* ── Content ────────────────────────────────────────────────── */}
-      {viewMode === 'kanban' ? (
+      {isDesktop && viewMode === 'kanban' ? (
         <KanbanBoard orders={visibleOrders} userGroup={(panelGroup || '(lab)') as any} onStatusAdvance={onStatusAdvance} />
       ) : (
         <ScrollView

@@ -1,16 +1,22 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useContext } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  View, Text, ScrollView, Pressable,
   ActivityIndicator, Modal, TextInput, Alert, Platform,
+  useWindowDimensions,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
-import { C } from '../../../core/theme/colors';
-import { F, FS } from '../../../core/theme/typography';
-import { useIsDesktop } from '../../../core/layout/DesktopShell';
+import { DS } from '../../../core/theme/dsTokens';
+import { DatePicker } from '../../../core/ui/DatePicker';
+import { HubContext } from '../../../core/ui/HubContext';
 import { useAuthStore } from '../../../core/store/authStore';
 import { toast } from '../../../core/ui/Toast';
 import { useEmployees } from '../../employees/hooks/useEmployees';
-import { AppIcon } from '../../../core/ui/AppIcon';
+import {
+  Clock, CheckCircle, Upload, X, AlertTriangle, ShieldCheck,
+  Search, FolderOpen, ExternalLink, Pencil, Trash2, ArrowLeft,
+  FileText, CreditCard, Award, Activity, Calendar, DollarSign,
+  Paperclip, Shield,
+} from 'lucide-react-native';
 
 import {
   fetchDocuments, fetchExpiringDocuments, addDocument, updateDocument,
@@ -19,29 +25,72 @@ import {
   type EmployeeDocument, type DocType,
 } from '../api';
 
+// ─── Lucide icon map for doc types ──────────────────────────────────────────
+const LUCIDE_DOC_ICON_MAP: Record<string, React.ComponentType<any>> = {
+  'credit-card': CreditCard,
+  'file-text':   FileText,
+  'award':       Award,
+  'shield':      Shield,
+  'activity':    Activity,
+  'calendar':    Calendar,
+  'dollar-sign': DollarSign,
+  'paperclip':   Paperclip,
+};
+
+function DocTypeIcon({ name, size, color }: { name: string; size: number; color: string }) {
+  const Comp = LUCIDE_DOC_ICON_MAP[name] ?? FileText;
+  return <Comp size={size} color={color} strokeWidth={1.6} />;
+}
+
+// ─── Patterns tokens ────────────────────────────────────────────────────────
+const DISPLAY = {
+  fontFamily: 'Inter Tight, Inter, system-ui, sans-serif',
+  fontWeight: '300' as const,
+};
+
+const cardSolid = {
+  backgroundColor: '#FFF',
+  borderRadius: 24,
+  padding: 22,
+  // @ts-ignore web
+  boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)',
+};
+
+const tableCard = {
+  backgroundColor: '#FFF',
+  borderRadius: 24,
+  borderWidth: 1,
+  borderColor: 'rgba(0,0,0,0.05)',
+  overflow: 'hidden' as const,
+};
+
+const CHIP_TONES = {
+  success: { bg: 'rgba(45,154,107,0.12)', fg: '#1F6B47' },
+  warning: { bg: 'rgba(232,155,42,0.15)', fg: '#9C5E0E' },
+  danger:  { bg: 'rgba(217,75,75,0.12)',  fg: '#9C2E2E' },
+  info:    { bg: 'rgba(74,143,201,0.12)', fg: '#1F5689' },
+};
+
+const WEB_CURSOR = Platform.OS === 'web' ? { cursor: 'pointer' as const } : {};
+
 // ─── ExpiryBadge ─────────────────────────────────────────────────────────────
 function ExpiryBadge({ days }: { days: number | null }) {
   if (days === null) return null;
-  const color = days <= 7 ? '#DC2626' : days <= 30 ? '#D97706' : '#059669';
+  const tone = days <= 7 ? CHIP_TONES.danger : days <= 30 ? CHIP_TONES.warning : CHIP_TONES.success;
   const label = days <= 0 ? 'Süresi doldu' : `${days} gün`;
   return (
-    <View style={[xb.badge, { backgroundColor: color + '18', borderColor: color + '40' }]}>
-      <AppIcon name="clock" size={10} color={color} />
-      <Text style={[xb.badgeText, { color }]}>{label}</Text>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, backgroundColor: tone.bg }}>
+      <Clock size={10} color={tone.fg} strokeWidth={1.6} />
+      <Text style={{ fontSize: 10, fontWeight: '600', color: tone.fg }}>{label}</Text>
     </View>
   );
 }
-const xb = StyleSheet.create({
-  badge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, borderWidth: 1 },
-  badgeText: { fontSize: FS.xs, fontFamily: F.semibold, fontWeight: '600' },
-});
 
 // ─── DocCard ─────────────────────────────────────────────────────────────────
 function DocCard({
-  doc, accentColor, onOpen, onEdit, onDelete,
+  doc, onOpen, onEdit, onDelete,
 }: {
   doc: EmployeeDocument;
-  accentColor: string;
   onOpen: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -51,77 +100,82 @@ function DocCard({
   const isExp = days !== null && days <= 0;
 
   return (
-    <View style={[dc.card, isExp && dc.expired]}>
-      <View style={[dc.iconBox, { backgroundColor: cfg.color + '18' }]}>
-        <AppIcon name={cfg.icon as any} size={20} color={cfg.color} />
+    <View style={[
+      { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingVertical: 14 },
+      !isExp && { borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' },
+      isExp && { backgroundColor: CHIP_TONES.danger.bg, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' },
+    ]}>
+      <View style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexShrink: 0, backgroundColor: DS.ink[100] }}>
+        <DocTypeIcon name={cfg.icon} size={18} color={DS.ink[500]} />
       </View>
-      <View style={dc.info}>
-        <Text style={dc.title} numberOfLines={1}>{doc.title}</Text>
-        <Text style={dc.meta}>
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900] }} numberOfLines={1}>{doc.title}</Text>
+        <Text style={{ fontSize: 12, color: DS.ink[500] }}>
           {cfg.label}
-          {doc.file_size ? `  •  ${formatFileSize(doc.file_size)}` : ''}
-          {doc.valid_until ? `  •  ${doc.valid_until.slice(0, 10)}` : ''}
+          {doc.file_size ? `  ·  ${formatFileSize(doc.file_size)}` : ''}
+          {doc.valid_until ? `  ·  ${doc.valid_until.slice(0, 10)}` : ''}
         </Text>
         {days !== null && <ExpiryBadge days={days} />}
       </View>
-      <View style={dc.actions}>
-        <TouchableOpacity style={dc.iconBtn} onPress={onOpen}>
-          <AppIcon name="external-link" size={15} color={accentColor} />
-        </TouchableOpacity>
-        <TouchableOpacity style={dc.iconBtn} onPress={onEdit}>
-          <AppIcon name="edit-2" size={15} color={C.textSecondary} />
-        </TouchableOpacity>
-        <TouchableOpacity style={dc.iconBtn} onPress={onDelete}>
-          <AppIcon name="trash-2" size={15} color="#DC2626" />
-        </TouchableOpacity>
+      <View style={{ flexDirection: 'row', gap: 4 }}>
+        <Pressable style={{ width: 30, height: 30, alignItems: 'center', justifyContent: 'center', borderRadius: 8, ...WEB_CURSOR } as any} onPress={onOpen}>
+          <ExternalLink size={15} color={DS.ink[500]} strokeWidth={1.6} />
+        </Pressable>
+        <Pressable style={{ width: 30, height: 30, alignItems: 'center', justifyContent: 'center', borderRadius: 8, ...WEB_CURSOR } as any} onPress={onEdit}>
+          <Pencil size={15} color={DS.ink[500]} strokeWidth={1.6} />
+        </Pressable>
+        <Pressable style={{ width: 30, height: 30, alignItems: 'center', justifyContent: 'center', borderRadius: 8, ...WEB_CURSOR } as any} onPress={onDelete}>
+          <Trash2 size={15} color={CHIP_TONES.danger.fg} strokeWidth={1.6} />
+        </Pressable>
       </View>
     </View>
   );
 }
-const dc = StyleSheet.create({
-  card: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: '#F1F5F9', marginBottom: 8 },
-  expired: { borderColor: '#FCA5A5', backgroundColor: '#FFF5F5' },
-  iconBox: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  info: { flex: 1, gap: 2 },
-  title: { fontSize: FS.md, fontFamily: F.semibold, fontWeight: '600', color: C.textPrimary },
-  meta: { fontSize: FS.sm, fontFamily: F.regular, color: C.textSecondary },
-  actions: { flexDirection: 'row', gap: 4 },
-  iconBtn: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
-});
 
 // ─── DocTypeGrid ─────────────────────────────────────────────────────────────
 function DocTypeGrid({ selected, onChange }: { selected: DocType; onChange: (t: DocType) => void }) {
   return (
-    <View style={tg.grid}>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
       {DOC_TYPES.map(t => {
         const cfg = DOC_TYPE_CFG[t];
         const sel = selected === t;
         return (
-          <TouchableOpacity
+          <Pressable
             key={t}
-            style={[tg.btn, { borderColor: sel ? cfg.color : '#E2E8F0' }, sel && { backgroundColor: cfg.color }]}
+            style={[
+              { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9999, borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.08)', ...WEB_CURSOR },
+              sel && { backgroundColor: DS.ink[900], borderColor: DS.ink[900] },
+            ] as any}
             onPress={() => onChange(t)}
           >
-            <AppIcon name={cfg.icon as any} size={12} color={sel ? '#fff' : cfg.color} />
-            <Text style={[tg.btnText, { color: sel ? '#fff' : cfg.color }]}>{cfg.label}</Text>
-          </TouchableOpacity>
+            <DocTypeIcon name={cfg.icon} size={12} color={sel ? '#fff' : DS.ink[500]} />
+            <Text style={{ fontSize: 12, fontWeight: '600', color: sel ? '#fff' : DS.ink[500] }}>{cfg.label}</Text>
+          </Pressable>
         );
       })}
     </View>
   );
 }
-const tg = StyleSheet.create({
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  btn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1.5 },
-  btnText: { fontSize: FS.sm, fontFamily: F.semibold, fontWeight: '600' },
-});
+
+// ─── Modal shared styles ────────────────────────────────────────────────────
+const modalOverlay = { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', alignItems: 'center' as const, justifyContent: 'center' as const, padding: 24 };
+const modalSheet = {
+  width: '100%' as any, maxWidth: 560, backgroundColor: '#fff', borderRadius: 24, overflow: 'hidden' as const,
+  // @ts-ignore web
+  boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+};
+const modalHeader = { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, padding: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' };
+const modalBody = { padding: 20, maxHeight: 500 };
+const modalFooter = { flexDirection: 'row' as const, gap: 10, padding: 16, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' };
+const modalLabel = { fontSize: 10, fontWeight: '700' as const, color: DS.ink[500], marginBottom: 6, marginTop: 12, textTransform: 'uppercase' as const, letterSpacing: 0.5 };
+const modalInput = { borderWidth: 1, borderColor: DS.ink[200], borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, color: DS.ink[900], backgroundColor: '#FFFFFF' };
 
 // ─── UploadModal ─────────────────────────────────────────────────────────────
 function UploadModal({
-  visible, onClose, employeeId, labId, userId, accentColor, onDone,
+  visible, onClose, employeeId, labId, userId, onDone,
 }: {
   visible: boolean; onClose: () => void; employeeId: string;
-  labId: string; userId: string; accentColor: string; onDone: () => void;
+  labId: string; userId: string; onDone: () => void;
 }) {
   const [docType, setDocType] = useState<DocType>('diger');
   const [title, setTitle]     = useState('');
@@ -166,92 +220,84 @@ function UploadModal({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={um.overlay}>
-        <View style={um.sheet}>
-          <View style={um.header}>
-            <Text style={um.headerTitle}>Belge Yükle</Text>
-            <TouchableOpacity onPress={onClose}><AppIcon name="x" size={22} color={C.textSecondary} /></TouchableOpacity>
+      <View style={modalOverlay}>
+        <View style={modalSheet}>
+          <View style={modalHeader}>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: DS.ink[900] }}>Belge Yükle</Text>
+            <Pressable onPress={onClose} style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', ...WEB_CURSOR } as any}>
+              <X size={18} color={DS.ink[400]} strokeWidth={1.8} />
+            </Pressable>
           </View>
-          <ScrollView style={um.body} showsVerticalScrollIndicator={false}>
+          <ScrollView style={modalBody} showsVerticalScrollIndicator={false}>
 
-            <TouchableOpacity style={[um.filePicker, file && um.filePicked]} onPress={pickFile}>
-              <AppIcon name={file ? 'check-circle' : 'upload'} size={22} color={file ? '#059669' : accentColor} />
-              <Text style={[um.filePickerText, file && { color: '#059669' }]}>
+            <Pressable
+              style={[
+                { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 16, borderWidth: 2, borderColor: DS.ink[200], borderStyle: 'dashed' as any, marginBottom: 16, ...WEB_CURSOR },
+                file && { borderStyle: 'solid' as any, borderColor: CHIP_TONES.success.fg, backgroundColor: CHIP_TONES.success.bg },
+              ] as any}
+              onPress={pickFile}
+            >
+              {file
+                ? <CheckCircle size={22} color={CHIP_TONES.success.fg} strokeWidth={1.6} />
+                : <Upload size={22} color={DS.ink[500]} strokeWidth={1.6} />
+              }
+              <Text style={[{ fontSize: 13, color: DS.ink[500], flex: 1 }, file && { color: CHIP_TONES.success.fg }]}>
                 {file ? file.name : 'Dosya seç (PDF, görsel, Word vb.)'}
               </Text>
-              {!!file?.size && <Text style={um.fileSize}>{formatFileSize(file.size ?? null)}</Text>}
-            </TouchableOpacity>
+              {!!file?.size && <Text style={{ fontSize: 12, color: DS.ink[500] }}>{formatFileSize(file.size ?? null)}</Text>}
+            </Pressable>
 
-            <Text style={um.label}>Belge Türü</Text>
+            <Text style={modalLabel}>Belge Türü</Text>
             <DocTypeGrid selected={docType} onChange={setDocType} />
 
-            <Text style={[um.label, { marginTop: 16 }]}>Başlık *</Text>
-            <TextInput style={um.input} value={title} onChangeText={setTitle} placeholder="Örn: TC Kimlik Ön Yüz" placeholderTextColor={C.textMuted} />
+            <Text style={[modalLabel, { marginTop: 16 }]}>Başlık *</Text>
+            <TextInput style={modalInput} value={title} onChangeText={setTitle} placeholder="Örn: TC Kimlik Ön Yüz" placeholderTextColor={DS.ink[400]} />
 
-            <View style={um.row}>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
               <View style={{ flex: 1 }}>
-                <Text style={um.label}>Geçerlilik Başlangıcı</Text>
-                <TextInput style={um.input} value={validFrom} onChangeText={setFrom} placeholder="YYYY-MM-DD" placeholderTextColor={C.textMuted} />
+                <Text style={modalLabel}>Geçerlilik Başlangıcı</Text>
+                <DatePicker value={validFrom} onChange={setFrom} placeholder="Tarih seç" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={um.label}>Geçerlilik Bitişi</Text>
-                <TextInput style={um.input} value={validUntil} onChangeText={setUntil} placeholder="YYYY-MM-DD" placeholderTextColor={C.textMuted} />
+                <Text style={modalLabel}>Geçerlilik Bitişi</Text>
+                <DatePicker value={validUntil} onChange={setUntil} placeholder="Tarih seç" />
               </View>
             </View>
 
-            <Text style={um.label}>Notlar</Text>
+            <Text style={modalLabel}>Notlar</Text>
             <TextInput
-              style={[um.input, { height: 72, textAlignVertical: 'top' }]}
+              style={[modalInput, { height: 72, textAlignVertical: 'top' }]}
               value={notes} onChangeText={setNotes}
               placeholder="İsteğe bağlı not" multiline
-              placeholderTextColor={C.textMuted}
+              placeholderTextColor={DS.ink[400]}
             />
           </ScrollView>
 
-          <View style={um.footer}>
-            <TouchableOpacity style={um.cancelBtn} onPress={onClose}>
-              <Text style={um.cancelText}>İptal</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[um.uploadBtn, { backgroundColor: accentColor }, (!file || !title.trim() || uploading) && { opacity: 0.5 }]}
+          <View style={modalFooter}>
+            <Pressable style={{ flex: 1, padding: 14, borderRadius: 9999, borderWidth: 1, borderColor: DS.ink[200], alignItems: 'center', ...WEB_CURSOR } as any} onPress={onClose}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500] }}>İptal</Text>
+            </Pressable>
+            <Pressable
+              style={[{ flex: 1, padding: 14, borderRadius: 9999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: DS.ink[900], ...WEB_CURSOR }, (!file || !title.trim() || uploading) && { opacity: 0.5 }] as any}
               onPress={handleUpload} disabled={!file || !title.trim() || uploading}
             >
               {uploading
                 ? <ActivityIndicator color="#fff" size="small" />
-                : <><AppIcon name="upload" size={15} color="#fff" /><Text style={um.uploadBtnText}>Yükle</Text></>
+                : <><Upload size={15} color="#fff" strokeWidth={1.6} /><Text style={{ fontSize: 13, fontWeight: '700', color: '#fff' }}>Yükle</Text></>
               }
-            </TouchableOpacity>
+            </Pressable>
           </View>
         </View>
       </View>
     </Modal>
   );
 }
-const um = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: '#00000055', alignItems: 'center', justifyContent: 'center', padding: 16 },
-  sheet: { width: '100%', maxWidth: 560, backgroundColor: '#fff', borderRadius: 20, overflow: 'hidden' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  headerTitle: { fontSize: FS.lg, fontFamily: F.bold, fontWeight: '700', color: C.textPrimary },
-  body: { padding: 20, maxHeight: 500 },
-  footer: { flexDirection: 'row', gap: 10, padding: 16, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
-  filePicker: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 12, borderWidth: 2, borderColor: '#E2E8F0', borderStyle: 'dashed', marginBottom: 16 },
-  filePicked: { borderStyle: 'solid', borderColor: '#D1FAE5', backgroundColor: '#F0FDF4' },
-  filePickerText: { fontSize: FS.md, fontFamily: F.regular, color: C.textSecondary, flex: 1 },
-  fileSize: { fontSize: FS.sm, fontFamily: F.regular, color: C.textSecondary },
-  label: { fontSize: FS.xs, fontFamily: F.semibold, fontWeight: '600', color: C.textSecondary, marginBottom: 6, marginTop: 12, textTransform: 'uppercase', letterSpacing: 0.5 },
-  input: { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: FS.md, fontFamily: F.regular, color: C.textPrimary, backgroundColor: '#FAFAFA' },
-  row: { flexDirection: 'row', gap: 12 },
-  cancelBtn: { flex: 1, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center' },
-  cancelText: { fontSize: FS.md, fontFamily: F.semibold, fontWeight: '600', color: C.textSecondary },
-  uploadBtn: { flex: 1, padding: 14, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  uploadBtnText: { fontSize: FS.md, fontFamily: F.bold, fontWeight: '700', color: '#fff' },
-});
 
 // ─── EditModal ────────────────────────────────────────────────────────────────
 function EditModal({
-  visible, doc, onClose, onDone, accentColor,
+  visible, doc, onClose, onDone,
 }: {
-  visible: boolean; doc: EmployeeDocument | null; onClose: () => void; onDone: () => void; accentColor: string;
+  visible: boolean; doc: EmployeeDocument | null; onClose: () => void; onDone: () => void;
 }) {
   const [title, setTitle]     = useState('');
   const [docType, setDocType] = useState<DocType>('diger');
@@ -275,35 +321,42 @@ function EditModal({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={um.overlay}>
-        <View style={um.sheet}>
-          <View style={um.header}>
-            <Text style={um.headerTitle}>Belgeyi Düzenle</Text>
-            <TouchableOpacity onPress={onClose}><AppIcon name="x" size={22} color={C.textSecondary} /></TouchableOpacity>
+      <View style={modalOverlay}>
+        <View style={modalSheet}>
+          <View style={modalHeader}>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: DS.ink[900] }}>Belgeyi Düzenle</Text>
+            <Pressable onPress={onClose} style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', ...WEB_CURSOR } as any}>
+              <X size={18} color={DS.ink[400]} strokeWidth={1.8} />
+            </Pressable>
           </View>
-          <ScrollView style={um.body}>
-            <Text style={um.label}>Başlık *</Text>
-            <TextInput style={um.input} value={title} onChangeText={setTitle} placeholderTextColor={C.textMuted} />
-            <Text style={[um.label, { marginTop: 16 }]}>Belge Türü</Text>
+          <ScrollView style={modalBody}>
+            <Text style={modalLabel}>Başlık *</Text>
+            <TextInput style={modalInput} value={title} onChangeText={setTitle} placeholderTextColor={DS.ink[400]} />
+            <Text style={[modalLabel, { marginTop: 16 }]}>Belge Türü</Text>
             <DocTypeGrid selected={docType} onChange={setDocType} />
-            <View style={[um.row, { marginTop: 4 }]}>
+            <View style={[{ flexDirection: 'row', gap: 12 }, { marginTop: 4 }]}>
               <View style={{ flex: 1 }}>
-                <Text style={um.label}>Geçerlilik Başlangıcı</Text>
-                <TextInput style={um.input} value={validFrom} onChangeText={setFrom} placeholder="YYYY-MM-DD" placeholderTextColor={C.textMuted} />
+                <Text style={modalLabel}>Geçerlilik Başlangıcı</Text>
+                <DatePicker value={validFrom} onChange={setFrom} placeholder="Tarih seç" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={um.label}>Geçerlilik Bitişi</Text>
-                <TextInput style={um.input} value={validUntil} onChangeText={setUntil} placeholder="YYYY-MM-DD" placeholderTextColor={C.textMuted} />
+                <Text style={modalLabel}>Geçerlilik Bitişi</Text>
+                <DatePicker value={validUntil} onChange={setUntil} placeholder="Tarih seç" />
               </View>
             </View>
-            <Text style={um.label}>Notlar</Text>
-            <TextInput style={[um.input, { height: 72, textAlignVertical: 'top' }]} value={notes} onChangeText={setNotes} multiline placeholderTextColor={C.textMuted} />
+            <Text style={modalLabel}>Notlar</Text>
+            <TextInput style={[modalInput, { height: 72, textAlignVertical: 'top' }]} value={notes} onChangeText={setNotes} multiline placeholderTextColor={DS.ink[400]} />
           </ScrollView>
-          <View style={um.footer}>
-            <TouchableOpacity style={um.cancelBtn} onPress={onClose}><Text style={um.cancelText}>İptal</Text></TouchableOpacity>
-            <TouchableOpacity style={[um.uploadBtn, { backgroundColor: accentColor }, saving && { opacity: 0.5 }]} onPress={handleSave} disabled={saving}>
-              {saving ? <ActivityIndicator color="#fff" size="small" /> : <Text style={um.uploadBtnText}>Kaydet</Text>}
-            </TouchableOpacity>
+          <View style={modalFooter}>
+            <Pressable style={{ flex: 1, padding: 14, borderRadius: 9999, borderWidth: 1, borderColor: DS.ink[200], alignItems: 'center', ...WEB_CURSOR } as any} onPress={onClose}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500] }}>İptal</Text>
+            </Pressable>
+            <Pressable
+              style={[{ flex: 1, padding: 14, borderRadius: 9999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: DS.ink[900], ...WEB_CURSOR }, saving && { opacity: 0.5 }] as any}
+              onPress={handleSave} disabled={saving}
+            >
+              {saving ? <ActivityIndicator color="#fff" size="small" /> : <Text style={{ fontSize: 13, fontWeight: '700', color: '#fff' }}>Kaydet</Text>}
+            </Pressable>
           </View>
         </View>
       </View>
@@ -326,23 +379,23 @@ function ExpiryPanel() {
 
   if (loading) return null;
   if (docs.length === 0) return (
-    <View style={ep.emptyCard}>
-      <AppIcon name="shield" size={16} color="#059669" />
-      <Text style={ep.emptyText}>Süresi dolmak üzere belge yok</Text>
+    <View style={{ flexDirection: 'row', gap: 7, alignItems: 'center', backgroundColor: CHIP_TONES.success.bg, borderRadius: 12, padding: 10, margin: 12 }}>
+      <ShieldCheck size={16} color={CHIP_TONES.success.fg} strokeWidth={1.6} />
+      <Text style={{ fontSize: 12, fontWeight: '600', color: CHIP_TONES.success.fg, flex: 1 }}>Süresi dolmak üzere belge yok</Text>
     </View>
   );
 
   return (
-    <View style={ep.card}>
-      <View style={ep.cardHeader}>
-        <AppIcon name="alert-triangle" size={14} color="#D97706" />
-        <Text style={ep.cardTitle}>Dolmak Üzere ({docs.length})</Text>
+    <View style={{ backgroundColor: CHIP_TONES.warning.bg, borderRadius: 12, padding: 10, margin: 12 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 8 }}>
+        <AlertTriangle size={14} color={CHIP_TONES.warning.fg} strokeWidth={1.6} />
+        <Text style={{ fontSize: 12, fontWeight: '700', color: CHIP_TONES.warning.fg }}>Dolmak Üzere ({docs.length})</Text>
       </View>
       {docs.map((d: any) => (
-        <View key={d.id} style={ep.row}>
+        <View key={d.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 5, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
           <View style={{ flex: 1 }}>
-            <Text style={ep.rowName} numberOfLines={1}>{d.full_name}</Text>
-            <Text style={ep.rowDoc} numberOfLines={1}>{DOC_TYPE_CFG[d.doc_type as DocType]?.label} — {d.title}</Text>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>{d.full_name}</Text>
+            <Text style={{ fontSize: 10, color: DS.ink[500] }} numberOfLines={1}>{DOC_TYPE_CFG[d.doc_type as DocType]?.label} — {d.title}</Text>
           </View>
           <ExpiryBadge days={d.days_until_expiry} />
         </View>
@@ -350,78 +403,59 @@ function ExpiryPanel() {
     </View>
   );
 }
-const ep = StyleSheet.create({
-  emptyCard: { flexDirection: 'row', gap: 7, alignItems: 'center', backgroundColor: '#F0FDF4', borderRadius: 10, padding: 10, margin: 12 },
-  emptyText: { fontSize: FS.sm, fontFamily: F.semibold, fontWeight: '600', color: '#059669', flex: 1 },
-  card: { backgroundColor: '#FFFBEB', borderRadius: 10, borderWidth: 1, borderColor: '#FDE68A', padding: 10, margin: 12 },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 8 },
-  cardTitle: { fontSize: FS.sm, fontFamily: F.bold, fontWeight: '700', color: '#D97706' },
-  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 5, borderTopWidth: 1, borderTopColor: '#FDE68A' },
-  rowName: { fontSize: FS.sm, fontFamily: F.semibold, fontWeight: '600', color: C.textPrimary },
-  rowDoc: { fontSize: FS.xs, fontFamily: F.regular, color: C.textSecondary },
-});
 
 // ─── Employee List (Left Panel) ───────────────────────────────────────────────
 function EmployeeList({
-  employees, selectedId, onSelect, accentColor, search, setSearch, docCounts,
+  employees, selectedId, onSelect, search, setSearch, docCounts,
 }: {
   employees: any[]; selectedId: string | null; onSelect: (id: string) => void;
-  accentColor: string; search: string; setSearch: (v: string) => void;
+  search: string; setSearch: (v: string) => void;
   docCounts: Record<string, number>;
 }) {
   const filtered = employees.filter(e => e.full_name?.toLowerCase().includes(search.toLowerCase()));
 
   return (
-    <View style={el.container}>
-      <View style={el.searchWrap}>
-        <AppIcon name="search" size={14} color={C.textSecondary} />
-        <TextInput style={el.searchInput} placeholder="Çalışan ara…" value={search} onChangeText={setSearch} placeholderTextColor={C.textMuted} />
+    <View style={{ flex: 1 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, margin: 10, backgroundColor: DS.ink[100], borderRadius: 12, paddingHorizontal: 10, height: 36 }}>
+        <Search size={14} color={DS.ink[400]} strokeWidth={1.6} />
+        <TextInput style={{ flex: 1, fontSize: 13, color: DS.ink[900], padding: 0 }} placeholder="Çalışan ara..." value={search} onChangeText={setSearch} placeholderTextColor={DS.ink[400]} />
       </View>
       <ScrollView showsVerticalScrollIndicator={false}>
         {filtered.map(emp => {
           const sel   = emp.id === selectedId;
           const count = docCounts[emp.id] ?? 0;
           return (
-            <TouchableOpacity
+            <Pressable
               key={emp.id}
-              style={[el.row, sel && { backgroundColor: accentColor + '12', borderColor: accentColor + '30' }]}
+              style={[
+                { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 9, marginHorizontal: 6, marginBottom: 2, borderRadius: 12, ...WEB_CURSOR },
+                sel && { backgroundColor: DS.ink[50] },
+              ] as any}
               onPress={() => onSelect(emp.id)}
             >
-              <View style={[el.avatar, { backgroundColor: accentColor + '22' }]}>
-                <Text style={[el.avatarText, { color: accentColor }]}>{emp.full_name?.charAt(0).toUpperCase()}</Text>
+              <View style={{ width: 34, height: 34, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexShrink: 0, backgroundColor: DS.ink[100] }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[500] }}>{emp.full_name?.charAt(0).toUpperCase()}</Text>
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[el.empName, sel && { color: accentColor }]} numberOfLines={1}>{emp.full_name}</Text>
-                <Text style={el.empRole}>{emp.role ?? 'Çalışan'}</Text>
+                <Text style={[{ fontSize: 12, fontWeight: '600', color: DS.ink[900] }, sel && { fontWeight: '700' }]} numberOfLines={1}>{emp.full_name}</Text>
+                <Text style={{ fontSize: 10, color: DS.ink[500] }}>{emp.role ?? 'Çalışan'}</Text>
               </View>
-              <View style={[el.countBadge, { backgroundColor: count > 0 ? accentColor + '18' : '#F1F5F9' }]}>
-                <Text style={[el.countText, { color: count > 0 ? accentColor : C.textSecondary }]}>{count}</Text>
+              <View style={{ width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: count > 0 ? DS.ink[200] : DS.ink[100] }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: DS.ink[500] }}>{count}</Text>
               </View>
-            </TouchableOpacity>
+            </Pressable>
           );
         })}
       </ScrollView>
     </View>
   );
 }
-const el = StyleSheet.create({
-  container: { flex: 1 },
-  searchWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, margin: 10, backgroundColor: '#F8FAFC', borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', paddingHorizontal: 10, height: 36 },
-  searchInput: { flex: 1, fontSize: FS.md, fontFamily: F.regular, color: C.textPrimary, padding: 0 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 9, marginHorizontal: 6, marginBottom: 2, borderRadius: 10, borderWidth: 1, borderColor: 'transparent' },
-  avatar: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  avatarText: { fontSize: FS.md, fontFamily: F.bold, fontWeight: '700' },
-  empName: { fontSize: FS.sm, fontFamily: F.semibold, fontWeight: '600', color: C.textPrimary },
-  empRole: { fontSize: FS.xs, fontFamily: F.regular, color: C.textSecondary },
-  countBadge: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  countText: { fontSize: FS.xs, fontFamily: F.bold, fontWeight: '700' },
-});
 
 // ─── Documents Detail (Right Panel) ──────────────────────────────────────────
 function DocumentsDetail({
-  employee, accentColor, userId, labId,
+  employee, userId, labId,
 }: {
-  employee: any; accentColor: string; userId: string; labId: string;
+  employee: any; userId: string; labId: string;
 }) {
   const [docs, setDocs]         = useState<EmployeeDocument[]>([]);
   const [loading, setLoading]   = useState(true);
@@ -471,123 +505,116 @@ function DocumentsDetail({
   const expiring = docs.filter(d => { const days = daysUntilExpiry(d.valid_until); return days !== null && days <= 30; });
 
   return (
-    <View style={dd.root}>
+    <View style={{ flex: 1 }}>
       {/* Header */}
-      <View style={dd.header}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 24, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
         <View>
-          <Text style={dd.headerName}>{employee.full_name}</Text>
-          <Text style={dd.headerMeta}>{employee.role ?? 'Çalışan'}  •  {docs.length} belge</Text>
+          <Text style={{ ...DISPLAY, fontSize: 18, fontWeight: '700', color: DS.ink[900] }}>{employee.full_name}</Text>
+          <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 2 }}>{employee.role ?? 'Çalışan'}  ·  {docs.length} belge</Text>
         </View>
-        <TouchableOpacity style={[dd.uploadBtn, { backgroundColor: accentColor }]} onPress={() => setUpload(true)}>
-          <AppIcon name="upload" size={14} color="#fff" />
-          <Text style={dd.uploadBtnText}>Belge Yükle</Text>
-        </TouchableOpacity>
+        <Pressable style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999, backgroundColor: DS.ink[900], ...WEB_CURSOR } as any} onPress={() => setUpload(true)}>
+          <Upload size={14} color="#fff" strokeWidth={1.6} />
+          <Text style={{ fontSize: 13, fontWeight: '700', color: '#fff' }}>Belge Yükle</Text>
+        </Pressable>
       </View>
 
       {/* Expiry warning */}
       {expiring.length > 0 && (
-        <View style={dd.warnStrip}>
-          <AppIcon name="alert-triangle" size={14} color="#D97706" />
-          <Text style={dd.warnText}>{expiring.length} belge 30 gün içinde sona eriyor</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 24, marginTop: 12, backgroundColor: CHIP_TONES.warning.bg, borderRadius: 12, padding: 10 }}>
+          <AlertTriangle size={14} color={CHIP_TONES.warning.fg} strokeWidth={1.6} />
+          <Text style={{ fontSize: 12, fontWeight: '600', color: CHIP_TONES.warning.fg }}>{expiring.length} belge 30 gün içinde sona eriyor</Text>
         </View>
       )}
 
-      {/* Filter tabs */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ maxHeight: 50 }} contentContainerStyle={dd.filterRow}>
-        {([['all', 'Tümü', docs.length]] as any[]).concat(
-          DOC_TYPES.filter(t => grouped[t]).map(t => [t, DOC_TYPE_CFG[t].label, grouped[t].length])
-        ).map(([t, label, count]: [string, string, number]) => {
-          const sel = filter === t;
-          const color = t === 'all' ? accentColor : (DOC_TYPE_CFG[t as DocType]?.color ?? accentColor);
-          return (
-            <TouchableOpacity
-              key={t}
-              style={[dd.filterTab, sel && { backgroundColor: color, borderColor: color }]}
-              onPress={() => setFilter(t as any)}
-            >
-              {t !== 'all' && <AppIcon name={DOC_TYPE_CFG[t as DocType]?.icon as any} size={11} color={sel ? '#fff' : color} />}
-              <Text style={[dd.filterText, { color: sel ? '#fff' : (t === 'all' ? C.textSecondary : color) }]}>
-                {label} ({count})
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+      {/* Filter pills — pill-group */}
+      <View style={{ paddingHorizontal: 24, paddingVertical: 10 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <View style={{ flexDirection: 'row', gap: 6, backgroundColor: DS.ink[100], borderRadius: 9999, padding: 4 }}>
+            {([['all', 'Tümü', docs.length]] as any[]).concat(
+              DOC_TYPES.filter(t => grouped[t]).map(t => [t, DOC_TYPE_CFG[t].label, grouped[t].length])
+            ).map(([t, label, count]: [string, string, number]) => {
+              const sel = filter === t;
+              return (
+                <Pressable
+                  key={t}
+                  style={[
+                    { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 9999, ...WEB_CURSOR },
+                    sel && { backgroundColor: '#FFF', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' },
+                  ] as any}
+                  onPress={() => setFilter(t as any)}
+                >
+                  {t !== 'all' && <DocTypeIcon name={DOC_TYPE_CFG[t as DocType]?.icon} size={11} color={sel ? DS.ink[900] : DS.ink[400]} />}
+                  <Text style={{ fontSize: 11, fontWeight: sel ? '700' : '600', color: sel ? DS.ink[900] : DS.ink[400] }}>
+                    {label} ({count})
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </ScrollView>
+      </View>
 
       {/* Document list */}
-      <ScrollView style={dd.list} contentContainerStyle={dd.listContent}>
-        {loading && <ActivityIndicator color={accentColor} style={{ marginTop: 40 }} />}
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }}>
+        {loading && <ActivityIndicator color={DS.ink[400]} style={{ marginTop: 40 }} />}
         {!loading && filtered.length === 0 && (
-          <View style={dd.empty}>
-            <AppIcon name="folder" size={32} color={C.textMuted} />
-            <Text style={dd.emptyTitle}>Henüz belge yok</Text>
-            <Text style={dd.emptyHint}>Yukarıdan belge yükleyebilirsiniz</Text>
+          <View style={{ alignItems: 'center', paddingVertical: 60, gap: 10 }}>
+            <FolderOpen size={32} color={DS.ink[300]} strokeWidth={1.6} />
+            <Text style={{ fontSize: 16, fontWeight: '600', color: DS.ink[500] }}>Henüz belge yok</Text>
+            <Text style={{ fontSize: 13, color: DS.ink[400] }}>Yukarıdan belge yükleyebilirsiniz</Text>
           </View>
         )}
-        {!loading && filtered.map(doc => (
-          <DocCard
-            key={doc.id} doc={doc} accentColor={accentColor}
-            onOpen={() => openDoc(doc)}
-            onEdit={() => setEditDoc(doc)}
-            onDelete={() => confirmDelete(doc)}
-          />
-        ))}
+        {!loading && filtered.length > 0 && (
+          <View style={{ ...tableCard } as any}>
+            {filtered.map(doc => (
+              <DocCard
+                key={doc.id} doc={doc}
+                onOpen={() => openDoc(doc)}
+                onEdit={() => setEditDoc(doc)}
+                onDelete={() => confirmDelete(doc)}
+              />
+            ))}
+          </View>
+        )}
       </ScrollView>
 
       <UploadModal
         visible={uploadOpen} onClose={() => setUpload(false)}
         employeeId={employee.id} labId={labId} userId={userId}
-        accentColor={accentColor} onDone={loadDocs}
+        onDone={loadDocs}
       />
       <EditModal
         visible={!!editDoc} doc={editDoc}
-        onClose={() => setEditDoc(null)} onDone={loadDocs} accentColor={accentColor}
+        onClose={() => setEditDoc(null)} onDone={loadDocs}
       />
     </View>
   );
 }
-const dd = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#fff' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 24, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  headerName: { fontSize: FS.xl, fontFamily: F.bold, fontWeight: '700', color: C.textPrimary },
-  headerMeta: { fontSize: FS.sm, fontFamily: F.regular, color: C.textSecondary, marginTop: 2 },
-  uploadBtn: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10 },
-  uploadBtnText: { fontSize: FS.md, fontFamily: F.bold, fontWeight: '700', color: '#fff' },
-  warnStrip: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 24, marginTop: 12, backgroundColor: '#FFFBEB', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: '#FDE68A' },
-  warnText: { fontSize: FS.sm, fontFamily: F.semibold, fontWeight: '600', color: '#D97706' },
-  filterRow: { flexDirection: 'row', gap: 6, paddingHorizontal: 24, paddingVertical: 10, alignItems: 'center' },
-  filterTab: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1.5, borderColor: '#E2E8F0' },
-  filterText: { fontSize: FS.xs, fontFamily: F.semibold, fontWeight: '600' },
-  list: { flex: 1 },
-  listContent: { padding: 24 },
-  empty: { alignItems: 'center', paddingVertical: 60, gap: 10 },
-  emptyTitle: { fontSize: FS.lg, fontFamily: F.semibold, fontWeight: '600', color: C.textSecondary },
-  emptyHint: { fontSize: FS.md, fontFamily: F.regular, color: C.textMuted },
-});
 
 // ─── Placeholder ──────────────────────────────────────────────────────────────
-function SelectEmployeePlaceholder({ accentColor }: { accentColor: string }) {
+function SelectEmployeePlaceholder() {
   return (
-    <View style={ph.root}>
-      <View style={[ph.iconWrap, { backgroundColor: accentColor + '12' }]}>
-        <AppIcon name="folder" size={40} color={accentColor} />
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 40 }}>
+      <View style={{ width: 80, height: 80, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: DS.ink[100] }}>
+        <FolderOpen size={40} color={DS.ink[400]} strokeWidth={1.6} />
       </View>
-      <Text style={ph.title}>Personel Dosyaları</Text>
-      <Text style={ph.sub}>Sol taraftan bir çalışan seçerek belgelerini görüntüleyin veya yeni belge yükleyin.</Text>
+      <Text style={{ ...DISPLAY, fontSize: 22, fontWeight: '700', color: DS.ink[900] }}>Personel Dosyaları</Text>
+      <Text style={{ fontSize: 13, color: DS.ink[500], textAlign: 'center', maxWidth: 360 }}>Sol taraftan bir çalışan seçerek belgelerini görüntüleyin veya yeni belge yükleyin.</Text>
     </View>
   );
 }
-const ph = StyleSheet.create({
-  root: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 40 },
-  iconWrap: { width: 80, height: 80, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: FS['2xl'], fontFamily: F.bold, fontWeight: '700', color: C.textPrimary },
-  sub: { fontSize: FS.md, fontFamily: F.regular, color: C.textSecondary, textAlign: 'center', maxWidth: 360 },
-});
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
-export function DocumentsScreen({ accentColor = C.primary }: { accentColor?: string }) {
+interface DocumentsScreenProps {
+  /** Panel rengi (accentColor) — şu an layout için minimal kullanım, ileride satır vurgusu vb. için */
+  accentColor?: string;
+}
+
+export function DocumentsScreen(_props: DocumentsScreenProps = {}) {
   const { profile }   = useAuthStore();
-  const isDesktop     = useIsDesktop();
+  const { width }     = useWindowDimensions();
+  const isDesktop     = width >= 900;
+  const isEmbedded    = useContext(HubContext);
   const { employees } = useEmployees();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -617,19 +644,20 @@ export function DocumentsScreen({ accentColor = C.primary }: { accentColor?: str
   // ── Desktop ─────────────────────────────────────────────────────────────────
   if (isDesktop) {
     return (
-      <View style={s.desktopRoot}>
+      <View style={{ flex: 1, flexDirection: 'row' }}>
         {/* LEFT */}
-        <View style={s.left}>
-          <View style={s.leftHeader}>
-            <AppIcon name="folder" size={16} color={accentColor} />
-            <Text style={[s.leftTitle, { color: accentColor }]}>Personel Dosyaları</Text>
-          </View>
+        <View style={{ width: 280, borderRightWidth: 1, borderRightColor: 'rgba(0,0,0,0.06)', flexDirection: 'column' }}>
+          {!isEmbedded && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 20, paddingBottom: 4 }}>
+              <FolderOpen size={16} color={DS.ink[500]} strokeWidth={1.6} />
+              <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[900] }}>Personel Dosyaları</Text>
+            </View>
+          )}
           <View style={{ flex: 1 }}>
             <EmployeeList
               employees={activeEmps}
               selectedId={selectedId}
               onSelect={setSelectedId}
-              accentColor={accentColor}
               search={search}
               setSearch={setSearch}
               docCounts={docCounts}
@@ -638,14 +666,11 @@ export function DocumentsScreen({ accentColor = C.primary }: { accentColor?: str
           <ExpiryPanel />
         </View>
 
-        {/* Divider */}
-        <View style={s.divider} />
-
         {/* RIGHT */}
-        <View style={s.right}>
+        <View style={{ flex: 1 }}>
           {selectedEmployee
-            ? <DocumentsDetail employee={selectedEmployee} accentColor={accentColor} userId={userId} labId={labId} />
-            : <SelectEmployeePlaceholder accentColor={accentColor} />
+            ? <DocumentsDetail employee={selectedEmployee} userId={userId} labId={labId} />
+            : <SelectEmployeePlaceholder />
           }
         </View>
       </View>
@@ -655,27 +680,28 @@ export function DocumentsScreen({ accentColor = C.primary }: { accentColor?: str
   // ── Mobile ──────────────────────────────────────────────────────────────────
   if (selectedEmployee) {
     return (
-      <View style={s.mobileRoot}>
-        <TouchableOpacity style={s.backBtn} onPress={() => setSelectedId(null)}>
-          <AppIcon name="arrow-left" size={17} color={accentColor} />
-          <Text style={[s.backText, { color: accentColor }]}>Geri</Text>
-        </TouchableOpacity>
-        <DocumentsDetail employee={selectedEmployee} accentColor={accentColor} userId={userId} labId={labId} />
+      <View style={{ flex: 1 }}>
+        <Pressable style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)', ...WEB_CURSOR } as any} onPress={() => setSelectedId(null)}>
+          <ArrowLeft size={17} color={DS.ink[500]} strokeWidth={1.6} />
+          <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500] }}>Geri</Text>
+        </Pressable>
+        <DocumentsDetail employee={selectedEmployee} userId={userId} labId={labId} />
       </View>
     );
   }
 
   return (
-    <View style={s.mobileRoot}>
-      <View style={s.mobileHeader}>
-        <Text style={s.mobileTitle}>Personel Dosyaları</Text>
-      </View>
+    <View style={{ flex: 1 }}>
+      {!isEmbedded && (
+        <View style={{ paddingHorizontal: 16, paddingTop: 20, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
+          <Text style={{ ...DISPLAY, fontSize: 22, fontWeight: '700', color: DS.ink[900] }}>Personel Dosyaları</Text>
+        </View>
+      )}
       <ExpiryPanel />
       <EmployeeList
         employees={activeEmps}
         selectedId={selectedId}
         onSelect={setSelectedId}
-        accentColor={accentColor}
         search={search}
         setSearch={setSearch}
         docCounts={docCounts}
@@ -683,18 +709,3 @@ export function DocumentsScreen({ accentColor = C.primary }: { accentColor?: str
     </View>
   );
 }
-
-// ─── Styles ───────────────────────────────────────────────────────────────────
-const s = StyleSheet.create({
-  desktopRoot: { flex: 1, flexDirection: 'row', backgroundColor: '#F8FAFC' },
-  left: { width: 280, backgroundColor: '#fff', borderRightWidth: 1, borderRightColor: '#F1F5F9', flexDirection: 'column' },
-  leftHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 20, paddingBottom: 4 },
-  leftTitle: { fontSize: FS.base, fontFamily: F.bold, fontWeight: '700' },
-  divider: { width: 1, backgroundColor: '#F1F5F9' },
-  right: { flex: 1 },
-  mobileRoot: { flex: 1, backgroundColor: '#fff' },
-  mobileHeader: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  mobileTitle: { fontSize: FS['2xl'], fontFamily: F.bold, fontWeight: '700', color: C.textPrimary },
-  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  backText: { fontSize: FS.md, fontFamily: F.semibold, fontWeight: '600' },
-});

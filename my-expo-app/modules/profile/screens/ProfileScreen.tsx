@@ -11,6 +11,7 @@ import React, { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, Pressable, TextInput,
   Alert, ActivityIndicator, KeyboardAvoidingView, Platform, Image,
+  useWindowDimensions,
 } from 'react-native';
 import { useSegments } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -33,7 +34,7 @@ const DISPLAY = {
 // ── Panel accent ─────────────────────────────────────────────────────────
 type PanelKind = 'lab' | 'admin' | 'doctor' | 'clinic';
 const PANEL_ACCENTS: Record<PanelKind, string> = {
-  lab: '#F5C24B', admin: '#E97757', doctor: '#6BA888', clinic: '#6BA888',
+  lab: '#F5C24B', admin: '#EA7A4C', doctor: '#6BA888', clinic: '#6BA888',
 };
 function detectPanel(segments: string[]): PanelKind {
   const seg = segments?.[0] ?? '';
@@ -286,6 +287,15 @@ export function ProfileScreen() {
   };
 
   const passNoMatch = newPass.length > 0 && confirmPass.length > 0 && newPass !== confirmPass;
+
+  // ══════════════════════════════════════════════════════════════
+  //  MOBILE — Variant B B7 profile + role swap (early return)
+  // ══════════════════════════════════════════════════════════════
+  const { width: _w7 } = useWindowDimensions();
+  if (_w7 < 1024) {
+    const { ProfileB7Mobile } = require('./ProfileB7Mobile');
+    return <ProfileB7Mobile profile={profile} onSignOut={signOut} />;
+  }
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>

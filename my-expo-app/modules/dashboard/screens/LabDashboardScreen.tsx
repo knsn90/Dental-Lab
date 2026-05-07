@@ -1078,7 +1078,45 @@ export function LabDashboardScreen() {
   }
 
   // ══════════════════════════════════════════════════════════════
-  //  RENDER
+  //  MOBILE — Variant B Home (B1)
+  // ══════════════════════════════════════════════════════════════
+  if (!isDesktop) {
+    const { HomeB1: HomeB1Cmp, defaultInsight: defIns } = require('../../../core/ui/HomeB1');
+    const kpis = [
+      { label: 'Aktif',   value: String(totalActiveCount), up: true },
+      { label: 'Bugün',   value: String(todayNewCount) },
+      { label: 'Geciken', value: String(overdueOrders.length), up: false },
+      { label: 'Onay',    value: String(pendingCount) },
+    ];
+    const priority = recentOrders.slice(0, 3).map((o: any) => ({
+      id: String(o.order_number ?? o.id).slice(-5),
+      type: o.work_type ?? 'Sipariş',
+      due: o.delivery_date ? fmtDate(o.delivery_date) : '—',
+      status: o.status,
+      statusLabel: o.status,
+      clinic: o.doctor_name ?? '—',
+      avatar: (o.doctor_name ?? '?').slice(0, 2).toUpperCase(),
+    }));
+    return (
+      <HomeB1Cmp
+        kicker={`${totalActiveCount} aktif vaka`}
+        headline={`Bugün ${todayDeliverable.length} vaka teslim.`}
+        sub={`Vardiyanız 08:00–18:00, ${overdueOrders.length} geciken vaka var.`}
+        primaryAction={{ label: 'Yeni vaka', onPress: () => router.push('/(lab)/new-order' as any) }}
+        secondaryAction={{ label: 'Tüm işler', onPress: () => router.push('/(lab)/all-orders' as any) }}
+        kpis={kpis}
+        priority={priority}
+        onOpenOrder={(o: any) => router.push(`/(lab)/order/${o.id}` as any)}
+        onSeeAllOrders={() => router.push('/(lab)/all-orders' as any)}
+        insight={defIns('lab')}
+        refreshing={refreshing || loading}
+        onRefresh={handleRefresh}
+      />
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  DESKTOP RENDER (mevcut, dokunulmadı)
   // ══════════════════════════════════════════════════════════════
   return (
     <ScrollView

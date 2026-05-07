@@ -5,14 +5,15 @@
  * §04 CHIP_TONES, §05.5 form, §08 dialog, §03 pill buttons,
  * Lucide icons.
  */
-import React, { useState, useMemo, useContext } from 'react';
+import React, { useState, useMemo, useContext, useRef } from 'react';
 import { HubContext } from '../../../core/ui/HubContext';
 import {
   View, Text, ScrollView, Pressable, TextInput,
   Modal, ActivityIndicator, Alert, RefreshControl,
-  useWindowDimensions,
+  useWindowDimensions, Platform,
 } from 'react-native';
 import { toast } from '../../../core/ui/Toast';
+import { supabase } from '../../../core/api/supabase';
 
 import { useEmployees, useEmployeeDetail } from '../hooks/useEmployees';
 import {
@@ -22,13 +23,28 @@ import {
   ROLE_LABELS, ROLE_COLORS, MONTH_NAMES,
   type Employee, type EmployeeRole, type SalaryPaymentMethod,
 } from '../api';
+import { AddUserModal } from '../../admin/users/LabUsersManagement';
+import { ConfirmDialog, type ConfirmState } from '../../../core/ui/ConfirmDialog';
+import { DatePicker } from '../../../core/ui/DatePicker';
+import { usePermissionStore } from '../../../core/store/permissionStore';
+import { STAGE_LABEL, type Stage } from '../../orders/stages';
 import { DS } from '../../../core/theme/dsTokens';
 import {
   Plus, Search, X, Inbox, Pencil, Trash2,
-  UserPlus, UserX, Users, Phone, Mail, Clock,
+  UserPlus, UserX, UserCheck, Users, Phone, Mail, Clock,
   CircleCheck, Banknote, Landmark, CreditCard,
-  ChevronRight, CircleDollarSign, CheckCircle,
+  ChevronRight, CircleDollarSign, CheckCircle, Check,
 } from 'lucide-react-native';
+
+// Yetkinlik sabitleri
+const SKILL_STAGES: Stage[] = ['TRIAGE', 'DESIGN', 'CAM', 'MILLING', 'SINTER', 'FINISH', 'QC'];
+type SkillLevel = 'junior' | 'mid' | 'senior';
+const SKILL_LEVELS: { key: SkillLevel; label: string }[] = [
+  { key: 'junior', label: 'Junior' },
+  { key: 'mid',    label: 'Mid' },
+  { key: 'senior', label: 'Senior' },
+];
+const CASE_TYPES = ['zirconia', 'emax', 'pmma', 'metal', 'pfm'];
 
 // ── Patterns tokens ─────────────────────────────────────────────────
 const DISPLAY = {
@@ -133,13 +149,34 @@ export function EmployeesScreen() {
 
   const { employees, loading, refetch } = useEmployees();
 
-  const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null);
-  const [formOpen,    setFormOpen]    = useState(false);
-  const [editEmp,     setEditEmp]     = useState<Employee | null>(null);
-  const [salaryOpen,  setSalaryOpen]  = useState(false);
-  const [advOpen,     setAdvOpen]     = useState(false);
+  // ── RBAC: çalışan yönetimi + maaş görüntüleme yetkileri ──
+  const can = usePermissionStore(s => s.can);
+  const canManage = can('manage_employees');
+  const canViewSalaries = can('view_salaries');
+
+  const [formOpen,      setFormOpen]      = useState(false);
+  const [editEmp,       setEditEmp]       = useState<Employee | null>(null);
+  const [addUserOpen,   setAddUserOpen]   = useState(false);   // LabUsersManagement formu
   const [filterActive, setFilterActive] = useState(true);
   const [search, setSearch] = useState('');
+
+  // ── Confirmation dialog ─────────────────────────────────────
+  const [confirm, setConfirm] = useState<ConfirmState | null>(null);
+
+  // ── Undo banner ──────────────────────────────────────────────
+  const [undoBanner, setUndoBanner] = useState<{ message: string; onUndo: () => void } | null>(null);
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showUndoBanner = (message: string, onUndo: () => void) => {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    setUndoBanner({ message, onUndo });
+    undoTimerRef.current = setTimeout(() => setUndoBanner(null), 5500);
+  };
+
+  const dismissUndoBanner = () => {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    setUndoBanner(null);
+  };
 
   const activeCount   = employees.filter(e => e.is_active).length;
   const totalSalary   = employees.filter(e => e.is_active).reduce((s, e) => s + Number(e.base_salary), 0);
@@ -158,20 +195,92 @@ export function EmployeesScreen() {
     return list;
   }, [employees, filterActive, search]);
 
-  const handleDelete = (emp: Employee) => {
-    Alert.alert('Çalışanı Sil', `"${emp.full_name}" kaydını silmek istiyor musunuz?`, [
-      { text: 'İptal', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: async () => {
-        const { error } = await deleteEmployee(emp.id);
-        if (error) toast.error((error as any).message);
-        else { if (selectedEmp?.id === emp.id) setSelectedEmp(null); refetch(); }
-      }},
-    ]);
+  // Synthetic profile (auth-only) çalışanları için profile id döndürür
+  const syntheticProfileId = (emp: Employee): string | null => {
+    const id = String(emp.id);
+    return id.startsWith('profile-') ? id.slice('profile-'.length) : null;
   };
 
-  const handleDeactivate = async (emp: Employee) => {
-    await updateEmployee(emp.id, { is_active: false, end_date: new Date().toISOString().slice(0, 10) });
+  const handleDelete = (emp: Employee) => {
+    if (!canManage) { toast.error('Bu işlem için yetkiniz yok.'); return; }
+    const profileId = syntheticProfileId(emp);
+    setConfirm({
+      title: 'Çalışanı sil',
+      highlight: emp.full_name,
+      message: profileId
+        ? 'sistem hesabı pasife alınacak. (Auth hesabını tamamen silmek için Yönetici → Kullanıcılar bölümünü kullanın.)'
+        : 'kaydı kalıcı olarak silinecek. Bu işlem geri alınabilir.',
+      label: 'Evet, sil',
+      variant: 'danger',
+      onConfirm: () => {
+        setConfirm(null);
+        // Delayed delete — user can undo within 5 seconds
+        let cancelled = false;
+        const deleteTimer = setTimeout(async () => {
+          if (cancelled) return;
+          dismissUndoBanner();
+          let error: any = null;
+          if (profileId) {
+            const r = await supabase.from('profiles').update({ is_active: false }).eq('id', profileId);
+            error = r.error;
+          } else {
+            const r = await deleteEmployee(emp.id);
+            error = r.error;
+          }
+          if (error) toast.error((error as any).message);
+          else refetch();
+        }, 5000);
+
+        showUndoBanner(`"${emp.full_name}" siliniyor…`, () => {
+          cancelled = true;
+          clearTimeout(deleteTimer);
+          toast.info('Silme işlemi iptal edildi.');
+        });
+      },
+    });
+  };
+
+  const handleDeactivate = (emp: Employee) => {
+    if (!canManage) { toast.error('Bu işlem için yetkiniz yok.'); return; }
+    const profileId = syntheticProfileId(emp);
+    setConfirm({
+      title: 'Pasife al',
+      highlight: emp.full_name,
+      message: 'pasif olarak işaretlenecek. Maaş ve avans kayıtları korunur.',
+      label: 'Pasife Al',
+      variant: 'warning',
+      onConfirm: async () => {
+        setConfirm(null);
+        if (profileId) {
+          await supabase.from('profiles').update({ is_active: false }).eq('id', profileId);
+        } else {
+          await updateEmployee(emp.id, { is_active: false, end_date: new Date().toISOString().slice(0, 10) });
+        }
+        refetch();
+        showUndoBanner(`${emp.full_name} pasife alındı`, async () => {
+          dismissUndoBanner();
+          if (profileId) {
+            await supabase.from('profiles').update({ is_active: true }).eq('id', profileId);
+          } else {
+            await updateEmployee(emp.id, { is_active: true, end_date: null });
+          }
+          refetch();
+          toast.success('Tekrar aktif edildi.');
+        });
+      },
+    });
+  };
+
+  // Pasif çalışanı geri aktif et — onay sormadan, hızlı işlem
+  const handleReactivate = async (emp: Employee) => {
+    if (!canManage) { toast.error('Bu işlem için yetkiniz yok.'); return; }
+    const profileId = syntheticProfileId(emp);
+    const { error } = profileId
+      ? await supabase.from('profiles').update({ is_active: true }).eq('id', profileId)
+      : await updateEmployee(emp.id, { is_active: true, end_date: null });
+    if (error) { toast.error((error as any).message); return; }
     refetch();
+    toast.success(`${emp.full_name} tekrar aktif edildi`);
   };
 
   return (
@@ -203,27 +312,39 @@ export function EmployeesScreen() {
                 {employees.length} toplam kayıt
               </Text>
             </View>
-            <PillBtn icon={UserPlus} label="Çalışan Ekle" onPress={() => { setEditEmp(null); setFormOpen(true); }} />
+            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+              {canManage && (
+                <>
+                  <PillBtn icon={UserPlus} label="Çalışan Ekle" onPress={() => { setEditEmp(null); setFormOpen(true); }} />
+                  <PillBtn icon={UserPlus} label="Hesap ile Ekle" variant="ghost" onPress={() => setAddUserOpen(true)} />
+                </>
+              )}
+            </View>
           </View>
 
-          {/* KPI breakdown */}
+          {/* KPI breakdown — maaş kalemleri sadece view_salaries yetkisinde */}
           <View style={{ flexDirection: 'row', gap: isDesktop ? 36 : 16, marginTop: 20, flexWrap: 'wrap' }}>
-            <View>
-              <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: DS.ink[400] }}>
-                Bu Ay Maaş
-              </Text>
-              <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color: DS.ink[700], marginTop: 2 }}>
-                {fmtMoney(totalSalary)}
-              </Text>
-            </View>
-            <View>
-              <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: DS.ink[400] }}>
-                Ödenmemiş
-              </Text>
-              <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color: unpaidCount > 0 ? CHIP_TONES.danger.fg : DS.ink[700], marginTop: 2 }}>
-                {unpaidCount} kişi
-              </Text>
-            </View>
+            {canViewSalaries && (
+              <View>
+                <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: DS.ink[400] }}>
+                  Bu Ay Maaş
+                </Text>
+                <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color: DS.ink[700], marginTop: 2 }}>
+                  {fmtMoney(totalSalary)}
+                </Text>
+              </View>
+            )}
+            {canViewSalaries && (
+              <View>
+                <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: DS.ink[400] }}>
+                  Ödenmemiş
+                </Text>
+                <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color: unpaidCount > 0 ? CHIP_TONES.danger.fg : DS.ink[700], marginTop: 2 }}>
+                  {unpaidCount} kişi
+                </Text>
+              </View>
+            )}
+            {canViewSalaries && (
             <View>
               <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: DS.ink[400] }}>
                 Bekleyen Avans
@@ -232,6 +353,7 @@ export function EmployeesScreen() {
                 {fmtMoney(totalAdvances)}
               </Text>
             </View>
+            )}
           </View>
         </View>
 
@@ -292,23 +414,24 @@ export function EmployeesScreen() {
             </Text>
           </View>
         ) : isDesktop ? (
-          /* ── Desktop: two-column ────────────────────────────── */
-          <View style={{ flexDirection: 'row', gap: 16 }}>
-            {/* Left: tableCard */}
-            <View style={{ flex: 1, ...tableCard }}>
+          /* ── Desktop: full-width table (no side detail panel) ── */
+          <View>
+            <View style={{ ...tableCard }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
                 <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>Personel</Text>
                 <View style={{ flex: 1 }} />
                 <Text style={{ fontSize: 12, color: DS.ink[400] }}>{filtered.length} kişi</Text>
               </View>
 
-              {/* Header */}
+              {/* Header — MAAŞ + DURUM kolonları sadece view_salaries yetkisinde */}
               <View style={{ flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: '#FAFAFA', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
                 {[
                   { label: 'ÇALIŞAN',  flex: 2.5 },
                   { label: 'POZİSYON', flex: 1.2 },
-                  { label: 'MAAŞ',     flex: 1, align: 'right' as const },
-                  { label: 'DURUM',    flex: 1 },
+                  ...(canViewSalaries
+                    ? [{ label: 'MAAŞ', flex: 1, align: 'right' as const },
+                       { label: 'DURUM', flex: 1 }]
+                    : []),
                   { label: 'İŞLEM',    flex: 1 },
                 ].map((h, i) => (
                   <Text key={i} style={{ flex: h.flex, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textAlign: h.align }}>
@@ -320,18 +443,16 @@ export function EmployeesScreen() {
               {/* Rows */}
               {filtered.map((emp, i) => {
                 const role = ROLE_COLORS[emp.role];
-                const isActive = selectedEmp?.id === emp.id;
                 const initials = emp.full_name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
                 return (
-                  <Pressable
+                  <View
                     key={emp.id}
-                    onPress={() => setSelectedEmp(emp)}
                     style={{
                       flexDirection: 'row', alignItems: 'center',
                       paddingHorizontal: 20, paddingVertical: 14,
                       borderBottomWidth: i < filtered.length - 1 ? 1 : 0,
                       borderBottomColor: 'rgba(0,0,0,0.04)',
-                      backgroundColor: isActive ? 'rgba(74,143,201,0.06)' : 'transparent',
+                      backgroundColor: 'transparent',
                       opacity: emp.is_active ? 1 : 0.5,
                       cursor: 'pointer' as any,
                     }}
@@ -343,6 +464,11 @@ export function EmployeesScreen() {
                       <View>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                           <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>{emp.full_name}</Text>
+                          {String(emp.id).startsWith('profile-') && (
+                            <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: 'rgba(37,99,235,0.10)' }}>
+                              <Text style={{ fontSize: 9, fontWeight: '700', color: '#2563EB' }}>Hesap</Text>
+                            </View>
+                          )}
                           {!emp.is_active && (
                             <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: DS.ink[100] }}>
                               <Text style={{ fontSize: 9, fontWeight: '600', color: DS.ink[500] }}>Ayrıldı</Text>
@@ -359,62 +485,67 @@ export function EmployeesScreen() {
                         <Text style={{ fontSize: 10, fontWeight: '600', color: role.fg }}>{ROLE_LABELS[emp.role]}</Text>
                       </View>
                     </View>
-                    <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: DS.ink[900], textAlign: 'right' }}>
-                      {fmtMoney(emp.base_salary)}
-                    </Text>
-                    <View style={{ flex: 1 }}>
-                      <View style={{
-                        alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 4,
-                        paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
-                        backgroundColor: emp.current_month_paid ? CHIP_TONES.success.bg : CHIP_TONES.warning.bg,
-                      }}>
-                        {emp.current_month_paid
-                          ? <CheckCircle size={10} color={CHIP_TONES.success.fg} strokeWidth={2} />
-                          : <Clock size={10} color={CHIP_TONES.warning.fg} strokeWidth={2} />
-                        }
-                        <Text style={{ fontSize: 10, fontWeight: '600', color: emp.current_month_paid ? CHIP_TONES.success.fg : CHIP_TONES.warning.fg }}>
-                          {emp.current_month_paid ? 'Ödendi' : 'Bekliyor'}
+                    {canViewSalaries && (
+                      <>
+                        <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: DS.ink[900], textAlign: 'right' }}>
+                          {fmtMoney(emp.base_salary)}
                         </Text>
-                      </View>
-                    </View>
-                    <View style={{ flex: 1, flexDirection: 'row', gap: 4 }}>
-                      <Pressable
-                        onPress={() => { setEditEmp(emp); setFormOpen(true); }}
-                        style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: DS.ink[50], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
-                      >
-                        <Pencil size={13} color={DS.ink[500]} strokeWidth={1.6} />
-                      </Pressable>
-                      {emp.is_active && (
+                        <View style={{ flex: 1 }}>
+                          <View style={{
+                            alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 4,
+                            paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
+                            backgroundColor: emp.current_month_paid ? CHIP_TONES.success.bg : CHIP_TONES.warning.bg,
+                          }}>
+                            {emp.current_month_paid
+                              ? <CheckCircle size={10} color={CHIP_TONES.success.fg} strokeWidth={2} />
+                              : <Clock size={10} color={CHIP_TONES.warning.fg} strokeWidth={2} />
+                            }
+                            <Text style={{ fontSize: 10, fontWeight: '600', color: emp.current_month_paid ? CHIP_TONES.success.fg : CHIP_TONES.warning.fg }}>
+                              {emp.current_month_paid ? 'Ödendi' : 'Bekliyor'}
+                            </Text>
+                          </View>
+                        </View>
+                      </>
+                    )}
+                    {canManage ? (
+                      <View style={{ flex: 1, flexDirection: 'row', gap: 4 }}>
                         <Pressable
-                          onPress={() => handleDeactivate(emp)}
-                          style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: CHIP_TONES.warning.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                          onPress={() => { setEditEmp(emp); setFormOpen(true); }}
+                          style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: DS.ink[50], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
                         >
-                          <UserX size={13} color={CHIP_TONES.warning.fg} strokeWidth={1.6} />
+                          <Pencil size={13} color={DS.ink[500]} strokeWidth={1.6} />
                         </Pressable>
-                      )}
-                      <Pressable
-                        onPress={() => handleDelete(emp)}
-                        style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: CHIP_TONES.danger.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
-                      >
-                        <Trash2 size={13} color={CHIP_TONES.danger.fg} strokeWidth={1.6} />
-                      </Pressable>
-                    </View>
-                  </Pressable>
+                        {emp.is_active ? (
+                          <Pressable
+                            onPress={() => handleDeactivate(emp)}
+                            style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: DS.ink[50], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                          >
+                            <UserX size={13} color={DS.ink[500]} strokeWidth={1.6} />
+                          </Pressable>
+                        ) : (
+                          <Pressable
+                            onPress={() => handleReactivate(emp)}
+                            style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: CHIP_TONES.success.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                          >
+                            <UserCheck size={13} color={CHIP_TONES.success.fg} strokeWidth={1.8} />
+                          </Pressable>
+                        )}
+                        <Pressable
+                          onPress={() => handleDelete(emp)}
+                          style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: CHIP_TONES.danger.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                        >
+                          <Trash2 size={13} color={CHIP_TONES.danger.fg} strokeWidth={1.6} />
+                        </Pressable>
+                      </View>
+                    ) : (
+                      // Yetki yok — sadece görüntüleme rozeti
+                      <View style={{ flex: 1 }} />
+                    )}
+                  </View>
                 );
               })}
             </View>
 
-            {/* Right: Detail panel */}
-            {selectedEmp && (
-              <View style={{ flex: 1, ...tableCard }}>
-                <EmployeeDetailPanel
-                  employee={selectedEmp}
-                  onSalaryAdd={() => setSalaryOpen(true)}
-                  onAdvAdd={() => setAdvOpen(true)}
-                  onRefresh={refetch}
-                />
-              </View>
-            )}
           </View>
         ) : (
           /* ── Mobile: cardSolid ──────────────────────────────── */
@@ -423,10 +554,9 @@ export function EmployeesScreen() {
             const initials = emp.full_name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
             const pendAdv = Number(emp.pending_advances ?? 0);
             return (
-              <Pressable
+              <View
                 key={emp.id}
-                onPress={() => setSelectedEmp(emp)}
-                style={{ ...cardSolid, padding: 16, opacity: emp.is_active ? 1 : 0.5, cursor: 'pointer' as any }}
+                style={{ ...cardSolid, padding: 16, opacity: emp.is_active ? 1 : 0.5 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                   <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: role.bg, alignItems: 'center', justifyContent: 'center' }}>
@@ -448,46 +578,57 @@ export function EmployeesScreen() {
                       {emp.phone && <Text style={{ fontSize: 11, color: DS.ink[400] }}>{emp.phone}</Text>}
                     </View>
                   </View>
-                  <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                    <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color: DS.ink[900] }}>
-                      {fmtMoney(emp.base_salary)}
-                    </Text>
-                    <View style={{
-                      flexDirection: 'row', alignItems: 'center', gap: 4,
-                      paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
-                      backgroundColor: emp.current_month_paid ? CHIP_TONES.success.bg : CHIP_TONES.warning.bg,
-                    }}>
-                      <Text style={{ fontSize: 10, fontWeight: '600', color: emp.current_month_paid ? CHIP_TONES.success.fg : CHIP_TONES.warning.fg }}>
-                        {emp.current_month_paid ? 'Ödendi' : 'Bekliyor'}
+                  {canViewSalaries && (
+                    <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                      <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color: DS.ink[900] }}>
+                        {fmtMoney(emp.base_salary)}
                       </Text>
+                      <View style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 4,
+                        paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
+                        backgroundColor: emp.current_month_paid ? CHIP_TONES.success.bg : CHIP_TONES.warning.bg,
+                      }}>
+                        <Text style={{ fontSize: 10, fontWeight: '600', color: emp.current_month_paid ? CHIP_TONES.success.fg : CHIP_TONES.warning.fg }}>
+                          {emp.current_month_paid ? 'Ödendi' : 'Bekliyor'}
+                        </Text>
+                      </View>
                     </View>
-                  </View>
+                  )}
                 </View>
 
-                {/* Action row */}
-                <View style={{ flexDirection: 'row', gap: 4, marginTop: 10, justifyContent: 'flex-end' }}>
-                  <Pressable
-                    onPress={() => { setEditEmp(emp); setFormOpen(true); }}
-                    style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: DS.ink[50], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
-                  >
-                    <Pencil size={13} color={DS.ink[500]} strokeWidth={1.6} />
-                  </Pressable>
-                  {emp.is_active && (
+                {/* Action row — sadece manage_employees yetkisi varsa görünür */}
+                {canManage && (
+                  <View style={{ flexDirection: 'row', gap: 4, marginTop: 10, justifyContent: 'flex-end' }}>
                     <Pressable
-                      onPress={() => handleDeactivate(emp)}
-                      style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: CHIP_TONES.warning.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                      onPress={() => { setEditEmp(emp); setFormOpen(true); }}
+                      style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: DS.ink[50], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
                     >
-                      <UserX size={13} color={CHIP_TONES.warning.fg} strokeWidth={1.6} />
+                      <Pencil size={13} color={DS.ink[500]} strokeWidth={1.6} />
                     </Pressable>
-                  )}
-                  <Pressable
-                    onPress={() => handleDelete(emp)}
-                    style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: CHIP_TONES.danger.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
-                  >
-                    <Trash2 size={13} color={CHIP_TONES.danger.fg} strokeWidth={1.6} />
-                  </Pressable>
-                </View>
-              </Pressable>
+                    {emp.is_active ? (
+                      <Pressable
+                        onPress={() => handleDeactivate(emp)}
+                        style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: DS.ink[50], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                      >
+                        <UserX size={13} color={DS.ink[500]} strokeWidth={1.6} />
+                      </Pressable>
+                    ) : (
+                      <Pressable
+                        onPress={() => handleReactivate(emp)}
+                        style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: CHIP_TONES.success.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                      >
+                        <UserCheck size={13} color={CHIP_TONES.success.fg} strokeWidth={1.8} />
+                      </Pressable>
+                    )}
+                    <Pressable
+                      onPress={() => handleDelete(emp)}
+                      style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: CHIP_TONES.danger.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
+                    >
+                      <Trash2 size={13} color={CHIP_TONES.danger.fg} strokeWidth={1.6} />
+                    </Pressable>
+                  </View>
+                )}
+              </View>
             );
           })
         )}
@@ -501,24 +642,54 @@ export function EmployeesScreen() {
         onSaved={() => { setFormOpen(false); setEditEmp(null); refetch(); }}
       />
 
-      {/* ── Salary Modal — §08 ─────────────────────────────────── */}
-      {selectedEmp && (
-        <SalaryModal
-          visible={salaryOpen}
-          employee={selectedEmp}
-          onClose={() => setSalaryOpen(false)}
-          onSaved={() => { setSalaryOpen(false); refetch(); }}
-        />
-      )}
+      {/* ── Hesap ile Ekle — LabUsersManagement formu ────────── */}
+      <AddUserModal
+        visible={addUserOpen}
+        onClose={() => setAddUserOpen(false)}
+        onSuccess={() => { setAddUserOpen(false); refetch(); }}
+        accentColor={DS.exec.primary}
+        panelBg={DS.exec.bg}
+        labOnly={true}
+      />
 
-      {/* ── Advance Modal — §08 ────────────────────────────────── */}
-      {selectedEmp && (
-        <AdvanceModal
-          visible={advOpen}
-          employee={selectedEmp}
-          onClose={() => setAdvOpen(false)}
-          onSaved={() => { setAdvOpen(false); refetch(); }}
-        />
+      {/* Maaş ödemesi ve avans işlemleri Finans bölümünde — Çalışanlar sekmesinde değil */}
+
+      {/* ── Confirmation Dialog ──────────────────────────────────── */}
+      {/* ── Confirmation Dialog (Patterns §08) ───────────────────── */}
+      <ConfirmDialog state={confirm} onClose={() => setConfirm(null)} />
+
+      {/* ── Undo Banner ──────────────────────────────────────────── */}
+      {undoBanner && (
+        <View
+          style={{
+            position: 'absolute', bottom: 20, left: 16, right: 16,
+            flexDirection: 'row', alignItems: 'center', gap: 12,
+            backgroundColor: DS.ink[900], borderRadius: 16,
+            paddingLeft: 16, paddingRight: 8, paddingVertical: 12,
+            zIndex: 999,
+            // @ts-ignore web
+            boxShadow: '0 4px 32px rgba(0,0,0,0.25)',
+          }}
+        >
+          <Text style={{ flex: 1, fontSize: 13, color: '#FFF', fontWeight: '500', lineHeight: 18 }}>
+            {undoBanner.message}
+          </Text>
+          <Pressable
+            onPress={() => { dismissUndoBanner(); undoBanner.onUndo(); }}
+            style={{
+              paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10,
+              backgroundColor: DS.exec.primary, cursor: 'pointer' as any,
+            }}
+          >
+            <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900] }}>Geri Al</Text>
+          </Pressable>
+          <Pressable
+            onPress={dismissUndoBanner}
+            style={{ padding: 6, cursor: 'pointer' as any }}
+          >
+            <X size={16} color="rgba(255,255,255,0.5)" strokeWidth={2} />
+          </Pressable>
+        </View>
       )}
     </View>
   );
@@ -577,7 +748,7 @@ function EmployeeDetailPanel({ employee, onSalaryAdd, onAdvAdd, onRefresh }: {
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, gap: 20 }} showsVerticalScrollIndicator={false}>
         {loading ? (
-          <ActivityIndicator style={{ marginTop: 32 }} color={DS.lab.primary} />
+          <ActivityIndicator style={{ marginTop: 32 }} color={DS.exec.primary} />
         ) : (
           <>
             {/* ── Maaş Ödemeleri ── */}
@@ -687,14 +858,27 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
   visible: boolean; employee: Employee | null;
   onClose: () => void; onSaved: () => void;
 }) {
+  const P = DS.exec.primary; // admin/exec panel accent (#EA7A4C coral) — Ekip HR Hub admin'de
+  // Maaş input'u sadece view_salaries yetkisi olanlara görünür
+  const canViewSalaries = usePermissionStore(s => s.can('view_salaries'));
   const [name,   setName]   = useState('');
   const [role,   setRole]   = useState<EmployeeRole>('teknisyen');
   const [phone,  setPhone]  = useState('');
   const [email,  setEmail]  = useState('');
+  const [password, setPassword] = useState('');
   const [salary, setSalary] = useState('');
   const [start,  setStart]  = useState(new Date().toISOString().slice(0, 10));
   const [notes,  setNotes]  = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Yetkinlik state'leri (sadece teknisyen rolünde gösterilir)
+  const [skillLevel, setSkillLevel] = useState<SkillLevel>('mid');
+  const [stagePerms, setStagePerms] = useState<Set<Stage>>(new Set());
+  const [origStagePerms, setOrigStagePerms] = useState<Set<Stage>>(new Set());
+  const [caseTypes, setCaseTypes] = useState<string[] | null>(null); // null = "tümü"
+  const [linkedProfileId, setLinkedProfileId] = useState<string | null>(null);
+
+  const isTechnician = role === 'teknisyen' || role === 'sef_teknisyen';
 
   React.useEffect(() => {
     if (visible) {
@@ -702,24 +886,241 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
       setRole(employee?.role ?? 'teknisyen');
       setPhone(employee?.phone ?? '');
       setEmail(employee?.email ?? '');
+      setPassword('');
       setSalary(employee ? String(employee.base_salary) : '');
       setStart(employee?.start_date ?? new Date().toISOString().slice(0, 10));
       setNotes(employee?.notes ?? '');
+      setSkillLevel('mid');
+      setStagePerms(new Set());
+      setOrigStagePerms(new Set());
+      setCaseTypes(null);
+      setLinkedProfileId(null);
+
+      // Yetkinlik bilgilerini yükle — bağlı profil varsa
+      if (employee) {
+        (async () => {
+          // Synthetic profile (id "profile-xxx") veya email/isim eşleşmesi ile profil bul
+          let profileId: string | null = null;
+          if (String(employee.id).startsWith('profile-')) {
+            profileId = String(employee.id).slice('profile-'.length);
+          } else if (employee.email) {
+            const { data } = await supabase.from('profiles').select('id').eq('email', employee.email).maybeSingle();
+            if (data?.id) profileId = data.id;
+          }
+          if (!profileId && employee.full_name) {
+            const { data } = await supabase.from('profiles').select('id').eq('full_name', employee.full_name).maybeSingle();
+            if (data?.id) profileId = data.id;
+          }
+          if (!profileId) return;
+          setLinkedProfileId(profileId);
+
+          // skill_level + allowed_types
+          const { data: prof } = await supabase
+            .from('profiles')
+            .select('skill_level, allowed_types')
+            .eq('id', profileId)
+            .maybeSingle();
+          if (prof) {
+            if (prof.skill_level) setSkillLevel(prof.skill_level as SkillLevel);
+            setCaseTypes((prof as any).allowed_types ?? null);
+          }
+
+          // user_stage_skills
+          const { data: skills } = await supabase
+            .from('user_stage_skills')
+            .select('stage')
+            .eq('user_id', profileId);
+          const set = new Set<Stage>(((skills ?? []) as any[]).map(r => r.stage as Stage));
+          setStagePerms(set);
+          setOrigStagePerms(new Set(set));
+        })();
+      }
     }
   }, [visible, employee]);
 
   const handleSave = async () => {
     if (!name.trim()) { toast.error('Ad Soyad zorunlu.'); return; }
-    const sal = Number(salary.replace(',', '.'));
-    if (!Number.isFinite(sal) || sal < 0) { toast.error('Geçerli maaş girin.'); return; }
+    // Maaş yalnızca yetkili kullanıcı görmüşse validate edilir; yoksa varsayılan 0 / mevcut değer korunur
+    const sal = canViewSalaries
+      ? Number(salary.replace(',', '.'))
+      : (employee ? Number(employee.base_salary) : 0);
+    if (canViewSalaries && (!Number.isFinite(sal) || sal < 0)) {
+      toast.error('Geçerli maaş girin.'); return;
+    }
+
+    // Auth: email + sifre verildiyse sisteme giris hesabi olustur
+    const wantsAuth = !employee && email.trim() && password.length > 0;
+    if (wantsAuth) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { toast.error('Geçerli e-posta girin.'); return; }
+      if (password.length < 6) { toast.error('Şifre en az 6 karakter olmalı.'); return; }
+    }
+
     setSaving(true);
     const params = { full_name: name.trim(), role, phone: phone || undefined,
       email: email || undefined, base_salary: sal, start_date: start, notes: notes || undefined };
-    const { error } = employee
-      ? await updateEmployee(employee.id, params)
-      : await createEmployee(params);
+
+    // employees tablosunu güncelle — synthetic profile satırı ise atla (profile-xxx)
+    const isSyntheticOnly = !!employee && String(employee.id).startsWith('profile-');
+    let employeeError: any = null;
+    if (!isSyntheticOnly) {
+      const { error } = employee
+        ? await updateEmployee(employee.id, params)
+        : await createEmployee(params);
+      employeeError = error;
+    }
+    if (employeeError) { setSaving(false); toast.error((employeeError as any).message); return; }
+
+    // EmployeeRole → profiles.role mapping
+    const empToProfileRole: Record<EmployeeRole, string> = {
+      teknisyen:    'technician',
+      sef_teknisyen:'technician',
+      yonetici:     'manager',
+      muhasebe:     'accounting',
+      sekreter:     'receptionist',
+      diger:        'service',
+    };
+
+    // Bağlı profil varsa profiles tablosuna tüm temel bilgileri sync et
+    // NOT: maaş (base_salary) employees tablosunda; profiles'da değil
+    if (linkedProfileId) {
+      const profilePatch: Record<string, any> = {
+        full_name: name.trim(),
+        phone:     phone || null,
+        role:      empToProfileRole[role] ?? null,
+      };
+      // Teknisyen ise yetkinlik alanlarını da ekle
+      if (isTechnician) {
+        profilePatch.skill_level   = skillLevel;
+        profilePatch.allowed_types = caseTypes;
+      }
+
+      const { error: profErr } = await supabase
+        .from('profiles')
+        .update(profilePatch)
+        .eq('id', linkedProfileId);
+      if (profErr) {
+        setSaving(false);
+        toast.error(profErr.message ?? 'Profil güncellenemedi');
+        return;
+      }
+
+      // Synthetic profile (auth-only) — employees tablosunda eşleşen satır
+      // varsa güncelle; yoksa yeni satır oluştur. Böylece maaş, başlangıç
+      // tarihi, notlar gibi bilgiler kalıcı olur.
+      if (isSyntheticOnly) {
+        // Email veya isim ile employees satırını ara
+        let existingEmp: { id: string } | null = null;
+        if (email.trim()) {
+          const r = await supabase
+            .from('employees')
+            .select('id')
+            .eq('email', email.trim())
+            .maybeSingle();
+          existingEmp = (r.data as any) ?? null;
+        }
+        if (!existingEmp && name.trim()) {
+          const r = await supabase
+            .from('employees')
+            .select('id')
+            .eq('full_name', name.trim())
+            .maybeSingle();
+          existingEmp = (r.data as any) ?? null;
+        }
+
+        if (existingEmp?.id) {
+          // Mevcut employees satırını güncelle
+          const { error: updErr } = await supabase.from('employees')
+            .update({
+              full_name:   name.trim(),
+              role,
+              phone:       phone || null,
+              email:       email.trim() || null,
+              base_salary: Number.isFinite(sal) ? sal : 0,
+              start_date:  start,
+              notes:       notes || null,
+            })
+            .eq('id', existingEmp.id);
+          if (updErr) {
+            setSaving(false);
+            toast.error(updErr.message ?? 'Çalışan kaydı güncellenemedi');
+            return;
+          }
+        } else {
+          // Yeni employees satırı oluştur — auth profile ile eşleşen
+          const { error: insErr } = await supabase.from('employees').insert({
+            full_name:   name.trim(),
+            role,
+            phone:       phone || null,
+            email:       email.trim() || null,
+            base_salary: Number.isFinite(sal) ? sal : 0,
+            start_date:  start,
+            notes:       notes || null,
+            is_active:   true,
+          });
+          if (insErr) {
+            setSaving(false);
+            toast.error(insErr.message ?? 'Çalışan kaydı oluşturulamadı');
+            return;
+          }
+        }
+      }
+    }
+
+    // Teknisyen ise stage skills diff/sync
+    if (linkedProfileId && isTechnician) {
+      const toAdd    = [...stagePerms].filter(s => !origStagePerms.has(s));
+      const toRemove = [...origStagePerms].filter(s => !stagePerms.has(s));
+      if (toRemove.length > 0) {
+        await supabase.from('user_stage_skills')
+          .delete()
+          .eq('user_id', linkedProfileId)
+          .in('stage', toRemove);
+      }
+      if (toAdd.length > 0) {
+        // lab_id'yi profile'dan al
+        const { data: prof } = await supabase.from('profiles').select('lab_id').eq('id', linkedProfileId).maybeSingle();
+        const labId = prof?.lab_id;
+        if (labId) {
+          await supabase.from('user_stage_skills')
+            .insert(toAdd.map(s => ({ user_id: linkedProfileId, stage: s, lab_id: labId })));
+        }
+      }
+    }
+
+    // Lab kullanicisi olarak auth hesabi olustur
+    if (wantsAuth) {
+      // role -> profiles.role: technician | manager (yonetici = mesul müdür)
+      const profileRole = role === 'yonetici' ? 'manager' : 'technician';
+      const signUpRes = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: {
+          data: {
+            user_type: 'lab',
+            role: profileRole,
+            full_name: name.trim(),
+            phone: phone || undefined,
+            approval_status: 'approved',
+          },
+        },
+      });
+      if (signUpRes.error) {
+        setSaving(false);
+        toast.error(`Çalışan eklendi, ancak giriş hesabı oluşturulamadı: ${signUpRes.error.message}`);
+        return;
+      }
+      if (signUpRes.data.user?.id) {
+        await supabase.from('profiles').update({
+          full_name: name.trim(),
+          phone: phone || null,
+          approval_status: 'approved',
+          is_active: true,
+        }).eq('id', signUpRes.data.user.id);
+      }
+    }
+
     setSaving(false);
-    if (error) { toast.error((error as any).message); return; }
+    toast.success(employee ? 'Çalışan güncellendi' : 'Çalışan eklendi');
     onSaved();
   };
 
@@ -733,41 +1134,44 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
           // @ts-ignore web
           boxShadow: modalShadow,
         }}>
-          {/* Header */}
+          {/* Header — Patterns §13 */}
           <View style={{
-            flexDirection: 'row', alignItems: 'center', gap: 12,
-            paddingHorizontal: 24, paddingTop: 22, paddingBottom: 16,
+            flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
+            paddingHorizontal: 28, paddingTop: 28, paddingBottom: 18,
             borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
           }}>
-            <Text style={{ ...DISPLAY, flex: 1, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>
+            <Text style={{ ...DISPLAY, flex: 1, fontSize: 26, lineHeight: 30, letterSpacing: -0.6, color: DS.ink[900] }}>
               {employee ? 'Çalışanı Düzenle' : 'Yeni Çalışan'}
             </Text>
-            <Pressable onPress={onClose} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}>
-              <X size={16} color={DS.ink[500]} strokeWidth={2} />
+            {/* Outlined X — panel rengiyle */}
+            <Pressable
+              onPress={onClose}
+              style={{ width: 32, height: 32, borderRadius: 8, borderWidth: 1.5, borderColor: P, alignItems: 'center', justifyContent: 'center', marginLeft: 12, marginTop: 2, cursor: 'pointer' as any }}
+            >
+              <X size={14} color={P} strokeWidth={2.2} />
             </Pressable>
           </View>
 
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 24, gap: 14 }} showsVerticalScrollIndicator={false}>
-            {/* Role pills */}
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 28, paddingVertical: 20, gap: 16 }} showsVerticalScrollIndicator={false}>
+            {/* Pozisyon — pill strip (outlined active) */}
             <View>
               <FieldLabel>Pozisyon</FieldLabel>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, padding: 4, backgroundColor: '#F5F5F5', borderRadius: 999 }}>
                 {ROLES.map(r => {
                   const active = role === r;
-                  const rc = ROLE_COLORS[r];
                   return (
                     <Pressable
                       key={r}
                       onPress={() => setRole(r)}
                       style={{
-                        paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
-                        borderWidth: 1,
-                        borderColor: active ? rc.fg : 'rgba(0,0,0,0.08)',
-                        backgroundColor: active ? rc.bg : '#FFF',
+                        paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999,
+                        backgroundColor: 'transparent',
+                        borderWidth: active ? 1.5 : 0,
+                        borderColor: active ? P : 'transparent',
                         cursor: 'pointer' as any,
                       }}
                     >
-                      <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? rc.fg : DS.ink[500] }}>
+                      <Text style={{ fontSize: 12, fontWeight: active ? '700' : '500', color: active ? P : DS.ink[500] }}>
                         {ROLE_LABELS[r]}
                       </Text>
                     </Pressable>
@@ -791,20 +1195,35 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
               <View style={{ flex: 1 }}>
                 <FieldLabel>E-posta</FieldLabel>
                 <TextInput style={inputStyle} value={email} onChangeText={setEmail}
-                  placeholder="ad@mail.com" placeholderTextColor={DS.ink[400]} keyboardType="email-address" />
+                  placeholder="ad@mail.com" placeholderTextColor={DS.ink[400]} keyboardType="email-address" autoCapitalize="none" />
               </View>
             </View>
 
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <View style={{ flex: 1 }}>
-                <FieldLabel>Maaş (₺/ay) *</FieldLabel>
-                <TextInput style={inputStyle} value={salary} onChangeText={setSalary}
-                  placeholder="0,00" placeholderTextColor={DS.ink[400]} keyboardType="decimal-pad" />
+            {/* Sisteme giriş — opsiyonel, sadece yeni eklemede */}
+            {!employee && (
+              <View>
+                <FieldLabel>Şifre (sisteme giriş için, opsiyonel)</FieldLabel>
+                <TextInput style={inputStyle} value={password} onChangeText={setPassword}
+                  placeholder="En az 6 karakter — boş bırakırsan login olmaz" placeholderTextColor={DS.ink[400]} secureTextEntry />
               </View>
+            )}
+
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              {canViewSalaries && (
+                <View style={{ flex: 1 }}>
+                  <FieldLabel>Maaş (₺/ay) *</FieldLabel>
+                  <TextInput style={inputStyle} value={salary} onChangeText={setSalary}
+                    placeholder="0,00" placeholderTextColor={DS.ink[400]} keyboardType="decimal-pad" />
+                </View>
+              )}
               <View style={{ flex: 1 }}>
                 <FieldLabel>İşe Başlama</FieldLabel>
-                <TextInput style={inputStyle} value={start} onChangeText={setStart}
-                  placeholder="YYYY-AA-GG" placeholderTextColor={DS.ink[400]} />
+                <DatePicker
+                  value={start}
+                  onChange={setStart}
+                  accent={P}
+                  placeholder="Tarih seç"
+                />
               </View>
             </View>
 
@@ -815,20 +1234,139 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
                 value={notes} onChangeText={setNotes} placeholder="Ek bilgi…"
                 placeholderTextColor={DS.ink[400]} multiline />
             </View>
+
+            {/* ── Yetkinlik (sadece teknisyen + bağlı profil varsa) ─────── */}
+            {isTechnician && linkedProfileId && (
+              <View style={{ gap: 14, paddingTop: 8, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
+                <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginTop: 8 }}>
+                  Yetkinlik
+                </Text>
+
+                {/* Seviye — 3 eşit buton, dark fill aktif */}
+                <View>
+                  <FieldLabel>Seviye</FieldLabel>
+                  <View style={{ flexDirection: 'row', gap: 6 }}>
+                    {SKILL_LEVELS.map(({ key, label }) => {
+                      const active = skillLevel === key;
+                      return (
+                        <Pressable
+                          key={key}
+                          onPress={() => setSkillLevel(key)}
+                          style={{
+                            flex: 1, paddingVertical: 9, borderRadius: 12, alignItems: 'center',
+                            borderWidth: 1, borderColor: active ? '#0A0A0A' : 'rgba(0,0,0,0.08)',
+                            backgroundColor: active ? '#0A0A0A' : '#FAFAFA',
+                            cursor: 'pointer' as any,
+                          }}
+                        >
+                          <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#FFF' : DS.ink[500] }}>{label}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                {/* Stage Yetkileri — outlined active */}
+                <View>
+                  <FieldLabel>Stage Yetkileri</FieldLabel>
+                  <Text style={{ fontSize: 11, color: DS.ink[400], marginBottom: 8, marginTop: -2 }}>Hangi aşamayı yapabilir?</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                    {SKILL_STAGES.map(st => {
+                      const has = stagePerms.has(st);
+                      return (
+                        <Pressable
+                          key={st}
+                          onPress={() => {
+                            setStagePerms(prev => {
+                              const nx = new Set(prev);
+                              if (nx.has(st)) nx.delete(st); else nx.add(st);
+                              return nx;
+                            });
+                          }}
+                          style={{
+                            flexDirection: 'row', alignItems: 'center', gap: 4,
+                            paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999,
+                            borderWidth: 1.5, borderColor: has ? P : 'rgba(0,0,0,0.08)',
+                            backgroundColor: 'transparent',
+                            cursor: 'pointer' as any,
+                          }}
+                        >
+                          {has && <Check size={10} color={P} strokeWidth={2.5} />}
+                          <Text style={{ fontSize: 12, fontWeight: has ? '600' : '500', color: has ? P : DS.ink[500] }}>{STAGE_LABEL[st]}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                {/* Vaka Türleri — outlined active */}
+                <View>
+                  <FieldLabel>Vaka Türleri</FieldLabel>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                    {CASE_TYPES.map(ct => {
+                      // null = "tümü" → hepsi aktif görünür
+                      const has = !caseTypes ? true : caseTypes.includes(ct);
+                      return (
+                        <Pressable
+                          key={ct}
+                          onPress={() => {
+                            setCaseTypes(prev => {
+                              const current = prev ?? [...CASE_TYPES];
+                              const next = current.includes(ct)
+                                ? current.filter(c => c !== ct)
+                                : [...current, ct];
+                              // Hepsi seçiliyse null'a düş (tümü)
+                              if (CASE_TYPES.every(t => next.includes(t))) return null;
+                              return next;
+                            });
+                          }}
+                          style={{
+                            flexDirection: 'row', alignItems: 'center', gap: 4,
+                            paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
+                            borderWidth: 1.5, borderColor: has ? '#0A0A0A' : 'rgba(0,0,0,0.08)',
+                            backgroundColor: 'transparent',
+                            cursor: 'pointer' as any,
+                          }}
+                        >
+                          {has && <Check size={10} color="#0A0A0A" strokeWidth={2.5} />}
+                          <Text style={{ fontSize: 12, fontWeight: '600', color: has ? '#0A0A0A' : DS.ink[500] }}>{ct}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              </View>
+            )}
+
+            {/* Yetkinlik için bağlı profil yok — bilgi mesajı */}
+            {isTechnician && employee && !linkedProfileId && (
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 12, borderRadius: 12, backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: 'rgba(217,119,6,0.20)' }}>
+                <Text style={{ fontSize: 12, color: '#92400E', flex: 1, lineHeight: 17 }}>
+                  Yetkinlik (Seviye, Stage, Vaka türü) ayarlamak için bu çalışanın sistem hesabı (e-posta + şifre) olması gerekir.
+                </Text>
+              </View>
+            )}
           </ScrollView>
 
-          {/* Footer */}
+          {/* Footer — Patterns §13 */}
           <View style={{
             flexDirection: 'row', justifyContent: 'flex-end', gap: 8,
-            paddingHorizontal: 24, paddingVertical: 16,
+            paddingHorizontal: 28, paddingVertical: 16,
             borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
           }}>
-            <PillBtn icon={X} label="İptal" variant="ghost" onPress={onClose} disabled={saving} />
+            <Pressable
+              onPress={onClose}
+              disabled={saving}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 18, paddingVertical: 9, borderRadius: 999, borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.12)', opacity: saving ? 0.5 : 1, cursor: 'pointer' as any }}
+            >
+              <X size={12} color={DS.ink[500]} strokeWidth={2.5} />
+              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500] }}>İptal</Text>
+            </Pressable>
             <Pressable
               onPress={handleSave} disabled={saving}
               style={{
-                flexDirection: 'row', alignItems: 'center', gap: 6,
-                height: 38, paddingHorizontal: 18, borderRadius: 999,
+                flexDirection: 'row', alignItems: 'center', gap: 7,
+                paddingHorizontal: 18, paddingVertical: 9, borderRadius: 999,
                 backgroundColor: DS.ink[900], opacity: saving ? 0.5 : 1,
                 cursor: 'pointer' as any,
               }}
@@ -836,9 +1374,12 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
               {saving ? (
                 <ActivityIndicator color="#FFF" size="small" />
               ) : (
-                <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFF' }}>
-                  {employee ? 'Güncelle' : 'Kaydet'}
-                </Text>
+                <>
+                  <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: P }} />
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFF' }}>
+                    {employee ? 'Güncelle' : 'Kaydet'}
+                  </Text>
+                </>
               )}
             </Pressable>
           </View>
@@ -854,6 +1395,7 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
 function SalaryModal({ visible, employee, onClose, onSaved }: {
   visible: boolean; employee: Employee; onClose: () => void; onSaved: () => void;
 }) {
+  const P = DS.exec.primary; // panel accent — Patterns §13
   const [year,       setYear]       = useState(String(CUR_YEAR));
   const [month,      setMonth]      = useState(String(CUR_MONTH));
   const [gross,      setGross]      = useState('');
@@ -896,21 +1438,25 @@ function SalaryModal({ visible, employee, onClose, onSaved }: {
           // @ts-ignore web
           boxShadow: modalShadow,
         }}>
+          {/* Header — Patterns §13 */}
           <View style={{
-            flexDirection: 'row', alignItems: 'center', gap: 12,
-            paddingHorizontal: 24, paddingTop: 22, paddingBottom: 16,
+            flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
+            paddingHorizontal: 28, paddingTop: 28, paddingBottom: 18,
             borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
           }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>Maaş Ödemesi</Text>
-              <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 2 }}>{employee.full_name}</Text>
+              <Text style={{ ...DISPLAY, fontSize: 26, lineHeight: 30, letterSpacing: -0.6, color: DS.ink[900] }}>Maaş Ödemesi</Text>
+              <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 4 }}>{employee.full_name}</Text>
             </View>
-            <Pressable onPress={onClose} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}>
-              <X size={16} color={DS.ink[500]} strokeWidth={2} />
+            <Pressable
+              onPress={onClose}
+              style={{ width: 32, height: 32, borderRadius: 8, borderWidth: 1.5, borderColor: P, alignItems: 'center', justifyContent: 'center', marginLeft: 12, marginTop: 2, cursor: 'pointer' as any }}
+            >
+              <X size={14} color={P} strokeWidth={2.2} />
             </Pressable>
           </View>
 
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 24, gap: 14 }}>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 28, paddingVertical: 20, gap: 14 }}>
             <View style={{ flexDirection: 'row', gap: 12 }}>
               <View style={{ flex: 1 }}>
                 <FieldLabel>Ay (1-12)</FieldLabel>
@@ -948,10 +1494,10 @@ function SalaryModal({ visible, employee, onClose, onSaved }: {
               <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.5, color: CHIP_TONES.success.fg }}>{fmtMoney(net)}</Text>
             </View>
 
-            {/* Payment method */}
+            {/* Payment method — outlined active = panel rengi */}
             <View>
               <FieldLabel>Ödeme Yöntemi</FieldLabel>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
                 {PAY_METHODS.map(m => {
                   const active = method === m.v;
                   const MIcon = m.icon;
@@ -961,14 +1507,14 @@ function SalaryModal({ visible, employee, onClose, onSaved }: {
                       onPress={() => setMethod(m.v)}
                       style={{
                         flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-                        paddingVertical: 10, borderRadius: 14,
-                        borderWidth: 1, borderColor: active ? DS.ink[900] : 'rgba(0,0,0,0.08)',
-                        backgroundColor: active ? DS.ink[50] : '#FFF',
+                        paddingVertical: 10, borderRadius: 12,
+                        borderWidth: 1.5, borderColor: active ? P : 'rgba(0,0,0,0.08)',
+                        backgroundColor: 'transparent',
                         cursor: 'pointer' as any,
                       }}
                     >
-                      <MIcon size={14} color={active ? DS.ink[900] : DS.ink[400]} strokeWidth={1.6} />
-                      <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? DS.ink[900] : DS.ink[500] }}>
+                      <MIcon size={14} color={active ? P : DS.ink[400]} strokeWidth={active ? 2 : 1.6} />
+                      <Text style={{ fontSize: 12, fontWeight: active ? '700' : '500', color: active ? P : DS.ink[500] }}>
                         {m.l}
                       </Text>
                     </Pressable>
@@ -984,23 +1530,34 @@ function SalaryModal({ visible, employee, onClose, onSaved }: {
             </View>
           </ScrollView>
 
+          {/* Footer — Patterns §13 */}
           <View style={{
             flexDirection: 'row', justifyContent: 'flex-end', gap: 8,
-            paddingHorizontal: 24, paddingVertical: 16,
+            paddingHorizontal: 28, paddingVertical: 16,
             borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
           }}>
-            <PillBtn icon={X} label="İptal" variant="ghost" onPress={onClose} disabled={saving} />
+            <Pressable
+              onPress={onClose}
+              disabled={saving}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 18, paddingVertical: 9, borderRadius: 999, borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.12)', opacity: saving ? 0.5 : 1, cursor: 'pointer' as any }}
+            >
+              <X size={12} color={DS.ink[500]} strokeWidth={2.5} />
+              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500] }}>İptal</Text>
+            </Pressable>
             <Pressable
               onPress={handleSave} disabled={saving}
               style={{
-                flexDirection: 'row', alignItems: 'center', gap: 6,
-                height: 38, paddingHorizontal: 18, borderRadius: 999,
+                flexDirection: 'row', alignItems: 'center', gap: 7,
+                paddingHorizontal: 18, paddingVertical: 9, borderRadius: 999,
                 backgroundColor: DS.ink[900], opacity: saving ? 0.5 : 1,
                 cursor: 'pointer' as any,
               }}
             >
               {saving ? <ActivityIndicator color="#FFF" size="small" /> : (
-                <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFF' }}>Ödemeyi Kaydet</Text>
+                <>
+                  <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: P }} />
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFF' }}>Ödemeyi Kaydet</Text>
+                </>
               )}
             </Pressable>
           </View>
@@ -1016,6 +1573,7 @@ function SalaryModal({ visible, employee, onClose, onSaved }: {
 function AdvanceModal({ visible, employee, onClose, onSaved }: {
   visible: boolean; employee: Employee; onClose: () => void; onSaved: () => void;
 }) {
+  const P = DS.exec.primary; // panel accent — Patterns §13
   const [amount, setAmount] = useState('');
   const [date,   setDate]   = useState(new Date().toISOString().slice(0, 10));
   const [desc,   setDesc]   = useState('');
@@ -1048,21 +1606,25 @@ function AdvanceModal({ visible, employee, onClose, onSaved }: {
           // @ts-ignore web
           boxShadow: modalShadow,
         }}>
+          {/* Header — Patterns §13 */}
           <View style={{
-            flexDirection: 'row', alignItems: 'center', gap: 12,
-            paddingHorizontal: 24, paddingTop: 22, paddingBottom: 16,
+            flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
+            paddingHorizontal: 28, paddingTop: 28, paddingBottom: 18,
             borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
           }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>Avans Ver</Text>
-              <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 2 }}>{employee.full_name}</Text>
+              <Text style={{ ...DISPLAY, fontSize: 26, lineHeight: 30, letterSpacing: -0.6, color: DS.ink[900] }}>Avans Ver</Text>
+              <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 4 }}>{employee.full_name}</Text>
             </View>
-            <Pressable onPress={onClose} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}>
-              <X size={16} color={DS.ink[500]} strokeWidth={2} />
+            <Pressable
+              onPress={onClose}
+              style={{ width: 32, height: 32, borderRadius: 8, borderWidth: 1.5, borderColor: P, alignItems: 'center', justifyContent: 'center', marginLeft: 12, marginTop: 2, cursor: 'pointer' as any }}
+            >
+              <X size={14} color={P} strokeWidth={2.2} />
             </Pressable>
           </View>
 
-          <View style={{ padding: 24, gap: 14 }}>
+          <View style={{ paddingHorizontal: 28, paddingVertical: 20, gap: 14 }}>
             <View>
               <FieldLabel>Tutar (₺)</FieldLabel>
               <TextInput style={inputStyle} value={amount} onChangeText={setAmount}
@@ -1080,23 +1642,34 @@ function AdvanceModal({ visible, employee, onClose, onSaved }: {
             </View>
           </View>
 
+          {/* Footer — Patterns §13 */}
           <View style={{
             flexDirection: 'row', justifyContent: 'flex-end', gap: 8,
-            paddingHorizontal: 24, paddingVertical: 16,
+            paddingHorizontal: 28, paddingVertical: 16,
             borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
           }}>
-            <PillBtn icon={X} label="İptal" variant="ghost" onPress={onClose} disabled={saving} />
+            <Pressable
+              onPress={onClose}
+              disabled={saving}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 18, paddingVertical: 9, borderRadius: 999, borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.12)', opacity: saving ? 0.5 : 1, cursor: 'pointer' as any }}
+            >
+              <X size={12} color={DS.ink[500]} strokeWidth={2.5} />
+              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500] }}>İptal</Text>
+            </Pressable>
             <Pressable
               onPress={handleSave} disabled={saving}
               style={{
-                flexDirection: 'row', alignItems: 'center', gap: 6,
-                height: 38, paddingHorizontal: 18, borderRadius: 999,
-                backgroundColor: CHIP_TONES.warning.fg, opacity: saving ? 0.5 : 1,
+                flexDirection: 'row', alignItems: 'center', gap: 7,
+                paddingHorizontal: 18, paddingVertical: 9, borderRadius: 999,
+                backgroundColor: DS.ink[900], opacity: saving ? 0.5 : 1,
                 cursor: 'pointer' as any,
               }}
             >
               {saving ? <ActivityIndicator color="#FFF" size="small" /> : (
-                <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFF' }}>Avansı Kaydet</Text>
+                <>
+                  <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: P }} />
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFF' }}>Avansı Kaydet</Text>
+                </>
               )}
             </Pressable>
           </View>

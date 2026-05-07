@@ -1,35 +1,50 @@
 /**
- * IntegrationsScreen — Ayarlar > Entegrasyonlar
+ * IntegrationsScreen — Ayarlar > Entegrasyonlar (Patterns Design Language)
  *
+ *  • Şeffaf arka plan — hub'ın krem zemini kullanılır
+ *  • Panel-aware accentColor (admin coral default)
+ *  • Lucide ikonlar (ReceiptText, CreditCard, ShieldAlert, …)
  *  • İki bölüm: e-Fatura · POS / Online Ödeme
- *  • Her bölümde mevcut credential'lar listelenir + yeni ekle
- *  • Editör: provider seç → form alanları otomatik gelir → kaydet → test et → aktif yap
- *  • Production key uyarısı + Edge Function bilgilendirmesi
+ *  • Patterns §13 form modal — Display başlık + outlined X + dark+accent footer
  */
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal,
-  TextInput, ActivityIndicator, Alert,
+  View, Text, ScrollView, Pressable, Modal,
+  TextInput, ActivityIndicator, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  ReceiptText, CreditCard, ShieldAlert, Plus,
+  Zap, Check, Trash2, X,
+} from 'lucide-react-native';
 
-import { AppIcon } from '../../../core/ui/AppIcon';
-import { Shadows, CardSpec } from '../../../core/theme/shadows';
 import { HubContext } from '../../../core/ui/HubContext';
 import { toast } from '../../../core/ui/Toast';
+import { ConfirmDialog, type ConfirmState } from '../../../core/ui/ConfirmDialog';
+import { DS } from '../../../core/theme/dsTokens';
 import {
   fetchCredentials, upsertCredential, deleteCredential, activateCredential, testCredential,
-  EFATURA_PROVIDERS, PAYMENT_PROVIDERS, findProviderDef,
+  EFATURA_PROVIDERS, PAYMENT_PROVIDERS,
   type IntegrationType, type ProviderCredential, type ProviderDefinition,
 } from '../api';
 
-export function IntegrationsScreen() {
+const DISPLAY = {
+  fontFamily: 'Inter Tight, Inter, system-ui, sans-serif',
+  fontWeight: '300' as const,
+};
+
+interface Props {
+  accentColor?: string;
+}
+
+export function IntegrationsScreen({ accentColor = '#EA7A4C' }: Props) {
   const isEmbedded = useContext(HubContext);
   const safeEdges  = isEmbedded ? ([] as any) : (['top'] as any);
 
-  const [items, setItems] = useState<ProviderCredential[]>([]);
+  const [items, setItems]     = useState<ProviderCredential[]>([]);
   const [loading, setLoading] = useState(false);
-  const [editor, setEditor] = useState<{ open: boolean; type: IntegrationType; record: ProviderCredential | null }>(
+  const [confirm, setConfirm] = useState<ConfirmState | null>(null);
+  const [editor, setEditor]   = useState<{ open: boolean; type: IntegrationType; record: ProviderCredential | null }>(
     { open: false, type: 'efatura', record: null }
   );
 
@@ -45,88 +60,116 @@ export function IntegrationsScreen() {
   const efatura = items.filter(i => i.type === 'efatura');
   const payment = items.filter(i => i.type === 'payment');
 
+  const handleDelete = (r: ProviderCredential) => {
+    setConfirm({
+      title: 'Sağlayıcıyı sil',
+      highlight: r.provider,
+      message: 'kaydı kalıcı olarak silinecek. Bu işlem geri alınamaz.',
+      label: 'Evet, sil',
+      variant: 'danger',
+      onConfirm: async () => {
+        setConfirm(null);
+        const { error } = await deleteCredential(r.id);
+        if (error) toast.error('Silinemedi');
+        else { toast.success('Silindi'); load(); }
+      },
+    });
+  };
+
+  const handleTest = async (r: ProviderCredential) => {
+    const result = await testCredential(r.id, r.type, r.provider, r.credentials);
+    if (result.ok) toast.success(result.message);
+    else            toast.error(result.message);
+    load();
+  };
+
+  const handleActivate = async (r: ProviderCredential) => {
+    await activateCredential(r.id);
+    toast.success('Aktif yapıldı');
+    load();
+  };
+
   return (
-    <SafeAreaView style={s.safe} edges={safeEdges}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={safeEdges}>
       <ScrollView contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 60 }}>
-        {/* Güvenlik uyarısı */}
-        <View style={s.warnBox}>
-          <AppIcon name="shield-alert" size={18} color="#D97706" />
+
+        {/* Güvenlik notu */}
+        <View style={{
+          flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+          padding: 14, borderRadius: 14,
+          backgroundColor: 'rgba(217,119,6,0.08)',
+          borderWidth: 1, borderColor: 'rgba(217,119,6,0.18)',
+        }}>
+          <View style={{
+            width: 32, height: 32, borderRadius: 10,
+            backgroundColor: 'rgba(217,119,6,0.15)',
+            alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}>
+            <ShieldAlert size={16} color="#D97706" strokeWidth={1.8} />
+          </View>
           <View style={{ flex: 1 }}>
-            <Text style={s.warnTitle}>Production API anahtarları</Text>
-            <Text style={s.warnText}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: '#92400E', marginBottom: 2 }}>
+              Production API Anahtarları
+            </Text>
+            <Text style={{ fontSize: 12, color: '#78350F', lineHeight: 18 }}>
               Sandbox key'leri buraya girilebilir. Production key'leri için Edge Function üzerinden
-              Supabase Secrets kullanılmalı (kılavuz: docs/integrations.md).
+              Supabase Secrets kullanılmalı.
             </Text>
           </View>
         </View>
 
-        {/* e-Fatura bölümü */}
+        {/* e-Fatura */}
         <Section
-          title="e-Fatura / e-Arşiv"
-          icon="receipt-text"
-          accent="#7C3AED"
+          title="e-Fatura · e-Arşiv"
+          IconCmp={ReceiptText}
+          accentColor={accentColor}
           credentials={efatura}
           providers={EFATURA_PROVIDERS}
           onAdd={() => setEditor({ open: true, type: 'efatura', record: null })}
           onEdit={(r) => setEditor({ open: true, type: 'efatura', record: r })}
-          onActivate={async (r) => { await activateCredential(r.id); toast.success('Aktif yapıldı'); load(); }}
-          onDelete={(r) => confirmDelete(r, load)}
-          onTest={(r) => runTest(r, load)}
+          onActivate={handleActivate}
+          onDelete={handleDelete}
+          onTest={handleTest}
         />
 
-        {/* POS bölümü */}
+        {/* POS */}
         <Section
-          title="POS / Online Ödeme"
-          icon="credit-card"
-          accent="#2563EB"
+          title="POS · Online Ödeme"
+          IconCmp={CreditCard}
+          accentColor={accentColor}
           credentials={payment}
           providers={PAYMENT_PROVIDERS}
           onAdd={() => setEditor({ open: true, type: 'payment', record: null })}
           onEdit={(r) => setEditor({ open: true, type: 'payment', record: r })}
-          onActivate={async (r) => { await activateCredential(r.id); toast.success('Aktif yapıldı'); load(); }}
-          onDelete={(r) => confirmDelete(r, load)}
-          onTest={(r) => runTest(r, load)}
+          onActivate={handleActivate}
+          onDelete={handleDelete}
+          onTest={handleTest}
         />
 
-        {loading && <ActivityIndicator color="#2563EB" />}
+        {loading && <ActivityIndicator color={accentColor} style={{ marginTop: 12 }} />}
       </ScrollView>
 
       <CredentialEditor
         visible={editor.open}
         type={editor.type}
         record={editor.record}
+        accentColor={accentColor}
         onClose={() => setEditor(e => ({ ...e, open: false }))}
         onSaved={() => { setEditor(e => ({ ...e, open: false })); load(); }}
       />
+
+      <ConfirmDialog state={confirm} onClose={() => setConfirm(null)} />
     </SafeAreaView>
   );
 }
 
-async function confirmDelete(r: ProviderCredential, reload: () => void) {
-  Alert.alert('Sağlayıcıyı Sil', `${r.provider} kaydı silinsin mi?`, [
-    { text: 'Vazgeç', style: 'cancel' },
-    { text: 'Sil', style: 'destructive', onPress: async () => {
-      await deleteCredential(r.id);
-      toast.success('Silindi');
-      reload();
-    }},
-  ]);
-}
-
-async function runTest(r: ProviderCredential, reload: () => void) {
-  const result = await testCredential(r.id, r.type, r.provider, r.credentials);
-  if (result.ok) toast.success(result.message);
-  else            toast.error(result.message);
-  reload();
-}
-
 // ─── Section ──────────────────────────────────────────────────────────────
 function Section({
-  title, icon, accent, credentials, providers, onAdd, onEdit, onActivate, onDelete, onTest,
+  title, IconCmp, accentColor, credentials, providers, onAdd, onEdit, onActivate, onDelete, onTest,
 }: {
   title: string;
-  icon: string;
-  accent: string;
+  IconCmp: any;
+  accentColor: string;
   credentials: ProviderCredential[];
   providers: ProviderDefinition[];
   onAdd: () => void;
@@ -136,70 +179,145 @@ function Section({
   onTest: (r: ProviderCredential) => void;
 }) {
   return (
-    <View style={s.section}>
-      <View style={s.sectionHead}>
-        <View style={[s.sectionIcon, { backgroundColor: accent + '15' }]}>
-          <AppIcon name={icon as any} size={16} color={accent} />
+    <View style={{
+      backgroundColor: '#FFFFFF',
+      borderRadius: 18,
+      padding: 16,
+      borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
+      gap: 10,
+      ...Platform.select({
+        web:     { boxShadow: '0 1px 3px rgba(0,0,0,0.04)' } as any,
+        default: { shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
+      }),
+    }}>
+      {/* Header */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 4 }}>
+        <View style={{
+          width: 36, height: 36, borderRadius: 12,
+          backgroundColor: accentColor + '14',
+          alignItems: 'center', justifyContent: 'center',
+        }}>
+          <IconCmp size={17} color={accentColor} strokeWidth={1.8} />
         </View>
-        <Text style={s.sectionTitle}>{title}</Text>
-        <TouchableOpacity style={[s.addBtn, { backgroundColor: accent }]} onPress={onAdd}>
-          <AppIcon name="plus" size={14} color="#FFFFFF" />
-          <Text style={s.addBtnText}>Ekle</Text>
-        </TouchableOpacity>
+        <Text style={{ ...DISPLAY, fontSize: 18, color: DS.ink[900], flex: 1, letterSpacing: -0.3 }}>
+          {title}
+        </Text>
+        <Pressable
+          onPress={onAdd}
+          style={{
+            flexDirection: 'row', alignItems: 'center', gap: 5,
+            paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
+            backgroundColor: accentColor,
+            ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+          }}
+        >
+          <Plus size={14} color="#FFFFFF" strokeWidth={2.2} />
+          <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>Ekle</Text>
+        </Pressable>
       </View>
 
       {credentials.length === 0 ? (
-        <Text style={s.emptyHint}>Henüz sağlayıcı tanımlanmadı.</Text>
+        <View style={{ paddingVertical: 16, alignItems: 'center' }}>
+          <Text style={{ fontSize: 12, color: DS.ink[400], fontStyle: 'italic' }}>
+            Henüz sağlayıcı tanımlanmadı.
+          </Text>
+        </View>
       ) : credentials.map(r => {
         const def = providers.find(p => p.key === r.provider);
+        const isProd = r.environment === 'production';
         return (
-          <TouchableOpacity key={r.id} style={s.row} onPress={() => onEdit(r)} activeOpacity={0.85}>
-            <View style={[s.envDot, { backgroundColor: r.environment === 'production' ? '#DC2626' : '#10B981' }]} />
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={s.rowName}>{def?.label ?? r.provider}</Text>
-                {r.is_active && <View style={s.activeBadge}><Text style={s.activeBadgeText}>AKTİF</Text></View>}
-                {r.environment === 'production' && (
-                  <View style={s.prodBadge}><Text style={s.prodBadgeText}>PROD</Text></View>
+          <Pressable
+            key={r.id}
+            onPress={() => onEdit(r)}
+            style={({ hovered }: any) => ({
+              flexDirection: 'row', alignItems: 'center', gap: 12,
+              paddingHorizontal: 12, paddingVertical: 12, borderRadius: 12,
+              backgroundColor: hovered ? '#FAFAFA' : '#FFFFFF',
+              borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+              ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+            })}
+          >
+            {/* Env indicator bar */}
+            <View style={{
+              width: 4, height: 32, borderRadius: 2,
+              backgroundColor: isProd ? '#DC2626' : '#10B981',
+            }} />
+
+            {/* Info */}
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }}>
+                  {def?.label ?? r.provider}
+                </Text>
+                {r.is_active && (
+                  <View style={{
+                    paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999,
+                    backgroundColor: 'rgba(16,185,129,0.12)',
+                  }}>
+                    <Text style={{ fontSize: 9, fontWeight: '800', color: '#059669', letterSpacing: 0.4 }}>AKTİF</Text>
+                  </View>
+                )}
+                {isProd && (
+                  <View style={{
+                    paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999,
+                    backgroundColor: 'rgba(220,38,38,0.12)',
+                  }}>
+                    <Text style={{ fontSize: 9, fontWeight: '800', color: '#DC2626', letterSpacing: 0.4 }}>PROD</Text>
+                  </View>
                 )}
               </View>
               {r.last_test_at && (
-                <Text style={s.rowMeta}>
-                  Son test: {new Date(r.last_test_at).toLocaleString('tr-TR')} ·
-                  {r.last_test_ok ? ' ✓ Başarılı' : ' ✗ Başarısız'}
+                <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 3 }} numberOfLines={1}>
+                  Son test: {new Date(r.last_test_at).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  {r.last_test_ok ? ' · ✓ Başarılı' : ' · ✗ Başarısız'}
                 </Text>
               )}
               {r.last_test_message && !r.last_test_ok && (
-                <Text style={s.errorText}>{r.last_test_message}</Text>
+                <Text style={{ fontSize: 11, color: '#DC2626', marginTop: 2 }} numberOfLines={2}>
+                  {r.last_test_message}
+                </Text>
               )}
             </View>
+
+            {/* Action icons */}
             <View style={{ flexDirection: 'row', gap: 4 }}>
-              <TouchableOpacity style={s.iconBtn} onPress={(e) => { e.stopPropagation(); onTest(r); }}>
-                <AppIcon name="flash" size={14} color="#0EA5E9" />
-              </TouchableOpacity>
+              <ActionIcon Icon={Zap} color="#0EA5E9" onPress={() => onTest(r)} />
               {!r.is_active && (
-                <TouchableOpacity style={s.iconBtn} onPress={(e) => { e.stopPropagation(); onActivate(r); }}>
-                  <AppIcon name="check" size={14} color="#10B981" />
-                </TouchableOpacity>
+                <ActionIcon Icon={Check} color="#10B981" onPress={() => onActivate(r)} />
               )}
-              <TouchableOpacity style={s.iconBtn} onPress={(e) => { e.stopPropagation(); onDelete(r); }}>
-                <AppIcon name="trash-can-outline" size={14} color="#DC2626" />
-              </TouchableOpacity>
+              <ActionIcon Icon={Trash2} color="#DC2626" onPress={() => onDelete(r)} />
             </View>
-          </TouchableOpacity>
+          </Pressable>
         );
       })}
     </View>
   );
 }
 
-// ─── Editor ───────────────────────────────────────────────────────────────
+function ActionIcon({ Icon, color, onPress }: { Icon: any; color: string; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={(e) => { e.stopPropagation?.(); onPress(); }}
+      style={({ hovered }: any) => ({
+        width: 30, height: 30, borderRadius: 8,
+        alignItems: 'center', justifyContent: 'center',
+        backgroundColor: hovered ? color + '14' : '#FAFAFA',
+        ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+      })}
+    >
+      <Icon size={14} color={color} strokeWidth={1.8} />
+    </Pressable>
+  );
+}
+
+// ─── Editor (Patterns §13) ─────────────────────────────────────────────────
 function CredentialEditor({
-  visible, type, record, onClose, onSaved,
+  visible, type, record, accentColor, onClose, onSaved,
 }: {
   visible: boolean;
   type: IntegrationType;
   record: ProviderCredential | null;
+  accentColor: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -228,7 +346,6 @@ function CredentialEditor({
 
   const handleSave = async () => {
     if (!def) return;
-    // Required field check
     for (const f of def.fields) {
       if (f.required && !credentials[f.key]?.toString().trim()) {
         toast.error(`${f.label} zorunlu`);
@@ -251,171 +368,241 @@ function CredentialEditor({
     onSaved();
   };
 
+  const FL: any = { fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[700], marginBottom: 6 };
+  const INP: any = {
+    height: 44, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
+    paddingHorizontal: 14, fontSize: 14, color: DS.ink[900], backgroundColor: '#FFFFFF',
+    ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
+  };
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={ed.overlay}>
-        <View style={ed.sheet}>
-          <View style={ed.header}>
-            <Text style={ed.title}>{record ? 'Sağlayıcıyı Düzenle' : `Yeni ${type === 'efatura' ? 'e-Fatura' : 'POS'} Sağlayıcı`}</Text>
-            <TouchableOpacity onPress={onClose} style={ed.closeBtn}>
-              <AppIcon name="close" size={18} color="#475569" />
-            </TouchableOpacity>
+      <View style={{ flex: 1, backgroundColor: 'rgba(10,10,10,0.55)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+        <View style={{
+          width: '100%', maxWidth: 540, maxHeight: '92%',
+          backgroundColor: '#FFFFFF', borderRadius: 24, overflow: 'hidden',
+          borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
+          ...Platform.select({
+            web:     { boxShadow: '0 24px 80px rgba(0,0,0,0.18)' } as any,
+            default: { shadowColor: '#000', shadowOffset: { width: 0, height: 16 }, shadowOpacity: 0.16, shadowRadius: 48, elevation: 12 },
+          }),
+        }}>
+          {/* Header */}
+          <View style={{
+            flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
+            paddingHorizontal: 28, paddingTop: 28, paddingBottom: 18,
+            borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
+          }}>
+            <Text style={{ ...DISPLAY, flex: 1, fontSize: 26, lineHeight: 30, letterSpacing: -0.6, color: DS.ink[900] }}>
+              {record ? 'Sağlayıcıyı Düzenle' : `Yeni ${type === 'efatura' ? 'e-Fatura' : 'POS'} Sağlayıcı`}
+            </Text>
+            <Pressable
+              onPress={onClose}
+              style={{
+                width: 32, height: 32, borderRadius: 8,
+                borderWidth: 1.5, borderColor: accentColor,
+                alignItems: 'center', justifyContent: 'center',
+                marginLeft: 12, marginTop: 2,
+                ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+              }}
+            >
+              <X size={14} color={accentColor} strokeWidth={2.2} />
+            </Pressable>
           </View>
 
-          <ScrollView contentContainerStyle={{ padding: 16, gap: 14 }}>
-            {/* Provider seçimi */}
+          {/* Body */}
+          <ScrollView contentContainerStyle={{ paddingHorizontal: 28, paddingVertical: 20, gap: 16 }} showsVerticalScrollIndicator={false}>
+
+            {/* Provider seç */}
             <View>
-              <Text style={ed.label}>Sağlayıcı</Text>
-              <View style={ed.chipRow}>
-                {providers.map(p => (
-                  <TouchableOpacity key={p.key}
-                    style={[ed.chip, providerKey === p.key && ed.chipActive, !p.implemented && p.key !== 'demo' && { opacity: 0.5 }]}
-                    onPress={() => { setProviderKey(p.key); setCredentials({}); }}
-                    disabled={!p.implemented && p.key !== 'demo' && false /* allow choose, just show "yakında" */}
-                  >
-                    <Text style={[ed.chipText, providerKey === p.key && ed.chipTextActive]}>{p.label}</Text>
-                    {!p.implemented && <Text style={ed.soonBadge}>yakında</Text>}
-                  </TouchableOpacity>
-                ))}
+              <Text style={FL}>Sağlayıcı</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {providers.map(p => {
+                  const sel = providerKey === p.key;
+                  return (
+                    <Pressable
+                      key={p.key}
+                      onPress={() => { setProviderKey(p.key); setCredentials({}); }}
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 5,
+                        paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
+                        borderWidth: 1.5,
+                        borderColor: sel ? accentColor : 'rgba(0,0,0,0.08)',
+                        backgroundColor: sel ? accentColor + '10' : '#FFFFFF',
+                        opacity: !p.implemented && p.key !== 'demo' ? 0.5 : 1,
+                        ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+                      }}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: sel ? '700' : '500', color: sel ? accentColor : DS.ink[700] }}>
+                        {p.label}
+                      </Text>
+                      {!p.implemented && (
+                        <Text style={{ fontSize: 9, fontWeight: '700', color: DS.ink[400], backgroundColor: '#F1F5F9', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 }}>
+                          yakında
+                        </Text>
+                      )}
+                    </Pressable>
+                  );
+                })}
               </View>
-              {def?.description && <Text style={ed.desc}>{def.description}</Text>}
-              {def?.pricing && <Text style={ed.pricing}>💰 {def.pricing}</Text>}
+              {def?.description && (
+                <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 8, lineHeight: 17 }}>{def.description}</Text>
+              )}
+              {def?.pricing && (
+                <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[800], marginTop: 4 }}>💰 {def.pricing}</Text>
+              )}
             </View>
 
             {/* Ortam */}
             <View>
-              <Text style={ed.label}>Ortam</Text>
-              <View style={ed.chipRow}>
-                {(['sandbox', 'production'] as const).map(env => (
-                  <TouchableOpacity key={env}
-                    style={[ed.chip, environment === env && (env === 'production' ? ed.chipDanger : ed.chipActive)]}
-                    onPress={() => setEnvironment(env)}
-                  >
-                    <Text style={[ed.chipText, environment === env && (env === 'production' ? { color: '#FFFFFF', fontWeight: '700' } : ed.chipTextActive)]}>
-                      {env === 'sandbox' ? 'Sandbox (Test)' : 'Production (Canlı)'}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+              <Text style={FL}>Ortam</Text>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                {(['sandbox', 'production'] as const).map(env => {
+                  const sel = environment === env;
+                  const isProd = env === 'production';
+                  return (
+                    <Pressable
+                      key={env}
+                      onPress={() => setEnvironment(env)}
+                      style={{
+                        flex: 1,
+                        paddingVertical: 9, borderRadius: 12, alignItems: 'center',
+                        borderWidth: 1.5,
+                        borderColor: sel ? (isProd ? '#DC2626' : accentColor) : 'rgba(0,0,0,0.08)',
+                        backgroundColor: sel
+                          ? (isProd ? '#DC2626' : accentColor + '10')
+                          : '#FAFAFA',
+                        ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+                      }}
+                    >
+                      <Text style={{
+                        fontSize: 13, fontWeight: sel ? '700' : '500',
+                        color: sel ? (isProd ? '#FFFFFF' : accentColor) : DS.ink[700],
+                      }}>
+                        {env === 'sandbox' ? 'Sandbox · Test' : 'Production · Canlı'}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
               {environment === 'production' && (
-                <Text style={ed.warnText}>
-                  ⚠️ Production key'leri client tarafına asla bırakma. Edge Function yapılandır.
-                </Text>
+                <View style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                  marginTop: 8, padding: 10, borderRadius: 10,
+                  backgroundColor: 'rgba(220,38,38,0.08)',
+                }}>
+                  <ShieldAlert size={13} color="#DC2626" strokeWidth={1.8} />
+                  <Text style={{ flex: 1, fontSize: 11, color: '#991B1B', lineHeight: 16 }}>
+                    Production key'leri client tarafına asla bırakma. Edge Function yapılandır.
+                  </Text>
+                </View>
               )}
             </View>
 
             {/* Dinamik provider alanları */}
             {def?.fields.map(f => (
               <View key={f.key}>
-                <Text style={ed.label}>{f.label}{f.required ? ' *' : ''}</Text>
+                <Text style={FL}>{f.label}{f.required ? ' *' : ''}</Text>
                 {f.type === 'select' ? (
-                  <View style={ed.chipRow}>
-                    {f.options?.map(opt => (
-                      <TouchableOpacity key={opt.value}
-                        style={[ed.chip, credentials[f.key] === opt.value && ed.chipActive]}
-                        onPress={() => setCredentials(c => ({ ...c, [f.key]: opt.value }))}
-                      >
-                        <Text style={[ed.chipText, credentials[f.key] === opt.value && ed.chipTextActive]}>{opt.label}</Text>
-                      </TouchableOpacity>
-                    ))}
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                    {f.options?.map(opt => {
+                      const sel = credentials[f.key] === opt.value;
+                      return (
+                        <Pressable
+                          key={opt.value}
+                          onPress={() => setCredentials(c => ({ ...c, [f.key]: opt.value }))}
+                          style={{
+                            paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
+                            borderWidth: 1.5,
+                            borderColor: sel ? accentColor : 'rgba(0,0,0,0.08)',
+                            backgroundColor: sel ? accentColor + '10' : '#FFFFFF',
+                            ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+                          }}
+                        >
+                          <Text style={{ fontSize: 12, fontWeight: sel ? '700' : '500', color: sel ? accentColor : DS.ink[700] }}>
+                            {opt.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
                   </View>
                 ) : (
                   <TextInput
-                    style={ed.input}
+                    style={INP}
                     value={credentials[f.key] ?? ''}
                     onChangeText={v => setCredentials(c => ({ ...c, [f.key]: v }))}
                     placeholder={f.placeholder}
-                    placeholderTextColor="#94A3B8"
+                    placeholderTextColor={DS.ink[400]}
                     secureTextEntry={f.type === 'password'}
                     autoCapitalize="none"
                     autoCorrect={false}
                   />
                 )}
-                {f.helpText && <Text style={ed.help}>{f.helpText}</Text>}
+                {f.helpText && (
+                  <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 4, lineHeight: 15 }}>
+                    {f.helpText}
+                  </Text>
+                )}
               </View>
             ))}
 
             {/* Notlar */}
             <View>
-              <Text style={ed.label}>Notlar</Text>
+              <Text style={FL}>Notlar</Text>
               <TextInput
-                style={[ed.input, { minHeight: 56 }]}
+                style={[INP, { minHeight: 64, paddingTop: 12, textAlignVertical: 'top' as any }]}
                 multiline value={notes} onChangeText={setNotes}
                 placeholder="İsteğe bağlı"
-                placeholderTextColor="#94A3B8"
+                placeholderTextColor={DS.ink[400]}
               />
             </View>
           </ScrollView>
 
-          <View style={ed.footer}>
-            <TouchableOpacity style={ed.cancelBtn} onPress={onClose}>
-              <Text style={ed.cancelText}>İptal</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[ed.saveBtn, saving && { opacity: 0.6 }]} onPress={handleSave} disabled={saving}>
-              <Text style={ed.saveText}>{saving ? 'Kaydediliyor...' : 'Kaydet'}</Text>
-            </TouchableOpacity>
+          {/* Footer — Patterns §13 */}
+          <View style={{
+            flexDirection: 'row', justifyContent: 'flex-end', gap: 8,
+            paddingHorizontal: 28, paddingVertical: 16,
+            borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
+          }}>
+            <Pressable
+              onPress={onClose}
+              disabled={saving}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 5,
+                paddingHorizontal: 18, paddingVertical: 9, borderRadius: 999,
+                borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.12)',
+                opacity: saving ? 0.5 : 1,
+                ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+              }}
+            >
+              <X size={12} color={DS.ink[500]} strokeWidth={2.5} />
+              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500] }}>İptal</Text>
+            </Pressable>
+            <Pressable
+              onPress={handleSave}
+              disabled={saving}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 7,
+                paddingHorizontal: 18, paddingVertical: 9, borderRadius: 999,
+                backgroundColor: DS.ink[900],
+                opacity: saving ? 0.5 : 1,
+                ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+              }}
+            >
+              {saving ? (
+                <ActivityIndicator color="#FFF" size="small" />
+              ) : (
+                <>
+                  <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: accentColor }} />
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>
+                    {record ? 'Güncelle' : 'Kaydet'}
+                  </Text>
+                </>
+              )}
+            </Pressable>
           </View>
         </View>
       </View>
     </Modal>
   );
 }
-
-// ─── Styles ───────────────────────────────────────────────────────────────
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: CardSpec.pageBg },
-
-  warnBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, padding: 14, borderRadius: 12, backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FDE68A' },
-  warnTitle: { fontSize: 13, fontWeight: '800', color: '#92400E', marginBottom: 2 },
-  warnText:  { fontSize: 12, color: '#78350F', lineHeight: 18 },
-
-  section: { backgroundColor: CardSpec.bg, borderRadius: CardSpec.radius, borderWidth: 1, borderColor: CardSpec.border, padding: 14, gap: 10, ...Shadows.card } as any,
-  sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  sectionIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  sectionTitle: { flex: 1, fontSize: 14, fontWeight: '800', color: '#0F172A' },
-  addBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
-  addBtnText: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
-
-  emptyHint: { fontSize: 12, color: '#94A3B8', fontStyle: 'italic', paddingVertical: 6 },
-
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 10, borderWidth: 1, borderColor: '#F1F5F9', backgroundColor: '#FFFFFF' },
-  envDot: { width: 6, height: 28, borderRadius: 3 },
-  rowName: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
-  rowMeta: { fontSize: 11, color: '#94A3B8', marginTop: 2 },
-  errorText: { fontSize: 11, color: '#DC2626', marginTop: 2 },
-  activeBadge: { backgroundColor: '#10B981', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4 },
-  activeBadgeText: { fontSize: 9, fontWeight: '800', color: '#FFFFFF', letterSpacing: 0.4 },
-  prodBadge: { backgroundColor: '#DC2626', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4 },
-  prodBadgeText: { fontSize: 9, fontWeight: '800', color: '#FFFFFF', letterSpacing: 0.4 },
-  iconBtn: { width: 28, height: 28, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8FAFC' },
-});
-
-const ed = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  sheet:   { width: '100%', maxWidth: 540, maxHeight: '92%', backgroundColor: CardSpec.bg, borderRadius: CardSpec.radius, borderWidth: 1, borderColor: CardSpec.border, overflow: 'hidden', ...Shadows.card } as any,
-  header:  { flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  title:   { flex: 1, fontSize: 16, fontWeight: '800', color: '#0F172A' },
-  closeBtn:{ width: 32, height: 32, borderRadius: 8, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
-
-  label:   { fontSize: 11, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  chip:    { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#FFFFFF' },
-  chipActive: { borderColor: '#2563EB', backgroundColor: '#EFF6FF' },
-  chipDanger: { borderColor: '#DC2626', backgroundColor: '#DC2626' },
-  chipText:{ fontSize: 12, color: '#64748B', fontWeight: '600' },
-  chipTextActive: { color: '#2563EB', fontWeight: '700' },
-  soonBadge: { fontSize: 9, color: '#94A3B8', backgroundColor: '#F1F5F9', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, fontWeight: '700' },
-
-  desc:    { fontSize: 12, color: '#64748B', marginTop: 6, lineHeight: 18 },
-  pricing: { fontSize: 12, fontWeight: '600', color: '#0F172A', marginTop: 4 },
-  warnText:{ fontSize: 11, color: '#DC2626', marginTop: 6 },
-  help:    { fontSize: 11, color: '#94A3B8', marginTop: 4 },
-
-  input:   { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: '#0F172A', backgroundColor: '#FFFFFF' },
-
-  footer:  { flexDirection: 'row', gap: 10, padding: 14, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
-  cancelBtn:  { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0' },
-  cancelText: { fontSize: 14, fontWeight: '600', color: '#475569' },
-  saveBtn:    { flex: 1, paddingHorizontal: 22, paddingVertical: 10, borderRadius: 10, backgroundColor: '#2563EB', alignItems: 'center' },
-  saveText:   { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
-});

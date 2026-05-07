@@ -43,9 +43,15 @@ import { F } from '../../../core/theme/typography';
 import { AppSwitch } from '../../../core/ui/AppSwitch';
 import { EkartorluIcon } from '../../../components/icons/EkartorluIcon';
 import { GulushIcon } from '../../../components/icons/GulushIcon';
-import { ModelViewer } from '../../../src/components/viewer/ModelViewer';
-import { OcclusionAnalysisModal } from '../../occlusion/components/OcclusionAnalysisModal';
 import type { OcclusionAnalysisResult } from '../../occlusion/types/occlusion';
+
+const ModelViewer = Platform.OS === 'web'
+  ? React.lazy(() => import('../../../src/components/viewer/ModelViewer').then(m => ({ default: m.ModelViewer })))
+  : () => null;
+
+const OcclusionAnalysisModal = Platform.OS === 'web'
+  ? React.lazy(() => import('../../occlusion/components/OcclusionAnalysisModal').then(m => ({ default: m.OcclusionAnalysisModal })))
+  : () => null;
 
 import { AppIcon } from '../../../core/ui/AppIcon';
 import {
@@ -319,11 +325,47 @@ function WithTooltip({
 // InfoTooltip artık kullanılmıyor — WithTooltip ile değiştirildi
 function InfoTooltip(_props: { text: string; color?: string }) { return null; }
 
+export type NewOrderPanel = 'lab' | 'doctor' | 'clinic' | 'admin';
+
+// Panel-specific accent colors + persona-aware texts
+const PANEL_THEMES: Record<NewOrderPanel, {
+  accent:   string;
+  title:    string;
+  headerStep1: { lead: string; em: string; tail: string };
+  submitLabel: string;
+}> = {
+  lab: {
+    accent:      '#2563EB', // lab blue
+    title:       'Yeni İş Emri',
+    headerStep1: { lead: 'Önce ',  em: 'kim için', tail: ' çalışıyoruz?' },
+    submitLabel: '✓ İş emrini oluştur',
+  },
+  doctor: {
+    accent:      '#0EA5E9', // doctor sky
+    title:       'Yeni Sipariş',
+    headerStep1: { lead: 'Hangi ', em: 'hasta',    tail: ' için çalışıyoruz?' },
+    submitLabel: '✓ Laboratuvara gönder',
+  },
+  clinic: {
+    accent:      '#0369A1', // clinic deeper sky
+    title:       'Yeni Sipariş',
+    headerStep1: { lead: 'Hangi ', em: 'hekim',    tail: ' için çalışıyoruz?' },
+    submitLabel: '✓ Laboratuvara gönder',
+  },
+  admin: {
+    accent:      '#EA7A4C', // admin coral
+    title:       'Yeni Sipariş',
+    headerStep1: { lead: 'Önce ',  em: 'kim için', tail: ' çalışıyoruz?' },
+    submitLabel: '✓ Siparişi oluştur',
+  },
+};
+
 export function NewOrderScreen({
   accentColor,
   onClose,
   doctorMode = false,
   clinicMode = false,
+  panel,
 }: {
   accentColor?: string;
   onClose?: () => void;
@@ -338,10 +380,21 @@ export function NewOrderScreen({
    * ancak sadece kendi kliniğindeki hekimler listelenir.
    */
   clinicMode?: boolean;
+  /**
+   * Panel kimliği — başlık, alt yazılar ve aksent rengi buna göre seçilir.
+   * Verilmezse doctorMode/clinicMode'dan türetilir.
+   */
+  panel?: NewOrderPanel;
 }) {
-  const P     = accentColor ?? C.primary;
-  const PBg   = accentColor ? '#F1F5F9' : C.primaryBg;
-  const PLight = accentColor ? '#1E293B' : C.primaryLight;
+  // Panel kimliğini türet — açıkça verilmemişse mode flag'lerinden çıkar
+  const resolvedPanel: NewOrderPanel = panel
+    ?? (doctorMode ? 'doctor' : clinicMode ? 'clinic' : 'lab');
+  const theme = PANEL_THEMES[resolvedPanel];
+
+  // accentColor explicit verilmişse onu kullan, yoksa panel teması
+  const P     = accentColor ?? theme.accent;
+  const PBg   = '#F1F5F9';
+  const PLight = '#1E293B';
   const styles = useMemo(() => makeStyles(P), [P]);
   const fus    = useMemo(() => makeFusStyles(P), [P]);
   const s2     = useMemo(() => makeS2Styles(P), [P]);
@@ -375,7 +428,7 @@ export function NewOrderScreen({
   const setPageTitle = usePageTitleStore(s => s.setTitle);
   const clearPageTitle = usePageTitleStore(s => s.clear);
   useEffect(() => {
-    setPageTitle('Yeni Sipariş');
+    setPageTitle(theme.title);
     return () => clearPageTitle();
   }, []);
 
@@ -583,11 +636,14 @@ export function NewOrderScreen({
       doctorsPromise,
       fetchLabServices(),
       supabase.from('materials').select('name,price').eq('is_active', true),
-    ]).then(([clinicsRes, doctorsRes, servicesRes, matsRes]) => {
-      setClinics((clinicsRes.data as Clinic[]) ?? []);
+    ]).catch((err) => {
+      console.warn('[new-order] data fetch failed:', err?.message ?? err);
+      return [{ data: [] }, { data: [] }, { data: [] }, { data: [] }] as any;
+    }).then(([clinicsRes, doctorsRes, servicesRes, matsRes]) => {
+      setClinics((clinicsRes?.data as Clinic[]) ?? []);
       // clinicMode: view'dan gelen satırları Doctor tipine map et
       if (clinicMode) {
-        const rows = ((doctorsRes.data as any[]) ?? []).map(d => ({
+        const rows = ((doctorsRes?.data as any[]) ?? []).map(d => ({
           id: d.id,
           full_name: d.full_name,
           phone: d.phone,
@@ -596,11 +652,11 @@ export function NewOrderScreen({
         }));
         setAllDoctors(rows as unknown as Doctor[]);
       } else {
-        setAllDoctors((doctorsRes.data as Doctor[]) ?? []);
+        setAllDoctors((doctorsRes?.data as Doctor[]) ?? []);
       }
-      setServices((servicesRes.data as LabService[]) ?? []);
+      setServices((servicesRes?.data as LabService[]) ?? []);
       const priceMap: Record<string, number> = {};
-      ((matsRes.data ?? []) as { name: string; price: number }[]).forEach(m => {
+      ((matsRes?.data ?? []) as { name: string; price: number }[]).forEach(m => {
         priceMap[m.name] = m.price;
       });
       setMaterialPrices(priceMap);
@@ -1217,6 +1273,9 @@ ${form.notes ? `<div class="card">
     </SafeAreaView>
   );
 
+  // Mobile uses the same web new-order module — fall through to the
+  // existing form below. (B4 simplified flow disabled per user request.)
+
   return (
     <SafeAreaView style={styles.safe}>
       {/* ── Taslak seçim modalı: mevcut taslak varsa ilk açılışta sorar ── */}
@@ -1291,7 +1350,7 @@ ${form.notes ? `<div class="card">
 
       <NOPageChrome
         step={step}
-        title="Yeni Sipariş"
+        title={theme.title}
         hekim={selectedDoctor?.full_name}
         hasta={form.patient_first_name ? `${form.patient_first_name} ${form.patient_last_name}`.trim() : undefined}
         toothCount={form.tooth_ops.length || undefined}
@@ -1299,7 +1358,7 @@ ${form.notes ? `<div class="card">
         onStepPress={(s) => goToStep(s as Step)}
         onBack={step > 1 ? () => goToStep((step - 1) as Step) : undefined}
         onNext={step < 4 ? handleNext : handleSubmit}
-        nextLabel={step < 4 ? 'İleri' : '✓ Hekime gönder & kaydet'}
+        nextLabel={step < 4 ? 'İleri' : theme.submitLabel}
         actionPrimary={step === 4 ? 'success' : 'dark'}
         loading={loading}
         savedTime={lastSavedAt ? fmtDraftTime(lastSavedAt) : undefined}
@@ -1310,9 +1369,9 @@ ${form.notes ? `<div class="card">
       {step === 1 && (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }} keyboardShouldPersistTaps="handled">
 
-          {/* Step header */}
+          {/* Step header — panel-aware */}
           <NOStepHeader step={1}>
-            Önce <NOEmText>kim için</NOEmText> çalışıyoruz?
+            {theme.headerStep1.lead}<NOEmText>{theme.headerStep1.em}</NOEmText>{theme.headerStep1.tail}
           </NOStepHeader>
 
           {/* 2 kart: Klinik & hekim (dar) + Hasta bilgileri (geniş) */}
@@ -1321,7 +1380,7 @@ ${form.notes ? `<div class="card">
             {/* ── Kart 1: Klinik & hekim ── */}
             <View style={{ flex: 1 }}>
               <NOCard>
-                <NOCardHead num={1} title="Klinik & hekim" sub="Vakanın bağlı olduğu klinik ve hekim" />
+                <NOCardHead num={1} title="Klinik & hekim" sub="Vakanın bağlı olduğu klinik ve hekim" accent={P} />
 
                 {clinicMode ? (
                   <View style={{ gap: 12 }}>
@@ -1411,6 +1470,7 @@ ${form.notes ? `<div class="card">
                   title="Hasta bilgileri"
                   sub="Mevcut hastayı seç veya yeni ekle"
                   badge="Yeni"
+                  accent={P}
                 />
 
                 {/* Satır 1: Ad + Soyad */}
@@ -1530,7 +1590,7 @@ ${form.notes ? `<div class="card">
             {/* ── Kart 1: Çalışma yöntemi ── */}
             <View style={{ flex: 1 }}>
               <NOCard>
-                <NOCardHead num={1} title="Çalışma yöntemi" sub="Ölçüm ve model tipi" />
+                <NOCardHead num={1} title="Çalışma yöntemi" sub="Ölçüm ve model tipi" accent={P} />
                 <View style={{ gap: 12 }}>
                   <InlineSelect
                     label="* Ölçüm yöntemi"
@@ -1577,7 +1637,7 @@ ${form.notes ? `<div class="card">
             {/* ── Kart 2: Teslimat ── */}
             <View style={{ flex: 1 }}>
               <NOCard>
-                <NOCardHead num={2} title="Teslimat" sub="En geç teslim tarihi ve yöntemi" />
+                <NOCardHead num={2} title="Teslimat" sub="En geç teslim tarihi ve yöntemi" accent={P} />
                 <View style={{ gap: 12 }}>
                   <InlineDateSelect
                     label="* Teslim tarihi"
@@ -1621,7 +1681,7 @@ ${form.notes ? `<div class="card">
 
           {/* ── Dosyalar ── */}
           <NOCard>
-            <NOCardHead num={3} title="Dosyalar & ölçüm" sub="STL, PLY, JPG, PDF — maks 200 MB" badge={form.attachments.length > 0 ? `${form.attachments.length} dosya · ${formatBytes(form.attachments.reduce((s, a) => s + (a.size || 0), 0))}` : undefined} />
+            <NOCardHead num={3} title="Dosyalar & ölçüm" sub="STL, PLY, JPG, PDF — maks 200 MB" badge={form.attachments.length > 0 ? `${form.attachments.length} dosya · ${formatBytes(form.attachments.reduce((s, a) => s + (a.size || 0), 0))}` : undefined} accent={P} />
 
             <View style={[fus.twoCol, !isDesktop && { flexDirection: 'column', gap: 16 }]}>
 
@@ -2035,15 +2095,19 @@ ${form.notes ? `<div class="card">
                             <View style={{ paddingHorizontal: 14, paddingBottom: 14 }}>
                               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                                 <AppIcon name={'office-building-marker-outline' as any} size={20} color={form.implant_brand ? '#22C55E' : '#8B5CF6'} />
-                                <Text style={[fus.uploadCardLabel, { color: form.implant_brand ? '#0F172A' : '#64748B', flex: 1 }]}>
-                                  İmplant Marka{form.implant_brand ? ': ' : ''}
-                                  {form.implant_brand ? <Text style={{ color: '#8B5CF6' }}>{form.implant_brand}</Text> : null}
-                                </Text>
-                                {form.implant_brand && (
+                                {form.implant_brand ? (
+                                  <Text style={[fus.uploadCardLabel, { color: '#0F172A', flex: 1 }]}>
+                                    <Text>{'İmplant Marka: '}</Text>
+                                    <Text style={{ color: '#8B5CF6' }}>{form.implant_brand}</Text>
+                                  </Text>
+                                ) : (
+                                  <Text style={[fus.uploadCardLabel, { color: '#64748B', flex: 1 }]}>İmplant Marka</Text>
+                                )}
+                                {form.implant_brand ? (
                                   <TouchableOpacity onPress={() => { setForm(f => ({ ...f, implant_brand: '' })); setImplantBrandSearch(''); setImplantBrandDropOpen(false); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                                     <AppIcon name={'close-circle' as any} size={16} color="#CBD5E1" />
                                   </TouchableOpacity>
-                                )}
+                                ) : null}
                               </View>
                               {/* Search input + dropdown container */}
                               <View style={{ position: 'relative' as any }}>
@@ -2061,7 +2125,8 @@ ${form.notes ? `<div class="card">
                                   onFocus={() => { measureImplantInput(); setImplantBrandDropOpen(true); }}
                                 />
                               </View>
-                              </View>{/* end search row */}
+                              </View>
+                              {/* end search row */}
                               {implantBrandDropOpen && implantDropPos && (
                                 <WebPortal>
                                   {/* Backdrop to close on outside click */}
@@ -2304,6 +2369,7 @@ ${form.notes ? `<div class="card">
                   num={1}
                   title="Diş seçimi"
                   sub="Şema üzerinden seç"
+                  accent={P}
                   headerRight={
                     <View style={{ flexDirection: 'row', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
                       {([
@@ -2415,6 +2481,7 @@ ${form.notes ? `<div class="card">
                       title="İş detayı"
                       sub={validTooth ? `Diş ${validTooth} düzenleniyor` : 'Diş seçin'}
                       badge={validTooth ? 'Aktif' : undefined}
+                      accent={P}
                     />
                     {!validTooth ? (
                       <View style={{ paddingVertical: 16, alignItems: 'center', opacity: 0.45 }}>
@@ -2501,6 +2568,7 @@ ${form.notes ? `<div class="card">
                       num={3}
                       title="İş listesi"
                       badge={confirmed.length > 0 ? `${confirmed.length} diş · ₺${totalPrice.toLocaleString('tr-TR')}` : undefined}
+                      accent={P}
                     />
                     {confirmed.length === 0 ? (
                       <View style={{ paddingVertical: 20, alignItems: 'center', gap: 6, opacity: 0.5 }}>
@@ -2679,7 +2747,7 @@ ${form.notes ? `<div class="card">
 
             {/* ── Kart 1: Sipariş özeti ── */}
             <NOCard>
-              <NOCardHead num={1} title="Sipariş özeti" sub="Tüm adımların kısa görünümü" />
+              <NOCardHead num={1} title="Sipariş özeti" sub="Tüm adımların kısa görünümü" accent={P} />
 
               {/* Klinik & Hasta */}
               <View style={{ gap: 10 }}>
@@ -2738,7 +2806,7 @@ ${form.notes ? `<div class="card">
               const grandTotal = totalMat + totalLabor;
               return (
                 <NOCard>
-                  <NOCardHead num={2} title="İşlemler" sub={`${ops.length} diş`} badge={grandTotal > 0 ? `₺${grandTotal.toLocaleString('tr-TR')}` : undefined} />
+                  <NOCardHead num={2} title="İşlemler" sub={`${ops.length} diş`} badge={grandTotal > 0 ? `₺${grandTotal.toLocaleString('tr-TR')}` : undefined} accent={P} />
                   {ops.length === 0 ? (
                     <View style={{ paddingVertical: 16, alignItems: 'center', opacity: 0.5 }}>
                       <Text style={{ fontSize: 12, color: NO.inkMute }}>Henüz işlem eklenmedi</Text>
@@ -2797,7 +2865,7 @@ ${form.notes ? `<div class="card">
             {/* ── Kart 3: Dosyalar özeti ── */}
             {form.attachments.length > 0 && (
               <NOCard>
-                <NOCardHead num={3} title="Dosyalar" badge={`${form.attachments.length} dosya · ${formatBytes(form.attachments.reduce((s, a) => s + (a.size || 0), 0))}`} />
+                <NOCardHead num={3} title="Dosyalar" badge={`${form.attachments.length} dosya · ${formatBytes(form.attachments.reduce((s, a) => s + (a.size || 0), 0))}`} accent={P} />
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                   {form.attachments.map(a => (
                     <View key={a.id} style={{
@@ -2815,7 +2883,7 @@ ${form.notes ? `<div class="card">
 
             {/* ── Kart 4: Hekime not ── */}
             <NOCard>
-              <NOCardHead num={form.attachments.length > 0 ? 4 : 3} title="Hekime not" sub="Opsiyonel · vaka kartında gözükür" />
+              <NOCardHead num={form.attachments.length > 0 ? 4 : 3} title="Hekime not" sub="Opsiyonel · vaka kartında gözükür" accent={P} />
               <View style={{
                 padding: 12, paddingHorizontal: 14,
                 backgroundColor: NO.bgInput, borderRadius: 11,

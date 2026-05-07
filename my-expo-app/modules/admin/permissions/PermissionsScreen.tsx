@@ -24,8 +24,9 @@ import {
 } from '../../../core/store/permissionStore';
 import {
   Shield, Users, Wrench, Stethoscope, Building2, Truck,
-  Check, Save, RotateCcw,
+  Check, Save, RotateCcw, Lock,
 } from 'lucide-react-native';
+import { useAuthStore } from '../../../core/store/authStore';
 
 // ─── Patterns Tokens ─────────────────────────────────────────
 const DISPLAY = {
@@ -49,12 +50,13 @@ const CHIP_TONES = {
 
 // ─── Role config ─────────────────────────────────────────────
 // Admin is excluded — admin always has full access, no need to manage
-const ROLE_CONFIG: { key: RoleKey; icon: React.ComponentType<any>; accent: string }[] = [
-  { key: 'lab_manager',  icon: Users,     accent: '#2563EB' },
-  { key: 'technician',   icon: Wrench,    accent: '#6366F1' },
-  { key: 'doctor',       icon: Stethoscope, accent: '#059669' },
-  { key: 'clinic_admin', icon: Building2, accent: '#D97706' },
-  { key: 'courier',      icon: Truck,     accent: '#0EA5E9' },
+// Renkler panel `accentColor` prop'undan gelir; her rol için sadece ikon farklı.
+const ROLE_CONFIG: { key: RoleKey; icon: React.ComponentType<any> }[] = [
+  { key: 'lab_manager',  icon: Users      },
+  { key: 'technician',   icon: Wrench     },
+  { key: 'doctor',       icon: Stethoscope },
+  { key: 'clinic_admin', icon: Building2  },
+  { key: 'courier',      icon: Truck      },
 ];
 
 // ═════════════════════════════════════════════════════════════
@@ -68,11 +70,18 @@ export function PermissionsSection(props: PermissionsScreenProps) {
   return <PermissionsScreen {...props} />;
 }
 
-export function PermissionsScreen({ embedded = false, accentColor }: PermissionsScreenProps = {}) {
+export function PermissionsScreen({ embedded = false, accentColor = '#EA7A4C' }: PermissionsScreenProps = {}) {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1024;
   const { setTitle, clear } = usePageTitleStore();
   const { fetchPermissions: refreshMyPerms } = usePermissionStore();
+  const { profile } = useAuthStore();
+
+  // ── Admin-only gate — sadece admin user_type yetki yönetebilir ──
+  // Lab manager, klinik admin, doctor vs. bu sayfayı açamasın bile.
+  // RPC seviyesinde de korumalı (set_role_permissions admin check yapar) ama
+  // UI'da da net feedback ver.
+  const isAdmin = profile?.user_type === 'admin';
 
   useEffect(() => {
     if (!embedded) {
@@ -80,6 +89,36 @@ export function PermissionsScreen({ embedded = false, accentColor }: Permissions
       return clear;
     }
   }, [embedded]);
+
+  // Admin değilse — kilitli kart göster
+  if (profile && !isAdmin) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 }}>
+        <View style={{
+          width: '100%', maxWidth: 460,
+          backgroundColor: '#FFFFFF', borderRadius: 24, padding: 32,
+          borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
+          alignItems: 'center', gap: 16,
+          ...(Platform.OS === 'web' ? { boxShadow: '0 8px 24px rgba(0,0,0,0.06)' } : {}),
+        } as any}>
+          <View style={{
+            width: 56, height: 56, borderRadius: 28,
+            backgroundColor: 'rgba(220,38,38,0.10)',
+            alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Lock size={26} color="#DC2626" strokeWidth={1.8} />
+          </View>
+          <Text style={{ ...DISPLAY, fontSize: 22, lineHeight: 26, letterSpacing: -0.4, color: DS.ink[900], textAlign: 'center' }}>
+            Yetki yönetimi
+          </Text>
+          <Text style={{ fontSize: 14, color: DS.ink[500], textAlign: 'center', lineHeight: 20 }}>
+            Rol bazlı izin atama yalnızca <Text style={{ fontWeight: '700', color: DS.ink[900] }}>admin</Text> kullanıcıları tarafından yapılabilir.
+            Kullanıcı rollerini düzenlemek için <Text style={{ fontWeight: '600', color: DS.ink[800] }}>Ekip → Çalışanlar → Düzenle</Text> sekmesine gidin.
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   const [activeRole, setActiveRole] = useState<RoleKey>('lab_manager');
   const [rolePerms, setRolePerms] = useState<Set<string>>(new Set());
@@ -184,19 +223,19 @@ export function PermissionsScreen({ embedded = false, accentColor }: Permissions
         }}
       >
         {isActive && (
-          <View style={{ width: 3, height: 16, borderRadius: 2, backgroundColor: r.accent, marginLeft: -6, marginRight: 4 }} />
+          <View style={{ width: 3, height: 16, borderRadius: 2, backgroundColor: accentColor, marginLeft: -6, marginRight: 4 }} />
         )}
         <View style={{
           width: 28, height: 28, borderRadius: 8,
-          backgroundColor: isActive ? r.accent + '14' : 'transparent',
+          backgroundColor: isActive ? accentColor + '14' : 'transparent',
           alignItems: 'center', justifyContent: 'center',
         }}>
-          <RIcon size={15} strokeWidth={isActive ? 2 : 1.6} color={isActive ? r.accent : '#9A9A9A'} />
+          <RIcon size={15} strokeWidth={isActive ? 2 : 1.6} color={isActive ? accentColor : '#9A9A9A'} />
         </View>
         <Text style={{ fontSize: 13, fontWeight: isActive ? '600' : '400', color: isActive ? '#0A0A0A' : '#6B6B6B', flex: 1 }}>
           {ROLE_LABELS[r.key]}
         </Text>
-        {isActive && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: r.accent }} />}
+        {isActive && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: accentColor }} />}
       </Pressable>
     );
   };
@@ -204,7 +243,7 @@ export function PermissionsScreen({ embedded = false, accentColor }: Permissions
   // ── Permission groups content ──
   const renderPermissions = () => {
     if (loading) {
-      return <ActivityIndicator size="large" color={activeConfig.accent} style={{ marginTop: 60 }} />;
+      return <ActivityIndicator size="large" color={accentColor} style={{ marginTop: 60 }} />;
     }
 
     return (
@@ -248,7 +287,7 @@ export function PermissionsScreen({ embedded = false, accentColor }: Permissions
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 5,
                 paddingHorizontal: 14, paddingVertical: 7, borderRadius: 9999,
-                backgroundColor: hasChanges ? activeConfig.accent : DS.ink[200],
+                backgroundColor: hasChanges ? accentColor : DS.ink[200],
                 opacity: saving ? 0.6 : 1,
                 ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
               } as any}
@@ -322,8 +361,8 @@ export function PermissionsScreen({ embedded = false, accentColor }: Permissions
                     <Switch
                       value={isOn}
                       onValueChange={() => togglePerm(key)}
-                      trackColor={{ false: DS.ink[200], true: activeConfig.accent + '80' }}
-                      thumbColor={isOn ? activeConfig.accent : '#f4f3f4'}
+                      trackColor={{ false: DS.ink[200], true: accentColor + '80' }}
+                      thumbColor={isOn ? accentColor : '#f4f3f4'}
                       style={Platform.OS === 'web' ? { transform: [{ scale: 0.8 }] } : undefined}
                     />
                   </View>
@@ -357,12 +396,12 @@ export function PermissionsScreen({ embedded = false, accentColor }: Permissions
                   style={{
                     flexDirection: 'row', alignItems: 'center', gap: 5,
                     paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9999,
-                    backgroundColor: isActive ? r.accent : 'transparent',
+                    backgroundColor: isActive ? accentColor : 'transparent',
                     // @ts-ignore web
                     cursor: 'pointer',
                   }}
                 >
-                  <RIcon size={12} strokeWidth={isActive ? 2.2 : 1.8} color={isActive ? '#FFF' : r.accent} />
+                  <RIcon size={12} strokeWidth={isActive ? 2.2 : 1.8} color={isActive ? '#FFF' : accentColor} />
                   <Text style={{ fontSize: 11, fontWeight: isActive ? '700' : '600', color: isActive ? '#FFF' : DS.ink[500] }}>
                     {ROLE_LABELS[r.key]}
                   </Text>
@@ -418,10 +457,10 @@ export function PermissionsScreen({ embedded = false, accentColor }: Permissions
                     style={{
                       flexDirection: 'row', alignItems: 'center', gap: 5,
                       paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9999,
-                      backgroundColor: isActive ? r.accent : 'transparent',
+                      backgroundColor: isActive ? accentColor : 'transparent',
                     }}
                   >
-                    <RIcon size={12} strokeWidth={isActive ? 2.2 : 1.8} color={isActive ? '#FFF' : r.accent} />
+                    <RIcon size={12} strokeWidth={isActive ? 2.2 : 1.8} color={isActive ? '#FFF' : accentColor} />
                     <Text style={{ fontSize: 11, fontWeight: isActive ? '700' : '600', color: isActive ? '#FFF' : DS.ink[500] }}>
                       {ROLE_LABELS[r.key]}
                     </Text>

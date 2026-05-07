@@ -1,12 +1,16 @@
 import { useState, useEffect } from 'react';
-import { Modal } from 'react-native';
+import { Modal, View } from 'react-native';
 import { Tabs, useRouter } from 'expo-router';
 import { C as Colors } from '../../core/theme/colors';
 import { PatternsShell, useIsDesktop } from '../../core/layout/PatternsShell';
+import { MobileHeader } from '../../core/ui/MobileHeader';
 import { usePendingApprovals as useDesignPending } from '../../modules/approvals/hooks/usePendingApprovals';
 import { useStockAlert } from '../../core/hooks/useStockAlert';
-import { MobileTabBar, type MobileTabItem } from '../../core/ui/MobileTabBar';
+import { MobileTabBar } from '../../core/ui/MobileTabBar';
+import type { MobileTabItem } from '../../core/ui/MobileTabBar';
 import { NewOrderScreen } from '../../modules/orders/screens/NewOrderScreen';
+import { ScanB6Mobile } from '../../modules/orders/screens/ScanB6Mobile';
+import { useThemeModeStore } from '../../core/store/themeModeStore';
 import { MessagesPopup } from '../../modules/orders/components/MessagesPopup';
 // usePendingLeaveCount removed — leave tracking no longer in this module
 import { useAuthStore } from '../../core/store/authStore';
@@ -36,6 +40,8 @@ export default function LabLayout() {
 
   const [newOrderOpen, setNewOrderOpen] = useState(false);
   const [messagesOpen, setMessagesOpen] = useState(false);
+  const [scanOpen,     setScanOpen]     = useState(false);
+  const isDark = useThemeModeStore(s => s.resolvedDark);
 
   // Load saved color theme
   const { getTheme, loadTheme } = useColorThemeStore();
@@ -80,14 +86,14 @@ export default function LabLayout() {
       requiresPermission: 'view_approvals' },
 
     // ── Müşteriler ─────────────────────────────────────────────────────────
-    { label: 'Klinikler',     emoji: '🏥', href: '/(lab)/clinics',        iconName: 'building-2',       matchPrefix: true, sectionLabel: 'Müşteriler' },
+    { label: 'Sağlık Kurumları', emoji: '🏥', href: '/(lab)/clinics',     iconName: 'building-2',       matchPrefix: true, sectionLabel: 'Müşteriler' },
 
-    // ── Mali İşlemler — tek hub (Faturalar · Giderler · Çek · Kasa · Fiyat Listesi · Rapor)
-    { label: 'Mali İşlemler', emoji: '💰', href: '/(lab)/finance',        iconName: 'landmark',         matchPrefix: false, sectionLabel: 'Mali İşlemler',
+    // ── Finans — tek hub (Faturalar · Giderler · Çek · Kasa · Fiyat Listesi · Rapor)
+    { label: 'Finans', emoji: '💰', href: '/(lab)/finance',        iconName: 'landmark',         matchPrefix: false, sectionLabel: 'Finans',
       requiresPermission: 'view_financials' },
 
-    // ── Ekip & Performans — tek hub ──────────────────────────────────────
-    { label: 'Ekip & Performans', emoji: '👨‍💼', href: '/(lab)/ik-depo',     iconName: 'users',            matchPrefix: false, sectionLabel: 'Ekip & Performans',
+    // ── Ekip — tek hub ──────────────────────────────────────────────────
+    { label: 'Ekip', emoji: '👨‍💼', href: '/(lab)/ik-depo',     iconName: 'users',            matchPrefix: false, sectionLabel: 'Ekip',
       requiresPermission: 'view_team' },
 
     // ── Stok & Depo ───────────────────────────────────────────────────────
@@ -126,65 +132,67 @@ export default function LabLayout() {
   }
 
   const MOBILE_TABS: MobileTabItem[] = [
-    { routeName: 'index',      label: 'Bugün',   icon: 'home'                                       },
-    { routeName: 'all-orders', label: 'İşler',   icon: 'clipboard-list'                             },
-    { routeName: 'new-order',  label: 'Yeni',    icon: 'plus-circle',  onPress: () => setNewOrderOpen(true) },
-    { routeName: 'approvals',  label: 'Onaylar', icon: 'check-circle', badge: pendingCount > 0       },
-    { routeName: 'settings',   label: 'Ayarlar', icon: 'settings'                                   },
+    { routeName: 'index',      label: 'Ana',     icon: 'home' },
+    { routeName: 'all-orders', label: 'Vakalar', icon: 'clipboard-list' },
+    { routeName: 'scan',       label: 'Tara',    icon: 'qr-code',        onPress: () => setScanOpen(true), fab: true },
+    { routeName: 'messages',   label: 'Mesaj',   icon: 'message-circle', onPress: () => setMessagesOpen(true), badgeCount: chatUnread },
+    { routeName: 'profile',    label: 'Profil',  icon: 'user' },
   ];
 
   return (
     <>
-      <Tabs
-        tabBar={(props) => (
-          <MobileTabBar
-            state={props.state}
-            navigation={props.navigation}
-            items={MOBILE_TABS}
-            accentColor={accentColor}
-          />
-        )}
-        screenOptions={{
-          headerShown: false,
-        }}
-      >
+      <View style={{ flex: 1, backgroundColor: isDark ? '#0E0E0E' : '#F5F2EA' }}>
+        <MobileHeader accentColor={accentColor} />
+        <Tabs
+          screenOptions={{
+            headerShown: false,
+            sceneStyle: { backgroundColor: 'transparent' },
+            // Hide the default tab bar entirely — MobileTabBar is rendered below as a free overlay
+            tabBarStyle: { display: 'none' },
+          }}
+        >
         <Tabs.Screen name="index" options={{ title: 'Bugün' }} />
         <Tabs.Screen name="all-orders" options={{ title: 'Tüm İşler' }} />
-        <Tabs.Screen name="production"  options={{ title: 'Üretim Panosu', tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="deliveries"    options={{ title: 'Teslimatlar',  tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="courier"       options={{ title: 'Kurye Paneli', tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="delivery/[id]" options={{ tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="analytics"     options={{ title: 'Analitik',     tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="stock"        options={{ title: 'Stok & Depo',  tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="production"  options={{ title: 'Üretim Panosu' }} />
+        <Tabs.Screen name="deliveries"    options={{ title: 'Teslimatlar' }} />
+        <Tabs.Screen name="courier"       options={{ title: 'Kurye Paneli' }} />
+        <Tabs.Screen name="delivery/[id]" options={{}} />
+        <Tabs.Screen name="analytics"     options={{ title: 'Analitik' }} />
+        <Tabs.Screen name="stock"        options={{ title: 'Stok & Depo' }} />
         <Tabs.Screen name="new-order"    options={{ title: 'Yeni Sipariş' }} />
         <Tabs.Screen name="users"        options={{ title: 'Kullanıcılar' }} />
-        <Tabs.Screen name="clinics"      options={{ title: 'Klinikler' }} />
-        <Tabs.Screen name="lab-services" options={{ title: 'Hizmetler',    tabBarStyle: { display: 'none' } }} />
-        {/* Mali İşlemler hub — tüm finans sekmelerini içerir */}
-        <Tabs.Screen name="finance"        options={{ title: 'Mali İşlemler',  tabBarStyle: { display: 'none' } }} />
-        {/* Bireysel finans rotaları — deep link / geriye compat için korunuyor */}
-        <Tabs.Screen name="invoices"       options={{ title: 'Faturalar',      tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="expenses"       options={{ title: 'Giderler',       tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="checks"         options={{ title: 'Çek/Senet',      tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="cash"           options={{ title: 'Kasa/Banka',     tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="finance-report" options={{ title: 'Gelir/Gider',    tabBarStyle: { display: 'none' } }} />
-        {/* Ekip & Performans hub */}
-        <Tabs.Screen name="ik-depo"     options={{ title: 'Ekip & Performans', tabBarStyle: { display: 'none' } }} />
-        {/* Bireysel rotalar — deep link compat */}
-        <Tabs.Screen name="employees" options={{ title: 'Çalışanlar', tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="performance" options={{ title: 'Performans', tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="documents" options={{ title: 'Dosyalar', tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="balance" options={{ title: 'Cari Hesap', tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="checkin-settings" options={{ title: 'QR Check-in', tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="clinics"      options={{ title: 'Sağlık Kurumları' }} />
+        <Tabs.Screen name="lab-services" options={{ title: 'Hizmetler' }} />
+        <Tabs.Screen name="finance"        options={{ title: 'Finans' }} />
+        <Tabs.Screen name="invoices"       options={{ title: 'Faturalar' }} />
+        <Tabs.Screen name="expenses"       options={{ title: 'Giderler' }} />
+        <Tabs.Screen name="checks"         options={{ title: 'Çek/Senet' }} />
+        <Tabs.Screen name="cash"           options={{ title: 'Kasa/Banka' }} />
+        <Tabs.Screen name="finance-report" options={{ title: 'Gelir/Gider' }} />
+        <Tabs.Screen name="ik-depo"     options={{ title: 'Ekip' }} />
+        <Tabs.Screen name="employees" options={{ title: 'Ekip' }} />
+        <Tabs.Screen name="performance" options={{ title: 'Performans' }} />
+        <Tabs.Screen name="documents" options={{ title: 'Dosyalar' }} />
+        <Tabs.Screen name="balance" options={{ title: 'Cari Hesap' }} />
+        <Tabs.Screen name="checkin-settings" options={{ title: 'QR Check-in' }} />
         <Tabs.Screen name="approvals" options={{ title: 'Onaylar' }} />
         <Tabs.Screen name="profile" options={{ title: 'Profil' }} />
-        <Tabs.Screen name="settings" options={{ title: 'Ayarlar', tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="order/[id]" options={{ title: 'İş Emri', tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="order/route/[id]" options={{ title: 'Rota', tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="order/occlusion/[id]" options={{ title: 'Oklüzyon', tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="invoice/[id]" options={{ tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="occlusion-test" options={{ tabBarStyle: { display: 'none' } }} />
-      </Tabs>
+        <Tabs.Screen name="settings" options={{ title: 'Ayarlar' }} />
+        <Tabs.Screen name="order/[id]" options={{ title: 'İş Emri' }} />
+        <Tabs.Screen name="order/route/[id]" options={{ title: 'Rota' }} />
+        <Tabs.Screen name="order/occlusion/[id]" options={{ title: 'Oklüzyon' }} />
+        <Tabs.Screen name="invoice/[id]" options={{}} />
+        <Tabs.Screen name="occlusion-test" options={{}} />
+        <Tabs.Screen name="setup-wizard" options={{ title: 'Kurulum' }} />
+        </Tabs>
+
+        {/* Floating tab bar — rendered OUTSIDE Tabs so its pointerEvents are fully ours */}
+        <MobileTabBar
+          items={MOBILE_TABS}
+          baseRoute="/(lab)"
+          accentColor={accentColor}
+        />
+      </View>
 
       {/* Yeni İş Emri — her zaman modal olarak açılır */}
       <Modal
@@ -202,6 +210,19 @@ export default function LabLayout() {
         onClose={() => setMessagesOpen(false)}
         accentColor={accentColor}
       />
+
+      {/* Scan (B6) — Tara FAB → kamera + QR scan */}
+      <Modal
+        visible={scanOpen}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setScanOpen(false)}
+      >
+        <ScanB6Mobile
+          onClose={() => setScanOpen(false)}
+          onOpenOrder={(id) => { setScanOpen(false); router.push(`/(lab)/order/${id}` as any); }}
+        />
+      </Modal>
 
       {/* Command Palette — modal, tüm sayfalarda erişilebilir */}
       <CommandPalette

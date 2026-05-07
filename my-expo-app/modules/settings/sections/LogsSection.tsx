@@ -96,7 +96,7 @@ function LogRow({ log, isLast }: { log: ActivityLog; isLast: boolean }) {
 interface Props { accentColor?: string; }
 
 // ── Component ──────────────────────────────────────────────────────────
-export function LogsSection({ accentColor = '#E97757' }: Props) {
+export function LogsSection({ accentColor = '#EA7A4C' }: Props) {
   const [logs,     setLogs]     = useState<ActivityLog[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [refreshing, setRefreshing] = useState(false);

@@ -26,7 +26,7 @@ import { Profile } from '../../lib/types';
 
 import { AppIcon } from '../../core/ui/AppIcon';
 
-type FilterType = 'all' | 'admin' | 'lab' | 'doctor';
+type FilterType = 'all' | 'admin' | 'lab' | 'doctor' | 'clinic_admin';
 type StatusFilter = 'all' | 'active' | 'inactive';
 
 type NewUserRole = 'admin' | 'manager' | 'technician' | 'doctor' | 'clinic_admin';
@@ -84,9 +84,90 @@ export default function AdminUsersScreen() {
   const loadProfiles = async () => {
     setLoading(true);
     try {
+      // 1) Auth uzerinden kayitli kullanicilar
       const { data, error } = await supabase.functions.invoke('admin-list-users');
-      if (!error && data?.users) setProfiles(data.users as Profile[]);
+      const authUsers: any[] = (!error && data?.users) ? data.users : [];
+
+      // 2) Sadece doctors tablosunda olan, henuz auth kaydi olmayan hekimler
+      const { data: docRows } = await supabase
+        .from('doctors')
+        .select('id, full_name, phone, specialty, clinic_id, is_active, clinic:clinics(id, name)')
+        .eq('is_active', true);
+
+      // 3) Sadece employees tablosunda olan, auth kaydi olmayan personel
+      const { data: empRows } = await supabase
+        .from('employees')
+        .select('id, full_name, phone, email, role, is_active')
+        .eq('is_active', true);
+
+      // Auth user isimlerini topla → duplicate elemine
+      const authDoctorNames = new Set(
+        authUsers.filter(u => u.user_type === 'doctor')
+          .map(u => (u.full_name || '').toLowerCase().trim()).filter(Boolean)
+      );
+      const authLabNames = new Set(
+        authUsers.filter(u => u.user_type === 'lab')
+          .map(u => (u.full_name || '').toLowerCase().trim()).filter(Boolean)
+      );
+      const authEmails = new Set(
+        authUsers.map(u => (u.email || '').toLowerCase().trim()).filter(Boolean)
+      );
+
+      const syntheticDoctors: any[] = (docRows ?? [])
+        .filter((d: any) => {
+          const key = (d.full_name || '').toLowerCase().trim();
+          return key && !authDoctorNames.has(key);
+        })
+        .map((d: any) => ({
+          id: `doctor:${d.id}`,
+          user_type: 'doctor',
+          full_name: d.full_name,
+          phone: d.phone ?? null,
+          email: null,
+          clinic_id: d.clinic_id ?? null,
+          clinic_name: d.clinic?.name ?? null,
+          specialty: d.specialty ?? null,
+          is_active: d.is_active ?? true,
+          approval_status: 'approved',
+          role: null,
+          is_unregistered: true,
+          source_doctor_id: d.id,
+          created_at: null,
+          updated_at: null,
+        }));
+
+      // employees -> sentetik lab kullanici (mesul_mudur -> manager, diger -> technician)
+      const roleMap: Record<string, string> = { mesul_mudur: 'manager', teknisyen: 'technician', kalite_kontrol: 'technician', tasarimci: 'technician' };
+      const syntheticEmployees: any[] = (empRows ?? [])
+        .filter((e: any) => {
+          const nameKey = (e.full_name || '').toLowerCase().trim();
+          const emailKey = (e.email || '').toLowerCase().trim();
+          if (!nameKey) return false;
+          // hem isim hem email duplicate kontrolu
+          if (authLabNames.has(nameKey)) return false;
+          if (emailKey && authEmails.has(emailKey)) return false;
+          return true;
+        })
+        .map((e: any) => ({
+          id: `employee:${e.id}`,
+          user_type: 'lab',
+          full_name: e.full_name,
+          phone: e.phone ?? null,
+          email: e.email ?? null,
+          role: roleMap[e.role] ?? 'technician',
+          is_active: e.is_active ?? true,
+          approval_status: 'approved',
+          is_unregistered: true,
+          source_employee_id: e.id,
+          created_at: null,
+          updated_at: null,
+        }));
+
+      const merged = [...authUsers, ...syntheticDoctors, ...syntheticEmployees] as Profile[];
+      console.log('[USERS]', { auth: authUsers.length, doctors: docRows?.length ?? 0, employees: empRows?.length ?? 0, syntheticDoctors: syntheticDoctors.length, syntheticEmployees: syntheticEmployees.length, total: merged.length });
+      setProfiles(merged);
     } catch (e) {
+      console.warn('[USERS] load error', e);
     } finally {
       setLoading(false);
     }
@@ -167,16 +248,20 @@ export default function AdminUsersScreen() {
   const activeFilterCount = statusFilter !== 'all' ? 1 : 0;
 
   const TYPE_TABS: { key: FilterType; label: string }[] = [
-    { key: 'all',   label: 'Tümü' },
-    { key: 'admin', label: 'Admin' },
-    { key: 'lab',   label: 'Lab' },
+    { key: 'all',          label: 'Tümü' },
+    { key: 'admin',        label: 'Admin' },
+    { key: 'lab',          label: 'Lab' },
+    { key: 'doctor',       label: 'Hekim' },
+    { key: 'clinic_admin', label: 'Klinik' },
   ];
 
   const typeBadge = (profile: Profile) =>
-    profile.user_type === 'admin'   ? { bg: K,         text: '#FFFFFF', label: 'Admin',     avatarBg: '#1E293B', avatarText: '#FFFFFF', roleLabel: 'Admin' } :
-    profile.user_type === 'doctor'  ? { bg: '#DBEAFE', text: '#1D4ED8', label: 'Hekim',     avatarBg: '#EFF6FF', avatarText: '#2563EB', roleLabel: 'Hekim' } :
-    profile.role      === 'manager' ? { bg: '#E2E8F0', text: K,         label: 'Müdür',     avatarBg: '#E2E8F0', avatarText: K,         roleLabel: 'Mesul Müdür' } :
-                                      { bg: '#F1F5F9', text: '#475569', label: 'Teknisyen', avatarBg: '#F1F5F9', avatarText: '#475569', roleLabel: 'Teknisyen' };
+    profile.user_type === 'admin'        ? { bg: K,         text: '#FFFFFF', label: 'Admin',     avatarBg: '#1E293B', avatarText: '#FFFFFF', roleLabel: 'Admin' } :
+    profile.user_type === 'doctor'       ? { bg: '#DBEAFE', text: '#1D4ED8', label: 'Hekim',     avatarBg: '#EFF6FF', avatarText: '#2563EB', roleLabel: 'Hekim' } :
+    profile.user_type === 'clinic_admin' ? { bg: '#D1FAE5', text: '#047857', label: 'Klinik',    avatarBg: '#ECFDF5', avatarText: '#10B981', roleLabel: 'Klinik Yetkilisi' } :
+    profile.user_type === 'lab' && profile.role === 'manager'    ? { bg: '#E2E8F0', text: K,         label: 'Müdür',     avatarBg: '#E2E8F0', avatarText: K,         roleLabel: 'Mesul Müdür' } :
+    profile.user_type === 'lab' && profile.role === 'technician' ? { bg: '#F1F5F9', text: '#475569', label: 'Teknisyen', avatarBg: '#F1F5F9', avatarText: '#475569', roleLabel: 'Teknisyen' } :
+                                      { bg: '#FEF3C7', text: '#92400E', label: 'Bilinmiyor', avatarBg: '#FEF3C7', avatarText: '#92400E', roleLabel: 'Bilinmeyen' };
 
   const selectedProfile = useMemo(
     () => profiles.find(p => p.id === selectedId) ?? null,

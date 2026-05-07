@@ -6,5 +6,6 @@ export default function AdminNewOrderRoute() {
   const { profile, loading } = useAuthStore();
   if (loading || !profile) return null;
   if (profile.user_type !== 'admin') return null;
-  return <NewOrderScreen accentColor="#E97757" />;
+  // Yönetim paneli teması: coral #EA7A4C · Başlık: "Yeni Sipariş"
+  return <NewOrderScreen panel="admin" />;
 }

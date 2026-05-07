@@ -21,6 +21,7 @@ import {
 } from '../api';
 import { useClinics } from '../../clinics/hooks/useClinics';
 import { DS } from '../../../core/theme/dsTokens';
+import { DatePicker } from '../../../core/ui/DatePicker';
 import {
   Plus, FileText, Building2, Landmark as BankIcon, Hash,
   Calendar, Clock, CircleCheck, Undo2, Trash2,
@@ -580,7 +581,7 @@ function CheckFormModal({ visible, onClose, onSaved }: {
               </View>
               <View style={{ flex: 1, gap: 6 }}>
                 <FL>Vade Tarihi</FL>
-                <FI value={dueDate} onChangeText={setDueDate} placeholder="YYYY-AA-GG" />
+                <DatePicker value={dueDate} onChange={setDueDate} placeholder="Tarih seç" />
               </View>
             </View>
 
@@ -599,7 +600,7 @@ function CheckFormModal({ visible, onClose, onSaved }: {
             {/* Issue date */}
             <View style={{ gap: 6 }}>
               <FL>Düzenleme Tarihi</FL>
-              <FI value={issueDate} onChangeText={setIssueDate} placeholder="YYYY-AA-GG" />
+              <DatePicker value={issueDate} onChange={setIssueDate} placeholder="Tarih seç" />
             </View>
 
             {/* Notes */}

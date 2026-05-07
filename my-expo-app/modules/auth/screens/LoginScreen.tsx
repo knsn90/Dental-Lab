@@ -19,7 +19,7 @@ import { supabase } from '../../../core/api/supabase';
 import { DS } from '../../../core/theme/dsTokens';
 import {
   Mail, Lock, Eye, EyeOff, ArrowRight, Shield, Check,
-  AlertCircle, ChevronRight, Stethoscope,
+  AlertCircle, Stethoscope,
 } from 'lucide-react-native';
 
 // ── Design tokens ──
@@ -415,17 +415,10 @@ export function LoginScreen() {
       {/* Footer trust */}
       <View style={{
         borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)', paddingTop: 18,
-        flexDirection: 'row', alignItems: 'center', gap: 10,
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
       }}>
         <Check size={11} color={DS.ink[400]} strokeWidth={2} />
         <Text style={{ fontSize: 10, color: DS.ink[400] }}>SOC 2 · KVKK · ISO 27001</Text>
-        <View style={{ flex: 1 }} />
-        <Pressable onPress={() => router.push('/(auth)/admin-login')}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Text style={{ fontSize: 10, color: DS.ink[400] }}>Yönetici girişi</Text>
-            <ChevronRight size={10} color={DS.ink[400]} strokeWidth={2} />
-          </View>
-        </Pressable>
       </View>
     </Animated.View>
   );

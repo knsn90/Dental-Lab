@@ -63,7 +63,7 @@ export async function downloadCsv<T>(
   try {
     const dir = (FileSystem as any).cacheDirectory || (FileSystem as any).documentDirectory;
     const uri = dir + safeName;
-    await FileSystem.writeAsStringAsync(uri, csv, { encoding: FileSystem.EncodingType.UTF8 });
+    await FileSystem.writeAsStringAsync(uri, csv, { encoding: 'utf8' as any });
     if (await Sharing.isAvailableAsync()) {
       await Sharing.shareAsync(uri, { mimeType: 'text/csv', dialogTitle: safeName, UTI: 'public.comma-separated-values-text' });
     }

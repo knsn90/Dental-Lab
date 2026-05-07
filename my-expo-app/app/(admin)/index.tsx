@@ -7,7 +7,7 @@
  *   3. Bottom row — WeeklyStrip + AnimatedCTACard
  *   4. Extra sections — Orders table, Finance, Status dist, Work type
  *
- * Theme: DS.exec (coral #E97757)
+ * Theme: DS.exec (mercan #EA7A4C)
  * Patterns NativeWind — NO StyleSheet.create().
  */
 import React, { useState, useCallback, useEffect, useRef } from 'react';
@@ -28,6 +28,7 @@ import { DS } from '../../core/theme/dsTokens';
 import { useIsDesktop } from '../../core/layout/PatternsShell';
 import { usePageTitleStore } from '../../core/store/pageTitleStore';
 import { useAuthStore } from '../../core/store/authStore';
+import { HomeB1, type PriorityOrder, type KpiItem, defaultInsight } from '../../core/ui/HomeB1';
 
 // ── Display font — Patterns: Inter Tight Light (300), tight tracking ──
 const SERIF = {
@@ -952,109 +953,134 @@ export default function AdminDashboard() {
   const [finPending, setFinPending]       = useState(0);
   const [finPaidCount, setFinPaidCount]   = useState(0);
 
-  const loadStats = useCallback(async () => {
-    setLoading(true);
+  // ── Data loaders (mirroring Lab dashboard pattern) ──
+
+  const loadPipeline = useCallback(async () => {
     try {
-      const today = todayStr();
-      const in3Days = new Date(); in3Days.setDate(in3Days.getDate() + 3);
-      const in3DaysStr = in3Days.toISOString().split('T')[0];
+      const statuses = STATUS_KEYS;
+      const results = await Promise.all(
+        statuses.map(st =>
+          supabase.from('work_orders').select('id', { count: 'exact', head: true }).eq('status', st)
+        )
+      );
+      const counts: Record<string, number> = {};
+      statuses.forEach((st, i) => { counts[st] = results[i].count ?? 0; });
+      setPipelineCounts(counts);
 
-      const [ordersRes, profilesRes, recentRes, upcomingRes] = await Promise.all([
-        supabase.from('work_orders').select('status, delivery_date, created_at, work_type, doctor:doctor_id(full_name)'),
-        supabase.from('profiles').select('user_type').neq('user_type', 'admin'),
-        supabase.from('work_orders').select('id, order_number, work_type, status, delivery_date, is_urgent, doctor:doctor_id(full_name)').order('created_at', { ascending: false }).limit(8),
-        supabase.from('work_orders').select('id, order_number, status, delivery_date, doctor:doctor_id(full_name)').gte('delivery_date', today).lte('delivery_date', in3DaysStr).neq('status', 'teslim_edildi').order('delivery_date'),
-      ]);
+      const total = statuses.reduce((s, st, i) => s + (results[i].count ?? 0), 0);
+      setTotalOrders(total);
 
-      const orders   = (ordersRes.data ?? []) as any[];
-      const profiles = profilesRes.data ?? [];
-      const recent   = (recentRes.data ?? []) as any[];
-      const upcomingData = (upcomingRes.data ?? []) as any[];
+      setByStatus(statuses.map((k, i) => ({ key: k, label: STATUS_CFG[k]?.label ?? k, count: results[i].count ?? 0 })));
+    } catch (e) { console.error('[AdminDashboard] loadPipeline error:', e); }
+  }, []);
 
-      let todayCount = 0, overdueC = 0, todayDel = 0;
-      const statusMap: Record<string, number> = {};
-      const wtMap: Record<string, number>     = {};
-      const monthMap: Record<string, number>  = {};
+  const loadExtra = useCallback(async () => {
+    const today = todayStr();
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
 
+    const { data } = await supabase
+      .from('work_orders')
+      .select('id, order_number, work_type, status, delivery_date, created_at, is_urgent, doctor:doctor_id(full_name)')
+      .gte('created_at', sixMonthsAgo.toISOString())
+      .order('created_at', { ascending: false });
+
+    if (data) {
+      setRecentOrders(data.slice(0, 8).map(o => ({
+        id: o.id, order_number: o.order_number, work_type: o.work_type,
+        status: o.status, delivery_date: o.delivery_date, is_urgent: (o as any).is_urgent ?? false,
+        doctor_name: (o.doctor as any)?.full_name ?? '--',
+      })));
+
+      // Monthly bars
+      const bars: { label: string; count: number }[] = [];
       for (let i = 5; i >= 0; i--) {
         const d = new Date(); d.setMonth(d.getMonth() - i);
-        monthMap[`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`] = 0;
+        const y = d.getFullYear(), m = d.getMonth();
+        bars.push({
+          label: MONTHS_TR[m],
+          count: data.filter(o => {
+            const c = new Date(o.created_at);
+            return c.getFullYear() === y && c.getMonth() === m;
+          }).length,
+        });
       }
-
-      for (const o of orders) {
-        if (o.created_at?.startsWith(today)) todayCount++;
-        if (o.delivery_date < today && o.status !== 'teslim_edildi') overdueC++;
-        if (o.delivery_date === today && o.status !== 'teslim_edildi') todayDel++;
-        statusMap[o.status] = (statusMap[o.status] ?? 0) + 1;
-        if (o.work_type) wtMap[o.work_type] = (wtMap[o.work_type] ?? 0) + 1;
-        if (o.created_at) {
-          const d = new Date(o.created_at);
-          const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-          if (key in monthMap) monthMap[key] += 1;
-        }
-      }
-
-      // Pipeline counts
-      const pipeCounts: Record<string, number> = {};
-      STATUS_KEYS.forEach(k => { pipeCounts[k] = statusMap[k] ?? 0; });
-      setPipelineCounts(pipeCounts);
+      setMonthly(bars);
 
       // Week counts
       const weekDays = getWeekDays();
       const wc: Record<string, number> = {};
       weekDays.forEach(wd => {
-        wc[wd.date] = orders.filter(o => o.created_at?.startsWith(wd.date)).length;
+        wc[wd.date] = data.filter(o => o.created_at?.startsWith(wd.date)).length;
       });
       setWeekCounts(wc);
 
-      setTotalOrders(orders.length);
-      setTodayOrders(todayCount);
-      setOverdue(overdueC);
-      setTodayDelivery(todayDel);
+      // Work type breakdown
+      const wtMap: Record<string, number> = {};
+      for (const o of data) { if (o.work_type) wtMap[o.work_type] = (wtMap[o.work_type] ?? 0) + 1; }
+      setByWorkType(Object.entries(wtMap).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([label, count]) => ({ label, count })));
+
+      // Overdue & today counts
+      setOverdue(data.filter(o => o.delivery_date < today && o.status !== 'teslim_edildi').length);
+      setTodayDelivery(data.filter(o => o.delivery_date === today && o.status !== 'teslim_edildi').length);
+    }
+
+    // Today new count
+    const { count: todayCount } = await supabase
+      .from('work_orders')
+      .select('id', { count: 'exact', head: true })
+      .gte('created_at', `${today}T00:00:00`);
+    setTodayOrders(todayCount ?? 0);
+
+    // Upcoming deliveries (3 days)
+    const in3Days = new Date(); in3Days.setDate(in3Days.getDate() + 3);
+    const in3DaysStr = in3Days.toISOString().split('T')[0];
+    const { data: upcomingData } = await supabase
+      .from('work_orders')
+      .select('id, order_number, status, delivery_date, doctor:doctor_id(full_name)')
+      .gte('delivery_date', today).lte('delivery_date', in3DaysStr)
+      .neq('status', 'teslim_edildi').order('delivery_date');
+    setUpcoming((upcomingData ?? []).map(o => ({
+      id: o.id, order_number: o.order_number, status: o.status,
+      delivery_date: o.delivery_date, doctor_name: (o.doctor as any)?.full_name ?? '--',
+    })));
+  }, []);
+
+  const loadProfiles = useCallback(async () => {
+    const { data: profiles } = await supabase.from('profiles').select('user_type').neq('user_type', 'admin');
+    if (profiles) {
       setDoctors(profiles.filter((p: any) => p.user_type === 'doctor').length);
       setLabUsers(profiles.filter((p: any) => ['lab', 'lab_user', 'mesul_mudur'].includes(p.user_type)).length);
-
-      setByStatus(STATUS_KEYS.map(k => ({ key: k, label: STATUS_CFG[k]?.label ?? k, count: statusMap[k] ?? 0 })));
-      setByWorkType(Object.entries(wtMap).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([label, count]) => ({ label, count })));
-      setMonthly(Object.entries(monthMap).map(([key, count]) => ({ label: MONTHS_TR[parseInt(key.split('-')[1]) - 1], count })));
-      setRecentOrders(recent.map(o => ({
-        id: o.id, order_number: o.order_number, work_type: o.work_type,
-        status: o.status, delivery_date: o.delivery_date, is_urgent: o.is_urgent ?? false,
-        doctor_name: (o.doctor as any)?.full_name ?? '--',
-      })));
-      setUpcoming(upcomingData.map(o => ({
-        id: o.id, order_number: o.order_number, status: o.status,
-        delivery_date: o.delivery_date, doctor_name: (o.doctor as any)?.full_name ?? '--',
-      })));
-
-      // Finance data
-      try {
-        const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
-        const [invRes, pendRes] = await Promise.all([
-          supabase.from('invoices').select('total_amount, status').gte('created_at', monthStart.toISOString()),
-          supabase.from('invoices').select('total_amount').eq('status', 'sent'),
-        ]);
-        if (invRes.data) {
-          const paid = invRes.data.filter((i: any) => i.status === 'paid');
-          setFinMonthly(paid.reduce((s: number, i: any) => s + (i.total_amount ?? 0), 0));
-          setFinPaidCount(paid.length);
-        }
-        if (pendRes.data) {
-          setFinPending(pendRes.data.reduce((s: number, i: any) => s + (i.total_amount ?? 0), 0));
-        }
-      } catch { /* invoices table may not exist */ }
-    } catch (e) {
-      console.error('AdminDashboard loadStats error:', e);
-    } finally {
-      setLoading(false);
     }
   }, []);
 
-  useEffect(() => { loadStats(); }, [loadStats]);
+  const loadFinance = useCallback(async () => {
+    try {
+      const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+      const [invRes, pendRes] = await Promise.all([
+        supabase.from('invoices').select('total_amount, status').gte('created_at', monthStart.toISOString()),
+        supabase.from('invoices').select('total_amount').eq('status', 'sent'),
+      ]);
+      if (invRes.data) {
+        const paid = invRes.data.filter((i: any) => i.status === 'paid');
+        setFinMonthly(paid.reduce((s: number, i: any) => s + (i.total_amount ?? 0), 0));
+        setFinPaidCount(paid.length);
+      }
+      if (pendRes.data) {
+        setFinPending(pendRes.data.reduce((s: number, i: any) => s + (i.total_amount ?? 0), 0));
+      }
+    } catch { /* invoices table may not exist */ }
+  }, []);
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([loadPipeline(), loadExtra(), loadProfiles(), loadFinance()])
+      .finally(() => setLoading(false));
+  }, [loadPipeline, loadExtra, loadProfiles, loadFinance]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await loadStats();
+    await Promise.all([loadPipeline(), loadExtra(), loadProfiles(), loadFinance()]);
     setRefreshing(false);
   };
 
@@ -1116,13 +1142,52 @@ export default function AdminDashboard() {
   const weekDays = getWeekDays();
 
   // ══════════════════════════════════════════════════════════════
-  //  RENDER
+  //  MOBILE — Variant B Home (B1)
+  // ══════════════════════════════════════════════════════════════
+  if (!isDesktop) {
+    const kpis: KpiItem[] = [
+      { label: 'Aktif',     value: String(totalActive),                     up: true  },
+      { label: 'Bugün',     value: String(todayOrders),                                  },
+      { label: 'Geciken',   value: String(overdueCount),                    up: false },
+      { label: 'Hekim',     value: String(totalDoctors)                                  },
+    ];
+    const priority: PriorityOrder[] = recentOrders.slice(0, 3).map((o: any) => ({
+      id: String(o.order_number ?? o.id).slice(-5),
+      type: o.work_type ?? 'Sipariş',
+      due: o.delivery_date ? fmtDate(o.delivery_date) : '—',
+      status: o.status,
+      statusLabel: STATUS_CFG[o.status]?.label ?? o.status,
+      clinic: o.doctor_name ?? '—',
+      teeth: undefined,
+      avatar: (o.doctor_name ?? '?').slice(0, 2).toUpperCase(),
+    }));
+
+    return (
+      <HomeB1
+        kicker={`${totalActive} aktif vaka`}
+        headline={`${overdueCount > 0 ? overdueCount + ' geciken vaka var.' : `Bugün ${todayOrders} vaka var.`}`}
+        sub={`Toplam ${totalOrders} sipariş, ${totalDoctors} hekim, ${totalLabUsers} lab kullanıcısı.`}
+        primaryAction={{ label: 'Yeni vaka', onPress: () => router.push('/(admin)/new-order' as any) }}
+        secondaryAction={{ label: 'Siparişler', onPress: () => router.push('/(admin)/orders' as any) }}
+        kpis={kpis}
+        priority={priority}
+        onOpenOrder={(o) => router.push(`/(admin)/order/${(o as any).id}` as any)}
+        onSeeAllOrders={() => router.push('/(admin)/orders' as any)}
+        insight={defaultInsight('exec')}
+        refreshing={refreshing || loading}
+        onRefresh={handleRefresh}
+      />
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  DESKTOP RENDER (mevcut, dokunulmadı)
   // ══════════════════════════════════════════════════════════════
   return (
     <ScrollView
       className="flex-1"
       contentContainerStyle={{ padding: isDesktop ? 10 : 16, paddingBottom: 120 }}
-      refreshControl={<RefreshControl refreshing={refreshing || loading} onRefresh={handleRefresh} tintColor={P} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={P} />}
     >
       {/* ════════ HERO ════════ */}
       <View className="mb-5">

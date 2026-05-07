@@ -10,7 +10,7 @@ import { useSegments } from 'expo-router';
 import { toast } from '../../../core/ui/Toast';
 import { AppSwitch } from '../../../core/ui/AppSwitch';
 import { supabase } from '../../../core/api/supabase';
-import { fetchClinics, createClinic, updateClinic, createDoctor, updateDoctor } from '../api';
+import { fetchClinics, createClinic, updateClinic, createDoctor, updateDoctor, fetchAllDoctors } from '../api';
 import { ILLER, ILCELER } from '../data/turkey';
 import { AppIcon } from '../../../core/ui/AppIcon';
 import { DS } from '../../../core/theme/dsTokens';
@@ -59,15 +59,19 @@ type ClinicForm = {
   il: string; ilce: string; mahalle: string;
   contact_person: string; notes: string; is_active: boolean;
   vkn: string; tax_office: string;
+  // Opsiyonel: doldurulursa klinik yetkilisi sisteme login olabilir
+  admin_email: string; admin_password: string;
 };
 type DoctorForm = {
   full_name: string; phone: string; specialty: string;
   notes: string; clinic_id: string; is_active: boolean;
   tckn: string;
+  // Opsiyonel: doldurulursa hekim sisteme login olabilir
+  email: string; password: string;
 };
 
-const EMPTY_CLINIC: ClinicForm = { name: '', category: 'klinik', phone: '', email: '', il: '', ilce: '', mahalle: '', contact_person: '', notes: '', is_active: true, vkn: '', tax_office: '' };
-const EMPTY_DOCTOR: DoctorForm = { full_name: '', phone: '', specialty: '', notes: '', clinic_id: '', is_active: true, tckn: '' };
+const EMPTY_CLINIC: ClinicForm = { name: '', category: 'klinik', phone: '', email: '', il: '', ilce: '', mahalle: '', contact_person: '', notes: '', is_active: true, vkn: '', tax_office: '', admin_email: '', admin_password: '' };
+const EMPTY_DOCTOR: DoctorForm = { full_name: '', phone: '', specialty: '', notes: '', clinic_id: '', is_active: true, tckn: '', email: '', password: '' };
 
 function parseAddress(raw?: string | null): { il: string; ilce: string; mahalle: string } {
   if (!raw) return { il: '', ilce: '', mahalle: '' };
@@ -85,6 +89,7 @@ const TAB_FILTERS = [
   { key: 'hastane',     label: 'Hastane' },
   { key: 'laboratuvar', label: 'Laboratuvar' },
   { key: 'doctors',     label: 'Hekimler' },
+  { key: 'managers',    label: 'Yöneticiler' },
 ];
 
 // ═════════════════════════════════════════════════════════════════════
@@ -115,7 +120,8 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
   const [editingDoctor,   setEditingDoctor]   = useState<Doctor | null>(null);
   const [defaultClinicId, setDefaultClinicId] = useState('');
 
-  const [activeTab,       setActiveTab]       = useState<'all' | ClinicCategory | 'doctors'>('all');
+  const [activeTab,       setActiveTab]       = useState<'all' | ClinicCategory | 'doctors' | 'managers'>('all');
+  const [managers,        setManagers]        = useState<any[]>([]);
   const [searchOpen,      setSearchOpen]      = useState(false);
   const [categoryFilter,  setCategoryFilter]  = useState<ClinicCategory | 'all'>('all');
   const [statusFilter,    setStatusFilter]    = useState<'all' | 'active' | 'inactive'>('all');
@@ -131,13 +137,19 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
   // ── Data ──
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [clinicsRes, doctorsRes, discountsRes] = await Promise.all([
+    const [clinicsRes, doctorsRes, discountsRes, managersRes] = await Promise.all([
       fetchClinics(),
-      supabase.from('doctors').select('*').order('full_name'),
+      fetchAllDoctors(), // doctors + profiles(user_type='doctor') birlesik
       supabase.from('clinic_discounts').select('clinic_id, discount_percent'),
+      supabase
+        .from('profiles')
+        .select('id, full_name, phone, clinic_id, is_active, clinic:clinics(id, name)')
+        .eq('user_type', 'clinic_admin')
+        .order('full_name'),
     ]);
     if (!clinicsRes.error && clinicsRes.data) setClinics(clinicsRes.data as Clinic[]);
     if (!doctorsRes.error && doctorsRes.data) setDoctors(doctorsRes.data as Doctor[]);
+    if (!managersRes.error && managersRes.data) setManagers(managersRes.data as any[]);
     if (!discountsRes.error && discountsRes.data) {
       const map: Record<string, number> = {};
       (discountsRes.data as any[]).forEach(r => { map[r.clinic_id] = Number(r.discount_percent); });
@@ -202,7 +214,7 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
   const applyFilter = () => { setCategoryFilter(draftCategory); setStatusFilter(draftStatus); setShowFilterSheet(false); };
 
   const filteredClinics = useMemo(() => clinics.filter(c => {
-    if (activeTab !== 'all' && activeTab !== 'doctors' && (c.category ?? 'klinik') !== activeTab) return false;
+    if (activeTab !== 'all' && activeTab !== 'doctors' && activeTab !== 'managers' && (c.category ?? 'klinik') !== activeTab) return false;
     if (categoryFilter !== 'all' && (c.category ?? 'klinik') !== categoryFilter) return false;
     if (statusFilter === 'active' && !c.is_active) return false;
     if (statusFilter === 'inactive' && c.is_active) return false;
@@ -278,7 +290,7 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
                 value={search}
                 onChangeText={setSearch}
                 onBlur={() => { if (!search) setSearchOpen(false); }}
-                placeholder={activeTab === 'doctors' ? 'Hekim ara...' : 'Klinik ara...'}
+                placeholder={activeTab === 'doctors' ? 'Hekim ara...' : activeTab === 'managers' ? 'Yönetici ara...' : 'Klinik ara...'}
                 placeholderTextColor="#9A9A9A"
                 returnKeyType="search"
               />
@@ -365,7 +377,43 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
               </View>
 
               {/* Content card */}
-              {activeTab === 'doctors' ? (
+              {activeTab === 'managers' ? (
+                <ManagersList
+                  managers={(() => {
+                    // 1) Gercek yoneticiler (clinic_admin)
+                    const real = managers.map((m: any) => ({ ...m, isFallback: false }));
+                    const clinicIdsWithAdmin = new Set(real.map((m: any) => m.clinic_id).filter(Boolean));
+
+                    // 2) Yonetici olmayan kliniklerin ilk hekimini gecici yetkili olarak ekle
+                    const fallbackManagers: any[] = [];
+                    clinics.forEach((c: any) => {
+                      if (clinicIdsWithAdmin.has(c.id)) return;
+                      const firstDoctor = doctors
+                        .filter((d: any) => d.clinic_id === c.id && d.is_active !== false)
+                        .sort((a: any, b: any) => (a.full_name || '').localeCompare(b.full_name || '', 'tr'))[0];
+                      if (firstDoctor) {
+                        fallbackManagers.push({
+                          id: `fallback:${firstDoctor.id}`,
+                          full_name: firstDoctor.full_name,
+                          phone: firstDoctor.phone,
+                          clinic_id: c.id,
+                          clinic: { id: c.id, name: c.name },
+                          is_active: true,
+                          isFallback: true,
+                        });
+                      }
+                    });
+
+                    const all = [...real, ...fallbackManagers];
+                    if (!q) return all;
+                    return all.filter((m: any) =>
+                      (m.full_name || '').toLowerCase().includes(q) ||
+                      (m.clinic?.name || '').toLowerCase().includes(q)
+                    );
+                  })()}
+                  accentColor={accentColor}
+                />
+              ) : activeTab === 'doctors' ? (
                 <DoctorsTable
                   doctors={doctors}
                   clinics={clinics}
@@ -997,13 +1045,29 @@ function ClinicModal({ visible, editingClinic, existingClinics, accentColor, onC
   const [ilOpen, setIlOpen] = useState(false);
   const [ilceSearch, setIlceSearch] = useState('');
   const [ilceOpen, setIlceOpen] = useState(false);
+  const [hasAdminAccount, setHasAdminAccount] = useState(false);
+
+  // Bu klinige ait clinic_admin profili var mi?
+  useEffect(() => {
+    if (!editingClinic || !visible) { setHasAdminAccount(false); return; }
+    (async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('user_type', 'clinic_admin')
+        .eq('clinic_id', editingClinic.id)
+        .limit(1);
+      setHasAdminAccount((data?.length ?? 0) > 0);
+    })();
+  }, [editingClinic, visible]);
 
   useEffect(() => {
     if (editingClinic) {
       const addr = parseAddress(editingClinic.address);
       setForm({ name: editingClinic.name, category: editingClinic.category ?? 'klinik', phone: editingClinic.phone ?? '', email: editingClinic.email ?? '',
         il: addr.il, ilce: addr.ilce, mahalle: addr.mahalle, contact_person: editingClinic.contact_person ?? '',
-        notes: editingClinic.notes ?? '', is_active: editingClinic.is_active, vkn: (editingClinic as any).vkn ?? '', tax_office: (editingClinic as any).tax_office ?? '' });
+        notes: editingClinic.notes ?? '', is_active: editingClinic.is_active, vkn: (editingClinic as any).vkn ?? '', tax_office: (editingClinic as any).tax_office ?? '',
+        admin_email: '', admin_password: '' });
     } else { setForm(EMPTY_CLINIC); }
     setError(''); setIlOpen(false); setIlceOpen(false); setIlSearch(''); setIlceSearch('');
   }, [editingClinic, visible]);
@@ -1019,6 +1083,15 @@ function ClinicModal({ visible, editingClinic, existingClinics, accentColor, onC
     if (!form.il.trim()) { setError('İl zorunludur'); return; }
     if (!form.ilce.trim()) { setError('İlçe zorunludur'); return; }
     if (!form.mahalle.trim()) { setError('Adres zorunludur'); return; }
+
+    // Klinik yetkilisi (admin) auth dogrulamasi — hem yeni kayit hem duzenlemede opsiyonel
+    const adminEmailTrim = form.admin_email.trim();
+    const wantsAdminAuth = adminEmailTrim.length > 0 || form.admin_password.length > 0;
+    if (wantsAdminAuth) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmailTrim)) { setError('Geçerli bir yetkili e-posta girin'); return; }
+      if (form.admin_password.length < 6) { setError('Yetkili şifresi en az 6 karakter olmalı'); return; }
+    }
+
     setSaving(true);
     try {
       const vknTrim = form.vkn.trim();
@@ -1026,8 +1099,49 @@ function ClinicModal({ visible, editingClinic, existingClinics, accentColor, onC
       const payload = { name: form.name.trim(), category: form.category, phone: form.phone.trim(),
         email: form.email.trim() || null, address: JSON.stringify({ il: form.il.trim(), ilce: form.ilce.trim(), mahalle: form.mahalle.trim() }),
         contact_person: form.contact_person.trim(), notes: form.notes.trim() || null, is_active: form.is_active, vkn: vknTrim || null, tax_office: form.tax_office.trim() || null };
-      const { error: err } = editingClinic ? await updateClinic(editingClinic.id, payload as any) : await createClinic(payload as any);
-      if (err) { setError(err.message ?? 'Bir hata oluştu'); return; }
+
+      // 1) Klinik kaydet
+      const clinicRes = editingClinic
+        ? await updateClinic(editingClinic.id, payload as any)
+        : await createClinic(payload as any);
+      if (clinicRes.error) { setError(clinicRes.error.message ?? 'Bir hata oluştu'); return; }
+
+      // 2) Yetkili auth user (opsiyonel — hem yeni hem duzenleme)
+      if (wantsAdminAuth) {
+        const clinicId = (clinicRes.data as any)?.id ?? editingClinic?.id ?? null;
+        const signUpRes = await supabase.auth.signUp({
+          email: adminEmailTrim,
+          password: form.admin_password,
+          options: {
+            data: {
+              user_type: 'clinic_admin',
+              full_name: payload.contact_person,
+              clinic_name: payload.name,
+              clinic_id: clinicId,
+              phone: payload.phone,
+              // role: profiles.role CHECK ('technician'|'manager') — clinic_admin icin NULL
+              approval_status: 'approved',
+            },
+          },
+        });
+        if (signUpRes.error) {
+          setError(`Klinik oluşturuldu, ancak yetkili kaydı başarısız: ${signUpRes.error.message}`);
+          return;
+        }
+        if (signUpRes.data.user?.id) {
+          await supabase.from('profiles')
+            .update({
+              full_name: payload.contact_person,
+              phone: payload.phone,
+              approval_status: 'approved',
+              is_active: true,
+              clinic_id: clinicId,
+              clinic_name: payload.name,
+            })
+            .eq('id', signUpRes.data.user.id);
+        }
+      }
+
       onSuccess();
     } catch (e: any) { setError(e.message ?? 'Bir hata oluştu'); }
     finally { setSaving(false); }
@@ -1132,6 +1246,32 @@ function ClinicModal({ visible, editingClinic, existingClinics, accentColor, onC
               <ModalField label="Vergi Dairesi" last><TextInput style={inputBase} value={form.tax_office} onChangeText={v => set('tax_office', v)} placeholder="Örn: Kadıköy Vergi Dairesi" placeholderTextColor={DS.ink[400]} autoCapitalize="words" /></ModalField>
             </SectionCard>
 
+            {/* Yetkili Sisteme Giriş */}
+            <SectionCard title="Yetkili Girişi (Opsiyonel)">
+              {editingClinic && hasAdminAccount ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, backgroundColor: '#ECFDF5', borderRadius: R.sm }}>
+                  <Check size={14} color="#047857" strokeWidth={2} />
+                  <Text style={{ fontSize: 12, color: '#047857', flex: 1 }}>
+                    Klinik yetkilisi sisteme kayıtlı. Şifre değişikliği için kullanıcı kendi profilinden veya admin panelinden yapmalı.
+                  </Text>
+                </View>
+              ) : (
+                <>
+                  <Text style={{ fontSize: 12, color: DS.ink[500], marginBottom: 12 }}>
+                    {editingClinic
+                      ? 'Klinik yetkilisi henüz sisteme kayıtlı değil. E-posta ve şifre vererek hesap oluşturabilirsiniz.'
+                      : 'E-posta ve şifre verirseniz klinik yetkilisi sisteme giriş yapabilir. Boş bırakılırsa sadece kurum kaydı oluşur.'}
+                  </Text>
+                  <ModalField label="Yetkili E-posta">
+                    <TextInput style={inputBase} value={form.admin_email} onChangeText={v => set('admin_email', v)} placeholder="ornek@email.com" placeholderTextColor={DS.ink[400]} keyboardType="email-address" autoCapitalize="none" />
+                  </ModalField>
+                  <ModalField label="Şifre" last>
+                    <TextInput style={inputBase} value={form.admin_password} onChangeText={v => set('admin_password', v)} placeholder="En az 6 karakter" placeholderTextColor={DS.ink[400]} secureTextEntry />
+                  </ModalField>
+                </>
+              )}
+            </SectionCard>
+
             {/* Notlar */}
             <SectionCard title="Notlar">
               <TextInput style={{ ...inputBase, minHeight: 60, textAlignVertical: 'top' as any }} value={form.notes} onChangeText={v => set('notes', v)}
@@ -1176,10 +1316,31 @@ function DoctorModal({ visible, editingDoctor, clinics, defaultClinicId, accentC
   const [form, setForm] = useState<DoctorForm>(EMPTY_DOCTOR);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // Bu hekimin sisteme kayitli auth hesabi var mi?
+  const [hasAuthAccount, setHasAuthAccount] = useState(false);
+  const [authEmail, setAuthEmail] = useState<string | null>(null);
+
+  // Edit modunda full_name eslesen profil var mi diye bak
+  useEffect(() => {
+    if (!editingDoctor || !visible) { setHasAuthAccount(false); setAuthEmail(null); return; }
+    (async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('user_type', 'doctor')
+        .ilike('full_name', editingDoctor.full_name)
+        .limit(1);
+      const exists = (data?.length ?? 0) > 0;
+      setHasAuthAccount(exists);
+      // E-postayi profilden alamiyoruz (auth.users'da). Bu yuzden sadece varlik bilgisini gosteriyoruz.
+      setAuthEmail(exists ? '✓' : null);
+    })();
+  }, [editingDoctor, visible]);
 
   useEffect(() => {
     setForm(editingDoctor ? { full_name: editingDoctor.full_name, phone: editingDoctor.phone ?? '', specialty: editingDoctor.specialty ?? '',
-      notes: editingDoctor.notes ?? '', clinic_id: editingDoctor.clinic_id ?? '', is_active: editingDoctor.is_active, tckn: (editingDoctor as any).tckn ?? '' }
+      notes: editingDoctor.notes ?? '', clinic_id: editingDoctor.clinic_id ?? '', is_active: editingDoctor.is_active, tckn: (editingDoctor as any).tckn ?? '',
+      email: '', password: '' }
       : { ...EMPTY_DOCTOR, clinic_id: defaultClinicId });
     setError('');
   }, [editingDoctor, defaultClinicId, visible]);
@@ -1191,12 +1352,58 @@ function DoctorModal({ visible, editingDoctor, clinics, defaultClinicId, accentC
     if (!form.full_name.trim()) { setError('Ad Soyad zorunludur'); return; }
     const tcknTrim = form.tckn.trim();
     if (tcknTrim && tcknTrim.length !== 11) { setError('TCKN 11 hane olmalıdır'); return; }
+
+    // E-posta + sifre dogrulamasi (hem yeni kayit hem duzenleme)
+    const emailTrim = form.email.trim();
+    const wantsAuth = emailTrim.length > 0 || form.password.length > 0;
+    if (wantsAuth) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) { setError('Geçerli bir e-posta girin'); return; }
+      if (form.password.length < 6) { setError('Şifre en az 6 karakter olmalı'); return; }
+    }
+
     setSaving(true);
     try {
       const payload = { full_name: form.full_name.trim(), phone: form.phone.trim() || null, specialty: form.specialty.trim() || null,
         notes: form.notes.trim() || null, clinic_id: form.clinic_id || null, is_active: form.is_active, tckn: tcknTrim || null };
-      const { error: err } = editingDoctor ? await updateDoctor(editingDoctor.id, payload) : await createDoctor(payload);
-      if (err) { setError(err.message ?? 'Bir hata oluştu'); return; }
+
+      // 1) doctors tablosunu olustur/guncelle
+      const docRes = editingDoctor ? await updateDoctor(editingDoctor.id, payload) : await createDoctor(payload);
+      if (docRes.error) { setError(docRes.error.message ?? 'Bir hata oluştu'); return; }
+
+      // 2) Auth user istendiyse signUp dene (mevcut kullanici varsa "User already registered" hatasi gelir)
+      if (wantsAuth) {
+        const signUpRes = await supabase.auth.signUp({
+          email: emailTrim,
+          password: form.password,
+          options: {
+            data: {
+              user_type: 'doctor',
+              full_name: payload.full_name,
+              phone: payload.phone,
+              clinic_id: payload.clinic_id,
+              // role: profiles.role CHECK ('technician'|'manager') — doctor icin NULL
+              approval_status: 'approved',
+            },
+          },
+        });
+        if (signUpRes.error) {
+          setError(`Hekim kaydedildi, ancak giriş hesabı oluşturulamadı: ${signUpRes.error.message}`);
+          return;
+        }
+        if (signUpRes.data.user?.id) {
+          await supabase.from('profiles')
+            .update({
+              full_name: payload.full_name,
+              phone: payload.phone,
+              approval_status: 'approved',
+              is_active: true,
+              clinic_id: payload.clinic_id,
+              specialty: payload.specialty,
+            })
+            .eq('id', signUpRes.data.user.id);
+        }
+      }
+
       onSuccess();
     } catch (e: any) { setError(e.message ?? 'Bir hata oluştu'); }
     finally { setSaving(false); }
@@ -1221,6 +1428,30 @@ function DoctorModal({ visible, editingDoctor, clinics, defaultClinicId, accentC
               <ModalField label="Klinik" last>
                 <ClinicDropdown value={form.clinic_id} clinics={clinics} accentColor={accentColor} onChange={id => set('clinic_id', id)} />
               </ModalField>
+            </SectionCard>
+            <SectionCard title="Sisteme Giriş (Opsiyonel)">
+              {editingDoctor && hasAuthAccount ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, backgroundColor: '#ECFDF5', borderRadius: R.sm }}>
+                  <Check size={14} color="#047857" strokeWidth={2} />
+                  <Text style={{ fontSize: 12, color: '#047857', flex: 1 }}>
+                    Hekim sisteme kayıtlı. Şifre değişikliği için kullanıcı kendi profilinden veya admin panelinden yapmalı.
+                  </Text>
+                </View>
+              ) : (
+                <>
+                  <Text style={{ fontSize: 12, color: DS.ink[500], marginBottom: 12 }}>
+                    {editingDoctor
+                      ? 'Hekim henüz sisteme kayıtlı değil. E-posta ve şifre vererek hesap oluşturabilirsiniz.'
+                      : 'E-posta ve şifre verirseniz hekim sisteme giriş yapabilir. Boş bırakılırsa sadece kayıt listesine eklenir.'}
+                  </Text>
+                  <ModalField label="E-posta">
+                    <TextInput style={inputBase} value={form.email} onChangeText={v => set('email', v)} placeholder="ornek@email.com" placeholderTextColor={DS.ink[400]} keyboardType="email-address" autoCapitalize="none" />
+                  </ModalField>
+                  <ModalField label="Şifre" last>
+                    <TextInput style={inputBase} value={form.password} onChangeText={v => set('password', v)} placeholder="En az 6 karakter" placeholderTextColor={DS.ink[400]} secureTextEntry />
+                  </ModalField>
+                </>
+              )}
             </SectionCard>
             <SectionCard title="Ek Bilgiler">
               <ModalField label="Notlar"><TextInput style={{ ...inputBase, minHeight: 60, textAlignVertical: 'top' as any }} value={form.notes} onChangeText={v => set('notes', v)} placeholder="İsteğe bağlı notlar..." placeholderTextColor={DS.ink[400]} multiline numberOfLines={3} /></ModalField>
@@ -1360,3 +1591,59 @@ function DiscountModal({ clinic, currentDiscount, onClose, onSaved }: {
     </Modal>
   );
 }
+
+// ─── Managers List (Klinik Yöneticileri) ──────────────────────
+function ManagersList({ managers, accentColor }: { managers: any[]; accentColor: string }) {
+  if (managers.length === 0) {
+    return (
+      <View style={{ ...CARD, padding: 32, alignItems: "center", gap: 12 }}>
+        <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: DS.ink[50], alignItems: "center", justifyContent: "center" }}>
+          <Briefcase size={24} color={DS.ink[400]} strokeWidth={1.6} />
+        </View>
+        <Text style={{ ...DISPLAY, fontSize: 20, color: DS.ink[900] }}>Henüz yönetici yok</Text>
+        <Text style={{ fontSize: 13, color: DS.ink[500], textAlign: "center", maxWidth: 320 }}>
+          Klinik yetkilileri yeni kurum eklerken e-posta + şifre alanı doldurularak oluşur.
+        </Text>
+      </View>
+    );
+  }
+  return (
+    <View style={{ ...CARD, overflow: "hidden" }}>
+      {managers.map((m: any, i: number) => (
+        <View
+          key={m.id}
+          style={{
+            flexDirection: "row", alignItems: "center", gap: 12,
+            paddingHorizontal: 16, paddingVertical: 14,
+            borderBottomWidth: i < managers.length - 1 ? 1 : 0,
+            borderBottomColor: "rgba(0,0,0,0.04)",
+          }}
+        >
+          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: accentColor + "20", alignItems: "center", justifyContent: "center" }}>
+            <Briefcase size={16} color={accentColor} strokeWidth={1.8} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: DS.ink[900] }} numberOfLines={1}>{m.full_name || "—"}</Text>
+              {m.isFallback && (
+                <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, backgroundColor: "#FEF3C7" }}>
+                  <Text style={{ fontSize: 9, fontWeight: "700", color: "#92400E" }}>GEÇİCİ</Text>
+                </View>
+              )}
+            </View>
+            <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 2 }} numberOfLines={1}>
+              {m.clinic?.name ?? "Klinik atanmamış"}{m.phone ? "  ·  " + m.phone : ""}
+              {m.isFallback ? "  ·  ilk hekim" : ""}
+            </Text>
+          </View>
+          <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, backgroundColor: m.is_active ? "#D1FAE5" : DS.ink[100] }}>
+            <Text style={{ fontSize: 10, fontWeight: "700", color: m.is_active ? "#047857" : DS.ink[500] }}>
+              {m.is_active ? "AKTİF" : "PASİF"}
+            </Text>
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+

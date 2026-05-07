@@ -1,97 +1,127 @@
 // core/ui/MobileTabBar.tsx
-// Liquid Glass Tab Bar — Apple WWDC 2025 design language
-// Multi-layer frosted glass pill · Specular rim highlights · Glowing liquid active state
+// BNav — Variant B floating dark glass pill.
+// Self-contained: uses usePathname / useRouter from Expo Router.
+// Render this as a SIBLING of <Tabs> (outside it) so React Navigation's
+// container never intercepts touches in the transparent safe area.
 
 import React, { useRef } from 'react';
 import {
-  View,
-  Pressable,
-  StyleSheet,
-  Text,
-  Platform,
-  Animated,
+  View, Text, Pressable, StyleSheet, Platform, Animated,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
-
+import { usePathname, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppIcon } from './AppIcon';
-
-// ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface MobileTabItem {
   routeName: string;
   label: string;
-  /** Lucide ikon adı (kebab-case). Örn: "home", "clipboard-list" */
+  /** Lucide icon name (kebab-case) e.g. "home", "clipboard-list" */
   icon: string;
   badge?: boolean;
   badgeCount?: number;
+  /** Custom action instead of navigation (opens modal, etc.) */
   onPress?: () => void;
+  /** Renders this cell as the centre FAB */
+  fab?: boolean;
 }
 
 interface Props {
-  state: any;
-  navigation: any;
   items: MobileTabItem[];
-  /** Active tint. admin → #0F172A  lab → #2563EB */
+  /** Base route segment, e.g. "/(lab)" */
+  baseRoute: string;
+  /** Active + FAB tint (panel primary) */
   accentColor: string;
 }
 
-// ─── Component ───────────────────────────────────────────────────────────────
+export function MobileTabBar({ items, baseRoute, accentColor }: Props) {
+  const pathname = usePathname();
+  const router   = useRouter();
+  const insets   = useSafeAreaInsets();
 
-export function MobileTabBar({ state, navigation, items, accentColor }: Props) {
-  const currentRouteName = state.routes[state.index]?.name;
-  const activeIdx = items.findIndex((i) => i.routeName === currentRouteName);
+  // Determine which item is active from the current pathname
+  const activeIdx = (() => {
+    // Exact root match
+    if (pathname === baseRoute || pathname === baseRoute + '/') return 0;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].onPress) continue; // modal actions are never "active"
+      const seg = items[i].routeName;
+      if (seg === 'index') continue;
+      if (pathname.includes('/' + seg)) return i;
+    }
+    return 0;
+  })();
 
-  const tabs = items.map((item, i) => (
-    <TabCell
-      key={item.routeName}
-      item={item}
-      active={i === activeIdx}
-      accentColor={accentColor}
-      onPress={() => {
-        if (item.onPress) { item.onPress(); return; }
-        const route = state.routes.find((r: any) => r.name === item.routeName);
-        if (!route) return;
-        const event = navigation.emit({
-          type: 'tabPress', target: route.key, canPreventDefault: true,
-        });
-        if (i !== activeIdx && !event.defaultPrevented) {
-          navigation.navigate(route.name);
-        }
-      }}
-    />
-  ));
+  const middleIdx = Math.floor(items.length / 2);
+  const isFab = (item: MobileTabItem, idx: number) =>
+    item.fab === true || (items.length === 5 && idx === middleIdx);
 
+  const handlePress = (item: MobileTabItem, idx: number) => {
+    if (item.onPress) { item.onPress(); return; }
+    if (item.routeName === 'index') {
+      router.push(baseRoute as any);
+    } else {
+      router.push(`${baseRoute}/${item.routeName}` as any);
+    }
+  };
+
+  const bottomOffset = Math.max(insets.bottom, 8) + 8;
   const isNativeBlur = Platform.OS === 'ios' || Platform.OS === 'android';
 
   return (
-    <View pointerEvents="box-none" style={s.wrap}>
+    // pointerEvents="box-none" → wrap passes touches through; only pill children capture them
+    <View pointerEvents="box-none" style={[s.wrap, { bottom: bottomOffset }]}>
       {isNativeBlur ? (
-        <BlurView intensity={80} tint="light" style={s.bar}>
-          {/* Layer 1 — White frost wash */}
-          <View pointerEvents="none" style={s.frostLayer} />
-          {/* Layer 2 — Top specular shimmer (gradient-like) */}
-          <View pointerEvents="none" style={s.shimmerTop} />
-          {/* Layer 3 — Subtle bottom edge refraction */}
-          <View pointerEvents="none" style={s.shimmerBottom} />
-          {/* Layer 4 — Hairline top highlight */}
-          <View pointerEvents="none" style={s.hairlineTop} />
-          {tabs}
+        <BlurView intensity={32} tint="dark" style={s.bar}>
+          <View pointerEvents="none" style={s.barTint} />
+          <View pointerEvents="none" style={s.barBorder} />
+          {items.map((item, i) =>
+            isFab(item, i) ? (
+              <FabCell
+                key={item.routeName}
+                accentColor={accentColor}
+                item={item}
+                onPress={() => handlePress(item, i)}
+              />
+            ) : (
+              <TabCell
+                key={item.routeName}
+                item={item}
+                active={i === activeIdx}
+                accentColor={accentColor}
+                onPress={() => handlePress(item, i)}
+              />
+            )
+          )}
         </BlurView>
       ) : (
-        // Web: CSS backdrop-filter delivers the glass look
         <View style={[s.bar, s.barWeb]}>
-          <View pointerEvents="none" style={s.shimmerTop} />
-          <View pointerEvents="none" style={s.shimmerBottom} />
-          <View pointerEvents="none" style={s.hairlineTop} />
-          {tabs}
+          <View pointerEvents="none" style={s.barBorder} />
+          {items.map((item, i) =>
+            isFab(item, i) ? (
+              <FabCell
+                key={item.routeName}
+                accentColor={accentColor}
+                item={item}
+                onPress={() => handlePress(item, i)}
+              />
+            ) : (
+              <TabCell
+                key={item.routeName}
+                item={item}
+                active={i === activeIdx}
+                accentColor={accentColor}
+                onPress={() => handlePress(item, i)}
+              />
+            )
+          )}
         </View>
       )}
     </View>
   );
 }
 
-// ─── Tab Cell ────────────────────────────────────────────────────────────────
-
+// ─── Tab cell (icon + label) ──────────────────────────────────────────────────
 function TabCell({
   item, active, accentColor, onPress,
 }: {
@@ -100,106 +130,44 @@ function TabCell({
   accentColor: string;
   onPress: () => void;
 }) {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const scale = useRef(new Animated.Value(1)).current;
 
-  const handlePress = () => {
-    // Liquid press bounce
+  const handle = () => {
     Animated.sequence([
-      Animated.timing(scaleAnim, {
-        toValue: 0.88,
-        duration: 70,
-        useNativeDriver: true,
-      }),
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        damping: 12,
-        stiffness: 260,
-        useNativeDriver: true,
-      }),
+      Animated.timing(scale, { toValue: 0.90, duration: 70, useNativeDriver: true }),
+      Animated.spring(scale, { toValue: 1, damping: 12, stiffness: 260, useNativeDriver: true }),
     ]).start();
     onPress();
   };
 
-  const tint = active ? accentColor : '#64748B';
+  const tint = active ? accentColor : 'rgba(255,255,255,0.70)';
 
   return (
     <Pressable
-      onPress={handlePress}
-      android_ripple={{ color: 'rgba(15,23,42,0.06)', borderless: true }}
+      onPress={handle}
       style={s.cell}
+      android_ripple={{ color: 'rgba(255,255,255,0.08)', borderless: true }}
     >
       <Animated.View
-        style={[s.cellInner, { transform: [{ scale: scaleAnim }] }]}
+        style={[
+          s.cellInner,
+          { transform: [{ scale }] },
+          active && { backgroundColor: 'rgba(255,255,255,0.10)' },
+        ]}
       >
-        {/* ── Active pill ─────────────────────────────────── */}
-        {active && (
-          <View style={s.pillWrap}>
-            {/* Outer ambient glow (colored) */}
-            <View
-              pointerEvents="none"
-              style={[
-                s.pillGlow,
-                {
-                  ...(Platform.OS === 'web'
-                    ? ({
-                        boxShadow: `0 0 18px 4px ${accentColor}30`,
-                      } as any)
-                    : {
-                        shadowColor: accentColor,
-                        shadowOpacity: 0.28,
-                        shadowRadius: 12,
-                        shadowOffset: { width: 0, height: 2 },
-                      }),
-                },
-              ]}
-            />
-            {/* Pill body — tinted liquid fill */}
-            <View
-              style={[
-                s.pill,
-                { backgroundColor: accentColor + '1C' },
-              ]}
-            >
-              {/* Inner top specular — makes pill look like a glass droplet */}
-              <View style={s.pillSpecular} />
-              {/* Inner bottom faint edge */}
-              <View style={s.pillBottomEdge} />
-              {/* Thin border ring */}
-              <View
-                style={[
-                  s.pillBorder,
-                  { borderColor: accentColor + '38' },
-                ]}
-              />
-            </View>
-          </View>
-        )}
-
-        {/* ── Icon ────────────────────────────────────────── */}
+        {/* Badge dot (boolean) */}
         <View style={s.iconWrap}>
-          <AppIcon name={item.icon} size={active ? 22 : 21} color={tint} strokeWidth={active ? 2.25 : 1.75} />
+          <AppIcon name={item.icon} size={20} color={tint} strokeWidth={active ? 2.2 : 1.8} />
           {item.badge && <View style={s.dotBadge} />}
-          {typeof item.badgeCount === 'number' && item.badgeCount > 0 && (
+          {!item.badge && !!item.badgeCount && item.badgeCount > 0 && (
             <View style={s.countBadge}>
               <Text style={s.countBadgeText}>
-                {item.badgeCount > 9 ? '9+' : item.badgeCount}
+                {item.badgeCount > 99 ? '99+' : String(item.badgeCount)}
               </Text>
             </View>
           )}
         </View>
-
-        {/* ── Label ───────────────────────────────────────── */}
-        <Text
-          numberOfLines={1}
-          style={[
-            s.label,
-            {
-              color:      tint,
-              fontWeight: active ? '700' : '400',
-              opacity:    active ? 1 : 0.75,
-            },
-          ]}
-        >
+        <Text style={[s.label, { color: tint }]} numberOfLines={1}>
           {item.label}
         </Text>
       </Animated.View>
@@ -207,213 +175,194 @@ function TabCell({
   );
 }
 
-// ─── Styles ──────────────────────────────────────────────────────────────────
+// ─── FAB cell (centre action) ─────────────────────────────────────────────────
+function FabCell({
+  item, accentColor, onPress,
+}: {
+  item: MobileTabItem;
+  accentColor: string;
+  onPress: () => void;
+}) {
+  const scale = useRef(new Animated.Value(1)).current;
 
+  const handle = () => {
+    Animated.sequence([
+      Animated.timing(scale, { toValue: 0.90, duration: 70, useNativeDriver: true }),
+      Animated.spring(scale, { toValue: 1, damping: 12, stiffness: 260, useNativeDriver: true }),
+    ]).start();
+    onPress();
+  };
+
+  return (
+    <Pressable
+      onPress={handle}
+      style={s.fabCell}
+      android_ripple={{ color: 'rgba(0,0,0,0.18)', borderless: true }}
+    >
+      <Animated.View
+        style={[
+          s.fab,
+          { backgroundColor: accentColor, transform: [{ scale }] },
+          Platform.OS === 'web'
+            ? ({ boxShadow: `0 6px 18px ${accentColor}66` } as any)
+            : {
+                shadowColor: accentColor,
+                shadowOpacity: 0.50,
+                shadowRadius: 14,
+                shadowOffset: { width: 0, height: 6 },
+                elevation: 8,
+              },
+        ]}
+      >
+        <AppIcon name={item.icon} size={22} color="#0A0A0A" strokeWidth={2.2} />
+      </Animated.View>
+      <Text style={s.fabLabel} numberOfLines={1}>{item.label}</Text>
+    </Pressable>
+  );
+}
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
-  // ── Outer floating wrap ────────────────────────────────────────────────────
   wrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
     paddingHorizontal: 16,
-    paddingBottom: Platform.OS === 'ios' ? 32 : 16,
-    backgroundColor: 'transparent',
     alignItems: 'center',
+    backgroundColor: 'transparent',
+    // bottom is set inline via safe area insets
   },
 
-  // ── Glass pill container ───────────────────────────────────────────────────
   bar: {
     flexDirection: 'row',
-    alignItems:    'stretch',
-    paddingVertical:   6,
-    paddingHorizontal: 4,
-    borderRadius: 36,
-    // Multi-layer border: bright top edge fades to translucent
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.72)',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    borderRadius: 999,
     overflow: 'hidden',
-    width:    '100%',
-    maxWidth: 520,
-    // Native shadow (layered depth)
-    ...(Platform.OS !== 'web' && {
-      shadowColor:   '#0F172A',
-      shadowOpacity: 0.16,
-      shadowRadius:  28,
-      shadowOffset:  { width: 0, height: 10 },
-      elevation: 20,
-    }),
+    width: '100%',
+    maxWidth: 390,
+    ...(Platform.OS === 'web'
+      ? {}
+      : {
+          shadowColor: '#000',
+          shadowOpacity: 0.32,
+          shadowRadius: 24,
+          shadowOffset: { width: 0, height: 12 },
+          elevation: 18,
+        }),
   },
 
-  // Web-only glass styles
+  barTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(10,10,10,0.55)',
+  },
+
+  barBorder: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.09)',
+  },
+
   barWeb: {
-    backgroundColor: 'rgba(255,255,255,0.68)',
+    backgroundColor: 'rgba(10,10,10,0.88)',
     ...(Platform.OS === 'web'
       ? ({
-          backdropFilter:       'blur(40px) saturate(200%) brightness(1.05)',
-          WebkitBackdropFilter: 'blur(40px) saturate(200%) brightness(1.05)',
-          boxShadow: [
-            '0 12px 40px rgba(15,23,42,0.14)',
-            '0 3px 10px rgba(15,23,42,0.08)',
-            'inset 0 1.5px 0 rgba(255,255,255,0.95)',
-            'inset 0 -1px 0 rgba(255,255,255,0.40)',
-            'inset 1px 0 0 rgba(255,255,255,0.30)',
-            'inset -1px 0 0 rgba(255,255,255,0.30)',
-          ].join(', '),
+          backdropFilter: 'blur(24px) saturate(180%)',
+          WebkitBackdropFilter: 'blur(24px) saturate(180%)',
+          boxShadow: '0 12px 32px rgba(0,0,0,0.28)',
         } as any)
       : {}),
   },
 
-  // Layer 1 — white frost (native: sits over BlurView to brighten it)
-  frostLayer: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.30)',
-  },
-
-  // Layer 2 — top shimmer (the main "glass slab" illusion)
-  // Fades from bright white at top to transparent ≈30% height
-  shimmerTop: {
-    position: 'absolute',
-    top:   0,
-    left:  0,
-    right: 0,
-    height: '40%',
-    // On native we approximate with a semi-transparent overlay
-    // On web CSS linear-gradient is applied via boxShadow on barWeb
-    backgroundColor: 'rgba(255,255,255,0.22)',
-    // borderBottomWidth: 0 — no hard edge
-    pointerEvents: 'none',
-  },
-
-  // Layer 3 — bottom refraction edge (glass looks thicker at base)
-  shimmerBottom: {
-    position: 'absolute',
-    bottom: 0,
-    left:   0,
-    right:  0,
-    height: 2,
-    backgroundColor: 'rgba(255,255,255,0.45)',
-  },
-
-  // Layer 4 — hairline specular at very top (the "rim" of the glass)
-  hairlineTop: {
-    position: 'absolute',
-    top:   0,
-    left:  0,
-    right: 0,
-    height: 1.5,
-    backgroundColor: 'rgba(255,255,255,0.95)',
-  },
-
-  // ── Tab cell ───────────────────────────────────────────────────────────────
+  // Regular tab cell
   cell: {
     flex: 1,
-    alignItems:     'center',
+    alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical:   6,
-    paddingHorizontal: 2,
-    position: 'relative',
-    minHeight: 60,
+    paddingVertical: 4,
   },
 
   cellInner: {
-    alignItems:     'center',
+    alignItems: 'center',
     justifyContent: 'center',
-    gap: 3,
+    borderRadius: 16,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    minWidth: 44,
   },
 
-  // ── Active pill (liquid droplet) ───────────────────────────────────────────
-  pillWrap: {
-    position: 'absolute',
-    top:    2,
-    bottom: 2,
-    left:   2,
-    right:  2,
-  },
-
-  // Outer ambient glow ring (colored halo around the pill)
-  pillGlow: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 22,
-  },
-
-  // Main pill body
-  pill: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 22,
-    overflow: 'hidden',
-  },
-
-  // Top-inner specular line — gives the "liquid drop" look
-  pillSpecular: {
-    position: 'absolute',
-    top:   0,
-    left:  '8%',
-    right: '8%',
-    height: 1.5,
-    backgroundColor: 'rgba(255,255,255,0.85)',
-    borderRadius: 99,
-  },
-
-  // Bottom faint inner edge — depth
-  pillBottomEdge: {
-    position: 'absolute',
-    bottom: 0,
-    left:  '8%',
-    right: '8%',
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.35)',
-    borderRadius: 99,
-  },
-
-  // Thin border ring on pill
-  pillBorder: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 22,
-    borderWidth:  1,
-  },
-
-  // ── Icon & label ───────────────────────────────────────────────────────────
   iconWrap: {
-    width:  34,
-    height: 34,
-    alignItems:     'center',
+    width: 24,
+    height: 24,
+    alignItems: 'center',
     justifyContent: 'center',
   },
 
   label: {
-    fontSize:      10.5,
+    fontSize: 10,
+    fontWeight: '500',
     letterSpacing: 0.1,
+    marginTop: 3,
   },
 
-  // ── Badges ─────────────────────────────────────────────────────────────────
+  // Badge — dot
   dotBadge: {
-    position:  'absolute',
-    top:       -1,
-    right:     -3,
-    width:     8,
-    height:    8,
-    borderRadius: 999,
+    position: 'absolute',
+    top: -2,
+    right: -3,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: '#EF4444',
     borderWidth: 1.5,
-    borderColor: '#FFFFFF',
+    borderColor: '#0A0A0A',
   },
 
+  // Badge — count
   countBadge: {
-    position:  'absolute',
-    top:       -5,
-    right:     -9,
-    minWidth:  18,
-    height:    18,
-    paddingHorizontal: 4,
-    borderRadius: 999,
+    position: 'absolute',
+    top: -4,
+    right: -8,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
     backgroundColor: '#EF4444',
-    alignItems:     'center',
-    justifyContent: 'center',
     borderWidth: 1.5,
-    borderColor: '#FFFFFF',
+    borderColor: '#0A0A0A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  countBadgeText: {
+    color: '#FFF',
+    fontSize: 9,
+    fontWeight: '700',
   },
 
-  countBadgeText: {
-    color:      '#FFFFFF',
-    fontSize:   9,
-    fontWeight: '800',
-    lineHeight: 11,
+  // FAB cell
+  fabCell: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 4,
+  },
+
+  fab: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  fabLabel: {
+    fontSize: 10,
+    fontWeight: '500',
+    letterSpacing: 0.1,
+    marginTop: 3,
+    color: 'rgba(255,255,255,0.70)',
   },
 });

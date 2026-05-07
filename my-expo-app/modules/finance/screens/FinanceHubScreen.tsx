@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import {
   TrendingUp, Users, PieChart, BarChart2, FileText, Building2,
-  CreditCard, TrendingDown, Landmark, Tag,
+  CreditCard, TrendingDown, Landmark, Tag, Wallet, Banknote,
 } from 'lucide-react-native';
 
 import { HubContext } from '../../../core/ui/HubContext';
@@ -28,6 +28,8 @@ import { PriceListScreen }     from './PriceListScreen';
 import { ProfitabilityScreen } from './ProfitabilityScreen';
 import { TechnicianPerformanceScreen } from './TechnicianPerformanceScreen';
 import { BudgetScreen } from './BudgetScreen';
+import { SalariesScreen } from './SalariesScreen';
+import { AdvancesScreen } from './AdvancesScreen';
 
 // ── Display font token ──────────────────────────────────────────────
 const DISPLAY = {
@@ -59,6 +61,8 @@ const COLLECTION_TABS: TabDef[] = [
 
 const OPERATION_TABS: TabDef[] = [
   { key: 'expenses',  label: 'Giderler',      icon: TrendingDown, accent: '#DC2626', hint: 'Sabit + değişken' },
+  { key: 'salaries',  label: 'Maaşlar',       icon: Wallet,       accent: '#7C3AED', hint: 'Personel ödemeleri' },
+  { key: 'advances',  label: 'Avanslar',      icon: Banknote,     accent: '#D97706', hint: 'Personel avansları' },
   { key: 'cash',      label: 'Kasa / Banka',  icon: Landmark,     accent: '#059669', hint: 'Hesap hareketleri' },
   { key: 'pricelist', label: 'Fiyat Listesi', icon: Tag,          accent: '#0891B2', hint: 'Hizmet katalog' },
 ];
@@ -84,7 +88,7 @@ export function FinanceHubScreen() {
   // PatternsShell başlık
   const { setTitle, clear } = usePageTitleStore();
   useEffect(() => {
-    setTitle('Mali İşlemler', '');
+    setTitle('Finans', '');
     return clear;
   }, []);
 
@@ -275,6 +279,8 @@ function TabContent({ activeKey }: { activeKey: string }) {
       {activeKey === 'clinic_balance' && <ClinicBalanceScreen />}
       {activeKey === 'checks'         && <ChecksScreen />}
       {activeKey === 'expenses'       && <ExpensesScreen />}
+      {activeKey === 'salaries'       && <SalariesScreen />}
+      {activeKey === 'advances'       && <AdvancesScreen />}
       {activeKey === 'cash'           && <CashScreen />}
       {activeKey === 'pricelist'      && <PriceListScreen />}
     </>

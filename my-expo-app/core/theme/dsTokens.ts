@@ -57,14 +57,14 @@ export const DS = {
 
   exec: {
     name:        'Yönetim Paneli',
-    bg:          '#F4ECE6',
-    bgSoft:      '#FAF5F1',
-    bgDeep:      '#E8D9CD',
-    surface:     '#FFFFFF',
-    surfaceAlt:  '#1A1A1A',
-    primary:     '#E97757',
-    primaryDeep: '#D15A3A',
-    accent:      '#1A1A1A',
+    bg:          '#F5F1EB',  // Krem zemin
+    bgSoft:      '#FAF8F4',
+    bgDeep:      '#EDE7DC',
+    surface:     '#FFFFFF',  // Kart — beyaz
+    surfaceAlt:  '#243041',  // Koyu kart — lacivert
+    primary:     '#EA7A4C',  // Mercan accent
+    primaryDeep: '#F3B37A',  // İkincil accent
+    accent:      '#1C1C1C',  // Ana yazı / koyu CTA
     success:     '#2D9A6B',
     warning:     '#E89B2A',
     danger:      '#D94B4B',

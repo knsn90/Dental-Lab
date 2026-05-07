@@ -10,6 +10,7 @@ import {
   TextInput, ActivityIndicator, Alert,
 } from 'react-native';
 import { AppIcon } from '../../../core/ui/AppIcon';
+import { DatePicker } from '../../../core/ui/DatePicker';
 import { Shadows, CardSpec } from '../../../core/theme/shadows';
 import { toast } from '../../../core/ui/Toast';
 import {
@@ -271,9 +272,11 @@ function RecurringEditor({
 
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <Field label="İlk Vade" style={{ flex: 1 }}>
-                <TextInput style={s.input} value={form.next_due_date}
-                  placeholder="YYYY-MM-DD"
-                  onChangeText={v => setForm({ ...form, next_due_date: v, start_date: form.start_date || v })} />
+                <DatePicker
+                  value={form.next_due_date}
+                  onChange={v => setForm({ ...form, next_due_date: v, start_date: form.start_date || v })}
+                  placeholder="Tarih seç"
+                />
               </Field>
               <Field label="Anchor (Gün)" style={{ flex: 1 }}>
                 <TextInput style={s.input} value={String(form.anchor_day)}

@@ -11,10 +11,16 @@ import {
 } from 'react-native';
 import {
   Plus, Search, X, Save, Trash2, Edit3, User, Wrench,
-  Monitor, Printer, Cpu, Cog, AlertTriangle, CheckCircle,
+  Monitor, Cog, AlertTriangle, CheckCircle, MapPin,
+  Flame, Hammer, Drill, Sparkles, Wind, Microwave, Crosshair,
 } from 'lucide-react-native';
+import {
+  IntraoralScannerIcon, Printer3DIcon,
+  MillingMachineIcon,
+} from '../../../core/ui/EquipmentIcons';
 import { supabase } from '../../../core/api/supabase';
 import { DS } from '../../../core/theme/dsTokens';
+import { DatePicker } from '../../../core/ui/DatePicker';
 
 // ─── Patterns tokens ─────────────────────────────────────────
 const DISPLAY = {
@@ -31,18 +37,18 @@ const cardSolid: any = {
     : {}),
 };
 
-// ─── Category config ─────────────────────────────────────────
+// ─── Category config — kategoriye uygun anlamlı ikonlar ──────
 const CATEGORIES: { key: string; label: string; icon: React.ComponentType<any> }[] = [
-  { key: 'cad_cam',      label: 'CAD/CAM',     icon: Monitor },
-  { key: 'scanner',      label: 'Tarayıcı',    icon: Cpu },
-  { key: 'furnace',      label: 'Fırın',        icon: Cog },
-  { key: 'milling',      label: 'Freze',        icon: Wrench },
-  { key: 'printer',      label: '3D Yazıcı',    icon: Printer },
-  { key: 'sintering',    label: 'Sinterleme',   icon: Cog },
-  { key: 'polishing',    label: 'Polisaj',      icon: Wrench },
-  { key: 'articulator',  label: 'Artikülatör',  icon: Wrench },
-  { key: 'compressor',   label: 'Kompresör',    icon: Cog },
-  { key: 'other',        label: 'Diğer',        icon: Wrench },
+  { key: 'cad_cam',      label: 'CAD/CAM',     icon: Monitor     },  // Bilgisayar/yazılım
+  { key: 'scanner',      label: 'Tarayıcı',    icon: IntraoralScannerIcon }, // Özel illüstrasyon
+  { key: 'furnace',      label: 'Fırın',        icon: Flame       },  // Alev
+  { key: 'milling',      label: 'Freze',        icon: MillingMachineIcon }, // Özel illüstrasyon
+  { key: 'printer',      label: '3D Yazıcı',    icon: Printer3DIcon }, // Özel illüstrasyon
+  { key: 'sintering',    label: 'Sinterleme',   icon: Microwave   },  // Lucide — fırın/kutu görseli
+  { key: 'polishing',    label: 'Polisaj',      icon: Sparkles    },  // Parlatma
+  { key: 'articulator',  label: 'Artikülatör',  icon: Crosshair   },  // Mekanik artikülasyon
+  { key: 'compressor',   label: 'Kompresör',    icon: Wind        },  // Hava
+  { key: 'other',        label: 'Diğer',        icon: Wrench      },
 ];
 
 const CATEGORY_MAP = Object.fromEntries(CATEGORIES.map(c => [c.key, c]));
@@ -63,16 +69,24 @@ interface Equipment {
   category: string;
   status: string;
   assigned_to: string | null;
+  station_id: string | null;
   purchase_date: string | null;
   warranty_end: string | null;
   notes: string | null;
   created_at: string;
   assignee?: { id: string; full_name: string } | null;
+  station?: { id: string; name: string; color: string | null } | null;
 }
 
 interface Technician {
   id: string;
   full_name: string;
+}
+
+interface Station {
+  id: string;
+  name: string;
+  color: string | null;
 }
 
 // ─── Props ───────────────────────────────────────────────────
@@ -87,6 +101,7 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
 
   const [items, setItems] = useState<Equipment[]>([]);
   const [techs, setTechs] = useState<Technician[]>([]);
+  const [stations, setStations] = useState<Station[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterCat, setFilterCat] = useState<string | null>(null);
@@ -98,14 +113,15 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
   const [form, setForm] = useState({
     name: '', brand: '', model: '', serial_number: '',
     category: 'other', status: 'active',
-    assigned_to: '' as string, purchase_date: '', warranty_end: '', notes: '',
+    assigned_to: '' as string, station_id: '' as string,
+    purchase_date: '', warranty_end: '', notes: '',
   });
 
   const load = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from('equipment')
-      .select('*, assignee:profiles!equipment_assigned_to_fkey(id, full_name)')
+      .select('*, assignee:profiles!equipment_assigned_to_fkey(id, full_name), station:lab_stations(id, name, color)')
       .order('name');
     if (!error) setItems((data ?? []) as Equipment[]);
     setLoading(false);
@@ -120,14 +136,24 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
     if (data) setTechs(data as Technician[]);
   }, []);
 
-  useEffect(() => { load(); loadTechs(); }, []);
+  const loadStations = useCallback(async () => {
+    const { data } = await supabase
+      .from('lab_stations')
+      .select('id, name, color')
+      .eq('is_active', true)
+      .order('sequence_hint')
+      .order('name');
+    if (data) setStations(data as Station[]);
+  }, []);
+
+  useEffect(() => { load(); loadTechs(); loadStations(); }, []);
 
   const openNew = () => {
     setEditItem(null);
     setForm({
       name: '', brand: '', model: '', serial_number: '',
       category: 'other', status: 'active',
-      assigned_to: '', purchase_date: '', warranty_end: '', notes: '',
+      assigned_to: '', station_id: '', purchase_date: '', warranty_end: '', notes: '',
     });
     setModalOpen(true);
   };
@@ -142,6 +168,7 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
       category: item.category,
       status: item.status,
       assigned_to: item.assigned_to ?? '',
+      station_id: item.station_id ?? '',
       purchase_date: item.purchase_date ?? '',
       warranty_end: item.warranty_end ?? '',
       notes: item.notes ?? '',
@@ -160,6 +187,7 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
       category: form.category,
       status: form.status,
       assigned_to: form.assigned_to || null,
+      station_id: form.station_id || null,
       purchase_date: form.purchase_date || null,
       warranty_end: form.warranty_end || null,
       notes: form.notes.trim() || null,
@@ -383,19 +411,37 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
                   </Text>
                 </View>
 
-                {/* Assignee */}
-                {item.assignee?.full_name ? (
-                  <View style={{
-                    flexDirection: 'row', alignItems: 'center', gap: 5,
-                    paddingHorizontal: 8, paddingVertical: 4, borderRadius: 9999,
-                    backgroundColor: 'rgba(37,99,235,0.08)',
-                  }}>
-                    <User size={11} color="#2563EB" strokeWidth={2} />
-                    <Text style={{ fontSize: 11, fontWeight: '600', color: '#2563EB' }}>
-                      {item.assignee.full_name}
-                    </Text>
-                  </View>
-                ) : null}
+                {/* Station + Assignee badges */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  {item.station?.name ? (() => {
+                    const stColor = item.station.color ?? '#7C3AED';
+                    return (
+                      <View style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 5,
+                        paddingHorizontal: 8, paddingVertical: 4, borderRadius: 9999,
+                        backgroundColor: `${stColor}14`,
+                      }}>
+                        <MapPin size={11} color={stColor} strokeWidth={2} />
+                        <Text style={{ fontSize: 11, fontWeight: '600', color: stColor }}>
+                          {item.station.name}
+                        </Text>
+                      </View>
+                    );
+                  })() : null}
+
+                  {item.assignee?.full_name ? (
+                    <View style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 5,
+                      paddingHorizontal: 8, paddingVertical: 4, borderRadius: 9999,
+                      backgroundColor: 'rgba(37,99,235,0.08)',
+                    }}>
+                      <User size={11} color="#2563EB" strokeWidth={2} />
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: '#2563EB' }}>
+                        {item.assignee.full_name}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
 
                 {/* Edit icon */}
                 <Edit3 size={14} color={DS.ink[300]} strokeWidth={1.6} />
@@ -612,26 +658,83 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
                 </View>
               </View>
 
-              {/* Dates row */}
+              {/* Station — hangi istasyonda kullanılıyor */}
+              <View>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[500], marginBottom: 6 }}>
+                  İstasyon
+                </Text>
+                {stations.length === 0 ? (
+                  <View style={{
+                    paddingHorizontal: 14, paddingVertical: 14, borderRadius: 14,
+                    backgroundColor: DS.ink[50], borderWidth: 1, borderColor: DS.ink[200],
+                  }}>
+                    <Text style={{ fontSize: 12, color: DS.ink[400], lineHeight: 17 }}>
+                      Henüz istasyon tanımlanmamış. Ayarlar → İstasyonlar bölümünden ekleyebilirsiniz.
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                    {/* None */}
+                    <Pressable
+                      onPress={() => setForm(f => ({ ...f, station_id: '' }))}
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 5,
+                        paddingHorizontal: 11, paddingVertical: 7, borderRadius: 9999,
+                        borderWidth: 1.5,
+                        borderColor: !form.station_id ? accentColor : DS.ink[200],
+                        backgroundColor: !form.station_id ? `${accentColor}10` : '#FFF',
+                        ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                      } as any}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: !form.station_id ? '700' : '500', color: !form.station_id ? accentColor : DS.ink[500] }}>
+                        Atanmamış
+                      </Text>
+                    </Pressable>
+                    {stations.map(st => {
+                      const sel = form.station_id === st.id;
+                      const stColor = st.color ?? accentColor;
+                      return (
+                        <Pressable
+                          key={st.id}
+                          onPress={() => setForm(f => ({ ...f, station_id: st.id }))}
+                          style={{
+                            flexDirection: 'row', alignItems: 'center', gap: 5,
+                            paddingHorizontal: 11, paddingVertical: 7, borderRadius: 9999,
+                            borderWidth: 1.5,
+                            borderColor: sel ? stColor : DS.ink[200],
+                            backgroundColor: sel ? `${stColor}14` : '#FFF',
+                            ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                          } as any}
+                        >
+                          <MapPin size={11} color={sel ? stColor : DS.ink[400]} strokeWidth={1.8} />
+                          <Text style={{ fontSize: 12, fontWeight: sel ? '700' : '500', color: sel ? stColor : DS.ink[700] }}>
+                            {st.name}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+
+              {/* Dates row — DatePicker (modern popover takvim) */}
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[500], marginBottom: 6 }}>Alım Tarihi</Text>
-                  <TextInput
+                  <DatePicker
                     value={form.purchase_date}
-                    onChangeText={v => setForm(f => ({ ...f, purchase_date: v }))}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor={DS.ink[300]}
-                    style={inputStyle}
+                    onChange={(iso) => setForm(f => ({ ...f, purchase_date: iso }))}
+                    accent={accentColor}
+                    placeholder="Tarih seç"
                   />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[500], marginBottom: 6 }}>Garanti Bitiş</Text>
-                  <TextInput
+                  <DatePicker
                     value={form.warranty_end}
-                    onChangeText={v => setForm(f => ({ ...f, warranty_end: v }))}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor={DS.ink[300]}
-                    style={inputStyle}
+                    onChange={(iso) => setForm(f => ({ ...f, warranty_end: iso }))}
+                    accent={accentColor}
+                    placeholder="Tarih seç"
                   />
                 </View>
               </View>

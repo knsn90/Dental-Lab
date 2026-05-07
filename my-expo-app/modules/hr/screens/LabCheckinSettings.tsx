@@ -1,27 +1,39 @@
 /**
- * Lab QR Check-in Ayarları
- * ─ QR kodu göster / yenile
- * ─ GPS konum & yarıçap ayarla
- * ─ Sadece manager veya admin görebilir
+ * LabCheckinSettings — QR Check-in Ayarları (Patterns Design Language)
+ *
+ *  • Şeffaf arka plan — hub krem zeminini kullanır
+ *  • Panel-aware accentColor (admin coral default)
+ *  • Lucide ikonlar (QrCode, MapPin, Crosshair, Share2, RefreshCw, …)
+ *  • ConfirmDialog (Alert.alert yerine)
+ *  • Display 300 başlık + soft tinted ikon dairesi
+ *  • Yetki: sadece manager veya admin görebilir
  */
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, ActivityIndicator, Alert, Platform, Share,
+  View, Text, ScrollView, Pressable, TextInput,
+  ActivityIndicator, Platform, Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BrandedQR } from '../../../core/ui/BrandedQR';
+import {
+  QrCode, MapPin, Crosshair, Share2, RefreshCw,
+  Save, Info, AlertCircle,
+} from 'lucide-react-native';
 import * as Location from 'expo-location';
 
-import { C } from '../../../core/theme/colors';
-import { F, FS } from '../../../core/theme/typography';
+import { BrandedQR } from '../../../core/ui/BrandedQR';
+import { ConfirmDialog, type ConfirmState } from '../../../core/ui/ConfirmDialog';
+import { DS } from '../../../core/theme/dsTokens';
 import { toast } from '../../../core/ui/Toast';
-import { AppIcon } from '../../../core/ui/AppIcon';
 
 import {
   fetchLabLocation, updateLabLocation, regenerateCheckinToken,
   type LabLocation,
 } from '../api';
+
+const DISPLAY = {
+  fontFamily: 'Inter Tight, Inter, system-ui, sans-serif',
+  fontWeight: '300' as const,
+};
 
 // ─── Public checkin URL base ─────────────────────────────────────────────────
 const APP_URL = 'https://dental-lab-steel.vercel.app/checkin';
@@ -30,16 +42,17 @@ interface Props {
   accentColor?: string;
 }
 
-export function LabCheckinSettings({ accentColor = '#2563EB' }: Props) {
+export function LabCheckinSettings({ accentColor = '#EA7A4C' }: Props) {
   const [lab, setLab]         = useState<LabLocation | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving]   = useState(false);
   const [regen, setRegen]     = useState(false);
+  const [confirm, setConfirm] = useState<ConfirmState | null>(null);
 
   // form state
-  const [lat, setLat]         = useState('');
-  const [lng, setLng]         = useState('');
-  const [radius, setRadius]   = useState('150');
+  const [lat, setLat]       = useState('');
+  const [lng, setLng]       = useState('');
+  const [radius, setRadius] = useState('150');
 
   async function load() {
     setLoading(true);
@@ -92,30 +105,28 @@ export function LabCheckinSettings({ accentColor = '#2563EB' }: Props) {
 
   // ── Token yenile ─────────────────────────────────────────────────────────
   function confirmRegen() {
-    Alert.alert(
-      'QR Kodu Yenile',
-      'Mevcut QR kod geçersiz olacak. Yeni QR kodu bastırmanız gerekecek. Devam?',
-      [
-        { text: 'İptal', style: 'cancel' },
-        { text: 'Yenile', style: 'destructive', onPress: doRegen },
-      ],
-    );
+    setConfirm({
+      title: 'QR kodu yenile',
+      message: 'Mevcut QR kod geçersiz olacak. Yeni QR kodu bastırmanız gerekecek.',
+      label: 'Evet, yenile',
+      variant: 'warning',
+      onConfirm: async () => {
+        setConfirm(null);
+        setRegen(true);
+        try {
+          const { data, error } = await regenerateCheckinToken();
+          if (error) throw error;
+          setLab(prev => prev ? { ...prev, checkin_token: data!.checkin_token } : null);
+          toast.success('Yeni QR kodu oluşturuldu.');
+        } catch (e: any) {
+          toast.error(e?.message ?? 'Yenileme başarısız.');
+        }
+        setRegen(false);
+      },
+    });
   }
 
-  async function doRegen() {
-    setRegen(true);
-    try {
-      const { data, error } = await regenerateCheckinToken();
-      if (error) throw error;
-      setLab(prev => prev ? { ...prev, checkin_token: data!.checkin_token } : null);
-      toast.success('Yeni QR kodu oluşturuldu.');
-    } catch (e: any) {
-      toast.error(e?.message ?? 'Yenileme başarısız.');
-    }
-    setRegen(false);
-  }
-
-  // ── Paylaş/Kopyala ───────────────────────────────────────────────────────
+  // ── Paylaş ───────────────────────────────────────────────────────────────
   async function shareQr() {
     if (!lab) return;
     const url = `${APP_URL}?token=${lab.checkin_token}`;
@@ -126,135 +137,211 @@ export function LabCheckinSettings({ accentColor = '#2563EB' }: Props) {
 
   if (loading) {
     return (
-      <View style={s.center}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 80 }}>
         <ActivityIndicator size="large" color={accentColor} />
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={s.safe} edges={['bottom']}>
-      <ScrollView contentContainerStyle={s.scroll}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['bottom']}>
+      <ScrollView contentContainerStyle={{ padding: 20, gap: 16, maxWidth: 720, alignSelf: 'center', width: '100%', paddingBottom: 60 }}>
 
-        {/* ── Header ── */}
-        <View style={s.header}>
-          <View style={[s.headerIcon, { backgroundColor: accentColor + '15' }]}>
-            <AppIcon name="camera" size={22} color={accentColor} />
+        {/* ── Header ─────────────────────────────────────────────────── */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 4 }}>
+          <View style={{
+            width: 44, height: 44, borderRadius: 14,
+            backgroundColor: accentColor + '14',
+            alignItems: 'center', justifyContent: 'center',
+          }}>
+            <QrCode size={20} color={accentColor} strokeWidth={1.8} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={s.headerTitle}>QR Check-in Ayarları</Text>
-            <Text style={s.headerSub}>Çalışanlar bu QR kodu okutarak giriş/çıkış yapar</Text>
+            <Text style={{ ...DISPLAY, fontSize: 22, color: DS.ink[900], letterSpacing: -0.4 }}>
+              QR Check-in
+            </Text>
+            <Text style={{ fontSize: 13, color: DS.ink[500], marginTop: 2 }}>
+              Çalışanlar bu QR kodu okutarak giriş/çıkış yapar
+            </Text>
           </View>
         </View>
 
-        {/* ── QR Code Card ── */}
-        <View style={s.card}>
-          <Text style={s.cardTitle}>QR Kodu</Text>
-          <Text style={s.cardSub}>Bu kodu lab girişine asın veya yazdırın</Text>
+        {/* ── QR Code Card ──────────────────────────────────────────── */}
+        <View style={cardStyle}>
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ ...DISPLAY, fontSize: 18, color: DS.ink[900], letterSpacing: -0.3 }}>QR Kodu</Text>
+            <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 3 }}>
+              Bu kodu lab girişine asın veya yazdırın
+            </Text>
+          </View>
 
-          <View style={s.qrWrapper}>
+          {/* QR */}
+          <View style={{
+            alignSelf: 'center',
+            padding: 20,
+            backgroundColor: '#FFFFFF',
+            borderRadius: 16,
+            borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+            marginBottom: 14,
+          }}>
             {lab?.checkin_token ? (
               <BrandedQR
                 value={qrValue}
                 size={200}
-                color="#0F172A"
+                color={DS.ink[900]}
                 backgroundColor="#FFFFFF"
               />
             ) : (
-              <View style={s.qrPlaceholder}>
-                <AppIcon name="alert-circle" size={32} color="#CBD5E1" />
-                <Text style={s.qrPlaceholderText}>QR token yükleniyor...</Text>
+              <View style={{ width: 200, height: 200, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+                <AlertCircle size={32} color={DS.ink[300]} strokeWidth={1.6} />
+                <Text style={{ fontSize: 13, color: DS.ink[400] }}>QR token yükleniyor…</Text>
               </View>
             )}
           </View>
 
+          {/* Token chip */}
           {lab?.checkin_token && (
-            <View style={s.tokenRow}>
-              <Text style={s.tokenLabel}>Token:</Text>
-              <Text style={s.tokenValue} numberOfLines={1}>
-                {lab.checkin_token.slice(0, 18)}...
+            <View style={{
+              flexDirection: 'row', alignItems: 'center', gap: 10,
+              backgroundColor: '#FAFAFA', borderRadius: 10,
+              paddingHorizontal: 12, paddingVertical: 10,
+              marginBottom: 12,
+            }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', color: DS.ink[500], letterSpacing: 0.6, textTransform: 'uppercase' }}>
+                Token
+              </Text>
+              <Text style={{ flex: 1, fontSize: 12, color: DS.ink[800], fontFamily: Platform.OS === 'web' ? 'monospace' : undefined }} numberOfLines={1}>
+                {lab.checkin_token.slice(0, 18)}…
               </Text>
             </View>
           )}
 
-          <View style={s.qrActions}>
-            <TouchableOpacity style={[s.qrBtn, { borderColor: accentColor }]} onPress={shareQr}>
-              <AppIcon name="share-2" size={15} color={accentColor} />
-              <Text style={[s.qrBtnText, { color: accentColor }]}>Paylaş</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[s.qrBtn, { borderColor: '#DC2626' }]}
+          {/* Actions */}
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pressable
+              onPress={shareQr}
+              style={{
+                flex: 1,
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+                paddingVertical: 11, borderRadius: 12,
+                borderWidth: 1.5, borderColor: accentColor,
+                backgroundColor: accentColor + '08',
+                ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+              }}
+            >
+              <Share2 size={14} color={accentColor} strokeWidth={1.8} />
+              <Text style={{ fontSize: 13, fontWeight: '700', color: accentColor }}>Paylaş</Text>
+            </Pressable>
+            <Pressable
               onPress={confirmRegen}
               disabled={regen}
+              style={{
+                flex: 1,
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+                paddingVertical: 11, borderRadius: 12,
+                borderWidth: 1.5, borderColor: '#DC2626',
+                backgroundColor: 'rgba(220,38,38,0.06)',
+                opacity: regen ? 0.6 : 1,
+                ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+              }}
             >
-              {regen
-                ? <ActivityIndicator size="small" color="#DC2626" />
-                : <AppIcon name="refresh-cw" size={15} color="#DC2626" />
-              }
-              <Text style={[s.qrBtnText, { color: '#DC2626' }]}>Yenile</Text>
-            </TouchableOpacity>
+              {regen ? (
+                <ActivityIndicator size="small" color="#DC2626" />
+              ) : (
+                <RefreshCw size={14} color="#DC2626" strokeWidth={1.8} />
+              )}
+              <Text style={{ fontSize: 13, fontWeight: '700', color: '#DC2626' }}>Yenile</Text>
+            </Pressable>
           </View>
         </View>
 
-        {/* ── GPS Location Card ── */}
-        <View style={s.card}>
-          <View style={s.cardTitleRow}>
-            <Text style={s.cardTitle}>GPS Konum Kısıtlaması</Text>
-            <TouchableOpacity style={s.gpsBtn} onPress={getCurrentLocation}>
-              <AppIcon name="crosshair" size={14} color={accentColor} />
-              <Text style={[s.gpsBtnText, { color: accentColor }]}>Şu An</Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={s.cardSub}>
-            Boş bırakılırsa GPS kontrolü yapılmaz (sadece QR yeterli)
-          </Text>
-
-          <View style={s.row}>
+        {/* ── GPS Location Card ──────────────────────────────────────── */}
+        <View style={cardStyle}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
             <View style={{ flex: 1 }}>
-              <Text style={s.label}>Enlem (Latitude)</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <MapPin size={16} color={accentColor} strokeWidth={1.8} />
+                <Text style={{ ...DISPLAY, fontSize: 18, color: DS.ink[900], letterSpacing: -0.3 }}>
+                  GPS Konumu
+                </Text>
+              </View>
+              <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 4 }}>
+                Boş bırakılırsa GPS kontrolü yapılmaz (sadece QR yeterli)
+              </Text>
+            </View>
+            <Pressable
+              onPress={getCurrentLocation}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 5,
+                paddingHorizontal: 11, paddingVertical: 7, borderRadius: 999,
+                backgroundColor: accentColor + '14',
+                ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+              }}
+            >
+              <Crosshair size={13} color={accentColor} strokeWidth={1.8} />
+              <Text style={{ fontSize: 12, fontWeight: '700', color: accentColor }}>Şu An</Text>
+            </Pressable>
+          </View>
+
+          {/* Lat / Lng */}
+          <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={fieldLabel}>Enlem (Latitude)</Text>
               <TextInput
-                style={s.input}
+                style={inputStyle}
                 value={lat}
                 onChangeText={setLat}
                 placeholder="41.0082376"
                 keyboardType="decimal-pad"
-                placeholderTextColor="#CBD5E1"
+                placeholderTextColor={DS.ink[400]}
               />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={s.label}>Boylam (Longitude)</Text>
+              <Text style={fieldLabel}>Boylam (Longitude)</Text>
               <TextInput
-                style={s.input}
+                style={inputStyle}
                 value={lng}
                 onChangeText={setLng}
                 placeholder="28.9783589"
                 keyboardType="decimal-pad"
-                placeholderTextColor="#CBD5E1"
+                placeholderTextColor={DS.ink[400]}
               />
             </View>
           </View>
 
-          <View style={{ marginTop: 4 }}>
-            <Text style={s.label}>İzin Verilen Yarıçap (metre)</Text>
+          {/* Radius */}
+          <View>
+            <Text style={fieldLabel}>İzin Verilen Yarıçap (metre)</Text>
             <TextInput
-              style={[s.input, { width: 140 }]}
+              style={[inputStyle, { width: 160 }]}
               value={radius}
               onChangeText={setRadius}
               placeholder="150"
               keyboardType="number-pad"
-              placeholderTextColor="#CBD5E1"
+              placeholderTextColor={DS.ink[400]}
             />
-            <Text style={s.hint}>
+            <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 6, lineHeight: 16 }}>
               Varsayılan 150m. QR tarandığında çalışanın bu mesafe içinde olması gerekir.
             </Text>
           </View>
         </View>
 
-        {/* ── Info card ── */}
-        <View style={[s.infoCard, { borderLeftColor: accentColor }]}>
-          <AppIcon name="info" size={16} color={accentColor} style={{ marginTop: 2 }} />
-          <Text style={s.infoText}>
+        {/* ── Info card ──────────────────────────────────────────────── */}
+        <View style={{
+          flexDirection: 'row', gap: 12,
+          backgroundColor: accentColor + '08',
+          borderRadius: 14,
+          padding: 14,
+          borderWidth: 1, borderColor: accentColor + '20',
+        }}>
+          <View style={{
+            width: 28, height: 28, borderRadius: 9,
+            backgroundColor: accentColor + '18',
+            alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}>
+            <Info size={14} color={accentColor} strokeWidth={1.8} />
+          </View>
+          <Text style={{ flex: 1, fontSize: 12, color: DS.ink[700], lineHeight: 18 }}>
             GPS'siz check-in için çalışanın sadece QR'ı okuması yeterlidir.
             GPS etkinleştirilirse, çalışanın konum izni vermesi gerekir ve
             belirlenen yarıçap dışındaysa giriş reddedilir.
@@ -264,217 +351,63 @@ export function LabCheckinSettings({ accentColor = '#2563EB' }: Props) {
           </Text>
         </View>
 
-        {/* ── Save Button ── */}
-        <TouchableOpacity
-          style={[s.saveBtn, { backgroundColor: accentColor }, saving && s.saveBtnDisabled]}
+        {/* ── Save Button — Patterns §13 dark + accent dot ─────────── */}
+        <Pressable
           onPress={save}
           disabled={saving}
+          style={{
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+            paddingVertical: 14, borderRadius: 999,
+            backgroundColor: DS.ink[900],
+            opacity: saving ? 0.6 : 1,
+            marginTop: 4,
+            ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+          }}
         >
-          {saving
-            ? <ActivityIndicator size="small" color="#fff" />
-            : <AppIcon name="save" size={18} color="#fff" />
-          }
-          <Text style={s.saveBtnText}>{saving ? 'Kaydediliyor...' : 'Konum Ayarlarını Kaydet'}</Text>
-        </TouchableOpacity>
+          {saving ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <>
+              <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: accentColor }} />
+              <Save size={15} color="#FFFFFF" strokeWidth={1.8} />
+            </>
+          )}
+          <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>
+            {saving ? 'Kaydediliyor…' : 'Konum Ayarlarını Kaydet'}
+          </Text>
+        </Pressable>
 
       </ScrollView>
+
+      <ConfirmDialog state={confirm} onClose={() => setConfirm(null)} />
     </SafeAreaView>
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F8FAFC' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  scroll: { padding: 20, gap: 16, maxWidth: 640, alignSelf: 'center', width: '100%' },
+// ─── Style helpers ──────────────────────────────────────────────────────────
+const cardStyle: any = {
+  backgroundColor: '#FFFFFF',
+  borderRadius: 18,
+  padding: 18,
+  borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
+  ...Platform.select({
+    web:     { boxShadow: '0 1px 3px rgba(0,0,0,0.04)' } as any,
+    default: { shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
+  }),
+};
 
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 4,
-  },
-  headerIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontFamily: F.bold,
-    fontSize: FS.lg,
-    color: C.textPrimary,
-    letterSpacing: -0.3,
-  },
-  headerSub: {
-    fontFamily: F.regular,
-    fontSize: FS.sm,
-    color: C.textSecondary,
-    marginTop: 2,
-  },
+const fieldLabel: any = {
+  fontSize: 10, fontWeight: '600',
+  color: DS.ink[500],
+  letterSpacing: 0.6, textTransform: 'uppercase',
+  marginBottom: 6,
+};
 
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-    gap: 12,
-  },
-  cardTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  cardTitle: {
-    fontFamily: F.semibold,
-    fontSize: FS.md,
-    color: C.textPrimary,
-  },
-  cardSub: {
-    fontFamily: F.regular,
-    fontSize: FS.sm,
-    color: C.textSecondary,
-    marginTop: -4,
-  },
-
-  qrWrapper: {
-    alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-    alignSelf: 'center',
-  },
-  qrPlaceholder: {
-    width: 200,
-    height: 200,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  qrPlaceholderText: {
-    fontFamily: F.regular,
-    fontSize: FS.sm,
-    color: '#94A3B8',
-  },
-
-  tokenRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 8,
-    padding: 10,
-  },
-  tokenLabel: {
-    fontFamily: F.semibold,
-    fontSize: FS.xs,
-    color: C.textSecondary,
-  },
-  tokenValue: {
-    fontFamily: F.regular,
-    fontSize: FS.xs,
-    color: C.textPrimary,
-    flex: 1,
-  },
-
-  qrActions: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  qrBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    borderWidth: 1.5,
-    borderRadius: 10,
-    paddingVertical: 10,
-  },
-  qrBtnText: {
-    fontFamily: F.semibold,
-    fontSize: FS.sm,
-  },
-
-  gpsBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    backgroundColor: '#EFF6FF',
-    borderRadius: 8,
-  },
-  gpsBtnText: {
-    fontFamily: F.semibold,
-    fontSize: FS.xs,
-  },
-
-  row: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  label: {
-    fontFamily: F.semibold,
-    fontSize: FS.xs,
-    color: C.textSecondary,
-    marginBottom: 6,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    fontFamily: F.regular,
-    fontSize: FS.md,
-    color: C.textPrimary,
-    backgroundColor: '#F8FAFC',
-  },
-  hint: {
-    fontFamily: F.regular,
-    fontSize: FS.xs,
-    color: C.textSecondary,
-    marginTop: 6,
-    lineHeight: 17,
-  },
-
-  infoCard: {
-    flexDirection: 'row',
-    gap: 10,
-    backgroundColor: '#F0F9FF',
-    borderRadius: 12,
-    padding: 16,
-    borderLeftWidth: 3,
-  },
-  infoText: {
-    fontFamily: F.regular,
-    fontSize: FS.sm,
-    color: '#0369A1',
-    lineHeight: 20,
-    flex: 1,
-  },
-
-  saveBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    borderRadius: 14,
-    paddingVertical: 16,
-    marginTop: 4,
-    marginBottom: 24,
-  },
-  saveBtnDisabled: { opacity: 0.6 },
-  saveBtnText: {
-    fontFamily: F.bold,
-    fontSize: FS.md,
-    color: '#fff',
-  },
-});
+const inputStyle: any = {
+  height: 44, borderRadius: 14, borderWidth: 1,
+  borderColor: 'rgba(0,0,0,0.08)',
+  paddingHorizontal: 14,
+  fontSize: 14, color: DS.ink[900],
+  backgroundColor: '#FFFFFF',
+  ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
+};

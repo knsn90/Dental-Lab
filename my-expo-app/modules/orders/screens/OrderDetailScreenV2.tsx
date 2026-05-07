@@ -85,11 +85,11 @@ function panelToTheme(userType?: string | null, panelGroup?: string): 'lab' | 'c
   return 'lab';
 }
 function themeAccent(theme: 'lab' | 'clinic' | 'exec'): string {
-  return theme === 'clinic' ? '#6BA888' : theme === 'exec' ? '#E97757' : '#F5C24B';
+  return theme === 'clinic' ? '#6BA888' : theme === 'exec' ? '#EA7A4C' : '#F5C24B';
 }
 function themeHero(theme: 'lab' | 'clinic' | 'exec'): { bg: string; gradEnd: string; kicker: string } {
   if (theme === 'clinic') return { bg: '#EDF2EE', gradEnd: '#6BA888', kicker: '#1F4A35' };
-  if (theme === 'exec')   return { bg: '#FAF5F1', gradEnd: '#E97757', kicker: '#7A2F18' };
+  if (theme === 'exec')   return { bg: '#F5F1EB', gradEnd: '#EA7A4C', kicker: '#7A3A1F' };
   return { bg: '#FFF6D9', gradEnd: '#F5C24B', kicker: '#6B5A1F' };
 }
 
@@ -295,6 +295,41 @@ export function OrderDetailScreenV2() {
       refetch();
     }
   };
+
+  // ══════════════════════════════════════════════════════════════
+  //  MOBILE — Variant B B3 dark hero (early return)
+  // ══════════════════════════════════════════════════════════════
+  if (!isDesktop) {
+    const { OrderDetailB3Mobile } = require('./OrderDetailB3Mobile');
+    const totalProgress = totalStages > 0 ? completedCount / totalStages : 0;
+    const stageIdx = Math.min(Math.max(0, statusIdx), 4);
+    return (
+      <OrderDetailB3Mobile
+        orderId={order.id}
+        orderNumber={String((order as any).order_number ?? order.id).slice(-6)}
+        workType={(order as any).work_type ?? 'Sipariş'}
+        patientName={(order as any).patient_name}
+        doctorName={doctorName}
+        clinicName={clinicName}
+        progress={totalProgress}
+        stageIdx={stageIdx}
+        statusLabel={STATUS_CONFIG[order.status as WorkOrderStatus]?.label ?? String(order.status)}
+        spec={{
+          color: (order as any).color ?? '—',
+          material: (order as any).material ?? '—',
+          delivery: (order as any).delivery_date ?? '—',
+          cadVersion: (order as any).cad_version ?? '—',
+        }}
+        canAdvance={canAdvance && !!nextStatus}
+        advancing={advancing}
+        nextStageLabel={nextStatusLabel}
+        onBack={() => router.back()}
+        onChat={() => setChatOpen(true)}
+        onAdvance={() => handleAdvanceStage()}
+        onMessageClinic={() => setChatOpen(true)}
+      />
+    );
+  }
 
   // ── Acil işaretle toggle ────────────────────────────────────────
   const handleToggleUrgent = async () => {
