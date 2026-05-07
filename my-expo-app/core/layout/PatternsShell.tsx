@@ -239,7 +239,7 @@ export function PatternsShell({
   return (
     <View className="flex-1 flex-row bg-cream-page p-3 pt-0 pr-0 gap-3">
       {/* ═════════════ SIDEBAR (card) + edge toggle ═════════════ */}
-      <View style={{ position: 'relative', alignSelf: 'stretch', overflow: 'visible' }}>
+      <View style={{ position: 'relative', alignSelf: 'stretch', overflow: 'visible', paddingTop: 28 }}>
         {collapsed ? (
           <CollapsedSidebar
             navItems={filteredNavItems}
