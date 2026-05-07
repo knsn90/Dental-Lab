@@ -340,15 +340,11 @@ export function PatternsShell({
             ) : null}
           </View>
 
-          {/* Toolbar card */}
+          {/* Toolbar — transparent (header arka planı kaldırıldı) */}
           <View
-            className="flex-row items-center gap-1 pl-1.5 pr-1.5 py-1.5 rounded-full bg-white border border-black/[0.05]"
-          style={{
-            zIndex: 40,
-            // @ts-ignore web shadow
-            boxShadow: '0 4px 16px rgba(0,0,0,0.06)',
-          }}
-        >
+            className="flex-row items-center gap-1 pl-1.5 pr-1.5 py-1.5"
+            style={{ zIndex: 40 }}
+          >
           {/* Search */}
           <View
             className="flex-row items-center gap-2 px-3 py-1.5 rounded-full bg-cream-panel"
