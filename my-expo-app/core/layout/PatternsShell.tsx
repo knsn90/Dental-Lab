@@ -292,16 +292,16 @@ export function PatternsShell({
       </View>
 
       {/* ═════════════ RIGHT COLUMN: toolbar + content ═════════════ */}
-      <View style={{ flex: 1, borderRadius: 20, overflow: 'hidden' }}>
+      <View style={{ flex: 1, borderRadius: 20, overflow: 'hidden', position: 'relative' as any }}>
        <ScrollView
          className="flex-1 patterns-scroll"
          contentContainerStyle={{ flexGrow: 1 }}
          showsVerticalScrollIndicator={false}
        >
-        {/* TOP BAR — page title (left) + toolbar (right) — fully transparent, scrolls with content */}
-        <View className="flex-row items-center" style={{ zIndex: 100, paddingRight: 10, paddingTop: 12, paddingBottom: 12, backgroundColor: 'transparent' }}>
+        {/* TOP BAR — page title (left) only; toolbar absolute-pinned outside ScrollView */}
+        <View className="flex-row items-center" style={{ zIndex: 1, paddingRight: 10, paddingTop: 12, paddingBottom: 12, backgroundColor: 'transparent' }}>
           {/* Page title */}
-          <View className="flex-1" style={{ paddingLeft: 10 }}>
+          <View className="flex-1" style={{ paddingLeft: 10, paddingRight: 280 }}>
             {effectiveTitle ? (
               <View className="gap-0.5">
                 <Text
@@ -339,18 +339,25 @@ export function PatternsShell({
             ) : null}
           </View>
 
-          {/* Toolbar — beyaz pill kart, web'de position:fixed ile sabitlendi */}
-          <View
-            className="flex-row items-center gap-1 pl-1.5 pr-1.5 py-1.5 rounded-full bg-white border border-black/[0.05]"
-            style={{
-              zIndex: 100,
-              // @ts-ignore web shadow
-              boxShadow: '0 4px 16px rgba(0,0,0,0.06)',
-              ...(Platform.OS === 'web'
-                ? { position: 'fixed' as any, top: 24, right: 22 }
-                : {}),
-            }}
-          >
+          {/* Toolbar moved outside ScrollView for sticky behavior — see block below */}
+        </View>
+
+        {/* CONTENT */}
+        <Slot />
+       </ScrollView>
+
+       {/* ═════════════ STICKY TOOLBAR — absolute, ScrollView dışında ═════════════ */}
+       <View
+         className="flex-row items-center gap-1 pl-1.5 pr-1.5 py-1.5 rounded-full bg-white border border-black/[0.05]"
+         style={{
+           position: 'absolute' as any,
+           top: 12,
+           right: 12,
+           zIndex: 200,
+           // @ts-ignore web shadow
+           boxShadow: '0 4px 16px rgba(0,0,0,0.06)',
+         }}
+       >
           {/* Search */}
           <View
             className="flex-row items-center gap-2 px-3 py-1.5 rounded-full bg-cream-panel"
@@ -474,11 +481,6 @@ export function PatternsShell({
             )}
           </View>
         </View>
-        </View>
-
-        {/* CONTENT */}
-        <Slot />
-       </ScrollView>
       </View>
     </View>
   );
