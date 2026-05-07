@@ -292,7 +292,7 @@ export function PatternsShell({
       </View>
 
       {/* ═════════════ RIGHT COLUMN: toolbar + content ═════════════ */}
-      <View style={{ flex: 1, overflow: 'hidden', position: 'relative' as any }}>
+      <View style={{ flex: 1, position: 'relative' as any }}>
        <ScrollView
          className="flex-1 patterns-scroll"
          contentContainerStyle={{ flexGrow: 1 }}
