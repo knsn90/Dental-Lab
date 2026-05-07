@@ -237,7 +237,7 @@ export function PatternsShell({
   };
 
   return (
-    <View className="flex-1 flex-row bg-cream-page p-3 gap-3">
+    <View className="flex-1 flex-row p-3 gap-3" style={{ backgroundColor: 'transparent' }}>
       {/* ═════════════ SIDEBAR (card) + edge toggle ═════════════ */}
       <View style={{ position: 'relative', alignSelf: 'stretch', overflow: 'visible' }}>
         {collapsed ? (
