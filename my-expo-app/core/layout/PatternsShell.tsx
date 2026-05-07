@@ -239,7 +239,7 @@ export function PatternsShell({
   return (
     <View className="flex-1 flex-row bg-cream-page p-3 gap-3">
       {/* ═════════════ SIDEBAR (card) + edge toggle ═════════════ */}
-      <View style={{ position: 'relative', alignSelf: 'stretch', overflow: 'visible', paddingTop: 8 }}>
+      <View style={{ position: 'relative', alignSelf: 'stretch', overflow: 'visible' }}>
         {collapsed ? (
           <CollapsedSidebar
             navItems={filteredNavItems}
@@ -299,7 +299,7 @@ export function PatternsShell({
          showsVerticalScrollIndicator={false}
        >
         {/* TOP BAR — page title (left) only; toolbar absolute-pinned outside ScrollView */}
-        <View className="flex-row items-center" style={{ zIndex: 1, paddingTop: 8, paddingBottom: 0, backgroundColor: 'transparent' }}>
+        <View className="flex-row items-center" style={{ zIndex: 1, paddingTop: 0, paddingBottom: 0, backgroundColor: 'transparent' }}>
           {/* Page title */}
           <View className="flex-1" style={{ paddingRight: 280 }}>
             {effectiveTitle ? (
@@ -347,13 +347,13 @@ export function PatternsShell({
        </ScrollView>
 
        {/* ═════════════ STICKY TOOLBAR — absolute, başlık satırıyla hizalı ═════════════ */}
-       {/* top: 2 → toolbar dikey merkezi başlığın ilk satırının merkeziyle aynı hizada
-           (paddingTop 8 + fontSize 28/2 = 22 ≈ 2 + 40/2 = 22) */}
+       {/* top: -2 → toolbar outer padding'in içine doğru çekildi, üstündeki
+           ekstra çerçeve boşluğu minimize edildi. */}
        <View
          className="flex-row items-center gap-1 pl-1.5 pr-1.5 py-1.5 rounded-full bg-white border border-black/[0.05]"
          style={{
            position: 'absolute' as any,
-           top: 2,
+           top: -2,
            right: 0,
            zIndex: 200,
            // @ts-ignore web shadow
