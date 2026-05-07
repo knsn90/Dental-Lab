@@ -122,6 +122,7 @@ const ICONS: Record<string, React.ComponentType<any>> = {
   wallet:           Wallet,
   'building-2':     Building2,
   building2:        Building2,
+  building:         Building2,
   landmark:         Landmark,
   briefcase:        Briefcase,
   box:              Box,

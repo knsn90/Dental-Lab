@@ -21,6 +21,13 @@ import {
 } from '../api';
 import { DS } from '../../../core/theme/dsTokens';
 import { DatePicker } from '../../../core/ui/DatePicker';
+// Phase 3: Multi-currency
+import { MoneyInput } from '../../../core/money/MoneyInput';
+import { MoneyDisplay } from '../../../core/money/MoneyDisplay';
+// Phase 4: Aggregations + breakdown popup
+import { CurrencyBreakdown } from '../../../core/money/CurrencyBreakdown';
+import { sumByCurrency, mapAmountFields } from '../../../core/money/aggregations';
+import { useBaseCurrency } from '../../../core/money/currency';
 import { RecurringExpensesPanel } from '../components/RecurringExpensesPanel';
 import { downloadCsv, csvMoney, csvDate } from '../../../core/util/csvExport';
 import { toast } from '../../../core/ui/Toast';
@@ -117,11 +124,22 @@ export function ExpensesScreen() {
     );
   }, [expenses, search]);
 
-  const totalAmount = useMemo(() => filtered.reduce((s, e) => s + Number(e.amount), 0), [filtered]);
+  // Phase 3: amount_base (snapshot TRY) varsa onu kullan; yoksa amount (legacy)
+  const totalAmount = useMemo(
+    () => filtered.reduce((s, e) => s + Number(((e as any).amount_base ?? e.amount) || 0), 0),
+    [filtered],
+  );
+  // Phase 4: currency breakdown
+  const baseCurrency = useBaseCurrency();
+  const expenseSummary = useMemo(
+    () => sumByCurrency(filtered, mapAmountFields),
+    [filtered],
+  );
 
   const catTotals = useMemo(() => {
     const map: Record<string, number> = {};
-    for (const e of expenses) map[e.category] = (map[e.category] ?? 0) + Number(e.amount);
+    // Phase 3: kategori toplamları amount_base üzerinden (TRY karşılığı)
+    for (const e of expenses) map[e.category] = (map[e.category] ?? 0) + Number(((e as any).amount_base ?? e.amount) || 0);
     return map;
   }, [expenses]);
 
@@ -174,11 +192,18 @@ export function ExpensesScreen() {
               <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 12 }}>
                 Toplam Gider
               </Text>
-              <Text style={{ ...DISPLAY, fontSize: isDesktop ? 48 : 36, letterSpacing: -1.4, color: DS.ink[900] }}>
-                {fmtMoney(totalAmount)}
-              </Text>
+              {/* Phase 4: base currency total + currency breakdown popup */}
+              <CurrencyBreakdown
+                summary={expenseSummary}
+                baseCurrency={baseCurrency}
+                mode="compact"
+                title="Gider"
+                accentColor={DS.lab.accent ?? '#2563EB'}
+                numberStyle={{ fontFamily: 'Inter Tight, Inter, system-ui, sans-serif', fontWeight: '300' as any, fontSize: isDesktop ? 48 : 36, letterSpacing: -1.4, color: DS.ink[900], lineHeight: isDesktop ? 56 : 44 }}
+              />
               <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 6 }}>
                 {filtered.length} kayıt
+                {expenseSummary.multiCurrency ? ` · ${expenseSummary.slices.length} para birimi` : ''}
               </Text>
             </View>
 
@@ -344,10 +369,21 @@ export function ExpensesScreen() {
                     {PAY_METHODS.find(m => m.v === e.payment_method)?.l ?? e.payment_method}
                   </Text>
 
-                  {/* Amount */}
-                  <Text style={{ flex: 1.2, fontSize: 13, fontWeight: '600', color: DS.ink[900], textAlign: 'right' }}>
-                    {fmtMoney(e.amount)}
-                  </Text>
+                  {/* Amount + currency (Phase 3 — orijinal + base preview) */}
+                  <View style={{ flex: 1.2, alignItems: 'flex-end' }}>
+                    <MoneyDisplay
+                      amount={Number(e.amount)}
+                      currency={(((e as any).currency as any) ?? 'TRY')}
+                      baseAmount={(e as any).amount_base != null ? Number((e as any).amount_base) : null}
+                      mode="original"
+                      style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}
+                    />
+                    {((e as any).currency && (e as any).currency !== 'TRY' && (e as any).amount_base != null) ? (
+                      <Text style={{ fontSize: 10, color: DS.ink[400], marginTop: 1 }}>
+                        ≈ ₺{Number((e as any).amount_base).toLocaleString('tr-TR', { maximumFractionDigits: 0 })}
+                      </Text>
+                    ) : null}
+                  </View>
 
                   {/* Actions */}
                   <View style={{ flex: 0.8, flexDirection: 'row', gap: 4, justifyContent: 'flex-end' }}>
@@ -452,6 +488,8 @@ function ExpenseFormModal({
   const [category, setCategory] = useState<ExpenseCategory>('malzeme');
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
+  // Phase 3: çoklu currency
+  const [currency, setCurrency] = useState<'TRY' | 'EUR' | 'USD' | 'GBP'>('TRY');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [method, setMethod] = useState<ExpensePaymentMethod>('nakit');
   const [notes, setNotes] = useState('');
@@ -463,6 +501,7 @@ function ExpenseFormModal({
       setCategory(expense?.category ?? 'malzeme');
       setDescription(expense?.description ?? '');
       setAmount(expense ? String(expense.amount) : '');
+      setCurrency(((expense as any)?.currency as any) ?? 'TRY');
       setDate(expense?.expense_date ?? new Date().toISOString().slice(0, 10));
       setMethod(expense?.payment_method ?? 'nakit');
       setNotes(expense?.notes ?? '');
@@ -478,6 +517,7 @@ function ExpenseFormModal({
     setSaving(true); setError('');
     const params: CreateExpenseParams = {
       category, description: description.trim(), amount: amt,
+      currency,
       expense_date: date, payment_method: method, notes: notes.trim() || undefined,
     };
     const { error: apiErr } = expense
@@ -542,10 +582,16 @@ function ExpenseFormModal({
 
             {/* Amount + Date */}
             <View style={{ flexDirection: 'row', gap: 12 }}>
-              <View style={{ flex: 1, gap: 6 }}>
+              <View style={{ flex: 1.4, gap: 6 }}>
                 <FL>Tutar</FL>
-                <FI value={amount} onChangeText={setAmount} placeholder="0,00"
-                  keyboardType={Platform.OS === 'web' ? 'default' : 'decimal-pad'} />
+                <MoneyInput
+                  value={amount}
+                  onChangeValue={setAmount}
+                  currency={currency}
+                  onChangeCurrency={setCurrency}
+                  placeholder="0,00"
+                  showBasePreview
+                />
               </View>
               <View style={{ flex: 1, gap: 6 }}>
                 <FL>Tarih</FL>

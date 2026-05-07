@@ -82,6 +82,8 @@ export default function AdminLayout() {
     // ── Stok & Depo ───────────────────────────────────────────────────────
     { label: 'Stok & Depo',  href: '/(admin)/stock',        iconName: 'package',         matchPrefix: true, sectionLabel: 'Stok & Depo', badgeCount: stockAlert,
       requiresPermission: 'view_stock' },
+    { label: 'Tedarikçiler', href: '/(admin)/suppliers',    iconName: 'building',        matchPrefix: true, sectionLabel: 'Stok & Depo',
+      requiresPermission: 'view_stock' },
 
     // ── Sistem ─────────────────────────────────────────────────────────────
     { label: 'Ayarlar',      href: '/(admin)/settings',         iconName: 'settings',    matchPrefix: true, sectionLabel: 'Sistem',
@@ -140,6 +142,7 @@ export default function AdminLayout() {
         <Tabs.Screen name="doctors" options={{ title: 'Hekimler' }} />
         <Tabs.Screen name="orders" options={{ title: 'Siparişler' }} />
         <Tabs.Screen name="stock" options={{ title: 'Stok' }} />
+        <Tabs.Screen name="suppliers" options={{ title: 'Tedarikçiler' }} />
         <Tabs.Screen name="expenses" options={{ title: 'Giderler' }} />
         <Tabs.Screen name="checks" options={{ title: 'Çek/Senet' }} />
         <Tabs.Screen name="cash" options={{ title: 'Kasa/Banka' }} />

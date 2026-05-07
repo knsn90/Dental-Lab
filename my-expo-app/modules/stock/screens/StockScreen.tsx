@@ -11,6 +11,10 @@ import { WasteReportModal } from '../components/WasteReportModal';
 import { useAuthStore } from '../../../core/store/authStore';
 import { DS } from '../../../core/theme/dsTokens';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
+// Phase 2: Multi-currency
+import { MoneyInput } from '../../../core/money/MoneyInput';
+import { MoneyDisplay } from '../../../core/money/MoneyDisplay';
+import type { Currency as MoneyCurrency } from '../../../core/money/currency';
 import {
   Package, Plus, Search, X, Pencil, Trash2,
   ArrowDownCircle, ArrowUpCircle, AlertTriangle, AlertCircle,
@@ -162,6 +166,9 @@ interface StockItem {
   unit_cost?: number | null;
   location?: string | null;
   barcode?: string | null;
+  // Phase 2: multi-currency
+  default_purchase_currency?: 'TRY' | 'EUR' | 'USD' | 'GBP' | null;
+  last_unit_cost_currency?:   'TRY' | 'EUR' | 'USD' | 'GBP' | null;
 }
 
 const USAGE_CATEGORY_OPTIONS: { key: 'all' | 'production' | 'office' | 'misc'; label: string }[] = [
@@ -173,6 +180,19 @@ const USAGE_CATEGORY_OPTIONS: { key: 'all' | 'production' | 'office' | 'misc'; l
 
 const STAGE_OPTIONS = ['TRIAGE', 'DESIGN', 'CAM', 'MILLING', 'SINTER', 'FINISH', 'QC'];
 
+// Birim seçenekleri — diş başına tüketim hesaplamasında kullanılır
+const UNIT_OPTIONS: { value: string; label: string; hint: string }[] = [
+  { value: 'adet',   label: 'adet',   hint: 'Frez, taş, vida — tek tek sayılan' },
+  { value: 'gr',     label: 'gram',   hint: 'Reçine, alçı, toz seramik' },
+  { value: 'kg',     label: 'kilogram', hint: 'Büyük paket, toplu malzeme' },
+  { value: 'ml',     label: 'mililitre', hint: 'Likit, sement, sıvı' },
+  { value: 'L',      label: 'litre',  hint: 'Büyük likitler' },
+  { value: 'mm',     label: 'milimetre', hint: 'Tel, çubuk, uzunluk bazlı' },
+  { value: 'cm',     label: 'santimetre', hint: 'Şerit, bant' },
+  { value: 'kutu',   label: 'kutu',   hint: 'Karton kutu sayısı' },
+  { value: 'paket',  label: 'paket',  hint: 'Paket sayısı' },
+];
+
 type MovType = 'IN' | 'OUT' | 'WASTE';
 type StatusFilter = 'all' | 'critical' | 'ok' | 'empty';
 type TabKey = 'dashboard' | 'list' | 'movements' | 'suggestions' | 'analytics' | 'locations' | 'cost' | 'forecast' | 'settings';
@@ -181,21 +201,15 @@ type TabKey = 'dashboard' | 'list' | 'movements' | 'suggestions' | 'analytics' |
 
 function StatusBadge({ quantity, min }: { quantity: number; min: number }) {
   const pct = min > 0 ? quantity / min : 1;
-  if (quantity === 0) return (
-    <View style={{ borderRadius: 9999, paddingHorizontal: 10, paddingVertical: 3, backgroundColor: CHIP_TONES.danger.bg }}>
-      <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.3, color: CHIP_TONES.danger.fg }}>Tukendi</Text>
+  const make = (label: string, fg: string, bg: string) => (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 9999, paddingHorizontal: 10, paddingVertical: 3, backgroundColor: bg }}>
+      <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: fg }} />
+      <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.2, color: fg }}>{label}</Text>
     </View>
   );
-  if (pct < 1) return (
-    <View style={{ borderRadius: 9999, paddingHorizontal: 10, paddingVertical: 3, backgroundColor: CHIP_TONES.warning.bg }}>
-      <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.3, color: CHIP_TONES.warning.fg }}>Kritik</Text>
-    </View>
-  );
-  return (
-    <View style={{ borderRadius: 9999, paddingHorizontal: 10, paddingVertical: 3, backgroundColor: CHIP_TONES.success.bg }}>
-      <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.3, color: CHIP_TONES.success.fg }}>Normal</Text>
-    </View>
-  );
+  if (quantity === 0) return make('Tükendi', CHIP_TONES.danger.fg, CHIP_TONES.danger.bg);
+  if (pct < 1)        return make('Kritik',  CHIP_TONES.warning.fg, CHIP_TONES.warning.bg);
+  return                     make('Normal',  CHIP_TONES.success.fg, CHIP_TONES.success.bg);
 }
 
 // ─── StockBar ─────────────────────────────────────────────────────────────────
@@ -204,8 +218,8 @@ function StockBar({ quantity, min }: { quantity: number; min: number }) {
   const pct = min > 0 ? Math.min(quantity / min, 1) : 1;
   const barColor = pct === 0 ? CHIP_TONES.danger.fg : pct < 1 ? CHIP_TONES.warning.fg : CHIP_TONES.success.fg;
   return (
-    <View style={{ height: 4, backgroundColor: DS.ink[100], borderRadius: 3, overflow: 'hidden', flex: 1, minWidth: 48 }}>
-      <View style={{ height: 4, borderRadius: 3, width: `${Math.round(pct * 100)}%` as any, backgroundColor: barColor }} />
+    <View style={{ height: 5, backgroundColor: 'rgba(0,0,0,0.04)', borderRadius: 999, overflow: 'hidden', flex: 1, minWidth: 48 }}>
+      <View style={{ height: 5, borderRadius: 999, width: `${Math.round(pct * 100)}%` as any, backgroundColor: barColor }} />
     </View>
   );
 }
@@ -234,12 +248,15 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
   const [quantity, setQuantity] = useState('');
   const [minQty, setMinQty]     = useState('');
   const [unit, setUnit]         = useState('');
+  const [unitDropOpen, setUnitDropOpen] = useState(false);
   const [supplier, setSupplier] = useState('');
   const [matType, setMatType]             = useState('');
   const [usageCategory, setUsageCategory] = useState<'production' | 'office' | 'misc'>('misc');
   const [unitsPerTooth, setUnitsPerTooth] = useState('');
   const [consumeStage, setConsumeStage]   = useState<string>('MILLING');
   const [unitCost, setUnitCost]           = useState('');
+  // Phase 2: default purchase currency
+  const [purchaseCurrency, setPurchaseCurrency] = useState<MoneyCurrency>('TRY');
   const [consumptionType, setConsumptionType] = useState<'fixed' | 'per_tooth' | 'manual'>('manual');
   const [location, setLocation] = useState('');
   const [barcode, setBarcode]   = useState('');
@@ -263,6 +280,7 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
       setUnitsPerTooth(item?.units_per_tooth != null ? String(item.units_per_tooth) : '');
       setConsumeStage(item?.consume_at_stage ?? 'MILLING');
       setUnitCost(item?.unit_cost != null ? String(item.unit_cost) : '');
+      setPurchaseCurrency((item?.default_purchase_currency as MoneyCurrency) ?? 'TRY');
       setConsumptionType(((item as any)?.consumption_type as any) ?? 'manual');
       setLocation(item?.location ?? '');
       setBarcode(item?.barcode ?? '');
@@ -295,6 +313,7 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
         units_per_tooth: !isNaN(upt) && upt > 0 ? upt : null,
         consume_at_stage: usageCategory === 'production' ? consumeStage : 'MILLING',
         unit_cost: !isNaN(cost) && cost >= 0 ? cost : 0,
+        default_purchase_currency: purchaseCurrency,
         location: location.trim() || null,
         barcode: barcode.trim() || null,
       };
@@ -478,8 +497,57 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
               </View>
 
               <View style={{ marginBottom: 12 }}>
-                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>BIRIM</Text>
-                <TextInput style={fieldInput} value={unit} onChangeText={setUnit} placeholder="adet / ml / gr / kutu..." placeholderTextColor={DS.ink[400]} />
+                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>BİRİM</Text>
+                <Pressable
+                  onPress={() => setUnitDropOpen(v => !v)}
+                  style={{
+                    ...fieldInput,
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  }}
+                >
+                  <Text style={unit ? { fontSize: 14, color: DS.ink[900], fontWeight: '500' } : { fontSize: 14, color: DS.ink[400] }}>
+                    {UNIT_OPTIONS.find(o => o.value === unit)?.label ?? unit ?? 'Birim seçin...'}
+                  </Text>
+                  {unitDropOpen
+                    ? <ChevronUp size={15} color={DS.ink[400]} strokeWidth={1.6} />
+                    : <ChevronDown size={15} color={DS.ink[400]} strokeWidth={1.6} />
+                  }
+                </Pressable>
+                {unitDropOpen && (
+                  <View style={{ marginTop: 6, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', borderRadius: 14, backgroundColor: '#FFFFFF', overflow: 'hidden', ...(Platform.OS === 'web' ? { boxShadow: '0 8px 24px rgba(0,0,0,0.08)' } as any : {}) }}>
+                    <ScrollView style={{ maxHeight: 240 }} keyboardShouldPersistTaps="handled">
+                      {UNIT_OPTIONS.map((opt, idx) => {
+                        const active = unit === opt.value;
+                        return (
+                          <Pressable
+                            key={opt.value}
+                            onPress={() => { setUnit(opt.value); setUnitDropOpen(false); }}
+                            style={{
+                              flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                              paddingHorizontal: 14, paddingVertical: 11,
+                              backgroundColor: active ? accentColor + '14' : 'transparent',
+                              borderBottomWidth: idx < UNIT_OPTIONS.length - 1 ? 1 : 0,
+                              borderBottomColor: 'rgba(0,0,0,0.04)',
+                              ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                            }}
+                          >
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 14, fontWeight: active ? '600' : '500', color: active ? accentColor : DS.ink[900], letterSpacing: 0.2 }}>
+                                {opt.label}
+                              </Text>
+                              <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }}>{opt.hint}</Text>
+                            </View>
+                            {active && <Check size={14} color={accentColor} strokeWidth={2} />}
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                )}
+                <Text style={{ fontSize: 10, color: DS.ink[400], marginTop: 6, fontStyle: 'italic' }}>
+                  Bu birim, diş başına tüketim hesaplamasında kullanılır (örn. 0,5 gr/diş).
+                </Text>
               </View>
               <View style={{ marginBottom: 0 }}>
                 <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>TEDARIKCI</Text>
@@ -619,15 +687,55 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                 <>
                   <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>DIS BASINA TUKETIM</Text>
-                      <TextInput
-                        style={fieldInput}
-                        value={unitsPerTooth}
-                        onChangeText={setUnitsPerTooth}
-                        keyboardType="numeric"
-                        placeholder="0.5"
-                        placeholderTextColor={DS.ink[400]}
-                      />
+                      <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>
+                        DİŞ BAŞINA TÜKETİM {unit?.trim() ? <Text style={{ color: DS.ink[400] }}>({unit.trim()})</Text> : null}
+                      </Text>
+                      <View style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 0,
+                        backgroundColor: '#FFFFFF',
+                        borderRadius: 14,
+                        borderWidth: 1,
+                        borderColor: 'rgba(0,0,0,0.08)',
+                        height: 46,
+                        overflow: 'hidden',
+                      }}>
+                        <TextInput
+                          style={{ flex: 1, paddingHorizontal: 14, fontSize: 14, color: DS.ink[900], fontWeight: '500', ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }}
+                          value={unitsPerTooth}
+                          onChangeText={setUnitsPerTooth}
+                          keyboardType="decimal-pad"
+                          placeholder="0,5"
+                          placeholderTextColor={DS.ink[400]}
+                        />
+                        {unit?.trim() ? (
+                          <View style={{
+                            paddingHorizontal: 14, height: '100%',
+                            justifyContent: 'center',
+                            borderLeftWidth: 1, borderLeftColor: 'rgba(0,0,0,0.06)',
+                            backgroundColor: 'rgba(0,0,0,0.02)',
+                          }}>
+                            <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[700], letterSpacing: 0.4 }}>
+                              {unit.trim()}/diş
+                            </Text>
+                          </View>
+                        ) : (
+                          <View style={{
+                            paddingHorizontal: 12, height: '100%',
+                            justifyContent: 'center',
+                            borderLeftWidth: 1, borderLeftColor: 'rgba(0,0,0,0.06)',
+                            backgroundColor: 'rgba(217,119,6,0.06)',
+                          }}>
+                            <Text style={{ fontSize: 11, fontWeight: '600', color: '#92400E' }}>
+                              ⚠ birim girin
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                      {!unit?.trim() && (
+                        <Text style={{ fontSize: 10, color: '#92400E', marginTop: 4 }}>
+                          Önce yukarıdaki "Birim" alanını doldurun (gr, ml, adet vb.)
+                        </Text>
+                      )}
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>TUKETIM ASAMASI</Text>
@@ -662,17 +770,55 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                 </>
               )}
 
-              {/* Unit cost */}
+              {/* Varsayılan alış para birimi (cost'un kendisi DEĞİL) */}
               <View style={{ marginBottom: 0 }}>
-                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>BIRIM MALIYET (TL)</Text>
-                <TextInput
-                  style={fieldInput}
-                  value={unitCost}
-                  onChangeText={setUnitCost}
-                  keyboardType="numeric"
-                  placeholder="0.00"
-                  placeholderTextColor={DS.ink[400]}
-                />
+                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>VARSAYILAN ALIŞ PARA BİRİMİ</Text>
+                <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+                  {(['TRY','EUR','USD','GBP'] as const).map(c => {
+                    const active = purchaseCurrency === c;
+                    return (
+                      <Pressable
+                        key={c}
+                        onPress={() => setPurchaseCurrency(c)}
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', gap: 6,
+                          paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9999,
+                          backgroundColor: active ? accentColor : '#FFFFFF',
+                          borderWidth: 1, borderColor: active ? accentColor : 'rgba(0,0,0,0.08)',
+                          ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                        }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: active ? '700' : '500', color: active ? '#FFF' : DS.ink[700], letterSpacing: 0.3 }}>
+                          {c}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <View style={{
+                  flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+                  marginTop: 10, padding: 10,
+                  backgroundColor: accentColor + '0A',
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: accentColor + '22',
+                }}>
+                  <View style={{ width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor + '22', marginTop: 1 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: accentColor }}>i</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 12, color: DS.ink[800], fontWeight: '600', lineHeight: 17 }}>
+                      Birim maliyet otomatik hesaplanır
+                    </Text>
+                    <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 2, lineHeight: 16 }}>
+                      Stok girişi (alış) sırasında girilen fatura tutarı kullanılır.
+                      Maliyet, son alıştaki fiyat üzerinden hesaplanır — fiyatlar sürekli değişebilir.
+                    </Text>
+                    <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 4, lineHeight: 16 }}>
+                      İş başına tüketim miktarı (yukarıdaki <Text style={{ fontWeight: '700' }}>diş başına tüketim</Text>) ve birim ({unit || 'gr/adet/ml'}) sayesinde, üretim sırasında ne kadar harcandığı doğru bilinir.
+                    </Text>
+                  </View>
+                </View>
               </View>
             </View>
           </ScrollView>
@@ -728,33 +874,92 @@ function MovementModal({ visible, item, items = [], accentColor, defaultType = '
   const [type, setType]   = useState<MovType>(defaultType);
   const [qty, setQty]     = useState('');
   const [note, setNote]   = useState('');
+  // ── Phase 2: unit cost + currency ──
+  const [unitCost, setUnitCost]   = useState('');
+  const [currency, setCurrency]   = useState<MoneyCurrency>('TRY');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   const resolvedItem = standalone ? (items.find(i => i.id === selectedId) ?? null) : item;
+  const isInbound = type === 'IN';
 
   useEffect(() => {
-    if (visible) { setType(defaultType); setQty(''); setNote(''); setError(''); setSelectedId(''); setPickerSearch(''); setPickerOpen(false); }
-  }, [visible, defaultType]);
+    if (visible) {
+      setType(defaultType);
+      setQty('');
+      setNote('');
+      setUnitCost('');
+      // İlk açılışta default currency item'dan veya TRY
+      const defaultCur = (item?.default_purchase_currency as MoneyCurrency) ?? 'TRY';
+      setCurrency(defaultCur);
+      setError('');
+      setSelectedId('');
+      setPickerSearch('');
+      setPickerOpen(false);
+    }
+  }, [visible, defaultType, item]);
+
+  // Item değişince default currency'i güncelle (standalone modda)
+  useEffect(() => {
+    if (resolvedItem?.default_purchase_currency) {
+      setCurrency(resolvedItem.default_purchase_currency as MoneyCurrency);
+    }
+  }, [resolvedItem?.id]);
 
   const pickerItems = pickerSearch.trim()
     ? items.filter(i => i.name.toLowerCase().includes(pickerSearch.toLowerCase()))
     : items;
 
   const handleSave = async () => {
-    if (!resolvedItem) { setError('Urun secin'); return; }
-    const amount = parseFloat(qty);
-    if (!amount || amount <= 0) { setError('Gecerli bir miktar girin'); return; }
+    if (!resolvedItem) { setError('Ürün seçin'); return; }
+    const amount = parseFloat(qty.replace(',', '.'));
+    if (!amount || amount <= 0) { setError('Geçerli bir miktar girin'); return; }
+    const cost = unitCost ? parseFloat(unitCost.replace(',', '.')) : null;
+    if (isInbound && cost != null && cost <= 0) { setError('Birim maliyet pozitif olmalı'); return; }
+
     setSaving(true); setError('');
     try {
       const next = type === 'IN' ? resolvedItem.quantity + amount : Math.max(0, resolvedItem.quantity - amount);
       await supabase.from('stock_items').update({ quantity: next }).eq('id', resolvedItem.id);
-      await supabase.from('stock_movements').insert({
-        item_name: resolvedItem.name, type, quantity: amount, unit: resolvedItem.unit ?? null, note: note.trim() || null,
-      });
+
+      // IN için RPC çağır → kur snapshot dondur
+      if (isInbound && cost != null) {
+        const { data: profileRow } = await supabase.from('profiles').select('lab_id').eq('id', (await supabase.auth.getUser()).data.user?.id).single();
+        const labId = (profileRow as any)?.lab_id ?? null;
+        const { error: rpcErr } = await supabase.rpc('create_stock_movement_with_snapshot', {
+          p_lab_id: labId,
+          p_item_id: resolvedItem.id,
+          p_item_name: resolvedItem.name,
+          p_type: type,
+          p_quantity: amount,
+          p_unit: resolvedItem.unit ?? null,
+          p_unit_cost_at_time: cost,
+          p_currency: currency,
+          p_note: note.trim() || null,
+        });
+        if (rpcErr) {
+          // Kur tanımsızsa kullanıcıyı uyar
+          if (rpcErr.message?.includes('Currency rate not defined')) {
+            setError(`${currency} → TRY kuru tanımlı değil. Ayarlar → Döviz Kurları'ndan ekleyin.`);
+            setSaving(false); return;
+          }
+          throw rpcErr;
+        }
+      } else {
+        // OUT/WASTE/ADJUST için sade insert
+        await supabase.from('stock_movements').insert({
+          item_id: resolvedItem.id,
+          item_name: resolvedItem.name,
+          type, quantity: amount,
+          unit: resolvedItem.unit ?? null,
+          note: note.trim() || null,
+          currency: 'TRY',
+        });
+      }
+
       onSaved(); onClose();
     } catch (e: any) {
-      setError(e.message ?? 'Islem hatasi');
+      setError(e.message ?? 'İşlem hatası');
     } finally { setSaving(false); }
   };
 
@@ -849,20 +1054,39 @@ function MovementModal({ visible, item, items = [], accentColor, defaultType = '
               </View>
             </View>
 
-            {/* Quantity + Note */}
+            {/* Quantity + Cost (IN) + Note */}
             <View style={sectionCard}>
               <View style={{ marginBottom: 12 }}>
                 <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>
-                  MIKTAR <Text style={{ color: CHIP_TONES.danger.fg }}>*</Text>
+                  MİKTAR <Text style={{ color: CHIP_TONES.danger.fg }}>*</Text>
                 </Text>
-                <TextInput style={fieldInput} value={qty} onChangeText={setQty} keyboardType="numeric" placeholder="0" placeholderTextColor={DS.ink[400]} />
+                <TextInput style={fieldInput} value={qty} onChangeText={setQty} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={DS.ink[400]} />
               </View>
+
+              {/* IN için birim maliyet + currency (Phase 2) */}
+              {isInbound && (
+                <View style={{ marginBottom: 12 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>
+                    BİRİM MALİYET
+                  </Text>
+                  <MoneyInput
+                    value={unitCost}
+                    onChangeValue={setUnitCost}
+                    currency={currency}
+                    onChangeCurrency={setCurrency}
+                    accentColor={accentColor}
+                    placeholder="0,00"
+                    showBasePreview
+                  />
+                </View>
+              )}
+
               <View style={{ marginBottom: 0 }}>
                 <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>NOT</Text>
                 <TextInput
                   style={{ ...fieldInput, height: undefined, minHeight: 56 }}
                   value={note} onChangeText={setNote}
-                  placeholder="Istege bagli aciklama..." placeholderTextColor={DS.ink[400]} multiline
+                  placeholder="İsteğe bağlı açıklama..." placeholderTextColor={DS.ink[400]} multiline
                 />
               </View>
               {error ? (
@@ -906,8 +1130,7 @@ function DonutChart({ pct, color, size = 80, stroke = 9 }: { pct: number; color:
         strokeDasharray={`${circ} ${circ}`}
         strokeDashoffset={off}
         strokeLinecap="round"
-        rotation="-90"
-        origin={`${cx}, ${cx}`}
+        transform={`rotate(-90 ${cx} ${cx})`}
       />
     </Svg>
   );
@@ -1033,81 +1256,100 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
     })
     .slice(0, 5);
 
+  // ── Patterns design tokens ──
+  const PCard = {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.04)',
+    ...(Platform.OS === 'web' ? { boxShadow: '0 4px 16px rgba(0,0,0,0.04)' } : { shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 2 }),
+  } as any;
+  const DisplayFont = Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light';
+  const accSoft = accentColor + '14'; // %8 alpha tinted bg
+
   if (total === 0) {
     return (
-      <View style={{ alignItems: 'center', paddingVertical: 50, gap: 10 }}>
-        <Package size={44} color={DS.ink[200]} strokeWidth={1.2} />
-        <Text style={{ fontSize: 16, fontWeight: '700', color: DS.ink[900] }}>Henuz urun yok</Text>
-        <Text style={{ fontSize: 13, color: DS.ink[400], textAlign: 'center' }}>Stok yonetimine baslamak icin ilk urununuzu ekleyin.</Text>
+      <View style={{ alignItems: 'center', paddingVertical: 60, gap: 14 }}>
+        <View style={{ width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: accSoft }}>
+          <Package size={32} color={accentColor} strokeWidth={1.4} />
+        </View>
+        <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 24, letterSpacing: -0.6, color: '#0A0A0A' }}>Henüz ürün yok</Text>
+        <Text style={{ fontSize: 13, color: '#9A9A9A', textAlign: 'center', maxWidth: 320, lineHeight: 19 }}>
+          Stok yönetimine başlamak için ilk ürününüzü ekleyin.
+        </Text>
         <Pressable
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 9999, backgroundColor: accentColor, marginTop: 6, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 9999, backgroundColor: accentColor, marginTop: 4, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
           onPress={onAddProduct}
         >
           <Plus size={14} color="#FFFFFF" strokeWidth={2} />
-          <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>Ilk Urunu Ekle</Text>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFFFFF' }}>İlk Ürünü Ekle</Text>
         </Pressable>
       </View>
     );
   }
 
+  // ── Eyebrow style ──
+  const eyebrow = { fontSize: 11, fontWeight: '600' as const, color: '#9A9A9A', letterSpacing: 1, textTransform: 'uppercase' as const };
+
   return (
-    <View style={{ gap: 16 }}>
-      {/* 4 Stat cards */}
+    <View style={{ gap: 14 }}>
+      {/* ── KPI grid (4 cards) ── */}
       <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
         {([
-          { label: 'TOPLAM URUN',    value: total,           sub: `${catStats.length} kategori`,                                                    icon: Package,       tone: 'neutral' as const },
-          { label: 'NORMAL STOK',    value: normal.length,   sub: total > 0 ? `%${Math.round(normal.length/total*100)} yeterli` : 'yeterli stok',   icon: CheckCircle,   tone: 'success' as const },
-          { label: 'KRITIK SEVIYE',  value: critical.length, sub: critical.length > 0 ? 'minimum altinda' : 'tumu normal',                          icon: AlertTriangle, tone: 'warning' as const },
-          { label: 'TUKENDI',        value: empty.length,    sub: empty.length > 0 ? 'acil siparis gerekli' : 'eksik urun yok',                     icon: XCircle,       tone: 'danger'  as const },
+          { label: 'Toplam ürün',   value: total,           sub: `${catStats.length} kategori`,                                                  icon: Package,        tone: 'panel'   as const },
+          { label: 'Normal stok',   value: normal.length,   sub: total > 0 ? `%${Math.round(normal.length/total*100)} yeterli` : 'yeterli stok', icon: CheckCircle,    tone: 'success' as const },
+          { label: 'Kritik seviye', value: critical.length, sub: critical.length > 0 ? 'minimum altında' : 'tümü normal',                        icon: AlertTriangle,  tone: 'warning' as const },
+          { label: 'Tükendi',       value: empty.length,    sub: empty.length > 0 ? 'acil sipariş gerekli' : 'eksik ürün yok',                   icon: XCircle,        tone: 'danger'  as const },
         ] as const).map((stat, i) => {
-          const isAlert    = stat.tone === 'danger' && stat.value > 0;
-          const iconBgMap  = { neutral: DS.ink[100], success: CHIP_TONES.success.bg, warning: CHIP_TONES.warning.bg, danger: isAlert ? CHIP_TONES.danger.bg : DS.ink[100] };
-          const iconColMap = { neutral: DS.ink[500], success: CHIP_TONES.success.fg, warning: CHIP_TONES.warning.fg, danger: isAlert ? CHIP_TONES.danger.fg : DS.ink[400] };
+          const fg = stat.tone === 'panel'   ? accentColor
+                  : stat.tone === 'success' ? CHIP_TONES.success.fg
+                  : stat.tone === 'warning' ? CHIP_TONES.warning.fg
+                  : CHIP_TONES.danger.fg;
           const Icon = stat.icon;
+          const isAlert = stat.tone === 'danger' && stat.value > 0;
           return (
-            <View key={i} style={{
-              ...cardSolid,
-              flex: 1,
-              minWidth: 150,
-              gap: 4,
-              ...(isAlert ? { borderWidth: 1, borderColor: 'rgba(217,75,75,0.2)', backgroundColor: 'rgba(217,75,75,0.04)' } : {}),
-            }}>
-              <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
-                <Text style={{ fontSize: 11, fontWeight: '700', color: isAlert ? CHIP_TONES.danger.fg : DS.ink[400], letterSpacing: 0.8, flex: 1, paddingRight: 8, paddingTop: 4 }}>
-                  {stat.label}
-                </Text>
-                <View style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: iconBgMap[stat.tone] }}>
-                  <Icon size={18} color={iconColMap[stat.tone]} strokeWidth={1.6} />
+            <View key={i} style={[PCard, { flex: 1, minWidth: 160, gap: 4 }, isAlert ? { borderColor: CHIP_TONES.danger.fg + '33', backgroundColor: CHIP_TONES.danger.bg } : null]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                <Text style={eyebrow}>{stat.label}</Text>
+                <View style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: fg + '14' }}>
+                  <Icon size={15} color={fg} strokeWidth={1.6} />
                 </View>
               </View>
-              <Text style={{ fontSize: 32, fontWeight: '800', color: isAlert ? CHIP_TONES.danger.fg : DS.ink[900], letterSpacing: -1 }}>{stat.value}</Text>
-              <Text style={{ fontSize: 11, color: DS.ink[400], fontWeight: '500' }}>{stat.sub}</Text>
+              <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 38, letterSpacing: -1.2, color: isAlert ? fg : '#0A0A0A', lineHeight: 44 }}>
+                {stat.value}
+              </Text>
+              <Text style={{ fontSize: 12, color: '#9A9A9A', fontWeight: '500' }}>{stat.sub}</Text>
             </View>
           );
         })}
       </View>
 
-      {/* Category bar chart + status donut */}
+      {/* ── Category breakdown + Status donut ── */}
       <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
         {catStats.length > 0 && (
-          <View style={{ ...cardSolid, flex: 1.2, minWidth: 200 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[900] }}>Kategori Dagilimi</Text>
-              <Text style={{ fontSize: 12, color: DS.ink[400] }}>Ilk {catStats.length}</Text>
+          <View style={[PCard, { flex: 1.4, minWidth: 220 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <View style={{ gap: 2 }}>
+                <Text style={eyebrow}>Kategori dağılımı</Text>
+                <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 22, letterSpacing: -0.4, color: '#0A0A0A' }}>İlk {catStats.length} kategori</Text>
+              </View>
+              <View style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: accSoft }}>
+                <BarChart3 size={15} color={accentColor} strokeWidth={1.6} />
+              </View>
             </View>
             <View style={{ gap: 14 }}>
               {catStats.map(([cat, count], idx) => {
                 const maxCount = catStats[0][1];
                 const pctVal = maxCount > 0 ? count / maxCount : 0;
-                const clr = PIE_COLORS[idx % PIE_COLORS.length];
                 return (
-                  <View key={cat} style={{ gap: 7 }}>
+                  <View key={cat} style={{ gap: 6 }}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[700], flex: 1 }} numberOfLines={1}>{cat}</Text>
-                      <Text style={{ fontSize: 12, fontWeight: '700', color: clr }}>{Math.round(pctVal * 100)}%</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '500', color: '#2C2C2C', flex: 1 }} numberOfLines={1}>{cat}</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: accentColor }}>{count}</Text>
                     </View>
-                    <View style={{ height: 8, backgroundColor: DS.ink[100], borderRadius: 4, overflow: 'hidden' }}>
-                      <View style={{ height: 8, borderRadius: 4, width: `${Math.round(pctVal * 100)}%` as any, backgroundColor: clr }} />
+                    <View style={{ height: 6, backgroundColor: 'rgba(0,0,0,0.04)', borderRadius: 3, overflow: 'hidden' }}>
+                      <View style={{ height: 6, borderRadius: 3, width: `${Math.round(pctVal * 100)}%` as any, backgroundColor: accentColor }} />
                     </View>
                   </View>
                 );
@@ -1116,75 +1358,94 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
           </View>
         )}
 
-        <View style={{ ...cardSolid, flex: 1, minWidth: 160 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[900] }}>Stok Durumu</Text>
+        <View style={[PCard, { flex: 1, minWidth: 200, alignItems: 'center' }]}>
+          <View style={{ width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+            <Text style={eyebrow}>Stok sağlığı</Text>
           </View>
-          <View style={{ alignItems: 'center', paddingVertical: 8 }}>
-            <View style={{ position: 'relative', width: 150, height: 150, alignItems: 'center', justifyContent: 'center' }}>
-              <DonutChart pct={total > 0 ? normal.length / total : 0} color={CHIP_TONES.success.fg} size={150} stroke={20} />
-              <View style={{ position: 'absolute', alignItems: 'center' }}>
-                <Text style={{ fontSize: 34, fontWeight: '800', color: DS.ink[900], letterSpacing: -1 }}>
-                  {total > 0 ? Math.round(normal.length / total * 100) : 0}
-                  <Text style={{ fontSize: 16, fontWeight: '600' }}>%</Text>
-                </Text>
-                <Text style={{ fontSize: 12, color: DS.ink[400], fontWeight: '600' }}>Normal</Text>
-              </View>
+          <View style={{ position: 'relative', width: 160, height: 160, alignItems: 'center', justifyContent: 'center', marginVertical: 4 }}>
+            <DonutChart pct={total > 0 ? normal.length / total : 0} color={accentColor} size={160} stroke={14} />
+            <View style={{ position: 'absolute', alignItems: 'center' }}>
+              <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 44, letterSpacing: -1.4, color: '#0A0A0A', lineHeight: 50 }}>
+                {total > 0 ? Math.round(normal.length / total * 100) : 0}
+                <Text style={{ fontSize: 18, fontWeight: '400', color: '#9A9A9A' }}>%</Text>
+              </Text>
+              <Text style={{ fontSize: 11, color: '#9A9A9A', fontWeight: '500', letterSpacing: 0.6, textTransform: 'uppercase', marginTop: -2 }}>Normal</Text>
             </View>
           </View>
-          <View style={{ gap: 10 }}>
+          <View style={{ width: '100%', gap: 9, marginTop: 10 }}>
             {([
-              { label: 'Normal',  count: normal.length,   color: CHIP_TONES.success.fg },
+              { label: 'Normal',  count: normal.length,   color: accentColor },
               { label: 'Kritik',  count: critical.length, color: CHIP_TONES.warning.fg },
-              { label: 'Tukendi', count: empty.length,    color: CHIP_TONES.danger.fg },
+              { label: 'Tükendi', count: empty.length,    color: CHIP_TONES.danger.fg },
             ] as const).map(l => (
               <View key={l.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <View style={{ width: 10, height: 10, borderRadius: 5, flexShrink: 0, backgroundColor: l.color }} />
-                <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[800], flex: 1 }}>{l.label}</Text>
-                <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }}>{l.count}</Text>
+                <View style={{ width: 8, height: 8, borderRadius: 4, flexShrink: 0, backgroundColor: l.color }} />
+                <Text style={{ fontSize: 12, fontWeight: '500', color: '#2C2C2C', flex: 1 }}>{l.label}</Text>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: '#9A9A9A' }}>{l.count}</Text>
               </View>
             ))}
           </View>
         </View>
       </View>
 
-      {/* Urgent items */}
+      {/* ── Urgent attention list ── */}
       {urgentItems.length > 0 && (
-        <View style={cardSolid}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[900] }}>Acil Dikkat</Text>
-            <View style={{ backgroundColor: CHIP_TONES.danger.bg, borderRadius: 9999, paddingHorizontal: 9, paddingVertical: 3 }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: CHIP_TONES.danger.fg }}>{urgentItems.length} urun</Text>
+        <View style={PCard}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+            <View style={{ gap: 2 }}>
+              <Text style={eyebrow}>Acil dikkat</Text>
+              <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 22, letterSpacing: -0.4, color: '#0A0A0A' }}>Sipariş bekleyen ürünler</Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: CHIP_TONES.danger.bg, borderRadius: 9999, paddingHorizontal: 10, paddingVertical: 4 }}>
+              <AlertCircle size={11} color={CHIP_TONES.danger.fg} strokeWidth={1.8} />
+              <Text style={{ fontSize: 11, fontWeight: '600', color: CHIP_TONES.danger.fg }}>{urgentItems.length} ürün</Text>
             </View>
           </View>
-          {urgentItems.map((item, idx) => {
-            const isEmpty = item.quantity === 0;
-            const isLast  = idx === urgentItems.length - 1;
-            const clr     = isEmpty ? CHIP_TONES.danger.fg : CHIP_TONES.warning.fg;
-            const bg      = isEmpty ? CHIP_TONES.danger.bg : CHIP_TONES.warning.bg;
-            return (
-              <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, ...(!isLast ? { borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' } : {}) }}>
-                <View style={{ width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexShrink: 0, backgroundColor: bg }}>
-                  {isEmpty
-                    ? <AlertCircle size={22} color={clr} strokeWidth={1.6} />
-                    : <AlertTriangle size={22} color={clr} strokeWidth={1.6} />
-                  }
+          <View style={{ gap: 4 }}>
+            {urgentItems.map((item, idx) => {
+              const isEmpty = item.quantity === 0;
+              const isLast  = idx === urgentItems.length - 1;
+              const clr     = isEmpty ? CHIP_TONES.danger.fg : CHIP_TONES.warning.fg;
+              const bg      = isEmpty ? CHIP_TONES.danger.bg : CHIP_TONES.warning.bg;
+              return (
+                <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, ...(!isLast ? { borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' } : {}) }}>
+                  <View style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', flexShrink: 0, backgroundColor: bg }}>
+                    {isEmpty
+                      ? <AlertCircle size={17} color={clr} strokeWidth={1.6} />
+                      : <AlertTriangle size={17} color={clr} strokeWidth={1.6} />
+                    }
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#0A0A0A' }} numberOfLines={1}>{item.name}</Text>
+                    <Text style={{ fontSize: 11, color: '#9A9A9A', fontWeight: '500', marginTop: 1 }}>
+                      {isEmpty ? 'Stok tükendi' : `${item.quantity}${item.unit ? ` ${item.unit}` : ''} kaldı · minimum ${item.min_quantity}`}
+                    </Text>
+                  </View>
+                  <Pressable
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999, backgroundColor: accSoft, borderWidth: 1, borderColor: accentColor + '33', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                    onPress={() => onMovement(item, 'IN')}
+                  >
+                    <Plus size={11} color={accentColor} strokeWidth={2} />
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: accentColor }}>Sipariş</Text>
+                  </Pressable>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[900] }} numberOfLines={1}>{item.name}</Text>
-                  <Text style={{ fontSize: 12, color: DS.ink[400], fontWeight: '500', marginTop: 2 }}>
-                    {isEmpty ? 'Stok tukendi' : `${item.quantity}${item.unit ? ` ${item.unit}` : ''} kaldi - minimum: ${item.min_quantity}`}
-                  </Text>
-                </View>
-                <Pressable
-                  style={{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999, backgroundColor: accentColor, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
-                  onPress={() => onMovement(item, 'IN')}
-                >
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>Yeniden Siparis</Text>
-                </Pressable>
-              </View>
-            );
-          })}
+              );
+            })}
+          </View>
+        </View>
+      )}
+
+      {/* ── Recent activity hint ── */}
+      {recentCount !== null && (
+        <View style={[PCard, { flexDirection: 'row', alignItems: 'center', gap: 12 }]}>
+          <View style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: accSoft }}>
+            <ArrowLeftRight size={16} color={accentColor} strokeWidth={1.6} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: '#0A0A0A' }}>Son 7 gün hareketi</Text>
+            <Text style={{ fontSize: 11, color: '#9A9A9A', marginTop: 1 }}>Giriş, çıkış ve fire kayıtları toplamı</Text>
+          </View>
+          <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 28, letterSpacing: -0.8, color: accentColor }}>{recentCount}</Text>
         </View>
       )}
 
@@ -1690,45 +1951,61 @@ function SuggestionsTab({
     return <ActivityIndicator size="large" color={accentColor} style={{ marginTop: 60 }} />;
   }
 
+  // ── Patterns design tokens ──
+  const PCard = {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.04)',
+    ...(Platform.OS === 'web' ? { boxShadow: '0 4px 16px rgba(0,0,0,0.04)' } : { shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 2 }),
+  } as any;
+  const DisplayFont = Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light';
+  const eyebrow = { fontSize: 11, fontWeight: '600' as const, color: '#9A9A9A', letterSpacing: 1, textTransform: 'uppercase' as const };
+  const accSoft = accentColor + '14';
+
   if (suggestions.length === 0) {
     return (
-      <View style={{ alignItems: 'center', paddingVertical: 50, gap: 10 }}>
-        <CheckCircle size={44} color={CHIP_TONES.success.fg} strokeWidth={1.2} />
-        <Text style={{ fontSize: 16, fontWeight: '700', color: DS.ink[900] }}>Tum stoklar yeterli</Text>
-        <Text style={{ fontSize: 13, color: DS.ink[400], textAlign: 'center' }}>Minimum seviyenin altinda urun bulunmuyor.</Text>
+      <View style={{ alignItems: 'center', paddingVertical: 60, gap: 14 }}>
+        <View style={{ width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: CHIP_TONES.success.bg }}>
+          <CheckCircle size={32} color={CHIP_TONES.success.fg} strokeWidth={1.4} />
+        </View>
+        <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 24, letterSpacing: -0.6, color: '#0A0A0A' }}>Tüm stoklar yeterli</Text>
+        <Text style={{ fontSize: 13, color: '#9A9A9A', textAlign: 'center', maxWidth: 320, lineHeight: 19 }}>Minimum seviyenin altında ürün bulunmuyor.</Text>
       </View>
     );
   }
 
   return (
-    <View style={{ gap: 16 }}>
-      {/* Summary card */}
-      <View style={{ ...cardSolid, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-        <View style={{ width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: CHIP_TONES.warning.bg }}>
-          <ShoppingCart size={22} color={CHIP_TONES.warning.fg} strokeWidth={1.6} />
+    <View style={{ gap: 14 }}>
+      {/* ── Hero: count + estimated total ── */}
+      <View style={[PCard, { flexDirection: 'row', alignItems: 'center', gap: 14 }]}>
+        <View style={{ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: accSoft }}>
+          <ShoppingCart size={20} color={accentColor} strokeWidth={1.6} />
         </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 15, fontWeight: '700', color: DS.ink[900] }}>
-            {suggestions.length} urun siparis gerekli
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={eyebrow}>Sipariş önerisi</Text>
+          <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 22, letterSpacing: -0.4, color: '#0A0A0A' }}>
+            {suggestions.length} ürün için sipariş gerekli
           </Text>
-          <Text style={{ fontSize: 13, color: DS.ink[500], marginTop: 2 }}>
-            Tahmini toplam: {totalEstimatedCost.toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 0 })}
+          <Text style={{ fontSize: 12, color: '#9A9A9A', marginTop: 2 }}>
+            Tahmini toplam · {totalEstimatedCost.toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 0 })}
           </Text>
         </View>
       </View>
 
-      {/* Table */}
-      <View style={tableCard}>
+      {/* ── Table ── */}
+      <View style={[PCard, { padding: 0, overflow: 'hidden' }]}>
         {/* Header row */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: '#FAFAFA', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' }}>
-          <Text style={{ ...colHeader, flex: 2.5 }}>URUN</Text>
-          <Text style={{ ...colHeader, flex: 0.8, textAlign: 'center' }}>MEVCUT</Text>
-          <Text style={{ ...colHeader, flex: 0.8, textAlign: 'center' }}>MINIMUM</Text>
-          <Text style={{ ...colHeader, flex: 0.8, textAlign: 'center' }}>EKSIK</Text>
-          <Text style={{ ...colHeader, flex: 1, textAlign: 'center' }}>B. MALIYET</Text>
-          <Text style={{ ...colHeader, flex: 1, textAlign: 'center' }}>T. MALIYET</Text>
-          <Text style={{ ...colHeader, flex: 1, textAlign: 'center' }}>TAH. BITIS</Text>
-          <Text style={{ ...colHeader, flex: 0.8, textAlign: 'center' }}>DURUM</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, backgroundColor: '#FBF9F4', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' }}>
+          <Text style={{ ...eyebrow, flex: 2.5 }}>Ürün</Text>
+          <Text style={{ ...eyebrow, flex: 0.8, textAlign: 'center' }}>Mevcut</Text>
+          <Text style={{ ...eyebrow, flex: 0.8, textAlign: 'center' }}>Min</Text>
+          <Text style={{ ...eyebrow, flex: 0.8, textAlign: 'center' }}>Eksik</Text>
+          <Text style={{ ...eyebrow, flex: 1, textAlign: 'center' }}>B. Maliyet</Text>
+          <Text style={{ ...eyebrow, flex: 1, textAlign: 'center' }}>T. Maliyet</Text>
+          <Text style={{ ...eyebrow, flex: 1, textAlign: 'center' }}>Tah. Bitiş</Text>
+          <Text style={{ ...eyebrow, flex: 0.8, textAlign: 'center' }}>Durum</Text>
           <View style={{ width: 90 }} />
         </View>
 
@@ -1793,13 +2070,14 @@ function SuggestionsTab({
                   style={{
                     flexDirection: 'row', alignItems: 'center', gap: 4,
                     paddingHorizontal: 10, paddingVertical: 6,
-                    borderRadius: 9999, backgroundColor: accentColor,
+                    borderRadius: 9999, backgroundColor: accSoft,
+                    borderWidth: 1, borderColor: accentColor + '33',
                     ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
                   }}
                   onPress={() => onMovement(s.item, 'IN')}
                 >
-                  <ShoppingCart size={11} color="#FFFFFF" strokeWidth={2} />
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>Siparis</Text>
+                  <ShoppingCart size={11} color={accentColor} strokeWidth={1.8} />
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: accentColor }}>Sipariş</Text>
                 </Pressable>
               </View>
             </View>
@@ -1939,9 +2217,22 @@ function AnalyticsTab({ accentColor }: { accentColor: string }) {
     );
   }
 
+  // ── Patterns design tokens ──
+  const PCard = {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.04)',
+    ...(Platform.OS === 'web' ? { boxShadow: '0 4px 16px rgba(0,0,0,0.04)' } : { shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 2 }),
+  } as any;
+  const DisplayFont = Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light';
+  const eyebrow = { fontSize: 11, fontWeight: '600' as const, color: '#9A9A9A', letterSpacing: 1, textTransform: 'uppercase' as const };
+  const accSoft = accentColor + '14';
+
   return (
-    <View style={{ gap: 16 }}>
-      {/* ── Range pills ────────────────────────────────────────── */}
+    <View style={{ gap: 14 }}>
+      {/* ── Range pills (panel accent) ── */}
       <View style={{ flexDirection: 'row', gap: 6 }}>
         {ANALYTICS_RANGES.map(opt => {
           const active = range === opt.key;
@@ -1951,16 +2242,16 @@ function AnalyticsTab({ accentColor }: { accentColor: string }) {
               onPress={() => setRange(opt.key)}
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 6,
-                paddingHorizontal: active ? 14 : 12, paddingVertical: 6,
+                paddingHorizontal: active ? 14 : 12, paddingVertical: 7,
                 borderRadius: 9999,
-                backgroundColor: active ? DS.ink[900] : '#FFFFFF',
-                borderWidth: active ? 0 : 1, borderColor: DS.ink[300],
+                backgroundColor: active ? accentColor : '#FFFFFF',
+                borderWidth: 1, borderColor: active ? accentColor : 'rgba(0,0,0,0.05)',
                 // @ts-ignore web
                 cursor: 'pointer',
               }}
             >
               {active && <Calendar size={11} color="#FFFFFF" strokeWidth={2} />}
-              <Text style={{ fontSize: 12, fontWeight: '500', color: active ? '#FFFFFF' : DS.ink[500] }}>
+              <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? '#FFFFFF' : '#6B6B6B' }}>
                 {opt.label}
               </Text>
             </Pressable>
@@ -1968,40 +2259,28 @@ function AnalyticsTab({ accentColor }: { accentColor: string }) {
         })}
       </View>
 
-      {/* ── KPI Summary ────────────────────────────────────────── */}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-        <View style={{ ...cardSolid, flex: 1, minWidth: 140, padding: 14, gap: 4 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Layers size={13} color={DS.ink[500]} strokeWidth={1.8} />
-            <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[400] }}>Toplam Kullanım</Text>
-          </View>
-          <Text style={{ fontSize: 18, fontWeight: '600', color: DS.ink[900] }}>{fmt(totals.totalUsed)}</Text>
-          <Text style={{ fontSize: 11, color: DS.ink[400] }}>{fmt(totals.totalUsedCost)} ₺</Text>
-        </View>
-        <View style={{ ...cardSolid, flex: 1, minWidth: 140, padding: 14, gap: 4 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Flame size={13} color={CHIP_TONES.danger.fg} strokeWidth={1.8} />
-            <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[400] }}>Toplam Fire</Text>
-          </View>
-          <Text style={{ fontSize: 18, fontWeight: '600', color: CHIP_TONES.danger.fg }}>{fmt(totals.totalWaste)}</Text>
-          <Text style={{ fontSize: 11, color: CHIP_TONES.danger.fg }}>−{fmt(totals.totalWasteCost)} ₺</Text>
-        </View>
-        <View style={{ ...cardSolid, flex: 1, minWidth: 140, padding: 14, gap: 4 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Zap size={13} color={CHIP_TONES.info.fg} strokeWidth={1.8} />
-            <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[400] }}>Ort. Verim</Text>
-          </View>
-          <Text style={{ fontSize: 18, fontWeight: '600', color: totals.avgEff !== null ? (totals.avgEff >= 95 ? CHIP_TONES.success.fg : totals.avgEff >= 85 ? CHIP_TONES.warning.fg : CHIP_TONES.danger.fg) : DS.ink[400] }}>
-            {totals.avgEff !== null ? `%${fmt1(totals.avgEff)}` : '—'}
-          </Text>
-        </View>
-        <View style={{ ...cardSolid, flex: 1, minWidth: 140, padding: 14, gap: 4 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <TrendingDown size={13} color={DS.ink[500]} strokeWidth={1.8} />
-            <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[400] }}>Günlük Ort. Tüketim</Text>
-          </View>
-          <Text style={{ fontSize: 18, fontWeight: '600', color: DS.ink[900] }}>{fmt1(totals.avgDailyConsumption)}</Text>
-        </View>
+      {/* ── KPI grid ── */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+        {([
+          { label: 'Toplam kullanım',     value: fmt(totals.totalUsed),                                                                                              sub: `${fmt(totals.totalUsedCost)} ₺`, icon: Layers,        fg: accentColor },
+          { label: 'Toplam fire',         value: fmt(totals.totalWaste),                                                                                             sub: `−${fmt(totals.totalWasteCost)} ₺`, icon: Flame,         fg: CHIP_TONES.danger.fg },
+          { label: 'Ortalama verim',      value: totals.avgEff !== null ? `%${fmt1(totals.avgEff)}` : '—',                                                          sub: 'kullanım/atık oranı',              icon: Zap,           fg: totals.avgEff !== null ? (totals.avgEff >= 95 ? CHIP_TONES.success.fg : totals.avgEff >= 85 ? CHIP_TONES.warning.fg : CHIP_TONES.danger.fg) : '#9A9A9A' },
+          { label: 'Günlük ort. tüketim', value: fmt1(totals.avgDailyConsumption),                                                                                  sub: 'son dönem',                        icon: TrendingDown,  fg: accentColor },
+        ] as const).map((kpi, i) => {
+          const Icon = kpi.icon;
+          return (
+            <View key={i} style={[PCard, { flex: 1, minWidth: 160, gap: 4 }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                <Text style={eyebrow}>{kpi.label}</Text>
+                <View style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: kpi.fg + '14' }}>
+                  <Icon size={15} color={kpi.fg} strokeWidth={1.6} />
+                </View>
+              </View>
+              <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 32, letterSpacing: -1, color: '#0A0A0A', lineHeight: 38 }}>{kpi.value}</Text>
+              <Text style={{ fontSize: 12, color: '#9A9A9A', fontWeight: '500' }}>{kpi.sub}</Text>
+            </View>
+          );
+        })}
       </View>
 
       {/* ── Daily Consumption Bar Chart ────────────────────────── */}
@@ -2395,82 +2674,95 @@ function ForecastTab({ items, accentColor }: { items: StockItem[]; accentColor: 
     return `${Math.ceil(days)} gun`;
   };
 
+  // ── Patterns design tokens ──
+  const PCard = {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.04)',
+    ...(Platform.OS === 'web' ? { boxShadow: '0 4px 16px rgba(0,0,0,0.04)' } : { shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 2 }),
+  } as any;
+  const DisplayFont = Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light';
+  const eyebrow = { fontSize: 11, fontWeight: '600' as const, color: '#9A9A9A', letterSpacing: 1, textTransform: 'uppercase' as const };
+
   return (
-    <View style={{ gap: 16 }}>
-      {/* KPI cards */}
-      <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
+    <View style={{ gap: 14 }}>
+      {/* ── KPI grid ── */}
+      <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
         {[
-          { label: '7 Gun Icinde Bitecek', value: String(criticalCount), icon: AlertCircle, color: '#DC2626' },
-          { label: '30 Gun Icinde Bitecek', value: String(warningCount), icon: AlertTriangle, color: '#D97706' },
-          { label: 'Guvenli', value: String(safeCount), icon: CheckCircle, color: '#059669' },
-          { label: 'Ort. Kalan Gun', value: avgDaysLeft != null ? `${avgDaysLeft} gun` : '—', icon: Clock, color: '#6366F1' },
-        ].map(kpi => {
+          { label: '7 gün içinde bitecek',  value: String(criticalCount),                            icon: AlertCircle,    color: CHIP_TONES.danger.fg },
+          { label: '30 gün içinde bitecek', value: String(warningCount),                             icon: AlertTriangle,  color: CHIP_TONES.warning.fg },
+          { label: 'Güvenli',               value: String(safeCount),                                icon: CheckCircle,    color: CHIP_TONES.success.fg },
+          { label: 'Ortalama kalan',        value: avgDaysLeft != null ? `${avgDaysLeft}` : '—',     icon: Clock,          color: accentColor },
+        ].map((kpi, i) => {
           const KIcon = kpi.icon;
           return (
-            <View key={kpi.label} style={{ ...cardSolid, flex: 1, minWidth: isDesktop ? 160 : 140, flexDirection: 'row', alignItems: 'center', gap: 14, padding: 18 }}>
-              <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: kpi.color + '14', alignItems: 'center', justifyContent: 'center' }}>
-                <KIcon size={18} color={kpi.color} strokeWidth={1.6} />
+            <View key={kpi.label} style={[PCard, { flex: 1, minWidth: isDesktop ? 170 : 150, gap: 4 }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                <Text style={eyebrow}>{kpi.label}</Text>
+                <View style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: kpi.color + '14' }}>
+                  <KIcon size={15} color={kpi.color} strokeWidth={1.6} />
+                </View>
               </View>
-              <View>
-                <Text style={{ fontSize: 20, fontWeight: '700', color: DS.ink[900], letterSpacing: -0.3 }}>{kpi.value}</Text>
-                <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }}>{kpi.label}</Text>
-              </View>
+              <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 36, letterSpacing: -1.2, color: '#0A0A0A', lineHeight: 42 }}>{kpi.value}</Text>
+              {i === 3 && avgDaysLeft != null && <Text style={{ fontSize: 12, color: '#9A9A9A', fontWeight: '500' }}>gün</Text>}
             </View>
           );
         })}
       </View>
 
-      {/* Controls */}
+      {/* ── Controls (panel accent) ── */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        {/* Range pills */}
         <View style={{ flexDirection: 'row', gap: 4 }}>
           {[
-            { days: 7, label: '7 Gun' },
-            { days: 30, label: '30 Gun' },
-            { days: 60, label: '60 Gun' },
-            { days: 90, label: '90 Gun' },
-          ].map(r => (
-            <Pressable
-              key={r.days}
-              onPress={() => setRangeDays(r.days)}
-              style={{
-                paddingHorizontal: 12, paddingVertical: 6, borderRadius: 9999,
-                backgroundColor: rangeDays === r.days ? DS.ink[900] : 'transparent',
-                borderWidth: rangeDays === r.days ? 0 : 1, borderColor: DS.ink[300],
-                ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
-              }}
-            >
-              <Text style={{ fontSize: 12, fontWeight: rangeDays === r.days ? '700' : '500', color: rangeDays === r.days ? '#FFF' : DS.ink[500] }}>
-                {r.label}
-              </Text>
-            </Pressable>
-          ))}
+            { days: 7,  label: '7 gün' },
+            { days: 30, label: '30 gün' },
+            { days: 60, label: '60 gün' },
+            { days: 90, label: '90 gün' },
+          ].map(r => {
+            const active = rangeDays === r.days;
+            return (
+              <Pressable
+                key={r.days}
+                onPress={() => setRangeDays(r.days)}
+                style={{
+                  paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999,
+                  backgroundColor: active ? accentColor : '#FFFFFF',
+                  borderWidth: 1, borderColor: active ? accentColor : 'rgba(0,0,0,0.05)',
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? '#FFF' : '#6B6B6B' }}>{r.label}</Text>
+              </Pressable>
+            );
+          })}
         </View>
-        {/* Risk filter */}
         <View style={{ flexDirection: 'row', gap: 4, marginLeft: isDesktop ? 12 : 0 }}>
           {([
-            { key: 'all' as const, label: 'Tumu', count: forecasts.length },
-            { key: 'critical' as const, label: 'Kritik', count: criticalCount },
-            { key: 'warning' as const, label: 'Uyari', count: warningCount },
-            { key: 'safe' as const, label: 'Guvenli', count: safeCount },
-          ]).map(f => (
-            <Pressable
-              key={f.key}
-              onPress={() => setFilterRisk(f.key)}
-              style={{
-                paddingHorizontal: 10, paddingVertical: 5, borderRadius: 9999,
-                backgroundColor: filterRisk === f.key ? (f.key === 'critical' ? '#DC2626' : f.key === 'warning' ? '#D97706' : f.key === 'safe' ? '#059669' : DS.ink[900]) : 'transparent',
-                borderWidth: filterRisk === f.key ? 0 : 1, borderColor: DS.ink[200],
-                flexDirection: 'row', alignItems: 'center', gap: 4,
-                ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
-              }}
-            >
-              <Text style={{ fontSize: 11, fontWeight: filterRisk === f.key ? '700' : '500', color: filterRisk === f.key ? '#FFF' : DS.ink[500] }}>
-                {f.label}
-              </Text>
-              <Text style={{ fontSize: 10, fontWeight: '600', color: filterRisk === f.key ? 'rgba(255,255,255,0.7)' : DS.ink[400] }}>{f.count}</Text>
-            </Pressable>
-          ))}
+            { key: 'all' as const,      label: 'Tümü',    count: forecasts.length, color: accentColor },
+            { key: 'critical' as const, label: 'Kritik',  count: criticalCount,    color: CHIP_TONES.danger.fg },
+            { key: 'warning' as const,  label: 'Uyarı',   count: warningCount,     color: CHIP_TONES.warning.fg },
+            { key: 'safe' as const,     label: 'Güvenli', count: safeCount,        color: CHIP_TONES.success.fg },
+          ]).map(f => {
+            const active = filterRisk === f.key;
+            return (
+              <Pressable
+                key={f.key}
+                onPress={() => setFilterRisk(f.key)}
+                style={{
+                  paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9999,
+                  backgroundColor: active ? f.color : '#FFFFFF',
+                  borderWidth: 1, borderColor: active ? f.color : 'rgba(0,0,0,0.05)',
+                  flexDirection: 'row', alignItems: 'center', gap: 5,
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                }}
+              >
+                <Text style={{ fontSize: 11, fontWeight: active ? '600' : '500', color: active ? '#FFF' : '#6B6B6B' }}>{f.label}</Text>
+                <Text style={{ fontSize: 10, fontWeight: '600', color: active ? 'rgba(255,255,255,0.75)' : '#9A9A9A' }}>{f.count}</Text>
+              </Pressable>
+            );
+          })}
         </View>
       </View>
 
@@ -2642,54 +2934,72 @@ function CostTab({ items, accentColor }: CostTabProps) {
 
   const fmt = (n: number) => n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+  // ── Patterns design tokens ──
+  const PCard = {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.04)',
+    ...(Platform.OS === 'web' ? { boxShadow: '0 4px 16px rgba(0,0,0,0.04)' } : { shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 2 }),
+  } as any;
+  const DisplayFont = Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light';
+  const eyebrow = { fontSize: 11, fontWeight: '600' as const, color: '#9A9A9A', letterSpacing: 1, textTransform: 'uppercase' as const };
+
   return (
-    <View style={{ gap: 16 }}>
-      {/* KPI Cards */}
-      <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
+    <View style={{ gap: 14 }}>
+      {/* ── KPI grid ── */}
+      <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
         {[
-          { label: 'Toplam Stok Degeri', value: `${fmt(costData.totalStockValue)} TL`, icon: Layers, color: '#059669' },
-          { label: 'Ort. Birim Maliyet', value: `${fmt(costData.avgUnitCost)} TL`, icon: BarChart3, color: '#6366F1' },
-          { label: 'Fiyat Artan Urun', value: String(costData.costIncreased), icon: TrendingUp, color: '#D97706' },
-          { label: 'Fiyat Gecmisi', value: `${priceHistory.length} kayit`, icon: Clock, color: '#0EA5E9' },
-        ].map(kpi => {
+          { label: 'Toplam stok değeri', value: `${fmt(costData.totalStockValue)} ₺`, icon: Layers,    color: accentColor },
+          { label: 'Ort. birim maliyet', value: `${fmt(costData.avgUnitCost)} ₺`,     icon: BarChart3, color: accentColor },
+          { label: 'Fiyat artan ürün',   value: String(costData.costIncreased),       icon: TrendingUp, color: CHIP_TONES.warning.fg },
+          { label: 'Fiyat geçmişi',      value: `${priceHistory.length}`,             icon: Clock,     color: accentColor },
+        ].map((kpi, i) => {
           const KIcon = kpi.icon;
           return (
-            <View key={kpi.label} style={{ ...cardSolid, flex: 1, minWidth: isDesktop ? 160 : 140, flexDirection: 'row', alignItems: 'center', gap: 14, padding: 18 }}>
-              <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: kpi.color + '14', alignItems: 'center', justifyContent: 'center' }}>
-                <KIcon size={18} color={kpi.color} strokeWidth={1.6} />
+            <View key={kpi.label} style={[PCard, { flex: 1, minWidth: isDesktop ? 170 : 150, gap: 4 }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                <Text style={eyebrow}>{kpi.label}</Text>
+                <View style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: kpi.color + '14' }}>
+                  <KIcon size={15} color={kpi.color} strokeWidth={1.6} />
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 16, fontWeight: '700', color: DS.ink[900], letterSpacing: -0.3 }} numberOfLines={1}>{kpi.value}</Text>
-                <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }}>{kpi.label}</Text>
-              </View>
+              <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: i < 2 ? 26 : 36, letterSpacing: -1, color: '#0A0A0A', lineHeight: i < 2 ? 32 : 42 }} numberOfLines={1}>
+                {kpi.value}
+              </Text>
+              {i === 3 && <Text style={{ fontSize: 12, color: '#9A9A9A', fontWeight: '500' }}>kayıt</Text>}
             </View>
           );
         })}
       </View>
 
-      {/* Sort pills */}
+      {/* ── Sort pills ── */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        <Text style={{ fontSize: 12, color: DS.ink[400], marginRight: 4 }}>Sirala:</Text>
+        <Text style={{ fontSize: 12, color: '#9A9A9A', marginRight: 4, fontWeight: '500' }}>Sırala:</Text>
         {([
-          { key: 'value' as const, label: 'Deger' },
-          { key: 'cost' as const, label: 'Birim Maliyet' },
-          { key: 'name' as const, label: 'Ad' },
-        ]).map(s => (
-          <Pressable
-            key={s.key}
-            onPress={() => setSortBy(s.key)}
-            style={{
-              paddingHorizontal: 12, paddingVertical: 6, borderRadius: 9999,
-              backgroundColor: sortBy === s.key ? DS.ink[900] : 'transparent',
-              borderWidth: sortBy === s.key ? 0 : 1, borderColor: DS.ink[300],
-              ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
-            }}
-          >
-            <Text style={{ fontSize: 12, fontWeight: sortBy === s.key ? '700' : '500', color: sortBy === s.key ? '#FFF' : DS.ink[500] }}>
-              {s.label}
-            </Text>
-          </Pressable>
-        ))}
+          { key: 'value' as const, label: 'Değer' },
+          { key: 'cost' as const,  label: 'Birim maliyet' },
+          { key: 'name' as const,  label: 'Ad' },
+        ]).map(s => {
+          const active = sortBy === s.key;
+          return (
+            <Pressable
+              key={s.key}
+              onPress={() => setSortBy(s.key)}
+              style={{
+                paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999,
+                backgroundColor: active ? accentColor : '#FFFFFF',
+                borderWidth: 1, borderColor: active ? accentColor : 'rgba(0,0,0,0.05)',
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+              }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? '#FFF' : '#6B6B6B' }}>
+                {s.label}
+              </Text>
+            </Pressable>
+          );
+        })}
       </View>
 
       {/* Cost Table */}
@@ -2907,44 +3217,57 @@ function LocationsTab({ items, accentColor, onEditProduct }: LocationsTabProps) 
     }
   };
 
+  // ── Patterns design tokens ──
+  const PCard = {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.04)',
+    ...(Platform.OS === 'web' ? { boxShadow: '0 4px 16px rgba(0,0,0,0.04)' } : { shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 2 }),
+  } as any;
+  const DisplayFont = Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light';
+  const eyebrow = { fontSize: 11, fontWeight: '600' as const, color: '#9A9A9A', letterSpacing: 1, textTransform: 'uppercase' as const };
+
   return (
-    <View style={{ gap: 16 }}>
-      {/* KPI cards */}
-      <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
+    <View style={{ gap: 14 }}>
+      {/* ── KPI grid ── */}
+      <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
         {[
-          { label: 'Lokasyon', value: String(uniqueLocations), icon: MapPin, color: '#6366F1' },
-          { label: 'Konumlu Urun', value: String(assignedCount), icon: Package, color: '#059669' },
-          { label: 'Konumsuz Urun', value: String(unassignedCount), icon: AlertTriangle, color: unassignedCount > 0 ? '#D97706' : '#9CA3AF' },
-          { label: 'Barkodlu', value: String(barcodeCount), icon: QrCode, color: '#0EA5E9' },
+          { label: 'Lokasyon',       value: String(uniqueLocations),  icon: MapPin,        color: accentColor },
+          { label: 'Konumlu ürün',   value: String(assignedCount),    icon: Package,       color: CHIP_TONES.success.fg },
+          { label: 'Konumsuz ürün',  value: String(unassignedCount),  icon: AlertTriangle, color: unassignedCount > 0 ? CHIP_TONES.warning.fg : '#9CA3AF' },
+          { label: 'Barkodlu',       value: String(barcodeCount),     icon: QrCode,        color: accentColor },
         ].map(kpi => {
           const KIcon = kpi.icon;
           return (
-            <View key={kpi.label} style={{ ...cardSolid, flex: 1, minWidth: isDesktop ? 150 : 140, flexDirection: 'row', alignItems: 'center', gap: 14, padding: 18 }}>
-              <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: kpi.color + '14', alignItems: 'center', justifyContent: 'center' }}>
-                <KIcon size={18} color={kpi.color} strokeWidth={1.6} />
+            <View key={kpi.label} style={[PCard, { flex: 1, minWidth: isDesktop ? 160 : 140, gap: 4 }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                <Text style={eyebrow}>{kpi.label}</Text>
+                <View style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: kpi.color + '14' }}>
+                  <KIcon size={15} color={kpi.color} strokeWidth={1.6} />
+                </View>
               </View>
-              <View>
-                <Text style={{ fontSize: 20, fontWeight: '700', color: DS.ink[900], letterSpacing: -0.3 }}>{kpi.value}</Text>
-                <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }}>{kpi.label}</Text>
-              </View>
+              <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 36, letterSpacing: -1.2, color: '#0A0A0A', lineHeight: 42 }}>{kpi.value}</Text>
             </View>
           );
         })}
       </View>
 
-      {/* Toolbar */}
+      {/* ── Toolbar ── */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         <View style={{
           flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
           backgroundColor: '#FFFFFF', borderRadius: 14, borderWidth: 1,
           borderColor: 'rgba(0,0,0,0.05)', paddingHorizontal: 12, height: 44,
+          ...(Platform.OS === 'web' ? { boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)' } : {}),
         }}>
           <Search size={15} color={DS.ink[400]} strokeWidth={1.6} />
           <TextInput
             style={{ flex: 1, fontSize: 14, color: DS.ink[900], height: 44, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) } as any}
             value={locSearch}
             onChangeText={setLocSearch}
-            placeholder="Lokasyon, urun veya barkod ara..."
+            placeholder="Lokasyon, ürün veya barkod ara..."
             placeholderTextColor={DS.ink[400]}
           />
           {locSearch.length > 0 && (
@@ -2955,22 +3278,25 @@ function LocationsTab({ items, accentColor, onEditProduct }: LocationsTabProps) 
         </View>
         {isDesktop && (
           <View style={{ flexDirection: 'row', gap: 4 }}>
-            {(['grid', 'table'] as const).map(m => (
-              <Pressable
-                key={m}
-                onPress={() => setViewMode(m)}
-                style={{
-                  paddingHorizontal: 14, paddingVertical: 8, borderRadius: 9999,
-                  backgroundColor: viewMode === m ? DS.ink[900] : 'transparent',
-                  borderWidth: viewMode === m ? 0 : 1, borderColor: DS.ink[300],
-                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
-                }}
-              >
-                <Text style={{ fontSize: 12, fontWeight: viewMode === m ? '700' : '500', color: viewMode === m ? '#FFF' : DS.ink[500] }}>
-                  {m === 'grid' ? 'Grid' : 'Tablo'}
-                </Text>
-              </Pressable>
-            ))}
+            {(['grid', 'table'] as const).map(m => {
+              const active = viewMode === m;
+              return (
+                <Pressable
+                  key={m}
+                  onPress={() => setViewMode(m)}
+                  style={{
+                    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 9999,
+                    backgroundColor: active ? accentColor : '#FFFFFF',
+                    borderWidth: 1, borderColor: active ? accentColor : 'rgba(0,0,0,0.05)',
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? '#FFF' : '#6B6B6B' }}>
+                    {m === 'grid' ? 'Grid' : 'Tablo'}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
         )}
       </View>
@@ -3001,13 +3327,13 @@ function LocationsTab({ items, accentColor, onEditProduct }: LocationsTabProps) 
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: expanded ? 14 : 0, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                 >
                   <View style={{
-                    width: 36, height: 36, borderRadius: 10,
-                    backgroundColor: isUnassigned ? DS.ink[100] : '#6366F114',
+                    width: 36, height: 36, borderRadius: 18,
+                    backgroundColor: isUnassigned ? DS.ink[100] : accentColor + '14',
                     alignItems: 'center', justifyContent: 'center',
                   }}>
                     {isUnassigned
                       ? <AlertTriangle size={16} color={DS.ink[400]} strokeWidth={1.6} />
-                      : <MapPin size={16} color="#6366F1" strokeWidth={1.6} />
+                      : <MapPin size={16} color={accentColor} strokeWidth={1.6} />
                     }
                   </View>
                   <View style={{ flex: 1 }}>
@@ -3110,7 +3436,7 @@ function LocationsTab({ items, accentColor, onEditProduct }: LocationsTabProps) 
                 }}
               >
                 <View style={{ width: 120, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <MapPin size={12} color={loc === '__unassigned__' ? DS.ink[300] : '#6366F1'} strokeWidth={1.6} />
+                  <MapPin size={12} color={loc === '__unassigned__' ? DS.ink[300] : accentColor} strokeWidth={1.6} />
                   <Text style={{ fontSize: 12, color: loc === '__unassigned__' ? DS.ink[400] : DS.ink[800], fontWeight: '500' }} numberOfLines={1}>
                     {loc === '__unassigned__' ? '—' : loc}
                   </Text>
@@ -3371,10 +3697,44 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
       </View>
     );
 
+    // ── Patterns design tokens ──
+    const PCard = {
+      backgroundColor: '#FFFFFF',
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: 'rgba(0,0,0,0.04)',
+      ...(Platform.OS === 'web' ? { boxShadow: '0 4px 16px rgba(0,0,0,0.04)' } : { shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 2 }),
+    } as any;
+    const DisplayFont = Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light';
+    const eyebrow = { fontSize: 11, fontWeight: '600' as const, color: '#9A9A9A', letterSpacing: 1, textTransform: 'uppercase' as const };
+
     return (
-      <>
-        {/* Toolbar */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+      <View style={{ gap: 14 }}>
+        {/* ── Mini KPI strip ── */}
+        <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
+          {[
+            { label: 'Toplam',   value: String(total),         icon: Package,        color: accentColor },
+            { label: 'Normal',   value: String(normalCount),   icon: CheckCircle,    color: CHIP_TONES.success.fg },
+            { label: 'Kritik',   value: String(criticalCount), icon: AlertTriangle,  color: CHIP_TONES.warning.fg },
+            { label: 'Tükendi',  value: String(emptyCount),    icon: XCircle,        color: CHIP_TONES.danger.fg },
+          ].map(kpi => {
+            const KIcon = kpi.icon;
+            return (
+              <View key={kpi.label} style={[PCard, { flex: 1, minWidth: 130, padding: 14, gap: 4 }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+                  <Text style={eyebrow}>{kpi.label}</Text>
+                  <View style={{ width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: kpi.color + '14' }}>
+                    <KIcon size={13} color={kpi.color} strokeWidth={1.6} />
+                  </View>
+                </View>
+                <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 30, letterSpacing: -1, color: '#0A0A0A', lineHeight: 36 }}>{kpi.value}</Text>
+              </View>
+            );
+          })}
+        </View>
+
+        {/* ── Toolbar ── */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           {searchExpanded || search.length > 0 ? (
             <View style={{
               flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
@@ -3391,7 +3751,7 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
                 onChangeText={setSearch}
                 onFocus={() => setSearchFocused(true)}
                 onBlur={() => { setSearchFocused(false); if (!search) setSearchExpanded(false); }}
-                placeholder="Urun ara..."
+                placeholder="Ürün ara..."
                 placeholderTextColor={DS.ink[400]}
               />
               <Pressable onPress={() => { setSearch(''); setSearchExpanded(false); }} hitSlop={8} style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}}>
@@ -3405,29 +3765,29 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
           <Pressable
             onPress={() => setSearchExpanded(true)}
             style={{
-              width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
+              width: 44, height: 44, borderRadius: 9999, alignItems: 'center', justifyContent: 'center',
               backgroundColor: searchExpanded || search.length > 0 ? accentColor + '14' : '#FFFFFF',
-              borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
+              borderWidth: 1, borderColor: searchExpanded || search.length > 0 ? accentColor + '33' : 'rgba(0,0,0,0.05)',
               ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
             }}
           >
-            <Search size={20} color={searchExpanded || search.length > 0 ? accentColor : DS.ink[500]} strokeWidth={1.6} />
+            <Search size={18} color={searchExpanded || search.length > 0 ? accentColor : '#6B6B6B'} strokeWidth={1.6} />
           </Pressable>
 
           <Pressable
             onPress={openFilter}
             style={{
-              width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
+              width: 44, height: 44, borderRadius: 9999, alignItems: 'center', justifyContent: 'center',
               position: 'relative',
               backgroundColor: activeFilterCount > 0 ? accentColor + '14' : '#FFFFFF',
-              borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
+              borderWidth: 1, borderColor: activeFilterCount > 0 ? accentColor + '33' : 'rgba(0,0,0,0.05)',
               ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
             }}
           >
-            <Filter size={20} color={activeFilterCount > 0 ? accentColor : DS.ink[500]} strokeWidth={1.6} />
+            <Filter size={18} color={activeFilterCount > 0 ? accentColor : '#6B6B6B'} strokeWidth={1.6} />
             {activeFilterCount > 0 && (
-              <View style={{ position: 'absolute', top: 4, right: 4, minWidth: 14, height: 14, borderRadius: 7, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3, backgroundColor: accentColor }}>
-                <Text style={{ fontSize: 10, fontWeight: '700', color: '#FFFFFF' }}>{activeFilterCount}</Text>
+              <View style={{ position: 'absolute', top: 3, right: 3, minWidth: 14, height: 14, borderRadius: 7, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3, backgroundColor: accentColor, borderWidth: 1.5, borderColor: '#FFFFFF' }}>
+                <Text style={{ fontSize: 9, fontWeight: '700', color: '#FFFFFF' }}>{activeFilterCount}</Text>
               </View>
             )}
           </Pressable>
@@ -3436,41 +3796,43 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
             onPress={() => setWasteOpen(true)}
             style={{
               flexDirection: 'row', alignItems: 'center', gap: 6,
-              paddingHorizontal: 12, height: 44,
-              borderRadius: 14,
-              backgroundColor: CHIP_TONES.danger.bg, borderWidth: 1, borderColor: 'rgba(217,75,75,0.2)',
+              paddingHorizontal: 14, height: 44,
+              borderRadius: 9999,
+              backgroundColor: CHIP_TONES.danger.bg, borderWidth: 1, borderColor: CHIP_TONES.danger.fg + '33',
               ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
             }}
           >
-            <Flame size={14} color={CHIP_TONES.danger.fg} strokeWidth={1.6} />
-            <Text style={{ fontSize: 12, fontWeight: '700', color: CHIP_TONES.danger.fg }}>Fire Bildir</Text>
+            <Flame size={13} color={CHIP_TONES.danger.fg} strokeWidth={1.8} />
+            <Text style={{ fontSize: 12, fontWeight: '600', color: CHIP_TONES.danger.fg }}>Fire bildir</Text>
           </Pressable>
         </View>
 
-        {/* Table */}
+        {/* ── Empty state / List ── */}
         {filtered.length === 0 ? (
-          <View style={{ alignItems: 'center', paddingTop: 60, gap: 10 }}>
-            {total === 0
-              ? <Package size={36} color={DS.ink[200]} strokeWidth={1.2} />
-              : <Search size={36} color={DS.ink[200]} strokeWidth={1.2} />
-            }
-            <Text style={{ fontSize: 16, fontWeight: '700', color: DS.ink[900] }}>
-              {total === 0 ? 'Henuz urun eklenmemis' : 'Sonuc bulunamadi'}
+          <View style={[PCard, { alignItems: 'center', paddingVertical: 56, gap: 12 }]}>
+            <View style={{ width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor + '14' }}>
+              {total === 0
+                ? <Package size={28} color={accentColor} strokeWidth={1.4} />
+                : <Search size={28} color={accentColor} strokeWidth={1.4} />
+              }
+            </View>
+            <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 22, letterSpacing: -0.4, color: '#0A0A0A' }}>
+              {total === 0 ? 'Henüz ürün eklenmemiş' : 'Sonuç bulunamadı'}
             </Text>
-            <Text style={{ fontSize: 13, color: DS.ink[400] }}>
-              {total === 0 ? '"Yeni Urun" butonuna tiklayin' : 'Arama veya filtre kriterlerini degistirin'}
+            <Text style={{ fontSize: 13, color: '#9A9A9A', textAlign: 'center', maxWidth: 320, lineHeight: 19 }}>
+              {total === 0 ? '"Yeni Ürün" butonuyla ilk ürünü ekleyin.' : 'Arama veya filtre kriterlerini değiştirin.'}
             </Text>
           </View>
         ) : (
           <>
             <View style={{
               flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12,
-              backgroundColor: '#FAFAFA', borderRadius: 24, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', marginBottom: 8,
+              backgroundColor: '#FBF9F4', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)', marginBottom: 4,
             }}>
-              <Text style={{ ...colHeader, flex: 2.8 }}>URUN ADI</Text>
-              {isDesktop && <Text style={{ ...colHeader, flex: 2.2 }}>STOK SEVIYESI</Text>}
-              <Text style={{ ...colHeader, flex: 1, textAlign: 'center' }}>MIKTAR</Text>
-              <Text style={{ ...colHeader, flex: 1.2, textAlign: 'center' }}>DURUM</Text>
+              <Text style={{ ...eyebrow, flex: 2.8 }}>Ürün adı</Text>
+              {isDesktop && <Text style={{ ...eyebrow, flex: 2.2 }}>Stok seviyesi</Text>}
+              <Text style={{ ...eyebrow, flex: 1, textAlign: 'center' }}>Miktar</Text>
+              <Text style={{ ...eyebrow, flex: 1.2, textAlign: 'center' }}>Durum</Text>
               <View style={{ width: 76 }} />
             </View>
 
@@ -3480,29 +3842,29 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
               const groupCrit  = groupItems.filter(i => i.quantity < i.min_quantity).length;
 
               return (
-                <View key={groupKey} style={{ ...tableCard, marginBottom: 12 }}>
+                <View key={groupKey} style={[PCard, { marginBottom: 10, overflow: 'hidden' }]}>
                   <Pressable
                     style={{
-                      flexDirection: 'row', alignItems: 'center', gap: 8,
-                      paddingHorizontal: 14, paddingVertical: 12,
-                      backgroundColor: DS.ink[50],
-                      borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)',
+                      flexDirection: 'row', alignItems: 'center', gap: 10,
+                      paddingHorizontal: 16, paddingVertical: 14,
+                      backgroundColor: '#FFFFFF',
+                      borderBottomWidth: collapsed ? 0 : 1, borderBottomColor: 'rgba(0,0,0,0.04)',
                       ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
                     }}
                     onPress={() => toggleGroup(groupKey)}
                   >
                     {collapsed
-                      ? <ChevronRight size={15} color={DS.ink[400]} strokeWidth={1.6} />
-                      : <ChevronDown size={15} color={DS.ink[400]} strokeWidth={1.6} />
+                      ? <ChevronRight size={14} color="#9A9A9A" strokeWidth={1.8} />
+                      : <ChevronDown size={14} color="#9A9A9A" strokeWidth={1.8} />
                     }
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900], flex: 1 }}>{label}</Text>
-                    <View style={{ backgroundColor: DS.ink[100], borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 }}>
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: DS.ink[500] }}>{groupItems.length}</Text>
-                    </View>
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: '#0A0A0A', letterSpacing: -0.2 }}>{label}</Text>
+                    <Text style={{ fontSize: 12, color: '#9A9A9A', fontWeight: '500' }}>·</Text>
+                    <Text style={{ fontSize: 12, color: '#9A9A9A', fontWeight: '500' }}>{groupItems.length} ürün</Text>
+                    <View style={{ flex: 1 }} />
                     {groupCrit > 0 && (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: CHIP_TONES.warning.bg, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 }}>
-                        <AlertTriangle size={11} color={CHIP_TONES.warning.fg} strokeWidth={1.6} />
-                        <Text style={{ fontSize: 11, fontWeight: '700', color: CHIP_TONES.warning.fg }}>{groupCrit} kritik</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: CHIP_TONES.warning.bg, borderRadius: 9999, paddingHorizontal: 10, paddingVertical: 3, borderWidth: 1, borderColor: CHIP_TONES.warning.fg + '22' }}>
+                        <AlertTriangle size={10} color={CHIP_TONES.warning.fg} strokeWidth={1.8} />
+                        <Text style={{ fontSize: 11, fontWeight: '600', color: CHIP_TONES.warning.fg }}>{groupCrit} kritik</Text>
                       </View>
                     )}
                   </Pressable>
@@ -3516,35 +3878,36 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
                     return (
                       <View key={item.id} style={{
                         flexDirection: 'row', alignItems: 'center',
-                        paddingLeft: 0, paddingRight: 16, paddingVertical: 9, minHeight: 42,
+                        paddingLeft: 16, paddingRight: 16, paddingVertical: 11, minHeight: 48,
                         ...(!isLast ? { borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' } : {}),
                       }}>
-                        <View style={{ width: 3, alignSelf: 'stretch', borderRadius: 2, marginLeft: 6, marginRight: 0, backgroundColor: dotColor }} />
+                        {/* Status dot — yuvarlak, soft halo */}
+                        <View style={{ width: 8, height: 8, borderRadius: 4, marginRight: 12, backgroundColor: dotColor }} />
 
-                        <View style={{ flex: 2.8, flexDirection: 'row', alignItems: 'center', paddingLeft: 10 }}>
+                        <View style={{ flex: 2.8, flexDirection: 'row', alignItems: 'center' }}>
                           <View style={{ flex: 1 }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900], letterSpacing: -0.1 }} numberOfLines={1}>{item.name}</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <Text style={{ fontSize: 13, fontWeight: '600', color: '#0A0A0A', letterSpacing: -0.1 }} numberOfLines={1}>{item.name}</Text>
                               {item.usage_category === 'production' && (
-                                <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 9999, backgroundColor: 'rgba(124,58,237,0.1)' }}>
-                                  <Text style={{ fontSize: 9, fontWeight: '800', color: '#7C3AED', letterSpacing: 0.4 }}>URETIM</Text>
+                                <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 9999, backgroundColor: 'rgba(124,58,237,0.08)' }}>
+                                  <Text style={{ fontSize: 9, fontWeight: '600', color: '#7C3AED', letterSpacing: 0.5 }}>ÜRETİM</Text>
                                 </View>
                               )}
                               {item.type && (
-                                <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 9999, backgroundColor: DS.ink[100] }}>
-                                  <Text style={{ fontSize: 9, fontWeight: '800', color: DS.ink[700], letterSpacing: 0.4 }}>{item.type.toUpperCase()}</Text>
+                                <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 9999, backgroundColor: 'rgba(0,0,0,0.04)' }}>
+                                  <Text style={{ fontSize: 9, fontWeight: '600', color: '#6B6B6B', letterSpacing: 0.5 }}>{item.type.toUpperCase()}</Text>
                                 </View>
                               )}
                               {(wasteMap[item.id]?.cost ?? 0) > 0 && (
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 9999, backgroundColor: CHIP_TONES.danger.bg, borderWidth: 1, borderColor: 'rgba(217,75,75,0.2)' }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 9999, backgroundColor: CHIP_TONES.danger.bg }}>
                                   <Flame size={8} color={CHIP_TONES.danger.fg} strokeWidth={2} />
-                                  <Text style={{ fontSize: 9, fontWeight: '800', color: CHIP_TONES.danger.fg, letterSpacing: 0.3 }}>{Math.round(wasteMap[item.id].cost).toLocaleString('tr-TR')} TL</Text>
+                                  <Text style={{ fontSize: 9, fontWeight: '600', color: CHIP_TONES.danger.fg, letterSpacing: 0.3 }}>{Math.round(wasteMap[item.id].cost).toLocaleString('tr-TR')} ₺</Text>
                                 </View>
                               )}
                             </View>
                             {(item.brand || item.unit || item.supplier || item.units_per_tooth) && (
-                              <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }} numberOfLines={1}>
-                                {[item.brand, item.unit, item.supplier, item.units_per_tooth ? `${item.units_per_tooth}/dis -> ${item.consume_at_stage ?? 'MILLING'}` : null].filter(Boolean).join(' - ')}
+                              <Text style={{ fontSize: 11, color: '#9A9A9A', marginTop: 2, fontWeight: '400' }} numberOfLines={1}>
+                                {[item.brand, item.unit, item.supplier, item.units_per_tooth ? `${item.units_per_tooth}/diş → ${item.consume_at_stage ?? 'MILLING'}` : null].filter(Boolean).join(' · ')}
                               </Text>
                             )}
                           </View>
@@ -3561,18 +3924,18 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
                         <View style={{ flex: 1.2, alignItems: 'center' }}>
                           <StatusBadge quantity={item.quantity} min={item.min_quantity} />
                         </View>
-                        <View style={{ width: 76, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
+                        <View style={{ width: 76, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
                           <Pressable
-                            style={{ width: 28, height: 28, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor + '14', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                            style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor + '14', borderWidth: 1, borderColor: accentColor + '22', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                             onPress={() => setMovModal({ visible: true, item })}
                           >
-                            <ArrowLeftRight size={14} color={accentColor} strokeWidth={1.6} />
+                            <ArrowLeftRight size={13} color={accentColor} strokeWidth={1.8} />
                           </Pressable>
                           <Pressable
-                            style={{ width: 28, height: 28, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: DS.ink[50], ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                            style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FBF9F4', borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                             onPress={() => setProductModal({ visible: true, item })}
                           >
-                            <Pencil size={13} color={DS.ink[500]} strokeWidth={1.6} />
+                            <Pencil size={12} color="#6B6B6B" strokeWidth={1.8} />
                           </Pressable>
                         </View>
                       </View>
@@ -3583,7 +3946,7 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
             })}
           </>
         )}
-      </>
+      </View>
     );
   };
 
@@ -3702,17 +4065,22 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
           </View>
 
           {/* ── Desktop Content ──────────────────────────────────── */}
-          <View style={{ flex: 1, borderRadius: 16, overflow: 'hidden' }}>
-            {/* Title bar */}
-            <View style={{ paddingHorizontal: 28, paddingTop: 16, paddingBottom: 8, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-              <View>
+          <View style={{ flex: 1, overflow: 'hidden' }}>
+            {/* Title bar — Patterns Display 300 */}
+            <View style={{ paddingHorizontal: 28, paddingTop: 18, paddingBottom: 10, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: '#9A9A9A', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 }}>
+                  Stok &amp; Depo
+                </Text>
                 <Text
                   style={{
-                    ...DISPLAY,
-                    fontSize: 24,
-                    letterSpacing: -0.5,
+                    fontFamily: Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light',
+                    fontWeight: '300',
+                    fontSize: 30,
+                    letterSpacing: -1,
                     color: '#0A0A0A',
                     marginBottom: 4,
+                    lineHeight: 36,
                   }}
                 >
                   {activeTab.label}
@@ -3724,15 +4092,16 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
               {showCta && (
                 <Pressable
                   style={{
-                    flexDirection: 'row', alignItems: 'center', gap: 6,
-                    paddingHorizontal: 16, paddingVertical: 8,
+                    flexDirection: 'row', alignItems: 'center', gap: 7,
+                    paddingHorizontal: 16, paddingVertical: 9,
                     borderRadius: 9999, backgroundColor: accentColor,
-                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                    marginTop: 18,
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer', boxShadow: `0 4px 16px ${accentColor}33` } : {}),
                   }}
                   onPress={ctaAction}
                 >
-                  <Plus size={15} color="#FFFFFF" strokeWidth={2} />
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>{ctaLabel}</Text>
+                  <Plus size={14} color="#FFFFFF" strokeWidth={2} />
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFFFFF' }}>{ctaLabel}</Text>
                 </Pressable>
               )}
             </View>

@@ -100,6 +100,8 @@ export default function LabLayout() {
     { label: 'Stok & Depo',   emoji: '📦', href: '/(lab)/stock',          iconName: 'package',          matchPrefix: true, sectionLabel: 'Stok & Depo',
       badgeCount: stockAlert,
       requiresPermission: 'view_stock' },
+    { label: 'Tedarikçiler',  emoji: '🏢', href: '/(lab)/suppliers',      iconName: 'building',         matchPrefix: true, sectionLabel: 'Stok & Depo',
+      requiresPermission: 'view_stock' },
 
     // ── Ayarlar (Kullanıcılar + QR Check-in + Genel Ayarlar tek hub) ──────
     { label: 'Ayarlar',       emoji: '⚙️', href: '/(lab)/settings',         iconName: 'settings',       matchPrefix: true,
@@ -159,6 +161,7 @@ export default function LabLayout() {
         <Tabs.Screen name="delivery/[id]" options={{}} />
         <Tabs.Screen name="analytics"     options={{ title: 'Analitik' }} />
         <Tabs.Screen name="stock"        options={{ title: 'Stok & Depo' }} />
+        <Tabs.Screen name="suppliers"    options={{ title: 'Tedarikçiler' }} />
         <Tabs.Screen name="new-order"    options={{ title: 'Yeni Sipariş' }} />
         <Tabs.Screen name="users"        options={{ title: 'Kullanıcılar' }} />
         <Tabs.Screen name="clinics"      options={{ title: 'Sağlık Kurumları' }} />

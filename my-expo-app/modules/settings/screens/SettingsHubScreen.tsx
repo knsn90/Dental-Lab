@@ -23,6 +23,7 @@ import { NotificationsSection } from '../sections/NotificationsSection';
 import { GeneralSection } from '../sections/GeneralSection';
 import { IntegrationsScreen } from '../../integrations/screens/IntegrationsScreen';
 import { LogsSection } from '../sections/LogsSection';
+import { CurrencyRatesScreen } from './CurrencyRatesScreen';
 import { PermissionsScreen } from '../../admin/permissions/PermissionsScreen';
 import { EquipmentSection } from '../sections/EquipmentSection';
 
@@ -36,7 +37,7 @@ const DISPLAY = {
 type SectionKey =
   | 'profile' | 'notifications' | 'general'
   | 'users'   | 'checkin'    | 'stations'      | 'integrations' | 'logs'
-  | 'permissions' | 'equipment';
+  | 'permissions' | 'equipment' | 'currency';
 
 type PanelKind = 'lab' | 'admin' | 'doctor' | 'clinic';
 
@@ -77,6 +78,7 @@ const LAB_ITEMS: NavItem[] = [
   { key: 'checkin',      label: 'QR Check-in',   sub: 'Mesai takip ayarları',         requiresPermission: 'manage_settings' },
   { key: 'stations',     label: 'İstasyonlar',   sub: 'Üretim aşamaları',             requiresPermission: 'manage_settings' },
   { key: 'equipment',   label: 'Demirbaşlar',   sub: 'Cihaz, marka, model ve atamalar', requiresPermission: 'manage_settings' },
+  { key: 'currency',     label: 'Döviz Kurları',  sub: 'EUR/USD/GBP kur yönetimi',     requiresPermission: 'manage_settings' },
   { key: 'integrations', label: 'Entegrasyonlar', sub: 'e-Fatura & POS ayarları',     requiresPermission: 'manage_settings' },
   { key: 'logs',         label: 'Loglar',         sub: 'Sistem aktivite kayıtları',   requiresPermission: 'manage_settings' },
 ];
@@ -228,6 +230,7 @@ export function SettingsHubScreen({
               )}
               {active === 'stations' && <StationsSection accentColor={accent} />}
               {active === 'equipment' && <EquipmentSection accentColor={accent} />}
+              {active === 'currency' && <CurrencyRatesScreen accentColor={accent} />}
               {active === 'integrations' && <IntegrationsScreen accentColor={accent} />}
               {active === 'logs' && <LogsSection accentColor={accent} />}
               {active === 'permissions' && <PermissionsScreen embedded accentColor={accent} />}
