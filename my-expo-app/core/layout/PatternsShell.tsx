@@ -237,9 +237,9 @@ export function PatternsShell({
   };
 
   return (
-    <View className="flex-1 flex-row bg-cream-page pl-6 pr-6 pt-0 pb-3 gap-3">
+    <View className="flex-1 flex-row bg-cream-page p-3 gap-3">
       {/* ═════════════ SIDEBAR (card) + edge toggle ═════════════ */}
-      <View style={{ position: 'relative', alignSelf: 'stretch', overflow: 'visible', paddingTop: 28 }}>
+      <View style={{ position: 'relative', alignSelf: 'stretch', overflow: 'visible', paddingTop: 8 }}>
         {collapsed ? (
           <CollapsedSidebar
             navItems={filteredNavItems}
@@ -299,7 +299,7 @@ export function PatternsShell({
          showsVerticalScrollIndicator={false}
        >
         {/* TOP BAR — page title (left) only; toolbar absolute-pinned outside ScrollView */}
-        <View className="flex-row items-center" style={{ zIndex: 1, paddingRight: 10, paddingTop: 28, paddingBottom: 12, backgroundColor: 'transparent' }}>
+        <View className="flex-row items-center" style={{ zIndex: 1, paddingRight: 10, paddingTop: 8, paddingBottom: 12, backgroundColor: 'transparent' }}>
           {/* Page title */}
           <View className="flex-1" style={{ paddingLeft: 10, paddingRight: 280 }}>
             {effectiveTitle ? (
@@ -347,14 +347,14 @@ export function PatternsShell({
        </ScrollView>
 
        {/* ═════════════ STICKY TOOLBAR — absolute, başlık satırıyla hizalı ═════════════ */}
-       {/* top: 22 → toolbar dikey merkezi başlığın ilk satırının merkeziyle aynı hizada
-           (paddingTop 28 + fontSize 28/2 = 42 ≈ 22 + 40/2 = 42) */}
+       {/* top: 2 → toolbar dikey merkezi başlığın ilk satırının merkeziyle aynı hizada
+           (paddingTop 8 + fontSize 28/2 = 22 ≈ 2 + 40/2 = 22) */}
        <View
          className="flex-row items-center gap-1 pl-1.5 pr-1.5 py-1.5 rounded-full bg-white border border-black/[0.05]"
          style={{
            position: 'absolute' as any,
-           top: 22,
-           right: 12,
+           top: 2,
+           right: 0,
            zIndex: 200,
            // @ts-ignore web shadow
            boxShadow: '0 4px 16px rgba(0,0,0,0.06)',
