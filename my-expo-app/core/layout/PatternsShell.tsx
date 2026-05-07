@@ -297,10 +297,9 @@ export function PatternsShell({
          className="flex-1 patterns-scroll"
          contentContainerStyle={{ flexGrow: 1 }}
          showsVerticalScrollIndicator={false}
-         stickyHeaderIndices={[0]}
        >
-        {/* TOP BAR — page title (left) + toolbar card (right) — sticky */}
-        <View className="flex-row items-center bg-cream-page" style={{ zIndex: 100, paddingRight: 10, paddingTop: 12, paddingBottom: 12 }}>
+        {/* TOP BAR — page title (left) + toolbar (right) — fully transparent, scrolls with content */}
+        <View className="flex-row items-center" style={{ zIndex: 100, paddingRight: 10, paddingTop: 12, paddingBottom: 12, backgroundColor: 'transparent' }}>
           {/* Page title */}
           <View className="flex-1" style={{ paddingLeft: 10 }}>
             {effectiveTitle ? (
