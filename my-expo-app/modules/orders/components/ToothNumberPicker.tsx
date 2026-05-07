@@ -281,25 +281,23 @@ export function ToothNumberPicker({
     // onToothPress yoksa (seçim modu): hepsi tıklanabilir.
     const isInteractive = onToothPress ? isSelected : true;
 
-    // Web'de SVG <g>'ye onPress vermek RN-Web'in Responder sistemini tetikler
-    // → "Unknown event handler property onResponderTerminate" warning'i.
-    // Web'de onClick, native'de onPress kullan.
-    const gProps: any = !isInteractive
-      ? { pointerEvents: 'none' }
+    // Click & hover handlers — uygulanacak ELEMENT'e göre ayrılmış.
+    // <G> üzerinde onClick bazı RN-Web sürümlerinde tutarsız tetikleniyor;
+    // bu yüzden tıklama VE hover, görünür <Path> outline'ına bağlanır.
+    // <G>'de yalnızca pointerEvents kontrolü tutulur.
+    const gProps: any = !isInteractive ? { pointerEvents: 'none' } : {};
+
+    const pathInteractiveProps: any = !isInteractive
+      ? {}
       : Platform.OS === 'web'
         ? {
             onClick: () => handlePress(fdi),
             onMouseEnter: () => handleHoverEnter(fdi),
             onMouseLeave: handleHoverLeave,
-            // @ts-ignore — RN-Web cursor passthrough
+            // @ts-ignore — RN-Web cursor passthrough on SVG path
             style: { cursor: 'pointer' },
           }
         : { onPress: () => handlePress(fdi) };
-
-    if (Platform.OS === 'web' && !isInteractive) {
-      // @ts-ignore
-      gProps.style = { cursor: 'default' };
-    }
 
     return (
       <G key={fdi} {...gProps}>
@@ -331,16 +329,17 @@ export function ToothNumberPicker({
           />
         )}
 
-        {/* Tooth outline */}
+        {/* Tooth outline — click + hover handlers buraya bağlı */}
         <Path
           // @ts-ignore — seçili dişlerde fill nefes alır gibi (web only)
           className={Platform.OS === 'web' && (isSelected || !!confirmedColor) ? 'tooth-selected-breathe' : undefined}
           d={paths[0]}
-          fill={fillColor}
+          fill={fillColor === 'transparent' ? 'rgba(0,0,0,0.001)' : fillColor}
           stroke={strokeColor}
           strokeWidth={strokeWidth}
           strokeLinejoin="round"
           strokeLinecap="round"
+          {...pathInteractiveProps}
         />
 
         {/* Internal detail lines */}
