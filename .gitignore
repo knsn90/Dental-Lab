@@ -1,1 +1,10 @@
 .vercel
+
+# Secrets — never commit
+.mcp.json
+.env
+.env.local
+.env.*.local
+my-expo-app/.env
+my-expo-app/.env.local
+my-expo-app/.env.*.local
