@@ -5,17 +5,13 @@
  * Başarılı doğrulama sonrası profile.phone_verified = true yapılır.
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.7'
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { corsHeaders } from '../_shared/cors.ts'
 
 const MAX_ATTEMPTS = 5
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { headers: corsHeaders(req) })
   }
 
   try {
@@ -54,7 +50,7 @@ Deno.serve(async (req: Request) => {
     if (fetchError || !verification) {
       return new Response(
         JSON.stringify({ error: 'Geçerli bir doğrulama kodu bulunamadı. Lütfen yeni kod isteyin.' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } }
       )
     }
 
@@ -68,7 +64,7 @@ Deno.serve(async (req: Request) => {
 
       return new Response(
         JSON.stringify({ error: 'Çok fazla hatalı deneme. Lütfen yeni kod isteyin.' }),
-        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 429, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } }
       )
     }
 
@@ -86,7 +82,7 @@ Deno.serve(async (req: Request) => {
           error: `Doğrulama kodu hatalı. ${remaining} deneme hakkınız kaldı.`,
           remaining_attempts: remaining,
         }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } }
       )
     }
 
@@ -108,12 +104,12 @@ Deno.serve(async (req: Request) => {
 
     return new Response(
       JSON.stringify({ success: true, phone: verification.phone }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 200, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } }
     )
   } catch (err: any) {
     return new Response(
       JSON.stringify({ error: err.message }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 400, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } }
     )
   }
 })

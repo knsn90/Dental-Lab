@@ -14,21 +14,16 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin':  '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
+import { corsHeaders } from '../_shared/cors.ts';
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders(req) });
 
   try {
     const { intent_id, public_token, card, installment } = await req.json();
     if (!intent_id || !public_token || !card?.number) {
       return new Response(JSON.stringify({ ok: false, error: 'Eksik alanlar' }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
       });
     }
 
@@ -47,19 +42,19 @@ serve(async (req) => {
 
     if (!intent) {
       return new Response(JSON.stringify({ ok: false, error: 'Geçersiz ödeme linki' }), {
-        status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 404, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
       });
     }
 
     if ((intent as any).status === 'paid') {
       return new Response(JSON.stringify({ ok: false, error: 'Zaten ödendi' }), {
-        status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 409, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
       });
     }
 
     if (new Date((intent as any).expires_at).getTime() < Date.now()) {
       return new Response(JSON.stringify({ ok: false, error: 'Link süresi dolmuş' }), {
-        status: 410, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 410, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
       });
     }
 
@@ -74,7 +69,7 @@ serve(async (req) => {
 
     if (!cred) {
       return new Response(JSON.stringify({ ok: false, error: 'Aktif POS sağlayıcı yok' }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
       });
     }
 
@@ -92,7 +87,7 @@ serve(async (req) => {
         break;
       default:
         return new Response(JSON.stringify({ ok: false, error: `Provider implementasyonu yok: ${(cred as any).provider}` }), {
-          status: 501, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 501, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
         });
     }
 
@@ -117,12 +112,12 @@ serve(async (req) => {
     }).eq('id', (intent as any).id);
 
     return new Response(JSON.stringify(result), {
-      status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 200, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
     });
 
   } catch (e: any) {
     return new Response(JSON.stringify({ ok: false, error: e?.message ?? 'Sunucu hatası' }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 500, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
     });
   }
 });

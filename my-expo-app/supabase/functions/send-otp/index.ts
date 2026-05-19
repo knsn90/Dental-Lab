@@ -10,11 +10,7 @@
  *   SMS_MSGHEADER = (NetGSM için mesaj başlığı)
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.7'
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { corsHeaders } from '../_shared/cors.ts'
 
 const OTP_LENGTH = 4
 const OTP_EXPIRY_MINUTES = 5
@@ -147,7 +143,7 @@ async function sendViaMutlucell(
 // ── Main handler ──
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { headers: corsHeaders(req) })
   }
 
   try {
@@ -187,7 +183,7 @@ Deno.serve(async (req: Request) => {
     if (recentOtp && recentOtp.length > 0) {
       return new Response(
         JSON.stringify({ error: 'Çok sık istek. Lütfen bekleyin.' }),
-        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 429, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } }
       )
     }
 
@@ -226,12 +222,12 @@ Deno.serve(async (req: Request) => {
 
     return new Response(
       JSON.stringify({ success: true, expires_in: OTP_EXPIRY_MINUTES * 60 }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 200, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } }
     )
   } catch (err: any) {
     return new Response(
       JSON.stringify({ error: err.message }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 400, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } }
     )
   }
 })
