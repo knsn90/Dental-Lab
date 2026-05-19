@@ -12,11 +12,13 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.7'
 import { corsHeaders } from '../_shared/cors.ts'
 
-const OTP_LENGTH = 4
+const OTP_LENGTH = 6
 const OTP_EXPIRY_MINUTES = 5
-const MAX_RESEND_COOLDOWN_SECONDS = 60
 
-/** 6 haneli rastgele kod üret */
+// Exponential backoff: 1. tekrar→60s, 2.→5dk, 3.→15dk, 4+→24s blok
+const RESEND_COOLDOWNS_SECONDS = [60, 300, 900]
+const RESEND_24H_BLOCK_AFTER = 4
+
 function generateOtp(): string {
   const digits = '0123456789'
   let code = ''
@@ -170,24 +172,39 @@ Deno.serve(async (req: Request) => {
     // Service role client (DB işlemleri için)
     const adminClient = createClient(supabaseUrl, serviceRoleKey)
 
-    // Rate limit: son 60 sn içinde gönderilmiş mi?
-    const cooldownTime = new Date(Date.now() - MAX_RESEND_COOLDOWN_SECONDS * 1000).toISOString()
-    const { data: recentOtp } = await adminClient
+    // Exponential backoff — son 24s içindeki gönderim sayısını say
+    const window24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    const { data: recentSends } = await adminClient
       .from('phone_verifications')
-      .select('id')
+      .select('created_at')
       .eq('user_id', userId)
-      .gte('created_at', cooldownTime)
       .eq('verified', false)
-      .limit(1)
+      .gte('created_at', window24h)
+      .order('created_at', { ascending: false })
 
-    if (recentOtp && recentOtp.length > 0) {
+    const sendCount = recentSends?.length ?? 0
+
+    if (sendCount >= RESEND_24H_BLOCK_AFTER) {
       return new Response(
-        JSON.stringify({ error: 'Çok sık istek. Lütfen bekleyin.' }),
+        JSON.stringify({ error: 'Çok fazla deneme. 24 saat sonra tekrar deneyin.' }),
         { status: 429, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } }
       )
     }
 
-    // Eski doğrulanmamış kodları sil
+    if (sendCount > 0) {
+      const lastSentAt = new Date(recentSends![0].created_at).getTime()
+      const cooldownSec = RESEND_COOLDOWNS_SECONDS[sendCount - 1]
+      const nextAllowedAt = lastSentAt + cooldownSec * 1000
+      if (Date.now() < nextAllowedAt) {
+        const retryAfter = Math.ceil((nextAllowedAt - Date.now()) / 1000)
+        return new Response(
+          JSON.stringify({ error: 'Çok sık istek. Lütfen bekleyin.', retry_after: retryAfter }),
+          { status: 429, headers: { ...corsHeaders(req), 'Content-Type': 'application/json', 'Retry-After': String(retryAfter) } }
+        )
+      }
+    }
+
+    // Eski doğrulanmamış kodları temizle
     await adminClient
       .from('phone_verifications')
       .delete()

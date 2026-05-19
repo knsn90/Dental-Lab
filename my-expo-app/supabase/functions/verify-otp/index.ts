@@ -7,7 +7,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.7'
 import { corsHeaders } from '../_shared/cors.ts'
 
-const MAX_ATTEMPTS = 5
+const MAX_ATTEMPTS = 3
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -70,18 +70,15 @@ Deno.serve(async (req: Request) => {
 
     // Kodu kontrol et
     if (verification.code !== code.trim()) {
-      // Deneme sayısını artır
+      const newAttempts = verification.attempts + 1
       await adminClient
         .from('phone_verifications')
-        .update({ attempts: verification.attempts + 1 })
+        .update({ attempts: newAttempts })
         .eq('id', verification.id)
 
-      const remaining = MAX_ATTEMPTS - verification.attempts - 1
+      // Bilgi sızıntısını önle: kalan deneme sayısını açıklamıyoruz
       return new Response(
-        JSON.stringify({
-          error: `Doğrulama kodu hatalı. ${remaining} deneme hakkınız kaldı.`,
-          remaining_attempts: remaining,
-        }),
+        JSON.stringify({ error: 'Doğrulama kodu hatalı. Lütfen tekrar deneyin.' }),
         { status: 400, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } }
       )
     }
