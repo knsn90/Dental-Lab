@@ -3,10 +3,15 @@
 // Her iş için: checklist + büyük "STAGE TAMAMLANDI" butonu.
 // Cards diline uygun: beyaz pill kart, standart 0 8px 24px gölge.
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Platform, StyleSheet, useWindowDimensions } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
+  Platform, StyleSheet, useWindowDimensions, Modal,
+  TextInput, KeyboardAvoidingView,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { supabase } from '../../../core/api/supabase';
 import { toast } from '../../../core/ui/Toast';
 import { AppIcon } from '../../../core/ui/AppIcon';
@@ -47,6 +52,7 @@ export function OperatorScreen() {
   const { profile } = useAuthStore();
   const { width } = useWindowDimensions();
   const router = useRouter();
+  const [qrOpen, setQrOpen] = useState(false);
   const isWide = width >= 900;
 
   const [jobs, setJobs] = useState<AssignedJob[]>([]);
@@ -165,7 +171,7 @@ export function OperatorScreen() {
             <View style={s.countBadge}><Text style={s.countText}>{jobs.length}</Text></View>
             <TouchableOpacity
               style={s.qrBtn}
-              onPress={() => router.push('/(station)/qr-scan')}
+              onPress={() => setQrOpen(true)}
               activeOpacity={0.8}
             >
               <AppIcon name="scan-line" size={14} color="#fff" strokeWidth={2} />
@@ -301,6 +307,16 @@ export function OperatorScreen() {
         </View>
       </View>
 
+      {/* QR Check-in modal */}
+      <QrScanModal
+        visible={qrOpen}
+        onClose={() => setQrOpen(false)}
+        onToken={(token) => {
+          setQrOpen(false);
+          router.push(`/checkin?token=${token}`);
+        }}
+      />
+
       {/* Fire bildirim modalı — order ile ilişkili */}
       {profile && selected && (
         <WasteReportModal
@@ -390,6 +406,252 @@ const s = StyleSheet.create({
     marginTop: 8,
   },
   bigBtnText: { fontSize: 14, fontWeight: '800', color: '#FFFFFF', letterSpacing: 0.6 },
+});
+
+// ─── QR Scan Modal ────────────────────────────────────────────────────────────
+
+function extractToken(raw: string): string | null {
+  try {
+    const url = new URL(raw);
+    const t = url.searchParams.get('token');
+    if (t) return t;
+  } catch { /* not a URL */ }
+  if (/^[0-9a-f-]{36}$/i.test(raw.trim())) return raw.trim();
+  return null;
+}
+
+const QR_ACCENT = '#16A34A';
+const FRAME = 220;
+const CORNER = 24;
+
+function QrScanModal({
+  visible, onClose, onToken,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onToken: (token: string) => void;
+}) {
+  const [permission, requestPermission] = useCameraPermissions();
+  const [scanned, setScanned] = useState(false);
+  const [showManual, setShowManual] = useState(false);
+  const [manualVal, setManualVal] = useState('');
+  const [manualErr, setManualErr] = useState('');
+  const lockRef = useRef(false);
+
+  // reset state when modal opens
+  useEffect(() => {
+    if (visible) { setScanned(false); setShowManual(false); setManualVal(''); setManualErr(''); lockRef.current = false; }
+  }, [visible]);
+
+  function handleBarcode({ data }: { data: string }) {
+    if (lockRef.current || scanned) return;
+    lockRef.current = true;
+    setScanned(true);
+    const token = extractToken(data);
+    if (token) { onToken(token); }
+    else { setScanned(false); lockRef.current = false; toast.error('Geçersiz QR kodu'); }
+  }
+
+  function handleManual() {
+    setManualErr('');
+    const raw = manualVal.trim();
+    const token = extractToken(raw) ?? (raw.length > 8 ? raw : null);
+    if (!token) { setManualErr('Geçersiz token veya URL'); return; }
+    onToken(token);
+  }
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <View style={qs.backdrop}>
+        <View style={qs.sheet}>
+          {/* Handle + header */}
+          <View style={qs.handle} />
+          <View style={qs.sheetHeader}>
+            <Text style={qs.sheetTitle}>QR Giriş / Çıkış</Text>
+            <TouchableOpacity style={qs.closeBtn} onPress={onClose}>
+              <AppIcon name="x" size={18} color="#64748B" />
+            </TouchableOpacity>
+          </View>
+
+          {showManual ? (
+            /* ─── Manuel giriş ─── */
+            <KeyboardAvoidingView behavior="padding" style={{ gap: 10 }}>
+              <Text style={qs.manualHint}>QR kodu URL'sini veya token'ı yapıştırın.</Text>
+              <TextInput
+                style={qs.input}
+                placeholder="https://…/checkin?token=…"
+                placeholderTextColor="#94A3B8"
+                value={manualVal}
+                onChangeText={setManualVal}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="done"
+                onSubmitEditing={handleManual}
+              />
+              {!!manualErr && <Text style={qs.errText}>{manualErr}</Text>}
+              <TouchableOpacity style={[qs.actionBtn, { backgroundColor: QR_ACCENT }]} onPress={handleManual}>
+                <AppIcon name="log-in" size={16} color="#fff" />
+                <Text style={qs.actionBtnText}>Giriş Yap</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[qs.actionBtn, qs.secondaryBtn]} onPress={() => setShowManual(false)}>
+                <AppIcon name="camera" size={16} color="#475569" />
+                <Text style={[qs.actionBtnText, { color: '#475569' }]}>Kameraya Dön</Text>
+              </TouchableOpacity>
+            </KeyboardAvoidingView>
+          ) : !permission ? (
+            /* ─── Yükleniyor ─── */
+            <View style={qs.center}>
+              <ActivityIndicator size="small" color={QR_ACCENT} />
+              <Text style={qs.hint}>Kamera kontrol ediliyor...</Text>
+            </View>
+          ) : !permission.granted ? (
+            /* ─── İzin yok ─── */
+            <View style={qs.center}>
+              <View style={qs.iconCircle}>
+                <AppIcon name="camera-off" size={28} color="#64748B" />
+              </View>
+              <Text style={qs.permTitle}>Kamera İzni Gerekli</Text>
+              <Text style={qs.hint}>QR okutmak için kamera iznine ihtiyaç var.</Text>
+              <TouchableOpacity style={[qs.actionBtn, { backgroundColor: QR_ACCENT }]} onPress={requestPermission}>
+                <AppIcon name="camera" size={16} color="#fff" />
+                <Text style={qs.actionBtnText}>İzin Ver</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[qs.actionBtn, qs.secondaryBtn]} onPress={() => setShowManual(true)}>
+                <AppIcon name="keyboard" size={16} color="#475569" />
+                <Text style={[qs.actionBtnText, { color: '#475569' }]}>Manuel Gir</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            /* ─── Kamera ─── */
+            <View style={qs.cameraWrap}>
+              <CameraView
+                style={qs.camera}
+                facing="back"
+                barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+                onBarcodeScanned={scanned ? undefined : handleBarcode}
+              />
+              {/* Viewfinder */}
+              <View style={qs.overlay} pointerEvents="none">
+                <View style={qs.frame}>
+                  {(['tl','tr','bl','br'] as const).map(p => <QrCorner key={p} pos={p} />)}
+                </View>
+                <Text style={qs.scanHint}>
+                  {scanned ? 'Okundu, yönlendiriliyor...' : 'Kamerayı QR koda tut'}
+                </Text>
+              </View>
+              {/* Manual fallback button */}
+              <TouchableOpacity style={qs.manualLink} onPress={() => setShowManual(true)}>
+                <AppIcon name="keyboard" size={14} color="rgba(255,255,255,0.8)" />
+                <Text style={qs.manualLinkText}>Manuel gir</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function QrCorner({ pos }: { pos: 'tl' | 'tr' | 'bl' | 'br' }) {
+  const isTop  = pos.startsWith('t');
+  const isLeft = pos.endsWith('l');
+  return (
+    <View style={[
+      qs.corner,
+      isTop  ? { top: 0 }    : { bottom: 0 },
+      isLeft ? { left: 0 }   : { right: 0 },
+      !isTop  && { borderTopWidth: 0,  borderBottomWidth: 3 },
+      !isLeft && { borderLeftWidth: 0, borderRightWidth: 3 },
+    ]} />
+  );
+}
+
+const qs = StyleSheet.create({
+  backdrop: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
+    gap: 14,
+    maxHeight: '90%',
+  },
+  handle: {
+    alignSelf: 'center',
+    width: 36, height: 4,
+    borderRadius: 2, backgroundColor: '#E2E8F0',
+    marginBottom: 4,
+  },
+  sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  sheetTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
+  closeBtn: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  center: { alignItems: 'center', gap: 12, paddingVertical: 12 },
+  iconCircle: {
+    width: 64, height: 64, borderRadius: 32,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  permTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
+  hint: { fontSize: 12, color: '#64748B', textAlign: 'center', lineHeight: 18 },
+
+  cameraWrap: {
+    height: 300, borderRadius: 14, overflow: 'hidden',
+    position: 'relative', backgroundColor: '#000',
+  },
+  camera: { ...StyleSheet.absoluteFillObject },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center', justifyContent: 'center', gap: 16,
+  },
+  frame: { width: FRAME, height: FRAME, position: 'relative' },
+  corner: {
+    position: 'absolute',
+    width: CORNER, height: CORNER,
+    borderColor: '#fff',
+    borderTopWidth: 3, borderLeftWidth: 3,
+    borderRightWidth: 0, borderBottomWidth: 0,
+    borderRadius: 2,
+  },
+  scanHint: {
+    fontSize: 12, color: '#fff', fontWeight: '600',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    paddingHorizontal: 14, paddingVertical: 6,
+    borderRadius: 16, overflow: 'hidden',
+  },
+  manualLink: {
+    position: 'absolute', bottom: 10, right: 12,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+  },
+  manualLinkText: { fontSize: 11, color: 'rgba(255,255,255,0.8)' },
+
+  actionBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    paddingVertical: 13, borderRadius: 12,
+  },
+  secondaryBtn: { backgroundColor: '#F1F5F9' },
+  actionBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+
+  manualHint: { fontSize: 13, color: '#475569', lineHeight: 18 },
+  input: {
+    borderWidth: 1.5, borderColor: '#CBD5E1',
+    borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
+    fontSize: 14, color: '#0F172A',
+  },
+  errText: { fontSize: 12, color: '#DC2626' },
 });
 
 export default OperatorScreen;

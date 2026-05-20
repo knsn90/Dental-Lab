@@ -20,7 +20,6 @@ export default function StationLayout() {
         <Stack.Screen name="index" options={{ title: 'İstasyon' }} />
         <Stack.Screen name="job-detail" options={{ title: 'İş Detayı' }} />
         <Stack.Screen name="settings" options={{ title: 'Ayarlar' }} />
-        <Stack.Screen name="qr-scan" options={{ title: 'QR Okut', presentation: 'modal' }} />
       </Stack>
     </>
   );
