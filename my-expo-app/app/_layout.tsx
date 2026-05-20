@@ -146,7 +146,7 @@ export default function RootLayout() {
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
       if (session?.user) {
         fetchProfile(session.user.id);
@@ -154,6 +154,11 @@ export default function RootLayout() {
       } else {
         clearPerms();
         setLoading(false);
+        // Logout: hassas taslak verilerini temizle
+        if (event === 'SIGNED_OUT' && typeof localStorage !== 'undefined') {
+          ['newOrderDraft:v1', 'newOrderDraft:v1:ts'].forEach(k => localStorage.removeItem(k));
+          sessionStorage.clear();
+        }
       }
     });
 

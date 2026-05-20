@@ -169,8 +169,15 @@ const DRAFT_KEY        = 'newOrderDraft:v1';
 const DRAFT_TS_KEY     = 'newOrderDraft:v1:ts';
 const DRAFT_DEBOUNCE_MS = 600;
 
-/** form'un persist edilmeyecek alanları — blob URI'lar reload sonrası geçersiz olur */
-const DRAFT_STRIP_FIELDS = ['attachments', 'voice_notes', 'lab_voice_notes', 'chat_messages'] as const;
+/** form'un persist edilmeyecek alanları — blob URI'lar geçersiz olur; PII localStorage'a yazılmamalı */
+const DRAFT_STRIP_FIELDS = [
+  // Blob URI'lar reload'dan sonra geçersiz
+  'attachments', 'voice_notes', 'lab_voice_notes', 'chat_messages',
+  // Kişisel veriler (KVKK) — tarayıcı depolamasına yazılmaz
+  'patient_first_name', 'patient_last_name', 'patient_id',
+  'patient_dob', 'patient_phone', 'patient_gender',
+  'patient_nationality', 'patient_country', 'patient_city',
+] as const;
 
 const fmtDraftTime = (d: Date) =>
   `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
