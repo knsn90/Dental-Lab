@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.7'
 import { corsHeaders } from '../_shared/cors.ts'
+import { unauthorized, forbidden, badRequest, errorResponse } from '../_shared/errors.ts'
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -8,7 +9,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) throw new Error('Yetkisiz erişim');
+    if (!authHeader) throw unauthorized();
 
     const supabaseUrl    = Deno.env.get('SUPABASE_URL')!;
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -19,9 +20,8 @@ Deno.serve(async (req: Request) => {
       global: { headers: { Authorization: authHeader } },
     });
 
-    // Çağıran admin mi?
     const { data: userData, error: authError } = await callerClient.auth.getUser();
-    if (authError || !userData.user) throw new Error('Yetkisiz erişim');
+    if (authError || !userData.user) throw unauthorized();
 
     const { data: callerProfile } = await adminClient
       .from('profiles')
@@ -30,19 +30,18 @@ Deno.serve(async (req: Request) => {
       .single();
 
     if (!callerProfile || callerProfile.user_type !== 'admin') {
-      throw new Error('Sadece adminler bu işlemi yapabilir');
+      throw forbidden('Sadece adminler bu işlemi yapabilir');
     }
 
     const { userId, email, password } = await req.json();
-    if (!userId) throw new Error('Kullanıcı ID gerekli');
+    if (!userId) throw badRequest('Kullanıcı ID gerekli');
 
-    // E-posta veya şifre değişikliği
     const authUpdates: { email?: string; password?: string } = {};
     if (email)    authUpdates.email    = email.trim();
     if (password) authUpdates.password = password;
 
     if (Object.keys(authUpdates).length === 0) {
-      throw new Error('Güncellenecek alan yok');
+      throw badRequest('Güncellenecek alan yok');
     }
 
     const { error: updateError } = await adminClient.auth.admin.updateUserById(
@@ -57,10 +56,7 @@ Deno.serve(async (req: Request) => {
       { status: 200, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } }
     );
 
-  } catch (err: any) {
-    return new Response(
-      JSON.stringify({ error: String(err?.message ?? err) }),
-      { status: 200, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } }
-    );
+  } catch (err) {
+    return errorResponse(err, corsHeaders(req));
   }
 });

@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.7'
 import { corsHeaders } from '../_shared/cors.ts'
+import { unauthorized, forbidden, badRequest, errorResponse } from '../_shared/errors.ts'
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -8,7 +9,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) throw new Error('Yetkisiz erişim');
+    if (!authHeader) throw unauthorized();
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -21,7 +22,7 @@ Deno.serve(async (req: Request) => {
     });
 
     const { data: userData, error: authError } = await callerClient.auth.getUser();
-    if (authError || !userData.user) throw new Error('Yetkisiz erişim');
+    if (authError || !userData.user) throw unauthorized();
 
     const { data: callerProfile } = await adminClient
       .from('profiles')
@@ -31,18 +32,18 @@ Deno.serve(async (req: Request) => {
 
     // Admin veya lab manager kullanıcı ekleyebilir
     if (!callerProfile || (callerProfile.user_type !== 'admin' && callerProfile.user_type !== 'lab')) {
-      throw new Error('Yetkiniz yok');
+      throw forbidden('Yetkiniz yok');
     }
 
     const { email, password, full_name, user_type, role, clinic_name, phone, address, clinic_type, specialty, department, level, monthly_salary } = await req.json();
 
     if (!email || !password || !full_name || !user_type) {
-      throw new Error('Zorunlu alanlar eksik');
+      throw badRequest('Zorunlu alanlar eksik');
     }
 
     // Hekim/klinik ekliyorsa klinik adı zorunlu
     if ((user_type === 'doctor' || user_type === 'clinic_admin') && !clinic_name) {
-      throw new Error('Klinik adı zorunludur');
+      throw badRequest('Klinik adı zorunludur');
     }
 
     const effectiveUserType = user_type === 'clinic_admin' ? 'doctor' : user_type;
@@ -61,7 +62,7 @@ Deno.serve(async (req: Request) => {
       },
     });
 
-    if (createError) throw new Error(createError.message);
+    if (createError) throw badRequest(createError.message);
 
     // Profile oluştur
     await adminClient
@@ -112,10 +113,7 @@ Deno.serve(async (req: Request) => {
       { status: 200, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } }
     );
 
-  } catch (err: any) {
-    return new Response(
-      JSON.stringify({ error: String(err?.message ?? err) }),
-      { status: 200, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } }
-    );
+  } catch (err) {
+    return errorResponse(err, corsHeaders(req));
   }
 });

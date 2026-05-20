@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.7'
 import { corsHeaders } from '../_shared/cors.ts'
+import { unauthorized, forbidden, errorResponse } from '../_shared/errors.ts'
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -8,7 +9,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) throw new Error('Yetkisiz erişim');
+    if (!authHeader) throw unauthorized();
 
     const supabaseUrl    = Deno.env.get('SUPABASE_URL')!;
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -19,9 +20,8 @@ Deno.serve(async (req: Request) => {
       global: { headers: { Authorization: authHeader } },
     });
 
-    // Çağıran admin mi kontrol et
     const { data: userData, error: authError } = await callerClient.auth.getUser();
-    if (authError || !userData.user) throw new Error('Yetkisiz erişim');
+    if (authError || !userData.user) throw unauthorized();
 
     const { data: callerProfile } = await adminClient
       .from('profiles')
@@ -30,7 +30,7 @@ Deno.serve(async (req: Request) => {
       .single();
 
     if (!callerProfile || callerProfile.user_type !== 'admin') {
-      throw new Error('Sadece adminler kullanıcı listesini görebilir');
+      throw forbidden('Sadece adminler kullanıcı listesini görebilir');
     }
 
     // auth.users + profiles birleştir
@@ -53,7 +53,6 @@ Deno.serve(async (req: Request) => {
       email: u.email ?? null,
     }));
 
-    // created_at'e göre sırala (en yeni önce)
     merged.sort((a, b) =>
       new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
     );
@@ -63,10 +62,7 @@ Deno.serve(async (req: Request) => {
       { status: 200, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } }
     );
 
-  } catch (err: any) {
-    return new Response(
-      JSON.stringify({ error: String(err?.message ?? err) }),
-      { status: 200, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } }
-    );
+  } catch (err) {
+    return errorResponse(err, corsHeaders(req));
   }
 });

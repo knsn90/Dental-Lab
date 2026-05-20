@@ -51,11 +51,9 @@ async function sendSms(phone: string, message: string): Promise<{ success: boole
       case 'iletimerkezi': return await sendViaIletiMerkezi(cleanPhone, message, apiKey, secret, sender)
       case 'mutlucell': return await sendViaMutlucell(cleanPhone, message, apiKey, secret, sender)
       default:
-        console.log(`[SMS-DEV] Provider: ${provider}, Phone: ${cleanPhone}, Message: ${message}`)
-        return { success: true } // Dev mode — sadece log
+        return { success: true } // Dev mode — SMS gönderilmez
     }
   } catch (err: any) {
-    console.error('[SMS ERROR]', err)
     return { success: false, error: err.message }
   }
 }
@@ -224,7 +222,7 @@ Deno.serve(async (req: Request) => {
         expires_at: expiresAt,
       })
 
-    if (insertError) throw new Error(`OTP kaydedilemedi: ${insertError.message}`)
+    if (insertError) throw new Error('OTP gönderilemedi. Lütfen tekrar deneyin.')
 
     // SMS gönder
     const smsMessage = `Esenkim doğrulama kodunuz: ${code}`
