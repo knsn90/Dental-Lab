@@ -30,8 +30,8 @@ Deno.serve(async (req: Request) => {
       .eq('id', userData.user.id)
       .single();
 
-    // Admin veya lab manager kullanıcı ekleyebilir
-    if (!callerProfile || (callerProfile.user_type !== 'admin' && callerProfile.user_type !== 'lab')) {
+    // Sadece admin kullanıcı ekleyebilir
+    if (!callerProfile || callerProfile.user_type !== 'admin') {
       throw forbidden('Yetkiniz yok');
     }
 

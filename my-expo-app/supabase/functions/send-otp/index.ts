@@ -167,6 +167,11 @@ Deno.serve(async (req: Request) => {
 
     const normalizedPhone = normalizePhone(phone)
 
+    // Telefon uzunluk kontrolü: 10-15 rakam arası (uluslararası format)
+    if (normalizedPhone.replace(/\D/g, '').length < 10 || normalizedPhone.replace(/\D/g, '').length > 15) {
+      throw new Error('Geçersiz telefon numarası formatı')
+    }
+
     // Service role client (DB işlemleri için)
     const adminClient = createClient(supabaseUrl, serviceRoleKey)
 
@@ -229,10 +234,7 @@ Deno.serve(async (req: Request) => {
     const smsResult = await sendSms(normalizedPhone, smsMessage)
 
     if (!smsResult.success) {
-      console.error('[SMS SEND FAILED]', smsResult.error)
-      // SMS gönderilemese bile OTP kaydedildi — geliştirme aşamasında log'dan bakılabilir
-      // Production'da burada hata dönülmeli:
-      // throw new Error(`SMS gönderilemedi: ${smsResult.error}`)
+      throw new Error('SMS gönderilemedi. Lütfen tekrar deneyin.')
     }
 
     return new Response(

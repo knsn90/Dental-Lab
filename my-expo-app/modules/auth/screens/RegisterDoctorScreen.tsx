@@ -195,6 +195,8 @@ export function RegisterDoctorScreen() {
     if (!form.email.trim()) e.email = 'E-posta zorunludur';
     else if (!/\S+@\S+\.\S+/.test(form.email)) e.email = 'Geçerli bir e-posta girin';
     if (form.password.length < 8) e.password = 'Şifre en az 8 karakter olmalı';
+    else if (!/[A-Z]/.test(form.password)) e.password = 'Şifre en az bir büyük harf içermeli';
+    else if (!/[0-9]/.test(form.password)) e.password = 'Şifre en az bir rakam içermeli';
     if (form.password !== form.passwordConfirm) e.passwordConfirm = 'Şifreler eşleşmiyor';
     setErrors(e);
     setAddressErrors(ae);

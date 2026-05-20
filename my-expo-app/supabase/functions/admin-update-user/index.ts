@@ -51,6 +51,11 @@ Deno.serve(async (req: Request) => {
 
     if (updateError) throw new Error(updateError.message);
 
+    // Şifre değiştiyse tüm aktif oturumları sonlandır
+    if (authUpdates.password) {
+      await adminClient.auth.admin.signOut(userId, 'global');
+    }
+
     return new Response(
       JSON.stringify({ success: true }),
       { status: 200, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } }
