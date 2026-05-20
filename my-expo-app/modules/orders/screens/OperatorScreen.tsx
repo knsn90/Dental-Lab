@@ -6,6 +6,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Platform, StyleSheet, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { supabase } from '../../../core/api/supabase';
 import { toast } from '../../../core/ui/Toast';
 import { AppIcon } from '../../../core/ui/AppIcon';
@@ -45,6 +46,7 @@ function humanIdle(ms: number): string {
 export function OperatorScreen() {
   const { profile } = useAuthStore();
   const { width } = useWindowDimensions();
+  const router = useRouter();
   const isWide = width >= 900;
 
   const [jobs, setJobs] = useState<AssignedJob[]>([]);
@@ -161,6 +163,14 @@ export function OperatorScreen() {
           <View style={s.listHeader}>
             <Text style={s.listTitle}>İşlerim</Text>
             <View style={s.countBadge}><Text style={s.countText}>{jobs.length}</Text></View>
+            <TouchableOpacity
+              style={s.qrBtn}
+              onPress={() => router.push('/(station)/qr-scan')}
+              activeOpacity={0.8}
+            >
+              <AppIcon name="scan-line" size={14} color="#fff" strokeWidth={2} />
+              <Text style={s.qrBtnText}>QR Giriş</Text>
+            </TouchableOpacity>
           </View>
           {loading ? (
             <View style={{ padding: 30 }}><ActivityIndicator size="small" color="#7C3AED" /></View>
@@ -323,6 +333,14 @@ const s = StyleSheet.create({
   listTitle:  { fontSize: 16, fontWeight: '800', color: '#0F172A', letterSpacing: -0.3 },
   countBadge: { backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999 },
   countText:  { fontSize: 11, fontWeight: '700', color: '#64748B' },
+  qrBtn: {
+    marginLeft: 'auto' as any,
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: '#16A34A',
+    paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: 999,
+  },
+  qrBtnText: { fontSize: 11, fontWeight: '700', color: '#fff' },
 
   empty: { padding: 30, alignItems: 'center', gap: 6 },
   emptyText: { fontSize: 13, color: '#475569', fontWeight: '600' },
