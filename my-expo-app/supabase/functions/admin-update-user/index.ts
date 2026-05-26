@@ -25,7 +25,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: callerProfile } = await adminClient
       .from('profiles')
-      .select('user_type')
+      .select('user_type, lab_id')
       .eq('id', userData.user.id)
       .single();
 
@@ -33,8 +33,21 @@ Deno.serve(async (req: Request) => {
       throw forbidden('Sadece adminler bu işlemi yapabilir');
     }
 
+    if (!callerProfile.lab_id) throw forbidden('Admin lab_id bulunamadı');
+
     const { userId, email, password } = await req.json();
     if (!userId) throw badRequest('Kullanıcı ID gerekli');
+
+    // Hedef kullanıcı aynı lab'a ait mi?
+    const { data: targetProfile } = await adminClient
+      .from('profiles')
+      .select('lab_id')
+      .eq('id', userId)
+      .single();
+
+    if (!targetProfile || targetProfile.lab_id !== callerProfile.lab_id) {
+      throw forbidden('Bu kullanıcıyı düzenleme yetkiniz yok');
+    }
 
     const authUpdates: { email?: string; password?: string } = {};
     if (email)    authUpdates.email    = email.trim();

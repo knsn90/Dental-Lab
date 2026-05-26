@@ -25,13 +25,15 @@ Deno.serve(async (req: Request) => {
 
     const { data: callerProfile } = await adminClient
       .from('profiles')
-      .select('user_type')
+      .select('user_type, lab_id')
       .eq('id', userData.user.id)
       .single();
 
     if (!callerProfile || callerProfile.user_type !== 'admin') {
       throw forbidden('Sadece adminler kullanıcı listesini görebilir');
     }
+
+    if (!callerProfile.lab_id) throw forbidden('Admin lab_id bulunamadı');
 
     // auth.users + profiles birleştir
     const { data: authUsers, error: listError } = await adminClient.auth.admin.listUsers({
@@ -42,6 +44,7 @@ Deno.serve(async (req: Request) => {
     const { data: profiles } = await adminClient
       .from('profiles')
       .select('id, full_name, user_type, role, clinic_name, phone, specialty, department, skill_level, allowed_types, allowed_stages, monthly_salary, is_active, approval_status, phone_verified, created_at')
+      .eq('lab_id', callerProfile.lab_id)
       .order('created_at', { ascending: false });
 
     const profileMap: Record<string, any> = {};

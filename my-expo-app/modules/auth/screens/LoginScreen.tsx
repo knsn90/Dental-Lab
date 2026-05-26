@@ -202,7 +202,7 @@ export function LoginScreen() {
     setForgotLoading(true); setForgotError('');
     const { error } = await supabase.auth.resetPasswordForEmail(
       forgotEmail.trim().toLowerCase(),
-      { redirectTo: 'https://lab.esenkim.com/reset-password' },
+      { redirectTo: process.env.EXPO_PUBLIC_PASSWORD_RESET_URL ?? 'https://lab.esenkim.com/reset-password' },
     );
     setForgotLoading(false);
     if (error) { setForgotError('E-posta gönderilemedi. Tekrar deneyin.'); return; }

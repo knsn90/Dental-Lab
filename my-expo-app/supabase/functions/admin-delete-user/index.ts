@@ -25,7 +25,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: callerProfile } = await adminClient
       .from('profiles')
-      .select('user_type')
+      .select('user_type, lab_id')
       .eq('id', userData.user.id)
       .single();
 
@@ -33,11 +33,38 @@ Deno.serve(async (req: Request) => {
       throw forbidden('Sadece adminler kullanıcı silebilir');
     }
 
+    if (!callerProfile.lab_id) throw forbidden('Admin lab_id bulunamadı');
+
     const { userId } = await req.json();
     if (!userId) throw badRequest('Kullanıcı ID gerekli');
 
     if (userId === userData.user.id) {
       throw badRequest('Kendinizi silemezsiniz');
+    }
+
+    // Hedef kullanıcı aynı lab'a ait mi?
+    const { data: targetProfile } = await adminClient
+      .from('profiles')
+      .select('user_type, lab_id')
+      .eq('id', userId)
+      .single();
+
+    if (!targetProfile || targetProfile.lab_id !== callerProfile.lab_id) {
+      throw forbidden('Bu kullanıcıyı silme yetkiniz yok');
+    }
+
+    // Son admin koruması: hedef de admin ise, lab'da başka admin kalmalı
+    if (targetProfile.user_type === 'admin') {
+      const { count } = await adminClient
+        .from('profiles')
+        .select('id', { count: 'exact', head: true })
+        .eq('lab_id', callerProfile.lab_id)
+        .eq('user_type', 'admin')
+        .eq('is_active', true);
+
+      if ((count ?? 0) <= 1) {
+        throw badRequest('Lab\'ın son admini silinemez');
+      }
     }
 
     const { error: deleteError } = await adminClient.auth.admin.deleteUser(userId);

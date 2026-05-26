@@ -26,14 +26,15 @@ Deno.serve(async (req: Request) => {
 
     const { data: callerProfile } = await adminClient
       .from('profiles')
-      .select('user_type')
+      .select('user_type, lab_id')
       .eq('id', userData.user.id)
       .single();
 
-    // Sadece admin kullanıcı ekleyebilir
     if (!callerProfile || callerProfile.user_type !== 'admin') {
       throw forbidden('Yetkiniz yok');
     }
+
+    if (!callerProfile.lab_id) throw forbidden('Admin lab_id bulunamadı');
 
     const { email, password, full_name, user_type, role, clinic_name, phone, address, clinic_type, specialty, department, level, monthly_salary } = await req.json();
 
@@ -80,6 +81,7 @@ Deno.serve(async (req: Request) => {
         allowed_types: (specialty && effectiveUserType === 'lab') ? specialty.split(', ').filter(Boolean) : null,
         allowed_stages: (department && effectiveUserType === 'lab') ? department.split(', ').filter(Boolean) : null,
         monthly_salary: monthly_salary ?? null,
+        lab_id: callerProfile.lab_id,
         is_active: true,
         approval_status: (user_type === 'doctor' || user_type === 'clinic_admin') ? 'approved' : null,
         phone_verified: true,
