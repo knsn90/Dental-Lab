@@ -41,7 +41,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: profiles } = await adminClient
       .from('profiles')
-      .select('*')
+      .select('id, full_name, user_type, role, clinic_name, phone, specialty, department, skill_level, allowed_types, allowed_stages, monthly_salary, is_active, approval_status, phone_verified, created_at')
       .order('created_at', { ascending: false });
 
     const profileMap: Record<string, any> = {};

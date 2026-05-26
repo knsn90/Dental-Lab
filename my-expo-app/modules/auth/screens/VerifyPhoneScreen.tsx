@@ -27,9 +27,8 @@ const DISPLAY: any = { fontFamily: DS.font.display, fontWeight: '300' };
 
 const isDesktopWidth = (w: number) => w >= 900;
 
-const OTP_LENGTH = 4;
+const OTP_LENGTH = 6;
 const RESEND_COOLDOWN = 60; // seconds
-const TEST_OTP = '1234'; // TODO: Production'da kaldır
 
 // ── Pulsing dot ──
 function PulseDot({ color }: { color: string }) {
@@ -93,22 +92,16 @@ export function VerifyPhoneScreen() {
     if (!phone) return;
     setSending(true);
     setErrorMsg('');
-
-    // TODO: Production'da Edge Function'a geç
-    // try {
-    //   const { data, error } = await supabase.functions.invoke('send-otp', {
-    //     body: { phone },
-    //   });
-    //   if (error) setErrorMsg(error.message || 'SMS gönderilemedi');
-    //   else if (data?.error) setErrorMsg(data.error);
-    //   else { setSmsSent(true); setCooldown(RESEND_COOLDOWN); }
-    // } catch (err: any) {
-    //   setErrorMsg(err.message || 'SMS gönderilemedi');
-    // }
-
-    // Test mode: SMS gönderme, sadece kodu kabul et
-    setSmsSent(true);
-    setCooldown(RESEND_COOLDOWN);
+    try {
+      const { data, error } = await supabase.functions.invoke('send-otp', {
+        body: { phone },
+      });
+      if (error) setErrorMsg(error.message || 'SMS gönderilemedi');
+      else if (data?.error) setErrorMsg(data.error);
+      else { setSmsSent(true); setCooldown(RESEND_COOLDOWN); }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'SMS gönderilemedi');
+    }
     setSending(false);
   }, [phone]);
 
@@ -157,16 +150,21 @@ export function VerifyPhoneScreen() {
   const verifyOtp = async (code: string) => {
     setLoading(true);
     setErrorMsg('');
-
-    // TODO: Production'da Edge Function'a geç
-    // Test mode: sabit kod ile doğrula
-    if (code === TEST_OTP) {
-      router.replace('/(auth)/approval-waiting' as any);
-    } else {
-      setErrorMsg('Doğrulama kodu hatalı. Test kodu: 1234');
+    try {
+      const { data, error } = await supabase.functions.invoke('verify-otp', {
+        body: { code },
+      });
+      if (error || data?.error) {
+        setErrorMsg(data?.error || error?.message || 'Doğrulama başarısız');
+        triggerShake();
+        setOtp(Array(OTP_LENGTH).fill(''));
+        inputRefs.current[0]?.focus();
+      } else {
+        router.replace('/(auth)/approval-waiting' as any);
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Doğrulama başarısız');
       triggerShake();
-      setOtp(Array(OTP_LENGTH).fill(''));
-      inputRefs.current[0]?.focus();
     }
     setLoading(false);
   };
@@ -222,7 +220,7 @@ export function VerifyPhoneScreen() {
 
       {/* OTP inputs */}
       <View style={{
-        flexDirection: 'row', justifyContent: 'center', gap: 10,
+        flexDirection: 'row', justifyContent: 'center', gap: 8,
         marginBottom: 28,
       }}>
         {otp.map((digit, i) => (
@@ -237,12 +235,12 @@ export function VerifyPhoneScreen() {
             autoFocus={i === 0}
             selectTextOnFocus
             style={{
-              width: 48, height: 56, borderRadius: 12,
+              width: 44, height: 52, borderRadius: 12,
               backgroundColor: '#FFFFFF',
               borderWidth: digit ? 1.5 : 1,
               borderColor: digit ? GREEN : 'rgba(0,0,0,0.08)',
               textAlign: 'center',
-              fontSize: 22, fontWeight: '600', color: INK,
+              fontSize: 20, fontWeight: '600', color: INK,
               fontFamily: DS.font.display as string,
               // @ts-ignore
               outlineStyle: 'none',

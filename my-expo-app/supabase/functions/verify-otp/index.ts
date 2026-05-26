@@ -1,11 +1,16 @@
-/**
- * verify-otp — SMS OTP doğrulama Edge Function
- *
- * Kullanıcının girdiği kodu phone_verifications tablosundan kontrol eder.
- * Başarılı doğrulama sonrası profile.phone_verified = true yapılır.
- */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.7'
 import { corsHeaders } from '../_shared/cors.ts'
+
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  const aBytes = new TextEncoder().encode(a);
+  const bBytes = new TextEncoder().encode(b);
+  let diff = 0;
+  for (let i = 0; i < aBytes.length; i++) {
+    diff |= aBytes[i] ^ bBytes[i];
+  }
+  return diff === 0;
+}
 
 const MAX_ATTEMPTS = 3
 
@@ -68,8 +73,8 @@ Deno.serve(async (req: Request) => {
       )
     }
 
-    // Kodu kontrol et
-    if (verification.code !== code.trim()) {
+    // Kodu kontrol et (timing-safe karşılaştırma)
+    if (!timingSafeEqual(verification.code, code.trim())) {
       const newAttempts = verification.attempts + 1
       await adminClient
         .from('phone_verifications')
