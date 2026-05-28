@@ -1,6 +1,6 @@
 {
   "installCommand": "npm install",
-  "buildCommand": "printf 'EXPO_PUBLIC_SUPABASE_URL=%s\\nEXPO_PUBLIC_SUPABASE_ANON_KEY=%s\\n' \"$EXPO_PUBLIC_SUPABASE_URL\" \"$EXPO_PUBLIC_SUPABASE_ANON_KEY\" > .env && npm run build:web",
+  "buildCommand": "printf 'EXPO_PUBLIC_SUPABASE_URL=%s\\nEXPO_PUBLIC_SUPABASE_ANON_KEY=%s\\nEXPO_PUBLIC_PASSWORD_RESET_URL=%s\\n' \"$EXPO_PUBLIC_SUPABASE_URL\" \"$EXPO_PUBLIC_SUPABASE_ANON_KEY\" \"${EXPO_PUBLIC_PASSWORD_RESET_URL:-https://lab.esenkim.com/reset-password}\" > .env && npm run build:web",
   "outputDirectory": "dist",
   "framework": null,
   "headers": [

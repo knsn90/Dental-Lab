@@ -54,8 +54,17 @@ const nativeStorageAdapter = {
 
 const storageAdapter = Platform.OS === 'web' ? webStorageAdapter : nativeStorageAdapter;
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error(
+    'Supabase env vars eksik.\n' +
+    'Yerel geliştirme: my-expo-app/.env dosyasını kontrol edin.\n' +
+    'Vercel deploy: Project Settings → Environment Variables içinde\n' +
+    'EXPO_PUBLIC_SUPABASE_URL ve EXPO_PUBLIC_SUPABASE_ANON_KEY tanımlayın.'
+  );
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
