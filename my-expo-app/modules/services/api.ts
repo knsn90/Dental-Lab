@@ -16,7 +16,8 @@ export async function fetchAllLabServices() {
     .select('*')
     .order('category')
     .order('sort_order')
-    .order('name');
+    .order('name')
+    .limit(500);
 }
 
 export async function createLabService(data: {

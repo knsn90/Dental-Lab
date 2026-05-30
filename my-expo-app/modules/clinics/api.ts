@@ -53,7 +53,8 @@ export async function fetchAllDoctors() {
     .from('doctors')
     .select('*, clinic:clinics(id, name)')
     .eq('is_active', true)
-    .order('full_name');
+    .order('full_name')
+    .limit(500);
 }
 
 export async function createDoctor(data: {
