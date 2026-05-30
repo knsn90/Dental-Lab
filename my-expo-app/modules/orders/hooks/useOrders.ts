@@ -1,8 +1,9 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../../../core/api/supabase';
 import { WorkOrder } from '../types';
 import { fetchWorkOrdersForDoctor, fetchAllWorkOrders } from '../api';
 import { useAuthStore } from '../../../core/store/authStore';
+import { useLabWorkOrdersRealtime } from './useLabWorkOrdersRealtime';
 
 export function useOrders(userType: 'doctor' | 'lab', doctorId?: string) {
   const [orders, setOrders] = useState<WorkOrder[]>([]);
@@ -26,43 +27,28 @@ export function useOrders(userType: 'doctor' | 'lab', doctorId?: string) {
     setLoading(false);
   }, [userType, doctorId]);
 
+  useEffect(() => { load(); }, [load]);
+
+  // Lab users: shared registry channel (lab_id filtered, includes order_stages)
+  useLabWorkOrdersRealtime(
+    userType === 'lab' ? labId : null,
+    { onWorkOrders: load, onOrderStages: load },
+  );
+
+  // Doctor users: own channel filtered by doctor_id
+  const doctorChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   useEffect(() => {
-    load();
-
-    // Realtime payload'ı sadece work_orders kolonlarını taşır; current_stage_name
-    // gibi join'li alanlar düşer. UPDATE/INSERT'te tam refetch et — stage_name
-    // kaybolmasın.
-    // lab_id filtresi: sadece bu lab'ın değişikliklerini dinle, diğer labların
-    // broadcast'i bu istemciye gelmesin (1000 kullanıcıda önemli).
-    const workOrderFilter = userType === 'lab' && labId
-      ? { event: '*' as const, schema: 'public', table: 'work_orders', filter: `lab_id=eq.${labId}` }
-      : { event: '*' as const, schema: 'public', table: 'work_orders' };
-
-    const channelName = userType === 'lab' && labId
-      ? `work_orders_${labId}`
-      : 'work_orders_realtime';
-
-    const channel = supabase
-      .channel(channelName)
-      .on('postgres_changes', workOrderFilter, (payload) => {
-        if (payload.eventType === 'DELETE') {
-          setOrders((prev) => prev.filter((o) => o.id !== payload.old.id));
-        } else {
-          load();
-        }
-      })
-      // Stage değişimleri de Kanban kolonunu etkiler
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'order_stages' },
+    if (userType !== 'doctor' || !doctorId) return;
+    const ch = supabase
+      .channel(`work_orders_doctor_${doctorId}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'work_orders', filter: `doctor_id=eq.${doctorId}` },
         () => load(),
       )
       .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [load, labId, userType]);
+    doctorChannelRef.current = ch;
+    return () => { supabase.removeChannel(ch); doctorChannelRef.current = null; };
+  }, [userType, doctorId, load]);
 
   return { orders, loading, error, refetch: load };
 }

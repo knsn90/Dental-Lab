@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
-import { supabase } from '../../../core/api/supabase';
 import { WorkOrder } from '../types';
 import { isOrderOverdue } from '../constants';
 import { fetchTodayAndOverdueOrders } from '../api';
+import { useAuthStore } from '../../../core/store/authStore';
+import { useLabWorkOrdersRealtime } from './useLabWorkOrdersRealtime';
 
 function sortWorkList(orders: WorkOrder[]): WorkOrder[] {
   return [...orders].sort((a, b) => {
@@ -17,6 +18,7 @@ function sortWorkList(orders: WorkOrder[]): WorkOrder[] {
 }
 
 export function useTodayOrders() {
+  const labId = useAuthStore((s) => s.profile?.lab_id);
   const [orders, setOrders] = useState<WorkOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -34,24 +36,10 @@ export function useTodayOrders() {
     setLoading(false);
   }, []);
 
-  useEffect(() => {
-    load();
+  useEffect(() => { load(); }, [load]);
 
-    const channel = supabase
-      .channel('today_work_list')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'work_orders' },
-        () => {
-          load();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [load]);
+  // Shared registry channel — lab_id filtered, no extra subscription
+  useLabWorkOrdersRealtime(labId, { onWorkOrders: load });
 
   return { orders, loading, error, refetch: load };
 }

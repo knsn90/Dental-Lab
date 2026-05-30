@@ -92,9 +92,11 @@ export function useKanbanData(labId: string | null | undefined) {
   useEffect(() => {
     if (!labId) return;
     const channel = supabase
-      .channel('kanban_realtime')
+      .channel(`kanban_realtime_${labId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'order_stages' }, () => load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders'  }, () => load())
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'work_orders', filter: `lab_id=eq.${labId}` },
+        () => load())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [labId, load]);

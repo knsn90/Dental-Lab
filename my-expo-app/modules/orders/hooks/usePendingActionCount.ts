@@ -1,33 +1,30 @@
 // modules/orders/hooks/usePendingActionCount.ts
 // Sidebar badge — kaç sipariş işlem bekliyor (atama yapılmamış / yeni geldi).
-// Hafif count query + realtime sub.
+// Paylaşımlı lab registry kanalını kullanır (lab_id filtreli, ayrı kanal yok).
 
-import { useEffect, useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '../../../core/api/supabase';
+import { useAuthStore } from '../../../core/store/authStore';
+import { useLabWorkOrdersRealtime } from './useLabWorkOrdersRealtime';
 
 export function usePendingActionCount() {
+  const labId = useAuthStore((s) => s.profile?.lab_id);
   const [count, setCount] = useState(0);
 
   const load = useCallback(async () => {
+    if (!labId) return;
     const { count: c } = await supabase
       .from('work_orders')
       .select('id', { count: 'exact', head: true })
+      .eq('lab_id', labId)
       .in('status', ['alindi', 'atama_bekleniyor']);
     setCount(c ?? 0);
-  }, []);
+  }, [labId]);
 
-  useEffect(() => {
-    load();
-    const channel = supabase
-      .channel('pending_action_count')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'work_orders' },
-        () => load(),
-      )
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
+
+  // Shared registry — no extra channel, fires only for this lab
+  useLabWorkOrdersRealtime(labId, { onWorkOrders: load });
 
   return count;
 }
