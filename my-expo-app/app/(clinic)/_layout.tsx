@@ -33,10 +33,11 @@ export default function ClinicLayout() {
   const accentColor = getTheme('clinic_admin').primary;
 
   const CLINIC_NAV = [
-    { label: 'Dashboard',  href: '/(clinic)',          iconName: 'home' },
-    { label: 'Hekimler',   href: '/(clinic)/doctors',  iconName: 'users',          matchPrefix: true },
-    { label: 'Siparişler', href: '/(clinic)/orders',   iconName: 'clipboard-list', matchPrefix: true },
-    { label: 'Ayarlar',    href: '/(clinic)/settings', iconName: 'settings',       matchPrefix: true },
+    { label: 'Dashboard',  href: '/(clinic)',             iconName: 'home' },
+    { label: 'Hekimler',   href: '/(clinic)/doctors',     iconName: 'users',          matchPrefix: true },
+    { label: 'Siparişler', href: '/(clinic)/orders',      iconName: 'clipboard-list', matchPrefix: true },
+    { label: 'Onaylar',    href: '/(clinic)/approvals',   iconName: 'shield-check',   matchPrefix: true },
+    { label: 'Ayarlar',    href: '/(clinic)/settings',    iconName: 'settings',       matchPrefix: true },
   ];
 
   // Klinik müdürü olmayan kullanıcı bu layout'a düştüyse sidebar gösterme
@@ -120,6 +121,13 @@ export default function ClinicLayout() {
           options={{
             title: 'Hekimler',
             tabBarIcon: ({ focused }) => <TabIcon emoji="🩺" focused={focused} />,
+          }}
+        />
+        <Tabs.Screen
+          name="approvals"
+          options={{
+            title: 'Onaylar',
+            tabBarIcon: ({ focused }) => <TabIcon emoji="🛡" focused={focused} />,
           }}
         />
         <Tabs.Screen

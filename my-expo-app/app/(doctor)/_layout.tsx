@@ -32,9 +32,10 @@ export default function DoctorLayout() {
   const accentColor = getTheme('doctor').primary;
 
   const DOCTOR_NAV = [
-    { label: 'Dashboard',    href: '/(doctor)',           iconName: 'home' },
-    { label: 'Siparişlerim', href: '/(doctor)/orders',    iconName: 'clipboard-list', matchPrefix: true },
-    { label: 'Ayarlar',      href: '/(doctor)/settings',  iconName: 'settings',       matchPrefix: true },
+    { label: 'Dashboard',    href: '/(doctor)',              iconName: 'home' },
+    { label: 'Siparişlerim', href: '/(doctor)/orders',       iconName: 'clipboard-list', matchPrefix: true },
+    { label: 'Onaylar',      href: '/(doctor)/approvals',    iconName: 'shield-check',   matchPrefix: true },
+    { label: 'Ayarlar',      href: '/(doctor)/settings',     iconName: 'settings',       matchPrefix: true },
   ];
 
   // Hekim olmayan kullanıcı bu layout'a düştüyse sidebar gösterme
@@ -111,6 +112,13 @@ export default function DoctorLayout() {
           options={{
             title: 'Yeni Sipariş',
             tabBarIcon: ({ focused }) => <TabIcon emoji="➕" focused={focused} />,
+          }}
+        />
+        <Tabs.Screen
+          name="approvals"
+          options={{
+            title: 'Onaylar',
+            tabBarIcon: ({ focused }) => <TabIcon emoji="🛡" focused={focused} />,
           }}
         />
         <Tabs.Screen

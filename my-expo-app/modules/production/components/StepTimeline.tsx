@@ -17,8 +17,10 @@ export function StepTimeline({ steps, loading, onRefresh }: Props) {
   const { profile } = useAuthStore();
   const [activeStepId, setActiveStepId] = useState<string | null>(null);
 
-  const done  = steps.filter(s => s.status === 'done').length;
-  const total = steps.length;
+  // doktor_onay bekleme adımı — iş ilerlemesine dahil edilmez
+  const workSteps = steps.filter(s => s.step_name !== 'doktor_onay');
+  const done  = workSteps.filter(s => s.status === 'done').length;
+  const total = workSteps.length;
   const pct   = total > 0 ? Math.round((done / total) * 100) : 0;
 
   const handleStart = async (step: CaseStep) => {
@@ -61,15 +63,18 @@ export function StepTimeline({ steps, loading, onRefresh }: Props) {
 
       {/* Steps */}
       <View style={{ marginTop: 12 }}>
-        {steps.map((step) => (
-          <StepCard
-            key={step.id}
-            step={step}
-            loading={loading || activeStepId === step.id}
-            onStart={handleStart}
-            onComplete={handleComplete}
-          />
-        ))}
+        {steps.map((step) => {
+          const isApprovalStep = step.step_name === 'doktor_onay';
+          return (
+            <StepCard
+              key={step.id}
+              step={step}
+              loading={loading || activeStepId === step.id}
+              onStart={isApprovalStep ? undefined : handleStart}
+              onComplete={isApprovalStep ? undefined : handleComplete}
+            />
+          );
+        })}
       </View>
     </View>
   );

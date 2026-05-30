@@ -63,9 +63,14 @@ export function StepCard({ step, onStart, onComplete, loading }: Props) {
         </Text>
       )}
       {step.notes && <Text style={styles.notes}>{step.notes}</Text>}
-      {step.requires_approval && step.status === 'done' && (
+      {step.step_name === 'doktor_onay' && step.status === 'pending' && (
         <View style={styles.approvalNote}>
-          <Text style={styles.approvalNoteText}>⏳ Onay bekleniyor</Text>
+          <Text style={styles.approvalNoteText}>Hekim tasarım onayı bekleniyor</Text>
+        </View>
+      )}
+      {step.step_name === 'doktor_onay' && step.status === 'blocked' && (
+        <View style={[styles.approvalNote, { backgroundColor: '#FEF2F2' }]}>
+          <Text style={[styles.approvalNoteText, { color: '#DC2626' }]}>Hekim değişiklik istedi — yeniden tasarım gerekli</Text>
         </View>
       )}
 

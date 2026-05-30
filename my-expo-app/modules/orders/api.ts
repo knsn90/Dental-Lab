@@ -24,7 +24,8 @@ export async function createWorkOrder(params: CreateWorkOrderParams & { measurem
 
   if (!error && data) {
     const measurementType = (params.measurement_type ?? 'manual') as 'manual' | 'digital';
-    await createCaseSteps(data.id, measurementType);
+    const doctorApprovalRequired = (data as any).doctor_approval_required ?? false;
+    await createCaseSteps(data.id, measurementType, doctorApprovalRequired);
   }
 
   return { data, error };
