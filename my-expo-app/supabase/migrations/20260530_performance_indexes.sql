@@ -9,7 +9,7 @@ CREATE INDEX IF NOT EXISTS idx_work_orders_lab_status_date
 
 -- ─── 2. Composite index: provas dashboard sorgusu ───────────────────────
 CREATE INDEX IF NOT EXISTS idx_provas_lab_date_status
-  ON provas(lab_id, scheduled_date, status);
+  ON provas(lab_id, return_date, status);
 
 -- ─── 3. RPC: Dashboard istatistiklerini DB'de hesapla ───────────────────
 -- RLS devrede (SECURITY INVOKER) → her kullanıcı kendi lab'ının verisini görür.
@@ -33,7 +33,7 @@ AS $$
   pr AS (
     SELECT COUNT(*) AS today_provas
     FROM provas
-    WHERE scheduled_date = CURRENT_DATE
+    WHERE return_date = CURRENT_DATE
       AND status != 'tamamlandı'
   )
   SELECT jsonb_build_object(
