@@ -98,50 +98,25 @@ export interface OrderChatInboxItem {
 }
 
 /**
- * Inbox listesi — kullanıcının erişebildiği tüm iş emirleri için
- * son mesajı olanları en yeni mesaj tarihine göre sıralar.
- *
- * Yaklaşım: order_messages'tan tüm mesajları (RLS filtreli) çeker,
- * client-side work_order_id'ye göre gruplar. ~1K mesaja kadar performanslı.
+ * Inbox listesi — get_chat_inbox RPC ile DB-side aggregation.
+ * Önceki yaklaşım 2000 mesajı JS'e çekip grupluyordu (O(n)).
+ * Yeni yaklaşım DB'de DISTINCT ON + GROUP BY ile hesaplar.
  */
 export async function fetchOrderChatInbox(currentUserId: string): Promise<{
   data: OrderChatInboxItem[] | null; error: any;
 }> {
-  // 1) Tüm mesajlar (RLS otomatik filter) — read_at dahil
-  const { data: msgs, error: msgErr } = await supabase
-    .from('order_messages')
-    .select('id, work_order_id, sender_id, content, attachment_type, attachment_name, created_at, read_at, sender:profiles(id, full_name, user_type)')
-    .order('created_at', { ascending: false })
-    .limit(2000);
-  if (msgErr) return { data: null, error: msgErr };
+  const { data: rows, error: rpcErr } = await supabase
+    .rpc('get_chat_inbox', { p_user_id: currentUserId });
+  if (rpcErr) return { data: null, error: rpcErr };
+  if (!rows || (rows as any[]).length === 0) return { data: [], error: null };
 
-  // Group by work_order_id
-  const byOrder = new Map<string, any[]>();
-  for (const m of (msgs ?? [])) {
-    const list = byOrder.get(m.work_order_id) ?? [];
-    list.push(m);
-    byOrder.set(m.work_order_id, list);
-  }
-
-  const orderIds = Array.from(byOrder.keys());
-  if (orderIds.length === 0) return { data: [], error: null };
-
-  // 2) İlgili iş emirleri detayı (RLS: kullanıcı zaten erişebildiği mesajları
-  //    gördüğü için bu iş emirlerine de erişimi olmalı)
-  const { data: orders, error: ordErr } = await supabase
-    .from('work_orders')
-    .select('id, order_number, work_type, patient_name, doctor_id, status, is_urgent, tooth_numbers, shade, machine_type, delivery_date, notes')
-    .in('id', orderIds);
-  if (ordErr) return { data: null, error: ordErr };
-
-  // 3) İlgili hekimler (polymorphic: profiles veya doctors tablosu)
-  //    + bağlı oldukları klinik adı
-  const doctorIds = Array.from(new Set((orders ?? []).map(o => o.doctor_id))).filter(Boolean);
+  // Hekim adı + klinik adı: polymorphic lookup (profiles VEYA doctors tablosu).
+  // Sorgu sayısı = 2 (sabit), satır sayısına bağlı değil.
+  const doctorIds = Array.from(new Set((rows as any[]).map((r) => r.doctor_id))).filter(Boolean) as string[];
   const doctorName = new Map<string, string>();
   const clinicName = new Map<string, string>();
 
   if (doctorIds.length > 0) {
-    // 3a) profiles üzerinden (kendi user account'u olan hekimler)
     const { data: profDocs } = await supabase
       .from('profiles')
       .select('id, full_name, clinic_name')
@@ -153,7 +128,6 @@ export async function fetchOrderChatInbox(currentUserId: string): Promise<{
       if (p.clinic_name) clinicName.set(p.id, p.clinic_name);
     });
 
-    // 3b) Profile'da bulunmayan id'ler için doctors tablosu (klinik içi hekim)
     const remaining = doctorIds.filter((id) => !matchedProfileIds.has(id));
     if (remaining.length > 0) {
       const { data: tableDocs } = await supabase
@@ -167,44 +141,29 @@ export async function fetchOrderChatInbox(currentUserId: string): Promise<{
     }
   }
 
-  // 4) Inbox items
-  const items: OrderChatInboxItem[] = (orders ?? []).map((o: any) => {
-    const list = byOrder.get(o.id) ?? [];
-    const last = list[0]; // en yeni (descending order)
-    // Sadece karşı taraftan gelen VE henüz okunmamış (read_at = null) mesajlar
-    const unread_for_me = list.filter(
-      m => m.sender_id !== currentUserId && !m.read_at,
-    ).length;
-
-    return {
-      work_order_id: o.id,
-      order_number:  o.order_number,
-      work_type:     o.work_type,
-      patient_name:  o.patient_name,
-      doctor_id:     o.doctor_id,
-      status:        o.status,
-      is_urgent:     !!o.is_urgent,
-      doctor_name:   doctorName.get(o.doctor_id) ?? null,
-      clinic_name:   clinicName.get(o.doctor_id) ?? null,
-      tooth_numbers: o.tooth_numbers ?? null,
-      shade:         o.shade ?? null,
-      machine_type:  o.machine_type ?? null,
-      delivery_date: o.delivery_date ?? null,
-      notes:         o.notes ?? null,
-      last_content:     last?.content ?? null,
-      last_attachment_type: last?.attachment_type ?? null,
-      last_created_at:  last?.created_at ?? null,
-      last_sender_id:   last?.sender_id ?? null,
-      last_sender_type: last?.sender?.user_type ?? null,
-      total_count:      list.length,
-      unread_for_me,
-    };
-  });
-
-  // 5) Son mesaj tarihine göre sırala (newest first)
-  items.sort((a, b) =>
-    (b.last_created_at ?? '').localeCompare(a.last_created_at ?? ''),
-  );
+  const items: OrderChatInboxItem[] = (rows as any[]).map((r) => ({
+    work_order_id:        r.work_order_id,
+    order_number:         r.order_number,
+    work_type:            r.work_type,
+    patient_name:         r.patient_name,
+    doctor_id:            r.doctor_id,
+    status:               r.status,
+    is_urgent:            !!r.is_urgent,
+    doctor_name:          doctorName.get(r.doctor_id) ?? null,
+    clinic_name:          clinicName.get(r.doctor_id) ?? null,
+    tooth_numbers:        r.tooth_numbers ?? null,
+    shade:                r.shade ?? null,
+    machine_type:         r.machine_type ?? null,
+    delivery_date:        r.delivery_date ?? null,
+    notes:                r.notes ?? null,
+    last_content:         r.last_content,
+    last_attachment_type: r.last_attachment_type as AttachmentType | null,
+    last_created_at:      r.last_created_at,
+    last_sender_id:       r.last_sender_id,
+    last_sender_type:     r.last_sender_type,
+    total_count:          Number(r.total_count),
+    unread_for_me:        Number(r.unread_for_me),
+  }));
 
   return { data: items, error: null };
 }

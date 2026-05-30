@@ -65,10 +65,12 @@ export async function fetchAllWorkOrders() {
   // Migration 037 intentionally dropped the FK constraint, so PostgREST
   // embedded resource joins using !work_orders_doctor_id_fkey no longer work.
   // current_stage_id FK ise duruyor — onu embed ediyoruz.
+  // limit(500): büyüyen DB'lerde sınır (aktif bir lab için yeterli).
   const res = await supabase
     .from('work_orders')
     .select(LIST_SELECT)
-    .order('delivery_date', { ascending: true });
+    .order('delivery_date', { ascending: true })
+    .limit(500);
   if (res.data) (res as any).data = flattenStageName(res.data as any[]);
   return res;
 }

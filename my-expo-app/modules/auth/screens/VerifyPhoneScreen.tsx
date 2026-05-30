@@ -29,7 +29,6 @@ const isDesktopWidth = (w: number) => w >= 900;
 
 const OTP_LENGTH = 4;
 const RESEND_COOLDOWN = 60; // seconds
-const TEST_OTP = '1234'; // TODO: Production'da kaldır
 
 // ── Pulsing dot ──
 function PulseDot({ color }: { color: string }) {
@@ -93,22 +92,16 @@ export function VerifyPhoneScreen() {
     if (!phone) return;
     setSending(true);
     setErrorMsg('');
-
-    // TODO: Production'da Edge Function'a geç
-    // try {
-    //   const { data, error } = await supabase.functions.invoke('send-otp', {
-    //     body: { phone },
-    //   });
-    //   if (error) setErrorMsg(error.message || 'SMS gönderilemedi');
-    //   else if (data?.error) setErrorMsg(data.error);
-    //   else { setSmsSent(true); setCooldown(RESEND_COOLDOWN); }
-    // } catch (err: any) {
-    //   setErrorMsg(err.message || 'SMS gönderilemedi');
-    // }
-
-    // Test mode: SMS gönderme, sadece kodu kabul et
-    setSmsSent(true);
-    setCooldown(RESEND_COOLDOWN);
+    try {
+      const { data, error } = await supabase.functions.invoke('send-otp', {
+        body: { phone },
+      });
+      if (error) setErrorMsg(error.message || 'SMS gönderilemedi');
+      else if (data?.error) setErrorMsg(data.error);
+      else { setSmsSent(true); setCooldown(RESEND_COOLDOWN); }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'SMS gönderilemedi. Lütfen tekrar deneyin.');
+    }
     setSending(false);
   }, [phone]);
 
@@ -157,16 +150,26 @@ export function VerifyPhoneScreen() {
   const verifyOtp = async (code: string) => {
     setLoading(true);
     setErrorMsg('');
-
-    // TODO: Production'da Edge Function'a geç
-    // Test mode: sabit kod ile doğrula
-    if (code === TEST_OTP) {
-      router.replace('/(auth)/approval-waiting' as any);
-    } else {
-      setErrorMsg('Doğrulama kodu hatalı. Test kodu: 1234');
+    try {
+      const { data, error } = await supabase.functions.invoke('verify-otp', {
+        body: { code },
+      });
+      if (error) {
+        setErrorMsg(error.message || 'Doğrulama başarısız. Lütfen tekrar deneyin.');
+        triggerShake();
+        setOtp(Array(OTP_LENGTH).fill(''));
+        inputRefs.current[0]?.focus();
+      } else if (data?.error) {
+        setErrorMsg(data.error);
+        triggerShake();
+        setOtp(Array(OTP_LENGTH).fill(''));
+        inputRefs.current[0]?.focus();
+      } else if (data?.success) {
+        router.replace('/(auth)/approval-waiting' as any);
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Ağ hatası. Lütfen tekrar deneyin.');
       triggerShake();
-      setOtp(Array(OTP_LENGTH).fill(''));
-      inputRefs.current[0]?.focus();
     }
     setLoading(false);
   };
