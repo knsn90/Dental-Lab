@@ -17,6 +17,7 @@ import {
 } from '@expo-google-fonts/outfit';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useFontStore, applyFontSizeWeb } from '../core/store/fontStore';
+import { ErrorBoundary } from '../core/components/ErrorBoundary';
 
 // Inject web-only global CSS for the phone-shell layout
 // NOTE: Fonts (Outfit + Material Symbols) are loaded in web/index.html.
@@ -236,10 +237,10 @@ export default function RootLayout() {
   }
 
   return (
-    <>
+    <ErrorBoundary>
       <StatusBar style="dark" />
       <Stack screenOptions={{ headerShown: false }} />
       <ToastContainer />
-    </>
+    </ErrorBoundary>
   );
 }

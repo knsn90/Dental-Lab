@@ -96,13 +96,18 @@ function LogRow({ log, isLast }: { log: ActivityLog; isLast: boolean }) {
 interface Props { accentColor?: string; }
 
 // ── Component ──────────────────────────────────────────────────────────
+const PAGE_SIZE = 50;
+
 export function LogsSection({ accentColor = '#E97757' }: Props) {
-  const [logs,     setLogs]     = useState<ActivityLog[]>([]);
-  const [loading,  setLoading]  = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [tab,      setTab]      = useState<LogTab>('all');
-  const [search,   setSearch]   = useState('');
-  const [searchOpen, setSearchOpen] = useState(false);
+  const [logs,        setLogs]        = useState<ActivityLog[]>([]);
+  const [loading,     setLoading]     = useState(true);
+  const [refreshing,  setRefreshing]  = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore,     setHasMore]     = useState(false);
+  const pageRef = React.useRef(0);
+  const [tab,         setTab]         = useState<LogTab>('all');
+  const [search,      setSearch]      = useState('');
+  const [searchOpen,  setSearchOpen]  = useState(false);
 
   const loadLogs = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
@@ -111,20 +116,43 @@ export function LogsSection({ accentColor = '#E97757' }: Props) {
         .from('activity_logs')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(2000);
-      if (!error && data) setLogs(data as ActivityLog[]);
+        .range(0, PAGE_SIZE - 1);
+      if (!error && data) {
+        setLogs(data as ActivityLog[]);
+        setHasMore(data.length === PAGE_SIZE);
+        pageRef.current = 1;
+      }
     } catch (_) {}
     finally { setLoading(false); setRefreshing(false); }
   }, []);
 
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const from = pageRef.current * PAGE_SIZE;
+      const { data, error } = await supabase
+        .from('activity_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .range(from, from + PAGE_SIZE - 1);
+      if (!error && data) {
+        setLogs(prev => [...prev, ...(data as ActivityLog[])]);
+        setHasMore(data.length === PAGE_SIZE);
+        pageRef.current += 1;
+      }
+    } catch (_) {}
+    finally { setLoadingMore(false); }
+  }, [loadingMore, hasMore]);
+
   useEffect(() => { loadLogs(); }, [loadLogs]);
 
-  // Realtime
+  // Realtime — yeni kayıt gelince başa ekle (max 100 bellekte tut)
   useEffect(() => {
     const ch = supabase
       .channel('activity_logs_settings')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'activity_logs' }, (p) => {
-        setLogs(prev => [p.new as ActivityLog, ...prev].slice(0, 2000));
+        setLogs(prev => [p.new as ActivityLog, ...prev].slice(0, 100));
       })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
@@ -238,6 +266,18 @@ export function LogsSection({ accentColor = '#E97757' }: Props) {
                 <LogRow key={log.id} log={log} isLast={i === filtered.length - 1} />
               ))}
             </View>
+          )}
+          {hasMore && !search && (
+            <Pressable
+              className="items-center py-3.5 mt-1"
+              onPress={loadMore}
+              disabled={loadingMore}
+            >
+              {loadingMore
+                ? <ActivityIndicator size="small" color="#94A3B8" />
+                : <Text className="text-[13px] text-slate-500 font-medium">Daha fazla yükle</Text>
+              }
+            </Pressable>
           )}
         </ScrollView>
       )}

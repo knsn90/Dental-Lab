@@ -106,10 +106,15 @@ const lr = StyleSheet.create({
 
 // ─── Screen ──────────────────────────────────────────────────────────────────
 
+const PAGE_SIZE = 50;
+
 export default function AdminLogsScreen() {
   const [logs,          setLogs]          = useState<ActivityLog[]>([]);
   const [loading,       setLoading]       = useState(true);
   const [refreshing,    setRefreshing]    = useState(false);
+  const [loadingMore,   setLoadingMore]   = useState(false);
+  const [hasMore,       setHasMore]       = useState(false);
+  const pageRef = React.useRef(0);
   const [tab,           setTab]           = useState<LogTab>('all');
   const [search,        setSearch]        = useState('');
   const [searchExpanded,setSearchExpanded]= useState(false);
@@ -123,8 +128,12 @@ export default function AdminLogsScreen() {
         .from('activity_logs')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(2000);
-      if (!error && data) setLogs(data as ActivityLog[]);
+        .range(0, PAGE_SIZE - 1);
+      if (!error && data) {
+        setLogs(data as ActivityLog[]);
+        setHasMore(data.length === PAGE_SIZE);
+        pageRef.current = 1;
+      }
     } catch (_) {
     } finally {
       setLoading(false);
@@ -132,14 +141,35 @@ export default function AdminLogsScreen() {
     }
   }, []);
 
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const from = pageRef.current * PAGE_SIZE;
+      const { data, error } = await supabase
+        .from('activity_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .range(from, from + PAGE_SIZE - 1);
+      if (!error && data) {
+        setLogs(prev => [...prev, ...(data as ActivityLog[])]);
+        setHasMore(data.length === PAGE_SIZE);
+        pageRef.current += 1;
+      }
+    } catch (_) {
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, hasMore]);
+
   useEffect(() => { loadLogs(); }, [loadLogs]);
 
-  // Realtime
+  // Realtime — yeni kayıt gelince başa ekle (max 100 bellekte tut)
   useEffect(() => {
     const channel = supabase
       .channel('activity_logs_changes')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'activity_logs' }, (payload) => {
-        setLogs(prev => [payload.new as ActivityLog, ...prev].slice(0, 2000));
+        setLogs(prev => [payload.new as ActivityLog, ...prev].slice(0, 100));
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -244,6 +274,18 @@ export default function AdminLogsScreen() {
               ))}
             </View>
           )}
+          {hasMore && !search && (
+            <TouchableOpacity
+              style={s.loadMoreBtn}
+              onPress={loadMore}
+              disabled={loadingMore}
+            >
+              {loadingMore
+                ? <ActivityIndicator size="small" color="#64748B" />
+                : <Text style={s.loadMoreText}>Daha fazla yükle</Text>
+              }
+            </TouchableOpacity>
+          )}
           <View style={{ height: 40 }} />
         </ScrollView>
       )}
@@ -294,4 +336,6 @@ const s = StyleSheet.create({
   empty:       { alignItems: 'center', paddingTop: 60, gap: 10 },
   emptyTitle:  { fontSize: 16, fontWeight: '700' as any, color: '#1C1C1E' },
   emptySub:    { fontSize: 13, color: '#AEAEB2', textAlign: 'center' },
+  loadMoreBtn: { alignItems: 'center', paddingVertical: 14, marginTop: 4 },
+  loadMoreText:{ fontSize: 14, color: '#64748B', fontWeight: '500' },
 });
