@@ -1,11 +1,12 @@
 // MaterialForecastSection — sipariş için tahmini materyal tüketimi.
 // Üretim başlamadan/sürerken hangi materyalden ne kadar gerekli ve stok yeterli mi gösterir.
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Platform, ActivityIndicator } from 'react-native';
 import { supabase } from '../../../core/api/supabase';
 import { AppIcon } from '../../../core/ui/AppIcon';
 import { STAGE_LABEL, STAGE_COLOR, type Stage } from '../stages';
+import { useOrderDetailRealtime } from '../hooks/useOrderDetailRealtime';
 
 interface ForecastRow {
   item_id:          string;
@@ -31,32 +32,24 @@ interface Props {
 export function MaterialForecastSection({ workOrderId }: Props) {
   const [rows, setRows]       = useState<ForecastRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const cancelledRef = useRef(false);
+
+  async function load() {
+    if (cancelledRef.current) return;
+    setLoading(true);
+    const { data } = await supabase.rpc('forecast_order_materials', { p_work_order_id: workOrderId });
+    if (cancelledRef.current) return;
+    setRows((data ?? []) as ForecastRow[]);
+    setLoading(false);
+  }
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      const { data } = await supabase.rpc('forecast_order_materials', {
-        p_work_order_id: workOrderId,
-      });
-      if (!cancelled) {
-        setRows((data ?? []) as ForecastRow[]);
-        setLoading(false);
-      }
-    })();
-    // Realtime: stock_items veya order değişince yenile
-    const channel = supabase
-      .channel(`order_forecast_${workOrderId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_items' }, async () => {
-        const { data } = await supabase.rpc('forecast_order_materials', { p_work_order_id: workOrderId });
-        if (!cancelled) setRows((data ?? []) as ForecastRow[]);
-      })
-      .subscribe();
-    return () => {
-      cancelled = true;
-      supabase.removeChannel(channel);
-    };
-  }, [workOrderId]);
+    cancelledRef.current = false;
+    load();
+    return () => { cancelledRef.current = true; };
+  }, [workOrderId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useOrderDetailRealtime(workOrderId, { onStockItems: load });
 
   if (loading) {
     return (

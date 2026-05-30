@@ -1,10 +1,11 @@
 // UsedMaterialsSection — sipariş materyal hareketleri (OUT + reversed IN'ler).
 // list_order_materials RPC'si üzerinden çekilir; her stage geçişinde audit kaydı birikir.
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Platform, ActivityIndicator } from 'react-native';
 import { supabase } from '../../../core/api/supabase';
 import { AppIcon } from '../../../core/ui/AppIcon';
+import { useOrderDetailRealtime } from '../hooks/useOrderDetailRealtime';
 
 interface MovementRow {
   movement_id:   string;
@@ -29,33 +30,23 @@ interface Props {
 export function UsedMaterialsSection({ workOrderId }: Props) {
   const [rows, setRows]       = useState<MovementRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const cancelledRef = useRef(false);
+
+  async function load() {
+    if (cancelledRef.current) return;
+    const { data, error } = await supabase.rpc('list_order_materials', { p_work_order_id: workOrderId });
+    if (cancelledRef.current) return;
+    if (!error && data) setRows(data as MovementRow[]);
+    setLoading(false);
+  }
 
   useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      const { data, error } = await supabase.rpc('list_order_materials', {
-        p_work_order_id: workOrderId,
-      });
-      if (cancelled) return;
-      if (!error && data) setRows(data as MovementRow[]);
-      setLoading(false);
-    }
+    cancelledRef.current = false;
     load();
+    return () => { cancelledRef.current = true; };
+  }, [workOrderId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const channel = supabase
-      .channel(`order_materials_${workOrderId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'stock_movements', filter: `order_id=eq.${workOrderId}` },
-        () => load(),
-      )
-      .subscribe();
-
-    return () => {
-      cancelled = true;
-      supabase.removeChannel(channel);
-    };
-  }, [workOrderId]);
+  useOrderDetailRealtime(workOrderId, { onStockMovement: load });
 
   if (loading) {
     return (

@@ -66,13 +66,28 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
-// Refresh token when app comes back to foreground (native only)
+// Native: token yenileme + realtime bağlantı yönetimi (arka plana geçince kes)
 if (Platform.OS !== 'web') {
   AppState.addEventListener('change', (state) => {
     if (state === 'active') {
       supabase.auth.startAutoRefresh();
+      supabase.realtime.connect();
     } else {
       supabase.auth.stopAutoRefresh();
+      supabase.realtime.disconnect();
+    }
+  });
+}
+
+// Web: tarayıcı sekmesi arka plana geçince WebSocket bağlantısını kes.
+// Supabase Pro planında 500 eş zamanlı bağlantı limiti var; arka plan sekmeleri
+// bu limiti tüketmesin.
+if (Platform.OS === 'web' && typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      supabase.realtime.disconnect();
+    } else {
+      supabase.realtime.connect();
     }
   });
 }

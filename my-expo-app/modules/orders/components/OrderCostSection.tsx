@@ -4,11 +4,12 @@
 //   • Material breakdown (snapshot fiyatlarla)
 //   • Future placeholders: labor, overhead
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Platform, ActivityIndicator, TextInput, TouchableOpacity } from 'react-native';
 import { supabase } from '../../../core/api/supabase';
 import { toast } from '../../../core/ui/Toast';
 import { AppIcon } from '../../../core/ui/AppIcon';
+import { useOrderDetailRealtime } from '../hooks/useOrderDetailRealtime';
 
 interface CostRow {
   item_id:    string;
@@ -63,12 +64,16 @@ export function OrderCostSection({ workOrderId, isManager = false, cachedTotal }
   const [priceInput, setPriceInput]     = useState('');
   const [savingPrice, setSavingPrice]   = useState(false);
 
+  const cancelledRef = useRef(false);
+
   async function loadAll() {
+    if (cancelledRef.current) return;
     const [{ data: rowData }, { data: profitData }, { data: laborData }] = await Promise.all([
       supabase.rpc('calculate_order_cost',   { p_work_order_id: workOrderId }),
       supabase.rpc('calculate_order_profit', { p_work_order_id: workOrderId }),
       supabase.rpc('list_order_labor',       { p_work_order_id: workOrderId }),
     ]);
+    if (cancelledRef.current) return;
     setRows((rowData ?? []) as CostRow[]);
     setLabor((laborData ?? []) as LaborRow[]);
     const p = (profitData?.[0] ?? null) as ProfitData | null;
@@ -78,32 +83,17 @@ export function OrderCostSection({ workOrderId, isManager = false, cachedTotal }
   }
 
   useEffect(() => {
-    let cancelled = false;
+    cancelledRef.current = false;
     setLoading(true);
     loadAll().catch(() => {});
-    const channel = supabase
-      .channel(`order_cost_${workOrderId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'stock_movements', filter: `order_id=eq.${workOrderId}` },
-        () => { if (!cancelled) loadAll(); },
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'work_orders', filter: `id=eq.${workOrderId}` },
-        () => { if (!cancelled) loadAll(); },
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'stage_log', filter: `work_order_id=eq.${workOrderId}` },
-        () => { if (!cancelled) loadAll(); },
-      )
-      .subscribe();
-    return () => {
-      cancelled = true;
-      supabase.removeChannel(channel);
-    };
-  }, [workOrderId]);
+    return () => { cancelledRef.current = true; };
+  }, [workOrderId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useOrderDetailRealtime(workOrderId, {
+    onStockMovement: loadAll,
+    onWorkOrder:     loadAll,
+    onStageLog:      loadAll,
+  });
 
   async function handleSavePrice() {
     const n = parseFloat(priceInput.replace(',', '.'));
