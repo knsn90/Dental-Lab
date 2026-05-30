@@ -15,4 +15,11 @@ export { MeasurementOverlay } from './components/MeasurementOverlay';
 export { useOcclusionAnalysis } from './hooks/useOcclusionAnalysis';
 export { useMeasurement } from './hooks/useMeasurement';
 
-export * from './types/occlusion';
+// OcclusionReport type ve component aynı ada sahip — type'ı açıkça export et
+export type {
+  Mode, OcclusionAnalysisResult, HeatmapConfig, PaletteName,
+  OcclusionReport as OcclusionReportType, ViewPreset,
+  Severity, PenetrationPoint, OcclusionStatistics,
+  MeasurementPoint, MeasurementLine, SceneClickEvent,
+} from './types/occlusion';
+export { DEFAULT_HEATMAP_CONFIG, SEVERITY_COLOR } from './types/occlusion';

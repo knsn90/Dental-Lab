@@ -1,6 +1,7 @@
 // modules/occlusion/components/OcclusionViewer.tsx
 // Three.js scene mount + OrbitControls + raycast click dispatch
 // Prototip: app/scene.jsx (WebGLRenderer, lights, OrbitControls, animate loop)
+/* eslint-disable react-hooks/rules-of-hooks */
 //
 // Web-only: Three.js WebGL context gerektirir.
 

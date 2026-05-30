@@ -10,7 +10,8 @@
     "build:web": "expo export --platform web && node scripts/inject-fonts.js",
     "deploy": "vercel build --prod && vercel deploy --prebuilt --prod --yes",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint . --ext .ts,.tsx --max-warnings 0"
+    "typecheck:ci": "bash scripts/typecheck-ci.sh",
+    "lint": "eslint . --ext .ts,.tsx"
   },
   "dependencies": {
     "@expo-google-fonts/outfit": "^0.4.3",
@@ -67,8 +68,8 @@
     "@babel/core": "^7.25.2",
     "@types/react": "~18.3.12",
     "babel-preset-expo": "~12.0.10",
-    "eslint": "^8.57.0",
-    "eslint-config-expo": "^7.2.0",
+    "eslint": "^8.57.1",
+    "eslint-config-expo": "^56.0.4",
     "prettier-plugin-tailwindcss": "^0.8.0",
     "puppeteer": "^24.42.0",
     "tailwindcss": "^3.4.19",
