@@ -12,7 +12,7 @@ export async function createWorkOrder(params: CreateWorkOrderParams & { measurem
     patient_country,      // not in any migration
     patient_city,         // not in any migration
     measurement_type,     // workflow plan — not applied yet
-    doctor_approval_required, // workflow plan — not applied yet
+    // doctor_approval_required → migration 044'te eklendi, aktif
     ...safeParams
   } = params as any;
 

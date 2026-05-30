@@ -461,6 +461,8 @@ export function ProductionKanbanScreen() {
           workOrderId={checklistFor.card.id}
           stage={checklistFor.stage}
           managerId={profile.id}
+          doctorId={checklistFor.card.doctor_id ?? null}
+          requiresDoctorApproval={checklistFor.card.doctor_approval_required ?? false}
           onClose={() => setChecklistFor(null)}
           onApproved={() => { setChecklistFor(null); refresh(); }}
         />

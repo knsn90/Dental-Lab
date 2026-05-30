@@ -34,11 +34,13 @@ export interface KanbanCard {
 
   // Derived (added in hook)
   current_stage:    Stage;             // explicit, never undefined
-  priority?:        string;
-  delay_reason?:    string | null;
-  rework_count?:    number;
-  complexity?:      string;
-  case_type?:       string | null;
+  priority?:                 string;
+  delay_reason?:             string | null;
+  rework_count?:             number;
+  complexity?:               string;
+  case_type?:                string | null;
+  doctor_approval_required?: boolean;
+  doctor_id?:                string | null;
 }
 
 export interface KanbanColumn {
