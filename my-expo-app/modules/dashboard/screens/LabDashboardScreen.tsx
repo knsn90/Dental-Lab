@@ -902,10 +902,13 @@ export function LabDashboardScreen() {
   // ── Data loaders ──
   const loadPipeline = useCallback(async () => {
     try {
+      const labId = profile?.lab_id ?? profile?.id;
+      if (!labId) return;
       const statuses = ['alindi', 'uretimde', 'kalite_kontrol', 'teslimata_hazir', 'teslim_edildi'];
       const results = await Promise.all(
         statuses.map(st =>
-          supabase.from('work_orders').select('id', { count: 'exact', head: true }).eq('status', st)
+          supabase.from('work_orders').select('id', { count: 'exact', head: true })
+            .eq('status', st).eq('lab_id', labId)
         )
       );
       const counts: Record<string, number> = {};
@@ -916,20 +919,37 @@ export function LabDashboardScreen() {
       const active = statuses.slice(0, 4).reduce((s, st, i) => s + (results[i].count ?? 0), 0);
       setTotalActive(active);
     } catch (_) {}
-  }, []);
+  }, [profile?.lab_id, profile?.id]);
 
   const loadExtra = useCallback(async () => {
+    const labId = profile?.lab_id ?? profile?.id;
+    if (!labId) return;
+
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
 
     const { data } = await supabase
       .from('work_orders')
-      .select('id, order_number, work_type, status, delivery_date, created_at, patient_name, doctor:doctor_id(full_name)')
+      .select('id, order_number, work_type, status, delivery_date, created_at, patient_name, doctor_id')
+      .eq('lab_id', labId)
       .gte('created_at', sixMonthsAgo.toISOString())
       .order('created_at', { ascending: false });
 
     if (data) {
-      setRecentOrders(data.slice(0, 5));
+      // Hekim adlarını ayrı sorguyla çek (FK migration 037'de kaldırıldı)
+      const doctorIds = [...new Set(data.slice(0, 5).map((o: any) => o.doctor_id).filter(Boolean))];
+      const doctorMap: Record<string, string> = {};
+      if (doctorIds.length > 0) {
+        const { data: drs } = await supabase
+          .from('profiles').select('id, full_name').in('id', doctorIds);
+        (drs ?? []).forEach((d: any) => { doctorMap[d.id] = d.full_name; });
+      }
+
+      const enriched = data.slice(0, 5).map((o: any) => ({
+        ...o,
+        doctor: { full_name: doctorMap[o.doctor_id] ?? '--' },
+      }));
+      setRecentOrders(enriched);
       setTotalCases(data.length);
 
       const bars: MonthBar[] = [];
@@ -938,7 +958,7 @@ export function LabDashboardScreen() {
         const y = d.getFullYear(), m = d.getMonth();
         bars.push({
           month: MONTHS_TR[m],
-          count: data.filter(o => {
+          count: data.filter((o: any) => {
             const c = new Date(o.created_at);
             return c.getFullYear() === y && c.getMonth() === m;
           }).length,
@@ -950,7 +970,7 @@ export function LabDashboardScreen() {
       const weekDays = getWeekDays();
       const wc: Record<string, number> = {};
       weekDays.forEach(wd => {
-        wc[wd.date] = data.filter(o => o.created_at?.startsWith(wd.date)).length;
+        wc[wd.date] = data.filter((o: any) => o.created_at?.startsWith(wd.date)).length;
       });
       setWeekCounts(wc);
     }
@@ -958,19 +978,21 @@ export function LabDashboardScreen() {
     const { count: todayCount } = await supabase
       .from('work_orders')
       .select('id', { count: 'exact', head: true })
+      .eq('lab_id', labId)
       .gte('created_at', `${today}T00:00:00`);
     setTodayNewCount(todayCount ?? 0);
 
     const { count: approvalCount } = await supabase
       .from('work_orders')
       .select('id', { count: 'exact', head: true })
+      .eq('lab_id', labId)
       .eq('status', 'kalite_kontrol');
     setPendingCount(approvalCount ?? 0);
-  }, [today]);
+  }, [today, profile?.lab_id, profile?.id]);
 
   const loadAnalytics = useCallback(async () => {
     try {
-      const labId = profile?.lab_id;
+      const labId = profile?.lab_id ?? profile?.id;
       if (!labId) return;
       const [{ data: stations }, { data: techs }] = await Promise.all([
         supabase.from('v_station_analytics')
@@ -983,7 +1005,7 @@ export function LabDashboardScreen() {
       setStationStats((stations ?? []) as StationStat[]);
       setTopTechs((techs ?? []) as TechStat[]);
     } catch (_) {}
-  }, [profile?.lab_id]);
+  }, [profile?.lab_id, profile?.id]);
 
   const loadProvas = useCallback(async () => {
     setProvasLoading(true);
@@ -1031,7 +1053,7 @@ export function LabDashboardScreen() {
     setRefreshing(false);
   };
 
-  useEffect(() => { loadProvas(); loadExtra(); loadAnalytics(); loadPipeline(); loadStockSummary(); }, [loadStockSummary]);
+  useEffect(() => { loadProvas(); loadExtra(); loadAnalytics(); loadPipeline(); loadStockSummary(); }, [loadStockSummary, loadExtra, loadAnalytics, loadPipeline]);
 
   // ── Derived data ──
   const weekDays = getWeekDays();
@@ -1237,7 +1259,7 @@ export function LabDashboardScreen() {
         </View>
 
         {recentOrders.length === 0
-          ? <Text className="p-6 text-center" style={{ fontSize: 13, color: DS.ink[400] }}>Yükleniyor...</Text>
+          ? <Text className="p-6 text-center" style={{ fontSize: 13, color: DS.ink[400] }}>{profile ? 'Henüz iş emri yok' : 'Yükleniyor...'}</Text>
           : recentOrders.map((order, idx) => {
               const overdue = order.delivery_date < today && order.status !== 'teslim_edildi';
               const isLast  = idx === recentOrders.length - 1;

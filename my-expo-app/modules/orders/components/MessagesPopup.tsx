@@ -119,8 +119,8 @@ function lastPreview(item: any, currentUserId: string | null): string {
 }
 
 // İzleyenin user_type'ına göre title/alt-satır kompozisyonu:
-// • lab / admin → title: klinik · hekim, alt: "Hasta: ..."
-// • doctor / clinic_admin → title: "Hasta: ...", alt: klinik · hekim
+// • lab / admin → title: klinik adı, alt: hasta adı
+// • doctor / clinic_admin → title: hasta adı, alt: klinik adı
 function composeChatLabels(item: {
   patient_name?: string | null;
   doctor_name?: string | null;
@@ -129,18 +129,19 @@ function composeChatLabels(item: {
   order_number: string;
 }, viewerType: UserType | null | undefined): { title: string; sub: string } {
   const isLabSide = viewerType === 'lab' || viewerType === 'admin';
-  const clinicDoc = [item.clinic_name, item.doctor_name].filter(Boolean).join(' · ');
-  const patientLabel = item.patient_name ? `Hasta: ${item.patient_name}` : '';
+  const clinicLabel  = item.clinic_name ?? '';
+  const patientLabel = item.patient_name ?? '';
 
   if (isLabSide) {
     return {
-      title: clinicDoc || item.work_type || `#${item.order_number}`,
+      title: clinicLabel  || item.work_type || `#${item.order_number}`,
       sub:   patientLabel || `#${item.order_number}`,
     };
   }
+  // Klinik/doktor paneli: başlık = hasta adı
   return {
     title: patientLabel || item.work_type || `#${item.order_number}`,
-    sub:   clinicDoc || `#${item.order_number}`,
+    sub:   clinicLabel  || `#${item.order_number}`,
   };
 }
 
