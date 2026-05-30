@@ -8,33 +8,16 @@ export interface DashboardStats {
   todayProvas: number;
 }
 
+const EMPTY_STATS: DashboardStats = {
+  totalOrders: 0,
+  overdueOrders: 0,
+  readyOrders: 0,
+  inProgressOrders: 0,
+  todayProvas: 0,
+};
+
 export async function fetchDashboardStats(): Promise<DashboardStats> {
-  const today = new Date().toISOString().split('T')[0];
-
-  const [ordersRes, provasRes] = await Promise.all([
-    supabase
-      .from('work_orders')
-      .select('status, delivery_date')
-      .neq('status', 'teslim_edildi'),
-    supabase
-      .from('provas')
-      .select('id')
-      .eq('scheduled_date', today)
-      .neq('status', 'tamamlandı'),
-  ]);
-
-  const orders = ordersRes.data ?? [];
-  const provas = provasRes.data ?? [];
-
-  const overdueOrders = orders.filter(
-    (o) => o.delivery_date < today && o.status !== 'teslim_edildi'
-  ).length;
-
-  return {
-    totalOrders: orders.length,
-    overdueOrders,
-    readyOrders: orders.filter((o) => o.status === 'teslimata_hazir').length,
-    inProgressOrders: orders.filter((o) => o.status === 'uretimde').length,
-    todayProvas: provas.length,
-  };
+  const { data, error } = await supabase.rpc('get_dashboard_stats');
+  if (error || !data) return EMPTY_STATS;
+  return data as DashboardStats;
 }

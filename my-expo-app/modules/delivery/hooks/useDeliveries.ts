@@ -21,12 +21,17 @@ export function useDeliveries(labId: string | null | undefined) {
 
   useEffect(() => { load(); }, [load]);
 
-  // Gerçek zamanlı
+  // Gerçek zamanlı — lab_id filtreli kanal (tüm labların broadcast'ini almaz)
   useEffect(() => {
     if (!labId) return;
     const channel = supabase
-      .channel('deliveries_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'deliveries' }, () => load())
+      .channel(`deliveries_${labId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'deliveries',
+        filter: `lab_id=eq.${labId}`,
+      }, () => load())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [labId, load]);
