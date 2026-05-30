@@ -113,6 +113,7 @@ export async function fetchEmployees() {
     .select('*')
     .order('is_active', { ascending: false })
     .order('full_name')
+    .limit(200)
     .returns<Employee[]>();
 }
 
@@ -155,6 +156,7 @@ export async function fetchSalaryPayments(employeeId: string) {
     .eq('employee_id', employeeId)
     .order('period_year', { ascending: false })
     .order('period_month', { ascending: false })
+    .limit(100)
     .returns<SalaryPayment[]>();
 }
 
@@ -184,6 +186,7 @@ export async function fetchAdvances(employeeId: string) {
     .select('*')
     .eq('employee_id', employeeId)
     .order('advance_date', { ascending: false })
+    .limit(100)
     .returns<EmployeeAdvance[]>();
 }
 

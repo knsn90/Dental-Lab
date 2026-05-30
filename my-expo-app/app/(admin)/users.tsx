@@ -99,7 +99,8 @@ export default function AdminUsersScreen() {
         .from('work_orders')
         .select('id, order_number, status, delivery_date, order_items(item_name)')
         .or(`created_by.eq.${userId},assigned_to.eq.${userId}`)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(50);
 
       const today = new Date(); today.setHours(0, 0, 0, 0);
       const all = orders ?? [];

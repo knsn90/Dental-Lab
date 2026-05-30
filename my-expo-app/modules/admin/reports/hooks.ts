@@ -118,14 +118,19 @@ export function useOverviewReport() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      // Limit to last 12 months to avoid loading the full table
+      const cutoff12m = new Date();
+      cutoff12m.setFullYear(cutoff12m.getFullYear() - 1);
       const { data, error } = await supabase
         .from('work_orders')
         .select('id, order_number, doctor_id, work_type, status, delivery_date, created_at, doctor:doctor_id(full_name)')
-        .order('created_at', { ascending: false });
+        .gte('created_at', cutoff12m.toISOString())
+        .order('created_at', { ascending: false })
+        .limit(2000);
 
       if (error) throw error;
       const orders = (data ?? []) as unknown as RawOrder[];
-      const stats = computeStats(orders, 0); // all time
+      const stats = computeStats(orders, 0); // all time within 12-month window
 
       setReport({ period: 'Tüm Zamanlar', ...stats });
     } catch {
@@ -153,7 +158,8 @@ export function useSalesReport() {
         .from('work_orders')
         .select('id, order_number, doctor_id, work_type, status, delivery_date, created_at, doctor:doctor_id(full_name)')
         .gte('created_at', cutoff)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(1000);
 
       if (error) throw error;
       const orders = (data ?? []) as unknown as RawOrder[];
@@ -189,7 +195,8 @@ export function useOverdueReport() {
         .select('id, order_number, doctor_id, work_type, status, delivery_date, created_at, doctor:doctor_id(full_name)')
         .lt('delivery_date', today)
         .neq('status', 'teslim_edildi')
-        .order('delivery_date', { ascending: true });
+        .order('delivery_date', { ascending: true })
+        .limit(500);
 
       if (error) throw error;
       const raw = (data ?? []) as unknown as RawOrder[];

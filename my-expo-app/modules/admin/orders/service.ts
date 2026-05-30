@@ -88,7 +88,8 @@ export async function fetchAllOrders(): Promise<AdminOrder[]> {
   const { data, error } = await supabase
     .from('work_orders')
     .select('*, doctor:doctor_id(full_name, clinic_name), assignee:assigned_to(id, full_name, role)')
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(500);
 
   if (error) throw error;
   return (data as RawOrder[]).map(mapOrder);
@@ -175,97 +176,54 @@ export interface OrderStats {
 }
 
 export async function fetchOrderStats(): Promise<OrderStats> {
-  const [ordersResult, profilesResult] = await Promise.all([
-    supabase
-      .from('work_orders')
-      .select('*, doctor:doctor_id(full_name, clinic_name)')
-      .order('created_at', { ascending: false }),
-    supabase
-      .from('profiles')
-      .select('id, user_type, is_active'),
-  ]);
+  const { data, error } = await supabase.rpc('get_admin_stats');
+  if (error) throw error;
 
-  if (ordersResult.error) throw ordersResult.error;
-
-  const orders = (ordersResult.data as RawOrder[]).map(mapOrder);
-  const profiles = profilesResult.data ?? [];
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const todayOrders = orders.filter((o) => {
-    const d = new Date(o.created_at);
-    d.setHours(0, 0, 0, 0);
-    return d.getTime() === today.getTime();
-  }).length;
-
-  const overdueOrders = orders.filter((o) => {
-    if (o.status === 'teslim_edildi') return false;
-    const delivery = new Date(o.delivery_date);
-    return delivery < new Date();
-  }).length;
-
-  const totalDoctors = profiles.filter((p: any) => p.user_type === 'doctor').length;
-  const totalLabUsers = profiles.filter((p: any) => p.user_type === 'lab').length;
-
-  // By status
-  const byStatus: Record<string, number> = {};
-  orders.forEach((o) => {
-    byStatus[o.status] = (byStatus[o.status] ?? 0) + 1;
-  });
-
-  // By work type
-  const workTypeMap: Record<string, number> = {};
-  orders.forEach((o) => {
-    workTypeMap[o.work_type] = (workTypeMap[o.work_type] ?? 0) + 1;
-  });
-  const byWorkType = Object.entries(workTypeMap)
-    .map(([label, count]) => ({ label, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 10);
-
-  // By doctor
-  const doctorMap: Record<string, number> = {};
-  orders.forEach((o) => {
-    const name = o.doctor_name;
-    doctorMap[name] = (doctorMap[name] ?? 0) + 1;
-  });
-  const byDoctor = Object.entries(doctorMap)
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 10);
-
-  // Monthly last 6 months
+  const raw = data as any;
   const monthNames = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
-  const monthMap: Record<string, number> = {};
+
+  // RPC returns only months with data — fill missing months with 0
+  const monthlyRaw: Record<string, number> = {};
+  (raw.monthly ?? []).forEach((m: any) => { monthlyRaw[m.month_key] = m.count; });
   const now = new Date();
+  const monthly = [];
   for (let i = 5; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    monthMap[key] = 0;
+    monthly.push({ month: `${monthNames[parseInt(key.split('-')[1]) - 1]} ${key.split('-')[0]}`, count: monthlyRaw[key] ?? 0 });
   }
-  orders.forEach((o) => {
-    const d = new Date(o.created_at);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    if (key in monthMap) monthMap[key] += 1;
-  });
-  const monthly = Object.entries(monthMap).map(([key, count]) => {
-    const [year, month] = key.split('-');
-    return { month: `${monthNames[parseInt(month) - 1]} ${year}`, count };
-  });
-
-  const recentOrders = orders.slice(0, 8);
 
   return {
-    totalOrders: orders.length,
-    todayOrders,
-    overdueOrders,
-    totalDoctors,
-    totalLabUsers,
-    byStatus,
-    byWorkType,
-    byDoctor,
+    totalOrders:   raw.total_orders   ?? 0,
+    todayOrders:   raw.today_orders   ?? 0,
+    overdueOrders: raw.overdue_orders ?? 0,
+    totalDoctors:  raw.total_doctors  ?? 0,
+    totalLabUsers: raw.total_lab_users ?? 0,
+    byStatus:      raw.by_status      ?? {},
+    byWorkType:    raw.by_work_type   ?? [],
+    byDoctor:      raw.by_doctor      ?? [],
     monthly,
-    recentOrders,
+    recentOrders:  (raw.recent_orders ?? []).map((r: any): AdminOrder => ({
+      id:            r.id,
+      order_number:  r.order_number,
+      doctor_id:     r.doctor_id,
+      doctor_name:   r.doctor_full_name  ?? 'Bilinmeyen Hekim',
+      clinic_name:   r.doctor_clinic_name ?? '',
+      tooth_numbers: r.tooth_numbers ?? [],
+      work_type:     r.work_type,
+      shade:         r.shade,
+      machine_type:  r.machine_type,
+      status:        r.status,
+      notes:         r.notes,
+      lab_notes:     r.lab_notes,
+      delivery_date: r.delivery_date,
+      delivered_at:  r.delivered_at,
+      created_at:    r.created_at,
+      is_urgent:     r.is_urgent ?? false,
+      patient_name:  r.patient_name,
+      department:    r.department,
+      assigned_to:   r.assigned_to ?? null,
+      assignee_name: null,
+    })),
   };
 }

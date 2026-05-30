@@ -166,8 +166,10 @@ export default function RootLayout() {
     const inAuthGroup  = segments[0] === '(auth)';
     const isAdminLogin = segments[1] === 'admin-login';
 
-    // Public routes — auth gerekmez (token bazlı erişim + dev showcase)
-    const isPublicRoute = segments[0] === 'pay' || segments[0] === 'doctor-approval' || segments[0] === 'dev';
+    // Public routes — auth gerekmez (token bazlı erişim)
+    // dev showcase yalnızca geliştirme modunda erişilebilir
+    const isPublicRoute = segments[0] === 'pay' || segments[0] === 'doctor-approval'
+      || (segments[0] === 'dev' && __DEV__);
     if (isPublicRoute) return;
 
     if (!session) {

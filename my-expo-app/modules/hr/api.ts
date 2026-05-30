@@ -156,6 +156,7 @@ export async function fetchLeaveSummaries() {
     .from('v_leave_summary')
     .select('*')
     .order('full_name')
+    .limit(200)
     .returns<LeaveSummary[]>();
 }
 
@@ -165,6 +166,7 @@ export async function fetchLeaves(employeeId: string) {
     .select('*')
     .eq('employee_id', employeeId)
     .order('start_date', { ascending: false })
+    .limit(200)
     .returns<EmployeeLeave[]>();
 }
 
@@ -174,6 +176,7 @@ export async function fetchPendingLeaves() {
     .select('*, employees(full_name, role)')
     .eq('status', 'bekliyor')
     .order('created_at', { ascending: true })
+    .limit(100)
     .returns<(EmployeeLeave & { employees: { full_name: string; role: string } })[]>();
 }
 
