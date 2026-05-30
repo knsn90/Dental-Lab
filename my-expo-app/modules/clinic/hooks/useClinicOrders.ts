@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../../core/api/supabase';
+import { useAuthStore } from '../../../core/store/authStore';
 import { WorkOrder } from '../../../lib/types';
 import { fetchClinicOrders, fetchClinicDoctorProfiles } from '../api';
 
@@ -13,6 +14,7 @@ interface ClinicWorkOrder extends WorkOrder {
  * Doctor bilgisi için profiles tablosundan ayrı sorgu.
  */
 export function useClinicOrders(enabled = true) {
+  const profile = useAuthStore((s) => s.profile);
   const [orders,  setOrders]  = useState<ClinicWorkOrder[]>([]);
   const [loading, setLoading] = useState(enabled);
   const [error,   setError]   = useState<string | null>(null);
@@ -48,15 +50,17 @@ export function useClinicOrders(enabled = true) {
     load();
 
     // Realtime — kendi kliniğin herhangi bir siparişi değiştiğinde güncelle
+    // Channel name is user-scoped; work_orders has no clinic_id column so RLS handles data isolation
+    const channelId = profile?.clinic_id ?? profile?.id ?? 'noid';
     const channel = supabase
-      .channel('clinic_work_orders_realtime')
+      .channel(`clinic_work_orders_realtime_${channelId}`)
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'work_orders' },
         () => load())
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [load, enabled]);
+  }, [load, enabled, profile?.clinic_id, profile?.id]);
 
   return { orders, loading, error, refetch: load };
 }

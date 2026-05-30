@@ -86,7 +86,9 @@ export function useCourierDelivery(courierId: string | null) {
     if (!courierId) return;
     const ch = supabase
       .channel(`courier_delivery_${courierId}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'deliveries' }, () => loadDelivery())
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'deliveries', filter: `courier_id=eq.${courierId}` },
+        () => loadDelivery())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [courierId, loadDelivery]);

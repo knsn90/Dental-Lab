@@ -27,9 +27,11 @@ export function useOrderChatInbox() {
   useEffect(() => {
     load();
 
+    if (!profile?.id) return;
     // Realtime — yeni mesaj veya okundu işareti (read_at UPDATE) gelirse yenile
+    // Channel name is user-scoped to prevent cross-user name collision
     const channel = supabase
-      .channel('order_chat_inbox_realtime')
+      .channel(`order_chat_inbox_realtime_${profile.id}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'order_messages' },
