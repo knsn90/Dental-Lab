@@ -11,7 +11,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, RefreshControl, TouchableOpacity,
+  View, Text, ScrollView, FlatList, StyleSheet, RefreshControl, TouchableOpacity,
   TextInput, Modal, ActivityIndicator, Platform, Pressable, Animated, LayoutChangeEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -514,34 +514,38 @@ export function OrdersListScreen() {
       {viewMode === 'kanban' ? (
         <KanbanBoard orders={visibleOrders} userGroup="(lab)" onStatusAdvance={onStatusAdvance} />
       ) : (
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={s.listScroll}
-          refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={iOS.blue} />}
-          showsVerticalScrollIndicator={false}
-        >
-          {loading && filtered.length === 0 ? (
-            <SkeletonCardList count={5} />
-          ) : filtered.length === 0 ? (
-            <EmptyState search={search} hasFilters={filterPillsActive || statusFilter !== 'all'} />
-          ) : (
-            <View style={s.listCard}>
-              {filtered.map((order, i) => {
-                const canAssign = isManager && order.status === 'alindi' && !order.assigned_to;
+        <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 6, paddingBottom: 16 }}>
+          <View style={[s.listCard, { flex: 1 }]}>
+            <FlatList
+              data={filtered}
+              keyExtractor={(item) => item.id}
+              style={{ flex: 1 }}
+              refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={iOS.blue} />}
+              showsVerticalScrollIndicator={false}
+              initialNumToRender={20}
+              maxToRenderPerBatch={20}
+              windowSize={10}
+              removeClippedSubviews={Platform.OS !== 'web'}
+              renderItem={({ item, index }) => {
+                const canAssign = isManager && item.status === 'alindi' && !item.assigned_to;
                 return (
                   <ItemRow
-                    key={order.id}
-                    order={order}
-                    isLast={i === filtered.length - 1}
-                    onPress={() => onCardPress(order)}
-                    onAssign={canAssign ? () => onAssignPress(order) : undefined}
+                    order={item}
+                    isLast={index === filtered.length - 1}
+                    onPress={() => onCardPress(item)}
+                    onAssign={canAssign ? () => onAssignPress(item) : undefined}
                   />
                 );
-              })}
-            </View>
-          )}
-          <View style={{ height: 32 }} />
-        </ScrollView>
+              }}
+              ListEmptyComponent={
+                loading
+                  ? <SkeletonCardList count={5} />
+                  : <EmptyState search={search} hasFilters={filterPillsActive || statusFilter !== 'all'} />
+              }
+              ListFooterComponent={<View style={{ height: 8 }} />}
+            />
+          </View>
+        </View>
       )}
 
       {/* ── Sort sheet ────────────────────────────────────────────────────── */}

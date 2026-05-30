@@ -66,6 +66,15 @@ serve(async (req) => {
 
   const credData = cred as { provider: string; credentials: Record<string, string> };
 
+  // Idempotency: aynı (provider_ref, provider) çiftini bir kez işle.
+  // Eş zamanlı duplicate callback → UNIQUE violation → 200 (zaten işlendi).
+  const { error: dedupeError } = await supabase
+    .from('webhook_events')
+    .insert({ provider_ref: providerRef, provider: credData.provider });
+  if (dedupeError) {
+    return new Response('OK', { status: 200 });
+  }
+
   // Provider'a özgü imza doğrulama — doğrulanamayan callback'ler reddedilir
   const verified = await verifySignature(body, credData.provider, credData.credentials);
   if (!verified) {
