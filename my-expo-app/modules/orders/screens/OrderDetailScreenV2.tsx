@@ -10,7 +10,7 @@
  *     Tur 4: Action handlers + permissions + edge cases
  */
 import React, { useState, useMemo, useEffect } from 'react';
-import { View, Text, ScrollView, Pressable, Platform, Modal, useWindowDimensions } from 'react-native';
+import { View, Text, ScrollView, Pressable, Platform, Modal, useWindowDimensions, Image, Linking } from 'react-native';
 import { useLocalSearchParams, useRouter, useSegments } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../../core/store/authStore';
@@ -880,6 +880,15 @@ export function OrderDetailScreenV2() {
             )}
           </View>
 
+          {/* EKLER KOMPAKT ÖNIZLEME — ekran görüntüsündeki kart düzeni */}
+          {(order.photos ?? []).length > 0 && (
+            <FilesPreviewSection
+              photos={order.photos ?? []}
+              signedUrls={signedUrls ?? {}}
+              onViewAll={() => setSideTab('files')}
+            />
+          )}
+
           {/* TABS — Aktivite / Dosyalar / Yorumlar */}
           <View className="bg-white rounded-3xl p-5">
             <View className="flex-row gap-1 p-1 bg-cream-panel rounded-xl mb-3.5">
@@ -1363,12 +1372,182 @@ function ActivityFeed({ history }: { history: StatusHistory[] }) {
   );
 }
 
+// ─── Kompakt Dosya Önizleme Bölümü (EKLER kartı) ────────────────────────────
+function FilesPreviewSection({
+  photos, signedUrls, onViewAll,
+}: {
+  photos: WorkOrderPhoto[];
+  signedUrls: Record<string, string>;
+  onViewAll: () => void;
+}) {
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const MAX_VISIBLE = 4;
+  const visible = photos.slice(0, MAX_VISIBLE);
+  const overflow = photos.length - MAX_VISIBLE;
+
+  return (
+    <>
+      {/* Lightbox — resim görüntüleyici */}
+      <Modal
+        visible={!!lightboxUrl}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLightboxUrl(null)}
+      >
+        <Pressable
+          onPress={() => setLightboxUrl(null)}
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', alignItems: 'center', justifyContent: 'center' }}
+        >
+          {lightboxUrl && (
+            <Image
+              source={{ uri: lightboxUrl }}
+              style={{ width: '95%', height: '80%' }}
+              resizeMode="contain"
+            />
+          )}
+          {lightboxUrl && (
+            <Pressable
+              onPress={() => {
+                const filename = lightboxUrl.split('/').pop()?.split('?')[0] ?? 'resim.jpg';
+                openOrDownloadFile(lightboxUrl, filename, true);
+              }}
+              style={{ marginTop: 16, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 20, paddingVertical: 10, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)' }}
+            >
+              <Download size={14} color="#FFFFFF" strokeWidth={1.8} />
+              <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>İndir</Text>
+            </Pressable>
+          )}
+          <Pressable
+            onPress={() => setLightboxUrl(null)}
+            style={{ position: 'absolute', top: 48, right: 16, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Text style={{ color: '#FFF', fontSize: 18, lineHeight: 20 }}>✕</Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <View className="bg-white rounded-3xl p-5">
+        {/* Başlık */}
+        <View className="flex-row items-center mb-3">
+          <Text className="text-[11px] font-semibold uppercase text-ink-400" style={{ letterSpacing: 1.1 }}>
+            Ekler
+          </Text>
+          <View className="ml-2 px-1.5 py-px rounded-full bg-ink-50">
+            <Text className="text-[10px] font-semibold text-ink-700">{photos.length}</Text>
+          </View>
+          <View className="flex-1" />
+          <Pressable onPress={onViewAll} className="flex-row items-center gap-1">
+            <Text className="text-[12px] font-medium" style={{ color: '#E97757' }}>Tümü</Text>
+            <ChevronRight size={12} color="#E97757" strokeWidth={2} />
+          </Pressable>
+        </View>
+
+        {/* Dosya kartları — yatay scroll */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -4 }} contentContainerStyle={{ gap: 8, paddingHorizontal: 4 }}>
+          {visible.map((f) => {
+            const url = signedUrls[f.storage_path] ?? f.signed_url ?? null;
+            const ext = (f.storage_path.split('.').pop() ?? '').toUpperCase().slice(0, 4);
+            const isImage = /\.(jpe?g|png|webp|gif|bmp)$/i.test(f.storage_path);
+            const isPdf   = /\.pdf$/i.test(f.storage_path);
+            const isStl   = /\.(stl|ply|obj)$/i.test(f.storage_path);
+            const accentColor = isImage ? '#10B981' : isPdf ? '#EF4444' : isStl ? '#8B5CF6' : '#3B82F6';
+            const caption = f.caption ?? f.storage_path.split('/').pop()?.split('?')[0]?.replace(/\.[^.]+$/, '') ?? '—';
+
+            return (
+              <Pressable
+                key={f.id}
+                onPress={() => {
+                  if (!url) return;
+                  if (isImage) setLightboxUrl(url);
+                  else openOrDownloadFile(url, caption, false);
+                }}
+                style={{
+                  width: 90,
+                  backgroundColor: accentColor + '10',
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: accentColor + '30',
+                  overflow: 'hidden',
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                }}
+              >
+                {/* Resim ise thumbnail */}
+                {isImage && url ? (
+                  <Image source={{ uri: url }} style={{ width: 90, height: 70 }} resizeMode="cover" />
+                ) : (
+                  <View style={{ width: 90, height: 70, alignItems: 'center', justifyContent: 'center' }}>
+                    <View style={{ backgroundColor: accentColor + '20', borderRadius: 10, padding: 10 }}>
+                      <Text style={{ fontSize: 14, fontWeight: '800', color: accentColor, letterSpacing: 0.3 }}>{ext}</Text>
+                    </View>
+                  </View>
+                )}
+                <View style={{ paddingHorizontal: 8, paddingVertical: 6 }}>
+                  <Text numberOfLines={1} style={{ fontSize: 10, fontWeight: '600', color: '#0F172A' }}>{caption}</Text>
+                  {!isImage && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 }}>
+                      <Download size={9} color={accentColor} strokeWidth={2} />
+                      <Text style={{ fontSize: 9, color: accentColor, fontWeight: '600' }}>İndir</Text>
+                    </View>
+                  )}
+                  {isImage && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 }}>
+                      <ImageIcon size={9} color={accentColor} strokeWidth={2} />
+                      <Text style={{ fontSize: 9, color: accentColor, fontWeight: '600' }}>Görüntüle</Text>
+                    </View>
+                  )}
+                </View>
+              </Pressable>
+            );
+          })}
+
+          {/* +N daha */}
+          {overflow > 0 && (
+            <Pressable
+              onPress={onViewAll}
+              style={{ width: 90, backgroundColor: '#F1F5F9', borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center', minHeight: 110 }}
+            >
+              <Text style={{ fontSize: 18, fontWeight: '700', color: '#475569' }}>+{overflow}</Text>
+              <Text style={{ fontSize: 9, color: '#94A3B8', marginTop: 2 }}>daha fazla</Text>
+            </Pressable>
+          )}
+        </ScrollView>
+      </View>
+    </>
+  );
+}
+
+// ─── Dosya açma / indirme yardımcısı ────────────────────────────────────────
+// Web mobilde window.open popup engellenebilir; anchor+download daha güvenilir.
+function openOrDownloadFile(url: string, filename: string, isImage: boolean) {
+  if (typeof window === 'undefined') {
+    Linking.openURL(url).catch(() => {});
+    return;
+  }
+  if (isImage) {
+    // Resimler yeni sekmede görüntülenebilir
+    window.open(url, '_blank', 'noopener,noreferrer');
+    return;
+  }
+  // PDF ve diğer dosyalar için anchor+download kullan
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.rel = 'noopener noreferrer';
+  // Mobil Safari için target=_blank gerekiyor (download attribute bazen yok sayılır)
+  a.target = '_blank';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => document.body.removeChild(a), 200);
+}
+
 function FilesList({
   photos, signedUrls,
 }: {
   photos: WorkOrderPhoto[];
   signedUrls: Record<string, string>;
 }) {
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+
   if (photos.length === 0) {
     return (
       <View className="py-6 items-center">
@@ -1377,47 +1556,140 @@ function FilesList({
     );
   }
   return (
-    <View className="gap-1.5">
-      {photos.map((f) => {
-        const url = signedUrls[f.storage_path] ?? f.signed_url ?? null;
-        const ext = (f.storage_path.split('.').pop() ?? '').toUpperCase().slice(0, 4);
-        const isImage = /\.(jpe?g|png|webp|gif|bmp)$/i.test(f.storage_path);
-        const color = isImage ? '#10B981' : '#3B82F6';
-        const Icon = isImage ? ImageIcon : FileIcon;
-        return (
-          <Pressable
-            key={f.id}
-            onPress={() => {
-              if (url && typeof window !== 'undefined') window.open(url, '_blank');
-            }}
-            className="px-3 py-2.5 bg-cream-panel rounded-xl flex-row items-center gap-2.5"
-          >
-            <View
-              className="w-8 h-8 rounded-lg items-center justify-center"
-              style={{ backgroundColor: color + '20' }}
-            >
-              <Icon size={14} color={color} strokeWidth={1.8} />
-            </View>
-            <View className="flex-1 min-w-0">
-              <Text numberOfLines={1} className="text-[12px] font-medium text-ink-900">
-                {f.caption ?? f.storage_path.split('/').pop() ?? '—'}
-              </Text>
-              <Text className="text-[10px] text-ink-400 mt-px">
-                {ext} {f.tooth_number != null ? `· Diş ${f.tooth_number}` : ''}
-              </Text>
-            </View>
-            <Download size={14} color="#9A9A9A" strokeWidth={1.6} />
-          </Pressable>
-        );
-      })}
-      <Pressable
-        onPress={() => toast.info('Dosya yükleme — yakında aktif olacak')}
-        className="py-3 rounded-xl border border-dashed border-black/[0.15] items-center flex-row justify-center gap-2"
+    <>
+      {/* Resim Görüntüleyici — Lightbox */}
+      <Modal
+        visible={!!lightboxUrl}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLightboxUrl(null)}
       >
-        <Upload size={14} color="#6B6B6B" strokeWidth={1.6} />
-        <Text className="text-[12px] font-medium text-ink-500">Dosya yükle</Text>
-      </Pressable>
-    </View>
+        <Pressable
+          onPress={() => setLightboxUrl(null)}
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', alignItems: 'center', justifyContent: 'center' }}
+        >
+          {lightboxUrl && (
+            <Image
+              source={{ uri: lightboxUrl }}
+              style={{ width: '95%', height: '80%' }}
+              resizeMode="contain"
+            />
+          )}
+          {lightboxUrl && (
+            <Pressable
+              onPress={() => {
+                const filename = lightboxUrl.split('/').pop()?.split('?')[0] ?? 'resim.jpg';
+                openOrDownloadFile(lightboxUrl, filename, true);
+              }}
+              style={{
+                marginTop: 16,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                paddingHorizontal: 20,
+                paddingVertical: 10,
+                backgroundColor: 'rgba(255,255,255,0.15)',
+                borderRadius: 20,
+                borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.25)',
+              }}
+            >
+              <Download size={14} color="#FFFFFF" strokeWidth={1.8} />
+              <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>İndir</Text>
+            </Pressable>
+          )}
+          <Pressable
+            onPress={() => setLightboxUrl(null)}
+            style={{ position: 'absolute', top: 48, right: 16, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Text style={{ color: '#FFF', fontSize: 18, lineHeight: 20 }}>✕</Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <View className="gap-1.5">
+        {photos.map((f) => {
+          const url = signedUrls[f.storage_path] ?? f.signed_url ?? null;
+          const ext = (f.storage_path.split('.').pop() ?? '').toUpperCase().slice(0, 4);
+          const isImage = /\.(jpe?g|png|webp|gif|bmp)$/i.test(f.storage_path);
+          const isPdf   = /\.pdf$/i.test(f.storage_path);
+          const isStl   = /\.(stl|ply|obj)$/i.test(f.storage_path);
+          const accentColor = isImage ? '#10B981' : isPdf ? '#EF4444' : isStl ? '#8B5CF6' : '#3B82F6';
+          const Icon = isImage ? ImageIcon : FileIcon;
+          const filename = f.caption ?? f.storage_path.split('/').pop() ?? 'dosya';
+
+          return (
+            <Pressable
+              key={f.id}
+              onPress={() => {
+                if (!url) return;
+                if (isImage) {
+                  setLightboxUrl(url);
+                } else {
+                  openOrDownloadFile(url, filename, false);
+                }
+              }}
+              className="bg-cream-panel rounded-xl overflow-hidden"
+            >
+              {/* Resim ise thumbnail göster */}
+              {isImage && url ? (
+                <View style={{ position: 'relative' }}>
+                  <Image
+                    source={{ uri: url }}
+                    style={{ width: '100%', height: 120 }}
+                    resizeMode="cover"
+                  />
+                  <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: 'rgba(0,0,0,0.45)' }}>
+                    <Text numberOfLines={1} style={{ color: '#FFF', fontSize: 12, fontWeight: '600' }}>{filename}</Text>
+                    <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 10 }}>
+                      {ext}{f.tooth_number != null ? ` · Diş ${f.tooth_number}` : ''}
+                    </Text>
+                  </View>
+                  <View style={{ position: 'absolute', top: 8, right: 8, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
+                    <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '700' }}>Görüntüle</Text>
+                  </View>
+                </View>
+              ) : (
+                <View className="px-3 py-2.5 flex-row items-center gap-2.5">
+                  <View
+                    className="w-8 h-8 rounded-lg items-center justify-center"
+                    style={{ backgroundColor: accentColor + '20' }}
+                  >
+                    <Icon size={14} color={accentColor} strokeWidth={1.8} />
+                  </View>
+                  <View className="flex-1 min-w-0">
+                    <Text numberOfLines={1} className="text-[12px] font-medium text-ink-900">{filename}</Text>
+                    <Text className="text-[10px] text-ink-400 mt-px">
+                      {ext}{f.tooth_number != null ? ` · Diş ${f.tooth_number}` : ''}
+                    </Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    {isPdf && (
+                      <View style={{ backgroundColor: '#FEE2E2', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 }}>
+                        <Text style={{ color: '#DC2626', fontSize: 9, fontWeight: '700' }}>PDF</Text>
+                      </View>
+                    )}
+                    {isStl && (
+                      <View style={{ backgroundColor: '#EDE9FE', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 }}>
+                        <Text style={{ color: '#7C3AED', fontSize: 9, fontWeight: '700' }}>3D</Text>
+                      </View>
+                    )}
+                    <Download size={14} color="#9A9A9A" strokeWidth={1.6} />
+                  </View>
+                </View>
+              )}
+            </Pressable>
+          );
+        })}
+        <Pressable
+          onPress={() => toast.info('Dosya yükleme — yakında aktif olacak')}
+          className="py-3 rounded-xl border border-dashed border-black/[0.15] items-center flex-row justify-center gap-2"
+        >
+          <Upload size={14} color="#6B6B6B" strokeWidth={1.6} />
+          <Text className="text-[12px] font-medium text-ink-500">Dosya yükle</Text>
+        </Pressable>
+      </View>
+    </>
   );
 }
 
