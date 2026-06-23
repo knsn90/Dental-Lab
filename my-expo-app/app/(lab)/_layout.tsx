@@ -39,7 +39,7 @@ export default function LabLayout() {
 
   // Load saved color theme
   const { getTheme, loadTheme } = useColorThemeStore();
-  const { fetchForPanel, invalidate } = usePermissionStore();
+  const { fetchForPanel, invalidate, permissions: permSet, loaded: permLoaded } = usePermissionStore();
   useEffect(() => {
     const theme = loadTheme('lab');
     applyColorThemeWeb(theme, LAB_DEFAULT_ACCENT);
@@ -100,6 +100,13 @@ export default function LabLayout() {
       requiresPermission: 'view_settings' },
   ];
 
+  // Filter nav items by permissions for CommandPalette (both mobile and desktop)
+  const filteredNavForPalette = permLoaded
+    ? LAB_NAV.filter(item =>
+        !item.requiresPermission || permSet.has(item.requiresPermission)
+      )
+    : LAB_NAV;
+
   if (isDesktop) {
     return (
       <>
@@ -117,7 +124,7 @@ export default function LabLayout() {
           accentColor={accentColor}
         />
         <CommandPalette
-          navItems={LAB_NAV}
+          navItems={filteredNavForPalette}
           onNavigate={(href) => router.push(href as any)}
           accentColor={accentColor}
         />
@@ -205,7 +212,7 @@ export default function LabLayout() {
 
       {/* Command Palette — modal, tüm sayfalarda erişilebilir */}
       <CommandPalette
-        navItems={LAB_NAV}
+        navItems={filteredNavForPalette}
         onNavigate={(href) => router.push(href as any)}
         accentColor={accentColor}
       />
