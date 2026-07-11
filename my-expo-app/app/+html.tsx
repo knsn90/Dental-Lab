@@ -46,7 +46,24 @@ export default function Root({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Peyda (Farsça) — mevcut aile adlarına unicode-range ile bağlanır: yalnız
+// Arapça/Farsça glifler Peyda'dan gelir, Latin metin (Outfit/Inter) ve ağırlıklar
+// olduğu gibi kalır. Ağırlık: 400 regular · 500 medium · 600 semibold · 700 bold.
+const PEYDA_RANGE = 'U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF, U+200C-200D';
+const PEYDA_WEIGHTS: Array<[number, string]> = [
+  [400, 'peyda-regular'], [500, 'peyda-medium'], [600, 'peyda-semibold'], [700, 'peyda-bold'],
+];
+const PEYDA_FAMILIES = ['Outfit', 'Inter Tight', 'Inter'];
+const peydaFaces = PEYDA_FAMILIES.flatMap((fam) =>
+  PEYDA_WEIGHTS.map(([w, file]) =>
+    `@font-face{font-family:'${fam}';font-style:normal;font-weight:${w};font-display:swap;`
+    + `src:url('/fonts/${file}.woff2') format('woff2');unicode-range:${PEYDA_RANGE};}`
+  )
+).join('\n  ');
+
 const webStyles = `
+  ${peydaFaces}
+
   *, *::before, *::after { box-sizing: border-box; }
 
   html, body, #root {

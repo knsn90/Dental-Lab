@@ -214,7 +214,9 @@ export default function RootLayout() {
 
   const { session, profile, loading, setSession, setProfile, setLoading, fetchProfile } = useAuthStore();
   const { fetchPermissions: fetchPerms, clear: clearPerms } = usePermissionStore();
-  const segments = useSegments();
+  // string[] olarak ele al: segments[0] literal route karşılaştırmaları expo-router'ın
+  // tipli-route tuple union'ını daraltıp segments[1] erişimini bozuyordu.
+  const segments = useSegments() as string[];
   const router = useRouter();
   const navRef = useNavigationContainerRef();
 
