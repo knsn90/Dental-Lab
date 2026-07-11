@@ -12,7 +12,7 @@
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, Pressable, Platform, ScrollView, Modal, TextInput, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, Platform, ScrollView, Modal, TextInput, useWindowDimensions } from 'react-native';
 import {
   Plus, X, Check, RefreshCw, Globe, AlertCircle,
   Calendar, ArrowRight, ChevronDown, History,
@@ -23,12 +23,15 @@ import {
   Currency, SUPPORTED_CURRENCIES, CURRENCY_META,
   ExchangeRate, listRates, upsertRate, fetchRatesFromTCMB,
 } from '../../../core/money/currency';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
 
 interface Props {
   accentColor?: string;
 }
 
 export function CurrencyRatesScreen({ accentColor = '#0A0A0A' }: Props) {
+  const { width: _vw } = useWindowDimensions();
+  const isNarrow = _vw < 560;
   const profile = useAuthStore(s => s.profile);
   const labId = (profile as any)?.lab_id ?? null;
 
@@ -83,11 +86,12 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A' }: Props) {
   const handleBaseChange = async (c: Currency) => {
     if (!labId) return;
     setBasePickerOpen(false);
+    // UPSERT — lab_settings satırı yoksa UPDATE 0 satır eder ve seçim kalıcı
+    // olmazdı ("seçim yapamıyorum"). lab_id UNIQUE → onConflict ile oluştur/güncelle.
     const { error } = await supabase
       .from('lab_settings')
-      .update({ default_currency: c })
-      .eq('lab_id', labId);
-    if (error) setToast({ msg: 'Base currency güncellenemedi', type: 'err' });
+      .upsert({ lab_id: labId, default_currency: c }, { onConflict: 'lab_id' });
+    if (error) setToast({ msg: 'Base currency güncellenemedi: ' + error.message, type: 'err' });
     else {
       setToast({ msg: `Base currency: ${c}`, type: 'ok' });
       setBaseCurrency(c);
@@ -120,13 +124,13 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A' }: Props) {
   };
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60, gap: 14 }}>
+    <ScrollView contentContainerStyle={{ padding: isNarrow ? 12 : 20, paddingBottom: 120, gap: 14 }}>
       {/* ── Hero: base currency + actions ── */}
-      <View style={[PCard, { gap: 14 }]}>
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+      <View style={[PCard, { gap: 14, padding: isNarrow ? 14 : 18 }]}>
+        <View style={{ flexDirection: isNarrow ? 'column' : 'row', alignItems: isNarrow ? 'stretch' : 'flex-start', justifyContent: 'space-between', gap: isNarrow ? 12 : 16 }}>
           <View style={{ flex: 1 }}>
             <Text style={eyebrow}>Para birimi yönetimi</Text>
-            <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 28, letterSpacing: -0.8, color: '#0A0A0A', marginTop: 4 }}>
+            <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: isNarrow ? 22 : 28, letterSpacing: -0.6, color: '#0A0A0A', marginTop: 4 }}>
               Döviz kurları
             </Text>
             <Text style={{ fontSize: 13, color: '#9A9A9A', marginTop: 4, lineHeight: 19 }}>
@@ -138,17 +142,15 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A' }: Props) {
             onPress={handleTCMB}
             disabled={tcmbLoading}
             style={{
-              flexDirection: 'row', alignItems: 'center', gap: 7,
-              paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999,
+              flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+              paddingHorizontal: 14, paddingVertical: 10, borderRadius: 9999,
+              alignSelf: isNarrow ? 'stretch' : 'flex-start',
               backgroundColor: accentColor,
               opacity: tcmbLoading ? 0.5 : 1,
               ...(Platform.OS === 'web' ? { cursor: tcmbLoading ? 'wait' : 'pointer' } as any : {}),
             }}
           >
-            {tcmbLoading
-              ? <ActivityIndicator size="small" color="#FFF" />
-              : <RefreshCw size={13} color="#FFF" strokeWidth={2} />
-            }
+            <RefreshCw size={13} color="#FFF" strokeWidth={2} />
             <Text style={{ fontSize: 12, fontWeight: '600', color: '#FFF' }}>
               TCMB'den çek
             </Text>
@@ -163,9 +165,9 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A' }: Props) {
           borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)',
         }}>
           <Globe size={16} color="#6B6B6B" strokeWidth={1.6} />
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 12, color: '#6B6B6B', fontWeight: '500' }}>Base currency (raporlama para birimi)</Text>
-            <Text style={{ fontSize: 11, color: '#9A9A9A', marginTop: 1 }}>Tüm raporlar ve toplamlar bu birime çevrilir</Text>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ fontSize: 12, color: '#6B6B6B', fontWeight: '500' }} numberOfLines={1}>Raporlama para birimi</Text>
+            <Text style={{ fontSize: 11, color: '#9A9A9A', marginTop: 1 }} numberOfLines={2}>Tüm raporlar bu birime çevrilir</Text>
           </View>
           <Pressable
             onPress={() => setBasePickerOpen(true)}
@@ -197,49 +199,82 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A' }: Props) {
                 key={currency}
                 onPress={() => setEditModal({ visible: true, currency })}
                 style={[PCard, {
-                  flex: 1, minWidth: 200, gap: 6,
+                  flex: 1, minWidth: isNarrow ? '100%' as any : 200, gap: 4,
+                  padding: isNarrow ? 12 : 18,
+                  flexDirection: isNarrow ? 'row' : 'column',
+                  alignItems: isNarrow ? 'center' : 'stretch',
                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                 }]}
               >
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                {isNarrow ? (
+                  <>
                     <View style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor + '14', borderWidth: 1, borderColor: accentColor + '22' }}>
                       <Text style={{ fontSize: 14, fontWeight: '700', color: accentColor, letterSpacing: 0.4 }}>{m.symbol}</Text>
                     </View>
-                    <View>
-                      <Text style={{ fontSize: 14, fontWeight: '600', color: '#0A0A0A', letterSpacing: 0.4 }}>{currency}</Text>
-                      <Text style={{ fontSize: 11, color: '#9A9A9A' }}>{m.label}</Text>
+                    <View style={{ flex: 1, minWidth: 0, marginLeft: 10 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: '#0A0A0A', letterSpacing: 0.3 }}>{currency}</Text>
+                        <Text style={{ fontSize: 11, color: '#9A9A9A' }} numberOfLines={1}>{m.label}</Text>
+                      </View>
+                      {rate ? (
+                        <Text style={{ fontSize: 11, color: '#6B6B6B', marginTop: 2 }} numberOfLines={1}>
+                          {new Date(rate.effectiveDate).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })} · {rate.source.toUpperCase()}
+                        </Text>
+                      ) : (
+                        <Text style={{ fontSize: 11, color: '#D97706', marginTop: 2 }}>Tanımlı değil</Text>
+                      )}
                     </View>
-                  </View>
-                  {isStale && <AlertCircle size={14} color="#D97706" strokeWidth={1.8} />}
-                </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 20, letterSpacing: -0.4, color: isStale ? '#9A9A9A' : '#0A0A0A', lineHeight: 24 }}>
+                        {rate ? rate.rate.toFixed(2) : '—'}
+                      </Text>
+                      <Text style={{ fontSize: 10, color: '#9A9A9A', fontWeight: '500' }}>{baseCurrency}</Text>
+                    </View>
+                    {isStale && <AlertCircle size={14} color="#D97706" strokeWidth={1.8} style={{ marginLeft: 6 }} />}
+                  </>
+                ) : (
+                  <>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                        <View style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor + '14', borderWidth: 1, borderColor: accentColor + '22' }}>
+                          <Text style={{ fontSize: 14, fontWeight: '700', color: accentColor, letterSpacing: 0.4 }}>{m.symbol}</Text>
+                        </View>
+                        <View>
+                          <Text style={{ fontSize: 14, fontWeight: '600', color: '#0A0A0A', letterSpacing: 0.4 }}>{currency}</Text>
+                          <Text style={{ fontSize: 11, color: '#9A9A9A' }}>{m.label}</Text>
+                        </View>
+                      </View>
+                      {isStale && <AlertCircle size={14} color="#D97706" strokeWidth={1.8} />}
+                    </View>
 
-                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, marginTop: 6 }}>
-                  <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 32, letterSpacing: -1, color: isStale ? '#9A9A9A' : '#0A0A0A', lineHeight: 38 }}>
-                    {rate ? rate.rate.toFixed(2) : '—'}
-                  </Text>
-                  <Text style={{ fontSize: 13, color: '#9A9A9A', fontWeight: '500' }}>{baseCurrency}</Text>
-                </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, marginTop: 6 }}>
+                      <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 32, letterSpacing: -1, color: isStale ? '#9A9A9A' : '#0A0A0A', lineHeight: 38 }}>
+                        {rate ? rate.rate.toFixed(2) : '—'}
+                      </Text>
+                      <Text style={{ fontSize: 13, color: '#9A9A9A', fontWeight: '500' }}>{baseCurrency}</Text>
+                    </View>
 
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                  <Text style={{ fontSize: 11, color: '#6B6B6B' }}>1 {currency}</Text>
-                  <ArrowRight size={10} color="#9A9A9A" strokeWidth={1.6} />
-                  <Text style={{ fontSize: 11, color: '#6B6B6B' }}>
-                    {rate ? `${rate.rate.toFixed(2)} ${baseCurrency}` : '—'}
-                  </Text>
-                </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                      <Text style={{ fontSize: 11, color: '#6B6B6B' }}>1 {currency}</Text>
+                      <ArrowRight size={10} color="#9A9A9A" strokeWidth={1.6} />
+                      <Text style={{ fontSize: 11, color: '#6B6B6B' }}>
+                        {rate ? `${rate.rate.toFixed(2)} ${baseCurrency}` : '—'}
+                      </Text>
+                    </View>
 
-                {rate && (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 }}>
-                    <Calendar size={10} color="#9A9A9A" strokeWidth={1.6} />
-                    <Text style={{ fontSize: 10, color: '#9A9A9A' }}>
-                      {new Date(rate.effectiveDate).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' })}
-                    </Text>
-                    <View style={{ width: 1, height: 10, backgroundColor: 'rgba(0,0,0,0.1)' }} />
-                    <Text style={{ fontSize: 10, color: '#9A9A9A', textTransform: 'uppercase', letterSpacing: 0.4 }}>
-                      {rate.source}
-                    </Text>
-                  </View>
+                    {rate && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 }}>
+                        <Calendar size={10} color="#9A9A9A" strokeWidth={1.6} />
+                        <Text style={{ fontSize: 10, color: '#9A9A9A' }}>
+                          {new Date(rate.effectiveDate).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </Text>
+                        <View style={{ width: 1, height: 10, backgroundColor: 'rgba(0,0,0,0.1)' }} />
+                        <Text style={{ fontSize: 10, color: '#9A9A9A', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                          {rate.source}
+                        </Text>
+                      </View>
+                    )}
+                  </>
                 )}
                 {isStale && (
                   <Text style={{ fontSize: 11, color: '#D97706', marginTop: 4 }}>
@@ -294,34 +329,36 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A' }: Props) {
             <View
               key={`${r.currency}-${r.effectiveDate}-${idx}`}
               style={{
-                flexDirection: 'row', alignItems: 'center', gap: 10,
-                paddingHorizontal: 18, paddingVertical: 11,
+                flexDirection: 'row', alignItems: 'center', gap: isNarrow ? 8 : 10,
+                paddingHorizontal: isNarrow ? 12 : 18, paddingVertical: isNarrow ? 9 : 11,
                 ...(idx < rates.slice(0, 30).length - 1 ? { borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.03)' } : {}),
               }}
             >
-              <View style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.04)' }}>
+              <View style={{ width: isNarrow ? 26 : 28, height: isNarrow ? 26 : 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.04)' }}>
                 <Text style={{ fontSize: 12, fontWeight: '700', color: '#6B6B6B' }}>{CURRENCY_META[r.currency].symbol}</Text>
               </View>
-              <View style={{ width: 50 }}>
+              <View style={{ width: isNarrow ? 38 : 50 }}>
                 <Text style={{ fontSize: 13, fontWeight: '600', color: '#0A0A0A', letterSpacing: 0.3 }}>{r.currency}</Text>
               </View>
-              <Text style={{ flex: 1, fontSize: 13, color: '#0A0A0A', fontWeight: '500' }}>
-                {r.rate.toFixed(4)} {r.baseCurrency}
+              <Text style={{ flex: 1, fontSize: 13, color: '#0A0A0A', fontWeight: '500' }} numberOfLines={1}>
+                {isNarrow ? r.rate.toFixed(2) : `${r.rate.toFixed(4)} ${r.baseCurrency}`}
               </Text>
-              <Text style={{ fontSize: 11, color: '#9A9A9A' }}>
-                {new Date(r.effectiveDate).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' })}
+              <Text style={{ fontSize: 11, color: '#9A9A9A' }} numberOfLines={1}>
+                {new Date(r.effectiveDate).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: isNarrow ? '2-digit' : 'numeric' })}
               </Text>
-              <View style={{
-                paddingHorizontal: 8, paddingVertical: 2, borderRadius: 9999,
-                backgroundColor: r.source === 'tcmb' ? '#1F568914' : r.source === 'manual' ? accentColor + '14' : 'rgba(0,0,0,0.04)',
-              }}>
-                <Text style={{
-                  fontSize: 10, fontWeight: '600', letterSpacing: 0.3, textTransform: 'uppercase',
-                  color: r.source === 'tcmb' ? '#1F5689' : r.source === 'manual' ? accentColor : '#6B6B6B',
+              {!isNarrow && (
+                <View style={{
+                  paddingHorizontal: 8, paddingVertical: 2, borderRadius: 9999,
+                  backgroundColor: r.source === 'tcmb' ? '#1F568914' : r.source === 'manual' ? accentColor + '14' : 'rgba(0,0,0,0.04)',
                 }}>
-                  {r.source}
-                </Text>
-              </View>
+                  <Text style={{
+                    fontSize: 10, fontWeight: '600', letterSpacing: 0.3, textTransform: 'uppercase',
+                    color: r.source === 'tcmb' ? '#1F5689' : r.source === 'manual' ? accentColor : '#6B6B6B',
+                  }}>
+                    {r.source}
+                  </Text>
+                </View>
+              )}
             </View>
           ))
         )}
@@ -355,7 +392,7 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A' }: Props) {
       <Modal visible={basePickerOpen} transparent animationType="fade" onRequestClose={() => setBasePickerOpen(false)}>
         <Pressable
           onPress={() => setBasePickerOpen(false)}
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 20 }}
+          style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.42)', justifyContent: 'center', alignItems: 'center', padding: 20, ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}) }}
         >
           <Pressable onPress={() => {}} style={{ backgroundColor: '#FFFFFF', borderRadius: 18, padding: 8, width: 280, ...(Platform.OS === 'web' ? { boxShadow: '0 12px 32px rgba(0,0,0,0.16)' } as any : {}) }}>
             <Text style={{ fontSize: 11, fontWeight: '600', color: '#9A9A9A', letterSpacing: 1, textTransform: 'uppercase', paddingHorizontal: 14, paddingTop: 10, paddingBottom: 6 }}>
@@ -428,7 +465,7 @@ function RateEditModal({
     setError('');
     const r = parseFloat(rate.replace(',', '.'));
     if (!r || r <= 0) { setError('Geçerli bir kur değeri girin'); return; }
-    if (currency === baseCurrency) { setError('Base ile aynı para birimi seçilemez'); return; }
+    if (currency === baseCurrency) { setError('Ana para birimi ile aynı seçilemez'); return; }
     setSaving(true);
     const result = await upsertRate({
       labId, currency, baseCurrency, rate: r, effectiveDate: date,
@@ -443,7 +480,7 @@ function RateEditModal({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.42)', justifyContent: 'center', alignItems: 'center', padding: 20, ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}) }}>
         <View style={{
           backgroundColor: '#FFFFFF', borderRadius: 20, width: 420, maxWidth: '100%',
           ...(Platform.OS === 'web' ? { boxShadow: '0 16px 48px rgba(0,0,0,0.2)' } as any : {}),
@@ -558,10 +595,7 @@ function RateEditModal({
               disabled={saving}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 9999, backgroundColor: accentColor, opacity: saving ? 0.5 : 1, ...(Platform.OS === 'web' ? { cursor: saving ? 'wait' : 'pointer' } as any : {}) }}
             >
-              {saving
-                ? <ActivityIndicator size="small" color="#FFF" />
-                : <Check size={13} color="#FFF" strokeWidth={2} />
-              }
+              <Check size={13} color="#FFF" strokeWidth={2} />
               <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFF' }}>Kaydet</Text>
             </Pressable>
           </View>

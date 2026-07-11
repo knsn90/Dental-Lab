@@ -7,13 +7,16 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, Pressable,
-  ActivityIndicator, RefreshControl, TextInput, Platform,
+  RefreshControl, TextInput, Platform,
 } from 'react-native';
 import {
   Search, RefreshCw, PlusCircle, UserCheck, Trash2, ArrowLeftRight,
   Pencil, Info, XCircle,
 } from 'lucide-react-native';
 import { supabase } from '../../../core/api/supabase';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 // ── Types ───────────────────────────────────────────────────────────────
 type LogTab = 'all' | 'users' | 'doctors';
@@ -65,27 +68,28 @@ const CARD_SHADOW = Platform.select({
 
 // ── LogRow ──────────────────────────────────────────────────────────────
 function LogRow({ log, isLast }: { log: ActivityLog; isLast: boolean }) {
+  const T = useMobileTokens();
   const { Icon, color, bg } = actionIcon(log.action);
   const badge =
     log.actor_type === 'admin'  ? { label: 'Admin', bg: '#FEF3C7', text: '#92400E' } :
     log.actor_type === 'doctor' ? { label: 'Hekim', bg: '#DBEAFE', text: '#1D4ED8' } :
                                   { label: 'Lab',   bg: '#DCFCE7', text: '#166534' };
   return (
-    <View className={`flex-row gap-3 px-4 py-3 ${isLast ? '' : 'border-b border-black/[0.03]'}`}>
+    <View className="flex-row gap-3 px-4 py-3" style={!isLast ? { borderBottomWidth: 1, borderBottomColor: T.hairline2 } : undefined}>
       <View className="w-8 h-8 rounded-lg items-center justify-center" style={{ backgroundColor: bg }}>
         <Icon size={15} color={color} strokeWidth={1.8} />
       </View>
       <View className="flex-1">
         <View className="flex-row items-center gap-1.5 mb-0.5">
-          <Text className="text-[13px] font-bold text-ink-900" numberOfLines={1}>{log.actor_name}</Text>
+          <Text className="text-[13px] font-bold" style={{ color: T.ink }} numberOfLines={1}>{log.actor_name}</Text>
           <View className="px-1.5 py-0.5 rounded" style={{ backgroundColor: badge.bg }}>
             <Text className="text-[9px] font-bold" style={{ color: badge.text }}>{badge.label}</Text>
           </View>
-          <Text className="text-[11px] text-ink-300 ml-auto">{timeAgo(log.created_at)}</Text>
+          <Text className="text-[11px] ml-auto" style={{ color: T.ink3 }}>{timeAgo(log.created_at)}</Text>
         </View>
-        <Text className="text-[13px] text-ink-500">{log.action}</Text>
+        <Text className="text-[13px]" style={{ color: T.ink2 }}>{log.action}</Text>
         {log.entity_label ? (
-          <Text className="text-[11px] text-ink-300 mt-0.5">{log.entity_label}</Text>
+          <Text className="text-[11px] mt-0.5" style={{ color: T.ink3 }}>{log.entity_label}</Text>
         ) : null}
       </View>
     </View>
@@ -96,7 +100,9 @@ function LogRow({ log, isLast }: { log: ActivityLog; isLast: boolean }) {
 interface Props { accentColor?: string; }
 
 // ── Component ──────────────────────────────────────────────────────────
-export function LogsSection({ accentColor = '#EA7A4C' }: Props) {
+export function LogsSection({ accentColor = '#4771AB' }: Props) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [logs,     setLogs]     = useState<ActivityLog[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -157,7 +163,7 @@ export function LogsSection({ accentColor = '#EA7A4C' }: Props) {
           >
             <Text
               className="text-[12px] font-semibold"
-              style={{ color: tab === t.key ? accentColor : '#9A9A9A' }}
+              style={{ color: tab === t.key ? accentColor : T.ink3 }}
             >
               {t.label}
             </Text>
@@ -169,15 +175,13 @@ export function LogsSection({ accentColor = '#EA7A4C' }: Props) {
             className="w-8 h-8 rounded-lg items-center justify-center"
             style={{ backgroundColor: searchOpen ? `${accentColor}14` : 'transparent' }}
           >
-            <Search size={15} color={searchOpen ? accentColor : '#9A9A9A'} strokeWidth={1.8} />
+            <Search size={15} color={searchOpen ? accentColor : T.ink3} strokeWidth={1.8} />
           </Pressable>
           <Pressable
             onPress={() => loadLogs(true)}
             className="w-8 h-8 rounded-lg items-center justify-center"
           >
-            {refreshing
-              ? <ActivityIndicator size={14} color="#9A9A9A" />
-              : <RefreshCw size={15} color="#9A9A9A" strokeWidth={1.8} />}
+            <RefreshCw size={15} color={T.ink3} strokeWidth={1.8} />
           </Pressable>
         </View>
       </View>
@@ -185,20 +189,20 @@ export function LogsSection({ accentColor = '#EA7A4C' }: Props) {
       {/* Search bar */}
       {searchOpen && (
         <View className="px-7 pb-3">
-          <View className="flex-row items-center gap-2 border border-black/[0.06] rounded-xl bg-ink-50 px-3 h-10">
-            <Search size={14} color="#9A9A9A" strokeWidth={1.8} />
+          <View className="flex-row items-center gap-2 rounded-xl px-3 h-10" style={{ borderWidth: 1, borderColor: T.hairline, backgroundColor: T.cardSoft }}>
+            <Search size={14} color={T.ink3} strokeWidth={1.8} />
             <TextInput
-              className="flex-1 text-[13px] text-ink-900"
+              className="flex-1 text-[13px]"
               value={search} onChangeText={setSearch}
               placeholder="İsim, aksiyon veya kayıt ara..."
-              placeholderTextColor="#C0C0C8"
+              placeholderTextColor={T.ink3}
               autoFocus
               // @ts-ignore web
-              style={{ outlineWidth: 0 }}
+              style={{ outlineWidth: 0, color: T.ink }}
             />
             {search.length > 0 && (
               <Pressable onPress={() => { setSearch(''); setSearchOpen(false); }}>
-                <XCircle size={14} color="#C0C0C8" strokeWidth={1.8} />
+                <XCircle size={14} color={T.ink3} strokeWidth={1.8} />
               </Pressable>
             )}
           </View>
@@ -209,28 +213,28 @@ export function LogsSection({ accentColor = '#EA7A4C' }: Props) {
       {loading ? (
         <View className="flex-1 items-center justify-center gap-3 pt-20">
           <ActivityIndicator size="large" color={accentColor} />
-          <Text className="text-[13px] text-ink-300">Loglar yükleniyor…</Text>
+          <Text className="text-[13px]" style={{ color: T.ink3 }}>Loglar yükleniyor…</Text>
         </View>
       ) : (
         <ScrollView
           className="flex-1"
-          contentContainerStyle={{ paddingHorizontal: 28, paddingBottom: 40 }}
+          contentContainerStyle={{ paddingHorizontal: 28, paddingBottom: 120 }}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => loadLogs(true)} tintColor={accentColor} />}
         >
           {filtered.length === 0 ? (
             <View className="items-center pt-16 gap-3">
-              <Info size={40} color="#C0C0C8" strokeWidth={1.2} />
-              <Text className="text-[15px] font-semibold text-ink-700">Henüz log yok</Text>
-              <Text className="text-[13px] text-ink-300 text-center">
+              <Info size={40} color={T.ink3} strokeWidth={1.2} />
+              <Text className="text-[15px] font-semibold" style={{ color: T.ink2 }}>Henüz log yok</Text>
+              <Text className="text-[13px] text-center" style={{ color: T.ink3 }}>
                 {q ? `"${q}" ile eşleşen kayıt bulunamadı` : 'Eylemler gerçekleştikçe burada görünecek'}
               </Text>
             </View>
           ) : (
-            <View className="bg-white rounded-[24px] overflow-hidden" style={CARD_SHADOW}>
-              <View className="flex-row items-center px-4 py-2.5 border-b border-black/[0.03]" style={{ backgroundColor: '#FAFAF8' }}>
-                <Text className="text-[10px] font-bold tracking-wider uppercase text-ink-300">Aktivite</Text>
-                <Text className="text-[10px] font-bold tracking-wider uppercase text-ink-300 ml-auto">
+            <View className="rounded-[24px] overflow-hidden" style={[CARD_SHADOW, { backgroundColor: T.card }]}>
+              <View className="flex-row items-center px-4 py-2.5" style={{ backgroundColor: T.cardSoft, borderBottomWidth: 1, borderBottomColor: T.hairline2 }}>
+                <Text className="text-[10px] font-bold tracking-wider uppercase" style={{ color: T.ink3 }}>Aktivite</Text>
+                <Text className="text-[10px] font-bold tracking-wider uppercase ml-auto" style={{ color: T.ink3 }}>
                   {filtered.length} kayıt
                 </Text>
               </View>

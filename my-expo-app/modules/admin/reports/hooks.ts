@@ -120,7 +120,7 @@ export function useOverviewReport() {
     try {
       const { data, error } = await supabase
         .from('work_orders')
-        .select('id, order_number, doctor_id, work_type, status, delivery_date, created_at, doctor:doctor_id(full_name)')
+        .select('id, order_number, doctor_id, work_type, status, delivery_date, created_at, doctor:doctors(full_name)')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -151,7 +151,7 @@ export function useSalesReport() {
       const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
       const { data, error } = await supabase
         .from('work_orders')
-        .select('id, order_number, doctor_id, work_type, status, delivery_date, created_at, doctor:doctor_id(full_name)')
+        .select('id, order_number, doctor_id, work_type, status, delivery_date, created_at, doctor:doctors(full_name)')
         .gte('created_at', cutoff)
         .order('created_at', { ascending: false });
 
@@ -186,9 +186,10 @@ export function useOverdueReport() {
       const today = new Date().toISOString().split('T')[0];
       const { data, error } = await supabase
         .from('work_orders')
-        .select('id, order_number, doctor_id, work_type, status, delivery_date, created_at, doctor:doctor_id(full_name)')
+        .select('id, order_number, doctor_id, work_type, status, delivery_date, created_at, doctor:doctors(full_name)')
         .lt('delivery_date', today)
         .neq('status', 'teslim_edildi')
+        .neq('status', 'iptal')
         .order('delivery_date', { ascending: true });
 
       if (error) throw error;

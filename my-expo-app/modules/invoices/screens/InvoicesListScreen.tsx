@@ -8,7 +8,7 @@
 import React, { useMemo, useState, useContext } from 'react';
 import {
   View, Text, ScrollView, Pressable, RefreshControl,
-  TextInput, Modal, ActivityIndicator, useWindowDimensions,
+  TextInput, Modal, ActivityIndicator, useWindowDimensions, Platform,
 } from 'react-native';
 import {
   FileText, Search, X, ChevronRight, ChevronDown,
@@ -18,7 +18,9 @@ import {
   DollarSign, Users,
 } from 'lucide-react-native';
 import { toast } from '../../../core/ui/Toast';
-import { useRouter } from 'expo-router';
+import { useRouter, useSegments } from 'expo-router';
+import { CURRENCY_META, type Currency } from '../../../core/money/currency';
+import { type CurrencyTotal, groupByCurrency } from '../../../core/money/aggregations';
 
 import { HubContext } from '../../../core/ui/HubContext';
 import { DS } from '../../../core/theme/dsTokens';
@@ -74,16 +76,18 @@ const STATUS_FILTERS: { value: InvoiceStatus | 'all'; label: string }[] = [
 ];
 
 // ── Helpers ─────────────────────────────────────────────────────────
-function fmtMoney(n: number | string | null | undefined): string {
+function fmtMoney(n: number | string | null | undefined, currency = 'TRY'): string {
   const v = typeof n === 'string' ? Number(n) : (n ?? 0);
   if (!Number.isFinite(v)) return '—';
-  return '₺' + v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const sym = CURRENCY_META[currency as Currency]?.symbol ?? '₺';
+  return sym + v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function fmtShort(n: number): string {
-  if (Math.abs(n) >= 1_000_000) return '₺' + (n / 1_000_000).toFixed(1) + 'M';
-  if (Math.abs(n) >= 1_000)     return '₺' + (n / 1_000).toFixed(1) + 'K';
-  return fmtMoney(n);
+function fmtShort(n: number, currency = 'TRY'): string {
+  const sym = CURRENCY_META[currency as Currency]?.symbol ?? '₺';
+  if (Math.abs(n) >= 1_000_000) return sym + (n / 1_000_000).toFixed(1) + 'M';
+  if (Math.abs(n) >= 1_000)     return sym + (n / 1_000).toFixed(1) + 'K';
+  return fmtMoney(n, currency);
 }
 
 function fmtDate(iso: string | null | undefined): string {
@@ -97,6 +101,11 @@ function fmtDate(iso: string | null | undefined): string {
 // ═════════════════════════════════════════════════════════════════════
 export function InvoicesListScreen() {
   const router = useRouter();
+  // Aktif panel grubu — faturaya o panelin route'undan git (lab'a zorlama yok,
+  // panel teması korunur). Örn admin finans → /(admin)/invoice/...
+  const segments = useSegments();
+  const panelBase = String(segments?.[0] ?? '(lab)');
+  const invoiceHref = (id: string) => `/${panelBase}/invoice/${id}`;
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1024;
   const isEmbedded = useContext(HubContext);
@@ -139,7 +148,7 @@ export function InvoicesListScreen() {
     <View style={{ flex: 1 }}>
       {/* ── Header — standalone only ── */}
       {!isEmbedded && (
-        <View style={{ paddingHorizontal: 22, paddingTop: 18, paddingBottom: 6 }}>
+        <View style={{ paddingHorizontal: 22, paddingTop: 64, paddingBottom: 6 }}>
           <Text style={{ ...DISPLAY, fontSize: 24, letterSpacing: -0.5, color: DS.ink[900] }}>
             Faturalar
           </Text>
@@ -254,21 +263,26 @@ export function InvoicesListScreen() {
 
       {/* ── KPI Row ── */}
       {stats && (
-        <ScrollView
-          horizontal={!isDesktop}
-          showsHorizontalScrollIndicator={false}
-          scrollEnabled={!isDesktop}
-          contentContainerStyle={{
-            flexDirection: 'row', gap: 12,
-            paddingHorizontal: 22, paddingVertical: 8,
-            ...(isDesktop ? { width: '100%' } : {}),
-          }}
-        >
-          <KpiMini label="Bu Ay Kesilen" value={fmtShort(stats.thisMonthBilled)} icon={TrendingUp} color="#2563EB" flex={isDesktop} />
-          <KpiMini label="Toplam Bakiye" value={fmtShort(stats.outstandingBalance)} icon={Wallet} color={DS.ink[900]} flex={isDesktop} />
-          <KpiMini label="Vadesi Gecen" value={fmtShort(stats.overdueAmount)} icon={AlertCircle} color={CHIP_TONES.danger.text} flex={isDesktop} />
-          <KpiMini label="Tahsilat (30g)" value={fmtShort(stats.totalPaid)} icon={Banknote} color="#059669" flex={isDesktop} />
-        </ScrollView>
+        isDesktop ? (
+          // Desktop: düz satır — dikey ScrollView boş alanı doldurup boşluk yaratmasın
+          <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 22, paddingVertical: 8 }}>
+            <KpiMini label="Bu Ay Kesilen" slices={stats.thisMonth} icon={TrendingUp} color="#2563EB" flex />
+            <KpiMini label="Toplam Bakiye" slices={stats.outstanding} icon={Wallet} color={DS.ink[900]} flex />
+            <KpiMini label="Vadesi Gecen" slices={stats.overdue} icon={AlertCircle} color={CHIP_TONES.danger.text} flex />
+            <KpiMini label="Tahsilat (30g)" slices={stats.paid} icon={Banknote} color="#059669" flex />
+          </View>
+        ) : (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ flexDirection: 'row', gap: 12, paddingHorizontal: 22, paddingVertical: 8 }}
+          >
+            <KpiMini label="Bu Ay Kesilen" slices={stats.thisMonth} icon={TrendingUp} color="#2563EB" />
+            <KpiMini label="Toplam Bakiye" slices={stats.outstanding} icon={Wallet} color={DS.ink[900]} />
+            <KpiMini label="Vadesi Gecen" slices={stats.overdue} icon={AlertCircle} color={CHIP_TONES.danger.text} />
+            <KpiMini label="Tahsilat (30g)" slices={stats.paid} icon={Banknote} color="#059669" />
+          </ScrollView>
+        )
       )}
 
       {/* ── Search bar ── */}
@@ -337,14 +351,14 @@ export function InvoicesListScreen() {
             </View>
             {filtered.map((inv, i) => (
               <InvoiceRow key={inv.id} invoice={inv} isLast={i === filtered.length - 1}
-                onPress={() => router.push(`/(lab)/invoice/${inv.id}` as any)} />
+                onPress={() => router.push(invoiceHref(inv.id) as any)} />
             ))}
           </View>
         ) : (
           /* Mobile: card list */
           filtered.map(inv => (
             <InvoiceCard key={inv.id} invoice={inv}
-              onPress={() => router.push(`/(lab)/invoice/${inv.id}` as any)} />
+              onPress={() => router.push(invoiceHref(inv.id) as any)} />
           ))
         )}
       </ScrollView>
@@ -353,7 +367,7 @@ export function InvoicesListScreen() {
       <BulkInvoiceModal
         visible={bulkOpen}
         onClose={() => setBulkOpen(false)}
-        onCreated={(id) => { setBulkOpen(false); router.push(`/(lab)/invoice/${id}` as any); }}
+        onCreated={(id) => { setBulkOpen(false); router.push(invoiceHref(id) as any); }}
       />
       <BulkPaymentModal
         visible={bulkPayOpen}
@@ -397,8 +411,9 @@ function ActionBtn({ icon: Icon, label, color, onPress }: {
 }
 
 // ─── KPI Mini Card ──────────────────────────────────────────────────
-function KpiMini({ label, value, icon: Icon, color, flex }: {
-  label: string; value: string; icon: React.ComponentType<any>; color: string; flex?: boolean;
+// Katı per-currency KPI — tek döviz tek büyük rakam; çok döviz alt alta.
+function KpiMini({ label, slices, icon: Icon, color, flex }: {
+  label: string; slices: CurrencyTotal[]; icon: React.ComponentType<any>; color: string; flex?: boolean;
 }) {
   return (
     <View style={{
@@ -419,9 +434,21 @@ function KpiMini({ label, value, icon: Icon, color, flex }: {
       }}>
         {label}
       </Text>
-      <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.5, color: DS.ink[900] }}>
-        {value}
-      </Text>
+      {slices.length === 0 ? (
+        <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.5, color: DS.ink[400] }}>—</Text>
+      ) : slices.length === 1 ? (
+        <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.5, color: DS.ink[900] }}>
+          {fmtShort(slices[0].total, slices[0].currency)}
+        </Text>
+      ) : (
+        <View style={{ gap: 2 }}>
+          {slices.map(s => (
+            <Text key={s.currency} style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color: DS.ink[900] }}>
+              {fmtShort(s.total, s.currency)}
+            </Text>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
@@ -475,7 +502,7 @@ function InvoiceRow({ invoice, isLast, onPress }: {
         width: 110, textAlign: 'right',
         ...DISPLAY, fontSize: 15, letterSpacing: -0.3, color: DS.ink[900],
       }}>
-        {fmtMoney(invoice.total)}
+        {fmtMoney(invoice.total, invoice.currency)}
       </Text>
       <View style={{ width: 90, alignItems: 'center' }}>
         <View style={{
@@ -526,7 +553,7 @@ function InvoiceCard({ invoice, onPress }: { invoice: Invoice; onPress: () => vo
         </View>
         <View style={{ alignItems: 'flex-end', gap: 6 }}>
           <Text style={{ ...DISPLAY, fontSize: 17, letterSpacing: -0.3, color: isOverdue ? CHIP_TONES.danger.text : DS.ink[900] }}>
-            {fmtMoney(invoice.total)}
+            {fmtMoney(invoice.total, invoice.currency)}
           </Text>
           <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 9999, backgroundColor: chip.bg }}>
             <Text style={{ fontSize: 10, fontWeight: '600', color: chip.text }}>
@@ -563,7 +590,7 @@ function InvoiceCard({ invoice, onPress }: { invoice: Invoice; onPress: () => vo
                 fontSize: 11, fontWeight: '600',
                 color: isOverdue ? CHIP_TONES.danger.text : DS.ink[900],
               }}>
-                Kalan: {fmtMoney(balance)}
+                Kalan: {fmtMoney(balance, invoice.currency)}
               </Text>
             </>
           )}
@@ -690,8 +717,9 @@ function BulkInvoiceModal({
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={handleClose}>
       <View style={{
-        flex: 1, backgroundColor: 'rgba(0,0,0,0.4)',
+        flex: 1, backgroundColor: 'rgba(10,14,26,0.42)',
         justifyContent: 'center', alignItems: 'center', padding: 24,
+        ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}),
       }}>
         <View style={{
           backgroundColor: '#FFF', borderRadius: 24,
@@ -915,8 +943,9 @@ function BulkInvoiceModal({
       {/* Clinic picker inner modal */}
       <Modal visible={clinicPickerOpen} animationType="fade" transparent onRequestClose={() => setClinicPickerOpen(false)}>
         <View style={{
-          flex: 1, backgroundColor: 'rgba(0,0,0,0.4)',
+          flex: 1, backgroundColor: 'rgba(10,14,26,0.42)',
           justifyContent: 'center', alignItems: 'center', padding: 24,
+          ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}),
         }}>
           <View style={{
             backgroundColor: '#FFF', borderRadius: 24,
@@ -1062,11 +1091,20 @@ function BulkPaymentModal({
       return a.due_date < b.due_date ? -1 : 1;
     }), [invoices]);
 
+  const selectedInvoices = useMemo(() =>
+    sortedInvoices.filter(inv => selected.has(inv.id)), [sortedInvoices, selected]);
+  // Sayısal toplam — ödeme-input mekaniği için (akış korunur)
   const totalBalance = useMemo(() =>
-    sortedInvoices
-      .filter(inv => selected.has(inv.id))
-      .reduce((s, inv) => s + Number(inv.total) - Number(inv.paid_amount), 0),
-    [sortedInvoices, selected]);
+    selectedInvoices.reduce((s, inv) => s + Number(inv.total) - Number(inv.paid_amount), 0),
+    [selectedInvoices]);
+  // Katı per-currency: seçili faturalar para birimine göre BAĞIMSIZ (etiketlerde)
+  const totalBalanceByCcy = useMemo(() =>
+    groupByCurrency(selectedInvoices,
+      inv => ({ amount: Number(inv.total) - Number(inv.paid_amount), currency: ((inv as any).currency || 'TRY') as Currency })),
+    [selectedInvoices]);
+  const selectedTotalLabel = totalBalanceByCcy.length
+    ? totalBalanceByCcy.map(s => fmtMoney(s.total, s.currency)).join(' · ')
+    : fmtMoney(0);
 
   const toggleAll = () => {
     if (selected.size === sortedInvoices.length) setSelected(new Set());
@@ -1075,6 +1113,11 @@ function BulkPaymentModal({
 
   const handlePay = async () => {
     if (selected.size === 0) return;
+    // Katı per-currency: tek tutar birden fazla para birimine dağıtılamaz
+    if (totalBalanceByCcy.length > 1) {
+      toast.error('Seçilen faturalar farklı para birimlerinde. Toplu tahsilatı her para birimi için ayrı yapın.');
+      return;
+    }
     const amt = Number(amount.replace(',', '.'));
     if (!Number.isFinite(amt) || amt <= 0) {
       toast.error('Gecerli bir tutar girin.');
@@ -1098,8 +1141,9 @@ function BulkPaymentModal({
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
       <View style={{
-        flex: 1, backgroundColor: 'rgba(0,0,0,0.4)',
+        flex: 1, backgroundColor: 'rgba(10,14,26,0.42)',
         justifyContent: 'center', alignItems: 'center', padding: 24,
+        ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}),
       }}>
         <View style={{
           backgroundColor: '#FFF', borderRadius: 24,
@@ -1209,7 +1253,7 @@ function BulkPaymentModal({
                         ...DISPLAY, fontSize: 14, letterSpacing: -0.3,
                         color: overdue ? CHIP_TONES.danger.text : DS.ink[900],
                       }}>
-                        {fmtMoney(bal)}
+                        {fmtMoney(bal, (inv as any).currency || 'TRY')}
                       </Text>
                       {inv.due_date && (
                         <Text style={{
@@ -1251,7 +1295,7 @@ function BulkPaymentModal({
                     keyboardType="decimal-pad"
                   />
                   <Text style={{ fontSize: 10, color: DS.ink[400], marginTop: 4 }}>
-                    Secili toplam: {fmtMoney(totalBalance)}
+                    Secili toplam: {selectedTotalLabel}
                   </Text>
                 </View>
 
@@ -1322,7 +1366,7 @@ function BulkPaymentModal({
               <Text style={{ fontSize: 12, color: DS.ink[500] }}>{selected.size} fatura secili</Text>
               {totalBalance > 0 && (
                 <Text style={{ ...DISPLAY, fontSize: 16, letterSpacing: -0.3, color: DS.ink[900] }}>
-                  {fmtMoney(totalBalance)} toplam
+                  {selectedTotalLabel} toplam
                 </Text>
               )}
             </View>

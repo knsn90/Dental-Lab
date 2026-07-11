@@ -228,7 +228,7 @@ export function DeliveryDetailScreen() {
           <Row label="İş Türü"  value={wo?.work_type ?? '—'} />
           <Row label="Teslim"   value={wo?.delivery_date ? new Date(wo.delivery_date + 'T00:00:00').toLocaleDateString('tr-TR', { day: '2-digit', month: 'long' }) : '—'} />
           {wo?.doctor?.full_name  && <Row label="Hekim"   value={wo.doctor.full_name} />}
-          {wo?.doctor?.clinic_name && <Row label="Klinik" value={wo.doctor.clinic_name} />}
+          {wo?.doctor?.clinic?.name && <Row label="Klinik" value={wo.doctor.clinic.name} />}
         </View>
 
         {/* ── Kurye bilgisi ── */}

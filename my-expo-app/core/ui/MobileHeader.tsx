@@ -130,18 +130,9 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     overflow: 'hidden',
   },
-  // Solid white pill bg + soft shadow
+  // Pill bg + shadow kaldırıldı — sadece ikonlar (şeritsiz)
   pillSolid: {
-    backgroundColor: '#FFFFFF',
-    ...(Platform.OS === 'web'
-      ? ({ boxShadow: '0 4px 12px rgba(15,23,42,0.06)' } as any)
-      : {
-          shadowColor: '#000',
-          shadowOpacity: 0.06,
-          shadowRadius: 10,
-          shadowOffset: { width: 0, height: 3 },
-          elevation: 2,
-        }),
+    backgroundColor: 'transparent',
   },
 
   glassWeb: {

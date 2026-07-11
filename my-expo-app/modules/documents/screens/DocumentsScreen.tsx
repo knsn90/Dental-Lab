@@ -5,7 +5,9 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DS } from '../../../core/theme/dsTokens';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { DatePicker } from '../../../core/ui/DatePicker';
 import { HubContext } from '../../../core/ui/HubContext';
 import { useAuthStore } from '../../../core/store/authStore';
@@ -159,16 +161,21 @@ function DocTypeGrid({ selected, onChange }: { selected: DocType; onChange: (t: 
 
 // ─── Modal shared styles ────────────────────────────────────────────────────
 const modalOverlay = { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', alignItems: 'center' as const, justifyContent: 'center' as const, padding: 24 };
-const modalSheet = {
-  width: '100%' as any, maxWidth: 560, backgroundColor: '#fff', borderRadius: 24, overflow: 'hidden' as const,
-  // @ts-ignore web
-  boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
-};
-const modalHeader = { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, padding: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' };
-const modalBody = { padding: 20, maxHeight: 500 };
-const modalFooter = { flexDirection: 'row' as const, gap: 10, padding: 16, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' };
-const modalLabel = { fontSize: 10, fontWeight: '700' as const, color: DS.ink[500], marginBottom: 6, marginTop: 12, textTransform: 'uppercase' as const, letterSpacing: 0.5 };
-const modalInput = { borderWidth: 1, borderColor: DS.ink[200], borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, color: DS.ink[900], backgroundColor: '#FFFFFF' };
+function useModalStyles() {
+  const T = useMobileTokens();
+  return {
+    modalSheet: {
+      width: '100%' as any, maxWidth: 560, backgroundColor: T.card, borderRadius: 24, overflow: 'hidden' as const,
+      // @ts-ignore web
+      boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+    },
+    modalHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, padding: 20, borderBottomWidth: 1, borderBottomColor: T.hairline2 },
+    modalBody: { padding: 20, maxHeight: 500 },
+    modalFooter: { flexDirection: 'row' as const, gap: 10, padding: 16, borderTopWidth: 1, borderTopColor: T.hairline2 },
+    modalLabel: { fontSize: 10, fontWeight: '700' as const, color: T.ink3, marginBottom: 6, marginTop: 12, textTransform: 'uppercase' as const, letterSpacing: 0.5 },
+    modalInput: { borderWidth: 1, borderColor: T.hairline, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, color: T.ink, backgroundColor: T.cardSoft },
+  };
+}
 
 // ─── UploadModal ─────────────────────────────────────────────────────────────
 function UploadModal({
@@ -177,6 +184,8 @@ function UploadModal({
   visible: boolean; onClose: () => void; employeeId: string;
   labId: string; userId: string; onDone: () => void;
 }) {
+  const T = useMobileTokens();
+  const { modalSheet, modalHeader, modalBody, modalFooter, modalLabel, modalInput } = useModalStyles();
   const [docType, setDocType] = useState<DocType>('diger');
   const [title, setTitle]     = useState('');
   const [validFrom, setFrom]  = useState('');
@@ -223,9 +232,9 @@ function UploadModal({
       <View style={modalOverlay}>
         <View style={modalSheet}>
           <View style={modalHeader}>
-            <Text style={{ fontSize: 16, fontWeight: '700', color: DS.ink[900] }}>Belge Yükle</Text>
-            <Pressable onPress={onClose} style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', ...WEB_CURSOR } as any}>
-              <X size={18} color={DS.ink[400]} strokeWidth={1.8} />
+            <Text style={{ fontSize: 16, fontWeight: '700', color: T.ink }}>Belge Yükle</Text>
+            <Pressable onPress={onClose} style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: T.cardSoft, borderWidth: 1, borderColor: T.hairline, alignItems: 'center', justifyContent: 'center', ...WEB_CURSOR } as any}>
+              <X size={18} color={T.ink3} strokeWidth={1.8} />
             </Pressable>
           </View>
           <ScrollView style={modalBody} showsVerticalScrollIndicator={false}>
@@ -251,7 +260,7 @@ function UploadModal({
             <DocTypeGrid selected={docType} onChange={setDocType} />
 
             <Text style={[modalLabel, { marginTop: 16 }]}>Başlık *</Text>
-            <TextInput style={modalInput} value={title} onChangeText={setTitle} placeholder="Örn: TC Kimlik Ön Yüz" placeholderTextColor={DS.ink[400]} />
+            <TextInput style={modalInput} value={title} onChangeText={setTitle} placeholder="Örn: TC Kimlik Ön Yüz" placeholderTextColor={T.ink3} />
 
             <View style={{ flexDirection: 'row', gap: 12 }}>
               <View style={{ flex: 1 }}>
@@ -269,13 +278,13 @@ function UploadModal({
               style={[modalInput, { height: 72, textAlignVertical: 'top' }]}
               value={notes} onChangeText={setNotes}
               placeholder="İsteğe bağlı not" multiline
-              placeholderTextColor={DS.ink[400]}
+              placeholderTextColor={T.ink3}
             />
           </ScrollView>
 
           <View style={modalFooter}>
-            <Pressable style={{ flex: 1, padding: 14, borderRadius: 9999, borderWidth: 1, borderColor: DS.ink[200], alignItems: 'center', ...WEB_CURSOR } as any} onPress={onClose}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500] }}>İptal</Text>
+            <Pressable style={{ flex: 1, padding: 14, borderRadius: 9999, borderWidth: 1, borderColor: T.hairline, backgroundColor: T.card, alignItems: 'center', ...WEB_CURSOR } as any} onPress={onClose}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink2 }}>İptal</Text>
             </Pressable>
             <Pressable
               style={[{ flex: 1, padding: 14, borderRadius: 9999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: DS.ink[900], ...WEB_CURSOR }, (!file || !title.trim() || uploading) && { opacity: 0.5 }] as any}
@@ -299,6 +308,8 @@ function EditModal({
 }: {
   visible: boolean; doc: EmployeeDocument | null; onClose: () => void; onDone: () => void;
 }) {
+  const T = useMobileTokens();
+  const { modalSheet, modalHeader, modalBody, modalFooter, modalLabel, modalInput } = useModalStyles();
   const [title, setTitle]     = useState('');
   const [docType, setDocType] = useState<DocType>('diger');
   const [validFrom, setFrom]  = useState('');
@@ -324,14 +335,14 @@ function EditModal({
       <View style={modalOverlay}>
         <View style={modalSheet}>
           <View style={modalHeader}>
-            <Text style={{ fontSize: 16, fontWeight: '700', color: DS.ink[900] }}>Belgeyi Düzenle</Text>
-            <Pressable onPress={onClose} style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', ...WEB_CURSOR } as any}>
-              <X size={18} color={DS.ink[400]} strokeWidth={1.8} />
+            <Text style={{ fontSize: 16, fontWeight: '700', color: T.ink }}>Belgeyi Düzenle</Text>
+            <Pressable onPress={onClose} style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: T.cardSoft, borderWidth: 1, borderColor: T.hairline, alignItems: 'center', justifyContent: 'center', ...WEB_CURSOR } as any}>
+              <X size={18} color={T.ink3} strokeWidth={1.8} />
             </Pressable>
           </View>
           <ScrollView style={modalBody}>
             <Text style={modalLabel}>Başlık *</Text>
-            <TextInput style={modalInput} value={title} onChangeText={setTitle} placeholderTextColor={DS.ink[400]} />
+            <TextInput style={modalInput} value={title} onChangeText={setTitle} placeholderTextColor={T.ink3} />
             <Text style={[modalLabel, { marginTop: 16 }]}>Belge Türü</Text>
             <DocTypeGrid selected={docType} onChange={setDocType} />
             <View style={[{ flexDirection: 'row', gap: 12 }, { marginTop: 4 }]}>
@@ -345,11 +356,11 @@ function EditModal({
               </View>
             </View>
             <Text style={modalLabel}>Notlar</Text>
-            <TextInput style={[modalInput, { height: 72, textAlignVertical: 'top' }]} value={notes} onChangeText={setNotes} multiline placeholderTextColor={DS.ink[400]} />
+            <TextInput style={[modalInput, { height: 72, textAlignVertical: 'top' }]} value={notes} onChangeText={setNotes} multiline placeholderTextColor={T.ink3} />
           </ScrollView>
           <View style={modalFooter}>
-            <Pressable style={{ flex: 1, padding: 14, borderRadius: 9999, borderWidth: 1, borderColor: DS.ink[200], alignItems: 'center', ...WEB_CURSOR } as any} onPress={onClose}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500] }}>İptal</Text>
+            <Pressable style={{ flex: 1, padding: 14, borderRadius: 9999, borderWidth: 1, borderColor: T.hairline, backgroundColor: T.card, alignItems: 'center', ...WEB_CURSOR } as any} onPress={onClose}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink2 }}>İptal</Text>
             </Pressable>
             <Pressable
               style={[{ flex: 1, padding: 14, borderRadius: 9999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: DS.ink[900], ...WEB_CURSOR }, saving && { opacity: 0.5 }] as any}
@@ -418,7 +429,7 @@ function EmployeeList({
     <View style={{ flex: 1 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, margin: 10, backgroundColor: DS.ink[100], borderRadius: 12, paddingHorizontal: 10, height: 36 }}>
         <Search size={14} color={DS.ink[400]} strokeWidth={1.6} />
-        <TextInput style={{ flex: 1, fontSize: 13, color: DS.ink[900], padding: 0 }} placeholder="Çalışan ara..." value={search} onChangeText={setSearch} placeholderTextColor={DS.ink[400]} />
+        <TextInput style={{ flex: 1, fontSize: 13, color: DS.ink[900], padding: 0 }} placeholder="Personel ara..." value={search} onChangeText={setSearch} placeholderTextColor={DS.ink[400]} />
       </View>
       <ScrollView showsVerticalScrollIndicator={false}>
         {filtered.map(emp => {
@@ -438,7 +449,7 @@ function EmployeeList({
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[{ fontSize: 12, fontWeight: '600', color: DS.ink[900] }, sel && { fontWeight: '700' }]} numberOfLines={1}>{emp.full_name}</Text>
-                <Text style={{ fontSize: 10, color: DS.ink[500] }}>{emp.role ?? 'Çalışan'}</Text>
+                <Text style={{ fontSize: 10, color: DS.ink[500] }}>{emp.role ?? 'Personel'}</Text>
               </View>
               <View style={{ width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: count > 0 ? DS.ink[200] : DS.ink[100] }}>
                 <Text style={{ fontSize: 10, fontWeight: '700', color: DS.ink[500] }}>{count}</Text>
@@ -462,6 +473,11 @@ function DocumentsDetail({
   const [uploadOpen, setUpload] = useState(false);
   const [editDoc, setEditDoc]   = useState<EmployeeDocument | null>(null);
   const [filter, setFilter]     = useState<DocType | 'all'>('all');
+
+  const { width }     = useWindowDimensions();
+  const isDesktop     = width >= 900;
+  const isEmbedded    = useContext(HubContext);
+  const insets        = useSafeAreaInsets();
 
   const loadDocs = useCallback(async () => {
     setLoading(true);
@@ -507,10 +523,10 @@ function DocumentsDetail({
   return (
     <View style={{ flex: 1 }}>
       {/* Header */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 24, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: isEmbedded ? 0 : 24, paddingTop: isEmbedded ? 0 : 70, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
         <View>
           <Text style={{ ...DISPLAY, fontSize: 18, fontWeight: '700', color: DS.ink[900] }}>{employee.full_name}</Text>
-          <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 2 }}>{employee.role ?? 'Çalışan'}  ·  {docs.length} belge</Text>
+          <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 2 }}>{employee.role ?? 'Personel'}  ·  {docs.length} belge</Text>
         </View>
         <Pressable style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999, backgroundColor: DS.ink[900], ...WEB_CURSOR } as any} onPress={() => setUpload(true)}>
           <Upload size={14} color="#fff" strokeWidth={1.6} />
@@ -527,7 +543,7 @@ function DocumentsDetail({
       )}
 
       {/* Filter pills — pill-group */}
-      <View style={{ paddingHorizontal: 24, paddingVertical: 10 }}>
+      <View style={{ paddingHorizontal: isEmbedded ? 0 : 24, paddingVertical: 10 }}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <View style={{ flexDirection: 'row', gap: 6, backgroundColor: DS.ink[100], borderRadius: 9999, padding: 4 }}>
             {([['all', 'Tümü', docs.length]] as any[]).concat(
@@ -555,7 +571,7 @@ function DocumentsDetail({
       </View>
 
       {/* Document list */}
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: isEmbedded ? 0 : 24, paddingTop: isDesktop || isEmbedded ? 0 : insets.top + 56, paddingBottom: 120 }}>
         {loading && <ActivityIndicator color={DS.ink[400]} style={{ marginTop: 40 }} />}
         {!loading && filtered.length === 0 && (
           <View style={{ alignItems: 'center', paddingVertical: 60, gap: 10 }}>
@@ -599,7 +615,7 @@ function SelectEmployeePlaceholder() {
         <FolderOpen size={40} color={DS.ink[400]} strokeWidth={1.6} />
       </View>
       <Text style={{ ...DISPLAY, fontSize: 22, fontWeight: '700', color: DS.ink[900] }}>Personel Dosyaları</Text>
-      <Text style={{ fontSize: 13, color: DS.ink[500], textAlign: 'center', maxWidth: 360 }}>Sol taraftan bir çalışan seçerek belgelerini görüntüleyin veya yeni belge yükleyin.</Text>
+      <Text style={{ fontSize: 13, color: DS.ink[500], textAlign: 'center', maxWidth: 360 }}>Sol taraftan bir personel seçerek belgelerini görüntüleyin veya yeni belge yükleyin.</Text>
     </View>
   );
 }
@@ -615,6 +631,7 @@ export function DocumentsScreen(_props: DocumentsScreenProps = {}) {
   const { width }     = useWindowDimensions();
   const isDesktop     = width >= 900;
   const isEmbedded    = useContext(HubContext);
+  const insets        = useSafeAreaInsets();
   const { employees } = useEmployees();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);

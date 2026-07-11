@@ -128,7 +128,8 @@ export function ProfileB7Mobile({ profile, onSignOut }: Props) {
           </View>
         </View>
 
-        {/* ── Görünüm rolü chooser ─────────────────────────────── */}
+        {/* ── Görünüm rolü chooser — hekim panelinde gizli (kullanımı yok) ── */}
+        {profile?.user_type !== 'doctor' && (
         <View style={styles.section}>
           <View style={styles.sectionHead}>
             <Text style={styles.sectionEyebrow}>GÖRÜNÜM ROLÜ</Text>
@@ -174,6 +175,7 @@ export function ProfileB7Mobile({ profile, onSignOut }: Props) {
             })}
           </View>
         </View>
+        )}
 
         {/* ── Hızlı eylemler 2×2 ───────────────────────────────── */}
         <View style={styles.section}>

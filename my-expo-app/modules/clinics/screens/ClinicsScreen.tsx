@@ -1,13 +1,16 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  ActivityIndicator, Modal, TextInput,
+  Modal, TextInput,
   KeyboardAvoidingView, Platform, Alert, Pressable,
   RefreshControl, useWindowDimensions, Animated, Easing,
 } from 'react-native';
-import { Search, X, SlidersHorizontal, Plus, Building2, Users, UserPlus, List, ChevronRight, ChevronUp, ChevronDown, Edit2, Trash2, Phone, Mail, MapPin, RefreshCw, UserX, AlertCircle, Check, Percent, MinusCircle, Briefcase } from 'lucide-react-native';
+import { Search, X, SlidersHorizontal, Plus, Building2, Users, UserPlus, List, ChevronRight, ChevronUp, ChevronDown, Edit2, Trash2, Phone, Mail, MapPin, RefreshCw, UserX, AlertCircle, Check, Percent, MinusCircle, Briefcase, Stethoscope, Printer, Eye, EyeOff } from 'lucide-react-native';
+import { buildWorkOrderFormHtml } from '../../orders/buildWorkOrderFormHtml';
 import { useSegments } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { toast } from '../../../core/ui/Toast';
+import { MobilePageTitle } from '../../../core/ui/mobile/MobilePageTitle';
 import { AppSwitch } from '../../../core/ui/AppSwitch';
 import { supabase } from '../../../core/api/supabase';
 import { fetchClinics, createClinic, updateClinic, createDoctor, updateDoctor, fetchAllDoctors } from '../api';
@@ -15,7 +18,12 @@ import { ILLER, ILCELER } from '../data/turkey';
 import { AppIcon } from '../../../core/ui/AppIcon';
 import { DS } from '../../../core/theme/dsTokens';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { useColorThemeStore } from '../../../core/store/colorThemeStore';
+import { titleCaseTR as titleCaseTRShared } from '../../../core/utils/textCase';
+import { searchPlaces, getPlaceDetails, startPlaceSession, endPlaceSession, type PlaceSuggestion } from '../../auth/api/places';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
 
 // ── Design tokens ───────────────────────────────────────────────────
 const DISPLAY = {
@@ -47,6 +55,8 @@ type Clinic = {
   phone?: string | null; email?: string | null;
   address?: string | null; contact_person?: string | null;
   notes?: string | null; is_active: boolean;
+  billing_mode?: 'per_order' | 'monthly_bulk' | null;
+  default_payment_terms_days?: number | null;
 };
 type Doctor = {
   id: string; full_name: string;
@@ -57,10 +67,12 @@ type Doctor = {
 type ClinicForm = {
   name: string; category: ClinicCategory; phone: string; email: string;
   il: string; ilce: string; mahalle: string;
+  sokak: string; bina_no: string; posta_kodu: string;  // geocoding doğruluğu için
   contact_person: string; notes: string; is_active: boolean;
   vkn: string; tax_office: string;
-  // Opsiyonel: doldurulursa klinik yetkilisi sisteme login olabilir
   admin_email: string; admin_password: string;
+  billing_mode: 'per_order' | 'monthly_bulk';
+  default_payment_terms_days: string;  // input için string
 };
 type DoctorForm = {
   full_name: string; phone: string; specialty: string;
@@ -70,16 +82,48 @@ type DoctorForm = {
   email: string; password: string;
 };
 
-const EMPTY_CLINIC: ClinicForm = { name: '', category: 'klinik', phone: '', email: '', il: '', ilce: '', mahalle: '', contact_person: '', notes: '', is_active: true, vkn: '', tax_office: '', admin_email: '', admin_password: '' };
+const EMPTY_CLINIC: ClinicForm = {
+  name: '', category: 'klinik', phone: '', email: '',
+  il: '', ilce: '', mahalle: '', sokak: '', bina_no: '', posta_kodu: '',
+  contact_person: '', notes: '', is_active: true,
+  vkn: '', tax_office: '', admin_email: '', admin_password: '',
+  billing_mode: 'monthly_bulk', default_payment_terms_days: '30',
+};
 const EMPTY_DOCTOR: DoctorForm = { full_name: '', phone: '', specialty: '', notes: '', clinic_id: '', is_active: true, tckn: '', email: '', password: '' };
 
-function parseAddress(raw?: string | null): { il: string; ilce: string; mahalle: string } {
-  if (!raw) return { il: '', ilce: '', mahalle: '' };
+interface ParsedAddress {
+  il: string; ilce: string; mahalle: string;
+  sokak: string; bina_no: string; posta_kodu: string;
+}
+function parseAddress(raw?: string | null): ParsedAddress {
+  const empty: ParsedAddress = { il: '', ilce: '', mahalle: '', sokak: '', bina_no: '', posta_kodu: '' };
+  if (!raw) return empty;
   try {
     const p = JSON.parse(raw);
-    if (p && typeof p === 'object') return { il: p.il ?? '', ilce: p.ilce ?? '', mahalle: p.mahalle ?? '' };
+    if (p && typeof p === 'object') {
+      return {
+        il:         p.il ?? '',
+        ilce:       p.ilce ?? '',
+        mahalle:    p.mahalle ?? '',
+        sokak:      p.sokak ?? '',
+        bina_no:    p.bina_no ?? '',
+        posta_kodu: p.posta_kodu ?? '',
+      };
+    }
   } catch {}
-  return { il: '', ilce: '', mahalle: raw };
+  return { ...empty, mahalle: raw };
+}
+
+function formatAddress(a: ParsedAddress): string {
+  const street = [a.sokak, a.bina_no].filter(Boolean).join(' No: ').trim();
+  const parts = [
+    a.mahalle && `${a.mahalle}`,
+    street,
+    a.posta_kodu,
+    a.ilce,
+    a.il,
+  ].filter(Boolean);
+  return parts.join(', ');
 }
 
 const TAB_FILTERS = [
@@ -100,28 +144,44 @@ interface Props { accentColor?: string; }
 export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1024;
+  const insets = useSafeAreaInsets();
+  const isNarrow = width < 560;
   const segments = useSegments() as string[];
   const panelType = (segments?.[0] ?? '') === '(admin)' ? 'admin' : 'lab';
   const { getTheme } = useColorThemeStore();
   const accentColor = accentColorProp ?? getTheme(panelType).primary;
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
 
-  const [clinics, setClinics]   = useState<Clinic[]>([]);
-  const [doctors, setDoctors]   = useState<Doctor[]>([]);
-  const [loading, setLoading]   = useState(true);
+  // localStorage cache — 2. ziyarette anında render, arka planda taze veri.
+  const LS_CACHE_KEY = 'clinics_screen_cache_v1';
+  const loadLs = () => {
+    if (typeof window === 'undefined' || !window.localStorage) return null;
+    try { const r = window.localStorage.getItem(LS_CACHE_KEY); return r ? JSON.parse(r) : null; } catch { return null; }
+  };
+  const saveLs = (data: { clinics: Clinic[]; doctors: Doctor[]; discountMap: Record<string, number>; managers: any[] }) => {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    try { window.localStorage.setItem(LS_CACHE_KEY, JSON.stringify(data)); } catch { /* quota */ }
+  };
+  const initial = loadLs();
+
+  const [clinics, setClinics]   = useState<Clinic[]>(initial?.clinics ?? []);
+  const [doctors, setDoctors]   = useState<Doctor[]>(initial?.doctors ?? []);
+  const [loading, setLoading]   = useState(initial === null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [search,   setSearch]   = useState('');
 
   const [showClinicModal,   setShowClinicModal]   = useState(false);
   const [editingClinic,     setEditingClinic]     = useState<Clinic | null>(null);
   const [discountClinic,    setDiscountClinic]    = useState<Clinic | null>(null);
-  const [discountMap,       setDiscountMap]       = useState<Record<string, number>>({});
+  const [discountMap,       setDiscountMap]       = useState<Record<string, number>>(initial?.discountMap ?? {});
 
   const [showDoctorModal, setShowDoctorModal] = useState(false);
   const [editingDoctor,   setEditingDoctor]   = useState<Doctor | null>(null);
   const [defaultClinicId, setDefaultClinicId] = useState('');
 
   const [activeTab,       setActiveTab]       = useState<'all' | ClinicCategory | 'doctors' | 'managers'>('all');
-  const [managers,        setManagers]        = useState<any[]>([]);
+  const [managers,        setManagers]        = useState<any[]>(initial?.managers ?? []);
   const [searchOpen,      setSearchOpen]      = useState(false);
   const [categoryFilter,  setCategoryFilter]  = useState<ClinicCategory | 'all'>('all');
   const [statusFilter,    setStatusFilter]    = useState<'all' | 'active' | 'inactive'>('all');
@@ -135,30 +195,35 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
   }, []);
 
   // ── Data ──
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const loadData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     const [clinicsRes, doctorsRes, discountsRes, managersRes] = await Promise.all([
       fetchClinics(),
       fetchAllDoctors(), // doctors + profiles(user_type='doctor') birlesik
-      supabase.from('clinic_discounts').select('clinic_id, discount_percent'),
+      supabase.from('clinic_discounts').select('clinic_id, discount_rate'),
       supabase
         .from('profiles')
-        .select('id, full_name, phone, clinic_id, is_active, clinic:clinics(id, name)')
-        .eq('user_type', 'clinic_admin')
+        .select('id, full_name, phone, email, clinic_id, is_active, user_type, clinic:clinics(id, name)')
+        .in('user_type', ['clinic_admin', 'clinic_secretary'])
         .order('full_name'),
     ]);
-    if (!clinicsRes.error && clinicsRes.data) setClinics(clinicsRes.data as Clinic[]);
-    if (!doctorsRes.error && doctorsRes.data) setDoctors(doctorsRes.data as Doctor[]);
-    if (!managersRes.error && managersRes.data) setManagers(managersRes.data as any[]);
+    const cs = (!clinicsRes.error && clinicsRes.data) ? (clinicsRes.data as Clinic[]) : clinics;
+    const ds = (!doctorsRes.error && doctorsRes.data) ? (doctorsRes.data as Doctor[]) : doctors;
+    const ms = (!managersRes.error && managersRes.data) ? (managersRes.data as any[]) : managers;
+    let dm = discountMap;
     if (!discountsRes.error && discountsRes.data) {
-      const map: Record<string, number> = {};
-      (discountsRes.data as any[]).forEach(r => { map[r.clinic_id] = Number(r.discount_percent); });
-      setDiscountMap(map);
+      dm = {};
+      (discountsRes.data as any[]).forEach(r => { dm[r.clinic_id] = Number(r.discount_rate); });
     }
-    setLoading(false);
-  }, []);
+    setClinics(cs);
+    setDoctors(ds);
+    setManagers(ms);
+    setDiscountMap(dm);
+    saveLs({ clinics: cs, doctors: ds, discountMap: dm, managers: ms });
+    if (!silent) setLoading(false);
+  }, [clinics, doctors, managers, discountMap]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { loadData(initial !== null); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Handlers ──
   const toggleExpand = (id: string) =>
@@ -170,15 +235,70 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
     setClinics(prev => prev.map(c => c.id === clinic.id ? { ...c, is_active: val } : c));
   };
 
-  const handleDeleteClinic = (clinic: Clinic) => {
-    Alert.alert('Klinik Sil', `"${clinic.name}" kliniğini silmek istiyor musunuz?`, [
-      { text: 'İptal', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: async () => {
-        const { error } = await supabase.from('clinics').delete().eq('id', clinic.id);
-        if (!error) setClinics(prev => prev.filter(c => c.id !== clinic.id));
-        else toast.error('Klinik silinemedi.');
-      }},
-    ]);
+  const handlePrintClinicForm = async (clinic: Clinic) => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    // Lab letterhead
+    let lab: any = { name: 'Laboratuvar' };
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: prof } = await supabase.from('profiles').select('lab_id').eq('id', user.id).single();
+        const labId = (prof as any)?.lab_id;
+        if (labId) {
+          const { data } = await supabase
+            .from('labs')
+            .select('name, address, phone, logo_url')
+            .eq('id', labId)
+            .single();
+          if (data) {
+            lab = {
+              name: data.name ?? 'Laboratuvar',
+              logoUrl: (data as any).logo_url,
+              address: data.address,
+              phone: data.phone,
+            };
+          }
+        }
+      }
+    } catch { /* fallback */ }
+
+    const html = buildWorkOrderFormHtml({
+      clinic: { id: clinic.id, name: clinic.name, address: clinic.address, phone: clinic.phone },
+      lab,
+      copies: 2,
+    });
+    const w = window.open('', '_blank', 'width=900,height=1100');
+    if (!w) { toast.error('Pop-up engellendi.'); return; }
+    w.document.open(); w.document.write(html); w.document.close();
+  };
+
+  const handleDeleteClinic = async (clinic: Clinic) => {
+    // Web'de Alert.alert "destructive" butonu güvenilir çalışmıyor → window.confirm
+    const confirmed = Platform.OS === 'web'
+      ? (typeof window !== 'undefined' && window.confirm(`"${clinic.name}" kliniğini silmek istiyor musunuz?`))
+      : await new Promise<boolean>(resolve => {
+          Alert.alert('Klinik Sil', `"${clinic.name}" kliniğini silmek istiyor musunuz?`, [
+            { text: 'İptal', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Sil', style: 'destructive', onPress: () => resolve(true) },
+          ]);
+        });
+    if (!confirmed) return;
+
+    const { error } = await supabase.from('clinics').delete().eq('id', clinic.id);
+    if (!error) {
+      setClinics(prev => prev.filter(c => c.id !== clinic.id));
+      toast.success('Klinik silindi');
+      return;
+    }
+    // FK constraint hata mesajları — kullanıcıya net bilgi ver
+    const msg = error.message || '';
+    if (/foreign key|violates|referenced/i.test(msg)) {
+      toast.error('Bu kliniğe bağlı sipariş/hekim var. Önce onları silin veya pasife alın.');
+    } else if (/permission|denied|rls|policy/i.test(msg)) {
+      toast.error('Silme yetkiniz yok.');
+    } else {
+      toast.error('Klinik silinemedi: ' + msg);
+    }
   };
 
   const handleToggleDoctor = async (doctor: Doctor) => {
@@ -187,21 +307,38 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
     setDoctors(prev => prev.map(d => d.id === doctor.id ? { ...d, is_active: val } : d));
   };
 
-  const handleDeleteDoctor = (doctor: Doctor) => {
-    Alert.alert('Hekim Sil', `"${doctor.full_name}" adlı hekimi silmek istiyor musunuz?`, [
-      { text: 'İptal', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: async () => {
-        const { error } = await supabase.from('doctors').delete().eq('id', doctor.id);
-        if (!error) setDoctors(prev => prev.filter(d => d.id !== doctor.id));
-        else toast.error('Hekim silinemedi.');
-      }},
-    ]);
+  const handleDeleteDoctor = async (doctor: Doctor) => {
+    const confirmed = Platform.OS === 'web'
+      ? (typeof window !== 'undefined' && window.confirm(`"${doctor.full_name}" adlı hekimi silmek istiyor musunuz?`))
+      : await new Promise<boolean>(resolve => {
+          Alert.alert('Hekim Sil', `"${doctor.full_name}" adlı hekimi silmek istiyor musunuz?`, [
+            { text: 'İptal', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Sil', style: 'destructive', onPress: () => resolve(true) },
+          ]);
+        });
+    if (!confirmed) return;
+
+    const { error } = await supabase.from('doctors').delete().eq('id', doctor.id);
+    if (!error) {
+      setDoctors(prev => prev.filter(d => d.id !== doctor.id));
+      toast.success('Hekim silindi');
+      return;
+    }
+    const msg = error.message || '';
+    if (/foreign key|violates|referenced/i.test(msg)) {
+      toast.error('Bu hekime bağlı sipariş var. Önce siparişleri kontrol edin veya hekimi pasife alın.');
+    } else if (/permission|denied|rls|policy/i.test(msg)) {
+      toast.error('Silme yetkiniz yok.');
+    } else {
+      toast.error('Hekim silinemedi: ' + msg);
+    }
   };
 
   const openAddDoctor = (clinicId = '') => { setEditingDoctor(null); setDefaultClinicId(clinicId); setShowDoctorModal(true); };
   const openEditDoctor = (doctor: Doctor) => { setEditingDoctor(doctor); setDefaultClinicId(doctor.clinic_id ?? ''); setShowDoctorModal(true); };
 
   const getDoctorsByClinic = (clinicId: string) => doctors.filter(d => d.clinic_id === clinicId);
+  const getMembersByClinic = (clinicId: string) => managers.filter(m => m.clinic_id === clinicId);
   const unassigned = doctors.filter(d => !d.clinic_id);
 
   // ── Derived ──
@@ -242,92 +379,118 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
   // RENDER
   // ═══════════════════════════════════════════════════════════════════
   return (
-    <View className="flex-1">
+    <View className="flex-1" style={{ backgroundColor: T.bg }}>
 
-      {/* ── Filter Bar — Siparişler sayfasıyla aynı yapı ─────────── */}
-      <View className="px-4 pt-3 pb-2">
+      <MobilePageTitle title="Sağlık Kurumları" subtitle="Klinikler ve hekimler" />
+
+      {/* ── Filter Bar — 2 satır (tabs üstte, aksiyonlar altta) ─── */}
+      <View className="px-4 pb-2" style={{ paddingTop: isDesktop ? 12 : 4, gap: 10 }}>
+        {/* Row 1: Tabs — horizontal scroll; ScrollView dikey büyümesin */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ flexGrow: 0, flexShrink: 0 }}
+          contentContainerStyle={{ gap: 6, alignItems: 'center' }}
+        >
+          <View className="flex-row gap-0.5 p-0.5 bg-cream-panel rounded-full">
+            {TAB_FILTERS.map(f => {
+              const active = activeTab === f.key;
+              const count = tabCounts[f.key] ?? 0;
+              return (
+                <Pressable
+                  key={f.key}
+                  onPress={() => setActiveTab(f.key as any)}
+                  className={`flex-row items-center gap-1.5 px-3 py-1.5 rounded-full ${active ? 'bg-ink-900' : ''}`}
+                >
+                  <Text className={`text-[12px] font-semibold ${active ? 'text-white' : 'text-ink-500'}`}>
+                    {f.label}
+                  </Text>
+                  <Text className={`text-[10px] font-bold ${active ? 'text-white/60' : 'text-ink-400'}`}>
+                    {count}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </ScrollView>
+
+        {/* Row 2: Actions — Ara / Filtrele / Kurum (her zaman 36px, kompakt) */}
         <View className="flex-row items-center gap-2">
-          {/* Status tabs — pill strip */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            className="flex-1"
-            contentContainerStyle={{ gap: 6 }}
+          {/* Search — daima açık, sol-hizalı, sabit yükseklik */}
+          <View
+            style={{
+              flex: 1,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              height: 36,
+              paddingHorizontal: 12,
+              borderRadius: 9999,
+              backgroundColor: T.card,
+              borderWidth: 1,
+              borderColor: T.hairline,
+            }}
           >
-            <View className="flex-row gap-0.5 p-0.5 bg-cream-panel rounded-full">
-              {TAB_FILTERS.map(f => {
-                const active = activeTab === f.key;
-                const count = tabCounts[f.key] ?? 0;
-                return (
-                  <Pressable
-                    key={f.key}
-                    onPress={() => setActiveTab(f.key as any)}
-                    className={`flex-row items-center gap-1.5 px-3 py-1.5 rounded-full ${active ? 'bg-ink-900' : ''}`}
-                  >
-                    <Text className={`text-[12px] font-semibold ${active ? 'text-white' : 'text-ink-500'}`}>
-                      {f.label}
-                    </Text>
-                    <Text className={`text-[10px] font-bold ${active ? 'text-white/60' : 'text-ink-400'}`}>
-                      {count}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </ScrollView>
-
-          {/* Search */}
-          {searchOpen ? (
-            <View
-              className="flex-row items-center gap-2 rounded-full bg-white border border-black/[0.08] px-3 h-8"
-              style={{ minWidth: 200 }}
-            >
-              <Search size={13} color="#9A9A9A" strokeWidth={1.8} />
-              <TextInput
-                autoFocus
-                className="flex-1 text-[13px] text-ink-900"
-                style={{ height: 32, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) } as any}
-                value={search}
-                onChangeText={setSearch}
-                onBlur={() => { if (!search) setSearchOpen(false); }}
-                placeholder={activeTab === 'doctors' ? 'Hekim ara...' : activeTab === 'managers' ? 'Yönetici ara...' : 'Klinik ara...'}
-                placeholderTextColor="#9A9A9A"
-                returnKeyType="search"
-              />
-              <Pressable onPress={() => { setSearch(''); setSearchOpen(false); }} hitSlop={8}>
-                <X size={13} color="#9A9A9A" strokeWidth={1.8} />
+            <Search size={13} color={T.ink3} strokeWidth={1.8} />
+            <TextInput
+              style={{
+                flex: 1,
+                fontSize: 13,
+                color: T.ink,
+                ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
+              }}
+              value={search}
+              onChangeText={setSearch}
+              placeholder={activeTab === 'doctors' ? 'Hekim ara...' : activeTab === 'managers' ? 'Yönetici ara...' : 'Klinik ara...'}
+              placeholderTextColor={T.ink3}
+              returnKeyType="search"
+            />
+            {!!search && (
+              <Pressable onPress={() => setSearch('')} hitSlop={8}>
+                <X size={12} color={T.ink3} strokeWidth={1.8} />
               </Pressable>
-            </View>
-          ) : (
-            <Pressable
-              onPress={() => setSearchOpen(true)}
-              className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full bg-white border border-black/[0.06]"
-            >
-              <Search size={12} color="#9A9A9A" strokeWidth={1.8} />
-              <Text className="text-[12px] font-semibold text-ink-500">Ara</Text>
-            </Pressable>
-          )}
+            )}
+          </View>
 
-          {/* Filter */}
+          {/* Filter — 36px height */}
           {activeTab !== 'doctors' && (
             <Pressable
               onPress={openFilter}
-              className={`flex-row items-center gap-1.5 px-3 py-1.5 rounded-full border ${activeFilterCount > 0 ? 'bg-ink-100 border-ink-900' : 'bg-white border-black/[0.06]'}`}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 6,
+                height: 36, paddingHorizontal: 12, borderRadius: 9999,
+                borderWidth: 1,
+                borderColor: activeFilterCount > 0 ? T.ink : T.hairline,
+                backgroundColor: activeFilterCount > 0 ? T.cardSoft : T.card,
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              }}
             >
-              <SlidersHorizontal size={12} color={activeFilterCount > 0 ? '#0A0A0A' : '#9A9A9A'} strokeWidth={1.8} />
-              <Text className={`text-[12px] font-semibold ${activeFilterCount > 0 ? 'text-ink-900' : 'text-ink-500'}`}>
-                Filtrele{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
-              </Text>
+              <SlidersHorizontal size={13} color={activeFilterCount > 0 ? T.ink : T.ink2} strokeWidth={1.8} />
+              {!isNarrow && (
+                <Text style={{ fontSize: 12, fontWeight: '600', color: activeFilterCount > 0 ? T.ink : T.ink2 }}>
+                  Filtrele{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+                </Text>
+              )}
+              {isNarrow && activeFilterCount > 0 && (
+                <Text style={{ fontSize: 11, fontWeight: '700', color: T.ink }}>{activeFilterCount}</Text>
+              )}
             </Pressable>
           )}
 
-          {/* Add clinic */}
+          {/* Add clinic — 36px height */}
           <Pressable
             onPress={() => { setEditingClinic(null); setShowClinicModal(true); }}
-            className="flex-row items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-ink-900"
+            style={({ hovered }: any) => ({
+              flexDirection: 'row', alignItems: 'center', gap: 6,
+              height: 36, paddingHorizontal: 14, borderRadius: 9999,
+              backgroundColor: hovered ? '#1F2937' : '#0A0A0A',
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+            })}
           >
-            <Plus size={12} color="#FFFFFF" strokeWidth={2} />
-            <Text className="text-[12px] font-semibold text-white">Kurum</Text>
+            <Plus size={13} color="#FFFFFF" strokeWidth={2.2} />
+            <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>
+              {isNarrow ? '' : 'Kurum'}
+            </Text>
           </Pressable>
         </View>
       </View>
@@ -335,7 +498,7 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
       {/* ── Content ──────────────────────────────────────────────── */}
       <ScrollView
         className="flex-1"
-        contentContainerStyle={{ paddingHorizontal: isDesktop ? 16 : 12, paddingTop: 4, paddingBottom: 24 }}
+        contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 4, paddingBottom: isDesktop ? 24 : 120 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={loadData} tintColor="#0A0A0A" />}
         showsVerticalScrollIndicator={false}
       >
@@ -345,33 +508,41 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
             <Text className="text-[13px] text-ink-400 mt-3">Yükleniyor…</Text>
           </View>
         ) : (
-          <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: isDesktop ? 20 : 16, alignItems: 'flex-start' }}>
+          <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: isDesktop ? 20 : 16, alignItems: isDesktop ? 'flex-start' : 'stretch' }}>
 
             {/* ── Main Column ── */}
-            <View style={{ flex: 1, minWidth: 0, gap: 12 }}>
+            <View style={{ flex: isDesktop ? 1 : undefined, width: isDesktop ? undefined : '100%', minWidth: 0, gap: 12 }}>
 
-              {/* KPI strip */}
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+              {/* KPI strip — mobilde 2x2 grid, masaüstünde row */}
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: isDesktop ? 10 : 8 }}>
                 {CLINIC_CATEGORIES.map(cat => (
                   <Pressable
                     key={cat.value}
                     onPress={() => setActiveTab(cat.value)}
                     style={{
-                      ...CARD, flex: 1, minWidth: isDesktop ? 170 : 130, padding: 16,
-                      borderColor: activeTab === cat.value ? cat.color : 'rgba(0,0,0,0.05)',
+                      ...CARD,
+                      backgroundColor: T.card,
+                      flex: isDesktop ? 1 : undefined,
+                      width: isDesktop ? undefined : '48%',
+                      minWidth: isDesktop ? 170 : 0,
+                      padding: isDesktop ? 16 : 10,
+                      borderRadius: isDesktop ? 24 : 14,
+                      borderColor: activeTab === cat.value ? cat.color : T.hairline,
                       borderWidth: activeTab === cat.value ? 1.5 : 1,
                     }}
                   >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                      <View style={{ width: 26, height: 26, borderRadius: R.sm, backgroundColor: cat.bg, alignItems: 'center', justifyContent: 'center' }}>
-                        <AppIcon name={cat.icon as any} size={13} color={cat.color} />
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: isDesktop ? 10 : 4 }}>
+                      <View style={{ width: isDesktop ? 26 : 20, height: isDesktop ? 26 : 20, borderRadius: R.sm, backgroundColor: cat.bg, alignItems: 'center', justifyContent: 'center' }}>
+                        <AppIcon name={cat.icon as any} size={isDesktop ? 13 : 11} color={cat.color} />
                       </View>
-                      <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 0.6, textTransform: 'uppercase', color: DS.ink[500] }}>{cat.label}</Text>
+                      <Text style={{ fontSize: isDesktop ? 11 : 10, fontWeight: '500', letterSpacing: 0.5, textTransform: 'uppercase', color: T.ink3 }} numberOfLines={1}>{cat.label}</Text>
                     </View>
-                    <Text style={{ ...DISPLAY, fontSize: 28, letterSpacing: -0.6, color: DS.ink[900] }}>{categoryCounts[cat.value] ?? 0}</Text>
-                    <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 3 }}>
-                      {clinics.filter(c => (c.category ?? 'klinik') === cat.value && c.is_active).length} aktif
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+                      <Text style={{ ...DISPLAY, fontSize: isDesktop ? 28 : 20, letterSpacing: -0.4, color: T.ink }}>{categoryCounts[cat.value] ?? 0}</Text>
+                      <Text style={{ fontSize: 10, color: T.ink3 }}>
+                        / {clinics.filter(c => (c.category ?? 'klinik') === cat.value && c.is_active).length} aktif
+                      </Text>
+                    </View>
                   </Pressable>
                 ))}
               </View>
@@ -438,6 +609,7 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
                       key={clinic.id}
                       clinic={clinic}
                       doctors={getDoctorsByClinic(clinic.id)}
+                      members={getMembersByClinic(clinic.id)}
                       isExpanded={expanded.has(clinic.id)}
                       accentColor={accentColor}
                       discountPercent={discountMap[clinic.id] ?? null}
@@ -450,6 +622,7 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
                       onToggleDoctor={handleToggleDoctor}
                       onEditDoctor={openEditDoctor}
                       onDeleteDoctor={handleDeleteDoctor}
+                      onPrintForm={() => handlePrintClinicForm(clinic)}
                     />
                   ))}
 
@@ -759,48 +932,62 @@ function DoctorsTable({ doctors, clinics, search, accentColor, onAdd, onEdit, on
 }
 
 // ─── Clinic Card ─────────────────────────────────────────────────────
+interface ClinicMember {
+  id: string;
+  full_name: string;
+  phone?: string | null;
+  email?: string | null;
+  clinic_id?: string | null;
+  user_type: 'clinic_admin' | 'clinic_secretary';
+  is_active?: boolean;
+}
+
 function ClinicRow({
-  clinic, doctors, isExpanded, accentColor, discountPercent,
+  clinic, doctors, members = [], isExpanded, accentColor, discountPercent,
   onToggleExpand, onToggleClinic, onEditClinic, onDeleteClinic,
   onSetDiscount, onAddDoctor, onToggleDoctor, onEditDoctor, onDeleteDoctor,
+  onPrintForm,
 }: {
-  clinic: Clinic; doctors: Doctor[]; isExpanded: boolean; accentColor: string;
+  clinic: Clinic; doctors: Doctor[]; members?: ClinicMember[]; isExpanded: boolean; accentColor: string;
   discountPercent: number | null;
   onToggleExpand: () => void; onToggleClinic: () => void;
   onEditClinic: () => void; onDeleteClinic: () => void;
   onSetDiscount: () => void; onAddDoctor: () => void;
   onToggleDoctor: (d: Doctor) => void; onEditDoctor: (d: Doctor) => void; onDeleteDoctor: (d: Doctor) => void;
+  onPrintForm: () => void;
 }) {
   const cat = CLINIC_CATEGORIES.find(c => c.value === (clinic.category ?? 'klinik')) ?? CLINIC_CATEGORIES[0];
   const primaryDoctor = doctors[0];
   const extraDoctors  = Math.max(0, doctors.length - 1);
 
+  const { width: _vw } = useWindowDimensions();
+  const isNarrow = _vw < 560;
   return (
-    <View style={{ ...CARD, padding: 18, opacity: clinic.is_active ? 1 : 0.7 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+    <View style={{ ...CARD, padding: isNarrow ? 12 : 18, borderRadius: isNarrow ? 14 : R.xl, opacity: clinic.is_active ? 1 : 0.7 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: isNarrow ? 10 : 14 }}>
         {/* Icon */}
-        <View style={{ width: 48, height: 48, borderRadius: R.md, backgroundColor: clinic.is_active ? cat.bg : DS.ink[100], alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <AppIcon name={cat.icon as any} size={22} color={clinic.is_active ? cat.color : DS.ink[400]} />
+        <View style={{ width: isNarrow ? 36 : 48, height: isNarrow ? 36 : 48, borderRadius: R.md, backgroundColor: clinic.is_active ? cat.bg : DS.ink[100], alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <AppIcon name={cat.icon as any} size={isNarrow ? 16 : 22} color={clinic.is_active ? cat.color : DS.ink[400]} />
         </View>
 
         {/* Content */}
         <View style={{ flex: 1, minWidth: 0 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-            <View style={{ borderRadius: R.pill, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: clinic.is_active ? cat.bg : DS.ink[100] }}>
-              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.7, textTransform: 'uppercase', color: clinic.is_active ? cat.color : DS.ink[400] }}>{cat.label}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+            <View style={{ borderRadius: R.pill, paddingHorizontal: 7, paddingVertical: 1, backgroundColor: clinic.is_active ? cat.bg : DS.ink[100] }}>
+              <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: clinic.is_active ? cat.color : DS.ink[400] }}>{cat.label}</Text>
             </View>
             {!clinic.is_active && (
-              <View style={{ backgroundColor: 'rgba(217,75,75,0.12)', borderRadius: R.pill, paddingHorizontal: 6, paddingVertical: 2 }}>
+              <View style={{ backgroundColor: 'rgba(217,75,75,0.12)', borderRadius: R.pill, paddingHorizontal: 6, paddingVertical: 1 }}>
                 <Text style={{ fontSize: 9, fontWeight: '700', color: '#9C2E2E', letterSpacing: 0.5 }}>PASİF</Text>
               </View>
             )}
           </View>
-          <Text style={{ fontSize: 16, fontWeight: '700', color: DS.ink[900], letterSpacing: -0.2, lineHeight: 21 }} numberOfLines={1}>{clinic.name}</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 }}>
-            <Users size={12} color={DS.ink[400]} strokeWidth={1.8} />
-            <Text style={{ fontSize: 12, color: DS.ink[500], flex: 1 }} numberOfLines={1}>
+          <Text style={{ fontSize: isNarrow ? 14 : 16, fontWeight: '700', color: DS.ink[900], letterSpacing: -0.2, lineHeight: isNarrow ? 18 : 21 }} numberOfLines={1}>{clinic.name}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 }}>
+            <Users size={11} color={DS.ink[400]} strokeWidth={1.8} />
+            <Text style={{ fontSize: 11, color: DS.ink[500], flex: 1 }} numberOfLines={1}>
               {primaryDoctor
-                ? (extraDoctors > 0 ? `${primaryDoctor.full_name} · +${extraDoctors} hekim daha` : primaryDoctor.full_name)
+                ? (extraDoctors > 0 ? `${primaryDoctor.full_name} · +${extraDoctors}` : primaryDoctor.full_name)
                 : (clinic.contact_person || 'Henüz hekim eklenmemiş')}
             </Text>
           </View>
@@ -809,6 +996,13 @@ function ClinicRow({
         {/* Actions */}
         {clinic.is_active ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+            <Pressable
+              style={{ width: 32, height: 32, borderRadius: R.sm, alignItems: 'center', justifyContent: 'center' }}
+              onPress={onPrintForm}
+              accessibilityLabel="Klinik için iş emri formu yazdır"
+            >
+              <Printer size={14} color={DS.ink[500]} strokeWidth={1.8} />
+            </Pressable>
             <Pressable style={{ width: 32, height: 32, borderRadius: R.sm, alignItems: 'center', justifyContent: 'center' }} onPress={onEditClinic}>
               <Edit2 size={14} color={DS.ink[500]} strokeWidth={1.8} />
             </Pressable>
@@ -838,7 +1032,7 @@ function ClinicRow({
               {clinic.email && <InfoRow icon={<Mail size={12} color={DS.ink[400]} strokeWidth={1.8} />} text={clinic.email} />}
               {clinic.address && (() => {
                 const a = parseAddress(clinic.address);
-                const display = [a.mahalle, a.ilce, a.il].filter(Boolean).join(', ');
+                const display = formatAddress(a);
                 return <InfoRow icon={<MapPin size={12} color={DS.ink[400]} strokeWidth={1.8} />} text={display || clinic.address} />;
               })()}
             </View>
@@ -851,6 +1045,22 @@ function ClinicRow({
                 {doctors.map((d, i) => (
                   <DoctorRow key={d.id} doctor={d} isLast={i === doctors.length - 1} accentColor={accentColor}
                     onToggle={() => onToggleDoctor(d)} onEdit={() => onEditDoctor(d)} onDelete={() => onDeleteDoctor(d)} />
+                ))}
+              </View>
+            </View>
+          )}
+
+          {members.length > 0 && (
+            <View>
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 4, marginBottom: 8 }}>
+                <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500], textTransform: 'uppercase' }}>
+                  Yönetici & Sekreter
+                </Text>
+                <Text style={{ fontSize: 10, color: DS.ink[400] }}>{members.length} kişi</Text>
+              </View>
+              <View style={{ backgroundColor: DS.ink[50], borderRadius: R.md, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' }}>
+                {members.map((m, i) => (
+                  <ClinicMemberRow key={m.id} member={m} isLast={i === members.length - 1} />
                 ))}
               </View>
             </View>
@@ -903,6 +1113,39 @@ function DoctorRow({ doctor, isLast, accentColor, onToggle, onEdit, onDelete }: 
       <Pressable style={{ width: 28, height: 28, borderRadius: R.sm, alignItems: 'center', justifyContent: 'center' }} onPress={onDelete}>
         <Trash2 size={13} color="#9C2E2E" strokeWidth={1.8} />
       </Pressable>
+    </View>
+  );
+}
+
+// ─── Clinic Member Row (Yönetici / Sekreter) ─────────────────────────
+function ClinicMemberRow({ member, isLast }: { member: ClinicMember; isLast?: boolean }) {
+  const isAdmin = member.user_type === 'clinic_admin';
+  const accent  = isAdmin ? '#6BA888' : '#7C3AED';
+  const label   = isAdmin ? 'Yönetici' : 'Sekreter';
+  return (
+    <View style={{
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      paddingHorizontal: 16, paddingVertical: 11,
+      borderBottomWidth: isLast ? 0 : 1, borderBottomColor: 'rgba(0,0,0,0.04)',
+      opacity: member.is_active === false ? 0.55 : 1,
+    }}>
+      <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: `${accent}1A`, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <Text style={{ fontSize: 12, fontWeight: '700', color: accent }}>{(member.full_name || '?').charAt(0).toUpperCase()}</Text>
+      </View>
+      <View style={{ flex: 1, gap: 1 }}>
+        <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>{member.full_name}</Text>
+        {(member.email || member.phone) && (
+          <Text style={{ fontSize: 11, color: DS.ink[400] }} numberOfLines={1}>{[member.email, member.phone].filter(Boolean).join(' · ')}</Text>
+        )}
+      </View>
+      <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: `${accent}1A` }}>
+        <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.4, color: accent }}>{label.toUpperCase()}</Text>
+      </View>
+      {member.is_active === false && (
+        <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: 'rgba(0,0,0,0.06)' }}>
+          <Text style={{ fontSize: 9, color: DS.ink[500], fontWeight: '600' }}>PASİF</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -987,13 +1230,59 @@ function FilterPanel({ visible, activeFilterCount, draftCategory, draftStatus, o
 }
 
 // ─── Modal Field ─────────────────────────────────────────────────────
-function ModalField({ label, required, last, children }: { label: string; required?: boolean; last?: boolean; children: React.ReactNode }) {
+function ModalField({ label, required, last, hint, children }: { label: string; required?: boolean; last?: boolean; hint?: string; children: React.ReactNode }) {
+  const T = useMobileTokens();
   return (
     <View style={{ marginBottom: last ? 0 : 12 }}>
-      <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>
+      <Text style={{ fontSize: 11, fontWeight: '500', color: T.ink3, marginBottom: 7, letterSpacing: 0.5 }}>
         {required && <Text style={{ color: '#9C2E2E' }}>* </Text>}{label}
       </Text>
       {children}
+      {hint && (
+        <Text style={{ fontSize: 10.5, color: T.ink3, marginTop: 5, fontStyle: 'italic' }}>
+          {hint}
+        </Text>
+      )}
+    </View>
+  );
+}
+
+// ─── PasswordField — şifre input'u + göz ikonu (gizle/göster) ─────────
+function PasswordField({ value, onChange, placeholder, inputStyle }: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  inputStyle: any;
+}) {
+  const [visible, setVisible] = useState(false);
+  const T = useMobileTokens();
+  return (
+    <View style={{ position: 'relative' }}>
+      <TextInput
+        style={{ ...inputStyle, paddingRight: 42 }}
+        value={value}
+        onChangeText={onChange}
+        placeholder={placeholder}
+        placeholderTextColor={DS.ink[400]}
+        secureTextEntry={!visible}
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
+      <Pressable
+        onPress={() => setVisible(v => !v)}
+        style={{
+          position: 'absolute',
+          right: 6, top: 0, bottom: 0,
+          width: 36,
+          alignItems: 'center', justifyContent: 'center',
+          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+        }}
+        accessibilityLabel={visible ? 'Şifreyi gizle' : 'Şifreyi göster'}
+      >
+        {visible
+          ? <EyeOff size={16} color={T.ink3} strokeWidth={1.8} />
+          : <Eye size={16} color={T.ink3} strokeWidth={1.8} />}
+      </Pressable>
     </View>
   );
 }
@@ -1002,18 +1291,20 @@ function DropdownList({ items, selected, searchValue, onSearch, searchPlaceholde
   items: string[]; selected: string; searchValue: string; onSearch: (v: string) => void;
   searchPlaceholder: string; onSelect: (v: string) => void; accentColor: string;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
-    <View style={{ borderWidth: 1, borderColor: DS.ink[200], borderRadius: R.md, backgroundColor: DS.ink[50], marginTop: 4, overflow: 'hidden' }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
-        <Search size={14} color={DS.ink[400]} strokeWidth={1.8} />
-        <TextInput style={{ flex: 1, fontSize: 13, color: DS.ink[900], ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) } as any}
-          value={searchValue} onChangeText={onSearch} placeholder={searchPlaceholder} placeholderTextColor={DS.ink[400]} autoFocus />
+    <View style={{ borderWidth: 1, borderColor: T.hairline, borderRadius: R.md, backgroundColor: T.cardSoft, marginTop: 4, overflow: 'hidden' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: T.hairline }}>
+        <Search size={14} color={T.ink3} strokeWidth={1.8} />
+        <TextInput style={{ flex: 1, fontSize: 13, color: T.ink, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) } as any}
+          value={searchValue} onChangeText={onSearch} placeholder={searchPlaceholder} placeholderTextColor={T.ink3} autoFocus />
       </View>
       <ScrollView style={{ maxHeight: 180 }} nestedScrollEnabled keyboardShouldPersistTaps="always">
         {items.map((item, i) => (
-          <Pressable key={item} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: i < items.length - 1 ? 1 : 0, borderBottomColor: 'rgba(0,0,0,0.04)', backgroundColor: selected === item ? DS.ink[100] : 'transparent' }}
+          <Pressable key={item} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: i < items.length - 1 ? 1 : 0, borderBottomColor: T.hairline2, backgroundColor: selected === item ? (isDark ? 'rgba(255,255,255,0.06)' : DS.ink[100]) : 'transparent' }}
             onPress={() => onSelect(item)}>
-            <Text style={{ fontSize: 14, color: selected === item ? accentColor : DS.ink[900], fontWeight: selected === item ? '600' : '400' }}>{item}</Text>
+            <Text style={{ fontSize: 14, color: selected === item ? accentColor : T.ink, fontWeight: selected === item ? '600' : '400' }}>{item}</Text>
             {selected === item && <Check size={14} color={accentColor} strokeWidth={2} />}
           </Pressable>
         ))}
@@ -1022,21 +1313,74 @@ function DropdownList({ items, selected, searchValue, onSearch, searchPlaceholde
   );
 }
 
-// ─── Section Card (modal içi) ────────────────────────────────────────
+// ─── Section Card (modal içi) — transparent fill, ince stroke ile ayrılır ─
 function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
-    <View style={{ backgroundColor: '#FFFFFF', borderRadius: R.md, borderWidth: 1, borderColor: DS.ink[200], padding: 16, marginBottom: 12 }}>
-      {title ? <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900], marginBottom: 14 }}>{title}</Text> : null}
+    <View style={{
+      backgroundColor: 'transparent',
+      borderRadius: R.md,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.10)' : T.hairline,
+      padding: 16,
+      marginBottom: 12,
+    }}>
+      {title ? <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink, marginBottom: 14 }}>{title}</Text> : null}
       {children}
     </View>
   );
 }
 
+// titleCaseTR core/utils/textCase'den yeniden export edildi (DRY)
+const titleCaseTR = titleCaseTRShared;
+
+// ── Diş hekimliği uzmanlık alanları (TR) ─────────────────────────────
+const DENTAL_SPECIALTIES = [
+  'Genel Diş Hekimliği',
+  'Ortodonti',
+  'Ağız, Diş, Çene Cerrahisi',
+  'Endodonti',
+  'Periodontoloji',
+  'Pedodonti',
+  'Protetik Diş Tedavisi',
+  'Restoratif Diş Tedavisi',
+  'Oral Diagnoz & Radyoloji',
+  'İmplantoloji',
+  'Estetik Diş Hekimliği',
+  'Diğer',
+] as const;
+
+// ── Patterns §13 helpers ─────────────────────────────────────────────
+// HEX (#RRGGBB) → rgba(...) panel-aware tinting
+function tintHex(hex: string, alpha: number): string {
+  const m = hex.match(/^#([0-9a-f]{6})$/i);
+  if (!m) return `rgba(10,10,10,${alpha})`;
+  const r = parseInt(m[1].slice(0, 2), 16);
+  const g = parseInt(m[1].slice(2, 4), 16);
+  const b = parseInt(m[1].slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+const PATTERNS_CREAM = '#FBF9F4';
+
 // ─── Clinic Modal ────────────────────────────────────────────────────
-function ClinicModal({ visible, editingClinic, existingClinics, accentColor, onClose, onSuccess }: {
+export function ClinicModal({ visible, editingClinic, existingClinics, accentColor, onClose, onSuccess, onCreated }: {
   visible: boolean; editingClinic: Clinic | null; existingClinics: Clinic[];
   accentColor: string; onClose: () => void; onSuccess: () => void;
+  /** Yeni klinik eklendiğinde tetiklenir — caller eklenen klinik objesini alır */
+  onCreated?: (clinic: Clinic) => void;
 }) {
+  // Theme-aware tokens — override module-level static inputBase/CARD
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const inputBase = {
+    borderWidth: 1, borderColor: T.hairline, borderRadius: R.md,
+    paddingHorizontal: 14, paddingVertical: 11,
+    fontSize: 14, color: T.ink, backgroundColor: isDark ? T.card : '#FFFFFF',
+    ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
+  } as any;
+
   const [form, setForm] = useState<ClinicForm>(EMPTY_CLINIC);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -1045,7 +1389,89 @@ function ClinicModal({ visible, editingClinic, existingClinics, accentColor, onC
   const [ilOpen, setIlOpen] = useState(false);
   const [ilceSearch, setIlceSearch] = useState('');
   const [ilceOpen, setIlceOpen] = useState(false);
+  const [mahSearch, setMahSearch] = useState('');
+  const [mahOpen, setMahOpen] = useState(false);
+  // Sokak focused state — manuel düzenleme (otomatik öneri yok)
+  const [sokakFocused, setSokakFocused] = useState(false);
+  // Google Places autocomplete
+  const [gplaceResults, setGplaceResults] = useState<PlaceSuggestion[]>([]);
+  const [gplaceLoading, setGplaceLoading] = useState(false);
+  // DB-driven listeler (PTT mahalle veritabanı)
+  const [dbIller, setDbIller] = useState<string[]>([]);
+  const [dbIlceler, setDbIlceler] = useState<string[]>([]);
+  const [dbMahalleler, setDbMahalleler] = useState<Array<{ mahalle: string; posta_kodu: string | null }>>([]);
   const [hasAdminAccount, setHasAdminAccount] = useState(false);
+
+  // İl listesini bir kez yükle
+  useEffect(() => {
+    if (!visible) return;
+    (async () => {
+      const { data } = await supabase.rpc('get_iller');
+      if (Array.isArray(data)) setDbIller(data.map((r: any) => r.il).filter(Boolean));
+    })();
+  }, [visible]);
+
+  // İl değişince ilçeleri yükle
+  useEffect(() => {
+    if (!form.il) { setDbIlceler([]); return; }
+    (async () => {
+      const { data } = await supabase.rpc('get_ilceler', { p_il: form.il });
+      if (Array.isArray(data)) setDbIlceler(data.map((r: any) => r.ilce).filter(Boolean));
+    })();
+  }, [form.il]);
+
+  // İlçe değişince mahalleleri yükle
+  useEffect(() => {
+    if (!form.il || !form.ilce) { setDbMahalleler([]); return; }
+    (async () => {
+      const { data } = await supabase.rpc('get_mahalleler', { p_il: form.il, p_ilce: form.ilce });
+      if (Array.isArray(data)) setDbMahalleler(data.map((r: any) => ({ mahalle: r.mahalle, posta_kodu: r.posta_kodu })));
+    })();
+  }, [form.il, form.ilce]);
+
+  // ── Google Places autocomplete — kurum adı + adres ──
+  useEffect(() => {
+    const q = form.name.trim();
+    if (q.length < 3 || editingClinic) { setGplaceResults([]); return; }
+    let cancelled = false;
+    setGplaceLoading(true);
+    if (!cancelled) startPlaceSession();
+    const t = setTimeout(async () => {
+      try {
+        const res = await searchPlaces(q);
+        if (cancelled) return;
+        setGplaceResults(res);
+      } catch {
+        if (!cancelled) setGplaceResults([]);
+      } finally {
+        if (!cancelled) setGplaceLoading(false);
+      }
+    }, 350);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [form.name, editingClinic]);
+
+  // Google Place seç → details çek → form'a uygula
+  const applyGooglePlace = useCallback(async (suggestion: PlaceSuggestion) => {
+    setGplaceLoading(true);
+    try {
+      const d = await getPlaceDetails(suggestion.placeId);
+      if (!d) return;
+      setForm(prev => ({
+        ...prev,
+        name:       d.name || prev.name,
+        il:         d.il || prev.il,
+        ilce:       d.ilce || prev.ilce,
+        mahalle:    d.mahalle || prev.mahalle,
+        sokak:      d.sokak || prev.sokak,
+        posta_kodu: d.postaKodu || prev.posta_kodu,
+        phone:      d.phone || prev.phone,
+      }));
+      setGplaceResults([]);
+    } finally {
+      setGplaceLoading(false);
+      endPlaceSession();
+    }
+  }, []);
 
   // Bu klinige ait clinic_admin profili var mi?
   useEffect(() => {
@@ -1064,12 +1490,20 @@ function ClinicModal({ visible, editingClinic, existingClinics, accentColor, onC
   useEffect(() => {
     if (editingClinic) {
       const addr = parseAddress(editingClinic.address);
-      setForm({ name: editingClinic.name, category: editingClinic.category ?? 'klinik', phone: editingClinic.phone ?? '', email: editingClinic.email ?? '',
-        il: addr.il, ilce: addr.ilce, mahalle: addr.mahalle, contact_person: editingClinic.contact_person ?? '',
-        notes: editingClinic.notes ?? '', is_active: editingClinic.is_active, vkn: (editingClinic as any).vkn ?? '', tax_office: (editingClinic as any).tax_office ?? '',
-        admin_email: '', admin_password: '' });
+      setForm({
+        name: editingClinic.name, category: editingClinic.category ?? 'klinik',
+        phone: editingClinic.phone ?? '', email: editingClinic.email ?? '',
+        il: addr.il, ilce: addr.ilce, mahalle: addr.mahalle,
+        sokak: addr.sokak, bina_no: addr.bina_no, posta_kodu: addr.posta_kodu,
+        contact_person: editingClinic.contact_person ?? '',
+        notes: editingClinic.notes ?? '', is_active: editingClinic.is_active,
+        vkn: (editingClinic as any).vkn ?? '', tax_office: (editingClinic as any).tax_office ?? '',
+        admin_email: '', admin_password: '',
+        billing_mode: (editingClinic.billing_mode ?? 'monthly_bulk') as 'per_order' | 'monthly_bulk',
+        default_payment_terms_days: String(editingClinic.default_payment_terms_days ?? 30),
+      });
     } else { setForm(EMPTY_CLINIC); }
-    setError(''); setIlOpen(false); setIlceOpen(false); setIlSearch(''); setIlceSearch('');
+    setError(''); setIlOpen(false); setIlceOpen(false); setMahOpen(false); setIlSearch(''); setIlceSearch(''); setMahSearch('');
   }, [editingClinic, visible]);
 
   const set = (k: keyof ClinicForm, v: string | boolean) => setForm(prev => ({ ...prev, [k]: v }));
@@ -1080,9 +1514,13 @@ function ClinicModal({ visible, editingClinic, existingClinics, accentColor, onC
     if (isDuplicate) { setError('Bu isimde bir kurum zaten mevcut'); return; }
     if (!form.contact_person.trim()) { setError('İrtibat kişisi zorunludur'); return; }
     if (!form.phone.trim()) { setError('Telefon zorunludur'); return; }
+    if (!form.email.trim()) { setError('E-posta zorunludur'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) { setError('Geçerli bir e-posta girin'); return; }
     if (!form.il.trim()) { setError('İl zorunludur'); return; }
     if (!form.ilce.trim()) { setError('İlçe zorunludur'); return; }
-    if (!form.mahalle.trim()) { setError('Adres zorunludur'); return; }
+    if (!form.mahalle.trim()) { setError('Mahalle zorunludur'); return; }
+    if (!form.sokak.trim())   { setError('Cadde/Sokak zorunludur (geocoding doğruluğu için)'); return; }
+    if (!form.bina_no.trim()) { setError('Bina no zorunludur'); return; }
 
     // Klinik yetkilisi (admin) auth dogrulamasi — hem yeni kayit hem duzenlemede opsiyonel
     const adminEmailTrim = form.admin_email.trim();
@@ -1096,54 +1534,76 @@ function ClinicModal({ visible, editingClinic, existingClinics, accentColor, onC
     try {
       const vknTrim = form.vkn.trim();
       if (vknTrim && ![10, 11].includes(vknTrim.length)) { setError('VKN 10 hane, TCKN 11 hane olmalıdır'); return; }
-      const payload = { name: form.name.trim(), category: form.category, phone: form.phone.trim(),
-        email: form.email.trim() || null, address: JSON.stringify({ il: form.il.trim(), ilce: form.ilce.trim(), mahalle: form.mahalle.trim() }),
-        contact_person: form.contact_person.trim(), notes: form.notes.trim() || null, is_active: form.is_active, vkn: vknTrim || null, tax_office: form.tax_office.trim() || null };
+      // İrtibat kişisi adı: Title-case + boşluk temizliği (TR locale)
+      const cleanedContact = titleCaseTR(form.contact_person);
+      const payload = { name: form.name.trim().replace(/\s+/g, ' '), category: form.category, phone: form.phone.trim(),
+        email: form.email.trim() || null,
+        address: JSON.stringify({
+          il:         form.il.trim(),
+          ilce:       form.ilce.trim(),
+          mahalle:    form.mahalle.trim(),
+          sokak:      form.sokak.trim(),
+          bina_no:    form.bina_no.trim(),
+          posta_kodu: form.posta_kodu.trim(),
+        }),
+        contact_person: cleanedContact, notes: form.notes.trim() || null, is_active: form.is_active, vkn: vknTrim || null, tax_office: form.tax_office.trim() || null,
+        billing_mode: form.billing_mode,
+        default_payment_terms_days: parseInt(form.default_payment_terms_days, 10) || 30,
+      };
 
       // 1) Klinik kaydet
       const clinicRes = editingClinic
         ? await updateClinic(editingClinic.id, payload as any)
         : await createClinic(payload as any);
       if (clinicRes.error) { setError(clinicRes.error.message ?? 'Bir hata oluştu'); return; }
+      // Yeni klinik oluşturulduğunda caller'a haber ver
+      if (!editingClinic && clinicRes.data && onCreated) {
+        onCreated(clinicRes.data as Clinic);
+      }
 
       // 2) Yetkili auth user (opsiyonel — hem yeni hem duzenleme)
+      //    Service-role edge function ile oluşturulur:
+      //      • email_confirm=true → kullanıcı doğrulama maili beklemeden giriş yapabilir
+      //      • Admin'in mevcut session'ı bozulmaz (supabase.auth.signUp aksine)
+      //      • Profile clinic_id + role='clinic_admin' ile doğru kurulur
       if (wantsAdminAuth) {
         const clinicId = (clinicRes.data as any)?.id ?? editingClinic?.id ?? null;
-        const signUpRes = await supabase.auth.signUp({
-          email: adminEmailTrim,
-          password: form.admin_password,
-          options: {
-            data: {
-              user_type: 'clinic_admin',
-              full_name: payload.contact_person,
-              clinic_name: payload.name,
-              clinic_id: clinicId,
-              phone: payload.phone,
-              // role: profiles.role CHECK ('technician'|'manager') — clinic_admin icin NULL
-              approval_status: 'approved',
-            },
+        const { data: fnData, error: fnErr } = await supabase.functions.invoke('admin-create-user', {
+          body: {
+            email: adminEmailTrim,
+            password: form.admin_password,
+            full_name: payload.contact_person,
+            user_type: 'clinic_admin',
+            clinic_name: payload.name,
+            clinic_id: clinicId,
+            phone: payload.phone,
           },
         });
-        if (signUpRes.error) {
-          setError(`Klinik oluşturuldu, ancak yetkili kaydı başarısız: ${signUpRes.error.message}`);
+        if (fnErr || (fnData as any)?.error) {
+          const rawMsg = (fnData as any)?.error ?? fnErr?.message ?? 'Bilinmeyen hata';
+          // Bilinen hataları kullanıcı dostu mesaja çevir
+          const friendly =
+            /already (been )?registered|user already exists|email.*exists/i.test(rawMsg)
+              ? 'Bu e-posta zaten kullanılıyor. Farklı bir e-posta deneyin.'
+            : /password.*(short|weak)|en az 6/i.test(rawMsg)
+              ? 'Şifre çok zayıf — en az 6 karakter olmalı.'
+            : rawMsg;
+          const fullMsg = `Yetkili kaydı başarısız: ${friendly}`;
+          setError(fullMsg);
+          toast.error(fullMsg);
+          console.warn('[ClinicModal] admin-create-user error:', { rawMsg, fnErr, fnData });
           return;
         }
-        if (signUpRes.data.user?.id) {
-          await supabase.from('profiles')
-            .update({
-              full_name: payload.contact_person,
-              phone: payload.phone,
-              approval_status: 'approved',
-              is_active: true,
-              clinic_id: clinicId,
-              clinic_name: payload.name,
-            })
-            .eq('id', signUpRes.data.user.id);
-        }
+        toast.success('Klinik yetkilisi oluşturuldu ✓');
       }
 
       onSuccess();
-    } catch (e: any) { setError(e.message ?? 'Bir hata oluştu'); }
+    } catch (e: any) {
+      const msg = e.message ?? 'Bir hata oluştu';
+      setError(msg);
+      toast.error(msg);
+      console.warn('[ClinicModal] handleSave error:', e);
+    }
     finally { setSaving(false); }
   };
 
@@ -1151,33 +1611,86 @@ function ClinicModal({ visible, editingClinic, existingClinics, accentColor, onC
   const otherclinics = existingClinics.filter(c => c.id !== editingClinic?.id);
   const suggestions = nameQ.length >= 1 ? otherclinics.filter(c => c.name.toLowerCase().includes(nameQ)) : [];
   const isDuplicate = nameQ.length > 0 && otherclinics.some(c => c.name.toLowerCase() === nameQ);
-  const ilResults = ILLER.filter(il => il.toLowerCase().includes(ilSearch.toLowerCase()));
-  const ilceResults = (form.il ? (ILCELER[form.il] ?? []) : []).filter(d => d.toLowerCase().includes(ilceSearch.toLowerCase()));
-  const selectIl = (il: string) => { set('il', il); set('ilce', ''); set('mahalle', ''); setIlOpen(false); setIlSearch(''); };
-  const selectIlce = (ilce: string) => { set('ilce', ilce); setIlceOpen(false); setIlceSearch(''); };
+  // DB öncelikli, boşsa statik listeye fallback
+  const ilSource = dbIller.length ? dbIller : ILLER;
+  const ilResults = ilSource.filter(il => il.toLowerCase().includes(ilSearch.toLowerCase()));
+  const ilceSource = dbIlceler.length ? dbIlceler : (form.il ? (ILCELER[form.il] ?? []) : []);
+  const ilceResults = ilceSource.filter(d => d.toLowerCase().includes(ilceSearch.toLowerCase()));
+  const mahResults = dbMahalleler.filter(m => m.mahalle.toLowerCase().includes(mahSearch.toLowerCase()));
+  const selectIl = (il: string) => { set('il', il); set('ilce', ''); set('mahalle', ''); set('posta_kodu', ''); setIlOpen(false); setIlSearch(''); };
+  const selectIlce = (ilce: string) => { set('ilce', ilce); set('mahalle', ''); set('posta_kodu', ''); setIlceOpen(false); setIlceSearch(''); };
+  const selectMahalle = (mah: string) => {
+    set('mahalle', mah);
+    const hit = dbMahalleler.find(m => m.mahalle === mah);
+    if (hit?.posta_kodu) set('posta_kodu', hit.posta_kodu);
+    setMahOpen(false); setMahSearch('');
+  };
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: 'rgba(10,10,10,0.3)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
-        <View style={{ backgroundColor: '#FFFFFF', borderRadius: R.xl, width: '100%', maxWidth: 520, maxHeight: '92%', overflow: 'hidden' }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 22, paddingBottom: 18, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
-            <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>{editingClinic ? 'Kurumu düzenle' : 'Yeni kurum ekle'}</Text>
-            <Pressable onPress={onClose} style={{ width: 32, height: 32, borderRadius: R.sm, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center' }}>
-              <X size={16} color={DS.ink[500]} strokeWidth={1.8} />
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: 'rgba(20,15,10,0.55)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+        <View style={{
+          backgroundColor: T.card, borderRadius: 24, width: '100%', maxWidth: 560, maxHeight: '94%', overflow: 'hidden',
+          ...(Platform.OS === 'web' ? { boxShadow: isDark ? '0 24px 64px rgba(0,0,0,0.6)' : '0 24px 64px rgba(0,0,0,0.22)' } as any : {}),
+        }}>
+          {/* ═════ HEADER (Patterns §13) ═════ */}
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingHorizontal: 28, paddingTop: 24, paddingBottom: 18, gap: 16 }}>
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+              <View style={{
+                width: 44, height: 44, borderRadius: 14,
+                alignItems: 'center', justifyContent: 'center',
+                backgroundColor: tintHex(accentColor, 0.12),
+                borderWidth: 1, borderColor: tintHex(accentColor, 0.20),
+              }}>
+                <Building2 size={20} color={accentColor} strokeWidth={1.7} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: accentColor, letterSpacing: 1.2, textTransform: 'uppercase' }}>
+                  Sağlık Kurumu
+                </Text>
+                <Text style={{ ...DISPLAY, fontSize: 26, letterSpacing: -0.6, color: T.ink, lineHeight: 32, marginTop: 2 }}>
+                  {editingClinic ? 'Kurumu düzenle' : 'Yeni kurum ekle'}
+                </Text>
+                <Text style={{ fontSize: 12, color: T.ink3, marginTop: 4, lineHeight: 17 }}>
+                  Kurum bilgileri, adres ve yetkili girişi.
+                </Text>
+              </View>
+            </View>
+            <Pressable
+              onPress={onClose}
+              style={{
+                width: 36, height: 36, borderRadius: 12,
+                alignItems: 'center', justifyContent: 'center',
+                backgroundColor: T.cardSoft,
+                borderWidth: 1, borderColor: T.hairline,
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              }}
+            >
+              <X size={15} color={DS.ink[500]} strokeWidth={1.8} />
             </Pressable>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20 }} keyboardShouldPersistTaps="handled">
+          <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.04)', marginHorizontal: 28 }} />
+
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}>
             {/* Kategori */}
             <SectionCard title="Kategori">
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 {CLINIC_CATEGORIES.map(cat => {
                   const active = form.category === cat.value;
                   return (
-                    <Pressable key={cat.value} style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, paddingVertical: 10, borderRadius: R.sm, borderWidth: 1.5, borderColor: active ? cat.color : DS.ink[200], backgroundColor: active ? cat.bg : 'transparent', flex: 1, minWidth: '44%' as any }}
+                    <Pressable key={cat.value} style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 7,
+                      paddingHorizontal: 14, paddingVertical: 10,
+                      borderRadius: R.sm, borderWidth: 1.5,
+                      // Aktif state'i sadece stroke rengi gösterir; bg her zaman transparent (kart dark/açık kalır)
+                      borderColor: active ? cat.color : (isDark ? 'rgba(255,255,255,0.10)' : T.hairline),
+                      backgroundColor: 'transparent',
+                      flex: 1, minWidth: '44%' as any,
+                    }}
                       onPress={() => set('category', cat.value)}>
-                      <AppIcon name={cat.icon as any} size={16} color={active ? cat.color : DS.ink[400]} />
-                      <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: active ? cat.color : DS.ink[400] }}>{cat.label}</Text>
+                      <AppIcon name={cat.icon as any} size={16} color={active ? cat.color : T.ink3} />
+                      <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: active ? cat.color : T.ink2 }}>{cat.label}</Text>
                       {active && <Check size={12} color={cat.color} strokeWidth={2} />}
                     </Pressable>
                   );
@@ -1215,29 +1728,100 @@ function ClinicModal({ visible, editingClinic, existingClinics, accentColor, onC
                     })}
                   </View>
                 )}
+
+                {/* ── Google Places autocomplete (öncelikli) — adres + telefon otomatik doldur ── */}
+                {nameFocused && !isDuplicate && (gplaceResults.length > 0 || gplaceLoading) && (
+                  <View style={{ borderWidth: 1, borderColor: DS.ink[200], borderRadius: R.sm, backgroundColor: '#FFFFFF', marginTop: 4, overflow: 'hidden' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: '#F8FAFC', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' }}>
+                      <MapPin size={11} color="#1A73E8" strokeWidth={1.8} />
+                      <Text style={{ flex: 1, fontSize: 10, fontWeight: '700', color: '#1A73E8', letterSpacing: 0.6, textTransform: 'uppercase' }}>
+                        Google Sonuçları
+                      </Text>
+                      {gplaceLoading && (
+                        <Text style={{ fontSize: 9, color: DS.ink[400], fontStyle: 'italic' }}>aranıyor…</Text>
+                      )}
+                    </View>
+                    {gplaceResults.slice(0, 6).map((g, i) => (
+                      <Pressable
+                        key={g.placeId}
+                        style={({ hovered }: any) => ({
+                          paddingHorizontal: 12, paddingVertical: 10,
+                          borderBottomWidth: i < Math.min(gplaceResults.length, 6) - 1 ? 1 : 0,
+                          borderBottomColor: 'rgba(0,0,0,0.04)',
+                          backgroundColor: hovered ? '#F1F5F9' : 'transparent',
+                        })}
+                        onPress={() => { applyGooglePlace(g); setNameFocused(false); }}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <View style={{ width: 22, height: 22, borderRadius: 6, backgroundColor: '#E8F0FE', alignItems: 'center', justifyContent: 'center' }}>
+                            <MapPin size={11} color="#1A73E8" strokeWidth={2} />
+                          </View>
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text style={{ fontSize: 12.5, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+                              {g.mainText}
+                            </Text>
+                            {g.secondaryText ? (
+                              <Text style={{ fontSize: 10.5, color: DS.ink[500], marginTop: 1 }} numberOfLines={1}>
+                                {g.secondaryText}
+                              </Text>
+                            ) : null}
+                          </View>
+                          <Text style={{ fontSize: 9, fontWeight: '700', color: '#1A73E8', backgroundColor: '#E8F0FE', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
+                            GOOGLE
+                          </Text>
+                        </View>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
+
               </ModalField>
               <ModalField label="İrtibat Kişisi" required><TextInput style={inputBase} value={form.contact_person} onChangeText={v => set('contact_person', v)} placeholder="Örn: Mehmet Bey" placeholderTextColor={DS.ink[400]} /></ModalField>
               <ModalField label="Telefon" required><TextInput style={inputBase} value={form.phone} onChangeText={v => set('phone', v)} placeholder="0555 000 00 00" placeholderTextColor={DS.ink[400]} keyboardType="phone-pad" /></ModalField>
-              <ModalField label="E-posta" last><TextInput style={inputBase} value={form.email} onChangeText={v => set('email', v)} placeholder="info@klinik.com" placeholderTextColor={DS.ink[400]} keyboardType="email-address" autoCapitalize="none" /></ModalField>
+              <ModalField label="E-posta" required last><TextInput style={inputBase} value={form.email} onChangeText={v => set('email', v)} placeholder="info@klinik.com" placeholderTextColor={DS.ink[400]} keyboardType="email-address" autoCapitalize="none" /></ModalField>
             </SectionCard>
 
             {/* Adres */}
             <SectionCard title="Adres">
               <ModalField label="İl" required>
                 <Pressable style={{ ...inputBase, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }} onPress={() => { setIlOpen(v => !v); setIlceOpen(false); }}>
-                  <Text style={{ fontSize: 14, color: form.il ? DS.ink[900] : DS.ink[400], flex: 1 }}>{form.il || 'Seçiniz'}</Text>
-                  {ilOpen ? <ChevronUp size={14} color={DS.ink[400]} strokeWidth={1.8} /> : <ChevronDown size={14} color={DS.ink[400]} strokeWidth={1.8} />}
+                  <Text style={{ fontSize: 14, color: form.il ? T.ink : T.ink3, flex: 1 }}>{form.il || 'Seçiniz'}</Text>
+                  {ilOpen ? <ChevronUp size={14} color={T.ink3} strokeWidth={1.8} /> : <ChevronDown size={14} color={T.ink3} strokeWidth={1.8} />}
                 </Pressable>
                 {ilOpen && <DropdownList items={ilResults} selected={form.il} searchValue={ilSearch} onSearch={setIlSearch} searchPlaceholder="İl ara..." onSelect={selectIl} accentColor={accentColor} />}
               </ModalField>
               <ModalField label="İlçe" required>
                 <Pressable style={{ ...inputBase, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', opacity: form.il ? 1 : 0.4 }} onPress={() => { if (!form.il) return; setIlceOpen(v => !v); setIlOpen(false); }}>
-                  <Text style={{ fontSize: 14, color: form.ilce ? DS.ink[900] : DS.ink[400], flex: 1 }}>{form.ilce || (form.il ? 'Seçiniz' : 'Önce il seçin')}</Text>
-                  {ilceOpen ? <ChevronUp size={14} color={DS.ink[400]} strokeWidth={1.8} /> : <ChevronDown size={14} color={DS.ink[400]} strokeWidth={1.8} />}
+                  <Text style={{ fontSize: 14, color: form.ilce ? T.ink : T.ink3, flex: 1 }}>{form.ilce || (form.il ? 'Seçiniz' : 'Önce il seçin')}</Text>
+                  {ilceOpen ? <ChevronUp size={14} color={T.ink3} strokeWidth={1.8} /> : <ChevronDown size={14} color={T.ink3} strokeWidth={1.8} />}
                 </Pressable>
                 {ilceOpen && <DropdownList items={ilceResults} selected={form.ilce} searchValue={ilceSearch} onSearch={setIlceSearch} searchPlaceholder="İlçe ara..." onSelect={selectIlce} accentColor={accentColor} />}
               </ModalField>
-              <ModalField label="Adres" required last><TextInput style={inputBase} value={form.mahalle} onChangeText={v => set('mahalle', v)} placeholder="Örn: Moda Mahallesi" placeholderTextColor={DS.ink[400]} autoCapitalize="words" /></ModalField>
+              <ModalField label="Mahalle" required hint={dbMahalleler.length ? `${dbMahalleler.length} mahalle bulundu — listeden seç` : 'Önce il ve ilçe seçin'}>
+                <Pressable style={{ ...inputBase, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', opacity: form.ilce ? 1 : 0.4 }} onPress={() => { if (!form.ilce) return; setMahOpen(v => !v); setIlOpen(false); setIlceOpen(false); }}>
+                  <Text style={{ fontSize: 14, color: form.mahalle ? T.ink : T.ink3, flex: 1 }}>{form.mahalle || (form.ilce ? 'Mahalle seçiniz' : 'Önce ilçe seçin')}</Text>
+                  {mahOpen ? <ChevronUp size={14} color={T.ink3} strokeWidth={1.8} /> : <ChevronDown size={14} color={T.ink3} strokeWidth={1.8} />}
+                </Pressable>
+                {mahOpen && <DropdownList items={mahResults.map(m => m.mahalle)} selected={form.mahalle} searchValue={mahSearch} onSearch={setMahSearch} searchPlaceholder="Mahalle ara..." onSelect={selectMahalle} accentColor={accentColor} />}
+              </ModalField>
+              <ModalField label="Cadde / Sokak" required hint="Kurum adından otomatik dolar — manuel düzenleyebilirsin">
+                <TextInput
+                  style={inputBase}
+                  value={form.sokak}
+                  onChangeText={v => set('sokak', v)}
+                  onFocus={() => setSokakFocused(true)}
+                  onBlur={() => setTimeout(() => setSokakFocused(false), 200)}
+                  placeholder="Örn: Vatan Caddesi"
+                  placeholderTextColor={DS.ink[400]}
+                  autoCapitalize="words"
+                />
+              </ModalField>
+              <ModalField label="Bina No" required>
+                <TextInput style={inputBase} value={form.bina_no} onChangeText={v => set('bina_no', v)} placeholder="Örn: 21 veya 21/3" placeholderTextColor={DS.ink[400]} />
+              </ModalField>
+              <ModalField label="Posta Kodu" last hint="Mahalle seçildiğinde otomatik dolar — değiştirebilirsin">
+                <TextInput style={inputBase} value={form.posta_kodu} onChangeText={v => set('posta_kodu', v.replace(/[^0-9]/g, ''))} placeholder="Örn: 34758" placeholderTextColor={DS.ink[400]} keyboardType="number-pad" maxLength={5} />
+              </ModalField>
             </SectionCard>
 
             {/* e-Fatura */}
@@ -1266,10 +1850,55 @@ function ClinicModal({ visible, editingClinic, existingClinics, accentColor, onC
                     <TextInput style={inputBase} value={form.admin_email} onChangeText={v => set('admin_email', v)} placeholder="ornek@email.com" placeholderTextColor={DS.ink[400]} keyboardType="email-address" autoCapitalize="none" />
                   </ModalField>
                   <ModalField label="Şifre" last>
-                    <TextInput style={inputBase} value={form.admin_password} onChangeText={v => set('admin_password', v)} placeholder="En az 6 karakter" placeholderTextColor={DS.ink[400]} secureTextEntry />
+                    <PasswordField
+                      value={form.admin_password}
+                      onChange={v => set('admin_password', v)}
+                      placeholder="En az 6 karakter"
+                      inputStyle={inputBase}
+                    />
                   </ModalField>
                 </>
               )}
+            </SectionCard>
+
+            {/* Faturalama */}
+            <SectionCard title="Faturalama">
+              <ModalField label="Fatura Modu">
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  {([
+                    { v: 'monthly_bulk', l: 'Aylık Toplu', d: 'Ay sonu tüm teslimler tek fatura' },
+                    { v: 'per_order',    l: 'Her Teslimat', d: 'Her sipariş için ayrı fatura' },
+                  ] as const).map(opt => {
+                    const active = form.billing_mode === opt.v;
+                    return (
+                      <Pressable
+                        key={opt.v}
+                        onPress={() => set('billing_mode', opt.v as any)}
+                        style={{
+                          flex: 1, padding: 10, borderRadius: 12,
+                          borderWidth: 1.5,
+                          borderColor: active ? accentColor : 'rgba(0,0,0,0.10)',
+                          backgroundColor: active ? `${accentColor}10` : '#FFFFFF',
+                          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                        }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: active ? accentColor : DS.ink[800] }}>{opt.l}</Text>
+                        <Text style={{ fontSize: 10, color: DS.ink[500], marginTop: 2 }}>{opt.d}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </ModalField>
+              <ModalField label="Vade (gün)" last>
+                <TextInput
+                  style={inputBase}
+                  value={form.default_payment_terms_days}
+                  onChangeText={v => set('default_payment_terms_days', v.replace(/[^0-9]/g, ''))}
+                  placeholder="30"
+                  placeholderTextColor={DS.ink[400]}
+                  keyboardType="numeric"
+                />
+              </ModalField>
             </SectionCard>
 
             {/* Notlar */}
@@ -1286,20 +1915,62 @@ function ClinicModal({ visible, editingClinic, existingClinics, accentColor, onC
               </View>
             </SectionCard>
 
-            {error ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(217,75,75,0.12)', borderRadius: R.sm, padding: 12 }}>
-                <AlertCircle size={13} color="#9C2E2E" strokeWidth={1.8} />
-                <Text style={{ fontSize: 13, color: '#9C2E2E', flex: 1 }}>{error}</Text>
-              </View>
-            ) : null}
           </ScrollView>
 
-          <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 24, paddingVertical: 16, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
-            <Pressable style={{ flex: 1, paddingVertical: 10, borderRadius: R.pill, borderWidth: 1, borderColor: DS.ink[200], alignItems: 'center' }} onPress={onClose}>
-              <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[500] }}>İptal</Text>
+          {/* Hata bandı — footer'ın hemen üstünde sticky, scroll dışında her zaman görünür */}
+          {error ? (
+            <View style={{
+              flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+              marginHorizontal: 20, marginBottom: 8,
+              backgroundColor: 'rgba(217,75,75,0.12)',
+              borderWidth: 1, borderColor: 'rgba(217,75,75,0.25)',
+              borderRadius: R.sm, padding: 12,
+            }}>
+              <AlertCircle size={14} color="#9C2E2E" strokeWidth={2} />
+              <Text style={{ fontSize: 13, color: '#9C2E2E', flex: 1, lineHeight: 18 }}>{error}</Text>
+              <Pressable onPress={() => setError('')} hitSlop={8} style={Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}}>
+                <X size={14} color="#9C2E2E" strokeWidth={2} />
+              </Pressable>
+            </View>
+          ) : null}
+
+          {/* ═════ FOOTER (cream Patterns §13) ═════ */}
+          <View style={{
+            flexDirection: 'row', alignItems: 'center', gap: 10,
+            paddingHorizontal: 28, paddingVertical: 16,
+            borderTopWidth: 1, borderTopColor: T.hairline,
+            backgroundColor: isDark ? T.cardSoft : PATTERNS_CREAM,
+          }}>
+            <View style={{ flex: 1 }} />
+            <Pressable
+              onPress={onClose}
+              style={{
+                paddingHorizontal: 18, paddingVertical: 10, borderRadius: 9999,
+                backgroundColor: T.card,
+                borderWidth: 1, borderColor: T.hairline,
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[700] }}>İptal</Text>
             </Pressable>
-            <Pressable style={{ flex: 2, paddingVertical: 10, borderRadius: R.pill, backgroundColor: DS.ink[900], alignItems: 'center', opacity: saving ? 0.6 : 1 }} onPress={handleSave} disabled={saving}>
-              {saving ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={{ fontSize: 14, fontWeight: '600', color: '#FFFFFF' }}>{editingClinic ? 'Güncelle' : 'Ekle'}</Text>}
+            <Pressable
+              onPress={handleSave}
+              disabled={saving}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 7,
+                paddingHorizontal: 22, paddingVertical: 11, borderRadius: 9999,
+                backgroundColor: accentColor,
+                opacity: saving ? 0.5 : 1,
+                ...(Platform.OS === 'web' ? {
+                  cursor: saving ? 'wait' : 'pointer',
+                  boxShadow: !saving ? `0 8px 24px ${tintHex(accentColor, 0.45)}` : 'none',
+                } as any : {}),
+              }}
+            >
+              <Check size={14} color="#FFF" strokeWidth={2.4} />
+              <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFF', letterSpacing: 0.2 }}>
+                {saving ? 'Kaydediliyor…' : (editingClinic ? 'Güncelle' : 'Kurumu ekle')}
+              </Text>
             </Pressable>
           </View>
         </View>
@@ -1309,16 +1980,31 @@ function ClinicModal({ visible, editingClinic, existingClinics, accentColor, onC
 }
 
 // ─── Doctor Modal ────────────────────────────────────────────────────
-function DoctorModal({ visible, editingDoctor, clinics, defaultClinicId, accentColor, onClose, onSuccess }: {
+export function DoctorModal({ visible, editingDoctor, clinics, defaultClinicId, accentColor, onClose, onSuccess, onCreated }: {
   visible: boolean; editingDoctor: Doctor | null; clinics: Clinic[];
   defaultClinicId: string; accentColor: string; onClose: () => void; onSuccess: () => void;
+  /** Yeni hekim oluşturulduğunda tetiklenir — caller eklenen doctor objesini alır */
+  onCreated?: (doctor: Doctor) => void;
 }) {
+  // Theme-aware tokens — local inputBase shadows the module-level static one
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const inputBase = {
+    borderWidth: 1, borderColor: T.hairline, borderRadius: R.md,
+    paddingHorizontal: 14, paddingVertical: 11,
+    fontSize: 14, color: T.ink, backgroundColor: isDark ? T.card : '#FFFFFF',
+    ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
+  } as any;
+
   const [form, setForm] = useState<DoctorForm>(EMPTY_DOCTOR);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   // Bu hekimin sisteme kayitli auth hesabi var mi?
   const [hasAuthAccount, setHasAuthAccount] = useState(false);
   const [authEmail, setAuthEmail] = useState<string | null>(null);
+  // Uzmanlık dropdown state
+  const [specialtyOpen, setSpecialtyOpen] = useState(false);
+  const [specialtySearch, setSpecialtySearch] = useState('');
 
   // Edit modunda full_name eslesen profil var mi diye bak
   useEffect(() => {
@@ -1363,12 +2049,22 @@ function DoctorModal({ visible, editingDoctor, clinics, defaultClinicId, accentC
 
     setSaving(true);
     try {
-      const payload = { full_name: form.full_name.trim(), phone: form.phone.trim() || null, specialty: form.specialty.trim() || null,
+      // 1) Title-case + boşluk temizliği (TR locale)
+      const cleanedName = titleCaseTR(form.full_name);
+      // 2) "Dr." önekini otomatik ekle — kullanıcı zaten unvan yazmadıysa
+      const PREFIX_RE = /^(Dr\.?|Dt\.?|Prof\.?|Doç\.?|Opr\.?|Uzm\.?)\s/i;
+      const finalName = PREFIX_RE.test(cleanedName) ? cleanedName : `Dr. ${cleanedName}`;
+
+      const payload = { full_name: finalName, phone: form.phone.trim() || null, specialty: form.specialty.trim() || null,
         notes: form.notes.trim() || null, clinic_id: form.clinic_id || null, is_active: form.is_active, tckn: tcknTrim || null };
 
       // 1) doctors tablosunu olustur/guncelle
       const docRes = editingDoctor ? await updateDoctor(editingDoctor.id, payload) : await createDoctor(payload);
       if (docRes.error) { setError(docRes.error.message ?? 'Bir hata oluştu'); return; }
+      // Yeni hekim oluşturulduğunda caller'a haber ver
+      if (!editingDoctor && docRes.data && onCreated) {
+        onCreated(docRes.data as Doctor);
+      }
 
       // 2) Auth user istendiyse signUp dene (mevcut kullanici varsa "User already registered" hatasi gelir)
       if (wantsAuth) {
@@ -1411,18 +2107,87 @@ function DoctorModal({ visible, editingDoctor, clinics, defaultClinicId, accentC
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: 'rgba(10,10,10,0.3)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
-        <View style={{ backgroundColor: '#FFFFFF', borderRadius: R.xl, width: '100%', maxWidth: 460, maxHeight: '90%', overflow: 'hidden' }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingTop: 22, paddingBottom: 18, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
-            <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>{editingDoctor ? 'Hekim düzenle' : 'Yeni hekim'}</Text>
-            <Pressable onPress={onClose} style={{ width: 32, height: 32, borderRadius: R.sm, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center' }}>
-              <X size={16} color={DS.ink[500]} strokeWidth={1.8} />
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: 'rgba(20,15,10,0.55)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+        <View style={{
+          backgroundColor: T.card, borderRadius: 24, width: '100%', maxWidth: 500, maxHeight: '94%', overflow: 'hidden',
+          ...(Platform.OS === 'web' ? { boxShadow: isDark ? '0 24px 64px rgba(0,0,0,0.6)' : '0 24px 64px rgba(0,0,0,0.22)' } as any : {}),
+        }}>
+          {/* ═════ HEADER (Patterns §13) ═════ */}
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingHorizontal: 28, paddingTop: 24, paddingBottom: 18, gap: 16 }}>
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+              <View style={{
+                width: 44, height: 44, borderRadius: 14,
+                alignItems: 'center', justifyContent: 'center',
+                backgroundColor: tintHex(accentColor, 0.12),
+                borderWidth: 1, borderColor: tintHex(accentColor, 0.20),
+              }}>
+                <Stethoscope size={20} color={accentColor} strokeWidth={1.7} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: accentColor, letterSpacing: 1.2, textTransform: 'uppercase' }}>
+                  Hekim
+                </Text>
+                <Text style={{ ...DISPLAY, fontSize: 26, letterSpacing: -0.6, color: DS.ink[900], lineHeight: 32, marginTop: 2 }}>
+                  {editingDoctor ? 'Hekimi düzenle' : 'Yeni hekim ekle'}
+                </Text>
+                <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 4, lineHeight: 17 }}>
+                  Hekim bilgileri, klinik bağlantısı ve giriş hesabı.
+                </Text>
+              </View>
+            </View>
+            <Pressable
+              onPress={onClose}
+              style={{
+                width: 36, height: 36, borderRadius: 12,
+                alignItems: 'center', justifyContent: 'center',
+                backgroundColor: '#FFFFFF',
+                borderWidth: 1, borderColor: 'rgba(0,0,0,0.10)',
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              }}
+            >
+              <X size={15} color={DS.ink[500]} strokeWidth={1.8} />
             </Pressable>
           </View>
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20 }} keyboardShouldPersistTaps="handled">
+
+          <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.04)', marginHorizontal: 28 }} />
+
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}>
             <SectionCard title="Hekim Bilgileri">
-              <ModalField label="Ad Soyad" required><TextInput style={inputBase} value={form.full_name} onChangeText={v => set('full_name', v)} placeholder="Örn: Dr. Ayşe Kaya" placeholderTextColor={DS.ink[400]} /></ModalField>
-              <ModalField label="Uzmanlık"><TextInput style={inputBase} value={form.specialty} onChangeText={v => set('specialty', v)} placeholder="Örn: Ortodonti" placeholderTextColor={DS.ink[400]} /></ModalField>
+              <ModalField label="Ad Soyad" required hint="“Dr.” öneki + büyük harf düzeltmesi otomatik">
+                <TextInput
+                  style={inputBase}
+                  value={form.full_name}
+                  onChangeText={v => set('full_name', v)}
+                  placeholder="Örn: ayşe kaya"
+                  placeholderTextColor={DS.ink[400]}
+                  autoCapitalize="words"
+                />
+              </ModalField>
+              <ModalField label="Uzmanlık">
+                <Pressable
+                  style={{ ...inputBase, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                  onPress={() => setSpecialtyOpen(v => !v)}
+                >
+                  <Text style={{ fontSize: 14, color: form.specialty ? DS.ink[900] : DS.ink[400], flex: 1 }}>
+                    {form.specialty || 'Uzmanlık seç'}
+                  </Text>
+                  {specialtyOpen
+                    ? <ChevronUp size={14} color={DS.ink[400]} strokeWidth={1.8} />
+                    : <ChevronDown size={14} color={DS.ink[400]} strokeWidth={1.8} />
+                  }
+                </Pressable>
+                {specialtyOpen && (
+                  <DropdownList
+                    items={DENTAL_SPECIALTIES.filter(s => s.toLowerCase().includes(specialtySearch.toLowerCase())) as unknown as string[]}
+                    selected={form.specialty}
+                    searchValue={specialtySearch}
+                    onSearch={setSpecialtySearch}
+                    searchPlaceholder="Uzmanlık ara..."
+                    onSelect={(val) => { set('specialty', val); setSpecialtyOpen(false); setSpecialtySearch(''); }}
+                    accentColor={accentColor}
+                  />
+                )}
+              </ModalField>
               <ModalField label="Telefon"><TextInput style={inputBase} value={form.phone} onChangeText={v => set('phone', v)} placeholder="0555 000 00 00" placeholderTextColor={DS.ink[400]} keyboardType="phone-pad" /></ModalField>
               <ModalField label="TCKN (e-Arşiv için)"><TextInput style={inputBase} value={form.tckn} onChangeText={v => set('tckn', v.replace(/[^0-9]/g, ''))} placeholder="11 haneli TC Kimlik No" placeholderTextColor={DS.ink[400]} keyboardType="number-pad" maxLength={11} /></ModalField>
               <ModalField label="Klinik" last>
@@ -1448,7 +2213,12 @@ function DoctorModal({ visible, editingDoctor, clinics, defaultClinicId, accentC
                     <TextInput style={inputBase} value={form.email} onChangeText={v => set('email', v)} placeholder="ornek@email.com" placeholderTextColor={DS.ink[400]} keyboardType="email-address" autoCapitalize="none" />
                   </ModalField>
                   <ModalField label="Şifre" last>
-                    <TextInput style={inputBase} value={form.password} onChangeText={v => set('password', v)} placeholder="En az 6 karakter" placeholderTextColor={DS.ink[400]} secureTextEntry />
+                    <PasswordField
+                      value={form.password}
+                      onChange={v => set('password', v)}
+                      placeholder="En az 6 karakter"
+                      inputStyle={inputBase}
+                    />
                   </ModalField>
                 </>
               )}
@@ -1462,12 +2232,43 @@ function DoctorModal({ visible, editingDoctor, clinics, defaultClinicId, accentC
             </SectionCard>
             {error ? (<View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(217,75,75,0.12)', borderRadius: R.sm, padding: 12 }}><AlertCircle size={12} color="#9C2E2E" strokeWidth={1.8} /><Text style={{ fontSize: 12, color: '#9C2E2E', flex: 1 }}>{error}</Text></View>) : null}
           </ScrollView>
-          <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 24, paddingVertical: 16, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
-            <Pressable style={{ flex: 1, paddingVertical: 10, borderRadius: R.pill, borderWidth: 1, borderColor: DS.ink[200], alignItems: 'center' }} onPress={onClose}>
-              <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[500] }}>İptal</Text>
+          {/* ═════ FOOTER (cream Patterns §13) ═════ */}
+          <View style={{
+            flexDirection: 'row', alignItems: 'center', gap: 10,
+            paddingHorizontal: 28, paddingVertical: 16,
+            borderTopWidth: 1, borderTopColor: T.hairline,
+            backgroundColor: isDark ? T.cardSoft : PATTERNS_CREAM,
+          }}>
+            <View style={{ flex: 1 }} />
+            <Pressable
+              onPress={onClose}
+              style={{
+                paddingHorizontal: 18, paddingVertical: 10, borderRadius: 9999,
+                backgroundColor: T.card,
+                borderWidth: 1, borderColor: T.hairline,
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[700] }}>İptal</Text>
             </Pressable>
-            <Pressable style={{ flex: 2, paddingVertical: 10, borderRadius: R.pill, backgroundColor: DS.ink[900], alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6, opacity: saving ? 0.6 : 1 }} onPress={handleSave} disabled={saving}>
-              {saving ? <ActivityIndicator size="small" color="#FFFFFF" /> : (<><Check size={14} color="#FFFFFF" strokeWidth={2} /><Text style={{ fontSize: 14, fontWeight: '600', color: '#FFFFFF' }}>{editingDoctor ? 'Güncelle' : 'Hekim Ekle'}</Text></>)}
+            <Pressable
+              onPress={handleSave}
+              disabled={saving}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 7,
+                paddingHorizontal: 22, paddingVertical: 11, borderRadius: 9999,
+                backgroundColor: accentColor,
+                opacity: saving ? 0.5 : 1,
+                ...(Platform.OS === 'web' ? {
+                  cursor: saving ? 'wait' : 'pointer',
+                  boxShadow: !saving ? `0 8px 24px ${tintHex(accentColor, 0.45)}` : 'none',
+                } as any : {}),
+              }}
+            >
+              <Check size={14} color="#FFF" strokeWidth={2.4} />
+              <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFF', letterSpacing: 0.2 }}>
+                {saving ? 'Kaydediliyor…' : (editingDoctor ? 'Güncelle' : 'Hekimi ekle')}
+              </Text>
             </Pressable>
           </View>
         </View>
@@ -1531,7 +2332,7 @@ function DiscountModal({ clinic, currentDiscount, onClose, onSaved }: {
     if (!Number.isFinite(pct) || pct < 0 || pct > 100) { toast.error('İndirim oranı 0 ile 100 arasında olmalıdır.'); return; }
     if (!clinic) return;
     setSaving(true);
-    const { error } = await supabase.from('clinic_discounts').upsert({ clinic_id: clinic.id, discount_percent: pct }, { onConflict: 'clinic_id' });
+    const { error } = await supabase.from('clinic_discounts').upsert({ clinic_id: clinic.id, discount_rate: pct }, { onConflict: 'clinic_id' });
     setSaving(false);
     if (error) { toast.error(error.message); return; }
     onSaved(clinic.id, pct);

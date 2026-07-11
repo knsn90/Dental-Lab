@@ -399,9 +399,12 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
   const q = search.trim().toLowerCase();
   const LAB_ROLES: FilterType[] = ['manager', 'technician', 'accounting', 'courier', 'service', 'receptionist', 'intern'];
 
+  // Klinik tab'ı: yönetici + sekreter + hekim (hepsi clinic_id'li kullanıcılar)
+  const CLINIC_USER_TYPES = ['clinic_admin', 'clinic_secretary', 'doctor'];
+
   const filtered = profiles.filter(p => {
     if (typeFilter === 'doctor'       && p.user_type !== 'doctor') return false;
-    if (typeFilter === 'clinic_admin' && p.user_type !== 'clinic_admin') return false;
+    if (typeFilter === 'clinic_admin' && !CLINIC_USER_TYPES.includes(p.user_type ?? '')) return false;
     // Lab pozisyonları — typeFilter bir lab rolüyse user_type=lab && role eşleşmeli
     if (LAB_ROLES.includes(typeFilter) && !(p.user_type === 'lab' && p.role === typeFilter)) return false;
     if (statusFilter === 'active'   && !p.is_active) return false;
@@ -409,6 +412,135 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
     if (!q) return true;
     return p.full_name?.toLowerCase().includes(q) || p.email?.toLowerCase().includes(q);
   });
+
+  // Liste satırı render helper'ı — flat ve gruplu liste paylaşır
+  const renderUserRow = (prof: Profile) => {
+    const badge = typeBadge(prof);
+    const selected = selectedId === prof.id;
+    const isLabUser = prof.user_type === 'lab';
+    const isSynthetic = !!(prof as any).is_unregistered;
+    return (
+      <Pressable
+        key={prof.id}
+        onPress={() => handleSelect(prof)}
+        style={{
+          backgroundColor: '#FFFFFF',
+          borderRadius: 16,
+          padding: 14,
+          paddingLeft: 16,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 12,
+          overflow: 'hidden',
+          opacity: prof.is_active ? 1 : 0.55,
+          ...(selected ? {
+            borderWidth: 1,
+            borderColor: `${P}30`,
+          } : {
+            borderWidth: 1,
+            borderColor: 'rgba(0,0,0,0.04)',
+          }),
+          // @ts-ignore web
+          cursor: 'pointer',
+        } as any}
+      >
+        {/* Avatar */}
+        <View style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden', backgroundColor: `${P}14` }}>
+          {(prof as any).avatar_url
+            ? <Image source={{ uri: (prof as any).avatar_url }} style={{ width: 40, height: 40, borderRadius: 12 }} />
+            : <Text style={{ fontSize: 14, fontWeight: '600', color: P }}>{initials(prof.full_name)}</Text>}
+        </View>
+        {/* Info */}
+        <View className="flex-1" style={{ minWidth: 0, gap: 4 }}>
+          <Text style={{ fontSize: 15, fontWeight: '600', color: '#0A0A0A', letterSpacing: -0.2 }} numberOfLines={1}>{prof.full_name}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <View style={{ borderRadius: 100, paddingHorizontal: 8, paddingVertical: 2.5, backgroundColor: badge.bg }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.3, color: badge.text }}>{badge.label}</Text>
+            </View>
+            {/* Klinik adı rozeti — clinic_admin / clinic_secretary / doctor için */}
+            {!!(prof as any).clinic_name && ['clinic_admin', 'clinic_secretary', 'doctor'].includes(prof.user_type ?? '') && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 100, paddingHorizontal: 8, paddingVertical: 2.5, backgroundColor: 'rgba(15,23,42,0.06)' }}>
+                <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: '#6BA888' }} />
+                <Text style={{ fontSize: 10, fontWeight: '600', color: '#0F172A', letterSpacing: 0.1 }} numberOfLines={1}>
+                  {(prof as any).clinic_name}
+                </Text>
+              </View>
+            )}
+            {!!(prof as any).is_unregistered && (
+              <View style={{ borderRadius: 100, paddingHorizontal: 7, paddingVertical: 2, backgroundColor: 'rgba(245,158,11,0.12)' }}>
+                <Text style={{ fontSize: 10, fontWeight: '600', color: '#92400E' }}>Hesap yok</Text>
+              </View>
+            )}
+            <Text style={{ fontSize: 12, color: '#9A9A9A', flexShrink: 1 }} numberOfLines={1}>{prof.email ?? '—'}</Text>
+          </View>
+          {isLabUser && (() => {
+            const lvl = ((prof as any).skill_level ?? 'mid') as SkillLevel;
+            const lvlOpt = SKILL_LEVEL_OPTIONS.find(o => o.key === lvl);
+            const stageCount = (skillsMap.get(prof.id) ?? new Set()).size;
+            return (
+              <View className="flex-row items-center gap-1.5 mt-0.5">
+                <View style={{ borderRadius: 100, paddingHorizontal: 6, paddingVertical: 2, backgroundColor: `${lvlOpt?.color ?? '#94A3B8'}18` }}>
+                  <Text style={{ fontSize: 10, fontWeight: '600', color: lvlOpt?.color ?? '#94A3B8' }}>{lvlOpt?.label}</Text>
+                </View>
+                {stageCount > 0 && (
+                  <Text style={{ fontSize: 11, color: '#9A9A9A' }}>{stageCount} stage</Text>
+                )}
+              </View>
+            );
+          })()}
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          {isSynthetic ? (
+            <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.04)' }}>
+              <Text style={{ fontSize: 10, color: '#9A9A9A' }}>Ekip'ten yönet</Text>
+            </View>
+          ) : (
+            <>
+              {updatingId === prof.id ? (
+                <ActivityIndicator size="small" color={P} />
+              ) : (
+                <PatternsToggle
+                  on={prof.is_active ?? true}
+                  onPress={() => handleToggleActive(prof)}
+                  accentColor={P}
+                />
+              )}
+              <Pressable
+                onPress={() => setEditingProfile(prof)}
+                style={{ width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.04)' }}
+              >
+                <Pencil size={13} color="#9A9A9A" strokeWidth={1.6} />
+              </Pressable>
+              <Pressable
+                onPress={() => handleDeleteUser(prof)}
+                style={{ width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.04)' }}
+              >
+                <Trash2 size={13} color="#DC2626" strokeWidth={1.6} />
+              </Pressable>
+            </>
+          )}
+        </View>
+      </Pressable>
+    );
+  };
+
+  // Klinik tab'ı aktifken klinik adına göre grupla
+  const isClinicView = typeFilter === 'clinic_admin';
+  const groupedByClinic = (() => {
+    if (!isClinicView) return [] as { clinicId: string; clinicName: string; members: Profile[] }[];
+    const map = new Map<string, { clinicId: string; clinicName: string; members: Profile[] }>();
+    filtered.forEach(p => {
+      const key = (p as any).clinic_id ?? '__none__';
+      const name = (p as any).clinic_name ?? 'Klinik (atanmamış)';
+      if (!map.has(key)) map.set(key, { clinicId: key, clinicName: name, members: [] });
+      map.get(key)!.members.push(p);
+    });
+    // Her grup içinde sıralama: yönetici → sekreter → hekim → diğer
+    const roleOrder: Record<string, number> = { clinic_admin: 0, clinic_secretary: 1, doctor: 2 };
+    return Array.from(map.values())
+      .map(g => ({ ...g, members: g.members.sort((a, b) => (roleOrder[a.user_type ?? ''] ?? 9) - (roleOrder[b.user_type ?? ''] ?? 9)) }))
+      .sort((a, b) => (a.clinicName ?? '').localeCompare(b.clinicName ?? '', 'tr'));
+  })();
 
   const activeFilterCount = statusFilter !== 'all' ? 1 : 0;
 
@@ -424,7 +556,12 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
     { key: 'receptionist' as FilterType, label: 'Resepsiyon',  count: labRoleCount('receptionist') },
     { key: 'intern' as FilterType,       label: 'Stajyer',     count: labRoleCount('intern') },
     ...(!labOnly ? [{ key: 'doctor' as FilterType,       label: 'Hekim',  count: profiles.filter(p => p.user_type === 'doctor').length }] : []),
-    ...(!labOnly ? [{ key: 'clinic_admin' as FilterType, label: 'Klinik', count: profiles.filter(p => p.user_type === 'clinic_admin').length }] : []),
+    // Klinik tab'ı artık yönetici + sekreter + hekim'i birlikte sayar
+    ...(!labOnly ? [{
+      key: 'clinic_admin' as FilterType,
+      label: 'Klinik',
+      count: profiles.filter(p => ['clinic_admin', 'clinic_secretary'].includes(p.user_type ?? '')).length,
+    }] : []),
   ];
   // Boş sekmeler gizlenir; aktif filtre her zaman görünür
   const TYPE_TABS = ALL_TYPE_TABS.filter(t => t.key === 'all' || t.count > 0 || typeFilter === t.key);
@@ -447,7 +584,9 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
     if (profile.user_type === 'doctor')
       return { bg: '#D1FAE5', text: '#065F46', label: 'Hekim',    avatarBg: `${P}14`, avatarText: P, roleLabel: 'Hekim' };
     if (profile.user_type === 'clinic_admin')
-      return { bg: '#DBEAFE', text: '#1D4ED8', label: 'Klinik',   avatarBg: `${P}14`, avatarText: P, roleLabel: 'Klinik Yetkilisi' };
+      return { bg: 'rgba(107,168,136,0.18)', text: '#3F7458', label: 'Yönetici', avatarBg: `${P}14`, avatarText: P, roleLabel: 'Klinik Yöneticisi' };
+    if ((profile.user_type as string) === 'clinic_secretary')
+      return { bg: 'rgba(124,58,237,0.16)',  text: '#5B21B6', label: 'Sekreter', avatarBg: `${P}14`, avatarText: P, roleLabel: 'Klinik Sekreteri' };
     if (profile.user_type === 'lab' && profile.role) {
       const r = profile.role as LabRole;
       const colors = LAB_ROLE_BADGE[r] ?? { bg: 'rgba(0,0,0,0.05)', text: '#6B6B6B' };
@@ -577,112 +716,51 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
                 </Text>
                 {!!q && <Text style={{ fontSize: 13, color: '#AEAEB2' }}>&#34;{q}&#34; ile eşleşen kullanıcı yok</Text>}
               </View>
-            ) : (
-              <View style={{ gap: 10 }}>
-                {filtered.map((prof) => {
-                  const badge = typeBadge(prof);
-                  const selected = selectedId === prof.id;
-                  const isLabUser = prof.user_type === 'lab';
-                  const isSynthetic = !!(prof as any).is_unregistered; // employees tablosundan, auth hesabı yok
-                  const userSkills = skillsMap.get(prof.id) ?? new Set();
+            ) : isClinicView ? (
+              <View style={{ gap: 18 }}>
+                {groupedByClinic.map(group => {
+                  const adminCount = group.members.filter(m => m.user_type === 'clinic_admin').length;
+                  const secCount   = group.members.filter(m => (m.user_type as string) === 'clinic_secretary').length;
+                  const docCount   = group.members.filter(m => m.user_type === 'doctor').length;
                   return (
-                    <Pressable
-                      key={prof.id}
-                      onPress={() => handleSelect(prof)}
-                      style={{
-                        backgroundColor: '#FFFFFF',
-                        borderRadius: 16,
-                        padding: 14,
-                        paddingLeft: 16,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 12,
-                        overflow: 'hidden',
-                        opacity: prof.is_active ? 1 : 0.55,
-                        ...(selected ? {
-                          borderWidth: 1,
-                          borderColor: `${P}30`,
-                        } : {
-                          borderWidth: 1,
-                          borderColor: 'rgba(0,0,0,0.04)',
-                        }),
-                        // @ts-ignore web
-                        cursor: 'pointer',
-                      } as any}
-                    >
-                      {/* Avatar */}
-                      <View style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden', backgroundColor: `${P}14` }}>
-                        {(prof as any).avatar_url
-                          ? <Image source={{ uri: (prof as any).avatar_url }} style={{ width: 40, height: 40, borderRadius: 12 }} />
-                          : <Text style={{ fontSize: 14, fontWeight: '600', color: P }}>{initials(prof.full_name)}</Text>}
-                      </View>
-                      {/* Info */}
-                      <View className="flex-1" style={{ minWidth: 0, gap: 4 }}>
-                        <Text style={{ fontSize: 15, fontWeight: '600', color: '#0A0A0A', letterSpacing: -0.2 }} numberOfLines={1}>{prof.full_name}</Text>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                          <View style={{ borderRadius: 100, paddingHorizontal: 8, paddingVertical: 2.5, backgroundColor: badge.bg }}>
-                            <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.3, color: badge.text }}>{badge.label}</Text>
-                          </View>
-                          {!!(prof as any).is_unregistered && (
-                            <View style={{ borderRadius: 100, paddingHorizontal: 7, paddingVertical: 2, backgroundColor: 'rgba(245,158,11,0.12)' }}>
-                              <Text style={{ fontSize: 10, fontWeight: '600', color: '#92400E' }}>Hesap yok</Text>
+                    <View key={group.clinicId} style={{ gap: 10 }}>
+                      {/* Klinik başlığı */}
+                      <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingHorizontal: 4, gap: 12, flexWrap: 'wrap' }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, flexShrink: 1 }}>
+                          <Text style={{ fontSize: 18, fontWeight: '700', color: '#0A0A0A', letterSpacing: -0.3 }} numberOfLines={1}>
+                            {group.clinicName}
+                          </Text>
+                          <Text style={{ fontSize: 12, color: '#9A9A9A' }}>{group.members.length} kişi</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+                          {adminCount > 0 && (
+                            <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: 'rgba(107,168,136,0.14)' }}>
+                              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.4, color: '#3F7458' }}>{adminCount} YÖNETİCİ</Text>
                             </View>
                           )}
-                          <Text style={{ fontSize: 12, color: '#9A9A9A', flexShrink: 1 }} numberOfLines={1}>{prof.email ?? '—'}</Text>
-                        </View>
-                        {/* Compact skill summary — details in side panel */}
-                        {isLabUser && (() => {
-                          const lvl = ((prof as any).skill_level ?? 'mid') as SkillLevel;
-                          const lvlOpt = SKILL_LEVEL_OPTIONS.find(o => o.key === lvl);
-                          const stageCount = (skillsMap.get(prof.id) ?? new Set()).size;
-                          return (
-                            <View className="flex-row items-center gap-1.5 mt-0.5">
-                              <View style={{ borderRadius: 100, paddingHorizontal: 6, paddingVertical: 2, backgroundColor: `${lvlOpt?.color ?? '#94A3B8'}18` }}>
-                                <Text style={{ fontSize: 10, fontWeight: '600', color: lvlOpt?.color ?? '#94A3B8' }}>{lvlOpt?.label}</Text>
-                              </View>
-                              {stageCount > 0 && (
-                                <Text style={{ fontSize: 11, color: '#9A9A9A' }}>{stageCount} stage</Text>
-                              )}
+                          {secCount > 0 && (
+                            <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: 'rgba(124,58,237,0.14)' }}>
+                              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.4, color: '#5B21B6' }}>{secCount} SEKRETER</Text>
                             </View>
-                          );
-                        })()}
+                          )}
+                          {docCount > 0 && (
+                            <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: 'rgba(14,165,233,0.14)' }}>
+                              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.4, color: '#0369A1' }}>{docCount} HEKİM</Text>
+                            </View>
+                          )}
+                        </View>
                       </View>
-                      {/* Right side: toggle + actions */}
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                        {isSynthetic ? (
-                          /* Hesabı olmayan çalışan — sadece Ekip'ten yönetilir */
-                          <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.04)' }}>
-                            <Text style={{ fontSize: 10, color: '#9A9A9A' }}>Ekip'ten yönet</Text>
-                          </View>
-                        ) : (
-                          <>
-                            {updatingId === prof.id ? (
-                              <ActivityIndicator size="small" color={P} />
-                            ) : (
-                              <PatternsToggle
-                                on={prof.is_active ?? true}
-                                onPress={() => handleToggleActive(prof)}
-                                accentColor={P}
-                              />
-                            )}
-                            <Pressable
-                              onPress={() => setEditingProfile(prof)}
-                              style={{ width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.04)' }}
-                            >
-                              <Pencil size={13} color="#9A9A9A" strokeWidth={1.6} />
-                            </Pressable>
-                            <Pressable
-                              onPress={() => handleDeleteUser(prof)}
-                              style={{ width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.04)' }}
-                            >
-                              <Trash2 size={13} color="#DC2626" strokeWidth={1.6} />
-                            </Pressable>
-                          </>
-                        )}
+                      {/* Grup üyeleri */}
+                      <View style={{ gap: 8 }}>
+                        {group.members.map(prof => renderUserRow(prof))}
                       </View>
-                    </Pressable>
+                    </View>
                   );
                 })}
+              </View>
+            ) : (
+              <View style={{ gap: 10 }}>
+                {filtered.map((prof) => renderUserRow(prof))}
               </View>
             )}
           </View>

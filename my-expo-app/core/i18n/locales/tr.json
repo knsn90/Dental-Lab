@@ -1,0 +1,900 @@
+{
+  "common": {
+    "cancel": "İptal",
+    "save": "Kaydet",
+    "signOut": "Çıkış yap",
+    "notSet": "Eklenmemiş",
+    "notDefined": "Henüz tanımlanmamış",
+    "soon": "Yakında.",
+    "language": "Dil",
+    "loading": "Yükleniyor…",
+    "accessDenied": "Erişim yetkiniz yok",
+    "accessDeniedDesc": "Bu sayfaya erişmek için yöneticinizden yetki isteyin.",
+    "days": "Pazar Pazartesi Salı Çarşamba Perşembe Cuma Cumartesi",
+    "months": "Ocak Şubat Mart Nisan Mayıs Haziran Temmuz Ağustos Eylül Ekim Kasım Aralık",
+    "today": "Bugün",
+    "total": "Toplam",
+    "stages": "aşama",
+    "allTime": "Tüm zamanlar",
+    "hours": "saat",
+    "thisWeek": "Bu hafta",
+    "status": "Durum",
+    "reset": "Sıfırla",
+    "all": "Tümü",
+    "completed": "Tamamlandı",
+    "inProgress": "Devam Ediyor",
+    "waiting": "Bekliyor",
+    "rejected": "Reddedildi",
+    "order": "Sipariş",
+    "patient": "Hasta",
+    "clinic": "Klinik",
+    "doctor": "Hekim",
+    "system": "Sistem",
+    "close": "Kapat",
+    "duration": "Süre",
+    "stage": "Aşama",
+    "week": "Hafta"
+  },
+  "nav": {
+    "items": {
+      "today": "Bugün",
+      "orders": "Siparişler",
+      "paperOrders": "Kağıt Siparişler",
+      "approvals": "Onaylar",
+      "clinics": "Sağlık Kurumları",
+      "team": "Ekip",
+      "stock": "Stok ve Depo",
+      "production": "Üretim Panosu",
+      "workflows": "İş Akışları",
+      "courier": "Kurye Takip",
+      "finance": "Finans",
+      "priceList": "Fiyat Listesi",
+      "support": "Destek",
+      "messages": "Mesajlar",
+      "settings": "Ayarlar",
+      "summary": "Özet",
+      "cases": "Vakalar",
+      "search": "Ara",
+      "more": "Daha",
+      "new": "Yeni",
+      "paperInbox": "Kağıt Inbox",
+      "deliveries": "Teslimatlar",
+      "map": "Harita",
+      "stats": "İstatistik",
+      "scan": "Tara",
+      "list": "Liste",
+      "profile": "Profil",
+      "users": "Kullanıcılar",
+      "home": "Anasayfa",
+      "myOrders": "Siparişlerim",
+      "panel": "Panel",
+      "myJobs": "İşlerim",
+      "history": "Geçmiş",
+      "requests": "Talepler"
+    },
+    "sections": {
+      "work": "İş Yönetimi",
+      "customers": "Müşteriler",
+      "team": "Ekip",
+      "warehouse": "Depo",
+      "production": "Üretim",
+      "delivery": "Teslimat",
+      "finance": "Finans",
+      "help": "Yardım",
+      "performance": "Performans",
+      "system": "Sistem",
+      "workArea": "Çalışma Alanı",
+      "account": "Hesap"
+    }
+  },
+  "roles": {
+    "doctor": "Hekim",
+    "clinicManager": "Klinik Yöneticisi",
+    "exec": "Yönetim",
+    "technician": "Teknisyen",
+    "labUser": "Lab Kullanıcısı",
+    "user": "Kullanıcı"
+  },
+  "dashboard": {
+    "greeting": "Hoş geldin.",
+    "greetingName": "Hoş geldin, {{name}}.",
+    "greetingWord": "Hoş geldin,",
+    "delivered": "Teslim",
+    "overdueLabel": "Geciken",
+    "tryin": "Prova",
+    "totalCases": "Toplam vaka",
+    "todayLine": "Bugün {{total}} sipariş üretimde, {{active}} aktif",
+    "todayOverdue": ", {{overdue}} geciken",
+    "weekDoneKicker": "BU HAFTA {{count}} TAMAMLANDI",
+    "newOrderKicker": "YENİ İŞ EMRİ",
+    "activeProduction": "Aktif üretim",
+    "stages": {
+      "received": "Alındı",
+      "production": "Üretim",
+      "qc": "KK",
+      "ready": "Hazır"
+    },
+    "activeOrders": "Aktif sipariş",
+    "overdueCount": "{{count}} geciken",
+    "noOverdue": "gecikme yok",
+    "doneToday": "Bugün biten",
+    "thisWeekCount": "{{count}} bu hafta",
+    "weekDash": "hafta —",
+    "thisWeek": "Bu hafta",
+    "received": "Alınan",
+    "completed": "Tamamlanan",
+    "overdueCases": "Geciken vakalar",
+    "noOverdueCases": "Geciken vaka yok",
+    "qc": "KK",
+    "delay": "Gecikme"
+  },
+  "courier": {
+    "greeting": {
+      "morning": "Günaydın",
+      "day": "İyi günler",
+      "evening": "İyi akşamlar",
+      "night": "İyi geceler"
+    },
+    "pending": "{{count}} bekleyen",
+    "ready": "Hazırsın",
+    "hoursWorked": "{{h}} saat çalıştın",
+    "shiftNotStarted": "Vardiya başlamadı",
+    "table": {
+      "customer": "Müşteri",
+      "address": "Adres",
+      "phone": "Telefon",
+      "assigned": "Atandı",
+      "status": "Durum",
+      "date": "Tarih",
+      "duration": "Süre"
+    },
+    "dashboard": {
+      "active": "AKTİF",
+      "pending": "BEKLEYEN",
+      "today": "BUGÜN",
+      "startNavigation": "Yola Çık → Navigasyon",
+      "nextDeliveries": "Sıradaki Teslimatlar",
+      "viewAll": "Tümü →",
+      "noPendingDeliveries": "Bekleyen teslimat yok",
+      "completedToday": "Bugün Tamamlanan",
+      "statisticsThisWeek": "İSTATİSTİK · BU HAFTA",
+      "myPerformance": "Performansım",
+      "details": "Detay →",
+      "last7Days": "SON 7 GÜN",
+      "dailyTrend": "Günlük Trend",
+      "deliveredMetric": "teslim",
+      "noTasksYet": "Henüz görev yok",
+      "notifyOnNewDelivery": "Yeni bir teslimat atandığında bildirim alacaksın.",
+      "todayProgress": "BUGÜN İLERLEME",
+      "onTheWayNow": "Şu anda yolda",
+      "deliveredToday": "Bugün teslim edildi",
+      "upcomingTasks": "Sıradaki görevler",
+      "deliveryAverage": "Teslim ortalaması",
+      "startDetails": "Yola Çık → Detay",
+      "todaySummary": "BUGÜN ÖZET",
+      "completedCount": "Bugün {{count}} teslimat tamamlandı.",
+      "pickTaskStart": "Bir görev seçip başla.",
+      "todayDate": "BUGÜN · {{date}}",
+      "completedTodayTitle": "Bugün Tamamlanan"
+    },
+    "kpi": {
+      "delivered": "Teslim",
+      "averageTime": "Ort. Süre",
+      "active": "Aktif",
+      "waiting": "Bekleyen",
+      "totalDeliveries": "Toplam Teslim",
+      "avgTime": "Ort. Süre",
+      "successRate": "Başarı Oranı"
+    },
+    "delivery": {
+      "noPending": "Bekleyen teslimat yok 🎉",
+      "notFound": "Teslimat bulunamadı",
+      "back": "← Geri",
+      "defaultTitle": "Teslimat",
+      "gpsStatus": "GPS · {{status}}",
+      "noPhone": "Telefon yok",
+      "call": "Ara",
+      "openOnMap": "Haritada Aç →",
+      "contents": "İçerik",
+      "noteLabel": "Not",
+      "progress": "Süreç",
+      "clinic": "Klinik",
+      "message": "Mesaj",
+      "package": "Paket",
+      "noteLabelDesktop": "Not"
+    },
+    "map": {
+      "liveLocationActive": "Aktif Konum · GPS aktif",
+      "noActiveTask": "Aktif görev olunca harita burada görünür",
+      "fullScreen": "Tam Ekran Harita →",
+      "liveMap": "Canlı Harita",
+      "liveMapDesktop": "Canlı Harita",
+      "gpsStatusLabel": "Konum · GPS {{status}}",
+      "gpsInactive": "GPS pasif",
+      "fullScreen2": "Tam Ekran"
+    },
+    "section": {
+      "list": "Liste",
+      "location": "Konum",
+      "history": "Geçmiş",
+      "location2": "KONUM"
+    },
+    "stats": {
+      "courierPerformance": "KURYE PERFORMANSI",
+      "rangeWeek": "Bu Hafta",
+      "rangeMonth": "Bu Ay",
+      "rangeAllTime": "Tüm Zaman",
+      "successSummary": "{{count}} başarılı teslim · {{avgMin}} dk ortalama",
+      "noPeriodDeliveries": "Bu dönemde henüz teslimat yok",
+      "total": "Toplam",
+      "success": "Başarı",
+      "tasksCount": "{{count}} görev",
+      "fastest": "En hızlı {{count}} dk",
+      "thisPeriod": "Bu dönem",
+      "activeTask": "Aktif görev",
+      "last7Days": "SON 7 GÜN",
+      "dailyTrend": "Günlük Trend",
+      "totalMetric": "toplam",
+      "recentDeliveries": "Son Teslimatlar",
+      "noPeriodDeliveries2": "Bu dönemde teslimat yok",
+      "greetingEvening": "İyi akşamlar",
+      "myPerformance": "Performansım",
+      "description": "Geçmiş teslimat analizleri ve verimlilik özetleri",
+      "summaryWeek": "ÖZET · BU HAFTA",
+      "summaryMonth": "ÖZET · BU AY",
+      "summaryAllTime": "ÖZET · TÜM ZAMAN",
+      "deliveriesCount": "{{count}} teslim",
+      "heroDescription": "%{{pct}} başarı oranı · {{avgMin}} dakika ortalama teslim süresi",
+      "heroFastest": "En hızlı {{count}} dk",
+      "detailedReport": "Detaylı Rapor →",
+      "kpiTotalDeliveries": "Toplam Teslim",
+      "kpiAvgTime": "Ort. Süre",
+      "kpiSuccess": "Başarı",
+      "trendExcellent": "Mükemmel",
+      "trendMiddle": "Orta",
+      "trendLow": "Düşük",
+      "chart1Last7Days": "SON 7 GÜN",
+      "dailyDeliveries": "Günlük Teslimat",
+      "efficiency": "VERİMLİLİK",
+      "timeDistribution": "Süre Dağılımı",
+      "duration15": "< 15 dk",
+      "duration30": "15-30 dk",
+      "duration60": "30-60 dk",
+      "durationOver60": "> 60 dk",
+      "allDeliveries": "Tüm Teslimatlar",
+      "emptyPeriod": "Bu dönemde teslimat yok"
+    },
+    "trend": {
+      "good": "↑ İyi",
+      "average": "— Orta",
+      "low": "↓ Düşük"
+    },
+    "range": {
+      "week": "Bu Hafta",
+      "month": "Bu Ay",
+      "all": "Tüm"
+    },
+    "modal": {
+      "directions": "YOL TARİFİ",
+      "chooseMapApp": "Harita Uygulaması Seç",
+      "openInBrowser": "Tarayıcıda Aç"
+    },
+    "timeline": {
+      "assigned": "Atandı",
+      "pickedUp": "Alındı",
+      "inTransit": "Yolda",
+      "delivered": "Teslim Edildi"
+    },
+    "detail": {
+      "breadcrumb": "TESLİMAT · #{{id}}",
+      "pageTitle": "Yol Tarifi & Teslim",
+      "customer": "Müşteri"
+    },
+    "action": {
+      "packagePickedUp": "Paketi Aldım",
+      "onTheWay": "Yola Çıktım",
+      "takePhoto": "Foto Çek",
+      "getSignature": "İmza Al",
+      "deliver": "Teslim Et"
+    }
+  },
+  "profile": {
+    "approved": "Onaylı {{role}}",
+    "pendingApproval": "Onay bekliyor",
+    "member": "Üye · {{date}}",
+    "sections": {
+      "account": "Hesap",
+      "workplaceClinic": "Çalıştığım klinik",
+      "workplaceOrg": "Çalıştığım kurum",
+      "hr": "Özlük İşlemleri",
+      "appearance": "Görünüm",
+      "notifications": "Bildirimler",
+      "management": "Yönetim",
+      "security": "Güvenlik",
+      "about": "Hakkında & Yardım",
+      "language": "Dil"
+    },
+    "rows": {
+      "fullName": "İsim soyisim",
+      "email": "E-posta",
+      "phone": "Telefon",
+      "clinic": "Klinik",
+      "org": "Kurum",
+      "address": "Adres",
+      "advanceRequest": "Avans Talebi",
+      "leaveRequest": "İzin Talebi",
+      "pushNotif": "Anlık bildirim",
+      "emailNotif": "E-posta bildirimi",
+      "finance": "Finans",
+      "stock": "Stok & Depo",
+      "invoices": "Faturalar",
+      "expenses": "Giderler",
+      "staff": "Personel",
+      "users": "Kullanıcılar",
+      "staffValue": "Ekip · maaş · performans",
+      "usersValue": "Personel & yetkiler",
+      "allSettings": "Tüm ayarlar",
+      "changePassword": "Şifre değiştir",
+      "helpCenter": "Yardım merkezi",
+      "terms": "Kullanım koşulları",
+      "privacy": "Gizlilik politikası",
+      "appLanguage": "Uygulama dili"
+    },
+    "values": {
+      "advance": "Avans talebi oluştur ve takip et",
+      "leave": "İzin talebi oluştur ve takip et",
+      "finance": "Kasa · Çek · Karlılık · Bütçe",
+      "stock": "Envanter · hareketler · alarm",
+      "invoices": "Liste · Excel · Toplu işlem",
+      "expenses": "Kayıt & dışa aktarım",
+      "staff": "Ekip · maaş · performans",
+      "users": "Personel & yetkiler",
+      "allSettings": "Genel · Bildirim · Entegrasyon"
+    },
+    "subs": {
+      "push": "Sipariş güncellemeleri için anlık uyarı",
+      "email": "Önemli güncellemeler için"
+    },
+    "theme": {
+      "title": "Tema",
+      "light": "Açık",
+      "dark": "Koyu",
+      "system": "Sistem"
+    },
+    "signOutConfirm": "Hesabınızdan çıkmak istediğinizden emin misiniz?"
+  },
+  "settings": {
+    "title": "Ayarlar",
+    "languageSub": "Uygulama arayüz dili",
+    "sections": {
+      "profile": {
+        "label": "Profil",
+        "sub": "Kişisel bilgiler ve güvenlik"
+      },
+      "notifications": {
+        "label": "Bildirimler",
+        "sub": "Uyarı ve bildirim tercihleri"
+      },
+      "general": {
+        "label": "Genel",
+        "sub": "Dil, saat dilimi, format"
+      },
+      "users": {
+        "label": "Kullanıcılar",
+        "sub": "Personel ve stage yetkileri"
+      },
+      "permissions": {
+        "label": "Yetkiler",
+        "sub": "Rol bazlı erişim yönetimi"
+      },
+      "checkin": {
+        "label": "QR Check-in",
+        "sub": "Mesai takip ayarları"
+      },
+      "stations": {
+        "label": "İstasyonlar",
+        "sub": "Üretim aşamaları"
+      },
+      "workhours": {
+        "label": "Çalışma Saatleri",
+        "sub": "Vardiya, öğle, eşzamanlı iş"
+      },
+      "currency": {
+        "label": "Döviz Kurları",
+        "sub": "EUR/USD/GBP kur yönetimi"
+      },
+      "integrations": {
+        "label": "Entegrasyonlar",
+        "sub": "e-Fatura & POS ayarları"
+      },
+      "logs": {
+        "label": "Loglar",
+        "sub": "Sistem aktivite kayıtları"
+      }
+    }
+  },
+  "admin": {
+    "more": {
+      "clinics": {
+        "sub": "Müşteri kurumlar"
+      },
+      "courier": {
+        "sub": "Teslimat akışı"
+      },
+      "finance": {
+        "sub": "Kasa · Fatura · Gider · Çek"
+      },
+      "team": {
+        "sub": "Personel · maaş · performans"
+      },
+      "stock": {
+        "sub": "Envanter · alarm"
+      },
+      "settings": {
+        "sub": "Genel · Bildirim · Entegrasyon"
+      }
+    },
+    "moreSheet": {
+      "title": "Tüm Menü",
+      "subtitle": "Sık kullanılmayan ekranlar"
+    },
+    "tabs": {
+      "newOrder": "Yeni Sipariş",
+      "users": "Kullanıcılar",
+      "doctors": "Hekimler",
+      "stock": "Stok",
+      "suppliers": "Tedarikçiler",
+      "expenses": "Giderler",
+      "checks": "Çek/Senet",
+      "cash": "Kasa/Banka",
+      "financeReport": "Gelir/Gider",
+      "advanceRequests": "Avans Talepleri",
+      "performance": "Performans",
+      "documents": "Dosyalar",
+      "checkinSettings": "QR Check-in",
+      "logs": "Loglar",
+      "permissions": "Yetkiler",
+      "setupWizard": "Kurulum"
+    },
+    "status": {
+      "received": "Alındı",
+      "production": "Üretimde",
+      "qualityControl": "Kalite Kontrol",
+      "readyForDelivery": "Kuryeye Teslim Edildi",
+      "delivered": "Teslim Edildi",
+      "qcShort": "KK",
+      "ready": "Hazır",
+      "live": "CANLI",
+      "awaitingPlanning": "planlama bekliyor",
+      "overdueOrder": "geciken sipariş",
+      "urgent": "ACİL"
+    },
+    "months": {
+      "short": "Oca, Şub, Mar, Nis, May, Haz, Tem, Ağu, Eyl, Eki, Kas, Ara",
+      "long": "Ocak, Şubat, Mart, Nisan, Mayıs, Haziran, Temmuz, Ağustos, Eylül, Ekim, Kasım, Aralık"
+    },
+    "days": {
+      "short": "Pz, Pa, Sa, Ça, Pe, Cu, Ct",
+      "long": "Pazar, Pazartesi, Salı, Çarşamba, Perşembe, Cuma, Cumartesi"
+    },
+    "dashboard": {
+      "thisWeek": "Bu hafta",
+      "receivedMembers": "Alınan üye",
+      "deliveredMembers": "Teslim edilen üye",
+      "quickAction": "Hızlı işlem",
+      "newOrder": "Yeni sipariş oluştur",
+      "noTasks": "Bekleyen görev yok",
+      "production": "Üretim",
+      "active": "Aktif",
+      "overdue": "Geciken",
+      "today": "Bugün",
+      "totalOrders": "Toplam sipariş",
+      "doctor": "Hekim",
+      "labUser": "Lab kullanıcı",
+      "memberTrend": "Üye Trendi",
+      "membersThisMonth": "üye bu ay",
+      "toothMemberNote": "1 diş = 1 üye · son 6 aylık trend",
+      "deliveryRate": "Teslim Oranı",
+      "delivered": "Teslim",
+      "inProduction": "üretimde",
+      "todaysTasks": "Bugünkü görevler",
+      "recentOrders": "Son Siparişler",
+      "viewAll": "Tümünü Gör →",
+      "noOrders": "Henüz sipariş yok",
+      "unbilledDeliveries": "Faturalanmamış teslimat var",
+      "orders": "sipariş · ",
+      "clinicEstimated": "klinik · tahmini ",
+      "invoice": "Faturala →",
+      "financialSummary": "Finansal Özet",
+      "monthlyCollection": "Bu Ay Tahsilat",
+      "pendingInvoice": "Bekleyen Fatura",
+      "paidInvoiceCount": "Ödenen Fatura Adedi",
+      "statusDistribution": "Statü Dağılımı",
+      "workTypeDistribution": "İş Tipi Dağılımı",
+      "totalMembers": "Üye",
+      "noOrdersToday": "Bugün henüz sipariş yok.",
+      "ordersSummary": "{{total}} sipariş, {{active}} aktif{{overdue}}.",
+      "liveProduction": "Canlı üretim",
+      "monthlyRevenue": "Aylık gelir",
+      "revenueTarget": "Hedef ₺60K",
+      "activeOrders": "Aktif sipariş",
+      "overdueCount": "{{count}} geciken",
+      "total": "Toplam {{total}}",
+      "delayedCases": "Geciken vakalar",
+      "noDelayedCases": "Geciken vaka yok",
+      "productionOnTrack": "Tüm üretim planlandığı gibi ilerliyor."
+    },
+    "buttons": {
+      "start": "Başla"
+    },
+    "table": {
+      "no": "No",
+      "doctor": "Hekim",
+      "workType": "İş Tipi",
+      "status": "Durum",
+      "delivery": "Teslim"
+    },
+    "task": {
+      "overdue": "gecikmiş",
+      "delivery": "teslim",
+      "today": "bugün"
+    },
+    "logs": {
+      "actor": {
+        "admin": "Admin",
+        "doctor": "Hekim",
+        "lab": "Lab"
+      },
+      "tab": {
+        "all": "Tümü",
+        "users": "Kullanıcılar",
+        "doctors": "Hekimler"
+      },
+      "searchPlaceholder": "İsim, aksiyon veya kayıt ara...",
+      "loading": "Loglar yükleniyor…",
+      "empty": {
+        "title": "Henüz log yok",
+        "noMatch": "\"{{query}}\" ile eşleşen kayıt yok",
+        "noActions": "Eylemler gerçekleştikçe burada görünecek"
+      },
+      "table": {
+        "user": "KULLANICI",
+        "recordsRealtime": "{{count}} kayıt · Gerçek zamanlı"
+      },
+      "time": {
+        "justNow": "Az önce",
+        "minutesAgo": "{{minutes}} dk önce",
+        "hoursAgo": "{{hours}} saat önce",
+        "yesterday": "Dün {{time}}",
+        "daysAgo": "{{days}} gün önce"
+      }
+    },
+    "cta": {
+      "ordersToday": "BUGÜN {{total}} SİPARİŞ",
+      "newOrder": "YENİ SİPARİŞ",
+      "createNewOrder": "Yeni iş emri oluştur"
+    },
+    "delayedCase": {
+      "qcIssue": "QC sorunu",
+      "delay": "gecikme"
+    }
+  },
+  "clinic": {
+    "tabs": {
+      "cases": "Vakalar",
+      "team": "Ekip",
+      "search": "Ara",
+      "more": "Daha"
+    },
+    "fab": {
+      "newOrder": "Yeni"
+    },
+    "moreMenu": {
+      "courierSub": "Teslimat akışı",
+      "settingsSub": "Profil · Bildirim · Tema",
+      "title": "Tüm Menü"
+    },
+    "screens": {
+      "home": "Anasayfa",
+      "newOrder": "Yeni Sipariş"
+    },
+    "noPermission": {
+      "title": "Yetkiniz yok",
+      "orderCreate": "Yeni sipariş açmak için yöneticinizden yetki isteyin.",
+      "ordersView": "Siparişleri görmek için yöneticinizden yetki isteyin.",
+      "usersManage": "Kullanıcı yönetimi sadece klinik yöneticisi tarafından kullanılır.",
+      "settingsManage": "Klinik ayarlarına erişmek için yöneticinizden yetki isteyin."
+    },
+    "roles": {
+      "doctor": "Hekim",
+      "doctorSub": "Sipariş açar / takip eder",
+      "secretary": "Sekreter",
+      "secretarySub": "Randevu · İletişim · Sipariş yardım",
+      "admin": "Yönetici",
+      "adminSub": "Tam yetkili klinik yöneticisi"
+    },
+    "permissions": {
+      "ordersView": "Siparişleri Gör",
+      "ordersViewSub": "Tüm klinik siparişlerini görüntüleme",
+      "ordersCreate": "Sipariş Oluştur",
+      "ordersCreateSub": "Yeni iş emri açma",
+      "ordersEdit": "Sipariş Düzenle",
+      "ordersEditSub": "Mevcut sipariş düzenleme / iptal",
+      "doctorsManage": "Hekim Yönetimi",
+      "doctorsManageSub": "Hekim ekleme / düzenleme",
+      "usersManage": "Kullanıcı Yönetimi",
+      "usersManageSub": "Kullanıcı ekleme / yetki",
+      "settingsManage": "Klinik Ayarları",
+      "settingsManageSub": "Kurum bilgileri / logo / tema",
+      "billingView": "Mali Kayıtları Gör",
+      "billingViewSub": "Fatura / cari / ödeme"
+    },
+    "users": {
+      "teamSummary": "Ekip Özeti",
+      "summaryDesc": "aktif kullanıcı · hekim · sekreter · yönetici",
+      "statDoctor": "Hekim",
+      "statSecretary": "Sekreter",
+      "statAdmin": "Yönetici",
+      "filterAll": "Tümü",
+      "filterDoctor": "Hekim",
+      "filterSecretary": "Sekreter",
+      "filterAdmin": "Yönetici",
+      "recordCount": "kayıt",
+      "emptyAll": "Henüz kullanıcı yok",
+      "emptyFiltered": "eklenmedi",
+      "emptyDesc": "Hekim, sekreter veya yedek yönetici ekleyerek kliniğinizi büyütün — her rol için ayrı yetki şablonu hazır.",
+      "addFirst": "İlk kullanıcıyı ekle",
+      "modal": {
+        "titleEdit": "Kullanıcı Düzenle",
+        "titleNew": "Yeni Kullanıcı Ekle",
+        "subtitleEdit": "Rol, yetkiler ve iletişim bilgileri",
+        "subtitleNew": "Hekim, sekreter veya yedek yönetici ekle",
+        "role": "Rol",
+        "title": "Unvan",
+        "fullName": "Ad Soyad",
+        "fullNamePlaceholder": "Örn. Ayşe Yılmaz",
+        "email": "E-posta",
+        "emailPlaceholder": "ornek@email.com",
+        "editBtn": "DÜZENLE",
+        "cancelBtn": "İPTAL",
+        "password": "Şifre",
+        "autoGenerate": "OTOMATİK ÜRET",
+        "passwordPlaceholderEdit": "Yeni şifre (en az 6 karakter)",
+        "passwordPlaceholderNew": "En az 6 karakter",
+        "hideBtn": "GİZLE",
+        "showBtn": "GÖSTER",
+        "passwordHintEdit": "Kaydete bastığınızda yeni şifre uygulanır. Kullanıcıya iletmeyi unutmayın.",
+        "passwordHintNew": "Kullanıcı bu e-posta ve şifre ile giriş yapacak. Kendisine güvenli bir kanaldan iletin.",
+        "phone": "Telefon (ops.)",
+        "phonePlaceholder": "0532 ...",
+        "specialty": "Uzmanlık (ops.)",
+        "specialtyPlaceholder": "Örn. Estetik Diş Hekimliği",
+        "permissions": "Yetkiler",
+        "permissionsHintDoctor": "Hekim için sipariş yetkileri",
+        "permissionsHintSecretary": "Sekreter için operasyonel yetkiler",
+        "permissionsHintAdmin": "Yönetici için tüm klinik yetkileri",
+        "accountStatus": "Hesap Durumu",
+        "deleteConfirm": "Kullanıcıyı silmek istediğine emin misin?",
+        "deleteWarning": "Bu işlem geri alınamaz. Kullanıcının hesabı, profili ve klinik bağlantısı kalıcı olarak silinecek.",
+        "deletingBtn": "Siliniyor…",
+        "deleteBtn": "Evet, Sil",
+        "savingBtn": "Kaydediliyor…",
+        "saveBtn": "Değişiklikleri Kaydet",
+        "createBtn": "Kullanıcıyı Oluştur"
+      },
+      "validation": {
+        "nameRequired": "Ad Soyad gerekli",
+        "emailRequired": "E-posta gerekli",
+        "passwordRequired": "Şifre gerekli",
+        "passwordLength": "Şifre en az 6 karakter olmalı",
+        "clinicMissing": "Klinik bilgisi eksik"
+      },
+      "toast": {
+        "updated": "Kullanıcı güncellendi",
+        "created": "Kullanıcı oluşturuldu",
+        "deleted": "Kullanıcı silindi"
+      },
+      "alert": {
+        "deleteError": "Kullanıcı silinemedi"
+      },
+      "pageKicker": "Klinik · Ekip",
+      "pageTitle": "Kullanıcılar"
+    },
+    "doctors": {
+      "statTotal": "Toplam",
+      "statActive": "Aktif",
+      "statInactive": "Pasif",
+      "inviteBtn": "Hekim Davet Et",
+      "emptyTitle": "Henüz hekim yok",
+      "emptyDesc": "\"Hekim Davet Et\" ile yeni hekim ekleyin. E-posta ve şifre belirleyerek hesabını oluşturun.",
+      "subtitle": "Kliniğinize kayıtlı hekimler",
+      "pageTitle": "Hekimler",
+      "modal": {
+        "editTitle": "Hekimi Düzenle",
+        "phone": "Telefon",
+        "phonePlaceholder": "+90 555 000 00 00",
+        "active": "Aktif",
+        "activeHint": "Pasif hekimler yeni sipariş alamaz",
+        "reactivateWarning": "Bu hekim tekrar aktif edilecek",
+        "cancelBtn": "İptal",
+        "savingBtn": "Kaydediliyor...",
+        "saveBtn": "Kaydet",
+        "successTitle": "Hekim sisteme eklendi",
+        "successDesc": "Aşağıdaki giriş bilgilerini hekime güvenli bir kanalla iletin (WhatsApp / SMS / yüzyüze). Bu şifre yalnızca bir kez burada görünür.",
+        "copyBtn": "Kopyala",
+        "copyBothBtn": "İkisini birden + link kopyala",
+        "createdTitle": "Hesap Oluşturuldu",
+        "createTitle": "Hekim Hesabı Oluştur",
+        "titleLabel": "Unvan",
+        "nameLabel": "Ad Soyad *",
+        "namePlaceholder": "Ayşe Yılmaz",
+        "willAppear": "Görünecek:",
+        "emailLabel": "E-posta *",
+        "emailPlaceholder": "ornek@email.com",
+        "phoneLabel": "Telefon",
+        "passwordLabel": "Şifre *",
+        "passwordPlaceholder": "En az 8 karakter",
+        "hideBtn": "Gizle",
+        "showBtn": "Göster",
+        "refreshBtn": "Yenile",
+        "createHint": "Hekim için sisteme doğrudan hesap açılır. E-posta + şifreyi hekime güvenli kanalla iletin.",
+        "creatingBtn": "Oluşturuluyor...",
+        "createBtn": "Hesap Oluştur",
+        "editNameHint": "İsim değişikliği için lab'a başvurun",
+        "loginSection": "Sisteme Giriş (Opsiyonel)",
+        "loginHint": "E-posta + şifre verirseniz hekim sisteme giriş yapabilir. Boş bırakılırsa sadece kayıt listesine eklenir.",
+        "addBtn": "Hekim Ekle",
+        "kicker": "Hekim",
+        "addTitle": "Yeni hekim ekle",
+        "successMsg": "Hekim sisteme eklendi",
+        "okBtn": "Tamam"
+      },
+      "toast": {
+        "updateError": "Güncelleme başarısız",
+        "updated": "Hekim güncellendi",
+        "createError": "Hekim hesabı açılamadı",
+        "created": "Hesap oluşturuldu",
+        "copied": "Panoya kopyalandı",
+        "fullSuccess": "Hekim ve giriş hesabı oluşturuldu",
+        "added": "Hekim eklendi"
+      },
+      "validation": {
+        "clinicLoadError": "Klinik bilgisi yüklenemedi",
+        "nameEmailRequired": "İsim ve e-posta zorunlu",
+        "passwordLength": "Şifre en az 8 karakter olmalı",
+        "emailInvalid": "Geçerli bir e-posta girin",
+        "nameRequired": "Ad Soyad zorunludur",
+        "tcknLength": "TCKN 11 hane olmalıdır"
+      },
+      "alert": {
+        "createError": "Hesap Oluşturulamadı",
+        "unexpectedResponse": "Sunucudan beklenmeyen yanıt. Lütfen tekrar deneyin.",
+        "unexpectedError": "Beklenmeyen bir hata oluştu",
+        "partialSuccess": "Hekim eklendi, giriş hesabı oluşturulamadı",
+        "saveFailed": "Kayıt başarısız"
+      }
+    },
+    "finance": {
+      "tabs": {
+        "overview": "Özet",
+        "overviewHint": "Anlık mali durum",
+        "statement": "Cari Ekstre",
+        "statementHint": "Tüm hareketler",
+        "open": "Bekleyen",
+        "openHint": "Ödenmemiş faturalar",
+        "overdue": "Vadesi Geçen",
+        "overdueHint": "Acil tahsilatlar",
+        "pos": "Online POS",
+        "posHint": "Kart ile ödeme",
+        "payments": "Ödemeler",
+        "paymentsHint": "Tahsilat geçmişi"
+      },
+      "error": {
+        "clinicNotFound": "Klinik bilgisi bulunamadı. Profil ayarlarınızı kontrol edin."
+      }
+    }
+  },
+  "doctor": {
+    "nav": {
+      "courierShort": "Kurye",
+      "newOrder": "Yeni Sipariş",
+      "allMenu": "Tüm Menü"
+    }
+  },
+  "station": {
+    "requests": {
+      "materialRequest": "Malzeme Talebi",
+      "advanceRequest": "Avans Talebi",
+      "leaveRequest": "İzin Talebi"
+    },
+    "actions": {
+      "scan": "Tara",
+      "newOrder": "Yeni Sipariş"
+    },
+    "screens": {
+      "jobDetail": "İş Detayı"
+    },
+    "badges": {
+      "active": "AKTİF",
+      "critical": "KRİTİK"
+    },
+    "dashboard": {
+      "workingOn": "Şu an üzerinde çalıştığın",
+      "noActiveJob": "Aktif iş yok",
+      "waitingForAssignment": "Yeni atama bekleniyor",
+      "activeCount": "aktif",
+      "jobsAppearWhenAssigned": "İşler atandığında burada görünür",
+      "quickAction": "Hızlı işlem",
+      "createNewOrder": "Yeni sipariş\noluştur",
+      "start": "Başla",
+      "performance": "Performans",
+      "completedStages": "Tamamladığım aşamalar",
+      "stagesCompleted": "aşama tamamlandı",
+      "averageDuration": "Ort. süre",
+      "perStage": "Aşama başına",
+      "efficiency": "Verimlilik",
+      "firstTimeSuccess": "İlk seferde başarı",
+      "totalWaste": "Toplam fire:",
+      "recentActivity": "Son aktivite",
+      "last5CompletedJobs": "Son tamamladığın 5 iş",
+      "noCompletedJobsYet": "Henüz tamamlanmış iş yok"
+    },
+    "history": {
+      "subtitle": "Tamamladığım aşamalar & teslim edilen siparişler",
+      "breadcrumb": "Çalışma · Geçmiş",
+      "pageTitle": "Geçmişim",
+      "pageSubtitle": "Tamamladığın aşamalar ve teslim edilen siparişlerin",
+      "myStages": "Aşamalarım",
+      "delivered": "Teslim Edilen",
+      "filter": "Filtrele",
+      "searchPlaceholderStages": "Aşama / sipariş / hasta ara…",
+      "searchPlaceholderOrders": "Sipariş / hasta / hekim / klinik ara…",
+      "stageDetail": "Aşama Detayı",
+      "orderNo": "Sipariş No",
+      "workType": "İş Türü",
+      "clinicDoctor": "Klinik & Hekim",
+      "doctorNotes": "Hekim Notu",
+      "timeline": "Zaman Çizelgesi",
+      "assigned": "Atandı",
+      "started": "Başladı",
+      "durations": "Süreler",
+      "waitingDuration": "Bekleme",
+      "betweenAssignmentAndStart": "Atama → Başlama arası",
+      "workingDuration": "Çalışma",
+      "betweenStartAndCompletion": "Başlama → Tamamlama arası",
+      "stageId": "Aşama ID",
+      "workOrderId": "İş Emri ID",
+      "rawStatus": "Durum (raw)",
+      "goToOrder": "Siparişe Git",
+      "noAssignedStagesYet": "Henüz atanmış aşaman yok",
+      "finished": "Bitti",
+      "orderPatient": "Sipariş · Hasta",
+      "noDeliveredOrdersYet": "Dahil olduğun bir sipariş henüz teslim edilmedi",
+      "last30DeliveredOrders": "Kliniğe gönderilen son 30 sipariş"
+    },
+    "mobile": {
+      "noActiveJobWaiting": "Şu an aktif işin yok. Yeni atama bekleniyor.",
+      "activeJobsWaiting": "aktif iş seni bekliyor, bugün tamamladın.",
+      "checkIn": "MESAİ",
+      "checkInWithQr": "QR ile giriş yap",
+      "scanQrInstructions": "Posta merkezindeki QR'ı tara · giriş/çıkış",
+      "yourQueue": "Senin sıran",
+      "myActiveJobs": "Aktif işlerim",
+      "noActiveJobNow": "Şu an aktif iş yok",
+      "newJobWillAppear": "Yeni bir iş atandığında burada görünecek.",
+      "yourEfficiency": "Verimliliğin",
+      "activeCount": "aktif",
+      "avgHours": "Ort.sa",
+      "activeJob": "Aktif iş",
+      "inProgress": "Devam ediyor",
+      "empty": "Boş",
+      "critical": "kritik",
+      "completedToday": "Bugün biten",
+      "thisWeek": "bu hafta",
+      "working": "Çalış",
+      "paused": "Duraklatıldı",
+      "urgent": "Acil",
+      "inQueue": "Sırada"
+    }
+  }
+}

@@ -265,7 +265,7 @@ export interface QrCheckinResult {
   time?: string;
   employee?: string;
   work_minutes?: number;
-  error?: 'invalid_token' | 'out_of_range' | 'employee_not_found' | 'already_complete';
+  error?: 'invalid_token' | 'out_of_range' | 'employee_not_found' | 'already_complete' | 'lab_location_not_set' | 'no_session';
   distance_m?: number;
   allowed_m?: number;
 }
@@ -275,10 +275,11 @@ export interface LabLocation {
   location_lng: number | null;
   location_radius: number;
   checkin_token: string;
+  name?: string | null;
 }
 
 // ─── Check-in API ─────────────────────────────────────────────────────────────
-/** QR check-in — çalışan kendi QR'ını okutunca çağrılır */
+/** QR check-in — personel kendi QR'ını okutunca çağrılır */
 export async function qrCheckin(
   token: string,
   lat: number,
@@ -316,7 +317,7 @@ export async function manualAttendanceRPC(params: {
 export async function fetchLabLocation() {
   return supabase
     .from('labs')
-    .select('location_lat, location_lng, location_radius, checkin_token')
+    .select('location_lat, location_lng, location_radius, checkin_token, name')
     .limit(1)
     .single<LabLocation>();
 }

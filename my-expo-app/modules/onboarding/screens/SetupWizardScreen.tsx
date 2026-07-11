@@ -286,8 +286,7 @@ export function SetupWizardScreen({ onComplete }: Props) {
       >
         <ScrollView
           ref={scrollRef}
-          keyboardDismissMode="on-drag"
-          keyboardShouldPersistTaps="handled"
+          keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
           contentContainerStyle={{
             flexGrow: 1,
             alignItems: 'center',
@@ -886,7 +885,7 @@ function FormField({
           style={{
             flex: 1, paddingVertical: 14, fontSize: 14, color: theme.INK,
             // @ts-ignore web
-            fontFamily: SANS.fontFamily, outlineStyle: 'none',
+            fontFamily: SANS.fontFamily, outlineStyle: 'none' as any,
           }}
         />
       </View>

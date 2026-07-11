@@ -4,15 +4,23 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, ScrollView, Pressable,
-  ActivityIndicator, Platform, useWindowDimensions,
+  Platform, useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { TrendingUp, TrendingDown, Users, AlertTriangle } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { TrendingUp, TrendingDown, Users, AlertTriangle, Percent, Wallet, Boxes } from 'lucide-react-native';
 
 import { supabase } from '../../../core/api/supabase';
 import { useAuthStore } from '../../../core/store/authStore';
 import { DS } from '../../../core/theme/dsTokens';
 import { HubContext } from '../../../core/ui/HubContext';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
+import { CenteredLoader } from '../../../core/ui/CenteredLoader';
+import { baseSymbol, useBaseCurrency } from '../../../core/money/baseCurrency';
+import { CURRENCY_META, formatMoney, type Currency } from '../../../core/money/currency';
+import { groupByCurrency, type CurrencyTotal } from '../../../core/money/aggregations';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface SummaryRow {
@@ -24,6 +32,8 @@ interface SummaryRow {
   total_cost:      number;
   total_profit:    number;
   avg_margin_pct:  number | null;
+  revenue_currency?: string | null;  // faturalar tek dövizliyse o (₺ yanında gösterilir)
+  revenue_original?: number | null;  // orijinal döviz cinsinden gelir
 }
 
 interface OrderRow {
@@ -37,6 +47,8 @@ interface OrderRow {
   profit:       number;
   margin_pct:   number | null;
   created_at:   string;
+  revenue_currency?: string | null;  // sipariş tek dövizliyse o (kâr o para biriminde gösterilir)
+  revenue_original?: number | null;  // orijinal döviz cinsinden gelir
 }
 
 interface DoctorRow {
@@ -47,6 +59,8 @@ interface DoctorRow {
   total_cost:     number;
   total_profit:   number;
   avg_margin_pct: number | null;
+  revenue_currency?: string | null;  // faturalar tek dövizliyse o (₺ yanında gösterilir)
+  revenue_original?: number | null;  // orijinal döviz cinsinden gelir
 }
 
 interface TechnicianUsageRow {
@@ -71,7 +85,13 @@ interface WasteByMaterial {
 
 type Range = 'thisMonth' | 'lastMonth' | 'thisYear' | 'all';
 
-const fmt = (n: number) => n.toLocaleString('tr-TR', { maximumFractionDigits: 0 });
+// Savunmacı: undefined/null/string (Supabase numeric string döndürür) güvenli.
+const fmt = (n: number | string | null | undefined) =>
+  (Number(n) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 0 });
+
+// Faturalar tek dövizliyse ₺ yanına orijinal karşılığı: " (€420)". Yoksa ''.
+const origSuffix = (cur?: string | null, orig?: number | null): string =>
+  cur && orig != null ? ` (${CURRENCY_META[cur as Currency]?.symbol ?? cur}${fmt(orig)})` : '';
 
 function getRange(r: Range): { from: string | null; to: string | null } {
   const now   = new Date();
@@ -82,7 +102,9 @@ function getRange(r: Range): { from: string | null; to: string | null } {
   if (r === 'thisMonth') return { from: ymd(new Date(yyyy, mm, 1)),     to: ymd(new Date(yyyy, mm + 1, 0)) };
   if (r === 'lastMonth') return { from: ymd(new Date(yyyy, mm - 1, 1)), to: ymd(new Date(yyyy, mm, 0)) };
   if (r === 'thisYear')  return { from: `${yyyy}-01-01`,                to: `${yyyy}-12-31` };
-  return { from: null, to: null };
+  // 'all' (Tümü): RPC'ler created_at BETWEEN p_from AND p_to kullanıyor; null
+  // gönderilince BETWEEN NULL boş döner. Geniş bir aralıkla tüm kayıtları kapsa.
+  return { from: '2000-01-01', to: `${yyyy + 1}-12-31` };
 }
 
 const RANGE_OPTIONS: { key: Range; label: string }[] = [
@@ -127,22 +149,44 @@ export function ProfitabilityScreen() {
   const router      = useRouter();
   const { profile } = useAuthStore();
   const { width }   = useWindowDimensions();
+  const insets      = useSafeAreaInsets();
   const isDesktop   = width >= 900;
   const labId       = profile?.lab_id ?? profile?.id ?? null;
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  useBaseCurrency();
 
   const [range, setRange] = useState<Range>('thisMonth');
-  const [summary, setSummary]     = useState<SummaryRow | null>(null);
-  const [best, setBest]           = useState<OrderRow[]>([]);
-  const [worst, setWorst]         = useState<OrderRow[]>([]);
-  const [doctors, setDoctors]     = useState<DoctorRow[]>([]);
-  const [technicians, setTechnicians] = useState<TechnicianUsageRow[]>([]);
-  const [wasteByMat, setWasteByMat]   = useState<WasteByMaterial[]>([]);
-  const [loading, setLoading]     = useState(true);
+
+  // localStorage cache (per labId+range key) — 2. ziyaret anında render.
+  // v2: RPC çıktı kolonları değişti (total_revenue/total_profit…) — eski v1 cache atılsın.
+  const cacheKey = labId ? `profit_screen_v3:${labId}:${range}` : null;
+  const loadCached = (): any | null => {
+    if (!cacheKey || typeof window === 'undefined' || !window.localStorage) return null;
+    try { const r = window.localStorage.getItem(cacheKey); return r ? JSON.parse(r) : null; } catch { return null; }
+  };
+  const saveCached = (data: any) => {
+    if (!cacheKey || typeof window === 'undefined' || !window.localStorage) return;
+    try { window.localStorage.setItem(cacheKey, JSON.stringify(data)); } catch { /* quota */ }
+  };
+  const cached = loadCached();
+
+  const [summary, setSummary]     = useState<SummaryRow | null>(cached?.summary ?? null);
+  const [best, setBest]           = useState<OrderRow[]>(cached?.best ?? []);
+  const [worst, setWorst]         = useState<OrderRow[]>(cached?.worst ?? []);
+  const [doctors, setDoctors]     = useState<DoctorRow[]>(cached?.doctors ?? []);
+  const [technicians, setTechnicians] = useState<TechnicianUsageRow[]>(cached?.technicians ?? []);
+  const [wasteByMat, setWasteByMat]   = useState<WasteByMaterial[]>(cached?.wasteByMat ?? []);
+  const [loading, setLoading]     = useState(cached === null);
+  // Katı per-currency: gelir para birimine göre (Net Kâr/Maliyet raporlama ₺'de kalır)
+  const [revenueByCcy, setRevenueByCcy] = useState<CurrencyTotal[]>([]);
+  const [docRevByCcy, setDocRevByCcy]   = useState<Map<string, CurrencyTotal[]>>(new Map());
 
   useEffect(() => {
     if (!labId) return;
     let cancelled = false;
-    setLoading(true);
+    const cachedNow = loadCached();
+    if (cachedNow === null) setLoading(true);
     const { from, to } = getRange(range);
 
     Promise.all([
@@ -152,14 +196,48 @@ export function ProfitabilityScreen() {
       supabase.rpc('profitability_by_doctor',   { p_lab_id: labId, p_from: from, p_to: to }),
       supabase.rpc('report_technician_usage',   { p_lab_id: labId, p_from: from, p_to: to }),
       supabase.rpc('report_material_waste',     { p_lab_id: labId, p_from: from, p_to: to }),
-    ]).then(([s, b, w, d, t, mw]) => {
+      supabase.rpc('profitability_revenue_ccy', { p_lab_id: labId, p_from: from, p_to: to }),
+      supabase.rpc('profitability_by_doctor_revenue_ccy', { p_lab_id: labId, p_from: from, p_to: to }),
+    ]).then(([s, b, w, d, t, mw, rc, drc]) => {
       if (cancelled) return;
-      setSummary((s.data?.[0] ?? null) as SummaryRow | null);
-      setBest((b.data ?? []) as OrderRow[]);
-      setWorst((w.data ?? []) as OrderRow[]);
-      setDoctors((d.data ?? []) as DoctorRow[]);
-      setTechnicians((t.data ?? []) as TechnicianUsageRow[]);
-      setWasteByMat((mw.data ?? []) as WasteByMaterial[]);
+      const summaryRow   = (s.data?.[0] ?? null) as SummaryRow | null;
+      // Gelir per-currency: RPC varsa onu kullan; yoksa (migration yok) summary base'ini tek dilim yap
+      if (!rc.error && Array.isArray(rc.data)) {
+        setRevenueByCcy(groupByCurrency((rc.data ?? []) as any[],
+          (r: any) => ({ amount: Number(r.revenue) || 0, currency: (r.currency || 'TRY') as Currency })));
+      } else {
+        const rev = Number((summaryRow as any)?.total_revenue ?? 0);
+        setRevenueByCcy(rev > 0 ? [{ currency: 'TRY' as Currency, total: rev, count: 0 }] : []);
+      }
+      // Per-doktor gelir per-currency (RPC yoksa boş → DoctorRow base+suffix fallback'ine düşer)
+      if (!drc.error && Array.isArray(drc.data)) {
+        const byDoc = new Map<string, any[]>();
+        for (const r of drc.data as any[]) {
+          const arr = byDoc.get(r.doctor_id) ?? [];
+          arr.push(r); byDoc.set(r.doctor_id, arr);
+        }
+        const m = new Map<string, CurrencyTotal[]>();
+        byDoc.forEach((rows, did) => m.set(did, groupByCurrency(rows,
+          (r: any) => ({ amount: Number(r.revenue) || 0, currency: (r.currency || 'TRY') as Currency }))));
+        setDocRevByCcy(m);
+      } else {
+        setDocRevByCcy(new Map());
+      }
+      const bestRows     = (b.data ?? []) as OrderRow[];
+      const worstRows    = (w.data ?? []) as OrderRow[];
+      const doctorRows   = (d.data ?? []) as DoctorRow[];
+      const techRows     = (t.data ?? []) as TechnicianUsageRow[];
+      const wasteRows    = (mw.data ?? []) as WasteByMaterial[];
+      setSummary(summaryRow);
+      setBest(bestRows);
+      setWorst(worstRows);
+      setDoctors(doctorRows);
+      setTechnicians(techRows);
+      setWasteByMat(wasteRows);
+      saveCached({
+        summary: summaryRow, best: bestRows, worst: worstRows,
+        doctors: doctorRows, technicians: techRows, wasteByMat: wasteRows,
+      });
       setLoading(false);
     });
 
@@ -171,15 +249,18 @@ export function ProfitabilityScreen() {
   const profitTone = profit < 0 ? 'red' : (margin !== null && margin < 20) ? 'yellow' : 'green';
   const toneBg     = profitTone === 'red' ? '#FEE2E2' : profitTone === 'yellow' ? '#FEF3C7' : '#ECFDF5';
   const toneFg     = profitTone === 'red' ? '#DC2626' : profitTone === 'yellow' ? '#B45309' : '#059669';
+  // "En Zararlı" yalnızca gerçekten zararda (kâr < 0) siparişleri göstersin —
+  // ters sıralama kârlı siparişleri "zararlı" gibi göstermesin.
+  const realWorst = worst.filter(o => Number(o.profit ?? 0) < 0);
 
   return (
     <ScrollView
       style={{ flex: 1 }}
-      contentContainerStyle={{ padding: 22, paddingTop: 4, paddingBottom: 48, gap: 14 }}
+      contentContainerStyle={{ paddingHorizontal: 12, paddingTop: isEmbedded ? 4 : insets.top + 8, paddingBottom: 120, gap: 14 }}
       showsVerticalScrollIndicator={false}
     >
-      {/* ── Range filter ─────────────────────────────────────────────────── */}
-      <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', backgroundColor: DS.ink[100], borderRadius: 9999, padding: 4 }}>
+      {/* ── Range filter — full width, eşit dağılım ─────────────────── */}
+      <View style={{ flexDirection: 'row', gap: 4, backgroundColor: T.cardSoft, borderRadius: 9999, padding: 4 }}>
         {RANGE_OPTIONS.map(opt => {
           const active = range === opt.key;
           return (
@@ -188,13 +269,15 @@ export function ProfitabilityScreen() {
               onPress={() => setRange(opt.key)}
               style={[
                 {
-                  paddingHorizontal: 14,
-                  paddingVertical: 7,
+                  flex: 1,
+                  alignItems: 'center', justifyContent: 'center',
+                  paddingHorizontal: 8,
+                  paddingVertical: 8,
                   borderRadius: 9999,
                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
                 } as any,
                 active && {
-                  backgroundColor: '#FFF',
+                  backgroundColor: T.card,
                   // @ts-ignore web
                   boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
                 },
@@ -202,9 +285,10 @@ export function ProfitabilityScreen() {
             >
               <Text
                 style={[
-                  { fontSize: 12, fontWeight: '600', color: DS.ink[400] },
-                  active && { color: DS.ink[900], fontWeight: '700' },
+                  { fontSize: 12, fontWeight: '600', color: T.ink3 },
+                  active && { color: T.ink, fontWeight: '700' },
                 ]}
+                numberOfLines={1}
               >
                 {opt.label}
               </Text>
@@ -214,74 +298,109 @@ export function ProfitabilityScreen() {
       </View>
 
       {loading ? (
-        <View style={{ paddingVertical: 60, alignItems: 'center' }}>
-          <ActivityIndicator size="large" color={DS.ink[400]} />
-        </View>
+        <CenteredLoader color={T.ink3} inline />
       ) : (
         <>
-          {/* ── 2 büyük Hero kart ────────────────────────────────────────── */}
-          <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: 12 }}>
-            {/* Net Kâr */}
-            <View style={{ flex: 1, ...cardSolid, padding: 24 } as any}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: toneBg, alignItems: 'center', justifyContent: 'center' }}>
-                  {profit >= 0
-                    ? <TrendingUp size={20} color={toneFg} strokeWidth={1.6} />
-                    : <TrendingDown size={20} color={toneFg} strokeWidth={1.6} />
-                  }
-                </View>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500] }}>
-                  Net Kâr
+          {/* ── F1 HeroCard — Karlılık özeti (büyük + kapsamlı) ─────────── */}
+          <View style={{
+            borderRadius: 20, overflow: 'hidden',
+            backgroundColor: toneFg, padding: 20, position: 'relative',
+          }}>
+            <View style={{ position: 'absolute', top: -40, right: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.18)' }} />
+            <View style={{ position: 'absolute', bottom: -50, left: -20, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+
+            {/* Üst satır: Net Kâr + İkon */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.78)', marginBottom: 8 }}>
+                  Net Kâr · Bu Dönem
+                </Text>
+                <Text
+                  style={{ ...DISPLAY, fontSize: 38, color: '#FFFFFF', letterSpacing: -1.2, lineHeight: 42 }}
+                  numberOfLines={1}
+                >
+                  {profit >= 0 ? '+' : '−'}{baseSymbol()}{fmt(Math.abs(profit))}
+                </Text>
+                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.72)', marginTop: 4 }}>
+                  {summary?.total_orders ?? 0} sipariş · {margin !== null ? `%${margin} marj` : 'marj —'}
+                  {margin !== null ? ` · ${
+                    margin >= 30 ? 'Mükemmel'
+                    : margin >= 20 ? 'İyi'
+                    : margin >= 10 ? 'Düşük' : 'Risk'
+                  }` : ''}
                 </Text>
               </View>
-              <Text style={{ ...DISPLAY, fontSize: 36, letterSpacing: -1, color: toneFg, marginBottom: 8 }}>
-                {profit >= 0 ? '+' : '−'}₺{fmt(Math.abs(profit))}
-              </Text>
-              <Text style={{ fontSize: 12, color: DS.ink[400] }}>
-                {summary?.total_orders ?? 0} sipariş · bu dönem
-              </Text>
+              <View style={{ width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.22)' }}>
+                {profit >= 0
+                  ? <TrendingUp size={22} color="#FFFFFF" strokeWidth={1.6} />
+                  : <TrendingDown size={22} color="#FFFFFF" strokeWidth={1.6} />
+                }
+              </View>
             </View>
 
-            {/* Ortalama Marj */}
-            <View style={{ flex: 1, ...cardSolid, padding: 24 } as any}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center' }}>
-                  <TrendingUp size={20} color={DS.ink[500]} strokeWidth={1.6} />
-                </View>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500] }}>
+            {/* Marj büyük satırı */}
+            <View style={{
+              flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+              marginTop: 14, paddingTop: 12,
+              borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.22)',
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Percent size={13} color="rgba(255,255,255,0.85)" strokeWidth={2} />
+                <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>
                   Ortalama Marj
                 </Text>
               </View>
-              <Text style={{ ...DISPLAY, fontSize: 36, letterSpacing: -1, color: DS.ink[900], marginBottom: 8 }}>
+              <Text style={{ ...DISPLAY, fontSize: 22, color: '#FFFFFF', letterSpacing: -0.6, lineHeight: 26 }}>
                 {margin !== null ? `%${margin}` : '—'}
               </Text>
-              <Text style={{ fontSize: 12, color: DS.ink[400] }}>
-                {margin !== null && margin >= 30 ? 'Mükemmel'
-                  : margin !== null && margin >= 20 ? 'İyi'
-                  : margin !== null && margin >= 10 ? 'Düşük' : 'Risk'}
-              </Text>
             </View>
+
+            {/* 4 mini stat grid — Gelir per-currency, diğerleri raporlama ₺ */}
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
+              {([
+                { label: 'Gelir',    slices: revenueByCcy, icon: TrendingUp },
+                { label: 'Maliyet',  value: `${baseSymbol()}${fmt(summary?.total_cost     ?? 0)}`, icon: TrendingDown },
+                { label: 'İşçilik',  value: `${baseSymbol()}${fmt(summary?.total_labor    ?? 0)}`, icon: Users        },
+                { label: 'Materyal', value: `${baseSymbol()}${fmt(summary?.total_material ?? 0)}`, icon: Boxes        },
+              ] as { label: string; value?: string; slices?: CurrencyTotal[]; icon: any }[]).map(stat => {
+                const Icon = stat.icon;
+                return (
+                  <View key={stat.label} style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 9, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.16)' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                      <Icon size={10} color="rgba(255,255,255,0.85)" strokeWidth={2} />
+                      <Text style={{ fontSize: 8.5, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>
+                        {stat.label}
+                      </Text>
+                    </View>
+                    {stat.slices ? (
+                      stat.slices.length === 0 ? (
+                        <Text style={{ ...DISPLAY, fontSize: 13, color: '#FFFFFF', letterSpacing: -0.2, lineHeight: 17 }}>—</Text>
+                      ) : (
+                        <View style={{ gap: 1 }}>
+                          {stat.slices.map(s => (
+                            <Text key={s.currency} style={{ ...DISPLAY, fontSize: 13, color: '#FFFFFF', letterSpacing: -0.2, lineHeight: 17 }} numberOfLines={1}>
+                              {formatMoney(s.total, (s.currency as Currency), { fractionDigits: 0 })}
+                            </Text>
+                          ))}
+                        </View>
+                      )
+                    ) : (
+                      <Text style={{ ...DISPLAY, fontSize: 13, color: '#FFFFFF', letterSpacing: -0.2, lineHeight: 17 }} numberOfLines={1}>
+                        {stat.value}
+                      </Text>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+            <Text style={{ fontSize: 9, color: 'rgba(255,255,255,0.65)', marginTop: 8 }}>
+              Net Kâr · Maliyet · İşçilik · Materyal raporlama para biriminde ({baseSymbol()}) gösterilir.
+            </Text>
           </View>
 
-          {/* ── 4 küçük KPI kartı ────────────────────────────────────────── */}
-          <ScrollView
-            horizontal={!isDesktop}
-            showsHorizontalScrollIndicator={false}
-            scrollEnabled={!isDesktop}
-            contentContainerStyle={{
-              flexDirection: 'row', gap: 12,
-              ...(isDesktop ? { width: '100%' } : {}),
-            }}
-          >
-            <KpiMini label="Gelir" value={`₺${fmt(summary?.total_revenue ?? 0)}`} icon={TrendingUp} />
-            <KpiMini label="Maliyet" value={`₺${fmt(summary?.total_cost ?? 0)}`} icon={TrendingDown} />
-            <KpiMini label="İşçilik" value={`₺${fmt(summary?.total_labor ?? 0)}`} icon={Users} />
-            <KpiMini label="Materyal" value={`₺${fmt(summary?.total_material ?? 0)}`} icon={TrendingDown} />
-          </ScrollView>
-
           {/* ── Maliyet Dağılımı ─────────────────────────────────────────── */}
-          <View style={{ ...tableCard, padding: 18 } as any}>
-            <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500], letterSpacing: 0.3, marginBottom: 10 }}>
+          <View style={{ ...tableCard, backgroundColor: T.card, borderColor: T.hairline, padding: 18 } as any}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink3, letterSpacing: 0.3, marginBottom: 10 }}>
               Maliyet Dağılımı
             </Text>
             <View style={{ gap: 6 }}>
@@ -294,12 +413,12 @@ export function ProfitabilityScreen() {
           {/* ── Top best/worst (responsive split) ─────────────────────────── */}
           <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: 14 }}>
             <View style={[{ gap: 8 }, isDesktop && { flex: 1 }]}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500], letterSpacing: 0.3, marginBottom: 10, paddingHorizontal: 4 }}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink3, letterSpacing: 0.3, marginBottom: 10, paddingHorizontal: 4 }}>
                 EN KÂRLI 5 SİPARİŞ
               </Text>
-              <View style={{ ...tableCard } as any}>
+              <View style={{ ...tableCard, backgroundColor: T.card, borderColor: T.hairline } as any}>
                 {best.length === 0 ? (
-                  <Text style={{ padding: 24, textAlign: 'center', fontSize: 12, color: DS.ink[400] }}>Veri yok</Text>
+                  <Text style={{ padding: 24, textAlign: 'center', fontSize: 12, color: T.ink3 }}>Veri yok</Text>
                 ) : best.map((o, i) => (
                   <OrderListRow
                     key={o.id}
@@ -312,17 +431,17 @@ export function ProfitabilityScreen() {
             </View>
 
             <View style={[{ gap: 8 }, isDesktop && { flex: 1 }]}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500], letterSpacing: 0.3, marginBottom: 10, paddingHorizontal: 4 }}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink3, letterSpacing: 0.3, marginBottom: 10, paddingHorizontal: 4 }}>
                 EN ZARARLI 5 SİPARİŞ
               </Text>
-              <View style={{ ...tableCard } as any}>
-                {worst.length === 0 ? (
-                  <Text style={{ padding: 24, textAlign: 'center', fontSize: 12, color: DS.ink[400] }}>Veri yok</Text>
-                ) : worst.map((o, i) => (
+              <View style={{ ...tableCard, backgroundColor: T.card, borderColor: T.hairline } as any}>
+                {realWorst.length === 0 ? (
+                  <Text style={{ padding: 24, textAlign: 'center', fontSize: 12, color: T.ink3 }}>Zararlı sipariş yok</Text>
+                ) : realWorst.map((o, i) => (
                   <OrderListRow
                     key={o.id}
                     order={o}
-                    isLast={i === worst.length - 1}
+                    isLast={i === realWorst.length - 1}
                     onPress={() => router.push(`/(lab)/order/${o.id}` as any)}
                   />
                 ))}
@@ -332,16 +451,17 @@ export function ProfitabilityScreen() {
 
           {/* ── Per-doctor breakdown ─────────────────────────────────────── */}
           <View style={{ gap: 8 }}>
-            <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500], letterSpacing: 0.3, marginBottom: 10, paddingHorizontal: 4 }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink3, letterSpacing: 0.3, marginBottom: 10, paddingHorizontal: 4 }}>
               DOKTOR BAZLI KÂRLILIK
             </Text>
-            <View style={{ ...tableCard } as any}>
+            <View style={{ ...tableCard, backgroundColor: T.card, borderColor: T.hairline } as any}>
               {doctors.length === 0 ? (
-                <Text style={{ padding: 24, textAlign: 'center', fontSize: 12, color: DS.ink[400] }}>Veri yok</Text>
+                <Text style={{ padding: 24, textAlign: 'center', fontSize: 12, color: T.ink3 }}>Veri yok</Text>
               ) : doctors.map((d, i) => (
                 <DoctorRowView
                   key={d.doctor_id}
                   doc={d}
+                  revSlices={docRevByCcy.get(d.doctor_id)}
                   isLast={i === doctors.length - 1}
                 />
               ))}
@@ -350,12 +470,12 @@ export function ProfitabilityScreen() {
 
           {/* ── Technician usage + efficiency ─────────────────────────── */}
           <View style={{ gap: 8 }}>
-            <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500], letterSpacing: 0.3, marginBottom: 10, paddingHorizontal: 4 }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink3, letterSpacing: 0.3, marginBottom: 10, paddingHorizontal: 4 }}>
               TEKNİSYEN VERİMLİLİĞİ
             </Text>
-            <View style={{ ...tableCard } as any}>
+            <View style={{ ...tableCard, backgroundColor: T.card, borderColor: T.hairline } as any}>
               {technicians.length === 0 ? (
-                <Text style={{ padding: 24, textAlign: 'center', fontSize: 12, color: DS.ink[400] }}>Veri yok — teknisyen henüz materyal tüketmedi</Text>
+                <Text style={{ padding: 24, textAlign: 'center', fontSize: 12, color: T.ink3 }}>Veri yok — teknisyen henüz materyal tüketmedi</Text>
               ) : technicians.map((t, i) => (
                 <TechRowView
                   key={t.user_id}
@@ -369,10 +489,10 @@ export function ProfitabilityScreen() {
           {/* ── Material waste breakdown ──────────────────────────────── */}
           {wasteByMat.length > 0 && (
             <View style={{ gap: 8 }}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500], letterSpacing: 0.3, marginBottom: 10, paddingHorizontal: 4 }}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink3, letterSpacing: 0.3, marginBottom: 10, paddingHorizontal: 4 }}>
                 MATERYAL FİRE RAPORU
               </Text>
-              <View style={{ ...tableCard } as any}>
+              <View style={{ ...tableCard, backgroundColor: T.card, borderColor: T.hairline } as any}>
                 {wasteByMat.map((w, i) => (
                   <WasteRowView
                     key={w.item_id}
@@ -394,15 +514,16 @@ export function ProfitabilityScreen() {
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
 function KpiMini({ label, value, icon: Icon }: { label: string; value: string; icon: React.ComponentType<any> }) {
+  const T = useMobileTokens();
   return (
-    <View style={{ flex: 1, minWidth: 110, ...cardSolid, padding: 16 } as any}>
-      <View style={{ width: 28, height: 28, borderRadius: DS.radius.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: DS.ink[100] }}>
-        <Icon size={14} color={DS.ink[500]} strokeWidth={1.6} />
+    <View style={{ flex: 1, minWidth: 110, ...cardSolid, backgroundColor: T.card, padding: 16 } as any}>
+      <View style={{ width: 28, height: 28, borderRadius: DS.radius.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: T.cardSoft }}>
+        <Icon size={14} color={T.ink3} strokeWidth={1.6} />
       </View>
-      <Text style={{ fontSize: 10, fontWeight: '600', color: DS.ink[400], letterSpacing: 0.8, textTransform: 'uppercase', marginTop: 4 }}>
+      <Text style={{ fontSize: 10, fontWeight: '600', color: T.ink3, letterSpacing: 0.8, textTransform: 'uppercase', marginTop: 4 }}>
         {label}
       </Text>
-      <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }} numberOfLines={1}>
+      <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: T.ink }} numberOfLines={1}>
         {value}
       </Text>
     </View>
@@ -410,10 +531,11 @@ function KpiMini({ label, value, icon: Icon }: { label: string; value: string; i
 }
 
 function BreakRow({ label, value }: { label: string; value: number }) {
+  const T = useMobileTokens();
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-      <Text style={{ fontSize: 12, color: DS.ink[500], fontWeight: '600' }}>{label}</Text>
-      <Text style={{ fontSize: 12, color: DS.ink[900], fontWeight: '700' }}>{fmt(value)} {'₺'}</Text>
+      <Text style={{ fontSize: 12, color: T.ink3, fontWeight: '600' }}>{label}</Text>
+      <Text style={{ fontSize: 12, color: T.ink, fontWeight: '700' }}>{fmt(value)} {baseSymbol()}</Text>
     </View>
   );
 }
@@ -421,6 +543,7 @@ function BreakRow({ label, value }: { label: string; value: number }) {
 function OrderListRow({
   order, isLast, onPress,
 }: { order: OrderRow; isLast: boolean; onPress: () => void }) {
+  const T = useMobileTokens();
   const tone = order.profit < 0 ? 'red' : (order.margin_pct ?? 100) < 20 ? 'yellow' : 'green';
   const chipTone = tone === 'red' ? CHIP_TONES.danger : tone === 'yellow' ? CHIP_TONES.warning : CHIP_TONES.success;
 
@@ -436,21 +559,30 @@ function OrderListRow({
           paddingVertical: 14,
           ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
         } as any,
-        !isLast && { borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' },
+        !isLast && { borderBottomWidth: 1, borderBottomColor: T.hairline },
       ]}
     >
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontSize: 13, fontWeight: '800', color: DS.ink[900] }} numberOfLines={1}>
+        <Text style={{ fontSize: 13, fontWeight: '800', color: T.ink }} numberOfLines={1}>
           #{order.order_number}
         </Text>
-        <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }} numberOfLines={1}>
+        <Text style={{ fontSize: 11, color: T.ink3, marginTop: 1 }} numberOfLines={1}>
           {order.patient_name ?? '—'} {'·'} {order.doctor_name ?? '—'}
           {order.case_type ? ` · ${order.case_type}` : ''}
         </Text>
       </View>
       <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: DS.radius.pill, alignItems: 'center', minWidth: 70, backgroundColor: chipTone.bg }}>
         <Text style={{ fontSize: 12, fontWeight: '800', color: chipTone.fg }}>
-          {order.profit >= 0 ? '+' : '−'}{fmt(Math.abs(order.profit))} {'₺'}
+          {(() => {
+            // Tek (TL dışı) dövizli sipariş → kârı kendi para biriminde (kâr = gelir × marj oranı)
+            const foreign = !!order.revenue_currency && order.revenue_currency !== 'TRY' && order.revenue_original != null && order.sale_price > 0;
+            if (foreign) {
+              const sym = CURRENCY_META[order.revenue_currency as Currency]?.symbol ?? order.revenue_currency;
+              const pOrig = (Number(order.revenue_original) || 0) * (order.profit / order.sale_price);
+              return `${pOrig >= 0 ? '+' : '−'}${sym}${fmt(Math.abs(pOrig))}`;
+            }
+            return `${order.profit >= 0 ? '+' : '−'}${fmt(Math.abs(order.profit))} ${baseSymbol()}`;
+          })()}
         </Text>
         {order.margin_pct !== null && (
           <Text style={{ fontSize: 10, fontWeight: '700', marginTop: 1, color: chipTone.fg }}>%{order.margin_pct}</Text>
@@ -461,6 +593,7 @@ function OrderListRow({
 }
 
 function TechRowView({ row, isLast }: { row: TechnicianUsageRow; isLast: boolean }) {
+  const T = useMobileTokens();
   const eff = row.efficiency_pct ?? 100;
   const tone = eff < 80 ? 'red' : eff < 95 ? 'yellow' : 'green';
   const chipTone = tone === 'red' ? CHIP_TONES.danger : tone === 'yellow' ? CHIP_TONES.warning : CHIP_TONES.success;
@@ -469,7 +602,7 @@ function TechRowView({ row, isLast }: { row: TechnicianUsageRow; isLast: boolean
     <View
       style={[
         { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingVertical: 14 },
-        !isLast && { borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' },
+        !isLast && { borderBottomWidth: 1, borderBottomColor: T.hairline },
       ]}
     >
       <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#F5F3FF', alignItems: 'center', justifyContent: 'center' }}>
@@ -478,10 +611,10 @@ function TechRowView({ row, isLast }: { row: TechnicianUsageRow; isLast: boolean
         </Text>
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900] }} numberOfLines={1}>{row.user_name ?? '—'}</Text>
-        <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }} numberOfLines={1}>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: T.ink }} numberOfLines={1}>{row.user_name ?? '—'}</Text>
+        <Text style={{ fontSize: 11, color: T.ink3, marginTop: 1 }} numberOfLines={1}>
           {fmt(row.used_qty)} kullanım  {'·'}  {fmt(row.waste_qty)} fire
-          {row.waste_cost > 0 ? `  ·  ${fmt(row.waste_cost)} ₺ kayıp` : ''}
+          {row.waste_cost > 0 ? `  ·  ${fmt(row.waste_cost)} ${baseSymbol()} kayıp` : ''}
         </Text>
       </View>
       <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: DS.radius.pill, alignItems: 'center', minWidth: 90, backgroundColor: chipTone.bg }}>
@@ -493,31 +626,33 @@ function TechRowView({ row, isLast }: { row: TechnicianUsageRow; isLast: boolean
 }
 
 function WasteRowView({ row, isLast }: { row: WasteByMaterial; isLast: boolean }) {
+  const T = useMobileTokens();
   return (
     <View
       style={[
         { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingVertical: 14 },
-        !isLast && { borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' },
+        !isLast && { borderBottomWidth: 1, borderBottomColor: T.hairline },
       ]}
     >
       <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: CHIP_TONES.danger.bg, alignItems: 'center', justifyContent: 'center' }}>
         <AlertTriangle size={16} color={CHIP_TONES.danger.fg} strokeWidth={1.6} />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900] }} numberOfLines={1}>{row.item_name}</Text>
-        <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }} numberOfLines={1}>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: T.ink }} numberOfLines={1}>{row.item_name}</Text>
+        <Text style={{ fontSize: 11, color: T.ink3, marginTop: 1 }} numberOfLines={1}>
           {fmt(row.waste_qty)}{row.unit ? ` ${row.unit}` : ''}
           {row.type ? `  ·  ${row.type}` : ''}
         </Text>
       </View>
       <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: DS.radius.pill, alignItems: 'center', minWidth: 90, backgroundColor: CHIP_TONES.danger.bg }}>
-        <Text style={{ fontSize: 13, fontWeight: '800', color: CHIP_TONES.danger.fg }}>{'−'}{fmt(row.waste_cost)} {'₺'}</Text>
+        <Text style={{ fontSize: 13, fontWeight: '800', color: CHIP_TONES.danger.fg }}>{'−'}{fmt(row.waste_cost)} {baseSymbol()}</Text>
       </View>
     </View>
   );
 }
 
-function DoctorRowView({ doc, isLast }: { doc: DoctorRow; isLast: boolean }) {
+function DoctorRowView({ doc, isLast, revSlices }: { doc: DoctorRow; isLast: boolean; revSlices?: CurrencyTotal[] }) {
+  const T = useMobileTokens();
   const tone = doc.total_profit < 0 ? 'red' : (doc.avg_margin_pct ?? 100) < 20 ? 'yellow' : 'green';
   const chipTone = tone === 'red' ? CHIP_TONES.danger : tone === 'yellow' ? CHIP_TONES.warning : CHIP_TONES.success;
 
@@ -525,23 +660,37 @@ function DoctorRowView({ doc, isLast }: { doc: DoctorRow; isLast: boolean }) {
     <View
       style={[
         { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingVertical: 14 },
-        !isLast && { borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' },
+        !isLast && { borderBottomWidth: 1, borderBottomColor: T.hairline },
       ]}
     >
       <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center' }}>
         <Text style={{ fontSize: 12, fontWeight: '800', color: '#2563EB' }}>
-          {doc.doctor_name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
+          {(doc.doctor_name ?? '—').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
         </Text>
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900] }} numberOfLines={1}>{doc.doctor_name}</Text>
-        <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }} numberOfLines={1}>
-          {doc.order_count} sipariş {'·'} {fmt(doc.total_revenue)} {'₺'} gelir
+        <Text style={{ fontSize: 13, fontWeight: '700', color: T.ink }} numberOfLines={1}>{doc.doctor_name}</Text>
+        <Text style={{ fontSize: 11, color: T.ink3, marginTop: 1 }} numberOfLines={1}>
+          {/* Katı per-currency: RPC varsa her döviz ayrı (orijinal); yoksa base+orig-suffix fallback */}
+          {doc.order_count} sipariş {'·'} {
+            revSlices && revSlices.length
+              ? revSlices.map(s => formatMoney(s.total, s.currency, { fractionDigits: 0 })).join(' · ')
+              : `${fmt(doc.total_revenue)} ${baseSymbol()}${origSuffix(doc.revenue_currency, doc.revenue_original)}`
+          } gelir
         </Text>
       </View>
       <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: DS.radius.pill, alignItems: 'center', minWidth: 90, backgroundColor: chipTone.bg }}>
         <Text style={{ fontSize: 13, fontWeight: '800', color: chipTone.fg }}>
-          {doc.total_profit >= 0 ? '+' : '−'}{fmt(Math.abs(doc.total_profit))} {'₺'}
+          {(() => {
+            // Tek (TL dışı) dövizli doktor → kârı kendi para biriminde göster (kâr = gelir × marj oranı)
+            const foreign = !!doc.revenue_currency && doc.revenue_currency !== 'TRY' && doc.revenue_original != null && doc.total_revenue > 0;
+            if (foreign) {
+              const sym = CURRENCY_META[doc.revenue_currency as Currency]?.symbol ?? doc.revenue_currency;
+              const pOrig = (Number(doc.revenue_original) || 0) * (doc.total_profit / doc.total_revenue);
+              return `${pOrig >= 0 ? '+' : '−'}${sym}${fmt(Math.abs(pOrig))}`;
+            }
+            return `${doc.total_profit >= 0 ? '+' : '−'}${fmt(Math.abs(doc.total_profit))} ${baseSymbol()}`;
+          })()}
         </Text>
         {doc.avg_margin_pct !== null && (
           <Text style={{ fontSize: 10, fontWeight: '700', marginTop: 1, color: chipTone.fg }}>%{doc.avg_margin_pct}</Text>

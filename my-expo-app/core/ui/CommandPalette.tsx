@@ -23,9 +23,11 @@ import {
   Keyboard,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppIcon } from './AppIcon';
 import { useCommandPalette } from '../store/commandPaletteStore';
 import { C } from '../theme/colors';
+import { useThemeModeStore } from '../store/themeModeStore';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -57,6 +59,9 @@ interface Props {
 
 export function CommandPalette({ navItems, onNavigate, accentColor = C.primary }: Props) {
   const { open, query, closePalette, setQuery } = useCommandPalette();
+  const isDark = useThemeModeStore(st => st.resolvedDark);
+  const t = useMemo(() => paletteColors(isDark), [isDark]);
+  const insets = useSafeAreaInsets();
   const inputRef = useRef<TextInput>(null);
   const [activeIdx, setActiveIdx] = React.useState(0);
 
@@ -144,62 +149,112 @@ export function CommandPalette({ navItems, onNavigate, accentColor = C.primary }
       onRequestClose={closePalette}
       statusBarTranslucent
     >
-      {/* Backdrop */}
-      <Pressable style={s.backdrop} onPress={closePalette}>
+      {/* Backdrop — anchor panel to top-right (under the search button in TopActionBar) */}
+      <Pressable
+        style={[s.backdrop, {
+          backgroundColor: t.backdrop,
+          alignItems: isNative ? 'flex-end' : 'center',
+          paddingTop: isNative ? Math.max(insets.top, 8) + 6 + 38 + 8 : 80,
+          paddingRight: isNative ? 12 : 16,
+          paddingLeft: isNative ? 12 : 16,
+        }]}
+        onPress={closePalette}
+      >
         {/* Panel — stop propagation so taps inside don't close */}
-        <Pressable style={s.panelWrap} onPress={(e) => e.stopPropagation()}>
+        <Pressable style={[s.panelWrap, isNative && { maxWidth: 360 }]} onPress={(e) => e.stopPropagation()}>
 
-          {/* Glass blur panel */}
-          {isNative ? (
-            <BlurView intensity={60} tint="light" style={s.panel}>
-              <PanelContent
-                query={query}
-                setQuery={setQuery}
-                inputRef={inputRef}
-                groups={groups}
-                filtered={filtered}
-                clampedIdx={clampedIdx}
-                setActiveIdx={setActiveIdx}
-                accentColor={accentColor}
-                closePalette={closePalette}
-              />
-            </BlurView>
-          ) : (
-            <View style={[s.panel, s.panelWeb]}>
-              <PanelContent
-                query={query}
-                setQuery={setQuery}
-                inputRef={inputRef}
-                groups={groups}
-                filtered={filtered}
-                clampedIdx={clampedIdx}
-                setActiveIdx={setActiveIdx}
-                accentColor={accentColor}
-                closePalette={closePalette}
-              />
-            </View>
-          )}
+          {/* Solid surface panel — matches NotificationsMenu style */}
+          <View style={[
+            s.panel,
+            {
+              backgroundColor: isDark ? '#1B1916' : '#FFFFFF',
+              borderWidth: 1,
+              borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(20,16,12,0.06)',
+              ...(Platform.OS === 'web'
+                ? ({} as any)
+                : {
+                    shadowColor: '#000',
+                    shadowOpacity: isDark ? 0.45 : 0.18,
+                    shadowRadius: 18,
+                    shadowOffset: { width: 0, height: 8 },
+                    elevation: 10,
+                  }),
+            },
+          ]}>
+            <PanelContent
+              query={query}
+              setQuery={setQuery}
+              inputRef={inputRef}
+              groups={groups}
+              filtered={filtered}
+              clampedIdx={clampedIdx}
+              setActiveIdx={setActiveIdx}
+              accentColor={accentColor}
+              closePalette={closePalette}
+              t={t}
+            />
+          </View>
         </Pressable>
       </Pressable>
     </Modal>
   );
 }
 
+// ── Palette helper ─────────────────────────────────────────────────────────
+type PaletteColors = {
+  backdrop:     string;
+  panel:        string;
+  searchBg:     string;
+  ink:          string;
+  inkMuted:     string;
+  escBg:        string;
+  divider:      string;
+  itemIconBg:   string;
+  footerBg:     string;
+};
+function paletteColors(isDark: boolean): PaletteColors {
+  if (isDark) {
+    return {
+      backdrop:    'rgba(0,0,0,0.55)',
+      panel:       'rgba(27,25,22,0.96)',
+      searchBg:    'rgba(255,255,255,0.04)',
+      ink:         '#F7F2E9',
+      inkMuted:    'rgba(247,242,233,0.55)',
+      escBg:       'rgba(255,255,255,0.08)',
+      divider:     'rgba(255,255,255,0.08)',
+      itemIconBg:  'rgba(255,255,255,0.06)',
+      footerBg:    'rgba(255,255,255,0.04)',
+    };
+  }
+  return {
+    backdrop:    'rgba(15,23,42,0.45)',
+    panel:       'rgba(255,255,255,0.96)',
+    searchBg:    'rgba(255,255,255,0.85)',
+    ink:         C.textPrimary,
+    inkMuted:    C.textMuted,
+    escBg:       '#F1F5F9',
+    divider:     C.border,
+    itemIconBg:  '#F1F5F9',
+    footerBg:    'rgba(255,255,255,0.6)',
+  };
+}
+
 // ── Panel Content (extracted so it renders inside both BlurView and View) ─────
 
 function PanelContent({
   query, setQuery, inputRef, groups, filtered, clampedIdx,
-  setActiveIdx, accentColor, closePalette,
+  setActiveIdx, accentColor, closePalette, t,
 }: {
   query: string;
   setQuery: (q: string) => void;
-  inputRef: React.RefObject<TextInput>;
+  inputRef: React.RefObject<TextInput | null>;
   groups: [string, CommandItem[]][];
   filtered: CommandItem[];
   clampedIdx: number;
   setActiveIdx: (i: number | ((prev: number) => number)) => void;
   accentColor: string;
   closePalette: () => void;
+  t: PaletteColors;
 }) {
   // Scroll to active item
   const scrollRef = useRef<ScrollView>(null);
@@ -215,13 +270,13 @@ function PanelContent({
   return (
     <>
       {/* ── Search bar ── */}
-      <View style={s.searchRow}>
-        <AppIcon name="search" size={17} color={C.textMuted} />
+      <View style={[s.searchRow, { backgroundColor: t.searchBg }]}>
+        <AppIcon name="search" size={17} color={t.inkMuted} />
         <TextInput
           ref={inputRef}
-          style={s.searchInput}
+          style={[s.searchInput, { color: t.ink }]}
           placeholder="Ne yapmak istiyorsunuz?"
-          placeholderTextColor={C.textMuted}
+          placeholderTextColor={t.inkMuted}
           value={query}
           onChangeText={setQuery}
           returnKeyType="go"
@@ -233,21 +288,25 @@ function PanelContent({
         />
         {query.length > 0 && (
           <TouchableOpacity onPress={() => setQuery('')}>
-            <AppIcon name="x-circle" size={16} color={C.textMuted} />
+            <AppIcon name="x-circle" size={16} color={t.inkMuted} />
           </TouchableOpacity>
         )}
-        <TouchableOpacity style={s.escBadge} onPress={closePalette}>
-          <Text style={s.escText}>Esc</Text>
+        <TouchableOpacity
+          style={[s.escBadge, { backgroundColor: t.escBg, paddingHorizontal: 6, paddingVertical: 6, borderRadius: 8 }]}
+          onPress={closePalette}
+          accessibilityLabel="Kapat"
+        >
+          <AppIcon name="x" size={14} color={t.inkMuted} />
         </TouchableOpacity>
       </View>
 
-      <View style={s.divider} />
+      <View style={[s.divider, { backgroundColor: t.divider }]} />
 
       {/* ── Results ── */}
       {filtered.length === 0 ? (
         <View style={s.noResults}>
-          <AppIcon name="search" size={24} color={C.textMuted} />
-          <Text style={s.noResultsText}>Sonuç bulunamadı</Text>
+          <AppIcon name="search" size={24} color={t.inkMuted} />
+          <Text style={[s.noResultsText, { color: t.inkMuted }]}>Sonuç bulunamadı</Text>
         </View>
       ) : (
         <ScrollView
@@ -259,7 +318,7 @@ function PanelContent({
           {groups.map(([groupLabel, items]) => {
             return (
               <View key={groupLabel}>
-                <Text style={s.groupLabel}>{groupLabel}</Text>
+                <Text style={[s.groupLabel, { color: t.inkMuted }]}>{groupLabel}</Text>
                 {items.map((cmd) => {
                   const globalIdx = filtered.indexOf(cmd);
                   const isActive  = globalIdx === clampedIdx;
@@ -278,23 +337,19 @@ function PanelContent({
                       {...webHover}
                       activeOpacity={0.75}
                     >
-                      {/* Icon */}
-                      <View style={[s.itemIcon, isActive && { backgroundColor: accentColor + '20' }]}>
-                        {cmd.emoji ? (
-                          <Text style={{ fontSize: 16 }}>{cmd.emoji}</Text>
-                        ) : (
-                          <AppIcon
-                            name={cmd.icon}
-                            size={16}
-                            color={isActive ? accentColor : C.textSecondary}
-                            strokeWidth={isActive ? 2.2 : 1.75}
-                          />
-                        )}
+                      {/* Icon — flat 2D Lucide only (emoji ignored per design contract) */}
+                      <View style={[s.itemIcon, { backgroundColor: t.itemIconBg }, isActive && { backgroundColor: accentColor + '20' }]}>
+                        <AppIcon
+                          name={cmd.icon}
+                          size={16}
+                          color={isActive ? accentColor : t.inkMuted}
+                          strokeWidth={isActive ? 2.2 : 1.75}
+                        />
                       </View>
 
-                      {/* Label */}
+                      {/* Label — keep ink color, weight indicates active state */}
                       <Text
-                        style={[s.itemLabel, isActive && { color: accentColor, fontWeight: '600' }]}
+                        style={[s.itemLabel, { color: t.ink }, isActive && { fontWeight: '600' }]}
                         numberOfLines={1}
                       >
                         {cmd.label}
@@ -316,8 +371,8 @@ function PanelContent({
 
       {/* ── Footer hint ── */}
       {Platform.OS === 'web' && (
-        <View style={s.footer}>
-          <Text style={s.footerText}>↑↓ Gezin · Enter Aç · Esc Kapat</Text>
+        <View style={[s.footer, { backgroundColor: t.footerBg, borderTopColor: t.divider }]}>
+          <Text style={[s.footerText, { color: t.inkMuted }]}>↑↓ Gezin · Enter Aç · Esc Kapat</Text>
         </View>
       )}
     </>

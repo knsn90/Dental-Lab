@@ -10,20 +10,25 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, Pressable, TextInput,
-  Alert, ActivityIndicator, KeyboardAvoidingView, Platform, Image,
+  Alert, KeyboardAvoidingView, Platform, Image,
   useWindowDimensions,
 } from 'react-native';
 import { useSegments } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import {
   Camera, Edit2, Mail, Phone, Lock, Bell, User,
   Calendar, LogOut, ChevronRight, ChevronUp, Eye, EyeOff, X,
+  Building2, MapPin, Receipt, CreditCard,
 } from 'lucide-react-native';
 import { toast } from '../../../core/ui/Toast';
 import { AppSwitch } from '../../../core/ui/AppSwitch';
 import { useAuthStore } from '../../../core/store/authStore';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 import { supabase } from '../../../core/api/supabase';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 // ── Display font ─────────────────────────────────────────────────────────
 const DISPLAY = {
@@ -32,12 +37,14 @@ const DISPLAY = {
 };
 
 // ── Panel accent ─────────────────────────────────────────────────────────
-type PanelKind = 'lab' | 'admin' | 'doctor' | 'clinic';
+type PanelKind = 'lab' | 'admin' | 'doctor' | 'clinic' | 'station';
 const PANEL_ACCENTS: Record<PanelKind, string> = {
-  lab: '#F5C24B', admin: '#EA7A4C', doctor: '#6BA888', clinic: '#6BA888',
+  lab: '#F5C24B', admin: '#4771AB', doctor: '#32BB78', clinic: '#32BB78',
+  station: '#3B82F6',  // tech-blue
 };
 function detectPanel(segments: string[]): PanelKind {
   const seg = segments?.[0] ?? '';
+  if (seg === '(station)') return 'station';
   if (seg === '(clinic)') return 'clinic';
   if (seg === '(doctor)') return 'doctor';
   if (seg === '(admin)')  return 'admin';
@@ -78,11 +85,17 @@ function SectionTitle({ children }: { children: string }) {
 }
 
 function Card({ children, style }: { children: React.ReactNode; style?: any }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <View style={{
-      backgroundColor: '#FFFFFF', borderRadius: 24, padding: 22,
+      backgroundColor: T.card, borderRadius: 24, padding: 22,
+      borderWidth: isDark ? 1 : 0,
+      borderColor: T.hairline,
       // @ts-ignore web
-      boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)',
+      boxShadow: isDark
+        ? '0 4px 16px rgba(0,0,0,0.4)'
+        : '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)',
       ...style,
     }}>
       {children}
@@ -91,7 +104,70 @@ function Card({ children, style }: { children: React.ReactNode; style?: any }) {
 }
 
 function Divider() {
-  return <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.05)', marginVertical: 6 }} />;
+  const T = useMobileTokens();
+  return <View style={{ height: 1, backgroundColor: T.hairline, marginVertical: 6 }} />;
+}
+
+// ── Clinic info row (icon + label + value) ──────────────────────────────
+function KurumRow({ icon: Icon, label, value, multiline, mono }: {
+  icon: any; label: string; value?: string | null; multiline?: boolean; mono?: boolean;
+}) {
+  const T = useMobileTokens();
+  const empty = !value || !String(value).trim();
+  return (
+    <View style={{ flexDirection: 'row', gap: 12, alignItems: multiline ? 'flex-start' : 'center' }}>
+      <View style={{
+        width: 32, height: 32, borderRadius: 9,
+        backgroundColor: T.cardSoft,
+        alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        marginTop: multiline ? 2 : 0,
+      }}>
+        <Icon size={14} color={T.ink3} strokeWidth={1.8} />
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={{ fontSize: 11, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 2 }}>
+          {label}
+        </Text>
+        <Text
+          style={{
+            fontSize: 14, fontWeight: '500',
+            color: empty ? T.ink3 : T.ink,
+            fontStyle: empty ? 'italic' : 'normal',
+            ...(mono ? { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' } : {}),
+          }}
+          numberOfLines={multiline ? 3 : 1}
+        >
+          {empty ? '—' : value}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+// Adres JSON formatını insan-okunur tek satıra çevir
+function formatClinicAddress(raw: any): string | null {
+  if (!raw) return null;
+  // JSON string olarak gelmiş olabilir
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return formatClinicAddress(parsed);
+    } catch {
+      return raw; // düz string olarak göster
+    }
+  }
+  if (typeof raw === 'object') {
+    const parts = [
+      raw.sokak,
+      raw.bina_no ? `No: ${raw.bina_no}` : null,
+      raw.mahalle ? `${raw.mahalle} Mah.` : null,
+      raw.ilce,
+      raw.il,
+      raw.posta_kodu,
+    ].filter(Boolean);
+    return parts.length > 0 ? parts.join(', ') : null;
+  }
+  return null;
 }
 
 function FieldLabel({ children, error }: { children: string; error?: boolean }) {
@@ -107,14 +183,15 @@ function FieldLabel({ children, error }: { children: string; error?: boolean }) 
 
 function FieldInput(props: React.ComponentProps<typeof TextInput> & { error?: boolean }) {
   const { error, style: extraStyle, ...rest } = props;
+  const T = useMobileTokens();
   return (
     <TextInput
-      placeholderTextColor="#C0C0C8"
+      placeholderTextColor={T.ink3}
       style={{
-        borderWidth: 1, borderColor: error ? '#EF4444' : 'rgba(0,0,0,0.06)',
+        borderWidth: 1, borderColor: error ? '#EF4444' : T.hairline,
         borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
-        fontSize: 14, color: error ? '#EF4444' : '#0A0A0A',
-        backgroundColor: '#FAFAFA',
+        fontSize: 14, color: error ? '#EF4444' : T.ink,
+        backgroundColor: T.cardSoft,
         // @ts-ignore web
         outlineWidth: 0,
         ...(extraStyle as any),
@@ -143,9 +220,7 @@ function PillBtn({ label, accent, onPress, loading, variant = 'primary' }: {
         cursor: 'pointer',
       }}
     >
-      {loading
-        ? <ActivityIndicator size="small" color={textColor} />
-        : <Text style={{ fontSize: 13, fontWeight: '600', color: textColor }}>{label}</Text>}
+      <Text style={{ fontSize: 13, fontWeight: '600', color: textColor }}>{label}</Text>
     </Pressable>
   );
 }
@@ -155,8 +230,17 @@ export function ProfileScreen() {
   const segments = useSegments();
   const panel = detectPanel(segments);
   const accent = PANEL_ACCENTS[panel];
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const pageBg     = T.bg;
+  const cardBg     = T.card;
+  const cardSoftBg = T.cardSoft;  // useMobileTokens panele duyarlı (yeşil panelde adaçayı)
+  const hairline   = T.hairline;
+  const inkPrimary = T.ink;
 
-  const { profile, signOut, setProfile } = useAuthStore() as any;
+  const { profile, signOut, setProfile, session } = useAuthStore() as any;
+  // Auth membership email fallback — profile.email NULL ise auth.users'tan al
+  const authEmail: string = (session?.user?.email ?? '').trim();
   const roleLabel = getRoleLabel(profile);
   const initial = (profile?.full_name ?? '?').charAt(0).toUpperCase();
 
@@ -177,8 +261,8 @@ export function ProfileScreen() {
   const [phone, setPhone] = useState(profile?.phone ?? '');
   const [savingInfo, setSavingInfo] = useState(false);
 
-  // ── Email state
-  const [email, setEmail] = useState(profile?.email ?? '');
+  // ── Email state — profile.email yoksa auth.users.email'i kullan
+  const [email, setEmail] = useState(profile?.email ?? authEmail ?? '');
   const [editEmail, setEditEmail] = useState(false);
   const [savingEmail, setSavingEmail] = useState(false);
 
@@ -193,12 +277,41 @@ export function ProfileScreen() {
   // ── Prefs
   const [notifEnabled, setNotifEnabled] = useState(true);
 
+  // ── Clinic admin: kurum + yetkili tab'ları
+  const isClinicAdmin = profile?.user_type === 'clinic_admin';
+  const [profileTab, setProfileTab] = useState<'kurum' | 'yetkili'>(isClinicAdmin ? 'kurum' : 'yetkili');
+  const [clinicData, setClinicData] = useState<any>(null);
+  useEffect(() => {
+    if (!isClinicAdmin || !profile?.clinic_id) { setClinicData(null); return; }
+    let alive = true;
+    (async () => {
+      const { data } = await supabase
+        .from('clinics')
+        .select('id, name, category, phone, email, address, contact_person, vkn, tax_office, billing_mode, default_payment_terms_days, is_active')
+        .eq('id', profile.clinic_id)
+        .maybeSingle();
+      if (alive) setClinicData(data ?? null);
+    })();
+    return () => { alive = false; };
+  }, [isClinicAdmin, profile?.clinic_id]);
+
   useEffect(() => {
     setFullName(profile?.full_name ?? '');
     setPhone(profile?.phone ?? '');
-    setEmail(profile?.email ?? '');
+    setEmail(profile?.email ?? authEmail ?? '');
     setAvatarUri(profile?.avatar_url ?? null);
-  }, [profile]);
+  }, [profile, authEmail]);
+
+  // Profile.email DB'de boşsa ve auth email varsa → otomatik kaydet
+  useEffect(() => {
+    if (!profile) return;
+    if (!profile.email && authEmail) {
+      supabase.from('profiles').update({ email: authEmail }).eq('id', profile.id)
+        .then(({ error }) => {
+          if (!error && setProfile) setProfile({ ...profile, email: authEmail });
+        });
+    }
+  }, [profile?.id, profile?.email, authEmail]);
 
   // ── Pick & upload avatar
   const handlePickAvatar = async () => {
@@ -289,21 +402,132 @@ export function ProfileScreen() {
   const passNoMatch = newPass.length > 0 && confirmPass.length > 0 && newPass !== confirmPass;
 
   // ══════════════════════════════════════════════════════════════
-  //  MOBILE — Variant B B7 profile + role swap (early return)
+  //  MOBILE — Aydın Lab handoff — tüm paneller aynı tasarım,
+  //  her birinin kendi rengiyle (DoctorProfileMobile generic).
   // ══════════════════════════════════════════════════════════════
   const { width: _w7 } = useWindowDimensions();
+  const _insets7 = useSafeAreaInsets();
+  const _isDesktop7 = _w7 >= 900;
   if (_w7 < 1024) {
-    const { ProfileB7Mobile } = require('./ProfileB7Mobile');
-    return <ProfileB7Mobile profile={profile} onSignOut={signOut} />;
+    const { DoctorProfileMobile } = require('./DoctorProfileMobile');
+    // Panel mapping — segment hangisi açıksa o panel'in renklerini kullan
+    // (user_type'tan bağımsız — fiili gezilen panel'in renkleri öne çıkar)
+    let panelKind: 'doctor' | 'klinik' | 'exec' | 'teknisyen' | 'lab' = 'lab';
+    const seg0 = (segments as unknown as string[])?.[0] ?? '';
+    if (seg0 === '(doctor)')        panelKind = 'doctor';
+    else if (seg0 === '(clinic)')   panelKind = 'klinik';
+    else if (seg0 === '(admin)')    panelKind = 'exec';
+    else if (seg0 === '(station)')  panelKind = 'teknisyen';
+    else if (seg0 === '(lab)')      panelKind = 'lab';
+    else {
+      // Fallback: profile.user_type'a göre
+      if (profile?.user_type === 'doctor')              panelKind = 'doctor';
+      else if (profile?.user_type === 'clinic_admin')   panelKind = 'klinik';
+      else if (profile?.user_type === 'admin')          panelKind = 'exec';
+      else if (profile?.user_type === 'lab' && (profile as any)?.role === 'technician') panelKind = 'teknisyen';
+    }
+    return <DoctorProfileMobile profile={profile} onSignOut={signOut} panel={panelKind} />;
   }
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: pageBg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView
-        contentContainerStyle={{ padding: 28, paddingBottom: 80, maxWidth: 960, width: '100%', alignSelf: 'center' as any }}
+        style={{ backgroundColor: pageBg }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 80, paddingTop: _isDesktop7 ? 16 : _insets7.top + 64, maxWidth: 960, width: '100%', alignSelf: 'center' as any, gap: 16 }}
         showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
+        keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
       >
+
+        {/* ═══════ CLINIC ADMIN TAB STRIP ═══════ */}
+        {isClinicAdmin && (
+          <View style={{
+            flexDirection: 'row', gap: 8,
+            backgroundColor: cardSoftBg, borderRadius: 14, padding: 4,
+            alignSelf: 'flex-start',
+          }}>
+            {[
+              { key: 'kurum',    label: 'Kurum Bilgileri',    icon: Building2 },
+              { key: 'yetkili',  label: 'Yetkili Bilgileri',  icon: User },
+            ].map(t => {
+              const active = profileTab === t.key;
+              const Icon = t.icon;
+              return (
+                <Pressable
+                  key={t.key}
+                  onPress={() => setProfileTab(t.key as any)}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 6,
+                    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10,
+                    backgroundColor: active ? cardBg : 'transparent',
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                    ...(active && Platform.OS === 'web' ? { boxShadow: '0 1px 3px rgba(0,0,0,0.08)' } as any : {}),
+                  }}
+                >
+                  <Icon size={14} color={active ? accent : T.ink3} strokeWidth={1.8} />
+                  <Text style={{ fontSize: 13, fontWeight: active ? '700' : '500', color: active ? accent : T.ink2 }}>
+                    {t.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+
+        {/* ═══════ TAB 1 — KURUM BİLGİLERİ (sadece clinic_admin) ═══════ */}
+        {isClinicAdmin && profileTab === 'kurum' && (
+          <View style={{ gap: 16 }}>
+            <Card>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 18 }}>
+                <View style={{
+                  width: 56, height: 56, borderRadius: 16,
+                  backgroundColor: `${accent}18`, alignItems: 'center', justifyContent: 'center',
+                  borderWidth: 1, borderColor: `${accent}30`,
+                }}>
+                  <Building2 size={24} color={accent} strokeWidth={1.7} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: inkPrimary }}>
+                    {clinicData?.name ?? profile?.clinic_name ?? '—'}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: T.ink3, marginTop: 2 }}>
+                    {clinicData?.category
+                      ? clinicData.category.charAt(0).toUpperCase() + clinicData.category.slice(1)
+                      : 'Sağlık Kurumu'}
+                    {clinicData?.is_active === false ? ' · Pasif' : ''}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={{ gap: 12 }}>
+                <KurumRow icon={Phone}   label="Telefon"     value={clinicData?.phone}   />
+                <KurumRow icon={Mail}    label="E-posta"     value={clinicData?.email}   />
+                <KurumRow icon={User}    label="İrtibat"     value={clinicData?.contact_person} />
+                <KurumRow icon={MapPin}  label="Adres"       value={formatClinicAddress(clinicData?.address)} multiline />
+              </View>
+            </Card>
+
+            <Card>
+              <SectionTitle>Fatura Bilgileri</SectionTitle>
+              <View style={{ gap: 12, marginTop: 4 }}>
+                <KurumRow icon={Receipt}    label="VKN / TCKN"   value={clinicData?.vkn} mono />
+                <KurumRow icon={Receipt}    label="Vergi Dairesi" value={clinicData?.tax_office} />
+                <KurumRow icon={CreditCard} label="Fatura Modu"
+                  value={clinicData?.billing_mode === 'per_order' ? 'Her Teslimat' : 'Aylık Toplu'} />
+                <KurumRow icon={Calendar}   label="Vade"
+                  value={clinicData?.default_payment_terms_days != null
+                    ? `${clinicData.default_payment_terms_days} gün`
+                    : null} />
+              </View>
+            </Card>
+
+            <Text style={{ fontSize: 11, color: T.ink3, textAlign: 'center', paddingHorizontal: 12 }}>
+              Kurum bilgilerini değiştirmek için lab yöneticisi ile iletişime geçin.
+            </Text>
+          </View>
+        )}
+
+        {/* ═══════ TAB 2 — YETKİLİ BİLGİLERİ (default) ═══════ */}
+        {(!isClinicAdmin || profileTab === 'yetkili') && <>
 
         {/* ═══════ PROFIL KARTI ═══════ */}
         <Card>
@@ -330,9 +554,7 @@ export function ProfileScreen() {
                     backgroundColor: accent, alignItems: 'center', justifyContent: 'center',
                     borderWidth: 2, borderColor: '#FFFFFF',
                   }}>
-                    {uploadingAvatar
-                      ? <ActivityIndicator size="small" color="#FFF" />
-                      : <Camera size={10} color="#FFFFFF" strokeWidth={2} />}
+                    <Camera size={10} color="#FFFFFF" strokeWidth={2} />
                   </View>
                 </Pressable>
                 <View style={{ flex: 1 }}>
@@ -379,9 +601,7 @@ export function ProfileScreen() {
                   backgroundColor: accent, alignItems: 'center', justifyContent: 'center',
                   borderWidth: 2, borderColor: '#FFFFFF',
                 }}>
-                  {uploadingAvatar
-                    ? <ActivityIndicator size="small" color="#FFF" />
-                    : <Camera size={10} color="#FFFFFF" strokeWidth={2} />}
+                  <Camera size={10} color="#FFFFFF" strokeWidth={2} />
                 </View>
               </Pressable>
               <View style={{ flex: 1 }}>
@@ -587,26 +807,36 @@ export function ProfileScreen() {
                 <Text style={{ fontSize: 11, fontWeight: '500', color: '#9A9A9A', width: 90 }}>Katılım Tarihi</Text>
                 <Text style={{ fontSize: 14, color: '#3C3C3C', flex: 1 }}>{joinedDate(profile) || '—'}</Text>
               </View>
-
-              <Divider />
-
-              {/* Çıkış */}
-              <Pressable
-                onPress={handleSignOut}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8,
-                  // @ts-ignore web
-                  cursor: 'pointer',
-                }}
-              >
-                <LogOut size={15} color="#EF4444" strokeWidth={1.8} />
-                <Text style={{ fontSize: 14, fontWeight: '500', color: '#EF4444', flex: 1 }}>Hesaptan Çıkış Yap</Text>
-                <ChevronRight size={16} color="#FCA5A5" strokeWidth={1.8} />
-              </Pressable>
             </Card>
+
+            {/* ── Çıkış — solid destructive button at the bottom ── */}
+            <Pressable
+              onPress={handleSignOut}
+              style={({ pressed }: any) => ({
+                marginTop: 4,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 10,
+                paddingVertical: 15,
+                paddingHorizontal: 20,
+                borderRadius: 14,
+                backgroundColor: '#DC2626',
+                opacity: pressed ? 0.82 : 1,
+                // @ts-ignore web
+                cursor: 'pointer',
+              })}
+            >
+              <LogOut size={18} color="#FFFFFF" strokeWidth={2.2} />
+              <Text style={{ fontSize: 15, fontWeight: '600', color: '#FFFFFF', letterSpacing: -0.2 }}>
+                Çıkış Yap
+              </Text>
+            </Pressable>
           </View>
 
         </View>
+
+        </>}
       </ScrollView>
     </KeyboardAvoidingView>
   );

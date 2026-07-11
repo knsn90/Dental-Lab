@@ -61,14 +61,15 @@ export function formatMoney(
 ): string {
   if (amount == null || isNaN(amount)) return '—';
   const fd = opts.fractionDigits ?? 2;
-  const formatter = new Intl.NumberFormat('tr-TR', {
-    style: 'currency',
-    currency,
+  const sym = CURRENCY_META[currency]?.symbol ?? currency;
+  // Math.abs: işaret yalnız `sign`den gelir — Intl'in kendi eksisiyle çift '-' basma
+  const numStr = new Intl.NumberFormat('tr-TR', {
     minimumFractionDigits: fd,
     maximumFractionDigits: fd,
-  });
-  let out = formatter.format(amount);
-  if (opts.signed && amount > 0) out = '+' + out;
+  }).format(Math.abs(Number(amount) || 0));
+  const sign = (amount < 0 ? '-' : opts.signed && amount > 0 ? '+' : '');
+  // TRY: sembol önde (₺1.250), diğerleri: arkada (1.250 €)
+  const out = currency === 'TRY' ? `${sign}${sym}${numStr}` : `${sign}${numStr} ${sym}`;
   return out;
 }
 

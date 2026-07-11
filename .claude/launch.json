@@ -7,6 +7,34 @@
       "runtimeArgs": ["--prefix", "my-expo-app", "run", "web"],
       "port": 8081,
       "autoPort": false
+    },
+    {
+      "name": "Sinav",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "serve", "exam", "-l", "4700"],
+      "port": 4700,
+      "autoPort": false
+    },
+    {
+      "name": "Denty",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "denty-ui", "run", "dev", "--", "--port", "4800"],
+      "port": 4800,
+      "autoPort": false
+    },
+    {
+      "name": "siman-deck",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "serve", "/Users/saber/Downloads/siman-deck", "-l", "8911"],
+      "port": 8911,
+      "autoPort": false
+    },
+    {
+      "name": "nexadent-catalog",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "serve", "nexadent-catalog", "-l", "8912"],
+      "port": 8912,
+      "autoPort": false
     }
   ]
 }

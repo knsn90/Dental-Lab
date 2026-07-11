@@ -1,1 +1,2 @@
-export { OrdersListScreenV2 as default } from '../../modules/orders/screens/OrdersListScreenV2';
+import { lazyRoute } from '../../core/_lazyRoute';
+export default lazyRoute(() => import('../../modules/orders/screens/OrdersListScreenV2'), 'OrdersListScreenV2');

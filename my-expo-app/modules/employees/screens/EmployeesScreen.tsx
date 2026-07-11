@@ -1,5 +1,5 @@
 /**
- * EmployeesScreen — Çalışanlar (Patterns Design Language)
+ * EmployeesScreen — Ekip (Patterns Design Language)
  *
  * §10 Hero (glassmorphism), §09 tableCard, §05 cardSolid,
  * §04 CHIP_TONES, §05.5 form, §08 dialog, §03 pill buttons,
@@ -7,6 +7,7 @@
  */
 import React, { useState, useMemo, useContext, useRef } from 'react';
 import { HubContext } from '../../../core/ui/HubContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View, Text, ScrollView, Pressable, TextInput,
   Modal, ActivityIndicator, Alert, RefreshControl,
@@ -29,6 +30,8 @@ import { DatePicker } from '../../../core/ui/DatePicker';
 import { usePermissionStore } from '../../../core/store/permissionStore';
 import { STAGE_LABEL, type Stage } from '../../orders/stages';
 import { DS } from '../../../core/theme/dsTokens';
+import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { useRouter, useSegments } from 'expo-router';
 import {
   Plus, Search, X, Inbox, Pencil, Trash2,
   UserPlus, UserX, UserCheck, Users, Phone, Mail, Clock,
@@ -146,10 +149,12 @@ export function EmployeesScreen() {
   const isEmbedded = useContext(HubContext);
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1024;
+  const insets = useSafeAreaInsets();
+  const theme = usePanelTheme();
 
   const { employees, loading, refetch } = useEmployees();
 
-  // ── RBAC: çalışan yönetimi + maaş görüntüleme yetkileri ──
+  // ── RBAC: personel yönetimi + maaş görüntüleme yetkileri ──
   const can = usePermissionStore(s => s.can);
   const canManage = can('manage_employees');
   const canViewSalaries = can('view_salaries');
@@ -195,7 +200,7 @@ export function EmployeesScreen() {
     return list;
   }, [employees, filterActive, search]);
 
-  // Synthetic profile (auth-only) çalışanları için profile id döndürür
+  // Synthetic profile (auth-only) ekipı için profile id döndürür
   const syntheticProfileId = (emp: Employee): string | null => {
     const id = String(emp.id);
     return id.startsWith('profile-') ? id.slice('profile-'.length) : null;
@@ -205,7 +210,7 @@ export function EmployeesScreen() {
     if (!canManage) { toast.error('Bu işlem için yetkiniz yok.'); return; }
     const profileId = syntheticProfileId(emp);
     setConfirm({
-      title: 'Çalışanı sil',
+      title: 'Personelı sil',
       highlight: emp.full_name,
       message: profileId
         ? 'sistem hesabı pasife alınacak. (Auth hesabını tamamen silmek için Yönetici → Kullanıcılar bölümünü kullanın.)'
@@ -221,14 +226,54 @@ export function EmployeesScreen() {
           dismissUndoBanner();
           let error: any = null;
           if (profileId) {
-            const r = await supabase.from('profiles').update({ is_active: false }).eq('id', profileId);
+            // .select() ile returning row al — RLS sessiz reddederse data=[] olur
+            const r = await supabase.from('profiles')
+              .update({ is_active: false })
+              .eq('id', profileId)
+              .select('id');
             error = r.error;
+            if (!error && (!r.data || r.data.length === 0)) {
+              error = new Error('İşlem reddedildi (RLS / yetki). Bu kullanıcı admin olduğunda kullanıcılar bölümünden silinebilir.');
+            }
           } else {
-            const r = await deleteEmployee(emp.id);
+            // Hard delete with returning select — 0 rows = silently blocked
+            const r = await supabase.from('employees')
+              .delete()
+              .eq('id', emp.id)
+              .select('id');
             error = r.error;
+            const deletedRows = r.data?.length ?? 0;
+            // FK constraint → soft-delete fallback
+            if (error && /foreign key|violates|reference/i.test(error.message ?? '')) {
+              const r2 = await supabase.from('employees')
+                .update({ is_active: false, end_date: new Date().toISOString().slice(0, 10) })
+                .eq('id', emp.id)
+                .select('id');
+              error = r2.error;
+              if (!error && (!r2.data || r2.data.length === 0)) {
+                error = new Error('Pasife alma yetkisi yok (RLS).');
+              }
+              if (!error) toast.info(`"${emp.full_name}" pasife alındı (geçmiş kayıtları korundu).`);
+            } else if (!error && deletedRows === 0) {
+              // Hard delete sessiz reddedildi — soft-delete dene
+              const r2 = await supabase.from('employees')
+                .update({ is_active: false, end_date: new Date().toISOString().slice(0, 10) })
+                .eq('id', emp.id)
+                .select('id');
+              error = r2.error;
+              if (!error && (!r2.data || r2.data.length === 0)) {
+                error = new Error('Silme işlemi RLS politikası tarafından engellendi. Veritabanı yöneticisiyle iletişime geçin.');
+              }
+              if (!error) toast.info(`"${emp.full_name}" pasife alındı.`);
+            }
           }
-          if (error) toast.error((error as any).message);
-          else refetch();
+          if (error) {
+            // eslint-disable-next-line no-console
+            console.error('[employees] delete error:', error);
+            Alert.alert('Silme başarısız', (error as any).message ?? 'Bilinmeyen hata');
+          } else {
+            refetch();
+          }
         }, 5000);
 
         showUndoBanner(`"${emp.full_name}" siliniyor…`, () => {
@@ -271,7 +316,7 @@ export function EmployeesScreen() {
     });
   };
 
-  // Pasif çalışanı geri aktif et — onay sormadan, hızlı işlem
+  // Pasif personelı geri aktif et — onay sormadan, hızlı işlem
   const handleReactivate = async (emp: Employee) => {
     if (!canManage) { toast.error('Bu işlem için yetkiniz yok.'); return; }
     const profileId = syntheticProfileId(emp);
@@ -287,74 +332,101 @@ export function EmployeesScreen() {
     <View style={{ flex: 1 }}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: isDesktop ? 0 : 16, paddingBottom: 48, gap: 16 }}
+        contentContainerStyle={{
+          paddingHorizontal: isDesktop || isEmbedded ? 0 : 12,
+          paddingTop: isDesktop || isEmbedded ? 0 : insets.top + 8,
+          paddingBottom: 120,
+          gap: 14,
+        }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={DS.ink[300]} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Hero — §10 glassmorphism ─────────────────────────── */}
+        {/* ── F1 HeroCard — Ekip özeti (theme.primary bg + white blobs) ── */}
         <View style={{
-          borderRadius: 28, overflow: 'hidden',
-          backgroundColor: DS.lab.bg, padding: isDesktop ? 36 : 24,
+          borderRadius: 20, overflow: 'hidden',
+          backgroundColor: theme.primary, padding: isDesktop ? 22 : 18,
           position: 'relative',
         }}>
-          <View style={{ position: 'absolute', top: -40, right: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: DS.lab.bgDeep, opacity: 0.6 }} />
-          <View style={{ position: 'absolute', bottom: -50, left: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: DS.lab.bgDeep, opacity: 0.4 }} />
+          {/* White decorative blobs */}
+          <View style={{ position: 'absolute', top: -50, right: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.20)' }} />
+          <View style={{ position: 'absolute', bottom: -60, left: -30, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(255,255,255,0.12)' }} />
 
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
-            <View>
-              <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
+            <View style={{ flex: 1, minWidth: 220 }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)', marginBottom: 8 }}>
                 Aktif Personel
               </Text>
-              <Text style={{ ...DISPLAY, fontSize: isDesktop ? 48 : 36, letterSpacing: -1.4, color: DS.ink[900] }}>
+              <Text
+                style={{ ...DISPLAY, fontWeight: '300', fontSize: isDesktop ? 44 : 36, color: '#FFFFFF', letterSpacing: -1.2, lineHeight: isDesktop ? 48 : 40 }}
+                numberOfLines={1}
+              >
                 {activeCount}
               </Text>
-              <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 6 }}>
+              <Text style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.78)', marginTop: 4 }}>
                 {employees.length} toplam kayıt
               </Text>
             </View>
-            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-              {canManage && (
-                <>
-                  <PillBtn icon={UserPlus} label="Çalışan Ekle" onPress={() => { setEditEmp(null); setFormOpen(true); }} />
-                  <PillBtn icon={UserPlus} label="Hesap ile Ekle" variant="ghost" onPress={() => setAddUserOpen(true)} />
-                </>
-              )}
+            <View style={{ width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.18)' }}>
+              <UserPlus size={20} color="#FFFFFF" strokeWidth={1.6} />
             </View>
           </View>
 
-          {/* KPI breakdown — maaş kalemleri sadece view_salaries yetkisinde */}
-          <View style={{ flexDirection: 'row', gap: isDesktop ? 36 : 16, marginTop: 20, flexWrap: 'wrap' }}>
-            {canViewSalaries && (
-              <View>
-                <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: DS.ink[400] }}>
-                  Bu Ay Maaş
-                </Text>
-                <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color: DS.ink[700], marginTop: 2 }}>
-                  {fmtMoney(totalSalary)}
-                </Text>
-              </View>
-            )}
-            {canViewSalaries && (
-              <View>
-                <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: DS.ink[400] }}>
-                  Ödenmemiş
-                </Text>
-                <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color: unpaidCount > 0 ? CHIP_TONES.danger.fg : DS.ink[700], marginTop: 2 }}>
-                  {unpaidCount} kişi
-                </Text>
-              </View>
-            )}
-            {canViewSalaries && (
-            <View>
-              <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: DS.ink[400] }}>
-                Bekleyen Avans
-              </Text>
-              <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color: CHIP_TONES.warning.fg, marginTop: 2 }}>
-                {fmtMoney(totalAdvances)}
-              </Text>
+          {/* KPI strip — F1 stat cards */}
+          {canViewSalaries && (
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
+              {([
+                { label: 'Bu Ay Maaş',     value: fmtMoney(totalSalary)                      },
+                { label: 'Ödenmemiş',      value: `${unpaidCount} kişi`                      },
+                { label: 'Bekleyen Avans', value: fmtMoney(totalAdvances)                    },
+              ] as const).map(stat => (
+                <View key={stat.label} style={{
+                  flex: 1, minWidth: 110,
+                  paddingVertical: 10, paddingHorizontal: 12, borderRadius: 14,
+                  backgroundColor: 'rgba(255,255,255,0.16)',
+                }}>
+                  <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>
+                    {stat.label}
+                  </Text>
+                  <Text
+                    style={{ ...DISPLAY, fontWeight: '300', fontSize: 16, color: '#FFFFFF', letterSpacing: -0.3, lineHeight: 20, marginTop: 4 }}
+                    numberOfLines={1}
+                  >
+                    {stat.value}
+                  </Text>
+                </View>
+              ))}
             </View>
-            )}
-          </View>
+          )}
+
+          {/* CTAs — beyaz pill butonlar */}
+          {canManage && (
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
+              <Pressable
+                onPress={() => { setEditEmp(null); setFormOpen(true); }}
+                style={({ hovered }: any) => ({
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                  paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999,
+                  backgroundColor: hovered ? '#F5F5F5' : '#FFFFFF',
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                })}
+              >
+                <UserPlus size={13} color={DS.ink[900]} strokeWidth={2} />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: DS.ink[900] }}>Personel Ekle</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setAddUserOpen(true)}
+                style={({ hovered }: any) => ({
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                  paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999,
+                  backgroundColor: hovered ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.16)',
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                })}
+              >
+                <UserPlus size={13} color="#FFFFFF" strokeWidth={2} />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>Hesap ile Ekle</Text>
+              </Pressable>
+            </View>
+          )}
         </View>
 
         {/* ── Filter pills ────────────────────────────────────── */}
@@ -410,7 +482,7 @@ export function EmployeesScreen() {
           <View style={{ ...cardSolid, alignItems: 'center', paddingVertical: 48, gap: 10 }}>
             <Inbox size={32} color={DS.ink[300]} strokeWidth={1.4} />
             <Text style={{ fontSize: 14, fontWeight: '500', color: DS.ink[400] }}>
-              {search ? 'Sonuç bulunamadı' : 'Çalışan bulunamadı'}
+              {search ? 'Sonuç bulunamadı' : 'Personel bulunamadı'}
             </Text>
           </View>
         ) : isDesktop ? (
@@ -652,7 +724,7 @@ export function EmployeesScreen() {
         labOnly={true}
       />
 
-      {/* Maaş ödemesi ve avans işlemleri Finans bölümünde — Çalışanlar sekmesinde değil */}
+      {/* Maaş ödemesi ve avans işlemleri Finans bölümünde — Ekip sekmesinde değil */}
 
       {/* ── Confirmation Dialog ──────────────────────────────────── */}
       {/* ── Confirmation Dialog (Patterns §08) ───────────────────── */}
@@ -858,7 +930,10 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
   visible: boolean; employee: Employee | null;
   onClose: () => void; onSaved: () => void;
 }) {
-  const P = DS.exec.primary; // admin/exec panel accent (#EA7A4C coral) — Ekip HR Hub admin'de
+  const P = DS.exec.primary; // admin/exec panel accent (#4771AB kobalt) — Ekip HR Hub admin'de
+  const router = useRouter();
+  const navSegments = useSegments() as string[];
+  const navGroup = navSegments?.[0] && navSegments[0].startsWith('(') ? navSegments[0] : '(lab)';
   // Maaş input'u sadece view_salaries yetkisi olanlara görünür
   const canViewSalaries = usePermissionStore(s => s.can('view_salaries'));
   const [name,   setName]   = useState('');
@@ -1042,7 +1117,7 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
             .eq('id', existingEmp.id);
           if (updErr) {
             setSaving(false);
-            toast.error(updErr.message ?? 'Çalışan kaydı güncellenemedi');
+            toast.error(updErr.message ?? 'Personel kaydı güncellenemedi');
             return;
           }
         } else {
@@ -1059,7 +1134,7 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
           });
           if (insErr) {
             setSaving(false);
-            toast.error(insErr.message ?? 'Çalışan kaydı oluşturulamadı');
+            toast.error(insErr.message ?? 'Personel kaydı oluşturulamadı');
             return;
           }
         }
@@ -1106,7 +1181,7 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
       });
       if (signUpRes.error) {
         setSaving(false);
-        toast.error(`Çalışan eklendi, ancak giriş hesabı oluşturulamadı: ${signUpRes.error.message}`);
+        toast.error(`Personel eklendi, ancak giriş hesabı oluşturulamadı: ${signUpRes.error.message}`);
         return;
       }
       if (signUpRes.data.user?.id) {
@@ -1120,7 +1195,7 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
     }
 
     setSaving(false);
-    toast.success(employee ? 'Çalışan güncellendi' : 'Çalışan eklendi');
+    toast.success(employee ? 'Personel güncellendi' : 'Personel eklendi');
     onSaved();
   };
 
@@ -1141,7 +1216,7 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
             borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
           }}>
             <Text style={{ ...DISPLAY, flex: 1, fontSize: 26, lineHeight: 30, letterSpacing: -0.6, color: DS.ink[900] }}>
-              {employee ? 'Çalışanı Düzenle' : 'Yeni Çalışan'}
+              {employee ? 'Personelı Düzenle' : 'Yeni Personel'}
             </Text>
             {/* Outlined X — panel rengiyle */}
             <Pressable
@@ -1266,37 +1341,23 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
                   </View>
                 </View>
 
-                {/* Stage Yetkileri — outlined active */}
+                {/* Stage/İstasyon yetkileri → Ekip → Personel sekmesine yönlendir (yetki ver, geri dön) */}
                 <View>
-                  <FieldLabel>Stage Yetkileri</FieldLabel>
-                  <Text style={{ fontSize: 11, color: DS.ink[400], marginBottom: 8, marginTop: -2 }}>Hangi aşamayı yapabilir?</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                    {SKILL_STAGES.map(st => {
-                      const has = stagePerms.has(st);
-                      return (
-                        <Pressable
-                          key={st}
-                          onPress={() => {
-                            setStagePerms(prev => {
-                              const nx = new Set(prev);
-                              if (nx.has(st)) nx.delete(st); else nx.add(st);
-                              return nx;
-                            });
-                          }}
-                          style={{
-                            flexDirection: 'row', alignItems: 'center', gap: 4,
-                            paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999,
-                            borderWidth: 1.5, borderColor: has ? P : 'rgba(0,0,0,0.08)',
-                            backgroundColor: 'transparent',
-                            cursor: 'pointer' as any,
-                          }}
-                        >
-                          {has && <Check size={10} color={P} strokeWidth={2.5} />}
-                          <Text style={{ fontSize: 12, fontWeight: has ? '600' : '500', color: has ? P : DS.ink[500] }}>{STAGE_LABEL[st]}</Text>
-                        </Pressable>
-                      );
+                  <FieldLabel>İstasyon Yetkileri</FieldLabel>
+                  <Pressable
+                    onPress={() => { onClose(); router.push(`/${navGroup}/ik-depo?tab=people` as any); }}
+                    style={({ hovered }: any) => ({
+                      flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12,
+                      backgroundColor: hovered ? P + '1E' : P + '12', borderWidth: 1, borderColor: P + '2E',
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                     })}
-                  </View>
+                  >
+                    <Check size={14} color={P} strokeWidth={2.4} />
+                    <Text style={{ flex: 1, fontSize: 12, color: DS.ink[700], lineHeight: 17 }}>
+                      Teknisyenin hangi istasyonlarda çalışabileceğini <Text style={{ fontWeight: '700', color: P }}>Personel</Text> sekmesinden yönet. Otomatik atama ve "Yeniden Ata" aynı kaynağı kullanır.
+                    </Text>
+                    <ChevronRight size={18} color={P} strokeWidth={2.2} />
+                  </Pressable>
                 </View>
 
                 {/* Vaka Türleri — outlined active */}
@@ -1342,7 +1403,7 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
             {isTechnician && employee && !linkedProfileId && (
               <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 12, borderRadius: 12, backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: 'rgba(217,119,6,0.20)' }}>
                 <Text style={{ fontSize: 12, color: '#92400E', flex: 1, lineHeight: 17 }}>
-                  Yetkinlik (Seviye, Stage, Vaka türü) ayarlamak için bu çalışanın sistem hesabı (e-posta + şifre) olması gerekir.
+                  Yetkinlik (Seviye, Stage, Vaka türü) ayarlamak için bu personelın sistem hesabı (e-posta + şifre) olması gerekir.
                 </Text>
               </View>
             )}

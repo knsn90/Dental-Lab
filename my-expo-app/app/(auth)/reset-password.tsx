@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView,
+  TextInput, KeyboardAvoidingView, Platform, ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../core/api/supabase';
 
 import { AppIcon } from '../../core/ui/AppIcon';
+import { ActivityIndicator } from '../../core/ui/teethCompat';
 
 export default function ResetPasswordScreen() {
   const router = useRouter();
@@ -45,7 +46,7 @@ export default function ResetPasswordScreen() {
   return (
     <SafeAreaView style={s.safe}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={s.container} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={s.container} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}>
           <View style={s.card}>
 
             {/* Icon */}

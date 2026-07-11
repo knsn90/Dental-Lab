@@ -65,7 +65,7 @@ export function useCourierDelivery(courierId: string | null) {
         assigned_at, picked_up_at, delivered_at,
         work_order:work_order_id (
           order_number, work_type, delivery_date, tooth_numbers,
-          doctor:doctor_id ( full_name, clinic_name )
+          doctor:doctors ( full_name, clinic:clinics(name) )
         )
       `)
       .in('status', ['atandi', 'teslim_alindi', 'yolda'])

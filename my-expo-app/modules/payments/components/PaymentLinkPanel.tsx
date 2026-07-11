@@ -7,8 +7,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator,
-  Modal, TextInput, Platform, Alert,
+  View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, Platform, Alert,
 } from 'react-native';
 import { AppIcon } from '../../../core/ui/AppIcon';
 import { Shadows, CardSpec } from '../../../core/theme/shadows';
@@ -19,6 +18,8 @@ import {
 } from '../api';
 import { getActivePaymentProvider } from '../providers';
 import type { PaymentIntent } from '../types';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
+import { baseSymbol, useBaseCurrency } from '../../../core/money/baseCurrency';
 
 interface Props {
   invoiceId: string;
@@ -27,10 +28,11 @@ interface Props {
 }
 
 function fmtMoney(n: number): string {
-  return '₺' + n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return baseSymbol() + n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export function PaymentLinkPanel({ invoiceId, balance, onChanged }: Props) {
+  useBaseCurrency();
   const [intents, setIntents] = useState<PaymentIntent[]>([]);
   const [loading, setLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -153,7 +155,6 @@ export function PaymentLinkPanel({ invoiceId, balance, onChanged }: Props) {
         </View>
       )}
 
-      {loading && <ActivityIndicator size="small" color="#2563EB" />}
 
       <CreateLinkModal
         visible={createOpen}
@@ -190,7 +191,7 @@ function CreateLinkModal({
   const handleCreate = async () => {
     const num = Number(amount.replace(',', '.'));
     if (!Number.isFinite(num) || num <= 0) { toast.error('Geçerli tutar girin'); return; }
-    if (num > defaultAmount) { toast.error(`En fazla ${defaultAmount.toFixed(2)} ₺ olabilir`); return; }
+    if (num > defaultAmount) { toast.error(`En fazla ${defaultAmount.toFixed(2)} ${baseSymbol()} olabilir`); return; }
     setBusy(true);
     const { error } = await createPaymentLink({
       invoice_id: invoiceId,
@@ -216,7 +217,7 @@ function CreateLinkModal({
 
           <View style={{ padding: 16, gap: 12 }}>
             <View>
-              <Text style={mm.label}>Tutar (₺)</Text>
+              <Text style={mm.label}>Tutar ({baseSymbol()})</Text>
               <TextInput
                 style={mm.input}
                 value={amount}
@@ -224,7 +225,7 @@ function CreateLinkModal({
                 keyboardType="decimal-pad"
                 placeholder="0,00"
               />
-              <Text style={mm.hint}>Maksimum bakiye: {defaultAmount.toFixed(2)} ₺</Text>
+              <Text style={mm.hint}>Maksimum bakiye: {defaultAmount.toFixed(2)} {baseSymbol()}</Text>
             </View>
 
             <View>
@@ -248,7 +249,7 @@ function CreateLinkModal({
               disabled={busy}
               style={[mm.primaryBtn, busy && { opacity: 0.6 }]}
             >
-              {busy ? <ActivityIndicator size="small" color="#FFFFFF" /> : <AppIcon name="link" size={14} color="#FFFFFF" />}
+              <AppIcon name="link" size={14} color="#FFFFFF" />
               <Text style={mm.primaryText}>{busy ? 'Oluşturuluyor...' : 'Oluştur'}</Text>
             </TouchableOpacity>
           </View>
@@ -289,7 +290,7 @@ const s = StyleSheet.create({
 });
 
 const mm = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  overlay: { flex: 1, backgroundColor: 'rgba(10,14,26,0.42)', justifyContent: 'center', alignItems: 'center', padding: 20, ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}) } as any,
   sheet:   { width: '100%', maxWidth: 440, backgroundColor: CardSpec.bg, borderRadius: CardSpec.radius, borderWidth: 1, borderColor: CardSpec.border, overflow: 'hidden', ...Shadows.card } as any,
   header:  { flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
   title:   { flex: 1, fontSize: 16, fontWeight: '800', color: '#0F172A' },

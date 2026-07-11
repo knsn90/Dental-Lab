@@ -16,14 +16,10 @@ import { Approval } from '../types';
 import { useApprove } from '../hooks/useApprove';
 import { MANUAL_STEPS, DIGITAL_STEPS } from '../../workflow/templates';
 import { DS } from '../../../core/theme/dsTokens';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 const R = { sm: 8, md: 14, lg: 20, xl: 24, pill: 999 };
-const CARD = {
-  backgroundColor: '#FFFFFF',
-  borderRadius: R.xl,
-  borderWidth: 1,
-  borderColor: 'rgba(0,0,0,0.05)',
-} as const;
 
 // ── Step label map ──
 const STEP_LABELS: Record<string, string> = Object.fromEntries(
@@ -63,6 +59,14 @@ export function ApprovalCard({ approval, onResolved, canApprove = false }: Props
   const { approve, reject, loading } = useApprove();
   const [showReject, setShowReject]  = useState(false);
   const [reason, setReason]          = useState('');
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const CARD = {
+    backgroundColor: 'transparent' as const,
+    borderRadius: R.xl,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.10)' : T.hairline,
+  };
 
   const sc        = STATUS_CFG[approval.status];
   const StepIcon  = STEP_ICON_MAP[approval.step_name] ?? Clock;
@@ -88,24 +92,24 @@ export function ApprovalCard({ approval, onResolved, canApprove = false }: Props
         {/* Step icon */}
         <View style={{
           width: 44, height: 44, borderRadius: 14,
-          backgroundColor: DS.ink[100],
+          backgroundColor: isDark ? T.cardSoft : DS.ink[100],
           alignItems: 'center', justifyContent: 'center',
         }}>
-          <StepIcon size={18} color={DS.ink[700]} strokeWidth={1.8} />
+          <StepIcon size={18} color={isDark ? T.ink2 : DS.ink[700]} strokeWidth={1.8} />
         </View>
 
         {/* Info */}
         <View style={{ flex: 1, gap: 3 }}>
           <Text style={{
             fontSize: 15, fontWeight: '600',
-            color: DS.ink[900], textTransform: 'capitalize',
+            color: T.ink, textTransform: 'capitalize',
           }}>
             {stepLabel}
           </Text>
-          <Text style={{ fontSize: 12, color: DS.ink[500] }}>
+          <Text style={{ fontSize: 12, color: T.ink2 }}>
             Talep: {approval.requester?.full_name ?? '—'}
           </Text>
-          <Text style={{ fontSize: 11, color: DS.ink[300] }}>
+          <Text style={{ fontSize: 11, color: T.ink3 }}>
             {new Date(approval.requested_at).toLocaleDateString('tr-TR', {
               day: 'numeric', month: 'short', year: 'numeric',
             })}

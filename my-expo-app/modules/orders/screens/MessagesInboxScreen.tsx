@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TextInput,
   TouchableOpacity, RefreshControl, ScrollView,
-  useWindowDimensions, Platform,
+  useWindowDimensions, Platform, Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -84,12 +84,16 @@ function lastPreview(item: {
   last_attachment_type?: string | null;
   last_sender_id?: string | null;
   last_sender_type?: string | null;
+  last_sender_name?: string | null;
 }, currentUserId: string | null): { text: string; isMine: boolean } {
   const isMine = !!item.last_sender_id && item.last_sender_id === currentUserId;
   if (!item.last_content && !item.last_attachment_type) {
     return { text: 'Henüz mesaj yok', isMine: false };
   }
-  const prefix = isMine ? 'Siz: ' : '';
+  const senderName = isMine
+    ? 'Siz'
+    : (item.last_sender_name ? String(item.last_sender_name).split(' ')[0] : null);
+  const prefix = senderName ? `${senderName}: ` : '';
   if (item.last_attachment_type === 'image') {
     return { text: `${prefix}📷 Fotoğraf${item.last_content ? ` · ${item.last_content}` : ''}`, isMine };
   }
@@ -107,36 +111,70 @@ interface InboxRowProps {
   item: any;
   accent: string;
   currentUserId: string | null;
+  /** 'lab' = lab/admin/teknisyen (klinik adı + altında hekim) · 'client' = klinik/hekim (hasta adı) */
+  side: 'lab' | 'client';
   onPress: () => void;
 }
-function InboxRow({ item, accent, currentUserId, onPress }: InboxRowProps) {
+function InboxRow({ item, accent, currentUserId, side, onPress }: InboxRowProps) {
   const hasUnread = item.unread_for_me > 0;
   const preview   = lastPreview(item, currentUserId);
-  const avatarBg  = colorFor(item.work_order_id);
   const statusCfg = STATUS_CONFIG[item.status as WorkOrderStatus];
-  const title = item.work_type || 'İş emri';
+  const orderTitle = item.work_type || 'İş emri';
+
+  // ── Başlık seçimi panel tarafına göre ──────────────────────────────
+  // Lab tarafı (lab/admin/teknisyen): klinik adı başlık, altında hekim adı.
+  // Klinik/hekim tarafı: hasta adı başlık.
+  const clinicName  = (item.clinic_name as string | null) ?? null;
+  const doctorName  = (item.doctor_name as string | null) ?? null;
+  const patientName = (item.patient_name as string | null) ?? null;
+
+  let title: string;
+  let subtitle: string | null;
+  if (side === 'lab') {
+    title    = clinicName ?? doctorName ?? orderTitle;
+    // Klinik adı başlık olduysa hekim adını altında göster; klinik yoksa altta klinik tekrarı olmasın
+    subtitle = clinicName ? (doctorName ?? null) : null;
+  } else {
+    title    = patientName ?? orderTitle;
+    subtitle = null;
+  }
+
+  // Avatar = başlığa göre seed (klinik/hasta) — tutarlı renk
+  const isMine       = !!item.last_sender_id && item.last_sender_id === currentUserId;
+  const senderAvatar = isMine ? null : (item.last_sender_avatar as string | null) ?? null;
+  const displayName  = title;
+  const avatarSeed   = title || item.work_order_id || '';
+  const avatarBg     = colorFor(avatarSeed);
 
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.75} style={row.wrap}>
-      {/* Avatar — colored with work order initials */}
-      <View style={[row.avatar, { backgroundColor: avatarBg }]}>
-        <Text style={row.avatarText}>{initials(title)}</Text>
+      {/* Avatar — son gönderen profil */}
+      <View style={[row.avatar, { backgroundColor: avatarBg, overflow: 'hidden' }]}>
+        {senderAvatar ? (
+          <Image source={{ uri: senderAvatar }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+        ) : (
+          <Text style={row.avatarText}>{initials(displayName)}</Text>
+        )}
         {statusCfg && (
           <View style={[row.statusDot, { backgroundColor: statusCfg.color, borderColor: '#FFFFFF' }]} />
         )}
       </View>
 
-      {/* Middle — title + preview */}
+      {/* Middle — sender + preview + order context */}
       <View style={{ flex: 1, minWidth: 0 }}>
         <View style={row.topLine}>
           <Text style={row.title} numberOfLines={1}>
-            {title}
+            {displayName}
             {item.is_urgent && <Text style={row.urgentTag}>  · ACİL</Text>}
           </Text>
           <Text style={[row.time, hasUnread && { color: accent, fontWeight: '800' }]}>
             {formatTime(item.last_created_at)}
           </Text>
         </View>
+
+        {subtitle ? (
+          <Text style={row.subtitle} numberOfLines={1}>{subtitle}</Text>
+        ) : null}
 
         <View style={row.bottomLine}>
           <Text style={[row.preview, hasUnread && row.previewUnread, preview.isMine && row.previewMine]} numberOfLines={1}>
@@ -150,10 +188,13 @@ function InboxRow({ item, accent, currentUserId, onPress }: InboxRowProps) {
         </View>
 
         <View style={row.metaLine}>
-          <Text style={row.metaText}>
+          <Text style={row.metaText} numberOfLines={1}>
             #{item.order_number}
-            {item.patient_name ? ` · ${item.patient_name}` : ''}
-            {item.doctor_name ? ` · ${item.doctor_name}` : ''}
+            {orderTitle ? ` · ${orderTitle}` : ''}
+            {/* Lab tarafı: hasta adı meta'da (klinik+hekim başlıkta). Klinik/hekim: hekim adı meta'da (hasta başlıkta). */}
+            {side === 'lab'
+              ? (patientName ? ` · ${patientName}` : '')
+              : (doctorName ? ` · ${doctorName}` : '')}
           </Text>
         </View>
       </View>
@@ -182,6 +223,7 @@ const row = StyleSheet.create({
   title:      { flex: 1, fontSize: 14, fontWeight: '700', color: '#0F172A', letterSpacing: -0.2 },
   urgentTag:  { color: CLR.red, fontWeight: '800', fontSize: 11, letterSpacing: 0.3 },
   time:       { fontSize: 11, color: '#94A3B8', fontWeight: '500' },
+  subtitle:   { fontSize: 12, color: '#475569', fontWeight: '600', marginBottom: 3, marginTop: -1 },
 
   bottomLine: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 },
   preview:    { flex: 1, fontSize: 13, color: '#64748B' },
@@ -242,6 +284,10 @@ export function MessagesInboxScreen({
   const { items, loading, totalUnread, refetch } = useOrderChatInbox();
   const { width } = useWindowDimensions();
   const isDesktop = width >= 900;
+
+  // Panel tarafı: lab/admin/teknisyen(station) → klinik+hekim başlık · klinik/hekim → hasta başlık
+  const side: 'lab' | 'client' =
+    routePrefix.includes('(doctor)') || routePrefix.includes('(clinic)') ? 'client' : 'lab';
 
   const [query,  setQuery]  = useState('');
   const [filter, setFilter] = useState<'tumu' | 'unread' | 'urgent'>('tumu');
@@ -317,6 +363,7 @@ export function MessagesInboxScreen({
               item={item}
               accent={accentColor}
               currentUserId={currentUserId}
+              side={side}
               onPress={() => router.push(`${routePrefix}/order/${item.work_order_id}` as any)}
             />
             {index < filtered.length - 1 && <View style={s.divider} />}
@@ -351,7 +398,7 @@ const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: BG },
   list: { paddingBottom: 100 },
 
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 20, paddingTop: 16, marginBottom: 2 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 20, paddingTop: 62, marginBottom: 2 },
   title:    { fontSize: 30, fontWeight: '800', color: '#0F172A', letterSpacing: -0.8 },
   totalBadge: { minWidth: 26, height: 26, paddingHorizontal: 8, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   totalBadgeText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },

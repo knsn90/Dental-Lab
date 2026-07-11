@@ -44,6 +44,28 @@ function fmtMoney(amount: number | string | null | undefined, currency = 'TRY'):
   return sym + n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+/** Adres JSON ({il,ilce,mahalle,sokak,bina_no,posta_kodu}) → okunabilir tek satır. */
+function formatAddress(raw: string | null | undefined): string {
+  if (!raw) return '';
+  const s = String(raw).trim();
+  if (!(s.startsWith('{') && s.endsWith('}'))) return s;
+  try {
+    const o: any = JSON.parse(s);
+    if (!o || typeof o !== 'object') return s;
+    const sokak = String(o.sokak ?? '').trim();
+    const binaNo = String(o.bina_no ?? '').trim();
+    const line1 = [sokak, binaNo && !sokak.includes(binaNo) ? 'No: ' + binaNo : null].filter(Boolean).join(' ');
+    const mahalle = String(o.mahalle ?? '').trim();
+    const line2 = [
+      mahalle ? (/mah/i.test(mahalle) ? mahalle : mahalle + ' Mah.') : null,
+      [o.ilce, o.il].filter(Boolean).join('/'),
+      o.posta_kodu,
+    ].filter(Boolean).join(', ');
+    const out = [line1, line2].filter(Boolean).join(', ').replace(/\s+/g, ' ').trim();
+    return out || s;
+  } catch { return s; }
+}
+
 // ─── Ana builder ──────────────────────────────────────────────────────────
 export function buildInvoiceHtml(invoice: Invoice, lab: LabLetterhead): string {
   const items = invoice.items ?? [];
@@ -53,7 +75,7 @@ export function buildInvoiceHtml(invoice: Invoice, lab: LabLetterhead): string {
 
   // Letterhead fields (NULL-safe)
   const labName    = esc(lab.name);
-  const labAddress = lab.address    ? esc(lab.address)    : '';
+  const labAddress = lab.address    ? esc(formatAddress(lab.address)) : '';
   const labPhone   = lab.phone      ? esc(lab.phone)      : '';
   const labEmail   = lab.email      ? esc(lab.email)      : '';
   const labWebsite = lab.website    ? esc(lab.website)    : '';
@@ -64,7 +86,7 @@ export function buildInvoiceHtml(invoice: Invoice, lab: LabLetterhead): string {
   const clinic       = invoice.clinic;
   const doctor       = invoice.doctor;
   const clinicName   = esc(clinic?.name ?? '—');
-  const clinicAddr   = clinic?.address ? esc(clinic.address) : '';
+  const clinicAddr   = clinic?.address ? esc(formatAddress(clinic.address)) : '';
   const clinicPhone  = clinic?.phone   ? esc(clinic.phone)   : '';
   const clinicEmail  = clinic?.email   ? esc(clinic.email)   : '';
   const doctorName   = esc(doctor?.full_name ?? '—');
@@ -131,14 +153,18 @@ export function buildInvoiceHtml(invoice: Invoice, lab: LabLetterhead): string {
     }
 
     .letterhead {
-      display: flex; justify-content: space-between; align-items: flex-start;
-      gap: 24px; padding-bottom: 16px; border-bottom: 2px solid #0f172a;
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 28px; padding-bottom: 18px; border-bottom: 3px solid #0f172a;
     }
-    .letterhead .lab { flex: 1; }
-    .letterhead .logo { width: 72px; height: 72px; border-radius: 8px; object-fit: contain; }
-    .lab-name { font-size: 20px; font-weight: 800; color: #0f172a; letter-spacing: -0.2px; }
-    .lab-meta { margin-top: 6px; font-size: 11px; color: #475569; line-height: 1.6; }
-    .lab-meta span + span::before { content: ' · '; color: #cbd5e1; }
+    .letterhead .brand { display: flex; align-items: center; gap: 16px; min-width: 0; }
+    .letterhead .logo { height: 72px; width: auto; max-width: 200px; object-fit: contain; }
+    .letterhead .brand-divider { width: 1px; align-self: stretch; background: #e2e8f0; }
+    .lab-name { font-size: 20px; font-weight: 800; color: #0f172a; letter-spacing: -0.3px; line-height: 1.2; max-width: 320px; }
+    .lab-tagline { margin-top: 3px; font-size: 10px; font-weight: 600; letter-spacing: 1.4px; text-transform: uppercase; color: #94a3b8; }
+    .letterhead .contact { text-align: right; font-size: 11px; color: #475569; line-height: 1.7; max-width: 260px; }
+    .letterhead .contact .row { display: block; }
+    .letterhead .contact .row.strong { color: #0f172a; font-weight: 600; }
+    .letterhead .contact .lbl { color: #94a3b8; }
 
     .title-bar {
       display: flex; justify-content: space-between; align-items: center;
@@ -305,17 +331,21 @@ export function buildInvoiceHtml(invoice: Invoice, lab: LabLetterhead): string {
 
   <!-- Letterhead -->
   <div class="letterhead">
-    <div class="lab">
-      <div class="lab-name">${labName}</div>
-      <div class="lab-meta">
-        ${labAddress ? `<span>${labAddress}</span>` : ''}
-        ${labPhone   ? `<span>Tel: ${labPhone}</span>` : ''}
-        ${labEmail   ? `<span>${labEmail}</span>` : ''}
-        ${labWebsite ? `<span>${labWebsite}</span>` : ''}
-        ${labTaxNo   ? `<span>V.No: ${labTaxNo}</span>` : ''}
+    <div class="brand">
+      ${labLogo ? `<img src="${labLogo}" alt="${labName}" class="logo" />` : ''}
+      ${labLogo ? `<div class="brand-divider"></div>` : ''}
+      <div>
+        <div class="lab-name">${labName}</div>
+        ${labTaxNo ? `<div class="lab-tagline">Vergi No: ${labTaxNo}</div>` : ''}
       </div>
     </div>
-    ${labLogo ? `<img src="${labLogo}" alt="${labName}" class="logo" />` : ''}
+    ${(labAddress || labPhone || labEmail || labWebsite) ? `
+    <div class="contact">
+      ${labAddress ? `<span class="row">${labAddress}</span>` : ''}
+      ${labPhone   ? `<span class="row"><span class="lbl">Tel:</span> ${labPhone}</span>` : ''}
+      ${labEmail   ? `<span class="row">${labEmail}</span>` : ''}
+      ${labWebsite ? `<span class="row strong">${labWebsite}</span>` : ''}
+    </div>` : ''}
   </div>
 
   <!-- Title bar -->
@@ -333,7 +363,7 @@ export function buildInvoiceHtml(invoice: Invoice, lab: LabLetterhead): string {
       <div class="label">Sayın / Müşteri</div>
       <div class="value">${clinicName}</div>
       <div class="meta">
-        ${doctorName !== '—' ? 'Dr. ' + doctorName + '<br/>' : ''}
+        ${doctorName !== '—' ? (/^dr\.?\s/i.test(doctorName) ? doctorName : 'Dr. ' + doctorName) + '<br/>' : ''}
         ${clinicAddr  ? clinicAddr + '<br/>' : ''}
         ${clinicPhone ? 'Tel: ' + clinicPhone : ''}
         ${clinicEmail ? ' · ' + clinicEmail : ''}

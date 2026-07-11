@@ -2,6 +2,13 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "Dist Static",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "serve", "dist", "-s", "-l", "4600"],
+      "port": 4600,
+      "autoPort": false
+    },
+    {
       "name": "Expo Web",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "web"],

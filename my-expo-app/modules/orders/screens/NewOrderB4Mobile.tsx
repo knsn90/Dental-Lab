@@ -4,13 +4,13 @@
  */
 import React, { useState } from 'react';
 import {
-  View, Text, Pressable, ScrollView, StyleSheet, ActivityIndicator,
-} from 'react-native';
+  View, Text, Pressable, ScrollView, StyleSheet, } from 'react-native';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { DS } from '../../../core/theme/dsTokens';
 import { MFONT, useMobileTheme } from '../../../core/theme/mobileTheme';
 import { ToothDiagram } from '../../../core/ui/ToothDiagram';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
 
 // ─── Step data ───────────────────────────────────────────────────────────────
 const TYPE_OPTIONS = [

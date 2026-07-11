@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, TouchableWithoutFeedback, StyleSheet, Platform } from 'react-native';
+import { useThemeModeStore } from '../store/themeModeStore';
 
 interface Props {
   value: boolean;
@@ -27,6 +28,7 @@ export function AppSwitch({
   style,
   disabled = false,
 }: Props) {
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const anim = useRef(new Animated.Value(value ? 1 : 0)).current;
 
   useEffect(() => {
@@ -44,9 +46,10 @@ export function AppSwitch({
     outputRange: [MARGIN, MARGIN + TRAVEL],
   });
 
+  const offTrack = isDark ? 'rgba(255,255,255,0.18)' : '#D1D5DB';
   const bgColor = anim.interpolate({
     inputRange:  [0, 1],
-    outputRange: ['#D1D5DB', accentColor],
+    outputRange: [offTrack, accentColor],
   });
 
   return (

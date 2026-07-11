@@ -9,10 +9,37 @@ export default function Root({ children }: { children: React.ReactNode }) {
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
         <meta
           name="viewport"
-          content="width=device-width, initial-scale=1, shrink-to-fit=no"
+          content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover"
         />
+        {/* PWA — manifest + theme + apple touch icons */}
+        <link rel="manifest" href="/manifest.webmanifest" />
+        <meta name="theme-color" content="#F2EDE3" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta name="apple-mobile-web-app-title" content="Siman" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-180.png" />
+        <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192.png" />
+        <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+        <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+        <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png" />
+        <title>Siman</title>
         <ScrollViewStyleReset />
         <style dangerouslySetInnerHTML={{ __html: webStyles }} />
+        {/* Service Worker — installability + offline shell */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if ('serviceWorker' in navigator) {
+                window.addEventListener('load', function () {
+                  navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function (err) {
+                    console.warn('[pwa] sw register failed:', err);
+                  });
+                });
+              }
+            `,
+          }}
+        />
       </head>
       <body>{children}</body>
     </html>

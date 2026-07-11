@@ -6,7 +6,9 @@
  */
 import React from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { NO, NOType, NORadius } from './NOTokens';
+import { useNOTokens, NOType, NORadius } from './NOTokens';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { NOStepNum, NOStepState } from './NOStepNum';
 import { NOEyebrow } from './NOFormPrimitives';
 
@@ -34,6 +36,9 @@ export function NOMiniStepper({
   steps = DEFAULT_STEPS,
   onStepPress,
 }: NOMiniStepperProps) {
+  const NO = useNOTokens();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <View
       style={{
@@ -62,7 +67,7 @@ export function NOMiniStepper({
                 paddingVertical: 8,
                 paddingHorizontal: 10,
                 borderRadius: NORadius.md,
-                backgroundColor: state === 'current' ? '#FFFFFF' : 'transparent',
+                backgroundColor: state === 'current' ? T.card : 'transparent',
               }}
             >
               <NOStepNum n={s.id} state={state} />
@@ -96,7 +101,7 @@ export function NOMiniStepper({
         <View
           style={{
             padding: 14,
-            backgroundColor: NO.inkStrong,
+            backgroundColor: isDark ? T.cardSoft : NO.inkStrong,
             borderRadius: 14,
           }}
         >
@@ -112,7 +117,7 @@ export function NOMiniStepper({
           <Text
             style={{
               fontSize: 11,
-              color: 'rgba(255,255,255,0.8)',
+              color: isDark ? T.ink2 : 'rgba(255,255,255,0.8)',
               lineHeight: 16,
             }}
           >

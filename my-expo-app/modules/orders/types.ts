@@ -3,7 +3,8 @@ export type WorkOrderStatus =
   | 'uretimde'
   | 'kalite_kontrol'
   | 'teslimata_hazir'
-  | 'teslim_edildi';
+  | 'teslim_edildi'
+  | 'iptal';
 
 export type MachineType = 'milling' | '3d_printing';
 export type PatientGender = 'erkek' | 'kadın' | 'belirtilmedi';
@@ -35,6 +36,12 @@ export interface WorkOrder {
   lab_notes: string | null;   // internal lab notes
   delivery_date: string;
   delivered_at: string | null;
+  delivery_method: 'kurye' | 'kargo' | 'elden' | null; // teslim şekli (sipariş oluştururken seçilir)
+  triaged_at: string | null;       // Planlama tamamlandığında set edilir (triage_order RPC)
+  triaged_by: string | null;       // Planlamayı yapan profile id'si
+  is_archived?: boolean;            // Admin pasife aldıysa true
+  archived_at?: string | null;
+  archived_by?: string | null;
   created_at: string;
   updated_at: string;
   // Joined relations (optional)
@@ -75,12 +82,14 @@ export interface CreateWorkOrderParams {
   notes?: string;
   lab_notes?: string;
   delivery_date: string; // YYYY-MM-DD
+  delivery_method?: 'kurye' | 'kargo' | 'elden'; // teslim şekli
   measurement_type?: 'manual' | 'digital';
   doctor_approval_required?: boolean;
   patient_nationality?: string;
   patient_country?: string;
   patient_city?: string;
   lab_notes_visible?: boolean;
+  scan_bodies_delivered?: boolean;
 }
 
 export interface PendingItem {

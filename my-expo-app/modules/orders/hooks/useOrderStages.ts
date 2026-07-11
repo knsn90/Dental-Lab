@@ -6,7 +6,7 @@ import { supabase } from '../../../core/api/supabase';
 
 // ── Tipler ────────────────────────────────────────────────────────────────────
 
-export type StageStatus = 'bekliyor' | 'aktif' | 'tamamlandi' | 'onaylandi' | 'reddedildi';
+export type StageStatus = 'bekliyor' | 'aktif' | 'tamamlandi' | 'onaylandi' | 'reddedildi' | 'skipped';
 
 export interface StageInfo {
   id: string;
@@ -18,8 +18,16 @@ export interface StageInfo {
   completed_at: string | null;
   technician_note: string | null;
   manager_note: string | null;
+  skipped_reason?: string | null;
   station: { id: string; name: string; color: string; icon?: string } | null;
   technician: { id: string; full_name: string } | null;
+  // Phase A timing
+  active_work_seconds?:     number;
+  machine_runtime_seconds?: number;
+  queue_waiting_seconds?:   number;
+  paused_seconds_total?:    number;
+  // Estimated total minutes given by the technician on start
+  estimated_minutes?:       number | null;
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
@@ -44,6 +52,12 @@ export function useOrderStages(workOrderId: string | undefined) {
         completed_at,
         technician_note,
         manager_note,
+        skipped_reason,
+        active_work_seconds,
+        machine_runtime_seconds,
+        queue_waiting_seconds,
+        paused_seconds_total,
+        estimated_minutes,
         station:station_id ( id, name, color, icon ),
         technician:technician_id ( id, full_name )
       `)
@@ -75,23 +89,29 @@ export function useOrderStages(workOrderId: string | undefined) {
     return () => { supabase.removeChannel(channel); };
   }, [workOrderId, fetchStages]);
 
-  // Türetilmiş değerler
-  const activeStage = stages.find(
-    s => s.status === 'aktif' || s.status === 'tamamlandi',
-  ) ?? null;
+  // Türetilmiş değerler — skipped stages execution flow'una dahil değil
+  const executionStages = stages.filter(s => s.status !== 'skipped');
+  const skippedStages   = stages.filter(s => s.status === 'skipped');
 
-  const pendingStages = stages.filter(s => s.status === 'bekliyor');
-  const completedCount = stages.filter(
-    s => s.status === 'onaylandi',
+  // Şu an çalışılan aşama = SADECE 'aktif' status'lu olan.
+  // 'tamamlandi' eskiden dahildi ama bu ilk-tamamlananı dönerek yanlış
+  // "currentStation" gösteriyor (Tarama tamamlandıysa o seçilirdi).
+  const activeStage = executionStages.find(s => s.status === 'aktif') ?? null;
+
+  const pendingStages = executionStages.filter(s => s.status === 'bekliyor');
+  const completedCount = executionStages.filter(
+    s => s.status === 'onaylandi' || s.status === 'tamamlandi',
   ).length;
 
   return {
-    stages,
+    stages: executionStages,        // UI'da yalnız aktif rota gösterilir
+    allStages: stages,              // gerekirse skipped'ları da kapsayan tam liste
+    skippedStages,
     loading,
     activeStage,
     pendingStages,
     completedCount,
-    totalStages: stages.length,
+    totalStages: executionStages.length,
     refetch: fetchStages,
   };
 }

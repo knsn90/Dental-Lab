@@ -25,9 +25,9 @@ export const DS = {
 
   lab: {
     name:        'Lab Paneli',
-    bg:          '#F5EFD9',
-    bgSoft:      '#FBF7E8',
-    bgDeep:      '#E8DDB5',
+    bg:          '#FBE9B6',
+    bgSoft:      '#FDF4DA',
+    bgDeep:      '#F4D078',
     surface:     '#FFFFFF',
     surfaceAlt:  '#1A1A1A',
     primary:     '#F5C24B',
@@ -41,14 +41,14 @@ export const DS = {
 
   clinic: {
     name:        'Klinik Paneli',
-    bg:          '#EDF2EE',
-    bgSoft:      '#F5F8F5',
-    bgDeep:      '#D9E5DC',
+    bg:          '#D3F8E0',
+    bgSoft:      '#EDFCF3',
+    bgDeep:      '#ABEFC7',
     surface:     '#FFFFFF',
-    surfaceAlt:  '#0F2A1F',
-    primary:     '#6BA888',
-    primaryDeep: '#4D8A6B',
-    accent:      '#0F2A1F',
+    surfaceAlt:  '#2F313F',
+    primary:     '#32BB78',
+    primaryDeep: '#0C8F56',
+    accent:      '#2F313F',
     success:     '#2D9A6B',
     warning:     '#E89B2A',
     danger:      '#D94B4B',
@@ -57,14 +57,14 @@ export const DS = {
 
   exec: {
     name:        'Yönetim Paneli',
-    bg:          '#F5F1EB',  // Krem zemin
-    bgSoft:      '#FAF8F4',
-    bgDeep:      '#EDE7DC',
+    bg:          '#EAF2FB',  // Primary Soft — panel mavi tonunu yansıtır
+    bgSoft:      '#F2F6FB',  // Background Soft (en açık)
+    bgDeep:      '#E7EEF8',  // Background Deep
     surface:     '#FFFFFF',  // Kart — beyaz
-    surfaceAlt:  '#243041',  // Koyu kart — lacivert
-    primary:     '#EA7A4C',  // Mercan accent
-    primaryDeep: '#F3B37A',  // İkincil accent
-    accent:      '#1C1C1C',  // Ana yazı / koyu CTA
+    surfaceAlt:  '#243041',  // Koyu kart — lacivert (dark surface)
+    primary:     '#4771AB',  // Kobalt accent
+    primaryDeep: '#314F7E',  // Primary Active (gradient/hover ucu)
+    accent:      '#172235',  // Ana yazı / koyu CTA (Text Primary)
     success:     '#2D9A6B',
     warning:     '#E89B2A',
     danger:      '#D94B4B',

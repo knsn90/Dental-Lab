@@ -1,1 +1,2 @@
-export { SettingsHubScreen as default } from '../../modules/settings/screens/SettingsHubScreen';
+import { lazyRoute } from '../../core/_lazyRoute';
+export default lazyRoute(() => import('../../modules/settings/screens/SettingsHubScreen'), 'SettingsHubScreen');

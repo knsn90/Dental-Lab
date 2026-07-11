@@ -12,7 +12,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, RefreshControl, TouchableOpacity,
-  TextInput, Modal, ActivityIndicator, Platform, Pressable, Animated, LayoutChangeEvent,
+  TextInput, Modal, Platform, Pressable, Animated, LayoutChangeEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -30,6 +30,7 @@ import { KanbanBoard } from '../components/KanbanBoard';
 import { WorkOrder, WorkOrderStatus } from '../types';
 import { mapStationToStage } from '../stationMapping';
 import { STAGE_LABEL, STAGE_COLOR, legacyStatusToStage, type Stage } from '../stages';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
 
 // ─── iOS palette (Reminders) ─────────────────────────────────────────────────
 const iOS = {
@@ -54,7 +55,7 @@ type SortDir  = 'asc' | 'desc';
 
 const STATUS_FILTERS: { value: WorkOrderStatus | 'all'; label: string }[] = [
   { value: 'all',             label: 'Tümü'   },
-  { value: 'alindi',          label: 'Triyaj' },
+  { value: 'alindi',          label: 'Planlama' },
   { value: 'uretimde',        label: 'Üretim' },
   { value: 'kalite_kontrol',  label: 'KK'     },
   { value: 'teslimata_hazir', label: 'Hazır'  },
@@ -325,8 +326,8 @@ export function OrdersListScreen() {
   const [searchOpen, setSearchOpen]     = useState(false);
   const [urgentOnly, setUrgentOnly]     = useState(false);
   const [overdueOnly, setOverdueOnly]   = useState(false);
-  const [sortBy, setSortBy]             = useState<SortBy>('delivery_date');
-  const [sortDir, setSortDir]           = useState<SortDir>('asc');
+  const [sortBy, setSortBy]             = useState<SortBy>('created_at');  // en yeni sipariş her zaman üstte
+  const [sortDir, setSortDir]           = useState<SortDir>('desc');
   const [sortOpen, setSortOpen]         = useState(false);
 
   // ── Modals ──
@@ -683,7 +684,7 @@ const s = StyleSheet.create({
   },
   searchInputInline: {
     flex: 1, fontSize: 13, color: iOS.text,
-    outlineStyle: 'none',
+    outlineStyle: 'none' as any,
   },
 
   // Segment — full pill (yarım daire kenarlar)

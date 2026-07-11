@@ -7,9 +7,38 @@
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, ScrollView, Pressable, Switch,
-  ActivityIndicator, useWindowDimensions, Platform,
+  View, Text, ScrollView, Pressable, TextInput,
+  useWindowDimensions, Platform,
 } from 'react-native';
+
+// ── Toggle (NotificationsSection ile aynı stil) ─────────────────────────
+const THUMB_SHADOW = Platform.select({
+  web: { boxShadow: '0 1px 2px rgba(0,0,0,0.15), 0 1px 3px rgba(0,0,0,0.08)' } as any,
+  default: { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
+});
+function Toggle({ on, disabled, onPress, accentColor }: { on: boolean; disabled?: boolean; onPress: () => void; accentColor: string }) {
+  return (
+    <Pressable
+      disabled={disabled}
+      onPress={onPress}
+      style={{
+        width: 44, height: 24, borderRadius: 999,
+        backgroundColor: on ? accentColor : 'rgba(0,0,0,0.12)',
+        padding: 2, justifyContent: 'center',
+        opacity: disabled ? 0.45 : 1,
+        ...(Platform.OS === 'web' ? { cursor: disabled ? 'not-allowed' : 'pointer' } as any : {}),
+      }}
+    >
+      <View
+        style={{
+          width: 20, height: 20, borderRadius: 10, backgroundColor: '#FFF',
+          alignSelf: on ? 'flex-end' : 'flex-start',
+          ...THUMB_SHADOW,
+        }}
+      />
+    </Pressable>
+  );
+}
 import { supabase } from '../../../core/api/supabase';
 import { DS } from '../../../core/theme/dsTokens';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
@@ -20,13 +49,17 @@ import {
   PERMISSION_CATEGORIES,
   PERMISSION_GROUPS,
   PERMISSION_LABELS,
+  FEATURES,
   usePermissionStore,
 } from '../../../core/store/permissionStore';
 import {
   Shield, Users, Wrench, Stethoscope, Building2, Truck,
-  Check, Save, RotateCcw, Lock,
+  Check, Save, RotateCcw, Lock, User as UserIcon, Search, X, ChevronDown,
 } from 'lucide-react-native';
 import { useAuthStore } from '../../../core/store/authStore';
+import { toast } from '../../../core/ui/Toast';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
+import { CenteredLoader } from '../../../core/ui/CenteredLoader';
 
 // ─── Patterns Tokens ─────────────────────────────────────────
 const DISPLAY = {
@@ -70,7 +103,7 @@ export function PermissionsSection(props: PermissionsScreenProps) {
   return <PermissionsScreen {...props} />;
 }
 
-export function PermissionsScreen({ embedded = false, accentColor = '#EA7A4C' }: PermissionsScreenProps = {}) {
+export function PermissionsScreen({ embedded = false, accentColor = '#4771AB' }: PermissionsScreenProps = {}) {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1024;
   const { setTitle, clear } = usePageTitleStore();
@@ -113,12 +146,15 @@ export function PermissionsScreen({ embedded = false, accentColor = '#EA7A4C' }:
           </Text>
           <Text style={{ fontSize: 14, color: DS.ink[500], textAlign: 'center', lineHeight: 20 }}>
             Rol bazlı izin atama yalnızca <Text style={{ fontWeight: '700', color: DS.ink[900] }}>admin</Text> kullanıcıları tarafından yapılabilir.
-            Kullanıcı rollerini düzenlemek için <Text style={{ fontWeight: '600', color: DS.ink[800] }}>Ekip → Çalışanlar → Düzenle</Text> sekmesine gidin.
+            Kullanıcı rollerini düzenlemek için <Text style={{ fontWeight: '600', color: DS.ink[800] }}>Ekip → Ekip → Düzenle</Text> sekmesine gidin.
           </Text>
         </View>
       </View>
     );
   }
+
+  // ── Mode: 'role' (rol bazlı) | 'user' (kullanıcı bazlı override) ──
+  const [mode, setMode] = useState<'role' | 'user'>('role');
 
   const [activeRole, setActiveRole] = useState<RoleKey>('lab_manager');
   const [rolePerms, setRolePerms] = useState<Set<string>>(new Set());
@@ -126,6 +162,189 @@ export function PermissionsScreen({ embedded = false, accentColor = '#EA7A4C' }:
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  // ── User mode state ──
+  const [userSearch, setUserSearch] = useState('');
+  const [userList, setUserList] = useState<Array<{ id: string; full_name: string; email: string | null; user_type: string; role: string | null }>>([]);
+  const [activeUserId, setActiveUserId] = useState<string | null>(null);
+  const [userPermsLoading, setUserPermsLoading] = useState(false);
+  // permission_key → 'auto' (rol'den), 'on' (override grant), 'off' (override revoke)
+  const [userPermStates, setUserPermStates] = useState<Record<string, 'auto' | 'on' | 'off'>>({});
+  // Etkilenen (gerçekte aktif) izinler
+  const [userEffective, setUserEffective] = useState<Set<string>>(new Set());
+  // Yeni: pending değişiklikler (Kaydet butonuna basana kadar DB'ye gitmez)
+  const [pendingUserPerms, setPendingUserPerms] = useState<Set<string>>(new Set());
+  const [originalUserPerms, setOriginalUserPerms] = useState<Set<string>>(new Set());
+  const [userRoleDefaults, setUserRoleDefaults] = useState<Set<string>>(new Set());
+  const [userSaving, setUserSaving] = useState(false);
+  const [userSaved, setUserSaved] = useState(false);
+  // 2-dropdown picker: önce role filtresi, sonra kullanıcı
+  const [userRoleFilter, setUserRoleFilter] = useState<RoleKey | null>(null);
+  const [roleDropOpen, setRoleDropOpen] = useState(false);
+  const [userDropOpen, setUserDropOpen] = useState(false);
+
+  // Profile.role + user_type → RoleKey eşlemesi
+  const profileToRoleKey = (p: { user_type: string; role: string | null }): RoleKey | null => {
+    if (p.user_type === 'doctor')       return 'doctor';
+    if (p.user_type === 'clinic_admin') return 'clinic_admin';
+    if (p.user_type === 'lab' && p.role === 'technician') return 'technician';
+    if (p.user_type === 'lab' && p.role === 'courier')    return 'courier';
+    if (p.user_type === 'lab')          return 'lab_manager';
+    return null;
+  };
+
+  // User listesi yükle
+  useEffect(() => {
+    if (mode !== 'user') return;
+    (async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, user_type, role')
+        .neq('user_type', 'admin')
+        .eq('is_active', true)
+        .order('full_name')
+        .limit(200);
+      if (Array.isArray(data)) setUserList(data as any);
+    })();
+  }, [mode]);
+
+  // Kullanıcı seçilince state'i yükle
+  const loadUserPerms = useCallback(async (userId: string) => {
+    setUserPermsLoading(true);
+    setUserSaved(false);
+    try {
+      const user = userList.find(u => u.id === userId);
+      const roleKey = user ? profileToRoleKey(user) : null;
+      const [{ data: eff }, { data: ovr }, { data: roleDef }] = await Promise.all([
+        supabase.rpc('get_user_effective_permissions', { p_user_id: userId }),
+        supabase.rpc('get_user_overrides', { p_user_id: userId }),
+        roleKey ? supabase.rpc('get_role_permissions', { p_role: roleKey }) : Promise.resolve({ data: [] }),
+      ]);
+      const effective = new Set<string>((eff ?? []).map((r: any) => r.permission_key));
+      const states: Record<string, 'auto' | 'on' | 'off'> = {};
+      for (const o of (ovr ?? []) as any[]) {
+        states[o.permission_key] = o.granted ? 'on' : 'off';
+      }
+      setUserEffective(effective);
+      setUserPermStates(states);
+      setPendingUserPerms(new Set(effective));
+      setOriginalUserPerms(new Set(effective));
+      setUserRoleDefaults(new Set<string>(Array.isArray(roleDef) ? (roleDef as string[]) : []));
+    } catch {
+      setUserEffective(new Set());
+      setUserPermStates({});
+      setPendingUserPerms(new Set());
+      setOriginalUserPerms(new Set());
+      setUserRoleDefaults(new Set());
+    }
+    setUserPermsLoading(false);
+  }, [userList]);
+
+  useEffect(() => {
+    if (mode === 'user' && activeUserId) loadUserPerms(activeUserId);
+  }, [mode, activeUserId, loadUserPerms]);
+
+  // Pending toggle — sadece local state'i değiştirir, kaydetmez
+  // Manage açılırsa View otomatik açılır; View kapanırsa Manage de kapanır
+  const toggleUserPerm = (key: PermissionKey) => {
+    setUserSaved(false);
+    setPendingUserPerms(prev => {
+      const next = new Set(prev);
+      const k = key as string;
+      const isOn = next.has(k);
+      if (isOn) {
+        next.delete(k);
+        if (k.startsWith('view_')) {
+          const manageKey = 'manage_' + k.slice('view_'.length);
+          next.delete(manageKey);
+        }
+      } else {
+        next.add(k);
+        if (k.startsWith('manage_')) {
+          const viewKey = 'view_' + k.slice('manage_'.length);
+          next.add(viewKey);
+        }
+      }
+      return next;
+    });
+  };
+
+  // Kullanıcı yetkilerini Kaydet — pending vs role defaults farkına göre override yaz
+  const handleUserSave = async () => {
+    if (!activeUserId) return;
+    setUserSaving(true);
+    try {
+      // Pending'da olup originalda olmayan veya tersi → değişti
+      const allKeys = new Set<string>([...pendingUserPerms, ...originalUserPerms]);
+      const ops: Promise<any>[] = [];
+      for (const key of allKeys) {
+        const desired = pendingUserPerms.has(key);
+        const original = originalUserPerms.has(key);
+        if (desired === original) continue; // değişmedi
+        const roleDefault = userRoleDefaults.has(key);
+        if (desired === roleDefault) {
+          // Role default ile aynı → override gerekmez, mevcut override'ı temizle
+          ops.push(Promise.resolve(supabase.rpc('clear_user_permission', { p_user_id: activeUserId, p_permission_key: key })));
+        } else {
+          // Role'den farklı → explicit override yaz
+          ops.push(Promise.resolve(supabase.rpc('set_user_permission', {
+            p_user_id: activeUserId,
+            p_permission_key: key,
+            p_granted: desired,
+            p_note: null,
+          })));
+        }
+      }
+      const results = await Promise.all(ops);
+      const firstErr = results.find((r: any) => r?.error);
+      if (firstErr?.error) {
+        toast.error('Yetkiler kaydedilemedi: ' + firstErr.error.message);
+      } else {
+        setOriginalUserPerms(new Set(pendingUserPerms));
+        setUserEffective(new Set(pendingUserPerms));
+        setUserSaved(true);
+        setTimeout(() => setUserSaved(false), 3000);
+        toast.success('Yetkiler kaydedildi');
+        refreshMyPerms();
+      }
+    } catch (e: any) {
+      toast.error('Yetki kaydı hatası: ' + (e?.message ?? 'bilinmeyen'));
+    }
+    setUserSaving(false);
+  };
+
+  const handleUserReset = () => {
+    setPendingUserPerms(new Set(originalUserPerms));
+    setUserSaved(false);
+  };
+
+  const userHasChanges = (() => {
+    if (pendingUserPerms.size !== originalUserPerms.size) return true;
+    for (const k of pendingUserPerms) if (!originalUserPerms.has(k)) return true;
+    return false;
+  })();
+
+  const toggleAllUserCategory = (keys: PermissionKey[]) => {
+    setUserSaved(false);
+    const allOn = keys.every(k => pendingUserPerms.has(k));
+    setPendingUserPerms(prev => {
+      const next = new Set(prev);
+      if (allOn) keys.forEach(k => next.delete(k));
+      else keys.forEach(k => next.add(k));
+      return next;
+    });
+  };
+
+  const filteredUsers = React.useMemo(() => {
+    const q = userSearch.trim().toLowerCase();
+    if (!q) return userList;
+    return userList.filter(u =>
+      (u.full_name ?? '').toLowerCase().includes(q) ||
+      (u.email ?? '').toLowerCase().includes(q)
+    );
+  }, [userList, userSearch]);
+
+  const activeUser = userList.find(u => u.id === activeUserId);
 
   const activeConfig = ROLE_CONFIG.find(r => r.key === activeRole)!;
 
@@ -158,8 +377,23 @@ export function PermissionsScreen({ embedded = false, accentColor = '#EA7A4C' }:
     setSaved(false);
     setRolePerms(prev => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      const k = key as string;
+      const isOn = next.has(k);
+      if (isOn) {
+        next.delete(k);
+        // Görme kapatılırsa Yönetme de kapanır (manage implies view)
+        if (k.startsWith('view_')) {
+          const manageKey = 'manage_' + k.slice('view_'.length);
+          next.delete(manageKey);
+        }
+      } else {
+        next.add(k);
+        // Yönetme açılırsa Görme de otomatik açılır
+        if (k.startsWith('manage_')) {
+          const viewKey = 'view_' + k.slice('manage_'.length);
+          next.add(viewKey);
+        }
+      }
       return next;
     });
   };
@@ -177,14 +411,18 @@ export function PermissionsScreen({ embedded = false, accentColor = '#EA7A4C' }:
         p_role: activeRole,
         p_permissions: Array.from(rolePerms),
       });
-      if (!error) {
+      if (error) {
+        toast.error('Yetkiler kaydedilemedi: ' + error.message);
+      } else {
         setOriginalPerms(new Set(rolePerms));
         setSaved(true);
         setTimeout(() => setSaved(false), 3000);
-        // Re-fetch current user's permissions so sidebar updates immediately
+        toast.success('Yetkiler kaydedildi');
         refreshMyPerms();
       }
-    } catch {}
+    } catch (e: any) {
+      toast.error('Yetki kaydı hatası: ' + (e?.message ?? 'bilinmeyen'));
+    }
     setSaving(false);
   };
 
@@ -300,18 +538,26 @@ export function PermissionsScreen({ embedded = false, accentColor = '#EA7A4C' }:
           </View>
         </View>
 
-        {/* Permission groups */}
-        {PERMISSION_GROUPS.map(group => {
-          const catLabel = PERMISSION_CATEGORIES[group.category] ?? group.category;
-          const allOn = group.keys.every(k => rolePerms.has(k));
-          const someOn = group.keys.some(k => rolePerms.has(k));
-          const activeCount = group.keys.filter(k => rolePerms.has(k)).length;
+        {/* Feature-row layout: her satır → özellik + Görme + Yönetme toggle */}
+        {(Object.keys(PERMISSION_CATEGORIES) as Array<keyof typeof PERMISSION_CATEGORIES>).map(catKey => {
+          const catFeatures = FEATURES.filter(f => f.category === catKey);
+          if (catFeatures.length === 0) return null;
+          const catLabel = PERMISSION_CATEGORIES[catKey];
+          const catKeys = catFeatures.flatMap(f => {
+            const out: string[] = [];
+            if (f.hasView)   out.push(`view_${f.key}`);
+            if (f.hasManage) out.push(`manage_${f.key}`);
+            return out;
+          });
+          const activeCount = catKeys.filter(k => rolePerms.has(k)).length;
+          const allOn = catKeys.every(k => rolePerms.has(k));
+          const someOn = catKeys.some(k => rolePerms.has(k));
 
           return (
-            <View key={group.category} style={cardSolid}>
-              {/* Category header */}
+            <View key={catKey} style={cardSolid}>
+              {/* Kategori başlığı */}
               <Pressable
-                onPress={() => toggleAll(group.category, group.keys)}
+                onPress={() => toggleAll(catKey, catKeys as PermissionKey[])}
                 style={{
                   flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
                   marginBottom: 14,
@@ -328,43 +574,428 @@ export function PermissionsScreen({ embedded = false, accentColor = '#EA7A4C' }:
                       fontSize: 10, fontWeight: '700',
                       color: allOn ? CHIP_TONES.success.fg : someOn ? CHIP_TONES.warning.fg : DS.ink[400],
                     }}>
-                      {activeCount}/{group.keys.length}
+                      {activeCount}/{catKeys.length}
                     </Text>
                   </View>
                 </View>
                 <Text style={{ fontSize: 11, color: DS.ink[400] }}>
-                  {allOn ? 'Tumunu Kapat' : 'Tumunu Ac'}
+                  {allOn ? 'Tümünü Kapat' : 'Tümünü Aç'}
                 </Text>
               </Pressable>
 
-              {/* Permissions */}
-              {group.keys.map((key, idx) => {
-                const isOn = rolePerms.has(key);
+              {/* Kolon başlıkları */}
+              <View style={{
+                flexDirection: 'row', alignItems: 'center',
+                paddingBottom: 8, marginBottom: 4,
+                borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
+              }}>
+                <Text style={{ flex: 1, fontSize: 10, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.4, textTransform: 'uppercase' }}>
+                  Özellik
+                </Text>
+                <Text style={{ width: isDesktop ? 80 : 56, textAlign: 'center', fontSize: 10, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.4, textTransform: 'uppercase' }}>
+                  Görme
+                </Text>
+                <Text style={{ width: isDesktop ? 80 : 56, textAlign: 'center', fontSize: 10, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.4, textTransform: 'uppercase' }}>
+                  Yönetme
+                </Text>
+              </View>
+
+              {/* Feature rows */}
+              {catFeatures.map((f, idx) => {
+                const viewKey   = `view_${f.key}`;
+                const manageKey = `manage_${f.key}`;
+                const viewOn    = f.hasView   && rolePerms.has(viewKey);
+                const manageOn  = f.hasManage && rolePerms.has(manageKey);
                 return (
                   <View
-                    key={key}
+                    key={f.key}
                     style={{
-                      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                      flexDirection: 'row', alignItems: 'center',
                       paddingVertical: 10,
                       borderTopWidth: idx > 0 ? 1 : 0,
                       borderTopColor: 'rgba(0,0,0,0.04)',
                     }}
                   >
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[900] }}>
-                        {PERMISSION_LABELS[key] ?? key}
-                      </Text>
-                      <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }}>
-                        {key}
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>
+                        {f.label}
                       </Text>
                     </View>
-                    <Switch
-                      value={isOn}
-                      onValueChange={() => togglePerm(key)}
-                      trackColor={{ false: DS.ink[200], true: accentColor + '80' }}
-                      thumbColor={isOn ? accentColor : '#f4f3f4'}
-                      style={Platform.OS === 'web' ? { transform: [{ scale: 0.8 }] } : undefined}
-                    />
+                    <View style={{ width: isDesktop ? 80 : 56, alignItems: 'center' }}>
+                      {f.hasView ? (
+                        <Toggle on={viewOn} onPress={() => togglePerm(viewKey as PermissionKey)} accentColor={accentColor} />
+                      ) : (
+                        <Text style={{ fontSize: 10, color: DS.ink[300] }}>—</Text>
+                      )}
+                    </View>
+                    <View style={{ width: isDesktop ? 80 : 56, alignItems: 'center' }}>
+                      {f.hasManage ? (
+                        <Toggle on={manageOn} onPress={() => togglePerm(manageKey as PermissionKey)} accentColor={accentColor} />
+                      ) : (
+                        <Text style={{ fontSize: 10, color: DS.ink[300] }}>—</Text>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          );
+        })}
+      </View>
+    );
+  };
+
+  // ── Mode tabs (Rol bazlı | Kullanıcı bazlı) ──
+  const renderModeTabs = () => (
+    <View style={{ flexDirection: 'row', gap: 3, padding: 3, backgroundColor: DS.ink[50], borderRadius: 9999, alignSelf: 'flex-start', marginBottom: 16 }}>
+      <Pressable
+        onPress={() => setMode('role')}
+        style={{
+          flexDirection: 'row', alignItems: 'center', gap: 6,
+          paddingHorizontal: 14, paddingVertical: 7, borderRadius: 9999,
+          backgroundColor: mode === 'role' ? accentColor : 'transparent',
+          ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+        } as any}
+      >
+        <Shield size={13} color={mode === 'role' ? '#FFFFFF' : DS.ink[500]} strokeWidth={1.8} />
+        <Text style={{ fontSize: 12, fontWeight: '700', color: mode === 'role' ? '#FFFFFF' : DS.ink[500] }}>
+          Rol Bazlı
+        </Text>
+      </Pressable>
+      <Pressable
+        onPress={() => setMode('user')}
+        style={{
+          flexDirection: 'row', alignItems: 'center', gap: 6,
+          paddingHorizontal: 14, paddingVertical: 7, borderRadius: 9999,
+          backgroundColor: mode === 'user' ? accentColor : 'transparent',
+          ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+        } as any}
+      >
+        <UserIcon size={13} color={mode === 'user' ? '#FFFFFF' : DS.ink[500]} strokeWidth={1.8} />
+        <Text style={{ fontSize: 12, fontWeight: '700', color: mode === 'user' ? '#FFFFFF' : DS.ink[500] }}>
+          Kullanıcı Bazlı
+        </Text>
+      </Pressable>
+    </View>
+  );
+
+  // ── 2-Dropdown User picker (Role → User) ──
+  const usersInRole = userList.filter(u => userRoleFilter ? profileToRoleKey(u) === userRoleFilter : false);
+  const renderUserPicker = () => (
+    <View style={{ marginBottom: 16, gap: 10, zIndex: 50 }}>
+      <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: 10, zIndex: 50 }}>
+        {/* Dropdown 1 — Role */}
+        <View style={{ flex: 1, zIndex: 51 }}>
+          <Text style={{ fontSize: 11, fontWeight: '700', color: DS.ink[500], letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 6 }}>1. Rol Seç</Text>
+          <Pressable
+            onPress={() => { setRoleDropOpen(o => !o); setUserDropOpen(false); }}
+            style={{
+              flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+              paddingHorizontal: 14, height: 44, borderRadius: 14,
+              backgroundColor: '#FFFFFF', borderWidth: 1,
+              borderColor: roleDropOpen ? accentColor : 'rgba(0,0,0,0.08)',
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+            } as any}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              {userRoleFilter ? (() => {
+                const cfg = ROLE_CONFIG.find(r => r.key === userRoleFilter);
+                const RIcon = cfg?.icon ?? Shield;
+                return (
+                  <>
+                    <RIcon size={14} color={accentColor} strokeWidth={1.8} />
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>{ROLE_LABELS[userRoleFilter]}</Text>
+                  </>
+                );
+              })() : (
+                <Text style={{ fontSize: 13, color: DS.ink[400] }}>Rol seçin...</Text>
+              )}
+            </View>
+            <ChevronDown size={14} color={DS.ink[400]} strokeWidth={1.8} style={{ transform: [{ rotate: roleDropOpen ? '180deg' : '0deg' }] }} />
+          </Pressable>
+          {roleDropOpen && (
+            <View style={{
+              position: 'absolute', top: 70, left: 0, right: 0,
+              backgroundColor: '#FFFFFF', borderRadius: 12, padding: 4,
+              borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
+              zIndex: 100,
+              ...(Platform.OS === 'web' ? { boxShadow: '0 8px 24px rgba(0,0,0,0.08)' } : {}),
+            } as any}>
+              {ROLE_CONFIG.map(r => {
+                const RIcon = r.icon;
+                const isSel = r.key === userRoleFilter;
+                return (
+                  <Pressable
+                    key={r.key}
+                    onPress={() => { setUserRoleFilter(r.key); setRoleDropOpen(false); setActiveUserId(null); }}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 8,
+                      paddingHorizontal: 10, paddingVertical: 9, borderRadius: 8,
+                      backgroundColor: isSel ? `${accentColor}14` : 'transparent',
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                    } as any}
+                  >
+                    <RIcon size={13} color={isSel ? accentColor : DS.ink[500]} strokeWidth={1.8} />
+                    <Text style={{ fontSize: 13, fontWeight: isSel ? '700' : '500', color: isSel ? accentColor : DS.ink[800] }}>
+                      {ROLE_LABELS[r.key]}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+        </View>
+
+        {/* Dropdown 2 — User (filtered by role) */}
+        <View style={{ flex: 1, zIndex: 50 }}>
+          <Text style={{ fontSize: 11, fontWeight: '700', color: DS.ink[500], letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 6 }}>2. Kullanıcı Seç</Text>
+          <Pressable
+            onPress={() => userRoleFilter && (setUserDropOpen(o => !o), setRoleDropOpen(false))}
+            disabled={!userRoleFilter}
+            style={{
+              flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+              paddingHorizontal: 14, height: 44, borderRadius: 14,
+              backgroundColor: userRoleFilter ? '#FFFFFF' : DS.ink[50],
+              borderWidth: 1,
+              borderColor: userDropOpen ? accentColor : 'rgba(0,0,0,0.08)',
+              opacity: userRoleFilter ? 1 : 0.6,
+              ...(Platform.OS === 'web' ? { cursor: userRoleFilter ? 'pointer' : 'not-allowed' } : {}),
+            } as any}
+          >
+            {activeUserId ? (() => {
+              const u = userList.find(x => x.id === activeUserId);
+              return (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: accentColor, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#FFFFFF' }}>{(u?.full_name ?? '?').charAt(0).toUpperCase()}</Text>
+                  </View>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>{u?.full_name ?? '—'}</Text>
+                </View>
+              );
+            })() : (
+              <Text style={{ fontSize: 13, color: DS.ink[400] }}>
+                {userRoleFilter ? `${usersInRole.length} kullanıcı` : 'Önce rol seçin'}
+              </Text>
+            )}
+            <ChevronDown size={14} color={DS.ink[400]} strokeWidth={1.8} style={{ transform: [{ rotate: userDropOpen ? '180deg' : '0deg' }] }} />
+          </Pressable>
+          {userDropOpen && (
+            <View style={{
+              position: 'absolute', top: 70, left: 0, right: 0,
+              backgroundColor: '#FFFFFF', borderRadius: 12, padding: 4,
+              borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
+              zIndex: 100, maxHeight: 320,
+              ...(Platform.OS === 'web' ? { boxShadow: '0 8px 24px rgba(0,0,0,0.08)' } : {}),
+            } as any}>
+              <ScrollView style={{ maxHeight: 312 }}>
+                {usersInRole.length === 0 ? (
+                  <Text style={{ fontSize: 12, color: DS.ink[400], textAlign: 'center', paddingVertical: 16 }}>
+                    Bu rolde kullanıcı yok
+                  </Text>
+                ) : usersInRole.map(u => {
+                  const isSel = u.id === activeUserId;
+                  const initials = (u.full_name ?? '?').charAt(0).toUpperCase();
+                  return (
+                    <Pressable
+                      key={u.id}
+                      onPress={() => { setActiveUserId(u.id); setUserDropOpen(false); }}
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 8,
+                        paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8,
+                        backgroundColor: isSel ? `${accentColor}14` : 'transparent',
+                        ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                      } as any}
+                    >
+                      <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: isSel ? accentColor : DS.ink[100], alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: isSel ? '#FFFFFF' : DS.ink[700] }}>{initials}</Text>
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={{ fontSize: 13, fontWeight: isSel ? '700' : '500', color: DS.ink[900] }} numberOfLines={1}>
+                          {u.full_name ?? '(isimsiz)'}
+                        </Text>
+                        <Text style={{ fontSize: 10, color: DS.ink[400] }} numberOfLines={1}>{u.email ?? '—'}</Text>
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
+        </View>
+      </View>
+    </View>
+  );
+
+  // ── User permissions render — rol bazlı ile aynı görünüm + Kaydet butonu ──
+  const renderUserPermissions = () => {
+    if (!activeUserId) {
+      return (
+        <View style={cardSolid}>
+          <Text style={{ fontSize: 13, color: DS.ink[400], textAlign: 'center', paddingVertical: 40 }}>
+            Yetkilerini düzenlemek için yukarıdan rol ve kullanıcı seçin.
+          </Text>
+        </View>
+      );
+    }
+    if (userPermsLoading) {
+      return <CenteredLoader color={accentColor} label="Yükleniyor…" />;
+    }
+    return (
+      <View style={{ gap: 16 }}>
+        {/* Save bar — aynı stil */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={{ fontSize: 12, color: DS.ink[400] }}>
+              {pendingUserPerms.size} yetki aktif · {activeUser?.full_name ?? '—'}
+            </Text>
+            {userHasChanges && (
+              <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 9999, backgroundColor: CHIP_TONES.warning.bg }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: CHIP_TONES.warning.fg }}>Kaydedilmedi</Text>
+              </View>
+            )}
+            {userSaved && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 9999, backgroundColor: CHIP_TONES.success.bg }}>
+                <Check size={10} color={CHIP_TONES.success.fg} strokeWidth={2} />
+                <Text style={{ fontSize: 10, fontWeight: '700', color: CHIP_TONES.success.fg }}>Kaydedildi</Text>
+              </View>
+            )}
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {userHasChanges && (
+              <Pressable
+                onPress={handleUserReset}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 5,
+                  paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999,
+                  borderWidth: 1, borderColor: DS.ink[200],
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                }}
+              >
+                <RotateCcw size={13} color={DS.ink[500]} strokeWidth={1.6} />
+                <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[500] }}>Geri Al</Text>
+              </Pressable>
+            )}
+            <Pressable
+              onPress={handleUserSave}
+              disabled={!userHasChanges || userSaving}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 5,
+                paddingHorizontal: 14, paddingVertical: 7, borderRadius: 9999,
+                backgroundColor: userHasChanges ? accentColor : DS.ink[200],
+                opacity: userSaving ? 0.6 : 1,
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+              } as any}
+            >
+              <Save size={13} color="#FFFFFF" strokeWidth={1.8} />
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>
+                {userSaving ? 'Kaydediliyor...' : 'Kaydet'}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+
+        {/* Feature-row layout — kullanıcı bazlı */}
+        {(Object.keys(PERMISSION_CATEGORIES) as Array<keyof typeof PERMISSION_CATEGORIES>).map(catKey => {
+          const catFeatures = FEATURES.filter(f => f.category === catKey);
+          if (catFeatures.length === 0) return null;
+          const catLabel = PERMISSION_CATEGORIES[catKey];
+          const catKeys = catFeatures.flatMap(f => {
+            const out: string[] = [];
+            if (f.hasView)   out.push(`view_${f.key}`);
+            if (f.hasManage) out.push(`manage_${f.key}`);
+            return out;
+          });
+          const activeCount = catKeys.filter(k => pendingUserPerms.has(k)).length;
+          const allOn = catKeys.every(k => pendingUserPerms.has(k));
+          const someOn = catKeys.some(k => pendingUserPerms.has(k));
+
+          return (
+            <View key={catKey} style={cardSolid}>
+              <Pressable
+                onPress={() => toggleAllUserCategory(catKeys as PermissionKey[])}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                  marginBottom: 14,
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[900] }}>{catLabel}</Text>
+                  <View style={{
+                    paddingHorizontal: 6, paddingVertical: 1, borderRadius: 9999,
+                    backgroundColor: allOn ? CHIP_TONES.success.bg : someOn ? CHIP_TONES.warning.bg : DS.ink[100],
+                  }}>
+                    <Text style={{
+                      fontSize: 10, fontWeight: '700',
+                      color: allOn ? CHIP_TONES.success.fg : someOn ? CHIP_TONES.warning.fg : DS.ink[400],
+                    }}>
+                      {activeCount}/{catKeys.length}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={{ fontSize: 11, color: DS.ink[400] }}>
+                  {allOn ? 'Tümünü Kapat' : 'Tümünü Aç'}
+                </Text>
+              </Pressable>
+
+              {/* Kolon başlıkları */}
+              <View style={{
+                flexDirection: 'row', alignItems: 'center',
+                paddingBottom: 8, marginBottom: 4,
+                borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
+              }}>
+                <Text style={{ flex: 1, fontSize: 10, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.4, textTransform: 'uppercase' }}>
+                  Özellik
+                </Text>
+                <Text style={{ width: isDesktop ? 80 : 56, textAlign: 'center', fontSize: 10, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.4, textTransform: 'uppercase' }}>
+                  Görme
+                </Text>
+                <Text style={{ width: isDesktop ? 80 : 56, textAlign: 'center', fontSize: 10, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.4, textTransform: 'uppercase' }}>
+                  Yönetme
+                </Text>
+              </View>
+
+              {catFeatures.map((f, idx) => {
+                const viewKey   = `view_${f.key}`;
+                const manageKey = `manage_${f.key}`;
+                const viewOn    = f.hasView   && pendingUserPerms.has(viewKey);
+                const manageOn  = f.hasManage && pendingUserPerms.has(manageKey);
+                const viewOverride   = f.hasView   && viewOn   !== userRoleDefaults.has(viewKey);
+                const manageOverride = f.hasManage && manageOn !== userRoleDefaults.has(manageKey);
+                return (
+                  <View
+                    key={f.key}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center',
+                      paddingVertical: 10,
+                      borderTopWidth: idx > 0 ? 1 : 0,
+                      borderTopColor: 'rgba(0,0,0,0.04)',
+                    }}
+                  >
+                    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>
+                        {f.label}
+                      </Text>
+                      {(viewOverride || manageOverride) && (
+                        <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 9999, backgroundColor: `${accentColor}1A` }}>
+                          <Text style={{ fontSize: 9, fontWeight: '700', color: accentColor, letterSpacing: 0.3 }}>ÖZEL</Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={{ width: isDesktop ? 80 : 56, alignItems: 'center' }}>
+                      {f.hasView ? (
+                        <Toggle on={viewOn} onPress={() => toggleUserPerm(viewKey as PermissionKey)} accentColor={accentColor} />
+                      ) : (
+                        <Text style={{ fontSize: 10, color: DS.ink[300] }}>—</Text>
+                      )}
+                    </View>
+                    <View style={{ width: isDesktop ? 80 : 56, alignItems: 'center' }}>
+                      {f.hasManage ? (
+                        <Toggle on={manageOn} onPress={() => toggleUserPerm(manageKey as PermissionKey)} accentColor={accentColor} />
+                      ) : (
+                        <Text style={{ fontSize: 10, color: DS.ink[300] }}>—</Text>
+                      )}
+                    </View>
                   </View>
                 );
               })}
@@ -380,37 +1011,48 @@ export function PermissionsScreen({ embedded = false, accentColor = '#EA7A4C' }:
     return (
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
+        contentContainerStyle={{ padding: 20, paddingBottom: 120 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Role selector — horizontal pills */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-          <View style={{ flexDirection: 'row', gap: 3, padding: 3, backgroundColor: DS.ink[50], borderRadius: 9999 }}>
-            {ROLE_CONFIG.map(r => {
-              const isActive = r.key === activeRole;
-              const RIcon = r.icon;
-              return (
-                <Pressable
-                  key={r.key}
-                  onPress={() => setActiveRole(r.key)}
-                  style={{
-                    flexDirection: 'row', alignItems: 'center', gap: 5,
-                    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9999,
-                    backgroundColor: isActive ? accentColor : 'transparent',
-                    // @ts-ignore web
-                    cursor: 'pointer',
-                  }}
-                >
-                  <RIcon size={12} strokeWidth={isActive ? 2.2 : 1.8} color={isActive ? '#FFF' : accentColor} />
-                  <Text style={{ fontSize: 11, fontWeight: isActive ? '700' : '600', color: isActive ? '#FFF' : DS.ink[500] }}>
-                    {ROLE_LABELS[r.key]}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </ScrollView>
-        {renderPermissions()}
+        {renderModeTabs()}
+
+        {mode === 'role' ? (
+          <>
+            {/* Role selector — horizontal pills */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+              <View style={{ flexDirection: 'row', gap: 3, padding: 3, backgroundColor: DS.ink[50], borderRadius: 9999 }}>
+                {ROLE_CONFIG.map(r => {
+                  const isActive = r.key === activeRole;
+                  const RIcon = r.icon;
+                  return (
+                    <Pressable
+                      key={r.key}
+                      onPress={() => setActiveRole(r.key)}
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 5,
+                        paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9999,
+                        backgroundColor: isActive ? accentColor : 'transparent',
+                        // @ts-ignore web
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <RIcon size={12} strokeWidth={isActive ? 2.2 : 1.8} color={isActive ? '#FFF' : accentColor} />
+                      <Text style={{ fontSize: 11, fontWeight: isActive ? '700' : '600', color: isActive ? '#FFF' : DS.ink[500] }}>
+                        {ROLE_LABELS[r.key]}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </ScrollView>
+            {renderPermissions()}
+          </>
+        ) : (
+          <>
+            {renderUserPicker()}
+            {renderUserPermissions()}
+          </>
+        )}
       </ScrollView>
     );
   }
@@ -422,54 +1064,74 @@ export function PermissionsScreen({ embedded = false, accentColor = '#EA7A4C' }:
         <View style={{ flex: 1, flexDirection: 'row' }}>
           {/* Sidebar */}
           <View style={{ width: 220, paddingTop: 24, paddingBottom: 16 }}>
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 2, paddingHorizontal: 10 }}>
-              {ROLE_CONFIG.map(renderRoleItem)}
-            </ScrollView>
+            {mode === 'role' ? (
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 2, paddingHorizontal: 10 }}>
+                {ROLE_CONFIG.map(renderRoleItem)}
+              </ScrollView>
+            ) : (
+              <View style={{ paddingHorizontal: 10 }}>
+                {renderUserPicker()}
+              </View>
+            )}
           </View>
 
           {/* Content */}
           <View style={{ flex: 1, borderRadius: 16, overflow: 'hidden' }}>
             <View style={{ paddingHorizontal: 28, paddingTop: 16, paddingBottom: 8 }}>
               <Text style={{ ...DISPLAY, fontSize: 24, letterSpacing: -0.5, color: '#0A0A0A', marginBottom: 4 }}>
-                {ROLE_LABELS[activeRole]}
+                {mode === 'role' ? ROLE_LABELS[activeRole] : (activeUser?.full_name ?? 'Kullanıcı Bazlı Yetki')}
               </Text>
               <Text style={{ fontSize: 13, color: '#9A9A9A', lineHeight: 19 }}>
-                Bu rol icin izin verilen yetkileri yonetin
+                {mode === 'role'
+                  ? 'Bu rol icin izin verilen yetkileri yonetin'
+                  : 'Kullanıcıya özel ek izin / yasak override\'ları yönet'}
               </Text>
             </View>
-            <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 8, paddingBottom: 60 }} showsVerticalScrollIndicator={false}>
-              {renderPermissions()}
+            <View style={{ paddingHorizontal: 28, paddingTop: 8 }}>
+              {renderModeTabs()}
+            </View>
+            <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 0, paddingBottom: 60 }} showsVerticalScrollIndicator={false}>
+              {mode === 'role' ? renderPermissions() : renderUserPermissions()}
             </ScrollView>
           </View>
         </View>
       ) : (
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 60 }} showsVerticalScrollIndicator={false}>
-          {/* Mobile role selector */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-            <View style={{ flexDirection: 'row', gap: 3, padding: 3, backgroundColor: DS.ink[50], borderRadius: 9999 }}>
-              {ROLE_CONFIG.map(r => {
-                const isActive = r.key === activeRole;
-                const RIcon = r.icon;
-                return (
-                  <Pressable
-                    key={r.key}
-                    onPress={() => setActiveRole(r.key)}
-                    style={{
-                      flexDirection: 'row', alignItems: 'center', gap: 5,
-                      paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9999,
-                      backgroundColor: isActive ? accentColor : 'transparent',
-                    }}
-                  >
-                    <RIcon size={12} strokeWidth={isActive ? 2.2 : 1.8} color={isActive ? '#FFF' : accentColor} />
-                    <Text style={{ fontSize: 11, fontWeight: isActive ? '700' : '600', color: isActive ? '#FFF' : DS.ink[500] }}>
-                      {ROLE_LABELS[r.key]}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </ScrollView>
-          {renderPermissions()}
+          {renderModeTabs()}
+          {mode === 'role' ? (
+            <>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+                <View style={{ flexDirection: 'row', gap: 3, padding: 3, backgroundColor: DS.ink[50], borderRadius: 9999 }}>
+                  {ROLE_CONFIG.map(r => {
+                    const isActive = r.key === activeRole;
+                    const RIcon = r.icon;
+                    return (
+                      <Pressable
+                        key={r.key}
+                        onPress={() => setActiveRole(r.key)}
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', gap: 5,
+                          paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9999,
+                          backgroundColor: isActive ? accentColor : 'transparent',
+                        }}
+                      >
+                        <RIcon size={12} strokeWidth={isActive ? 2.2 : 1.8} color={isActive ? '#FFF' : accentColor} />
+                        <Text style={{ fontSize: 11, fontWeight: isActive ? '700' : '600', color: isActive ? '#FFF' : DS.ink[500] }}>
+                          {ROLE_LABELS[r.key]}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+              {renderPermissions()}
+            </>
+          ) : (
+            <>
+              {renderUserPicker()}
+              {renderUserPermissions()}
+            </>
+          )}
         </ScrollView>
       )}
     </View>

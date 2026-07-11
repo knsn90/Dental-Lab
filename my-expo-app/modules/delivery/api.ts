@@ -36,7 +36,7 @@ export interface Delivery {
     order_number: string;
     work_type: string;
     delivery_date: string;
-    doctor?: { full_name: string | null; clinic_name: string | null };
+    doctor?: { full_name: string | null; clinic?: { name: string | null } | null };
   };
   last_ping?: GpsPing | null;
 }
@@ -117,7 +117,7 @@ export async function fetchActiveDeliveries(labId: string) {
       courier:courier_id ( full_name, phone, courier_type ),
       work_order:work_order_id (
         order_number, work_type, delivery_date,
-        doctor:doctor_id ( full_name, clinic_name )
+        doctor:doctors ( full_name, clinic:clinics(name) )
       )
     `)
     .neq('status', 'teslim_edildi')
@@ -149,7 +149,7 @@ export async function fetchDeliveryById(id: string) {
         courier:courier_id ( full_name, phone, courier_type ),
         work_order:work_order_id (
           order_number, work_type, delivery_date,
-          doctor:doctor_id ( full_name, clinic_name )
+          doctor:doctors ( full_name, clinic:clinics(name) )
         )
       `)
       .eq('id', id)
@@ -178,7 +178,7 @@ export async function fetchMyCourierDelivery(profileId: string) {
       assigned_at, picked_up_at, delivered_at,
       work_order:work_order_id (
         order_number, work_type, delivery_date, tooth_numbers,
-        doctor:doctor_id ( full_name, clinic_name )
+        doctor:doctors ( full_name, clinic:clinics(name) )
       )
     `)
     .in('status', ['atandi', 'teslim_alindi', 'yolda'])

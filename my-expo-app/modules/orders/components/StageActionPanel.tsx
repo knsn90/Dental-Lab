@@ -11,12 +11,14 @@
 // Fatura ve Teslimat Fişi ASLA ilk 3 aşamada görünmez (UX/muhasebe akışı).
 
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity} from 'react-native';
 import { useRouter } from 'expo-router';
 import { AppIcon } from '../../../core/ui/AppIcon';
 import { STATUS_CONFIG } from '../constants';
 import { useCaseSteps } from '../../production/hooks/useCaseSteps';
 import type { WorkOrder } from '../types';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
+import { SupportButton } from '../../support/components/SupportButton';
 
 interface StageActionPanelProps {
   order:             WorkOrder;
@@ -62,11 +64,30 @@ export function StageActionPanel({
     <View style={[s.card, { borderColor: `${accentColor}22` }]}>
 
       {/* ── Aşama göstergesi (top header) ─────────────────────────────────────── */}
-      <View style={[s.stageHeader, { backgroundColor: `${cfg.color}10`, borderColor: `${cfg.color}25` }]}>
-        <View style={[s.stageDot, { backgroundColor: cfg.color }]} />
-        <Text style={s.stageLabel}>AŞAMA</Text>
-        <Text style={[s.stageName, { color: cfg.color }]}>{cfg.label}</Text>
-        {loading && <ActivityIndicator size="small" color={cfg.color} style={{ marginLeft: 'auto' }} />}
+      <View style={[s.stageHeader, { backgroundColor: `${cfg.color}10`, borderColor: `${cfg.color}25`, justifyContent: 'space-between' } as any]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={[s.stageDot, { backgroundColor: cfg.color }]} />
+          <Text style={s.stageLabel}>AŞAMA</Text>
+          <Text style={[s.stageName, { color: cfg.color }]}>{cfg.label}</Text>
+        </View>
+        <SupportButton
+          variant="pill"
+          size="sm"
+          label="Aşamada Destek"
+          context={{
+            source: 'stage',
+            order_id: order.id,
+            order_number: String((order as any).order_number ?? ''),
+            patient_name: order.patient_name ?? undefined,
+            stage_key: status,
+            stage_label: cfg.label,
+            last_action: `Aktif aşama: ${cfg.label}`,
+          }}
+          workOrderId={order.id}
+          stageKey={status}
+          subjectHint={`#${(order as any).order_number ?? ''} · ${cfg.label} — `}
+          category={'uretim_sureci'}
+        />
       </View>
 
       {/* ── Birincil aksiyon bloğu (aşamaya göre) ─────────────────────────────── */}

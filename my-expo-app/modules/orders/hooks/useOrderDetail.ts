@@ -10,29 +10,36 @@ export function useOrderDetail(id: string) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  /**
+   * silent=true → loading flag'ini değiştirmez (background refresh).
+   * Önemli: refetch() / realtime tetiklemeleri silent yapmalı, aksi halde
+   * tüm OrderDetailScreenV2 ağacı unmount olur, modal vs. local state'ler
+   * sıfırlanır.
+   */
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
 
     const { data, error: fetchError } = await fetchWorkOrderById(id);
     if (fetchError) {
       setError(fetchError.message);
-      setLoading(false);
+      if (!silent) setLoading(false);
       return;
     }
 
     const wo = data as WorkOrder;
     setOrder(wo);
+    // UI'ı hemen göster — fotoğraf signed URL'leri arka planda gelir.
+    if (!silent) setLoading(false);
 
-    // Fetch signed URLs for photos
     if (wo.photos && wo.photos.length > 0) {
       const paths = wo.photos.map((p) => p.storage_path);
-      const urls = await getSignedUrls(paths);
-      setSignedUrls(urls);
+      getSignedUrls(paths).then(setSignedUrls).catch(() => {});
     }
-
-    setLoading(false);
   }, [id]);
+
+  // Dışarıya verilen refetch — daima silent (loading flag'i tetiklemez)
+  const refetch = useCallback(() => load(true), [load]);
 
   useEffect(() => {
     load();
@@ -44,8 +51,8 @@ export function useOrderDetail(id: string) {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'work_orders', filter: `id=eq.${id}` },
         () => {
-          // Reload full detail on any update
-          load();
+          // Realtime — silent reload (loader göstermesin)
+          load(true);
         }
       )
       .subscribe();
@@ -55,5 +62,5 @@ export function useOrderDetail(id: string) {
     };
   }, [id, load]);
 
-  return { order, signedUrls, loading, error, refetch: load };
+  return { order, signedUrls, loading, error, refetch };
 }

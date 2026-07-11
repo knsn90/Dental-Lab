@@ -11,19 +11,23 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, Pressable,
-  ActivityIndicator, Platform, useWindowDimensions,
+  Platform, useWindowDimensions,
 } from 'react-native';
 import {
   Calendar, Users, AlertTriangle, Wrench,
   TrendingUp, TrendingDown, Clock, Filter,
   ChevronDown, ChevronUp, BarChart3, Flame,
-  DollarSign, Timer, Zap, ArrowUpDown,
+  DollarSign, Timer, Zap, ArrowUpDown, Star,
 } from 'lucide-react-native';
 
 import { supabase }     from '../../../core/api/supabase';
 import { useAuthStore } from '../../../core/store/authStore';
 import { DS }           from '../../../core/theme/dsTokens';
+import { MobilePageTitle } from '../../../core/ui/mobile/MobilePageTitle';
 import { HubContext } from '../../../core/ui/HubContext';
+import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
+import { baseSymbol, useBaseCurrency } from '../../../core/money/baseCurrency';
 
 // ── Patterns design tokens ──────────────────────────────────────────
 const DISPLAY = {
@@ -71,10 +75,19 @@ interface PerfRow {
   labor_cost:          number;
   orders_worked:       number;
   profit_contribution: number;
+  // v_technician_performance_detail
+  quality_pct?:        number | null;
+  on_time_pct?:        number | null;
+  avg_queue_wait_sec?: number | null;
+  monthly_rework?:     number;
+  composite_score?:    number;
+  // Müşteri (hekim/klinik) değerlendirmesi — Faz 3
+  customer_rating?:    number | null;   // 1–5 ortalama (genel)
+  review_count?:       number;
 }
 
 type Range   = 'thisWeek' | 'thisMonth' | 'thisYear' | 'all';
-type SortKey = 'efficiency' | 'profit' | 'waste' | 'labor' | 'orders';
+type SortKey = 'efficiency' | 'profit' | 'waste' | 'labor' | 'orders' | 'quality' | 'composite';
 type SortDir = 'asc' | 'desc';
 
 const RANGE_OPTIONS: { key: Range; label: string }[] = [
@@ -93,10 +106,12 @@ const MATERIAL_TYPES = [
   { key: 'glaze',    label: 'Glaze' },
 ];
 
-const fmt  = (n: number) => n.toLocaleString('tr-TR', { maximumFractionDigits: 0 });
-const fmt1 = (n: number) => n.toLocaleString('tr-TR', { maximumFractionDigits: 1 });
-const fmtCur = (n: number) =>
-  (n >= 0 ? '' : '−') + fmt(Math.abs(n)) + ' ₺';
+const fmt  = (n: number | null | undefined) => (Number(n) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 0 });
+const fmt1 = (n: number | null | undefined) => (Number(n) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 1 });
+const fmtCur = (n: number | null | undefined) => {
+  const v = Number(n) || 0;
+  return (v >= 0 ? '' : '−') + fmt(Math.abs(v)) + ' ' + baseSymbol();
+};
 
 function getRange(r: Range): { from: string | null; to: string | null } {
   const now  = new Date();
@@ -111,7 +126,9 @@ function getRange(r: Range): { from: string | null; to: string | null } {
   }
   if (r === 'thisMonth') return { from: ymd(new Date(yyyy, mm, 1)), to: ymd(new Date(yyyy, mm + 1, 0)) };
   if (r === 'thisYear')  return { from: `${yyyy}-01-01`,            to: `${yyyy}-12-31` };
-  return { from: null, to: null };
+  // 'all' (Tümü): RPC tarih aralığını BETWEEN ile kullanıyor; null gönderince boş
+  // döner. Geniş bir aralıkla tüm kayıtları kapsa.
+  return { from: '2000-01-01', to: `${yyyy + 1}-12-31` };
 }
 
 function effTone(eff: number | null) {
@@ -136,6 +153,9 @@ export function PerformanceScreen() {
   const isWide      = width >= 900;
   const labId       = profile?.lab_id ?? profile?.id ?? null;
   const isHub       = useHubContext();
+  const panelTheme  = usePanelTheme();
+  const accentColor = panelTheme.primary;
+  useBaseCurrency();
 
   const [range, setRange]       = useState<Range>('thisMonth');
   const [matType, setMatType]   = useState('all');
@@ -151,14 +171,102 @@ export function PerformanceScreen() {
     let cancelled = false;
     setLoading(true);
     const { from, to } = getRange(range);
-    supabase.rpc('report_technician_performance', {
-      p_lab_id:        labId,
-      p_from:          from,
-      p_to:            to,
-      p_material_type: matType === 'all' ? null : matType,
-    }).then(({ data }) => {
+    // RPC + v_technician_performance_detail paralel — sonra user_id ile birleştir
+    Promise.all([
+      supabase.rpc('report_technician_performance', {
+        p_lab_id:        labId,
+        p_from:          from,
+        p_to:            to,
+        p_material_type: matType === 'all' ? null : matType,
+      }),
+      supabase
+        .from('v_technician_performance_detail')
+        .select('technician_id, quality_pct, on_time_pct, avg_queue_wait_sec, monthly_rework_count, avg_duration_min'),
+      supabase.rpc('report_technician_ratings', { p_lab_id: labId, p_from: from, p_to: to }),
+    ]).then(async ([rpcRes, perfRes, ratingRes]) => {
       if (cancelled) return;
-      setRows((data ?? []) as PerfRow[]);
+      const rpcRows = (rpcRes.data ?? []) as PerfRow[];
+      const perfRows = (perfRes.data ?? []) as any[];
+      const ratingRows = (ratingRes.data ?? []) as any[];
+      const ratingMap = new Map<string, any>();
+      ratingRows.forEach((r: any) => ratingMap.set(r.user_id, r));
+
+      // RPC + view birleşimi — view tüm aktif teknisyenleri içerir; RPC sadece
+      // o aralıkta operasyonel verisi olanları döner. Union: ikisinden birinde
+      // varsa göster.
+      const allIds = Array.from(new Set([
+        ...rpcRows.map(r => r.user_id),
+        ...perfRows.map(p => p.technician_id),
+      ]));
+      const rpcMap = new Map<string, PerfRow>();
+      rpcRows.forEach(r => rpcMap.set(r.user_id, r));
+      const nameMap = new Map<string, string | null>();
+      rpcRows.forEach(r => nameMap.set(r.user_id, r.user_name));
+      const missingIds = allIds.filter(id => !nameMap.has(id));
+      if (missingIds.length > 0) {
+        const { data: nameRows } = await supabase
+          .from('profiles').select('id, full_name').in('id', missingIds);
+        (nameRows ?? []).forEach((p: any) => nameMap.set(p.id, p.full_name));
+      }
+      if (cancelled) return;
+
+      const base: PerfRow[] = allIds.map(id => {
+        const rpc = rpcMap.get(id);
+        return rpc ?? {
+          user_id: id, user_name: nameMap.get(id) ?? '—',
+          hourly_rate: 0, used_qty: 0, used_cost: 0, waste_qty: 0, waste_cost: 0,
+          efficiency_pct: null, labor_minutes: 0, labor_hours: 0, labor_cost: 0,
+          orders_worked: 0, profit_contribution: 0,
+        };
+      });
+
+      const perfMap = new Map<string, any>();
+      perfRows.forEach((p: any) => perfMap.set(p.technician_id, p));
+
+      const norm = (val: number | null | undefined, idealLow: number, idealHigh: number) => {
+        if (val == null) return 50;
+        if (val <= idealLow) return 100;
+        if (val >= idealHigh) return 0;
+        return Math.round(100 - ((val - idealLow) / (idealHigh - idealLow)) * 100);
+      };
+
+      const enriched = base.map(r => {
+        const p = perfMap.get(r.user_id);
+        const qualityPct = p?.quality_pct ?? null;
+        const onTimePct  = p?.on_time_pct ?? null;
+        const queueSec   = p?.avg_queue_wait_sec ?? null;
+        const queueMin   = queueSec != null ? queueSec / 60 : null;
+        const rework     = p?.monthly_rework_count ?? 0;
+        const avgDur     = p?.avg_duration_min ?? null;
+
+        const rating     = ratingMap.get(r.user_id);
+        const custRating = rating?.avg_overall != null ? Number(rating.avg_overall) : null;  // 1–5
+        const reviewCnt  = Number(rating?.review_count ?? 0);
+
+        const qualityScore = qualityPct ?? 50;
+        const speedScore   = norm(avgDur,  30, 240);
+        const onTimeScore  = onTimePct ?? 50;
+        const queueScore   = norm(queueMin, 30, 480);
+        const reworkScore  = Math.max(0, 100 - rework * 20);
+        // Müşteri puanı 1–5 → 0–100; puan yoksa nötr 50 (cezalandırma).
+        const custScore    = custRating != null ? Math.round((custRating / 5) * 100) : 50;
+        const composite = Math.round(
+          qualityScore * 0.25 + custScore * 0.20 + onTimeScore * 0.20 +
+          speedScore   * 0.15 + queueScore * 0.10 + reworkScore * 0.10
+        );
+
+        return {
+          ...r,
+          quality_pct:        qualityPct,
+          on_time_pct:        onTimePct,
+          avg_queue_wait_sec: queueSec,
+          monthly_rework:     rework,
+          customer_rating:    custRating,
+          review_count:       reviewCnt,
+          composite_score:    composite,
+        };
+      });
+      setRows(enriched);
       setLoading(false);
     });
     return () => { cancelled = true; };
@@ -184,6 +292,8 @@ export function PerformanceScreen() {
         case 'waste':      return dir * (a.waste_qty - b.waste_qty);
         case 'labor':      return dir * (a.labor_hours - b.labor_hours);
         case 'orders':     return dir * (a.orders_worked - b.orders_worked);
+        case 'quality':    return dir * ((a.quality_pct ?? 0) - (b.quality_pct ?? 0));
+        case 'composite':  return dir * ((a.composite_score ?? 0) - (b.composite_score ?? 0));
         default:           return 0;
       }
     });
@@ -213,39 +323,73 @@ export function PerformanceScreen() {
       contentContainerStyle={{ paddingHorizontal: isHub ? 0 : 20, paddingTop: 4, paddingBottom: 40, gap: 14 }}
       showsVerticalScrollIndicator={false}
     >
-      {/* ── KPI Summary Row ────────────────────────────────────── */}
+      <MobilePageTitle title="Performans" subtitle="Teknisyen ve üretim metrikleri" />
+      {/* ── F1 HeroCard — Performans özeti ── */}
       {totals && !loading && (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-          <KPIChip
-            icon={DollarSign} iconColor={CHIP_TONES.success.fg}
-            label="Toplam Kar Katkısı"
-            value={fmtCur(totals.totalProfit)}
-            tone={profitTone(totals.totalProfit)}
-          />
-          <KPIChip
-            icon={Flame} iconColor={CHIP_TONES.danger.fg}
-            label="Toplam Fire"
-            value={`−${fmt(totals.totalWaste)} ₺`}
-            tone={CHIP_TONES.danger}
-          />
-          <KPIChip
-            icon={Zap} iconColor={CHIP_TONES.info.fg}
-            label="Ort. Verim"
-            value={totals.avgEfficiency !== null ? `%${fmt1(totals.avgEfficiency)}` : '—'}
-            tone={totals.avgEfficiency !== null ? effTone(totals.avgEfficiency) : CHIP_TONES.neutral}
-          />
-          <KPIChip
-            icon={Timer} iconColor={DS.ink[500]}
-            label="Toplam Süre"
-            value={`${fmt1(totals.totalLabor)} sa`}
-            tone={CHIP_TONES.neutral}
-          />
-          <KPIChip
-            icon={BarChart3} iconColor={DS.ink[500]}
-            label="Teknisyen"
-            value={`${totals.techCount}`}
-            tone={CHIP_TONES.neutral}
-          />
+        <View style={{
+          borderRadius: 20, overflow: 'hidden',
+          backgroundColor: accentColor, padding: 18, position: 'relative',
+        }}>
+          <View style={{ position: 'absolute', top: -40, right: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
+          <View style={{ position: 'absolute', bottom: -50, left: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.78)', marginBottom: 8 }}>
+                Toplam Kar Katkısı
+              </Text>
+              <Text
+                style={{ ...DISPLAY, fontWeight: '300', fontSize: 32, color: '#FFFFFF', letterSpacing: -1, lineHeight: 38 }}
+                numberOfLines={1}
+              >
+                {fmtCur(totals.totalProfit)}
+              </Text>
+              <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.72)', marginTop: 4 }}>
+                {totals.techCount} teknisyen · {fmt1(totals.totalLabor)} sa toplam süre
+              </Text>
+            </View>
+            <View style={{ width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.18)' }}>
+              <DollarSign size={20} color="#FFFFFF" strokeWidth={1.6} />
+            </View>
+          </View>
+
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 16 }}>
+            {([
+              {
+                label: 'Fire',
+                value: `−${fmt(totals.totalWaste)} ${baseSymbol()}`,
+                icon: Flame,
+              },
+              {
+                label: 'Verim',
+                value: totals.avgEfficiency !== null ? `%${fmt1(totals.avgEfficiency)}` : '—',
+                icon: Zap,
+              },
+              {
+                label: 'Teknisyen',
+                value: `${totals.techCount}`,
+                icon: BarChart3,
+              },
+            ] as const).map(stat => {
+              const Icon = stat.icon;
+              return (
+                <View key={stat.label} style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.16)' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 }}>
+                    <Icon size={11} color="rgba(255,255,255,0.85)" strokeWidth={2} />
+                    <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>
+                      {stat.label}
+                    </Text>
+                  </View>
+                  <Text
+                    style={{ ...DISPLAY, fontWeight: '300', fontSize: 18, color: '#FFFFFF', letterSpacing: -0.4, lineHeight: 22 }}
+                    numberOfLines={1}
+                  >
+                    {stat.value}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
         </View>
       )}
 
@@ -365,13 +509,15 @@ export function PerformanceScreen() {
               backgroundColor: '#FAFAFA',
               borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)',
             }}>
-              <Text style={{ ...colH, flex: 2.4 }}>TEKNİSYEN</Text>
-              <SortableHeader label="SİPARİŞ" flex={0.9} sortKey="orders" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} />
-              <Text style={{ ...colH, flex: 1.2, textAlign: 'right' }}>KULLANIM</Text>
-              <SortableHeader label="FİRE" flex={1.2} sortKey="waste" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="right" />
+              <Text style={{ ...colH, flex: 2.0 }}>TEKNİSYEN</Text>
+              <SortableHeader label="SİPARİŞ" flex={0.8} sortKey="orders" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} />
+              <SortableHeader label="KALİTE" flex={1} sortKey="quality" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="center" />
+              <Text style={{ ...colH, flex: 1, textAlign: 'center' }}>ZAMANIN.</Text>
+              <SortableHeader label="FİRE" flex={1.1} sortKey="waste" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="right" />
               <SortableHeader label="VERİM" flex={1} sortKey="efficiency" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="center" />
               <SortableHeader label="SÜRE" flex={1} sortKey="labor" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="right" />
-              <SortableHeader label="KAR KATKISI" flex={1.4} sortKey="profit" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="right" />
+              <SortableHeader label="KAR KATKISI" flex={1.3} sortKey="profit" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="right" />
+              <SortableHeader label="SKOR" flex={1} sortKey="composite" currentSort={sortKey} currentDir={sortDir} onPress={toggleSort} align="center" />
             </View>
           )}
 
@@ -387,16 +533,17 @@ export function PerformanceScreen() {
               backgroundColor: '#FAFAFA',
               borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
             }}>
-              <Text style={{ ...colH, flex: 2.4, fontSize: 11, fontWeight: '700', color: DS.ink[700] }}>
+              <Text style={{ ...colH, flex: 2.0, fontSize: 11, fontWeight: '700', color: DS.ink[700] }}>
                 TOPLAM ({totals.techCount} teknisyen)
               </Text>
-              <View style={{ flex: 0.9, alignItems: 'center' }}>
+              <View style={{ flex: 0.8, alignItems: 'center' }}>
                 <Text style={{ fontSize: 12, fontWeight: '700', color: DS.ink[700] }}>{fmt(totals.totalOrders)}</Text>
               </View>
-              <View style={{ flex: 1.2 }} />
-              <View style={{ flex: 1.2, alignItems: 'flex-end', paddingRight: 8 }}>
+              <View style={{ flex: 1 }} />
+              <View style={{ flex: 1 }} />
+              <View style={{ flex: 1.1, alignItems: 'flex-end', paddingRight: 8 }}>
                 <Text style={{ fontSize: 12, fontWeight: '700', color: CHIP_TONES.danger.fg }}>
-                  −{fmt(totals.totalWaste)} ₺
+                  −{fmt(totals.totalWaste)} {baseSymbol()}
                 </Text>
               </View>
               <View style={{ flex: 1, alignItems: 'center' }}>
@@ -409,14 +556,15 @@ export function PerformanceScreen() {
               <View style={{ flex: 1, alignItems: 'flex-end', paddingRight: 8 }}>
                 <Text style={{ fontSize: 12, fontWeight: '700', color: DS.ink[700] }}>{fmt1(totals.totalLabor)} sa</Text>
               </View>
-              <View style={{ flex: 1.4, alignItems: 'flex-end' }}>
+              <View style={{ flex: 1.3, alignItems: 'flex-end' }}>
                 <Text style={{
                   fontSize: 13, fontWeight: '700',
                   color: totals.totalProfit >= 0 ? CHIP_TONES.success.fg : CHIP_TONES.danger.fg,
                 }}>
-                  {totals.totalProfit >= 0 ? '+' : '−'}{fmt(Math.abs(totals.totalProfit))} ₺
+                  {totals.totalProfit >= 0 ? '+' : '−'}{fmt(Math.abs(totals.totalProfit))} {baseSymbol()}
                 </Text>
               </View>
+              <View style={{ flex: 1 }} />
             </View>
           )}
         </View>
@@ -513,7 +661,7 @@ function RowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWid
         borderBottomWidth: isLast ? 0 : 1, borderBottomColor: 'rgba(0,0,0,0.04)',
       }}>
         {/* Teknisyen */}
-        <View style={{ flex: 2.4, flexDirection: 'row', alignItems: 'center', gap: 10, paddingRight: 8 }}>
+        <View style={{ flex: 2.0, flexDirection: 'row', alignItems: 'center', gap: 10, paddingRight: 8 }}>
           <View style={{
             width: 34, height: 34, borderRadius: 17,
             backgroundColor: 'rgba(139,92,184,0.12)',
@@ -525,27 +673,67 @@ function RowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWid
             <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
               {row.user_name ?? '—'}
             </Text>
-            <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }} numberOfLines={1}>
-              {row.hourly_rate > 0 ? `${fmt(row.hourly_rate)} ₺/sa` : '—'}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 1 }}>
+              <Text style={{ fontSize: 11, color: DS.ink[400] }} numberOfLines={1}>
+                {row.hourly_rate > 0 ? `${fmt(row.hourly_rate)} ${baseSymbol()}/sa` : '—'}
+              </Text>
+              {row.customer_rating != null && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                  <Star size={11} color="#E89B2A" strokeWidth={1.8} fill="#E89B2A" />
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: DS.ink[700] }}>
+                    {row.customer_rating.toFixed(1)}
+                  </Text>
+                  <Text style={{ fontSize: 10, color: DS.ink[400] }}>({row.review_count ?? 0})</Text>
+                </View>
+              )}
+            </View>
           </View>
         </View>
 
         {/* Sipariş */}
-        <View style={{ flex: 0.9, alignItems: 'center' }}>
+        <View style={{ flex: 0.8, alignItems: 'center' }}>
           <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }}>{row.orders_worked}</Text>
         </View>
 
-        {/* Kullanım */}
-        <View style={{ flex: 1.2, alignItems: 'flex-end', paddingRight: 8 }}>
-          <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }}>{fmt1(row.used_qty)}</Text>
-          {row.used_cost > 0 && (
-            <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }}>{fmt(row.used_cost)} ₺</Text>
+        {/* Kalite (onay/(onay+red)) */}
+        <View style={{ flex: 1, alignItems: 'center' }}>
+          {row.quality_pct != null ? (
+            <Text style={{
+              fontSize: 13, fontWeight: '600',
+              color: row.quality_pct >= 80 ? CHIP_TONES.success.fg
+                   : row.quality_pct >= 60 ? CHIP_TONES.warning.fg
+                   : CHIP_TONES.danger.fg,
+            }}>
+              %{Math.round(row.quality_pct)}
+            </Text>
+          ) : (
+            <Text style={{ fontSize: 11, color: DS.ink[400] }}>—</Text>
+          )}
+          {(row.monthly_rework ?? 0) > 0 && (
+            <Text style={{ fontSize: 10, color: CHIP_TONES.danger.fg, marginTop: 1 }}>
+              {row.monthly_rework} rework
+            </Text>
+          )}
+        </View>
+
+        {/* Zamanında */}
+        <View style={{ flex: 1, alignItems: 'center' }}>
+          {row.on_time_pct != null ? (
+            <Text style={{
+              fontSize: 13, fontWeight: '600',
+              color: row.on_time_pct >= 80 ? CHIP_TONES.success.fg
+                   : row.on_time_pct >= 60 ? CHIP_TONES.warning.fg
+                   : CHIP_TONES.danger.fg,
+            }}>
+              %{Math.round(row.on_time_pct)}
+            </Text>
+          ) : (
+            <Text style={{ fontSize: 11, color: DS.ink[400] }}>—</Text>
           )}
         </View>
 
         {/* Fire */}
-        <View style={{ flex: 1.2, alignItems: 'flex-end', paddingRight: 8 }}>
+        <View style={{ flex: 1.1, alignItems: 'flex-end', paddingRight: 8 }}>
           <Text style={{
             fontSize: 14, fontWeight: '600',
             color: wasteHigh ? CHIP_TONES.danger.fg : DS.ink[900],
@@ -554,7 +742,7 @@ function RowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWid
           </Text>
           {row.waste_cost > 0 && (
             <Text style={{ fontSize: 11, color: CHIP_TONES.danger.fg, marginTop: 1 }}>
-              −{fmt(row.waste_cost)} ₺
+              −{fmt(row.waste_cost)} {baseSymbol()}
             </Text>
           )}
         </View>
@@ -580,18 +768,40 @@ function RowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWid
             {fmt1(row.labor_hours)}<Text style={{ fontSize: 10, color: DS.ink[400], fontWeight: '500' }}> sa</Text>
           </Text>
           {row.labor_cost > 0 && (
-            <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }}>{fmt(row.labor_cost)} ₺</Text>
+            <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }}>{fmt(row.labor_cost)} {baseSymbol()}</Text>
           )}
         </View>
 
         {/* Kar Katkısı */}
-        <View style={{ flex: 1.4, alignItems: 'flex-end' }}>
+        <View style={{ flex: 1.3, alignItems: 'flex-end' }}>
           <Text style={{
             fontSize: 14, fontWeight: '600',
             color: row.profit_contribution >= 0 ? CHIP_TONES.success.fg : CHIP_TONES.danger.fg,
           }}>
-            {row.profit_contribution >= 0 ? '+' : '−'}{fmt(Math.abs(row.profit_contribution))} ₺
+            {row.profit_contribution >= 0 ? '+' : '−'}{fmt(Math.abs(row.profit_contribution))} {baseSymbol()}
           </Text>
+        </View>
+
+        {/* Skor (kompozit) */}
+        <View style={{ flex: 1, alignItems: 'center' }}>
+          {row.composite_score != null ? (
+            <View style={{
+              paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
+              backgroundColor: row.composite_score >= 75 ? CHIP_TONES.success.bg
+                             : row.composite_score >= 50 ? CHIP_TONES.warning.bg
+                             : CHIP_TONES.danger.bg,
+              minWidth: 50, alignItems: 'center',
+            }}>
+              <Text style={{
+                fontSize: 13, fontWeight: '700',
+                color: row.composite_score >= 75 ? CHIP_TONES.success.fg
+                     : row.composite_score >= 50 ? CHIP_TONES.warning.fg
+                     : CHIP_TONES.danger.fg,
+              }}>{row.composite_score}</Text>
+            </View>
+          ) : (
+            <Text style={{ fontSize: 11, color: DS.ink[400] }}>—</Text>
+          )}
         </View>
       </View>
     );
@@ -617,7 +827,7 @@ function RowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWid
             {row.user_name ?? '—'}
           </Text>
           <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }}>
-            {row.orders_worked} sipariş · {row.hourly_rate > 0 ? `${fmt(row.hourly_rate)} ₺/sa` : '—'}
+            {row.orders_worked} sipariş · {row.hourly_rate > 0 ? `${fmt(row.hourly_rate)} ${baseSymbol()}/sa` : '—'}
           </Text>
         </View>
         {eff !== null ? (
@@ -640,6 +850,9 @@ function RowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWid
           value={`${row.profit_contribution >= 0 ? '+' : '−'}${fmt(Math.abs(row.profit_contribution))}`}
           color={row.profit_contribution >= 0 ? CHIP_TONES.success.fg : CHIP_TONES.danger.fg}
         />
+        {row.customer_rating != null && (
+          <MiniStat label="Puan" value={`★ ${row.customer_rating.toFixed(1)}`} color="#E89B2A" />
+        )}
       </View>
     </View>
   );

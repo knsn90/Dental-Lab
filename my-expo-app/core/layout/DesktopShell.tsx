@@ -33,6 +33,7 @@ import { useAuthStore } from '../store/authStore';
 import { usePageTitleStore } from '../store/pageTitleStore';
 import { useOrders } from '../../modules/orders/hooks/useOrders';
 import { supabase } from '../api/supabase';
+import { sanitizeIlikeTerm } from '../util/search';
 import { BlurFade } from '../ui/BlurFade';
 
 import { AppIcon } from '../ui/AppIcon';
@@ -459,6 +460,7 @@ function GlobalSearch({
   const router = useRouter();
   const inputRef = useRef<TextInput>(null);
   const isAdmin = userType === 'admin';
+  const searchSeq = useRef(0); // yarış koruması: yalnız en güncel isteğin sonucu yazılır
 
   useEffect(() => {
     if (!visible) { setQuery(''); setResults([]); }
@@ -473,8 +475,11 @@ function GlobalSearch({
   }, [query]);
 
   async function runSearch(q: string) {
+    const safe = sanitizeIlikeTerm(q); // .or() gramerini bozan , ( ) temizlenir
+    if (!safe) { searchSeq.current++; setResults([]); setLoading(false); return; }
+    const reqId = ++searchSeq.current;
     setLoading(true);
-    const like = `%${q}%`;
+    const like = `%${safe}%`;
     const adminPrefix = '/(admin)';
     const labPrefix   = '/(lab)';
 
@@ -521,6 +526,7 @@ function GlobalSearch({
       href: `${adminPrefix}/users`,
     }));
 
+    if (reqId !== searchSeq.current) return; // eski istek — güncel sonucu ezme
     setResults(out);
     setLoading(false);
   }

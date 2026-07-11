@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Dental Lab",
+    "name": "Siman",
     "slug": "dental-lab-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -10,32 +10,34 @@
     "splash": {
       "image": "./assets/images/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#1A56DB"
+      "backgroundColor": "#FFFFFF"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.dentallab.app",
+      "bundleIdentifier": "com.nexadent.app",
       "infoPlist": {
-        "NSCameraUsageDescription": "İş emri fotoğrafı çekmek ve QR okutmak için kamera erişimi gerekiyor.",
+        "NSCameraUsageDescription": "İş emri fotoğrafı çekmek, QR okutmak ve 3D yüz tarama (gülüş tasarımı için) yapmak amacıyla kamera erişimi gerekiyor.",
         "NSPhotoLibraryUsageDescription": "Fotoğraf galerinize erişmek için izin gerekiyor.",
-        "UIBackgroundModes": ["remote-notification"]
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
       }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#1A56DB"
+        "backgroundColor": "#FFFFFF"
       },
-      "package": "com.dentallab.app",
+      "package": "com.nexadent.app",
       "permissions": [
-        "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE",
-        "ACCESS_NETWORK_STATE",
-        "RECEIVE_BOOT_COMPLETED",
-        "VIBRATE"
-      ],
-      "googleServicesFile": "./google-services.json"
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -61,14 +63,21 @@
         "expo-notifications",
         {
           "icon": "./assets/images/icon.png",
-          "color": "#1A56DB"
+          "color": "#1E2D56"
         }
       ],
       "expo-asset",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-localization"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "4eccdeb0-694f-4c00-beab-20ce1d34ef20"
+      }
     }
   }
 }

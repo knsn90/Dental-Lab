@@ -4,6 +4,7 @@
  * Handoff'a özel renkler ve tipografi — dsTokens.ts'i extend eder.
  */
 import { DS } from '../../../core/theme/dsTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 // ── Renkler ────────────────────────────────────────────────────────
 export const NO = {
@@ -11,8 +12,8 @@ export const NO = {
   bgPage:    '#E8E5DD',
   /** Krem form alanı / stepper zemin */
   bgStage:   '#F5F2EA',
-  /** Input field bg */
-  bgInput:   '#FBFAF6',
+  /** Input field bg — beyaz, sayfa cream bg'den ayrışsın */
+  bgInput:   '#FFFFFF',
   /** Saffron soft badge bg */
   saffronSoft: '#FFF6D9',
 
@@ -86,6 +87,30 @@ export const NOType = {
     textTransform: 'uppercase' as const,
   },
 };
+
+// ── Dark variant ───────────────────────────────────────────────────
+export const NO_DARK = {
+  ...NO,
+  bgPage:    '#0E0E0E',
+  bgStage:   '#16140F',
+  bgInput:   '#1B1916',
+  saffronSoft: 'rgba(245,194,75,0.18)',
+
+  borderSoft:   'rgba(255,255,255,0.05)',
+  borderMedium: 'rgba(255,255,255,0.10)',
+  borderDashed: 'rgba(255,255,255,0.14)',
+  borderStrong: '#F7F2E9',
+
+  inkStrong: '#F7F2E9',
+  inkMedium: 'rgba(247,242,233,0.78)',
+  inkSoft:   'rgba(247,242,233,0.55)',
+  inkMute:   'rgba(247,242,233,0.45)',
+};
+
+export function useNOTokens() {
+  const dark = useThemeModeStore(s => s.resolvedDark);
+  return dark ? NO_DARK : NO;
+}
 
 // ── Radius ─────────────────────────────────────────────────────────
 export const NORadius = {

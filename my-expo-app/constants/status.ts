@@ -36,7 +36,7 @@ export const STATUS_CONFIG: Record<WorkOrderStatus, StatusConfig> = {
     ionIcon: 'shield-check-outline',
   },
   teslimata_hazir: {
-    label: 'Teslimata Hazır',
+    label: 'Kuryeye Teslim Edildi',
     color: Colors.statusReady,
     bgColor: Colors.statusReadyBg,
     next: 'teslim_edildi',
@@ -50,6 +50,14 @@ export const STATUS_CONFIG: Record<WorkOrderStatus, StatusConfig> = {
     next: null,
     icon: '✅',
     ionIcon: 'check-circle-outline',
+  },
+  iptal: {
+    label: 'İptal',
+    color: '#94A3B8',
+    bgColor: '#F1F5F9',
+    next: null,
+    icon: '🚫',
+    ionIcon: 'close-circle-outline',
   },
 };
 
@@ -70,7 +78,7 @@ export function getNextStatus(status: WorkOrderStatus): WorkOrderStatus | null {
 }
 
 export function isOverdue(deliveryDate: string, status: WorkOrderStatus): boolean {
-  if (status === 'teslim_edildi') return false;
+  if (status === 'teslim_edildi' || status === 'iptal') return false;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   return new Date(deliveryDate) < today;

@@ -1,0 +1,137 @@
+@import "tailwindcss";
+
+/* Dark mode driven by a `.dark` class on <html> */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ── Design tokens ─────────────────────────────────────────────── */
+:root {
+  --bg: #fcfcfd;
+  --bg-grad-1: #eef4ff;
+  --bg-grad-2: #e6fbf6;
+  --surface: #ffffff;
+  --surface-2: #f5f6f8;
+  --surface-3: #eef0f3;
+  --border: rgba(12, 16, 28, 0.08);
+  --border-strong: rgba(12, 16, 28, 0.14);
+  --text: #0b0c0f;
+  --text-2: #3a3f4a;
+  --muted: #767d8b;
+  --primary: #6ea8fe;
+  --primary-deep: #4f8ef7;
+  --accent: #00c2a8;
+  --accent-deep: #00a892;
+  --shadow: 0 1px 2px rgba(12, 16, 28, 0.04), 0 12px 32px rgba(12, 16, 28, 0.08);
+  --shadow-lg: 0 2px 8px rgba(12, 16, 28, 0.06), 0 24px 60px rgba(12, 16, 28, 0.14);
+}
+
+.dark {
+  --bg: #08090c;
+  --bg-grad-1: #0e1626;
+  --bg-grad-2: #06161a;
+  --surface: #0f1116;
+  --surface-2: #15181f;
+  --surface-3: #1c2029;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --text: #f3f5f8;
+  --text-2: #c7ccd6;
+  --muted: #8a92a1;
+  --primary: #6ea8fe;
+  --primary-deep: #8cbcff;
+  --accent: #00c2a8;
+  --accent-deep: #2ad6c0;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 16px 40px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 2px 8px rgba(0, 0, 0, 0.5), 0 28px 70px rgba(0, 0, 0, 0.6);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-text-2: var(--text-2);
+  --color-muted: var(--muted);
+  --color-primary: var(--primary);
+  --color-primary-deep: var(--primary-deep);
+  --color-accent: var(--accent);
+  --color-accent-deep: var(--accent-deep);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  --animate-shimmer: shimmer 2.4s linear infinite;
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-orb: orb-rotate 18s linear infinite;
+  --animate-orb-rev: orb-rotate-rev 22s linear infinite;
+  --animate-pulse-ring: pulse-ring 2.4s ease-out infinite;
+}
+
+@keyframes shimmer {
+  to { background-position: 200% center; }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+@keyframes orb-rotate {
+  to { transform: rotate(360deg); }
+}
+@keyframes orb-rotate-rev {
+  to { transform: rotate(-360deg); }
+}
+@keyframes pulse-ring {
+  0% { transform: scale(0.85); opacity: 0.6; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  overflow-x: hidden;
+}
+
+/* App ambient background — soft brand aurora */
+.app-aurora {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 50% at 18% 0%, var(--bg-grad-1) 0%, transparent 60%),
+    radial-gradient(55% 45% at 90% 8%, var(--bg-grad-2) 0%, transparent 55%);
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; }
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Glass surface */
+.glass {
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid var(--border);
+}
+
+.text-gradient {
+  background: linear-gradient(100deg, var(--primary-deep), var(--accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}

@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
   Modal,
   TextInput,
   KeyboardAvoidingView,
@@ -25,6 +24,7 @@ const BG  = '#F7F9FB';
 import { Profile } from '../../lib/types';
 
 import { AppIcon } from '../../core/ui/AppIcon';
+import { ActivityIndicator } from '../../core/ui/teethCompat';
 
 type FilterType = 'all' | 'admin' | 'lab' | 'doctor' | 'clinic_admin';
 type StatusFilter = 'all' | 'active' | 'inactive';
@@ -63,8 +63,20 @@ export default function AdminUsersScreen() {
   const { width } = useWindowDimensions();
   const isWide = width >= 1100;
 
-  const [profiles,       setProfiles]       = useState<Profile[]>([]);
-  const [loading,        setLoading]        = useState(true);
+  // localStorage cache — 2. ziyarette anında render, arka planda taze veri.
+  const LS_KEY_USERS = 'admin_users_cache_v1';
+  const loadLsUsers = (): Profile[] | null => {
+    if (typeof window === 'undefined' || !window.localStorage) return null;
+    try { const r = window.localStorage.getItem(LS_KEY_USERS); return r ? JSON.parse(r) : null; } catch { return null; }
+  };
+  const saveLsUsers = (rows: Profile[]) => {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    try { window.localStorage.setItem(LS_KEY_USERS, JSON.stringify(rows)); } catch { /* quota */ }
+  };
+  const initialUsers = loadLsUsers();
+
+  const [profiles,       setProfiles]       = useState<Profile[]>(initialUsers ?? []);
+  const [loading,        setLoading]        = useState(initialUsers === null);
   const [typeFilter,     setTypeFilter]     = useState<FilterType>('all');
   const [statusFilter,   setStatusFilter]   = useState<StatusFilter>('all');
   const [draftStatus,    setDraftStatus]    = useState<StatusFilter>('all');
@@ -79,26 +91,26 @@ export default function AdminUsersScreen() {
   const [stats,          setStats]          = useState<UserStats | null>(null);
   const [statsLoading,   setStatsLoading]   = useState(false);
 
-  useEffect(() => { loadProfiles(); }, []);
+  useEffect(() => { loadProfiles(initialUsers !== null); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const loadProfiles = async () => {
-    setLoading(true);
+  const loadProfiles = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
-      // 1) Auth uzerinden kayitli kullanicilar
-      const { data, error } = await supabase.functions.invoke('admin-list-users');
-      const authUsers: any[] = (!error && data?.users) ? data.users : [];
-
-      // 2) Sadece doctors tablosunda olan, henuz auth kaydi olmayan hekimler
-      const { data: docRows } = await supabase
-        .from('doctors')
-        .select('id, full_name, phone, specialty, clinic_id, is_active, clinic:clinics(id, name)')
-        .eq('is_active', true);
-
-      // 3) Sadece employees tablosunda olan, auth kaydi olmayan personel
-      const { data: empRows } = await supabase
-        .from('employees')
-        .select('id, full_name, phone, email, role, is_active')
-        .eq('is_active', true);
+      // 3 sorgu paralel — eskiden seri idi (~3× round-trip).
+      const [authRes, docRes, empRes] = await Promise.all([
+        supabase.functions.invoke('admin-list-users'),
+        supabase
+          .from('doctors')
+          .select('id, full_name, phone, specialty, clinic_id, is_active, clinic:clinics(id, name)')
+          .eq('is_active', true),
+        supabase
+          .from('employees')
+          .select('id, full_name, phone, email, role, is_active')
+          .eq('is_active', true),
+      ]);
+      const authUsers: any[] = (!authRes.error && authRes.data?.users) ? authRes.data.users : [];
+      const docRows = docRes.data;
+      const empRows = empRes.data;
 
       // Auth user isimlerini topla → duplicate elemine
       const authDoctorNames = new Set(
@@ -166,10 +178,11 @@ export default function AdminUsersScreen() {
       const merged = [...authUsers, ...syntheticDoctors, ...syntheticEmployees] as Profile[];
       console.log('[USERS]', { auth: authUsers.length, doctors: docRows?.length ?? 0, employees: empRows?.length ?? 0, syntheticDoctors: syntheticDoctors.length, syntheticEmployees: syntheticEmployees.length, total: merged.length });
       setProfiles(merged);
+      saveLsUsers(merged);
     } catch (e) {
       console.warn('[USERS] load error', e);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -990,7 +1003,7 @@ function AddUserModal({
                 <Text style={[m.fieldLabel, { color: K }]}>Stage Yetkileri</Text>
                 <Text style={{ fontSize: 10, color: '#94A3B8', marginBottom: 8, marginTop: -4 }}>Hangi aşamayı yapabilir?</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
-                  {['Triyaj', 'Tasarım', 'CAM', 'Frezeleme', 'Sinterleme', 'Bitiş', 'Kalite Kontrol'].map((stage) => {
+                  {['Planlama', 'Tasarım', 'CAM', 'Frezeleme', 'Sinterleme', 'Bitiş', 'Kalite Kontrol'].map((stage) => {
                     const active = stagePerms.includes(stage);
                     return (
                       <TouchableOpacity
@@ -1075,7 +1088,7 @@ function AddUserModal({
 
 const styles = StyleSheet.create({
   safe:      { flex: 1, backgroundColor: BG },
-  container: { padding: 24, paddingBottom: 60, maxWidth: 1440, width: '100%', alignSelf: 'center' },
+  container: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 60, maxWidth: 1440, width: '100%', alignSelf: 'center' },
 
   pageHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 28 },
   pageTitle:  { fontSize: 34, fontWeight: '800', color: K, letterSpacing: -0.8, lineHeight: 40 },

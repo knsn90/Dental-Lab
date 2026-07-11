@@ -87,12 +87,14 @@ export async function getSignedUrl(storagePath: string): Promise<string | null> 
 }
 
 export async function getSignedUrls(storagePaths: string[]): Promise<Record<string, string>> {
+  if (storagePaths.length === 0) return {};
+  // Single batch request (1 HTTP call) instead of N parallel requests.
+  const { data } = await supabase.storage
+    .from(BUCKET)
+    .createSignedUrls(storagePaths, 3600);
   const result: Record<string, string> = {};
-  await Promise.all(
-    storagePaths.map(async (path) => {
-      const url = await getSignedUrl(path);
-      if (url) result[path] = url;
-    })
-  );
+  data?.forEach((row) => {
+    if (row.path && row.signedUrl) result[row.path] = row.signedUrl;
+  });
   return result;
 }

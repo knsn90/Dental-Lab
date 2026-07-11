@@ -35,6 +35,7 @@ import { View, Text, Pressable, Modal, Platform } from 'react-native';
 import { AlertCircle, AlertTriangle, Info } from 'lucide-react-native';
 
 import { DS } from '../theme/dsTokens';
+import { MODAL_BACKDROP_COLOR, MODAL_OVERLAY_WEB } from './ModalBackdrop';
 
 const DISPLAY = {
   fontFamily: 'Inter Tight, Inter, system-ui, sans-serif',
@@ -85,9 +86,10 @@ export function ConfirmDialog({
         onPress={onClose}
         style={{
           flex: 1,
-          backgroundColor: 'rgba(10,10,10,0.45)',
+          backgroundColor: MODAL_BACKDROP_COLOR,
           alignItems: 'center', justifyContent: 'center',
           padding: 20,
+          ...MODAL_OVERLAY_WEB,
         }}
       >
         {state && (

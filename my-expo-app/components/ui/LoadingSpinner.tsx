@@ -1,34 +1,20 @@
+// components/ui/LoadingSpinner.tsx
+// Tek panel-aware loading kaynağı → PanelLoader. accent param geriye uyumluluk için.
+
 import React from 'react';
-import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
-import Colors from '../../constants/colors';
+import { PanelLoader } from '../../core/ui/PanelLoader';
 
 interface LoadingSpinnerProps {
   message?: string;
   fullScreen?: boolean;
+  accentColor?: string; // legacy — PanelLoader segment'ten otomatik bulur
 }
 
 export function LoadingSpinner({ message, fullScreen = false }: LoadingSpinnerProps) {
   return (
-    <View style={[styles.container, fullScreen && styles.fullScreen]}>
-      <ActivityIndicator size="large" color={Colors.primary} />
-      {message && <Text style={styles.message}>{message}</Text>}
-    </View>
+    <PanelLoader
+      message={message ?? 'Yükleniyor…'}
+      fullScreen={fullScreen}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-  },
-  fullScreen: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  message: {
-    marginTop: 12,
-    fontSize: 14,
-    color: Colors.textSecondary,
-  },
-});

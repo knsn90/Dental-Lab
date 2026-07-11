@@ -5,8 +5,9 @@
  * Tümü inline style — React Native + web uyumlu.
  */
 import React from 'react';
-import { View, Text, Pressable, TextInput, Platform } from 'react-native';
-import { NO, NOType, NORadius } from './NOTokens';
+import { View, Text, Pressable, TextInput, Platform, useWindowDimensions } from 'react-native';
+import { useNOTokens, NOType, NORadius } from './NOTokens';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 
 // ── NOEyebrow ─────────────────────────────────────────────────────
 export interface NOEyebrowProps {
@@ -14,12 +15,14 @@ export interface NOEyebrowProps {
   color?: string;
 }
 
-export function NOEyebrow({ children, color = NO.inkMute }: NOEyebrowProps) {
+export function NOEyebrow({ children, color }: NOEyebrowProps) {
+  const NO = useNOTokens();
+  const resolved = color ?? NO.inkMute;
   return (
     <Text
       style={{
         ...NOType.eyebrow,
-        color,
+        color: resolved,
       }}
     >
       {children}
@@ -34,6 +37,7 @@ export interface NOLabelProps {
 }
 
 export function NOLabel({ children, required }: NOLabelProps) {
+  const NO = useNOTokens();
   return (
     <Text
       style={{
@@ -82,11 +86,12 @@ export function NOField({
   onPress,
   keyboardType,
 }: NOFieldProps) {
+  const NO = useNOTokens();
   const borderColor = focused
     ? NO.inkStrong
     : error
     ? NO.error
-    : 'transparent';
+    : NO.borderSoft;
 
   const Container = onPress ? Pressable : View;
 
@@ -135,7 +140,7 @@ export function NOField({
             flex: 1,
             fontSize: 13,
             color: NO.inkStrong,
-            ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
+            ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
             ...(multiline ? { textAlignVertical: 'top' as const } : {}),
           }}
         />
@@ -161,6 +166,7 @@ export interface NOSegmentProps {
 }
 
 export function NOSegment({ options, value, onChange }: NOSegmentProps) {
+  const NO = useNOTokens();
   return (
     <View style={{ flexDirection: 'row', gap: 6 }}>
       {options.map((opt) => {
@@ -173,14 +179,16 @@ export function NOSegment({ options, value, onChange }: NOSegmentProps) {
               paddingVertical: 10,
               paddingHorizontal: 16,
               borderRadius: NORadius.pill,
-              backgroundColor: active ? NO.inkStrong : NO.bgInput,
+              backgroundColor: 'transparent',
+              borderWidth: 1.5,
+              borderColor: active ? NO.inkStrong : NO.borderSoft,
             }}
           >
             <Text
               style={{
                 fontSize: 12,
-                fontWeight: '500',
-                color: active ? '#FFFFFF' : NO.inkMedium,
+                fontWeight: active ? '600' : '500',
+                color: active ? NO.inkStrong : NO.inkMedium,
               }}
             >
               {opt}
@@ -196,9 +204,15 @@ export function NOSegment({ options, value, onChange }: NOSegmentProps) {
 export interface NOToggleProps {
   on: boolean;
   onChange?: (value: boolean) => void;
+  /** Panel-aware thumb accent. Default = lab saffron. */
+  accentColor?: string;
 }
 
-export function NOToggle({ on, onChange }: NOToggleProps) {
+export function NOToggle({ on, onChange, accentColor }: NOToggleProps) {
+  const NO = useNOTokens();
+  const trackAccent = accentColor ?? NO.saffron;
+  // iOS-tarzı toggle: ON → accent-colored solid track + white thumb,
+  //                  OFF → translucent neutral track + white thumb
   return (
     <Pressable
       onPress={() => onChange?.(!on)}
@@ -206,7 +220,7 @@ export function NOToggle({ on, onChange }: NOToggleProps) {
         width: 36,
         height: 22,
         borderRadius: NORadius.pill,
-        backgroundColor: on ? NO.inkStrong : 'rgba(0,0,0,0.12)',
+        backgroundColor: on ? trackAccent : NO.borderMedium,
         justifyContent: 'center',
         flexShrink: 0,
       }}
@@ -216,7 +230,7 @@ export function NOToggle({ on, onChange }: NOToggleProps) {
           width: 16,
           height: 16,
           borderRadius: 8,
-          backgroundColor: on ? NO.saffron : '#FFFFFF',
+          backgroundColor: '#FFFFFF',
           position: 'absolute',
           top: 3,
           left: on ? 17 : 3,
@@ -239,13 +253,23 @@ export interface NOStepHeaderProps {
 }
 
 export function NOStepHeader({ step, total = 4, children, sub, headerRight }: NOStepHeaderProps) {
+  const NO = useNOTokens();
+  // Responsive boyutlandırma — mobile dar ekranda 32 → 22, tablet 26, desktop 32
+  const { width } = useWindowDimensions();
+  const isPhone   = width < 520;
+  const isTablet  = width >= 520 && width < 1024;
+  const heroSize  = isPhone ? 22 : isTablet ? 26 : 32;
+  const heroLh    = isPhone ? 26 : isTablet ? 30 : 35;
   return (
-    <View style={{ marginBottom: 14 }}>
+    <View style={{ marginBottom: 8 }}>
       <NOEyebrow>{`Adım ${step} / ${total}`}</NOEyebrow>
       <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
         <Text
           style={{
             ...NOType.displayXl,
+            fontSize: heroSize,
+            lineHeight: heroLh,
+            letterSpacing: -0.03 * heroSize,
             color: NO.inkStrong,
             flex: 1,
           }}
@@ -266,6 +290,7 @@ export function NOStepHeader({ step, total = 4, children, sub, headerRight }: NO
 // ── NOEmText ──────────────────────────────────────────────────────
 /** Inline emphasized text (gray, normal weight) used in step titles */
 export function NOEmText({ children }: { children: React.ReactNode }) {
+  const NO = useNOTokens();
   return (
     <Text style={{ fontWeight: '400', color: NO.inkMute }}>
       {children}

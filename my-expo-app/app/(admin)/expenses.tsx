@@ -1,1 +1,2 @@
-export { ExpensesScreen as default } from '../../modules/expenses/screens/ExpensesScreen';
+import { lazyRoute } from '../../core/_lazyRoute';
+export default lazyRoute(() => import('../../modules/expenses/screens/ExpensesScreen'), 'ExpensesScreen');

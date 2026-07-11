@@ -49,7 +49,7 @@ interface RawOrder {
   assigned_to: string | null;
   doctor?: {
     full_name: string;
-    clinic_name: string | null;
+    clinic?: { name: string | null } | null;
     phone?: string | null;
   } | null;
   assignee?: {
@@ -65,7 +65,7 @@ function mapOrder(raw: RawOrder): AdminOrder {
     order_number: raw.order_number,
     doctor_id: raw.doctor_id,
     doctor_name: raw.doctor?.full_name ?? 'Bilinmeyen Hekim',
-    clinic_name: raw.doctor?.clinic_name ?? '',
+    clinic_name: raw.doctor?.clinic?.name ?? '',
     tooth_numbers: raw.tooth_numbers ?? [],
     work_type: raw.work_type,
     shade: raw.shade,
@@ -87,7 +87,7 @@ function mapOrder(raw: RawOrder): AdminOrder {
 export async function fetchAllOrders(): Promise<AdminOrder[]> {
   const { data, error } = await supabase
     .from('work_orders')
-    .select('*, doctor:doctor_id(full_name, clinic_name), assignee:assigned_to(id, full_name, role)')
+    .select('*, doctor:doctors(full_name, clinic:clinics(name)), assignee:assigned_to(id, full_name, role)')
     .order('created_at', { ascending: false });
 
   if (error) throw error;
@@ -116,7 +116,7 @@ export async function fetchTechniciansList(): Promise<Technician[]> {
 export async function fetchOrderById(id: string): Promise<AdminOrder | null> {
   const { data, error } = await supabase
     .from('work_orders')
-    .select('*, doctor:doctor_id(full_name, clinic_name, phone), order_items(*), provas(*)')
+    .select('*, doctor:doctors(full_name, clinic:clinics(name), phone), order_items(*), provas(*)')
     .eq('id', id)
     .single();
 
@@ -178,7 +178,7 @@ export async function fetchOrderStats(): Promise<OrderStats> {
   const [ordersResult, profilesResult] = await Promise.all([
     supabase
       .from('work_orders')
-      .select('*, doctor:doctor_id(full_name, clinic_name)')
+      .select('*, doctor:doctors(full_name, clinic:clinics(name))')
       .order('created_at', { ascending: false }),
     supabase
       .from('profiles')

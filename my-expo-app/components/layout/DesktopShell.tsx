@@ -55,9 +55,18 @@ interface Props {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+// Unvan önekleri (Dr., Dt., Prof. vb.) — isim/baş harf hesabında atlanır ki
+// "Dr. Aylin Şahiner" → ad "Aylin", baş harf "AŞ" olsun (sadece "Dr." değil).
+const TITLE_RE = /^(dr|dt|doç|doc|prof|op|opr|uz|uzm|uzm)\.?$/i;
+function stripTitlePrefix(name: string): string {
+  const parts = name.split(/\s+/).filter(Boolean);
+  while (parts.length > 1 && TITLE_RE.test(parts[0])) parts.shift();
+  return parts.join(' ');
+}
 function getInitials(name?: string | null) {
   if (!name) return '?';
-  return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  const base = stripTitlePrefix(name) || name;
+  return base.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 }
 
 function NavIcon({ item, active }: { item: NavItem; active: boolean }) {
@@ -94,7 +103,7 @@ function RightPanel({ accentColor, initials, fullName, role }: {
             <Text style={rp.avatarText}>{initials}</Text>
           </View>
           <Text style={rp.name} numberOfLines={1}>{fullName}</Text>
-          <Text style={rp.role}>{role ?? 'Dental Lab'}</Text>
+          <Text style={rp.role}>{role ?? 'Laboratuvar'}</Text>
 
           <View style={rp.statsRow}>
             {[
@@ -216,7 +225,15 @@ export function DesktopShell({ navItems, accentColor = C.primary, pageTitle }: P
 
   const initials  = getInitials(profile?.full_name);
   const fullName  = profile?.full_name ?? 'Kullanıcı';
-  const firstName = fullName.split(' ')[0];
+  // Unvanı koru ama gerçek adı göster: "Dr. Aylin Şahiner" → "Dr. Aylin"
+  // (eski hali ilk token'ı alıp sadece "Dr." gösteriyordu).
+  const firstName = (() => {
+    const parts = fullName.split(/\s+/).filter(Boolean);
+    const titles: string[] = [];
+    while (parts.length > 1 && TITLE_RE.test(parts[0])) titles.push(parts.shift()!);
+    const first = parts[0] ?? fullName;
+    return titles.length ? `${titles.join(' ')} ${first}` : first;
+  })();
 
   // Derive page title from pathname if not passed
   const derivedTitle = pageTitle ?? (() => {
@@ -511,8 +528,7 @@ const s = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     color: C.textPrimary,
-    // @ts-ignore
-    outlineStyle: 'none',
+    outlineStyle: 'none' as any,
   },
   headerBtn: {
     width: 36,

@@ -6,13 +6,13 @@
 import React, { useRef, useState, useMemo } from 'react';
 import {
   View, Text, Pressable, ScrollView, StyleSheet,
-  Animated, PanResponder, ActivityIndicator,
-} from 'react-native';
+  Animated, PanResponder, } from 'react-native';
 import { ChevronLeft, MessageCircle, ChevronRight, Send } from 'lucide-react-native';
 import Svg, { Circle, G } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { DS } from '../../../core/theme/dsTokens';
 import { MFONT, useMobileTheme } from '../../../core/theme/mobileTheme';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
 
 // ─── Stage labels ────────────────────────────────────────────────────────────
 const STAGE_LABELS = ['Sipariş', 'CAD', 'Üretim', 'QA', 'Teslim'];

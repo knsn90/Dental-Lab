@@ -10,12 +10,15 @@
  * Patterns NativeWind — NO StyleSheet.create().
  */
 import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
+import { localeTag } from '../../../core/i18n';
 import {
   View, Text, ScrollView, Pressable,
   useWindowDimensions, RefreshControl,
   Animated, Platform, Easing,
 } from 'react-native';
-import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../../../core/store/authStore';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
@@ -23,7 +26,7 @@ import {
   Plus, ClipboardList, TrendingUp, AlertTriangle, Package,
   Calendar, ShieldCheck, Inbox, Activity, CheckCircle,
   ChevronRight, ArrowUpRight, ArrowRight, Clock, Trophy,
-  Check, Clipboard, Box, Settings,
+  Check, Clipboard, Box, Settings, ListChecks,
 } from 'lucide-react-native';
 
 // DS tokens — single source of truth for all design values
@@ -33,6 +36,11 @@ import { isOrderOverdue } from '../../orders/constants';
 import { fetchTodayProvas } from '../../provas/api';
 import { PROVA_TYPES } from '../../provas/types';
 import { supabase } from '../../../core/api/supabase';
+import { NumberTickerX } from '../../../core/ui/NumberTickerX';
+import { useDashboardCache } from '../../../core/store/dashboardCacheStore';
+import { useUiOverlayStore } from '../../../core/store/uiOverlayStore';
+import { useNewOrderModalStore } from '../../../core/store/newOrderModalStore';
+import { FaceScanQuickAction } from '../../orders/components/FaceScanQuickAction';
 
 // Display font — Patterns: Inter Tight Light (300), tight tracking
 const SERIF = {
@@ -207,7 +215,7 @@ interface TodayProva {
     doctor?: { full_name: string; clinic?: { name: string } | null };
   } | null;
 }
-interface MonthBar    { month: string; count: number; }
+interface MonthBar    { month: string; count: number; teeth?: number; }
 interface StationStat { station_name: string; station_color: string | null; avg_duration_hours: number; active_count: number; total_processed: number; }
 interface TechStat    { technician_name: string; approval_rate: number; avg_work_duration_hours: number; total_assigned: number; }
 
@@ -215,7 +223,7 @@ const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> =
   alindi:          { label: 'Alındı',          color: DS.ink[500], bg: 'rgba(0,0,0,0.05)' },
   uretimde:        { label: 'Üretimde',        color: '#9C5E0E',       bg: 'rgba(232,155,42,0.15)' },
   kalite_kontrol:  { label: 'Kalite Kontrol',  color: '#1F5689',       bg: 'rgba(74,143,201,0.12)' },
-  teslimata_hazir: { label: 'Teslimata Hazır', color: '#1F6B47',       bg: 'rgba(45,154,107,0.12)' },
+  teslimata_hazir: { label: 'Kuryeye Teslim Edildi', color: '#1F6B47',       bg: 'rgba(45,154,107,0.12)' },
   teslim_edildi:   { label: 'Teslim Edildi',   color: DS.ink[400],bg: 'rgba(0,0,0,0.04)' },
 };
 
@@ -228,11 +236,8 @@ function fmtDate(date: string) {
   const d = new Date(date);
   return `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}.${d.getFullYear()}`;
 }
-function getTodayLabel() {
-  const d = new Date();
-  const days   = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
-  const months = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
-  return `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]}`;
+function getTodayLabel(lng?: string) {
+  return new Date().toLocaleDateString(localeTag(lng), { weekday: 'long', day: 'numeric', month: 'long' });
 }
 function initials(name?: string | null) {
   if (!name) return '--';
@@ -303,10 +308,11 @@ function CardHeader({ title, right, display }: { title: string; right?: React.Re
 }
 
 // ── Animated Aktif Vaka Card — pulsing CANLI dot + glow + breathing circles ──
-function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, router }: {
+function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, planningCount = 0, router }: {
   isDesktop: boolean;
   pipelineCounts: Record<string, number>;
   latestOrder: any;
+  planningCount?: number;
   router: any;
 }) {
   // Pulsing CANLI dot
@@ -350,16 +356,39 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, router 
 
   return (
     <Card style={{ flex: isDesktop ? 1.1 : undefined, marginBottom: isDesktop ? 0 : 14 }}>
-      {/* Dark section */}
+      {/* Dark section — native gradient via SVG */}
       <View style={{
         flex: 1,
         // @ts-ignore web gradient
         backgroundImage: `linear-gradient(180deg, ${DS.ink[700]} 0%, ${DS.ink[900]} 100%)`,
-        backgroundColor: DS.lab.surfaceAlt,
+        backgroundColor: DS.ink[900], // fallback solid
         alignItems: 'center', justifyContent: 'center',
         minHeight: 160, position: 'relative',
         overflow: 'hidden',
       }}>
+        {/* Native gradient — saffron radial-ish overlay (sol üstte sıcak) */}
+        {Platform.OS !== 'web' && (
+          <>
+            <View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                top: -80, left: -50,
+                width: 200, height: 200, borderRadius: 100,
+                backgroundColor: P, opacity: 0.55,
+              }}
+            />
+            <View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                top: -130, left: -100,
+                width: 320, height: 320, borderRadius: 160,
+                backgroundColor: P, opacity: 0.20,
+              }}
+            />
+          </>
+        )}
         {/* Ambient glow behind circles */}
         <Animated.View style={{
           position: 'absolute', width: 160, height: 160, borderRadius: 80,
@@ -384,6 +413,30 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, router 
             CANLI
           </Text>
         </View>
+
+        {/* Planlama bekleyen işler — sağ üst pill */}
+        {planningCount > 0 && (
+          <Pressable
+            onPress={() => router.push('/(lab)/all-orders?status=alindi' as any)}
+            className="absolute rounded-full"
+            style={{
+              top: 14, right: 14,
+              paddingHorizontal: 10, paddingVertical: 4,
+              backgroundColor: 'rgba(255,255,255,0.10)',
+              borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)',
+              flexDirection: 'row', alignItems: 'center', gap: 5,
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+            }}
+          >
+            <Inbox size={11} color={P} strokeWidth={2} />
+            <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFF', fontVariant: ['tabular-nums'] as any }}>
+              {planningCount}
+            </Text>
+            <Text style={{ fontSize: 9, fontWeight: '500', color: 'rgba(255,255,255,0.7)', letterSpacing: 0.5, textTransform: 'uppercase' }}>
+              planlama
+            </Text>
+          </Pressable>
+        )}
 
         {/* Pipeline circles mini with breathing */}
         <View className="flex-row items-center" style={{ gap: 12 }}>
@@ -584,11 +637,13 @@ function StatPill({ label, value, bg, color }: { label: string; value: string; b
 
 // ── Big Stat — Patterns section 10, Hero 1 right side ──
 function BigStat({ value, label }: { value: string | number; label: string }) {
+  const isNum = typeof value === 'number';
+  const numStyle = { ...SERIF, fontSize: DS.size.h2, letterSpacing: -0.025 * DS.size.h2, lineHeight: DS.size.h2, color: DS.ink[900] };
   return (
     <View style={{ alignItems: 'flex-end' }}>
-      <Text style={{ ...SERIF, fontSize: DS.size.h2, letterSpacing: -0.025 * DS.size.h2, lineHeight: DS.size.h2, color: DS.ink[900] }}>
-        {value}
-      </Text>
+      {isNum
+        ? <NumberTickerX value={value as number} duration={900} style={numStyle} />
+        : <Text style={numStyle}>{value}</Text>}
       <Text style={{ fontSize: DS.size.micro, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.06 * DS.size.micro, marginTop: 4 }}>
         {label}
       </Text>
@@ -596,32 +651,71 @@ function BigStat({ value, label }: { value: string | number; label: string }) {
   );
 }
 
-// ── Üretim Süresi Bar Chart (mockup card 2) ──
+// ── Üretim Süresi Bar Chart (admin paneli ile aynı pill design) ──
 function ProductionBarChart({ data }: { data: MonthBar[] }) {
   const max = Math.max(...data.map(d => d.count), 1);
   const highestIdx = data.reduce((best, d, i) => d.count > data[best].count ? i : best, 0);
-  const lastIdx = data.length - 1;
+
+  const FILL_LIGHT = `${P}55`;
+  const FILL_DARK  = P;
+  const RAIL_BG    = `${P}08`;
+  const STRIPE_BG  = `repeating-linear-gradient(135deg, ${P}14 0 6px, transparent 6px 12px)`;
 
   return (
-    <View className="flex-row items-end" style={{ flex: 1, gap: 6 }}>
+    <View className="flex-row items-end" style={{ flex: 1, gap: 10, minHeight: 120, paddingHorizontal: 2 }}>
       {data.map((d, i) => {
-        const h = Math.max((d.count / max) * 100, 6);
-        const isHighlight = i === highestIdx;
+        const pct = d.count > 0 ? Math.min(Math.max((d.count / max) * 100, 8), 100) : 0;
+        const isHighlight = i === highestIdx && d.count > 0;
+        const teeth = d.teeth ?? 0; // diş (üye) sayısı
         return (
-          <View key={i} style={{ flex: 1, alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
-            {isHighlight && d.count > 0 && (
-              <View style={{ paddingHorizontal: 8, paddingVertical: 2, backgroundColor: INK, borderRadius: 6 }}>
-                <Text style={{ fontSize: 10, color: '#FFF', fontWeight: '500' }}>{d.count}</Text>
+          <View key={i} style={{ flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end', gap: 6 }}>
+            <View style={{ width: '100%', maxWidth: 56, flex: 1, justifyContent: 'flex-end', alignItems: 'center' }}>
+              {/* Sabit etiket zonu — diş (üye) sayısı bar'ın üstünde, çakışmasız */}
+              <View style={{ height: 20, justifyContent: 'center', alignItems: 'center' }}>
+                {d.count > 0 ? (
+                  isHighlight ? (
+                    <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[100] }}>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: FILL_DARK }}>{teeth || d.count}</Text>
+                    </View>
+                  ) : (
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: DS.ink[500] }}>{teeth || d.count}</Text>
+                  )
+                ) : null}
               </View>
-            )}
-            <View style={{
-              width: '100%',
-              height: `${h}%` as any,
-              backgroundColor: isHighlight ? P : INK,
-              borderRadius: 4,
-              minHeight: 4,
-            }} />
-            <Text style={{ fontSize: 9, color: DS.ink[400], textTransform: 'uppercase' }}>
+              <View
+                style={{
+                  width: '100%',
+                  flex: 1,
+                  borderRadius: 999,
+                  backgroundColor: RAIL_BG,
+                  // @ts-ignore web
+                  backgroundImage: STRIPE_BG,
+                  overflow: 'hidden',
+                  position: 'relative' as any,
+                }}
+              >
+                {d.count > 0 && (
+                  <View
+                    style={{
+                      position: 'absolute',
+                      left: 0, right: 0, bottom: 0,
+                      height: `${pct}%`,
+                      borderRadius: 999,
+                      backgroundColor: isHighlight ? FILL_DARK : FILL_LIGHT,
+                      // @ts-ignore
+                      transition: 'height 800ms cubic-bezier(0.22, 1, 0.36, 1)',
+                    } as any}
+                  />
+                )}
+              </View>
+            </View>
+            <Text style={{
+              fontSize: 11,
+              fontWeight: isHighlight ? '700' : '500',
+              color: isHighlight ? INK : DS.ink[400],
+              textTransform: 'uppercase',
+              letterSpacing: 0.05 * 11,
+            }}>
               {d.month}
             </Text>
           </View>
@@ -631,73 +725,126 @@ function ProductionBarChart({ data }: { data: MonthBar[] }) {
   );
 }
 
-// ── Weekly Calendar Strip (mockup bottom-left) ──
+// ── Weekly Calendar Strip (admin paneli ile aynı: hatched pill + alınan/tamamlanan overlay) ──
 function WeeklyStrip({
-  weekDays, weekCounts, onPress,
+  weekDays, weekCounts, weekDone, weekTeeth, onPress,
 }: {
   weekDays: { label: string; date: string; isToday: boolean }[];
   weekCounts: Record<string, number>;
+  weekDone: Record<string, number>;
+  weekTeeth?: Record<string, number>;
   onPress: () => void;
 }) {
-  const totalProduction = Object.values(weekCounts).reduce((a, b) => a + b, 0);
-  const completedCount = Math.round(totalProduction * 0.65); // approximate
+  const totalReceived  = Object.values(weekCounts).reduce((a, b) => a + b, 0);
+  const totalCompleted = Object.values(weekDone).reduce((a, b) => a + b, 0);
+  const SCALE_MAX = 20;
 
-  // Week range label
-  const first = weekDays[0];
-  const last  = weekDays[6];
-  const fd = new Date(first.date);
-  const ld = new Date(last.date);
-  const rangeLabel = `${fd.getDate()}–${ld.getDate()} ${MONTHS_TR[ld.getMonth()]} ${ld.getFullYear()}`;
+  const SAGE_LIGHT = `${P}55`;
+  const SAGE_DARK  = P;
+  const RAIL_BG    = `${P}08`;
+  const STRIPE_BG  = `repeating-linear-gradient(135deg, ${P}14 0 6px, transparent 6px 12px)`;
 
   return (
-    <Card style={{ padding: 18, flex: 2 }}>
+    <Card style={{ padding: 18, flex: 1.5 }}>
       <View className="flex-row items-center" style={{ gap: 12, marginBottom: 14 }}>
         <Text style={{ fontSize: 15, fontWeight: '500', color: INK }}>Bu hafta</Text>
-        <Text style={{ fontSize: 12, color: DS.ink[400] }}>{rangeLabel}</Text>
         <View style={{ flex: 1 }} />
-        <View className="rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: DS.lab.bgSoft }}>
-          <Text style={{ fontSize: 11, fontWeight: '500', color: '#9C5E0E' }}>Üretimde {totalProduction}</Text>
+        <View className="flex-row items-center" style={{ gap: 10 }}>
+          <View className="flex-row items-center" style={{ gap: 5 }}>
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: SAGE_LIGHT }} />
+            <Text style={{ fontSize: 11, color: DS.ink[500] }}>Alınan </Text>
+            <NumberTickerX value={totalReceived} duration={700} style={{ fontSize: 11, color: DS.ink[500] } as any} />
+          </View>
+          <View className="flex-row items-center" style={{ gap: 5 }}>
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: SAGE_DARK }} />
+            <Text style={{ fontSize: 11, color: DS.ink[500] }}>Tamamlanan </Text>
+            <NumberTickerX value={totalCompleted} duration={700} style={{ fontSize: 11, color: DS.ink[500] } as any} />
+          </View>
         </View>
       </View>
 
-      <View className="flex-row" style={{ gap: 8, flex: 1 }}>
+      <View className="flex-row items-end" style={{ gap: 10, flex: 1, minHeight: 140, paddingHorizontal: 2 }}>
         {weekDays.map((day, i) => {
-          const count = weekCounts[day.date] ?? 0;
+          const received  = weekCounts[day.date] ?? 0;
+          const completed = weekDone[day.date] ?? 0;
+          const teeth     = weekTeeth?.[day.date] ?? 0; // diş (üye) sayısı
+          const receivedPct  = received > 0 ? Math.min(Math.max((received / SCALE_MAX) * 100, 8), 100) : 0;
+          const completedRel = received > 0 ? Math.min((completed / received) * 100, 100) : 0;
+          const empty = received === 0;
+          const showLabel = day.isToday && completed > 0;
+          const ratio = received > 0 ? Math.round((completed / received) * 100) : 0;
           return (
             <Pressable
               key={i}
               onPress={onPress}
-              style={{
-                flex: 1,
-                backgroundColor: day.isToday ? INK : DS.ink[50],
-                borderRadius: 14,
-                padding: 12,
-                gap: 8,
-                position: 'relative',
-              }}
+              style={{ flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end', gap: 6 }}
             >
-              <Text style={{
-                fontSize: 10, opacity: 0.6, letterSpacing: 0.05 * 10,
-                textTransform: 'uppercase',
-                color: day.isToday ? '#FFF' : INK,
-              }}>
-                {day.label}
-              </Text>
-              <Text style={{
-                ...SERIF, fontSize: 24, letterSpacing: -0.02 * 24, lineHeight: 24,
-                color: day.isToday ? '#FFF' : INK,
-              }}>
-                {count}
-              </Text>
-              <Text style={{ fontSize: 9, opacity: 0.5, color: day.isToday ? '#FFF' : INK }}>
-                sipariş
-              </Text>
-              {day.isToday && (
+              <View style={{ width: '100%', maxWidth: 56, flex: 1, justifyContent: 'flex-end', alignItems: 'center' }}>
+                {/* Sabit yükseklikli etiket zonu — bar her zaman bunun altında
+                    kalır, böylece dolu bar üst legend ile çakışmaz. */}
+                <View style={{ height: 20, justifyContent: 'center', alignItems: 'center' }}>
+                  {showLabel ? (
+                    <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[100] }}>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: SAGE_DARK }}>{ratio}%</Text>
+                    </View>
+                  ) : !empty ? (
+                    // Üye (diş) sayısı — o gün alınan işlerin toplam diş adedi
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: day.isToday ? INK : DS.ink[500] }}>
+                      {teeth || received}
+                    </Text>
+                  ) : null}
+                </View>
                 <View
-                  className="absolute rounded-full"
-                  style={{ top: 10, right: 10, width: 6, height: 6, backgroundColor: P }}
-                />
-              )}
+                  style={{
+                    width: '100%',
+                    flex: 1,
+                    borderRadius: 999,
+                    backgroundColor: RAIL_BG,
+                    // @ts-ignore
+                    backgroundImage: STRIPE_BG,
+                    overflow: 'hidden',
+                    position: 'relative' as any,
+                  }}
+                >
+                  {!empty && (
+                    <View
+                      style={{
+                        position: 'absolute',
+                        left: 0, right: 0, bottom: 0,
+                        height: `${receivedPct}%`,
+                        borderRadius: 999,
+                        backgroundColor: SAGE_LIGHT,
+                        overflow: 'hidden',
+                        // @ts-ignore
+                        transition: 'height 800ms cubic-bezier(0.22, 1, 0.36, 1)',
+                      } as any}
+                    >
+                      {completedRel > 0 && (
+                        <View
+                          style={{
+                            position: 'absolute',
+                            left: 0, right: 0, bottom: 0,
+                            height: `${completedRel}%`,
+                            borderRadius: 999,
+                            backgroundColor: SAGE_DARK,
+                            // @ts-ignore
+                            transition: 'height 800ms cubic-bezier(0.22, 1, 0.36, 1)',
+                          } as any}
+                        />
+                      )}
+                    </View>
+                  )}
+                </View>
+              </View>
+              <Text style={{
+                fontSize: 11,
+                fontWeight: day.isToday ? '700' : '500',
+                color: day.isToday ? INK : DS.ink[400],
+                textTransform: 'uppercase',
+                letterSpacing: 0.05 * 11,
+              }}>
+                {day.label[0]}
+              </Text>
             </Pressable>
           );
         })}
@@ -866,32 +1013,56 @@ const PIPELINE_STAGES = [
 
 export function LabDashboardScreen() {
   const router       = useRouter();
+  const { t, i18n }  = useTranslation();
   const { profile }  = useAuthStore();
   const { orders, loading, refetch } = useTodayOrders();
   const { width }    = useWindowDimensions();
   const isDesktop    = width >= 900;
+  const insets       = useSafeAreaInsets();
   const { setTitle, clear } = usePageTitleStore();
 
-  useEffect(() => { setTitle(getTodayLabel()); return clear; }, []);
+  useEffect(() => { setTitle(getTodayLabel(i18n.language)); return clear; }, [i18n.language]);
 
-  const [provas,          setProvas]         = useState<TodayProva[]>([]);
-  const [provasLoading,   setProvasLoading]  = useState(true);
-  const [monthly,         setMonthly]        = useState<MonthBar[]>([]);
-  const [recentOrders,    setRecentOrders]   = useState<any[]>([]);
-  const [todayNewCount,   setTodayNewCount]  = useState(0);
-  const [totalActiveCount,setTotalActive]    = useState(0);
-  const [totalCaseCount,  setTotalCases]     = useState(0);
+  // Önceki ziyaretten cache — anında render, arka planda taze veri çek.
+  const cache = useDashboardCache(s => s.lab);
+  const setCache = useDashboardCache(s => s.setLab);
+
+  const [provas,          setProvas]         = useState<TodayProva[]>(cache?.provas ?? []);
+  const [provasLoading,   setProvasLoading]  = useState(!cache);
+  // Sipariş Trendi: ilk yüklemede de pill rail'leri görünür olsun diye 6 boş bucket ile başlat
+  const [monthly,         setMonthly]        = useState<MonthBar[]>(() => {
+    if (cache?.monthly && cache.monthly.length > 0) return cache.monthly;
+    const out: MonthBar[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(); d.setMonth(d.getMonth() - i);
+      out.push({ month: MONTHS_TR[d.getMonth()], count: 0 });
+    }
+    return out;
+  });
+  const [recentOrders,    setRecentOrders]   = useState<any[]>(cache?.recentOrders ?? []);
+  const [todayNewCount,   setTodayNewCount]  = useState(cache?.todayNewCount ?? 0);
+  const [totalActiveCount,setTotalActive]    = useState(cache?.totalActive ?? 0);
+  const [totalCaseCount,  setTotalCases]     = useState(cache?.totalCases ?? 0);
   const [refreshing,      setRefreshing]     = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  // Global Bell tetiklendiğinde (herhangi bir sayfadan) sheet'i aç
+  const notificationsPulse = useUiOverlayStore(s => s.notificationsPulse);
+  useEffect(() => { if (notificationsPulse > 0) setNotificationsOpen(true); }, [notificationsPulse]);
   const [hovered,         setHovered]        = useState<string | null>(null);
-  const [stationStats,    setStationStats]   = useState<StationStat[]>([]);
-  const [topTechs,        setTopTechs]       = useState<TechStat[]>([]);
-  const [pendingCount,    setPendingCount]   = useState(0);
-  const [weekCounts,      setWeekCounts]     = useState<Record<string, number>>({});
-  const [pipelineCounts,  setPipelineCounts] = useState<Record<string, number>>({});
+  const [stationStats,    setStationStats]   = useState<StationStat[]>(cache?.stationStats ?? []);
+  const [topTechs,        setTopTechs]       = useState<TechStat[]>(cache?.topTechs ?? []);
+  const [pendingCount,    setPendingCount]   = useState(cache?.pendingCount ?? 0);
+  const [todayDeliveredCount, setTodayDelivered] = useState(0);
+  const [weekCounts,      setWeekCounts]     = useState<Record<string, number>>(cache?.weekCounts ?? {});
+  const [weekDone,        setWeekDone]       = useState<Record<string, number>>({});
+  const [weekTeeth,       setWeekTeeth]      = useState<Record<string, number>>(cache?.weekTeeth ?? {});
+  const [pipelineCounts,  setPipelineCounts] = useState<Record<string, number>>(cache?.pipelineCounts ?? {});
 
   const [stockSummary, setStockSummary] = useState<{
     lowCount: number; materialCostMtd: number; wasteCostMtd: number; topUsedName: string | null;
-  } | null>(null);
+  } | null>(cache?.stockSummary ?? null);
+  // Planlama bekleyen siparişler — yeni gelen, henüz triajı yapılmamış
+  const [triagePending, setTriagePending] = useState<any[]>(cache?.triagePending ?? []);
 
   const isManager  = profile?.role === 'manager' || profile?.user_type === 'admin';
   const today      = todayStr();
@@ -902,18 +1073,21 @@ export function LabDashboardScreen() {
   // ── Data loaders ──
   const loadPipeline = useCallback(async () => {
     try {
-      const statuses = ['alindi', 'uretimde', 'kalite_kontrol', 'teslimata_hazir', 'teslim_edildi'];
-      const results = await Promise.all(
-        statuses.map(st =>
-          supabase.from('work_orders').select('id', { count: 'exact', head: true }).eq('status', st)
-        )
-      );
+      // Tüm aktif + teslim statülerini tek sorguda say (iptal hariç). RLS lab'a kısıtlar.
+      // Önemli: 'asamada', 'kutu_atandi', 'atama_bekleniyor', 'kurye_bekleniyor',
+      // 'kuryede', 'tasarim_onayi_bekleniyor' de aktif üretim sayılır — eskiden atlanıyordu,
+      // bu yüzden aşamadaki işler panoda 0 görünüyordu.
+      const ACTIVE = ['alindi', 'kutu_atandi', 'atama_bekleniyor', 'tasarim_onayi_bekleniyor',
+                      'asamada', 'uretimde', 'kalite_kontrol', 'teslimata_hazir',
+                      'kurye_bekleniyor', 'kuryede'];
+      const { data, error } = await supabase.from('work_orders').select('status').neq('status', 'iptal');
+      if (error) throw error;
       const counts: Record<string, number> = {};
-      statuses.forEach((st, i) => { counts[st] = results[i].count ?? 0; });
+      (data ?? []).forEach((r: any) => { const s = r.status; if (s) counts[s] = (counts[s] ?? 0) + 1; });
       setPipelineCounts(counts);
 
-      // Total active (non-delivered)
-      const active = statuses.slice(0, 4).reduce((s, st, i) => s + (results[i].count ?? 0), 0);
+      // Total active (teslim edilmemiş + iptal olmayan)
+      const active = ACTIVE.reduce((s, st) => s + (counts[st] ?? 0), 0);
       setTotalActive(active);
     } catch (_) {}
   }, []);
@@ -922,50 +1096,126 @@ export function LabDashboardScreen() {
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
 
-    const { data } = await supabase
-      .from('work_orders')
-      .select('id, order_number, work_type, status, delivery_date, created_at, patient_name, doctor:doctor_id(full_name)')
-      .gte('created_at', sixMonthsAgo.toISOString())
-      .order('created_at', { ascending: false });
+    // 5 sorgu paralel — eskiden seri idi (~4× round-trip).
+    const [mainRes, todayRes, approvalRes, triageRes, deliveredTodayRes] = await Promise.all([
+      supabase
+        .from('work_orders')
+        // NOT: work_orders.doctor_id polymorphic (profiles VEYA doctors) — FK
+        // tek tabloya bağlı değil, bu yüzden `doctor:doctor_id(...)` embed'i
+        // PostgREST'te çözülemez ve sorgu hatayla döner. Dashboard için sadece
+        // doctor_id'yi çekiyoruz; gerekirse doctor adını sonradan ayrı sorgu ile
+        // resolve ediyoruz (latestOrder kartı patient_name'e geri düşer).
+        .select('id, order_number, work_type, status, delivery_date, created_at, patient_name, doctor_id, tooth_numbers')
+        .gte('created_at', sixMonthsAgo.toISOString())
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('work_orders')
+        .select('id', { count: 'exact', head: true })
+        .gte('created_at', `${today}T00:00:00`),
+      supabase
+        .from('work_orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'kalite_kontrol'),
+      supabase
+        .from('work_orders')
+        .select('id, order_number, work_type, patient_name, created_at, is_urgent, doctor_id')
+        .eq('status', 'alindi')
+        .is('triaged_at', null)
+        .or('is_archived.is.null,is_archived.eq.false')
+        .order('created_at', { ascending: false })
+        .limit(5),
+      // Bugün teslim edilen (BUGÜN BİTEN kartı) — status teslim_edildi + bugün güncellenen
+      supabase
+        .from('work_orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'teslim_edildi')
+        .gte('updated_at', `${today}T00:00:00`),
+    ]);
 
+    const data = mainRes.data;
     if (data) {
-      setRecentOrders(data.slice(0, 5));
+      // Doktor isimlerini polymorphic kaynaktan (profiles + doctors) ayrı
+      // sorgu ile resolve et — embed kullanmadığımız için manuel.
+      const docIds = Array.from(new Set(
+        data.slice(0, 5).map((o: any) => o.doctor_id).filter(Boolean),
+      ));
+      const doctorNameMap = new Map<string, string>();
+      if (docIds.length > 0) {
+        const [{ data: profs }, { data: docs }] = await Promise.all([
+          supabase.from('profiles').select('id, full_name').in('id', docIds),
+          supabase.from('doctors').select('id, full_name').in('id', docIds),
+        ]);
+        (profs ?? []).forEach((p: any) => { if (p.full_name) doctorNameMap.set(p.id, p.full_name); });
+        (docs  ?? []).forEach((d: any) => { if (!doctorNameMap.has(d.id) && d.full_name) doctorNameMap.set(d.id, d.full_name); });
+      }
+      const recent5 = data.slice(0, 5).map((o: any) => ({
+        ...o,
+        doctor: o.doctor_id && doctorNameMap.has(o.doctor_id)
+          ? { full_name: doctorNameMap.get(o.doctor_id)! }
+          : null,
+      }));
+      setRecentOrders(recent5);
       setTotalCases(data.length);
 
-      const bars: MonthBar[] = [];
+      // Tek pass: monthly + week count + diş (üye) sayısı
+      const weekDays = getWeekDays();
+      const monthBuckets: { y: number; m: number; count: number; teeth: number }[] = [];
       for (let i = 5; i >= 0; i--) {
         const d = new Date(); d.setMonth(d.getMonth() - i);
-        const y = d.getFullYear(), m = d.getMonth();
-        bars.push({
-          month: MONTHS_TR[m],
-          count: data.filter(o => {
-            const c = new Date(o.created_at);
-            return c.getFullYear() === y && c.getMonth() === m;
-          }).length,
-        });
+        monthBuckets.push({ y: d.getFullYear(), m: d.getMonth(), count: 0, teeth: 0 });
       }
-      setMonthly(bars);
-
-      // Week counts
-      const weekDays = getWeekDays();
       const wc: Record<string, number> = {};
-      weekDays.forEach(wd => {
-        wc[wd.date] = data.filter(o => o.created_at?.startsWith(wd.date)).length;
-      });
+      const wd: Record<string, number> = {};
+      const wt: Record<string, number> = {}; // haftalık diş (üye) sayısı
+      weekDays.forEach(d => { wc[d.date] = 0; wd[d.date] = 0; wt[d.date] = 0; });
+
+      for (const o of data) {
+        // Diş (üye) sayısı — tooth_numbers dizisinin uzunluğu
+        const teeth = Array.isArray((o as any).tooth_numbers) ? (o as any).tooth_numbers.length : 0;
+        const c = o.created_at ? new Date(o.created_at) : null;
+        if (c) {
+          const y = c.getFullYear(), m = c.getMonth();
+          for (const mb of monthBuckets) {
+            if (mb.y === y && mb.m === m) { mb.count++; mb.teeth += teeth; break; }
+          }
+          const isoDay = o.created_at?.slice(0, 10);
+          if (isoDay && wc[isoDay] !== undefined) {
+            wc[isoDay]++;
+            wt[isoDay] += teeth;
+            // Tamamlanan = teslim_edildi statüsü bu hafta içinde olan
+            if ((o as any).status === 'teslim_edildi') wd[isoDay]++;
+          }
+        }
+      }
+      setMonthly(monthBuckets.map(b => ({ month: MONTHS_TR[b.m], count: b.count, teeth: b.teeth })));
       setWeekCounts(wc);
+      setWeekDone(wd);
+      setWeekTeeth(wt);
     }
 
-    const { count: todayCount } = await supabase
-      .from('work_orders')
-      .select('id', { count: 'exact', head: true })
-      .gte('created_at', `${today}T00:00:00`);
-    setTodayNewCount(todayCount ?? 0);
-
-    const { count: approvalCount } = await supabase
-      .from('work_orders')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'kalite_kontrol');
-    setPendingCount(approvalCount ?? 0);
+    setTodayNewCount(todayRes.count ?? 0);
+    setPendingCount(approvalRes.count ?? 0);
+    setTodayDelivered(deliveredTodayRes.count ?? 0);
+    // Triage listesi: doktor adlarını ayrı sorgu ile resolve et
+    const triageData = triageRes.data ?? [];
+    if (triageData.length > 0) {
+      const tIds = Array.from(new Set(triageData.map((o: any) => o.doctor_id).filter(Boolean)));
+      const tMap = new Map<string, string>();
+      if (tIds.length > 0) {
+        const [{ data: tProfs }, { data: tDocs }] = await Promise.all([
+          supabase.from('profiles').select('id, full_name').in('id', tIds),
+          supabase.from('doctors').select('id, full_name').in('id', tIds),
+        ]);
+        (tProfs ?? []).forEach((p: any) => { if (p.full_name) tMap.set(p.id, p.full_name); });
+        (tDocs  ?? []).forEach((d: any) => { if (!tMap.has(d.id) && d.full_name) tMap.set(d.id, d.full_name); });
+      }
+      setTriagePending(triageData.map((o: any) => ({
+        ...o,
+        doctor: o.doctor_id && tMap.has(o.doctor_id) ? { full_name: tMap.get(o.doctor_id)! } : null,
+      })));
+    } else {
+      setTriagePending([]);
+    }
   }, [today]);
 
   const loadAnalytics = useCallback(async () => {
@@ -1031,7 +1281,26 @@ export function LabDashboardScreen() {
     setRefreshing(false);
   };
 
-  useEffect(() => { loadProvas(); loadExtra(); loadAnalytics(); loadPipeline(); loadStockSummary(); }, [loadStockSummary]);
+  useEffect(() => {
+    // 5 bağımsız loader paralel — eskiden seri başlatılıyordu (~2sn → ~400ms).
+    Promise.all([loadProvas(), loadExtra(), loadAnalytics(), loadPipeline(), loadStockSummary()]);
+  }, [loadProvas, loadExtra, loadAnalytics, loadPipeline, loadStockSummary]);
+
+  // Local state → global cache (debounced; navigation sonrası anında render)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setCache({
+        pipelineCounts, totalActive: totalActiveCount, totalCases: totalCaseCount,
+        todayNewCount, pendingCount, monthly, weekCounts, weekTeeth,
+        recentOrders, triagePending, stationStats, topTechs, stockSummary, provas,
+      });
+    }, 200);
+    return () => clearTimeout(t);
+  }, [
+    pipelineCounts, totalActiveCount, totalCaseCount, todayNewCount, pendingCount,
+    monthly, weekCounts, weekTeeth, recentOrders, triagePending, stationStats, topTechs,
+    stockSummary, provas, setCache,
+  ]);
 
   // ── Derived data ──
   const weekDays = getWeekDays();
@@ -1078,40 +1347,117 @@ export function LabDashboardScreen() {
   }
 
   // ══════════════════════════════════════════════════════════════
-  //  MOBILE — Variant B Home (B1)
+  //  MOBILE — Aydın Lab handoff (LabMobileDashboard)
   // ══════════════════════════════════════════════════════════════
   if (!isDesktop) {
-    const { HomeB1: HomeB1Cmp, defaultInsight: defIns } = require('../../../core/ui/HomeB1');
-    const kpis = [
-      { label: 'Aktif',   value: String(totalActiveCount), up: true },
-      { label: 'Bugün',   value: String(todayNewCount) },
-      { label: 'Geciken', value: String(overdueOrders.length), up: false },
-      { label: 'Onay',    value: String(pendingCount) },
-    ];
-    const priority = recentOrders.slice(0, 3).map((o: any) => ({
-      id: String(o.order_number ?? o.id).slice(-5),
-      type: o.work_type ?? 'Sipariş',
-      due: o.delivery_date ? fmtDate(o.delivery_date) : '—',
-      status: o.status,
-      statusLabel: o.status,
-      clinic: o.doctor_name ?? '—',
-      avatar: (o.doctor_name ?? '?').slice(0, 2).toUpperCase(),
+    const { LabMobileDashboard } = require('../components/LabMobileDashboard');
+    const { NotificationsSheet } = require('../../../core/ui/mobile/NotificationsSheet');
+
+    // Stage counts for hero
+    const stageCounts = {
+      alindi: (pipelineCounts['alindi'] ?? 0) + (pipelineCounts['kutu_atandi'] ?? 0)
+            + (pipelineCounts['atama_bekleniyor'] ?? 0) + (pipelineCounts['tasarim_onayi_bekleniyor'] ?? 0),
+      uretim: (pipelineCounts['uretimde'] ?? 0) + (pipelineCounts['asamada'] ?? 0),
+      kk:     (pipelineCounts['kalite_kontrol'] ?? 0),
+      hazir:  (pipelineCounts['teslimata_hazir'] ?? 0) + (pipelineCounts['kurye_bekleniyor'] ?? 0)
+            + (pipelineCounts['kuryede'] ?? 0),
+    };
+    const totalPipe = Object.values(pipelineCounts).reduce((s, v) => s + v, 0) || 1;
+    const deliveredPct = Math.round(((pipelineCounts['teslim_edildi'] ?? 0) / totalPipe) * 100);
+
+    // Week bars (Pzt→Paz) — tüm veriden hesaplanan weekCounts/weekDone'tan türet.
+    // (Eskiden useTodayOrders'tan geliyordu; o yalnız bugün/gecikmiş aktifleri içerdiği
+    // için hafta grafiği hep boş kalıyordu.)
+    const wdays = getWeekDays();
+    const weekBars: number[]     = wdays.map(d => weekCounts[d.date] ?? 0);
+    const weekDoneBars: number[] = wdays.map(d => weekDone[d.date] ?? 0);
+    const monthsShort = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
+    const ws = new Date(wdays[0].date + 'T00:00:00');
+    const we = new Date(wdays[6].date + 'T00:00:00');
+    const weekRange = `${ws.getDate()} ${monthsShort[ws.getMonth()]} → ${we.getDate()} ${monthsShort[we.getMonth()]}`;
+
+    // Delayed cases — overdue + critical
+    const delayedItems = overdueOrders.slice(0, 3).map((o: any) => {
+      const due = new Date(o.delivery_date + 'T00:00:00').getTime();
+      const days = Math.max(1, Math.floor((Date.now() - due) / 86400000));
+      return {
+        id: String(o.order_number ?? o.id).slice(-6),
+        _id: o.id,
+        patient: o.patient_name ?? 'Hasta',
+        workType: o.work_type ?? '—',
+        remain: `${days}g geç`,
+        kind: 'delay' as const,
+      };
+    });
+
+    // Notification buckets
+    const notifApprovals = recentOrders
+      .filter((o: any) => o.status === 'onay_bekliyor')
+      .slice(0, 5)
+      .map((o: any) => ({
+        id: String(o.order_number ?? o.id).slice(-6),
+        _id: o.id,
+        patient: o.patient_name ?? 'Hasta',
+        workType: 'Onay bekliyor',
+      }));
+    const notifOverdue = overdueOrders.slice(0, 5).map((o: any) => {
+      const due = new Date(o.delivery_date + 'T00:00:00').getTime();
+      const days = Math.max(1, Math.floor((Date.now() - due) / 86400000));
+      return {
+        id: String(o.order_number ?? o.id).slice(-6),
+        _id: o.id,
+        patient: o.patient_name ?? 'Hasta',
+        workType: o.work_type ?? '—',
+        daysLate: days,
+      };
+    });
+    const notifUpcoming = todayDeliverable.slice(0, 5).map((o: any) => ({
+      id: String(o.order_number ?? o.id).slice(-6),
+      _id: o.id,
+      patient: o.patient_name ?? 'Hasta',
+      workType: o.work_type ?? '—',
+      remainLabel: 'Bugün',
     }));
+
     return (
-      <HomeB1Cmp
-        kicker={`${totalActiveCount} aktif vaka`}
-        headline={`Bugün ${todayDeliverable.length} vaka teslim.`}
-        sub={`Vardiyanız 08:00–18:00, ${overdueOrders.length} geciken vaka var.`}
-        primaryAction={{ label: 'Yeni vaka', onPress: () => router.push('/(lab)/new-order' as any) }}
-        secondaryAction={{ label: 'Tüm işler', onPress: () => router.push('/(lab)/all-orders' as any) }}
-        kpis={kpis}
-        priority={priority}
-        onOpenOrder={(o: any) => router.push(`/(lab)/order/${o.id}` as any)}
-        onSeeAllOrders={() => router.push('/(lab)/all-orders' as any)}
-        insight={defIns('lab')}
-        refreshing={refreshing || loading}
-        onRefresh={handleRefresh}
-      />
+      <>
+        <LabMobileDashboard
+          liveActive={totalActiveCount}
+          liveTotal={totalActiveCount + (pipelineCounts['teslim_edildi'] ?? 0)}
+          liveStages={stageCounts}
+          livePercent={deliveredPct}
+          activeOrders={totalActiveCount}
+          todayCompleted={todayDeliveredCount}
+          weekCompleted={weekDoneBars.reduce((a, b) => a + b, 0)}
+          overdueCount={overdueOrders.length}
+          pendingApprovalsCount={pendingCount}
+          weekBars={weekBars}
+          weekDoneBars={weekDoneBars}
+          weekRange={weekRange}
+          weekTotal={weekBars.reduce((a, b) => a + b, 0)}
+          delayed={delayedItems}
+          onNewOrder={() => useNewOrderModalStore.getState().setOpen(true)}
+          onScan={() => require('../../../core/store/scanStore').useScanStore.getState().setOpen(true)}
+          onApprovals={() => router.push('/(lab)/approvals' as any)}
+          onNotifications={() => setNotificationsOpen(true)}
+          onProfile={() => router.push('/(lab)/profile' as any)}
+          onOpenOrder={(id: string) => {
+            const found = delayedItems.find((x: any) => x.id === id);
+            if (found) router.push(`/(lab)/order/${(found as any)._id}` as any);
+          }}
+          refreshing={refreshing || loading}
+          onRefresh={handleRefresh}
+        />
+        <NotificationsSheet
+          visible={notificationsOpen}
+          onClose={() => setNotificationsOpen(false)}
+          onOpenOrder={(dbId: string) => router.push(`/(lab)/order/${dbId}` as any)}
+          panel="lab"
+          approvals={notifApprovals}
+          overdue={notifOverdue}
+          upcoming={notifUpcoming}
+        />
+      </>
     );
   }
 
@@ -1121,7 +1467,11 @@ export function LabDashboardScreen() {
   return (
     <ScrollView
       className="flex-1"
-      contentContainerStyle={{ padding: isDesktop ? 10 : 16, paddingBottom: 120 }}
+      contentContainerStyle={{
+        padding: isDesktop ? 10 : 16,
+        paddingTop: isDesktop ? 10 : insets.top + 8,
+        paddingBottom: 120,
+      }}
       refreshControl={<RefreshControl refreshing={refreshing || loading} onRefresh={handleRefresh} tintColor={P} />}
     >
       {/* ════════ HERO ════════ */}
@@ -1136,29 +1486,188 @@ export function LabDashboardScreen() {
               lineHeight: isDesktop ? 56 : 42,
               color: INK,
             }}>
-              Hoş geldin,{' '}
+              {t('dashboard.greetingWord')}{' '}
               <Text style={{ fontStyle: 'italic', color: DS.ink[400] }}>{firstName}</Text>
             </Text>
 
             {/* Stat pills row */}
             <View className="flex-row flex-wrap items-center" style={{ gap: 14, marginTop: 14 }}>
-              <StatPill label="Üretim" value={`${productionPct}%`} bg={INK} color="#FFF" />
-              <StatPill label="Teslim" value={`${deliveryPct}%`} bg={P} color={INK} />
-              <StatPill label="Hazır" value={`${readyPct}%`} bg="rgba(0,0,0,0.08)" color={INK} />
+              <StatPill label={t('dashboard.stages.production')} value={`${productionPct}%`} bg={INK} color="#FFF" />
+              <StatPill label={t('dashboard.delivered')} value={`${deliveryPct}%`} bg={P} color={INK} />
+              <StatPill label={t('dashboard.stages.ready')} value={`${readyPct}%`} bg="rgba(0,0,0,0.08)" color={INK} />
               {overdueOrders.length > 0 && (
-                <StatPill label="Geciken" value={`${overdueOrders.length}`} bg="rgba(217,75,75,0.12)" color="#9C2E2E" />
+                <StatPill label={t('dashboard.overdueLabel')} value={`${overdueOrders.length}`} bg="rgba(217,75,75,0.12)" color="#9C2E2E" />
               )}
+              <FaceScanQuickAction accentColor={P} compact />
             </View>
           </View>
 
           {/* Right: big stats */}
           <View className="flex-row" style={{ gap: 32, alignItems: 'flex-end' }}>
-            <BigStat value={totalActiveCount} label="Aktif sipariş" />
-            <BigStat value={provas.length} label="Prova" />
-            <BigStat value={totalCaseCount.toLocaleString('tr-TR')} label="Toplam vaka" />
+            <BigStat value={totalActiveCount} label={t('dashboard.activeOrders')} />
+            <BigStat value={provas.length} label={t('dashboard.tryin')} />
+            <BigStat value={totalCaseCount} label={t('dashboard.totalCases')} />
           </View>
         </View>
       </View>
+
+      {/* ════════ PLANLAMA BEKLEYEN SİPARİŞLER ════════
+          Panel accent'ine uygun (lab = safran gold) kompakt gradient:
+          tek satır + "Yeni N planlama bekliyor". Gold açık olduğu için
+          metin/ikonlar koyu (INK). */}
+      {triagePending.length > 0 && isManager && (
+        <Pressable
+          onPress={() => router.push('/(lab)/all-orders?status=alindi' as any)}
+          style={{
+            marginBottom: 14,
+            borderRadius: 20,
+            overflow: 'hidden',
+            // @ts-ignore web gradient — panel safran gold
+            backgroundImage: `linear-gradient(135deg, ${P} 0%, ${DS.lab.primaryDeep} 100%)`,
+            backgroundColor: P,
+            ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+          }}
+        >
+          <View style={{ paddingHorizontal: 20, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.10)', alignItems: 'center', justifyContent: 'center' }}>
+              <Inbox size={18} color={INK} strokeWidth={1.8} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <View className="flex-row items-center" style={{ gap: 6, flexWrap: 'wrap' }}>
+                <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: INK }} />
+                <Text style={{ fontSize: 9, fontWeight: '600', color: INK, letterSpacing: 0.5, textTransform: 'uppercase', opacity: 0.65 }}>Yeni</Text>
+                <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.5, lineHeight: 24, color: INK, marginLeft: 4 }}>
+                  {triagePending.length}
+                </Text>
+                <Text style={{ fontSize: 13, color: INK, marginLeft: 2, opacity: 0.8 }}>planlama bekliyor</Text>
+              </View>
+            </View>
+            <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.10)', alignItems: 'center', justifyContent: 'center' }}>
+              <ArrowUpRight size={14} color={INK} strokeWidth={1.8} />
+            </View>
+          </View>
+        </Pressable>
+      )}
+
+      {/* Legacy verbose card — completely disabled (kept commented for reference) */}
+      {false && (
+        <View
+          style={{
+            marginBottom: 14,
+            borderRadius: 20,
+            backgroundColor: '#FFF7ED',
+            borderWidth: 1,
+            borderColor: 'rgba(217,119,6,0.30)',
+            overflow: 'hidden',
+          }}
+        >
+          {/* Header */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, padding: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(217,119,6,0.15)' }}>
+            <View style={{
+              width: 44, height: 44, borderRadius: 14,
+              alignItems: 'center', justifyContent: 'center',
+              backgroundColor: '#D97706',
+            }}>
+              <ListChecks size={20} color="#FFF" strokeWidth={1.8} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#9C5E0E', letterSpacing: 1.2, textTransform: 'uppercase' }}>
+                Planlama bekliyor · {triagePending.length} sipariş
+              </Text>
+              <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: INK, marginTop: 2, lineHeight: 28 }}>
+                Yeni gelen iş emirleri
+              </Text>
+              <Text style={{ fontSize: 12, color: '#7C4A0E', marginTop: 4 }}>
+                Aşamaları planla, ilk istasyona ata, üretime başla.
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => router.push('/(lab)/all-orders?status=alindi' as any)}
+              style={{
+                paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999,
+                backgroundColor: '#FFFFFF',
+                borderWidth: 1, borderColor: 'rgba(217,119,6,0.30)',
+                flexDirection: 'row', alignItems: 'center', gap: 5,
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '600', color: '#9C5E0E' }}>Tümünü gör</Text>
+              <ArrowUpRight size={12} color="#9C5E0E" strokeWidth={1.8} />
+            </Pressable>
+          </View>
+
+          {/* List */}
+          <View>
+            {triagePending.slice(0, 3).map((o, idx) => {
+              const created = o.created_at ? new Date(o.created_at) : null;
+              const ageH = created ? Math.floor((Date.now() - created.getTime()) / 3_600_000) : null;
+              const ageLabel = ageH == null ? '' :
+                ageH < 1 ? 'Az önce' :
+                ageH < 24 ? `${ageH} saat önce` :
+                `${Math.floor(ageH / 24)} gün önce`;
+              const doctorName = (o.doctor as any)?.full_name ?? '—';
+
+              return (
+                <Pressable
+                  key={o.id}
+                  onPress={() => router.push(`/(lab)/order/${o.id}` as any)}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 12,
+                    paddingHorizontal: 20, paddingVertical: 14,
+                    borderTopWidth: idx > 0 ? 1 : 0,
+                    borderTopColor: 'rgba(217,119,6,0.10)',
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  }}
+                >
+                  <View style={{
+                    width: 36, height: 36, borderRadius: 12,
+                    alignItems: 'center', justifyContent: 'center',
+                    backgroundColor: 'rgba(217,119,6,0.14)',
+                    borderWidth: 1, borderColor: 'rgba(217,119,6,0.22)',
+                  }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#9C5E0E' }}>
+                      #{(o.order_number ?? '').toString().slice(-4)}
+                    </Text>
+                  </View>
+
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: INK }} numberOfLines={1}>
+                        {o.patient_name ?? '—'}
+                      </Text>
+                      {o.is_urgent && (
+                        <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: '#FEF3C7', alignItems: 'center', justifyContent: 'center' }}>
+                          <Text style={{ fontSize: 9, fontWeight: '700', color: '#D97706' }}>!</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={{ fontSize: 11, color: '#7C4A0E', marginTop: 2 }} numberOfLines={1}>
+                      {o.work_type} · {doctorName} · {ageLabel}
+                    </Text>
+                  </View>
+
+                  <View style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 5,
+                    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999,
+                    backgroundColor: '#D97706',
+                  }}>
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: '#FFF' }}>Planla</Text>
+                    <ArrowUpRight size={11} color="#FFF" strokeWidth={2} />
+                  </View>
+                </Pressable>
+              );
+            })}
+
+            {triagePending.length > 3 && (
+              <View style={{ paddingHorizontal: 20, paddingVertical: 12, borderTopWidth: 1, borderTopColor: 'rgba(217,119,6,0.10)', alignItems: 'center' }}>
+                <Text style={{ fontSize: 11, color: '#7C4A0E', fontStyle: 'italic' }}>
+                  + {triagePending.length - 3} sipariş daha planlama bekliyor
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
 
       {/* ════════ 4-CARD GRID ════════ */}
       <View
@@ -1168,13 +1677,26 @@ export function LabDashboardScreen() {
         {/* Card 1: Aktif Vaka — dark top + white bottom + animations */}
         <AnimatedAktifVakaCard
           isDesktop={isDesktop}
-          pipelineCounts={pipelineCounts}
+          pipelineCounts={{
+            ...pipelineCounts,
+            // Gruplandırılmış sayımlar — tek statüs yerine birleşik göster
+            alindi:          (pipelineCounts['alindi'] ?? 0)
+                           + (pipelineCounts['kutu_atandi'] ?? 0)
+                           + (pipelineCounts['atama_bekleniyor'] ?? 0)
+                           + (pipelineCounts['tasarim_onayi_bekleniyor'] ?? 0),
+            uretimde:        (pipelineCounts['uretimde'] ?? 0)
+                           + (pipelineCounts['asamada'] ?? 0),
+            teslimata_hazir: (pipelineCounts['teslimata_hazir'] ?? 0)
+                           + (pipelineCounts['kurye_bekleniyor'] ?? 0)
+                           + (pipelineCounts['kuryede'] ?? 0),
+          }}
           latestOrder={latestOrder}
+          planningCount={triagePending.length}
           router={router}
         />
 
-        {/* Card 2: Sipariş Trendi (bar chart) */}
-        <Card style={{ flex: isDesktop ? 1.2 : undefined, padding: 22, marginBottom: isDesktop ? 0 : 14 }}>
+        {/* Card 2: Sipariş Trendi (admin paneliyle aynı hatched pill chart) */}
+        <Card style={{ flex: isDesktop ? 1 : undefined, padding: 22, marginBottom: isDesktop ? 0 : 14 }}>
           <View className="flex-row items-start justify-between" style={{ marginBottom: 12 }}>
             <View>
               <Text style={{ fontSize: 18, fontWeight: '500', letterSpacing: -0.015 * 18, color: INK }}>Sipariş Trendi</Text>
@@ -1182,7 +1704,12 @@ export function LabDashboardScreen() {
                 {monthly[monthly.length - 1]?.count ?? 0}
                 <Text style={{ fontSize: 14, color: DS.ink[400] }}> bu ay</Text>
               </Text>
-              <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 4 }}>Son 6 aylık trend</Text>
+              <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 4 }}>
+                Son 6 aylık trend
+                {(monthly[monthly.length - 1]?.teeth ?? 0) > 0
+                  ? ` · ${monthly[monthly.length - 1]?.teeth} diş`
+                  : ''}
+              </Text>
             </View>
             <Pressable
               onPress={() => router.push('/(lab)/all-orders' as any)}
@@ -1192,11 +1719,9 @@ export function LabDashboardScreen() {
               <ArrowUpRight size={14} color={DS.ink[500]} strokeWidth={1.8} />
             </Pressable>
           </View>
-          {monthly.length > 0 && (
-            <View style={{ flex: 1, minHeight: 120 }}>
-              <ProductionBarChart data={monthly} />
-            </View>
-          )}
+          <View style={{ flex: 1, minHeight: 140 }}>
+            <ProductionBarChart data={monthly} />
+          </View>
         </Card>
 
         {/* Card 3: Üretim Ring — PercentRingHero (Patterns 11.7) on white bg */}
@@ -1228,23 +1753,27 @@ export function LabDashboardScreen() {
           </View>
         </Card>
 
-        {/* Card 4: Bugünkü Görevler — Dark */}
+        {/* Card 4: Hızlı İşlem CTA — "Yeni sipariş oluştur" (görevler ile yer değişti) */}
         <View style={{ flex: isDesktop ? 1.4 : undefined }}>
-          <TasksCard tasks={taskItems} />
+          <AnimatedCTACard onPress={() => router.push('/(lab)/new-order' as any)} isDesktop={isDesktop} />
         </View>
       </View>
 
-      {/* ════════ BOTTOM ROW — Weekly + Hızlı İşlem CTA ════════ */}
+      {/* ════════ BOTTOM ROW — Weekly + Bugünkü Görevler ════════ */}
       <View className={isDesktop ? 'flex-row' : ''} style={{ gap: 14, marginBottom: 14 }}>
         {/* Weekly strip */}
         <WeeklyStrip
           weekDays={weekDays}
           weekCounts={weekCounts}
+          weekDone={weekDone}
+          weekTeeth={weekTeeth}
           onPress={() => router.push('/(lab)/all-orders' as any)}
         />
 
-        {/* Hızlı İşlem CTA — saffron gradient + animated (mockup bottom-right) */}
-        <AnimatedCTACard onPress={() => router.push('/(lab)/new-order' as any)} isDesktop={isDesktop} />
+        {/* Bugünkü Görevler — Dark (CTA ile yer değişti) */}
+        <View style={{ flex: isDesktop ? 1 : undefined, marginTop: isDesktop ? 0 : 14 }}>
+          <TasksCard tasks={taskItems} />
+        </View>
       </View>
 
       {/* ════════ EXTRA SECTIONS (below fold) ════════ */}
@@ -1329,8 +1858,8 @@ export function LabDashboardScreen() {
         }
       </Card>
 
-      {/* Stok & Maliyet */}
-      {stockSummary && (
+      {/* Stok & Maliyet — müdür panelinde gösterilmez (yönetici stoğu ayrı sayfadan yönetir) */}
+      {stockSummary && !isManager && (
         <Card style={{ marginBottom: 14 }}>
           <View className="flex-row items-center justify-between" style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
             <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>Stok & Maliyet</Text>

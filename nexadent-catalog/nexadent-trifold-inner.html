@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nexadent Trifold — Inner (A4 landscape, print-ready)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  /* ================================================================
+     Nexadent — Kurumsal Katalog 2026 · Trifold A4 · INNER face
+     Panels (L→R): Services · Technology · Workflow
+     297mm × 210mm (A4 landscape). Three equal columns.
+     Print this on the BACK of the Outer sheet, flip on long edge.
+     ================================================================ */
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  :root {
+    --ink:        #131c34;
+    --ink-strong: #111a30;
+    --brand:      #1d2f6f;
+    --brand-soft: #9fb0e0;
+    --mono:       #5566a6;
+    --paper:      #f3f5fb;
+  }
+
+  html, body { margin: 0; }
+
+  body {
+    background: #2a2f3a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 24px;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .sheet {
+    width: 297mm;
+    height: 210mm;
+    position: relative;
+    background: var(--paper);
+    display: grid;
+    /* Trifold geometry — this is the BACK of the Outer sheet. The tuck-in
+       flap is the RIGHT panel here (behind the Outer's left flap), so it is
+       the ~3mm-narrower column. Inner sheet L→R (behind): Front · Back · Flap
+       → Services · Technology · Workflow. Columns 100 | 100 | 97mm.
+       Folds at 100 & 200mm — they register back-to-back with the Outer's
+       97 & 197mm folds when printed duplex, flipped on the SHORT edge. */
+    grid-template-columns: 100mm 100mm 97mm;
+    font-family: 'Manrope', sans-serif;
+    color: var(--ink);
+    overflow: hidden;
+    box-shadow: 0 24px 80px rgba(0,0,0,.4);
+  }
+
+  .panel { position: relative; display: flex; flex-direction: column; padding: 44px 38px 38px; }
+  .spacer { flex: 1; }
+
+  /* eyebrow */
+  .eyebrow { display: flex; align-items: center; gap: 9px; }
+  .eyebrow .num  { font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: .22em; color: var(--mono); }
+  .eyebrow .rule { height: 1px; flex: 1; background: #c7cfe6; }
+  .eyebrow .tag  { font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: .24em; color: var(--mono); }
+
+  /* section heading */
+  h2 { font-weight: 800; font-size: 24px; line-height: 1.12; letter-spacing: -.02em; color: var(--ink-strong); }
+  h2 em { font-style: normal; color: var(--brand); }
+
+  /* footer strip */
+  .footer { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; }
+  .footer span { font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: .2em; color: #8790ab; }
+
+  /* image slot -> real photo frame */
+  .img-slot { display: block; width: 100%; object-fit: cover; border-radius: 4px; }
+
+  /* ============ PANEL 1 · SERVICES ============ */
+  .services h2 { margin: 26px 0 22px; }
+  .svc-list { display: flex; flex-direction: column; gap: 19px; }
+  .svc-list .rule { height: 1px; background: #e2e7f4; }
+  .svc .head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 7px; }
+  .svc .n     { font-family: 'Space Mono', monospace; font-size: 10px; font-weight: 700; color: var(--brand); }
+  .svc .t     { font-size: 12px; font-weight: 700; letter-spacing: .05em; color: var(--ink); }
+  .svc p      { font-size: 11px; line-height: 1.55; color: #4a5270; margin: 0; }
+
+  /* ============ PANEL 2 · TECHNOLOGY ============ */
+  .tech { background: #eef1f9; border-left: 1px solid #e0e5f2; border-right: 1px solid #e0e5f2; }
+  .tech h2 { margin: 26px 0 16px; }
+  .spec { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 0; border-bottom: 1px solid #dde3f1; }
+  .spec:last-of-type { border-bottom: 0; }
+  .spec .name { font-size: 11.5px; font-weight: 600; color: var(--ink); }
+  .spec .meta { font-family: 'Space Mono', monospace; font-size: 8.5px; letter-spacing: .08em; color: #6a7290; text-align: right; }
+
+  /* ============ PANEL 3 · WORKFLOW ============ */
+  .flow h2 { margin: 26px 0 6px; }
+  .flow .lede { font-size: 11px; line-height: 1.6; color: #4a5270; margin: 0 0 20px; }
+  .timeline { position: relative; display: flex; flex-direction: column; }
+  .timeline .spine { position: absolute; left: 12px; top: 12px; bottom: 12px; width: 1px; background: #cdd6ec; }
+  .step { display: flex; gap: 14px; padding-bottom: 15px; position: relative; }
+  .step:last-child { padding-bottom: 0; }
+  .step .dot {
+    flex: 0 0 25px; width: 25px; height: 25px; border-radius: 50%;
+    background: var(--brand); color: #fff;
+    font-family: 'Space Mono', monospace; font-size: 10px;
+    display: flex; align-items: center; justify-content: center;
+    position: relative; z-index: 1;
+  }
+  .step.last .dot { background: var(--brand-soft); color: var(--ink-strong); }
+  .step .st { font-size: 12px; font-weight: 600; color: var(--ink); }
+  .step .ss { font-size: 10px; color: #5a6284; margin-top: 2px; }
+
+  .archive { background: #e6eaf6; border-radius: 5px; padding: 13px 15px; margin-top: 16px; }
+  .archive .k { font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: .18em; color: var(--brand); margin-bottom: 4px; }
+  .archive p  { font-size: 10.5px; line-height: 1.55; color: #4a5270; margin: 0; }
+
+  /* fold guides */
+  .fold { position: absolute; width: 1px; height: 7px; background: rgba(110,127,188,.5); }
+  .fold.t1 { top: 0;    left: 100mm; }
+  .fold.b1 { bottom: 0; left: 100mm; }
+  .fold.t2 { top: 0;    left: 200mm; }
+  .fold.b2 { bottom: 0; left: 200mm; }
+
+  /* print */
+  @page { size: 297mm 210mm; margin: 0; }
+  @media print {
+    body { background: #fff; padding: 0; display: block; }
+    .sheet { box-shadow: none; width: 297mm; height: 210mm; }
+  }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <!-- ============ PANEL 1 · SERVICES ============ -->
+  <section class="panel services" aria-label="Inside · Services">
+    <div class="eyebrow">
+      <span class="num">03</span>
+      <span class="rule"></span>
+      <span class="tag">HİZMETLERİMİZ</span>
+    </div>
+
+    <h2>Tam dijital <em>restorasyon</em> çözümleri</h2>
+
+    <div class="svc-list">
+      <div class="svc">
+        <div class="head"><span class="n">01</span><span class="t">SABİT RESTORASYONLAR</span></div>
+        <p>Monolitik Zirkonya · Multilayer Zirkonya · E.max · Veneer · Inlay / Onlay</p>
+      </div>
+      <div class="rule"></div>
+      <div class="svc">
+        <div class="head"><span class="n">02</span><span class="t">İMPLANT ÇÖZÜMLERİ</span></div>
+        <p>Vida Tutuculu · Ti-Base · Kişiye Özel Abutment · Full Arch</p>
+      </div>
+      <div class="rule"></div>
+      <div class="svc">
+        <div class="head"><span class="n">03</span><span class="t">DİJİTAL TASARIM</span></div>
+        <p>Smile Design · Mockup · Photogrammetry</p>
+      </div>
+      <div class="rule"></div>
+      <div class="svc">
+        <div class="head"><span class="n">04</span><span class="t">3D ÜRETİM</span></div>
+        <p>Cerrahi Rehber · Modeller · Geçici Restorasyonlar</p>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <img class="img-slot" src="assets/inner-services.jpg" alt="Sabit restorasyon — zirkonya köprü"
+         style="height:120px;object-position:50% 45%;">
+
+    <div class="footer">
+      <span>HİZMETLER</span>
+      <span>04 / 12</span>
+    </div>
+  </section>
+
+  <!-- ============ PANEL 2 · TECHNOLOGY ============ -->
+  <section class="panel tech" aria-label="Inside · Technology">
+    <div class="eyebrow">
+      <span class="num">02</span>
+      <span class="rule"></span>
+      <span class="tag">ALTYAPI</span>
+    </div>
+
+    <h2>Teknolojik <em>altyapımız</em></h2>
+
+    <img class="img-slot" src="assets/hero-equipment.jpg" alt="Laboratuvar ekipmanları — 3D yazıcı, tarayıcı, porselen fırını"
+         style="height:132px;margin-bottom:20px;object-position:50% 58%;">
+
+    <div class="specs">
+      <div class="spec"><span class="name">5 Eksen CAD/CAM Kazıma</span><span class="meta">ZrO₂ / Ti / PMMA · &lt;10μm</span></div>
+      <div class="spec"><span class="name">SprintRay Pro 2</span><span class="meta">3D DLP · 50μm</span></div>
+      <div class="spec"><span class="name">Medit i900 Mobility</span><span class="meta">İNTRAORAL · STL/PLY</span></div>
+      <div class="spec"><span class="name">Photogrammetry</span><span class="meta">FULL ARCH · &lt;10μm</span></div>
+      <div class="spec"><span class="name">Ivoclar Programat P310</span><span class="meta">PORSELEN FIRINI</span></div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="footer">
+      <span>SUBTRACTIVE + ADDITIVE</span>
+      <span>03 / 12</span>
+    </div>
+  </section>
+
+  <!-- ============ PANEL 3 · WORKFLOW ============ -->
+  <section class="panel flow" aria-label="Inside · Workflow">
+    <div class="eyebrow">
+      <span class="num">05</span>
+      <span class="rule"></span>
+      <span class="tag">SÜREÇ</span>
+    </div>
+
+    <h2>Dijital <em>iş akışı</em></h2>
+    <p class="lede">Her vaka, taramadan teslimata yedi kontrollü aşamadan geçer.</p>
+
+    <div class="timeline">
+      <div class="spine"></div>
+      <div class="step"><span class="dot">01</span><div><div class="st">Intraoral Tarama</div><div class="ss">Dijital ölçü · fiziksel ölçüye son</div></div></div>
+      <div class="step"><span class="dot">02</span><div><div class="st">STL Transferi</div><div class="ss">Güvenli aktarım ve doğrulama</div></div></div>
+      <div class="step"><span class="dot">03</span><div><div class="st">CAD Tasarım</div><div class="ss">Anatomik ve fonksiyonel tasarım</div></div></div>
+      <div class="step"><span class="dot">04</span><div><div class="st">Hekim Onayı</div><div class="ss">Üretim öncesi tasarım onayı</div></div></div>
+      <div class="step"><span class="dot">05</span><div><div class="st">Üretim</div><div class="ss">Kazıma veya 3D baskı</div></div></div>
+      <div class="step"><span class="dot">06</span><div><div class="st">Kalite Kontrol</div><div class="ss">Uyum, marjin ve estetik doğrulama</div></div></div>
+      <div class="step last"><span class="dot">07</span><div><div class="st">Teslimat</div><div class="ss">Planlanan takvimde kliniğe teslim</div></div></div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="archive">
+      <div class="k">DİJİTAL ARŞİV</div>
+      <p>Her vaka arşivlenir; aynı standartta yeniden üretilebilir.</p>
+    </div>
+
+    <div class="footer">
+      <span>SÜREÇ</span>
+      <span>06 / 12</span>
+    </div>
+  </section>
+
+  <!-- fold guides -->
+  <div class="fold t1"></div>
+  <div class="fold b1"></div>
+  <div class="fold t2"></div>
+  <div class="fold b2"></div>
+
+</div>
+</body>
+</html>

@@ -6,6 +6,7 @@
  * Lucide icons.
  */
 import React, { useState, useMemo, useContext } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HubContext } from '../../../core/ui/HubContext';
 import {
   View, Text, ScrollView, Pressable, TextInput,
@@ -15,28 +16,39 @@ import {
 
 import { useExpenses } from '../hooks/useExpenses';
 import {
-  createExpense, updateExpense, deleteExpense,
+  createExpense, updateExpense, deleteExpense, deletePurchaseInvoice,
   EXPENSE_CATEGORY_LABELS, EXPENSE_CATEGORY_COLORS,
   type Expense, type ExpenseCategory, type ExpensePaymentMethod, type CreateExpenseParams,
 } from '../api';
 import { DS } from '../../../core/theme/dsTokens';
+import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { DatePicker } from '../../../core/ui/DatePicker';
 // Phase 3: Multi-currency
 import { MoneyInput } from '../../../core/money/MoneyInput';
 import { MoneyDisplay } from '../../../core/money/MoneyDisplay';
-// Phase 4: Aggregations + breakdown popup
-import { CurrencyBreakdown } from '../../../core/money/CurrencyBreakdown';
-import { sumByCurrency, mapAmountFields } from '../../../core/money/aggregations';
-import { useBaseCurrency } from '../../../core/money/currency';
+// Katı per-currency (groupByCurrency + MoneyMultiX)
+import { groupByCurrency, type CurrencyTotal } from '../../../core/money/aggregations';
+import { MoneyMultiX } from '../../../core/money/MoneyMultiX';
+import { formatMoney, useBaseCurrency, type Currency } from '../../../core/money/currency';
+// Form: yabancı para gider girişinde kur yakalama (snapshot) için
+import { baseSymbol } from '../../../core/money/baseCurrency';
+// Material purchase / inventory intake
+import { PurchaseFormModal } from '../../purchases/components/PurchaseFormModal';
+import { PurchaseInvoicePreviewModal } from '../../purchases/components/PurchaseInvoicePreviewModal';
 import { RecurringExpensesPanel } from '../components/RecurringExpensesPanel';
 import { downloadCsv, csvMoney, csvDate } from '../../../core/util/csvExport';
+import { buildExpensesReportHtml, downloadExpensesReport } from '../../../core/util/buildExpensesReportHtml';
+import { useAuthStore } from '../../../core/store/authStore';
 import { toast } from '../../../core/ui/Toast';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import {
   Plus, Search, X, Inbox, Pencil, Trash2,
   Package, Building, Users, Wrench, Receipt, MoreHorizontal,
   Repeat, FileSpreadsheet, Banknote, CreditCard, Landmark,
-  FileText, CircleDot,
+  FileText, CircleDot, FileUp, Sparkles, Check, SlidersHorizontal,
 } from 'lucide-react-native';
+import { supabase } from '../../../core/api/supabase';
 
 // ── Patterns tokens ─────────────────────────────────────────────────
 const DISPLAY = {
@@ -79,7 +91,11 @@ const CAT_ICON: Record<ExpenseCategory, React.ComponentType<any>> = {
   diger:    MoreHorizontal,
 };
 
+// Malzeme alımları artık Stok > Satın Alma akışından otomatik gider kaydı
+// olarak buraya yansır. Yine de manuel ekleme için kategori görünür kalır.
 const CATEGORIES: ExpenseCategory[] = ['malzeme', 'kira', 'personel', 'ekipman', 'vergi', 'diger'];
+// Genel gider formunda görünen kategoriler — sarf/demirbaş Stok › Satın Alma'dan girilir
+const FORM_CATEGORIES: ExpenseCategory[] = ['kira', 'personel', 'vergi', 'diger'];
 const PAY_METHODS: { v: ExpensePaymentMethod; l: string; icon: React.ComponentType<any> }[] = [
   { v: 'nakit',  l: 'Nakit',  icon: Banknote },
   { v: 'kart',   l: 'Kart',   icon: CreditCard },
@@ -89,9 +105,10 @@ const PAY_METHODS: { v: ExpensePaymentMethod; l: string; icon: React.ComponentTy
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────────
-function fmtMoney(n: number | string | null | undefined): string {
+// Katı per-currency: tutar KENDİ para biriminde.
+function fmtMoney(n: number | string | null | undefined, currency: string = 'TRY'): string {
   const v = typeof n === 'string' ? Number(n) : (n ?? 0);
-  return '₺' + v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return formatMoney(Number(v) || 0, (currency as Currency), { fractionDigits: 2 });
 }
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—';
@@ -102,208 +119,387 @@ function fmtDate(iso: string | null | undefined): string {
 // MAIN
 // ═════════════════════════════════════════════════════════════════════
 export function ExpensesScreen() {
+  const theme = usePanelTheme();
   const isEmbedded = useContext(HubContext);
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1024;
+  const insets = useSafeAreaInsets();
+  const topPad = isEmbedded || isDesktop ? 0 : Math.max(insets.top, 8) + 72;
   const [catFilter, setCatFilter] = useState<ExpenseCategory | 'all'>('all');
   const [search, setSearch] = useState('');
+  const [filterOpen, setFilterOpen] = useState(false);
+  type ExpSortKey = 'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc';
+  const [sortKey, setSortKey] = useState<ExpSortKey>('date_desc');
+  const SORT_OPTIONS: { key: ExpSortKey; label: string }[] = [
+    { key: 'date_desc',   label: 'En Yeni' },
+    { key: 'date_asc',    label: 'En Eski' },
+    { key: 'amount_desc', label: 'Tutar ↓' },
+    { key: 'amount_asc',  label: 'Tutar ↑' },
+  ];
   const [modalOpen, setModalOpen] = useState(false);
   const [recurringOpen, setRecurringOpen] = useState(false);
+  const [purchaseOpen, setPurchaseOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
+  // Satın alma faturası önizleme — gider satırı bir purchase_invoice'a bağlıysa tıklanır
+  const [previewInvoiceId, setPreviewInvoiceId] = useState<string | null>(null);
 
   const { expenses, loading, refetch } = useExpenses(
     catFilter !== 'all' ? { category: catFilter } : undefined,
   );
 
   const filtered = useMemo(() => {
-    if (!search) return expenses;
     const sl = search.toLowerCase();
-    return expenses.filter(e =>
-      e.description.toLowerCase().includes(sl) ||
-      EXPENSE_CATEGORY_LABELS[e.category].toLowerCase().includes(sl),
-    );
-  }, [expenses, search]);
+    const list = search
+      ? expenses.filter(e =>
+          e.description.toLowerCase().includes(sl) ||
+          EXPENSE_CATEGORY_LABELS[e.category].toLowerCase().includes(sl),
+        )
+      : expenses;
+    return [...list].sort((a, b) => {
+      switch (sortKey) {
+        case 'date_desc':   return (b.expense_date ?? '').localeCompare(a.expense_date ?? '');
+        case 'date_asc':    return (a.expense_date ?? '').localeCompare(b.expense_date ?? '');
+        case 'amount_desc': return Number(b.amount ?? 0) - Number(a.amount ?? 0);
+        case 'amount_asc':  return Number(a.amount ?? 0) - Number(b.amount ?? 0);
+        default:            return 0;
+      }
+    });
+  }, [expenses, search, sortKey]);
 
-  // Phase 3: amount_base (snapshot TRY) varsa onu kullan; yoksa amount (legacy)
-  const totalAmount = useMemo(
-    () => filtered.reduce((s, e) => s + Number(((e as any).amount_base ?? e.amount) || 0), 0),
+  const baseCurrency = useBaseCurrency();   // lab baz para birimi (Excel export / form kur yakalama)
+  // Katı per-currency: gider toplamları para birimine göre BAĞIMSIZ (asla toplanmaz).
+  const ccyOf = (e: any) => ((e.currency ?? 'TRY') as Currency);
+  const expByCcy = useMemo(
+    () => groupByCurrency(filtered, e => ({ amount: Number((e as any).amount) || 0, currency: ccyOf(e) })),
     [filtered],
   );
-  // Phase 4: currency breakdown
-  const baseCurrency = useBaseCurrency();
-  const expenseSummary = useMemo(
-    () => sumByCurrency(filtered, mapAmountFields),
-    [filtered],
-  );
 
-  const catTotals = useMemo(() => {
-    const map: Record<string, number> = {};
-    // Phase 3: kategori toplamları amount_base üzerinden (TRY karşılığı)
-    for (const e of expenses) map[e.category] = (map[e.category] ?? 0) + Number(((e as any).amount_base ?? e.amount) || 0);
+  // Kategori başına per-currency kırılım
+  const catByCcy = useMemo(() => {
+    const buckets: Record<string, Expense[]> = {};
+    for (const e of expenses) (buckets[e.category] ??= []).push(e);
+    const map: Record<string, CurrencyTotal[]> = {};
+    for (const cat of Object.keys(buckets)) {
+      map[cat] = groupByCurrency(buckets[cat], e => ({ amount: Number((e as any).amount) || 0, currency: ccyOf(e) }));
+    }
     return map;
   }, [expenses]);
 
   const openAdd = () => { setEditing(null); setModalOpen(true); };
   const openEdit = (e: Expense) => { setEditing(e); setModalOpen(true); };
 
-  const handleDelete = (e: Expense) => {
-    Alert.alert('Gider Sil', `"${e.description}" kaydını silmek istediğinize emin misiniz?`, [
-      { text: 'Vazgeç', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: async () => { await deleteExpense(e.id); refetch(); } },
-    ]);
+  const handleDelete = async (e: Expense) => {
+    const linkedInvoiceId = e.purchase_invoice_id ?? null;
+    const isWeb = Platform.OS === 'web';
+
+    const confirm1 = (msg: string): boolean | Promise<boolean> => {
+      if (isWeb && typeof window !== 'undefined') return window.confirm(msg);
+      return new Promise<boolean>(resolve => {
+        Alert.alert('Gider Sil', msg, [
+          { text: 'Vazgeç', style: 'cancel', onPress: () => resolve(false) },
+          { text: 'Sil', style: 'destructive', onPress: () => resolve(true) },
+        ]);
+      });
+    };
+
+    if (linkedInvoiceId) {
+      // Bu gider satın alma faturasından otomatik gelmiş — fatura + stok'u soracağız
+      const ok = await confirm1(
+        `"${e.description}" satın alma faturasından oluşmuş bir giderdir.\n\n` +
+        `DEVAM EDERSEN: fatura kaydı + cari hesap işlemi + bu gider silinecek.`
+      );
+      if (!ok) return;
+
+      // İkinci soru: stoğu da geri al?
+      let revertStock = false;
+      if (isWeb && typeof window !== 'undefined') {
+        revertStock = window.confirm(
+          'Bu faturayla eklenen STOK ürünleri de stokta düşülsün mü?\n\n' +
+          'TAMAM = Evet, stoktan düş (faturadaki tüm hareketler geri alınır)\n' +
+          'İPTAL = Hayır, sadece faturayı sil (stok olduğu gibi kalsın)'
+        );
+      } else {
+        revertStock = await new Promise<boolean>(resolve => {
+          Alert.alert(
+            'Stok düşülsün mü?',
+            'Bu faturayla eklenen ürünler stoktan da düşülsün mü?',
+            [
+              { text: 'Hayır, sadece fatura', onPress: () => resolve(false) },
+              { text: 'Evet, stoğu da geri al', style: 'destructive', onPress: () => resolve(true) },
+            ],
+          );
+        });
+      }
+
+      const { error } = await deletePurchaseInvoice(linkedInvoiceId, revertStock);
+      if (error) { toast.error('Silinemedi: ' + (error as any).message); return; }
+      toast.success(revertStock ? 'Fatura silindi + stoğa düşüldü' : 'Fatura silindi (stok korundu)');
+      refetch();
+      return;
+    }
+
+    // Manuel gider — standart sil
+    const ok = await confirm1(`"${e.description}" kaydını silmek istediğine emin misin?`);
+    if (!ok) return;
+    const { error } = await deleteExpense(e.id);
+    if (error) { toast.error('Silinemedi: ' + (error as any).message); return; }
+    toast.success('Gider silindi');
+    refetch();
   };
 
+  // Lab bilgisini header için tek seferlik çek (rapora yansıyacak)
+  const profile = useAuthStore(s => s.profile);
+  const labId = (profile as any)?.lab_id ?? null;
+  const [labMeta, setLabMeta] = useState<{ name: string; address?: string | null; phone?: string | null; taxNo?: string | null } | null>(null);
+  React.useEffect(() => {
+    if (!labId) return;
+    (async () => {
+      const { data } = await supabase.from('labs').select('name, address, phone, tax_no').eq('id', labId).maybeSingle();
+      if (data) setLabMeta({ name: (data as any).name ?? 'Laboratuvar', address: (data as any).address, phone: (data as any).phone, taxNo: (data as any).tax_no });
+      else setLabMeta({ name: 'Laboratuvar' });
+    })();
+  }, [labId]);
+
   const handleExcel = async () => {
-    const res = await downloadCsv(
-      `Giderler-${new Date().toISOString().slice(0, 10)}`,
-      filtered,
-      [
-        { header: 'Tarih',    value: e => csvDate(e.expense_date) },
-        { header: 'Kategori', value: e => EXPENSE_CATEGORY_LABELS[e.category] ?? e.category },
-        { header: 'Açıklama', value: e => e.description },
-        { header: 'Tutar',    value: e => csvMoney(e.amount) },
-        { header: 'Ödeme',    value: e => e.payment_method },
-        { header: 'Notlar',   value: e => e.notes ?? '' },
-      ],
-    );
+    if (Platform.OS !== 'web') {
+      // Native: eski CSV akışı (paylaş)
+      const res = await downloadCsv(
+        `Giderler-${new Date().toISOString().slice(0, 10)}`,
+        filtered,
+        [
+          { header: 'Tarih',    value: e => csvDate(e.expense_date) },
+          { header: 'Kategori', value: e => EXPENSE_CATEGORY_LABELS[e.category] ?? e.category },
+          { header: 'Açıklama', value: e => e.description },
+          { header: 'Tutar',    value: e => csvMoney(e.amount) },
+          { header: 'Ödeme',    value: e => e.payment_method },
+          { header: 'Notlar',   value: e => e.notes ?? '' },
+        ],
+      );
+      if (!res.ok && res.error) toast.error(res.error);
+      else toast.success('CSV indirildi');
+      return;
+    }
+
+    // Web: stillenmiş Excel uyumlu rapor (HTML→.xls)
+    const html = buildExpensesReportHtml({
+      labName:    labMeta?.name    ?? 'Laboratuvar',
+      labAddress: labMeta?.address ?? null,
+      labPhone:   labMeta?.phone   ?? null,
+      labTaxNo:   labMeta?.taxNo   ?? null,
+      periodFrom: filtered.length > 0 ? filtered.reduce((min, e) => e.expense_date < min ? e.expense_date : min, filtered[0].expense_date) : null,
+      periodTo:   filtered.length > 0 ? filtered.reduce((max, e) => e.expense_date > max ? e.expense_date : max, filtered[0].expense_date) : null,
+      expenses: filtered,
+      primaryCurrency: baseCurrency,
+    });
+    const fn = `GiderRaporu-${new Date().toISOString().slice(0, 10)}.xls`;
+    const res = downloadExpensesReport(html, fn);
     if (!res.ok && res.error) toast.error(res.error);
-    else toast.success('CSV indirildi');
+    else toast.success('Excel raporu indirildi');
   };
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, backgroundColor: isEmbedded ? 'transparent' : '#F5F1EB', paddingTop: topPad }}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: isDesktop ? 0 : 16, paddingBottom: 48, gap: 16 }}
+        contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 4, paddingBottom: 48, gap: 14 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={DS.ink[300]} />}
         showsVerticalScrollIndicator={false}
       >
         {/* ── Hero — §10 glassmorphism ────────────────────────── */}
         <View style={{
           borderRadius: 28, overflow: 'hidden',
-          backgroundColor: DS.lab.bg, padding: isDesktop ? 36 : 24,
+          backgroundColor: theme.primary, padding: 16,
           position: 'relative',
         }}>
-          <View style={{ position: 'absolute', top: -40, right: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: DS.lab.bgDeep, opacity: 0.6 }} />
-          <View style={{ position: 'absolute', bottom: -50, left: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: DS.lab.bgDeep, opacity: 0.4 }} />
+          <View style={{ position: 'absolute', top: -40, right: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.18)' }} />
+          <View style={{ position: 'absolute', bottom: -50, left: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
 
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
             <View>
-              <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 12 }}>
+              <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.78)', marginBottom: 12 }}>
                 Toplam Gider
               </Text>
-              {/* Phase 4: base currency total + currency breakdown popup */}
-              <CurrencyBreakdown
-                summary={expenseSummary}
-                baseCurrency={baseCurrency}
-                mode="compact"
-                title="Gider"
-                accentColor={DS.lab.accent ?? '#2563EB'}
-                numberStyle={{ fontFamily: 'Inter Tight, Inter, system-ui, sans-serif', fontWeight: '300' as any, fontSize: isDesktop ? 48 : 36, letterSpacing: -1.4, color: DS.ink[900], lineHeight: isDesktop ? 56 : 44 }}
-              />
-              <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 6 }}>
+              {/* Katı per-currency: her para birimi ayrı kart, asla toplanmaz */}
+              <MoneyMultiX slices={expByCcy} variant="cards" size="lg" accentColor={theme.primary} emptyText="—" />
+              <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)', marginTop: 8 }}>
                 {filtered.length} kayıt
-                {expenseSummary.multiCurrency ? ` · ${expenseSummary.slices.length} para birimi` : ''}
+                {expByCcy.length > 1 ? ` · ${expByCcy.length} para birimi` : ''}
               </Text>
             </View>
 
             {/* Action buttons */}
             <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
-              <PillBtn icon={Repeat} label="Otomatik" onPress={() => setRecurringOpen(true)} variant="ghost" />
-              <PillBtn icon={FileSpreadsheet} label="Excel" onPress={handleExcel} variant="ghost" />
-              <PillBtn icon={Plus} label="Gider Ekle" onPress={openAdd} />
+              <PillBtn icon={Repeat} label="Otomatik" onPress={() => setRecurringOpen(true)} variant="ghost" onHero heroAccent={theme.primary} />
+              <PillBtn icon={FileSpreadsheet} label="Excel" onPress={handleExcel} variant="ghost" onHero heroAccent={theme.primary} />
+              <PillBtn icon={Receipt} label="Satın Alma" onPress={() => setPurchaseOpen(true)} variant="ghost" onHero heroAccent={theme.primary} />
+              <PillBtn icon={Plus} label="Gider Ekle" onPress={openAdd} onHero heroAccent={theme.primary} />
             </View>
           </View>
 
           {/* Category breakdown */}
-          <View style={{ flexDirection: 'row', gap: isDesktop ? 24 : 16, marginTop: 20, flexWrap: 'wrap' }}>
+          <View style={{ flexDirection: 'row', gap: 16, marginTop: 20, flexWrap: 'wrap' }}>
             {CATEGORIES.map(cat => {
-              const val = catTotals[cat] ?? 0;
-              if (val <= 0) return null;
+              const slices = catByCcy[cat] ?? [];
+              if (slices.length === 0) return null;
               const Icon = CAT_ICON[cat];
               return (
                 <View key={cat}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <Icon size={11} color={DS.ink[400]} strokeWidth={1.8} />
-                    <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: DS.ink[400] }}>
+                    <Icon size={11} color="rgba(255,255,255,0.78)" strokeWidth={1.8} />
+                    <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.78)' }}>
                       {EXPENSE_CATEGORY_LABELS[cat]}
                     </Text>
                   </View>
-                  <Text style={{ ...DISPLAY, fontSize: 16, letterSpacing: -0.3, color: DS.ink[700], marginTop: 2 }}>
-                    {fmtMoney(val)}
-                  </Text>
+                  <View style={{ marginTop: 2, gap: 1 }}>
+                    {slices.map(s => (
+                      <Text key={s.currency} style={{ ...DISPLAY, fontSize: 16, letterSpacing: -0.3, color: '#FFFFFF' }}>
+                        {formatMoney(s.total, s.currency, { fractionDigits: 0 })}
+                      </Text>
+                    ))}
+                  </View>
                 </View>
               );
             })}
           </View>
         </View>
 
-        {/* ── Category filter pills ───────────────────────────── */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-          <Pressable
-            onPress={() => setCatFilter('all')}
-            style={{
-              paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
-              borderWidth: 1,
-              borderColor: catFilter === 'all' ? DS.ink[900] : 'rgba(0,0,0,0.08)',
-              backgroundColor: catFilter === 'all' ? DS.ink[50] : '#FFF',
-              cursor: 'pointer' as any,
-            }}
-          >
-            <Text style={{ fontSize: 12, fontWeight: catFilter === 'all' ? '600' : '500', color: catFilter === 'all' ? DS.ink[900] : DS.ink[500] }}>
-              Tümü
-            </Text>
-          </Pressable>
-          {CATEGORIES.map(cat => {
-            const active = catFilter === cat;
-            const Icon = CAT_ICON[cat];
+        {/* ── Search + Filtre butonu ─────────────────────────── */}
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{
+            flex: 1,
+            flexDirection: 'row', alignItems: 'center', gap: 10,
+            height: 44, paddingHorizontal: 14, borderRadius: 14,
+            borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: '#FFF',
+          }}>
+            <Search size={15} color={DS.ink[400]} strokeWidth={1.8} />
+            <TextInput
+              style={{ flex: 1, fontSize: 14, color: DS.ink[900], outline: 'none' as any }}
+              placeholder="Açıklama ara..."
+              placeholderTextColor={DS.ink[400]}
+              value={search}
+              onChangeText={setSearch}
+            />
+            {search.length > 0 && (
+              <Pressable onPress={() => setSearch('')} style={{ cursor: 'pointer' as any }}>
+                <X size={14} color={DS.ink[400]} strokeWidth={2} />
+              </Pressable>
+            )}
+          </View>
+          {(() => {
+            const activeCount = (catFilter !== 'all' ? 1 : 0) + (sortKey !== 'date_desc' ? 1 : 0);
+            const hasFilter = activeCount > 0;
             return (
               <Pressable
-                key={cat}
-                onPress={() => setCatFilter(cat)}
+                onPress={() => setFilterOpen(true)}
                 style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 5,
-                  paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
-                  borderWidth: 1,
-                  borderColor: active ? DS.ink[900] : 'rgba(0,0,0,0.08)',
-                  backgroundColor: active ? DS.ink[50] : '#FFF',
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                  height: 44, paddingHorizontal: 14, borderRadius: 14,
+                  backgroundColor: hasFilter ? DS.ink[900] : '#FFF',
+                  borderWidth: hasFilter ? 0 : 1, borderColor: 'rgba(0,0,0,0.08)',
                   cursor: 'pointer' as any,
                 }}
               >
-                <Icon size={12} color={active ? DS.ink[700] : DS.ink[400]} strokeWidth={1.8} />
-                <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? DS.ink[900] : DS.ink[500] }}>
-                  {EXPENSE_CATEGORY_LABELS[cat]}
+                <SlidersHorizontal size={14} strokeWidth={1.8} color={hasFilter ? '#FFFFFF' : DS.ink[700]} />
+                <Text style={{ fontSize: 12, fontWeight: hasFilter ? '700' : '600', color: hasFilter ? '#FFFFFF' : DS.ink[700] }}>
+                  Filtre{hasFilter ? ` (${activeCount})` : ''}
                 </Text>
-                {(catTotals[cat] ?? 0) > 0 && (
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: DS.ink[500] }}>
-                    {fmtMoney(catTotals[cat])}
-                  </Text>
-                )}
               </Pressable>
             );
-          })}
-        </ScrollView>
-
-        {/* ── Search — §05.5 ──────────────────────────────────── */}
-        <View style={{
-          flexDirection: 'row', alignItems: 'center', gap: 10,
-          height: 44, paddingHorizontal: 14, borderRadius: 14,
-          borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: '#FFF',
-        }}>
-          <Search size={15} color={DS.ink[400]} strokeWidth={1.8} />
-          <TextInput
-            style={{ flex: 1, fontSize: 14, color: DS.ink[900], outline: 'none' as any }}
-            placeholder="Açıklama ara..."
-            placeholderTextColor={DS.ink[400]}
-            value={search}
-            onChangeText={setSearch}
-          />
-          {search.length > 0 && (
-            <Pressable onPress={() => setSearch('')} style={{ cursor: 'pointer' as any }}>
-              <X size={14} color={DS.ink[400]} strokeWidth={2} />
-            </Pressable>
-          )}
+          })()}
         </View>
+
+        {/* ── Filtre Sheet ─────────────────────────────────────── */}
+        <Modal visible={filterOpen} transparent animationType="fade" onRequestClose={() => setFilterOpen(false)}>
+          <Pressable
+            onPress={() => setFilterOpen(false)}
+            style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.55)', justifyContent: 'flex-end' }}
+          >
+            <Pressable
+              onPress={(e) => e.stopPropagation()}
+              style={{
+                backgroundColor: '#FFFFFF',
+                borderTopLeftRadius: 24, borderTopRightRadius: 24,
+                paddingTop: 12, paddingBottom: Math.max(insets.bottom, 16) + 12,
+                maxHeight: '85%',
+              }}
+            >
+              <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: DS.ink[200], marginBottom: 14 }} />
+              <View style={{ paddingHorizontal: 20, paddingBottom: 12, flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={{ fontSize: 18, fontWeight: '700', color: DS.ink[900], flex: 1 }}>Filtrele</Text>
+                <Pressable onPress={() => { setCatFilter('all'); setSortKey('date_desc'); }} style={{ paddingHorizontal: 10, paddingVertical: 6 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[500] }}>Temizle</Text>
+                </Pressable>
+                <Pressable onPress={() => setFilterOpen(false)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', marginLeft: 4 }}>
+                  <X size={16} color={DS.ink[700]} strokeWidth={2} />
+                </Pressable>
+              </View>
+
+              <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 12, gap: 18 }}>
+                {/* Sıralama */}
+                <View style={{ gap: 6 }}>
+                  <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[400], paddingHorizontal: 4 }}>Sıralama</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 2 }}>
+                    {SORT_OPTIONS.map(opt => {
+                      const active = sortKey === opt.key;
+                      return (
+                        <Pressable key={opt.key} onPress={() => setSortKey(opt.key)} style={{
+                          paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999,
+                          borderWidth: active ? 0 : 1, borderColor: 'rgba(0,0,0,0.08)',
+                          backgroundColor: active ? DS.ink[900] : '#FFF',
+                          cursor: 'pointer' as any,
+                        }}>
+                          <Text style={{ fontSize: 11.5, fontWeight: active ? '700' : '500', color: active ? '#FFFFFF' : DS.ink[700] }} numberOfLines={1}>{opt.label}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+                {/* Kategori */}
+                <View style={{ gap: 8 }}>
+                  <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[400], paddingHorizontal: 4 }}>Kategori</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    <Pressable onPress={() => setCatFilter('all')} style={{
+                      paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999,
+                      borderWidth: catFilter === 'all' ? 0 : 1, borderColor: 'rgba(0,0,0,0.08)',
+                      backgroundColor: catFilter === 'all' ? DS.ink[900] : '#FFF',
+                      cursor: 'pointer' as any,
+                    }}>
+                      <Text style={{ fontSize: 12.5, fontWeight: catFilter === 'all' ? '700' : '500', color: catFilter === 'all' ? '#FFFFFF' : DS.ink[700] }}>Tümü</Text>
+                    </Pressable>
+                    {CATEGORIES.map(cat => {
+                      const active = catFilter === cat;
+                      const Icon = CAT_ICON[cat];
+                      return (
+                        <Pressable key={cat} onPress={() => setCatFilter(cat)} style={{
+                          flexDirection: 'row', alignItems: 'center', gap: 6,
+                          paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999,
+                          borderWidth: active ? 0 : 1, borderColor: 'rgba(0,0,0,0.08)',
+                          backgroundColor: active ? DS.ink[900] : '#FFF',
+                          cursor: 'pointer' as any,
+                        }}>
+                          <Icon size={13} color={active ? '#FFFFFF' : DS.ink[400]} strokeWidth={1.8} />
+                          <Text style={{ fontSize: 12.5, fontWeight: active ? '700' : '500', color: active ? '#FFFFFF' : DS.ink[700] }}>
+                            {EXPENSE_CATEGORY_LABELS[cat]}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              </ScrollView>
+
+              <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
+                <Pressable onPress={() => setFilterOpen(false)} style={{
+                  height: 48, borderRadius: 14, backgroundColor: DS.ink[900],
+                  alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer' as any,
+                }}>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>Uygula</Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
 
         {/* ── Expense list ────────────────────────────────────── */}
         {filtered.length === 0 ? (
@@ -339,13 +535,20 @@ export function ExpensesScreen() {
             {/* Rows */}
             {filtered.map((e, i) => {
               const Icon = CAT_ICON[e.category];
+              const hasInvoice = !!e.purchase_invoice_id;
               return (
-                <View key={e.id} style={{
-                  flexDirection: 'row', alignItems: 'center',
-                  paddingHorizontal: 20, paddingVertical: 14,
-                  borderBottomWidth: i < filtered.length - 1 ? 1 : 0,
-                  borderBottomColor: 'rgba(0,0,0,0.04)',
-                }}>
+                <Pressable
+                  key={e.id}
+                  onPress={hasInvoice ? () => setPreviewInvoiceId(e.purchase_invoice_id) : undefined}
+                  style={({ hovered }: any) => ({
+                    flexDirection: 'row', alignItems: 'center',
+                    paddingHorizontal: 20, paddingVertical: 14,
+                    borderBottomWidth: i < filtered.length - 1 ? 1 : 0,
+                    borderBottomColor: 'rgba(0,0,0,0.04)',
+                    backgroundColor: hasInvoice && hovered ? 'rgba(0,0,0,0.025)' : 'transparent',
+                    ...(hasInvoice ? { cursor: 'pointer' as any } : {}),
+                  })}
+                >
                   {/* Category */}
                   <View style={{ flex: 1.2, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center' }}>
@@ -374,43 +577,37 @@ export function ExpensesScreen() {
                     <MoneyDisplay
                       amount={Number(e.amount)}
                       currency={(((e as any).currency as any) ?? 'TRY')}
-                      baseAmount={(e as any).amount_base != null ? Number((e as any).amount_base) : null}
+                      baseAmount={null}
                       mode="original"
                       style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}
                     />
-                    {((e as any).currency && (e as any).currency !== 'TRY' && (e as any).amount_base != null) ? (
-                      <Text style={{ fontSize: 10, color: DS.ink[400], marginTop: 1 }}>
-                        ≈ ₺{Number((e as any).amount_base).toLocaleString('tr-TR', { maximumFractionDigits: 0 })}
-                      </Text>
-                    ) : null}
                   </View>
 
                   {/* Actions */}
                   <View style={{ flex: 0.8, flexDirection: 'row', gap: 4, justifyContent: 'flex-end' }}>
                     <Pressable
-                      onPress={() => openEdit(e)}
+                      onPress={(ev: any) => { ev?.stopPropagation?.(); openEdit(e); }}
                       style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
                     >
                       <Pencil size={12} color={DS.ink[500]} strokeWidth={1.8} />
                     </Pressable>
                     <Pressable
-                      onPress={() => handleDelete(e)}
+                      onPress={(ev: any) => { ev?.stopPropagation?.(); handleDelete(e); }}
                       style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: CHIP_TONES.danger.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
                     >
                       <Trash2 size={12} color={CHIP_TONES.danger.fg} strokeWidth={1.8} />
                     </Pressable>
                   </View>
-                </View>
+                </Pressable>
               );
             })}
 
             {/* Footer */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)', backgroundColor: '#FAFAFA' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)', backgroundColor: '#FAFAFA', gap: 10 }}>
               <Text style={{ fontSize: 11, color: DS.ink[500] }}>{filtered.length} kayıt</Text>
               <View style={{ flex: 1 }} />
-              <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[900] }}>
-                Toplam: {fmtMoney(totalAmount)}
-              </Text>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[900] }}>Toplam:</Text>
+              <MoneyMultiX slices={expByCcy} variant="inline" />
             </View>
           </View>
         ) : (
@@ -418,8 +615,18 @@ export function ExpensesScreen() {
           <View style={{ gap: 10 }}>
             {filtered.map(e => {
               const Icon = CAT_ICON[e.category];
+              const hasInvoice = !!e.purchase_invoice_id;
               return (
-                <View key={e.id} style={{ ...cardSolid, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <Pressable
+                  key={e.id}
+                  onPress={hasInvoice ? () => setPreviewInvoiceId(e.purchase_invoice_id) : undefined}
+                  style={({ hovered }: any) => ({
+                    ...cardSolid,
+                    flexDirection: 'row', alignItems: 'center', gap: 12,
+                    backgroundColor: hasInvoice && hovered ? 'rgba(0,0,0,0.02)' : (cardSolid as any).backgroundColor ?? '#FFF',
+                    ...(hasInvoice ? { cursor: 'pointer' as any } : {}),
+                  })}
+                >
                   <View style={{
                     width: 40, height: 40, borderRadius: 12,
                     backgroundColor: DS.ink[100],
@@ -437,24 +644,24 @@ export function ExpensesScreen() {
                   </View>
                   <View style={{ alignItems: 'flex-end', gap: 6 }}>
                     <Text style={{ ...DISPLAY, fontSize: 16, letterSpacing: -0.3, color: DS.ink[900] }}>
-                      {fmtMoney(e.amount)}
+                      {fmtMoney(e.amount, (e as any).currency ?? 'TRY')}
                     </Text>
                     <View style={{ flexDirection: 'row', gap: 4 }}>
                       <Pressable
-                        onPress={() => openEdit(e)}
+                        onPress={(ev: any) => { ev?.stopPropagation?.(); openEdit(e); }}
                         style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
                       >
                         <Pencil size={12} color={DS.ink[500]} strokeWidth={1.8} />
                       </Pressable>
                       <Pressable
-                        onPress={() => handleDelete(e)}
+                        onPress={(ev: any) => { ev?.stopPropagation?.(); handleDelete(e); }}
                         style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: CHIP_TONES.danger.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
                       >
                         <Trash2 size={12} color={CHIP_TONES.danger.fg} strokeWidth={1.8} />
                       </Pressable>
                     </View>
                   </View>
-                </View>
+                </Pressable>
               );
             })}
           </View>
@@ -466,6 +673,21 @@ export function ExpensesScreen() {
         visible={recurringOpen}
         onClose={() => setRecurringOpen(false)}
         onAfterGenerate={() => refetch()}
+      />
+
+      {/* Material purchase / inventory intake — Stok > Satın Alma akışıyla aynı */}
+      <PurchaseFormModal
+        visible={purchaseOpen}
+        accentColor="#DC2626"
+        onClose={() => setPurchaseOpen(false)}
+        onSaved={() => { setPurchaseOpen(false); refetch(); }}
+      />
+
+      {/* E-Fatura tarzı satın alma faturası önizleme — purchase_invoice_id'li giderlere */}
+      <PurchaseInvoicePreviewModal
+        visible={!!previewInvoiceId}
+        onClose={() => setPreviewInvoiceId(null)}
+        purchaseInvoiceId={previewInvoiceId}
       />
 
       {/* ── Add/Edit modal — §08 dialog ───────────────────── */}
@@ -483,171 +705,460 @@ export function ExpensesScreen() {
 // FORM MODAL — §08 dialog + §05.5 form
 // ═════════════════════════════════════════════════════════════════════
 function ExpenseFormModal({
-  visible, expense, onClose, onSaved,
-}: { visible: boolean; expense: Expense | null; onClose: () => void; onSaved: () => void }) {
-  const [category, setCategory] = useState<ExpenseCategory>('malzeme');
+  visible, expense, onClose, onSaved, accentColor = '#DC2626',
+}: { visible: boolean; expense: Expense | null; onClose: () => void; onSaved: () => void; accentColor?: string }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const [category, setCategory] = useState<ExpenseCategory>('kira');
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
-  // Phase 3: çoklu currency
   const [currency, setCurrency] = useState<'TRY' | 'EUR' | 'USD' | 'GBP'>('TRY');
+  const [rate, setRate] = useState('');   // manuel kur (boş = o günün TCMB'si)
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [method, setMethod] = useState<ExpensePaymentMethod>('nakit');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // PDF Fatura okuma — kullanıcı dilerse PDF yükleyip form'u otomatik doldurabilir
+  const [parsing, setParsing] = useState(false);
+  const [parseInfo, setParseInfo] = useState<string | null>(null);
 
   React.useEffect(() => {
     if (visible) {
-      setCategory(expense?.category ?? 'malzeme');
+      setCategory(expense?.category ?? 'kira');
       setDescription(expense?.description ?? '');
       setAmount(expense ? String(expense.amount) : '');
       setCurrency(((expense as any)?.currency as any) ?? 'TRY');
+      setRate(expense && (expense as any).rate_at_time && (expense as any).currency !== 'TRY' ? String((expense as any).rate_at_time) : '');
       setDate(expense?.expense_date ?? new Date().toISOString().slice(0, 10));
       setMethod(expense?.payment_method ?? 'nakit');
       setNotes(expense?.notes ?? '');
       setError('');
+      setParseInfo(null);
+      setParsing(false);
     }
   }, [visible, expense]);
 
+  const handleParsePdf = async (file: File) => {
+    setError(''); setParseInfo(null); setParsing(true);
+    try {
+      const buf = await file.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let binary = '';
+      const chunkSize = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunkSize)));
+      }
+      const pdf_base64 = btoa(binary);
+      const { data, error: fnErr } = await supabase.functions.invoke('parse-invoice', { body: { pdf_base64 } });
+      if (fnErr) throw new Error(fnErr.message);
+      if (!data?.ok) throw new Error(data?.error ?? 'Parse başarısız');
+      const d = data.data;
+
+      // ─── Sarf / demirbaş faturası tespiti ───
+      // Eğer parse edilen veride birden fazla ürün kalemi (quantity + unit_price'lı) varsa
+      // veya herhangi bir kalem 'equipment' olarak işaretlenmişse → bu fatura buraya değil.
+      const hasQuantifiedLines = Array.isArray(d.lines) && d.lines.filter((l: any) => {
+        const q = Number(l.quantity ?? 0);
+        const p = Number(l.unit_price ?? 0);
+        return q > 0 && p > 0;
+      }).length >= 1;
+      const hasEquipmentLine = Array.isArray(d.lines) && d.lines.some(
+        (l: any) => String(l.item_kind ?? '').toLowerCase() === 'equipment',
+      );
+      if (hasEquipmentLine || (hasQuantifiedLines && Array.isArray(d.lines) && d.lines.length >= 1)) {
+        const kindLabel = hasEquipmentLine ? 'Demirbaş' : 'Sarf malzeme';
+        setError(
+          `Bu PDF ${kindLabel.toLowerCase()} faturasına benziyor (${d.lines.length} kalem tespit edildi). ` +
+          `Bu form genel giderler içindir — sarf/demirbaş için "Stok › Satın Alma" akışını kullanın.`,
+        );
+        setParsing(false);
+        return;
+      }
+
+      // Form alanlarını doldur — genel gider yaklaşımı
+      // Açıklama: supplier + invoice no birleştir
+      const desc = [d.supplier_name, d.invoice_number ? `#${d.invoice_number}` : null]
+        .filter(Boolean).join(' ').trim();
+      if (desc) setDescription(desc);
+      // Tarih
+      if (d.invoice_date) setDate(d.invoice_date);
+      // Para birimi
+      if (d.currency && ['TRY', 'EUR', 'USD', 'GBP'].includes(d.currency)) {
+        setCurrency(d.currency);
+      }
+      // Toplam tutar — KDV dahil tercih
+      const total = d.total ?? (
+        d.subtotal != null && d.vat_amount != null
+          ? Number(d.subtotal) + Number(d.vat_amount)
+          : d.subtotal
+      );
+      if (total != null) setAmount(String(total));
+      // Notlar — kalemleri özetle
+      if (Array.isArray(d.lines) && d.lines.length > 0) {
+        const summary = d.lines
+          .map((l: any) => `${l.item_name ?? '—'}${l.quantity ? ` × ${l.quantity}` : ''}`)
+          .slice(0, 10)
+          .join('\n');
+        setNotes(prev => prev ? prev : summary);
+      }
+
+      setParseInfo(data.source === 'efatura'
+        ? 'e-Fatura XML parse edildi'
+        : `OCR ile çıkarıldı${d.lines?.length ? ` (${d.lines.length} kalem)` : ''}`);
+    } catch (e: any) {
+      setError('PDF işlenemedi: ' + (e?.message ?? 'bilinmeyen hata'));
+    } finally {
+      setParsing(false);
+    }
+  };
+
+  const handlePickPdf = () => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/pdf';
+    input.onchange = () => {
+      const f = input.files?.[0];
+      if (f) handleParsePdf(f);
+    };
+    input.click();
+  };
+
   const handleSave = async () => {
     const amt = parseFloat(amount.replace(',', '.'));
-    if (!description.trim()) { setError('Açıklama zorunludur.'); return; }
-    if (!amt || amt <= 0)    { setError('Geçerli bir tutar girin.'); return; }
+    if (!description.trim()) { setError('Açıklama zorunlu'); return; }
+    if (!amt || amt <= 0)    { setError('Geçerli bir tutar girin'); return; }
+
+    // Sarf malzeme veya demirbaş faturası kontrolü — sadece YENİ kayıtta sor
+    // (mevcut linked kayıtların düzenlenmesinde tekrar sormaya gerek yok)
+    if (!expense && (category === 'malzeme' || category === 'ekipman')) {
+      const label = category === 'malzeme' ? 'Sarf malzeme' : 'Demirbaş';
+      const ok = Platform.OS === 'web'
+        ? (typeof window !== 'undefined' && window.confirm(
+            `${label} faturalarının doğru yeri "Stok › Satın Alma" akışıdır.\n\n` +
+            `Oradan girersen stok hareketi, tedarikçi cari hesabı ve gider kaydı otomatik birlikte oluşur.\n\n` +
+            `Yine de bu formdan kaydetmek istediğinden emin misin?`,
+          ))
+        : await new Promise<boolean>((resolve) => {
+            Alert.alert(
+              `${label} faturası mı?`,
+              'Doğru yer "Stok › Satın Alma" akışıdır. Yine de buradan kaydetmek istediğine emin misin?',
+              [
+                { text: 'Vazgeç',  style: 'cancel',      onPress: () => resolve(false) },
+                { text: 'Yine de kaydet', style: 'destructive', onPress: () => resolve(true) },
+              ],
+              { cancelable: true, onDismiss: () => resolve(false) },
+            );
+          });
+      if (!ok) return;
+    }
 
     setSaving(true); setError('');
+    const manualRate = currency !== 'TRY' && rate.trim() ? Number(rate.replace(',', '.')) : undefined;
     const params: CreateExpenseParams = {
       category, description: description.trim(), amount: amt,
       currency,
+      rate: manualRate && manualRate > 0 ? manualRate : undefined,
       expense_date: date, payment_method: method, notes: notes.trim() || undefined,
     };
     const { error: apiErr } = expense
       ? await updateExpense(expense.id, params)
       : await createExpense(params);
     setSaving(false);
-    if (apiErr) { setError((apiErr as any).message ?? 'Hata oluştu.'); return; }
+    if (apiErr) { setError((apiErr as any).message ?? 'Hata oluştu'); return; }
     onSaved();
   };
 
+  // Patterns §13 form tokens
+  const DisplayFontFamily = Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light';
+  const sectionEyebrow: any = { fontSize: 10, fontWeight: '700', color: accentColor, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4 };
+  const sectionSubtitle: any = { fontSize: 11, color: T.ink3, fontWeight: '400', marginBottom: 14 };
+  const fieldLabel: any = { fontSize: 11, fontWeight: '600', color: T.ink3, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 7 };
+  const cleanInput: any = { backgroundColor: T.cardSoft, borderRadius: 12, borderWidth: 1, borderColor: T.hairline, paddingHorizontal: 14, height: 44, fontSize: 14, color: T.ink, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) };
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
-        <View style={{ backgroundColor: '#FFF', borderRadius: 24, width: '100%', maxWidth: 540, maxHeight: '90%', overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', boxShadow: modalShadow } as any}>
-
-          {/* Header */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 22, paddingBottom: 16 }}>
-            <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>
-              {expense ? 'Gider Düzenle' : 'Gider Ekle'}
-            </Text>
-            <Pressable onPress={onClose} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}>
-              <X size={16} color={DS.ink[500]} strokeWidth={2} />
+      <View style={{ flex: 1, backgroundColor: 'rgba(20,15,10,0.55)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+        <View style={{
+          backgroundColor: T.card, borderRadius: 24, width: 560, maxWidth: '100%', maxHeight: '92%',
+          overflow: 'hidden',
+          ...(Platform.OS === 'web' ? { boxShadow: '0 24px 64px rgba(0,0,0,0.22)' } as any : {}),
+        }}>
+          {/* Header — Patterns §13 */}
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingHorizontal: 28, paddingTop: 24, paddingBottom: 18, gap: 16 }}>
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+              <View style={{
+                width: 44, height: 44, borderRadius: 22,
+                alignItems: 'center', justifyContent: 'center',
+                backgroundColor: accentColor + '14',
+                borderWidth: 1, borderColor: accentColor + '22',
+              }}>
+                <Receipt size={20} color={accentColor} strokeWidth={1.6} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: accentColor, letterSpacing: 1.2, textTransform: 'uppercase' }}>
+                  {expense ? 'Gider düzenle' : 'Yeni gider'}
+                </Text>
+                <Text style={{ fontFamily: DisplayFontFamily, fontWeight: '300', fontSize: 26, letterSpacing: -0.6, color: T.ink, lineHeight: 32, marginTop: 2 }} numberOfLines={1}>
+                  {expense ? (description || 'Gider') : 'Genel gider kaydı'}
+                </Text>
+                <Text style={{ fontSize: 12, color: T.ink3, marginTop: 2 }}>
+                  Kira, personel, ekipman, vergi vb. operasyonel giderler için.
+                </Text>
+              </View>
+            </View>
+            <Pressable
+              onPress={onClose}
+              style={{
+                width: 36, height: 36, borderRadius: 18,
+                alignItems: 'center', justifyContent: 'center',
+                backgroundColor: T.card,
+                borderWidth: 1, borderColor: T.hairline,
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              }}
+            >
+              <X size={15} color={T.ink2} strokeWidth={1.8} />
             </Pressable>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 16, paddingHorizontal: 24, paddingBottom: 8 }}>
-            {/* Category */}
-            <View style={{ gap: 6 }}>
-              <FL>Kategori</FL>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                {CATEGORIES.map(cat => {
-                  const active = category === cat;
-                  const Icon = CAT_ICON[cat];
-                  return (
-                    <Pressable
-                      key={cat}
-                      onPress={() => setCategory(cat)}
-                      style={{
-                        flexDirection: 'row', alignItems: 'center', gap: 5,
-                        paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
-                        borderWidth: 1,
-                        borderColor: active ? DS.ink[900] : 'rgba(0,0,0,0.08)',
-                        backgroundColor: active ? DS.ink[50] : '#FFF',
-                        cursor: 'pointer' as any,
-                      }}
-                    >
-                      <Icon size={12} color={active ? DS.ink[700] : DS.ink[400]} strokeWidth={1.8} />
-                      <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? DS.ink[900] : DS.ink[500] }}>
-                        {EXPENSE_CATEGORY_LABELS[cat]}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
+          <View style={{ height: 1, backgroundColor: T.hairline2, marginHorizontal: 28 }} />
+
+          <ScrollView contentContainerStyle={{ paddingHorizontal: 28, paddingTop: 22, paddingBottom: 22 }} showsVerticalScrollIndicator={false}>
+
+            {/* ── Üst uyarı / hata banner — form en üstünde görünür ── */}
+            {error ? (
+              <View style={{
+                flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+                padding: 14, marginBottom: 18, borderRadius: 12,
+                backgroundColor: '#FEE2E2',
+                borderWidth: 1, borderColor: '#FCA5A5',
+              }}>
+                <View style={{
+                  width: 22, height: 22, borderRadius: 11, marginTop: 1,
+                  alignItems: 'center', justifyContent: 'center', backgroundColor: '#DC2626',
+                }}>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: '#FFFFFF' }}>!</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#991B1B', marginBottom: 2, textTransform: 'uppercase', letterSpacing: 0.6 }}>
+                    Uyarı
+                  </Text>
+                  <Text style={{ fontSize: 12.5, color: '#7F1D1D', lineHeight: 18, fontWeight: '500' }}>
+                    {error}
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={() => setError('')}
+                  hitSlop={6}
+                  style={{
+                    width: 22, height: 22, borderRadius: 6,
+                    alignItems: 'center', justifyContent: 'center',
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  }}
+                >
+                  <X size={13} color="#7F1D1D" strokeWidth={2} />
+                </Pressable>
               </View>
+            ) : null}
+
+            {/* ── PDF Fatura → Otomatik doldur (sadece web) ── */}
+            {Platform.OS === 'web' && (
+              <View style={{ marginBottom: 18 }}>
+                <Pressable
+                  onPress={handlePickPdf}
+                  disabled={parsing}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+                    gap: 8, paddingVertical: 11, paddingHorizontal: 14,
+                    borderRadius: 12, borderWidth: 1.5, borderStyle: 'dashed',
+                    borderColor: accentColor + '55',
+                    backgroundColor: accentColor + '08',
+                    opacity: parsing ? 0.6 : 1,
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  }}
+                >
+                  <FileUp size={15} color={accentColor} strokeWidth={1.8} />
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: accentColor }}>
+                    {parsing ? 'Fatura işleniyor…' : 'PDF Faturayı Yükle (otomatik doldur)'}
+                  </Text>
+                  {!parsing && <Sparkles size={13} color={accentColor} strokeWidth={1.8} />}
+                </Pressable>
+                {parseInfo ? (
+                  <View style={{
+                    marginTop: 6, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8,
+                    backgroundColor: 'rgba(16,185,129,0.08)',
+                    flexDirection: 'row', alignItems: 'center', gap: 6,
+                  }}>
+                    <Check size={12} color="#0F6E50" strokeWidth={2} />
+                    <Text style={{ fontSize: 11, color: '#0F6E50', fontWeight: '600' }}>{parseInfo}</Text>
+                  </View>
+                ) : null}
+              </View>
+            )}
+
+            {/* ── KATEGORİ ── */}
+            <Text style={sectionEyebrow}>Kategori</Text>
+            <Text style={sectionSubtitle}>
+              Sarf malzeme & demirbaş faturaları için "Stok › Satın Alma" akışını kullan; bu form sadece operasyonel giderler içindir.
+            </Text>
+            <View style={{ marginBottom: 22, flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {/* Mevcut kategori malzeme/ekipman ise (eski kayıt düzenleme) listede tut */}
+              {(FORM_CATEGORIES.includes(category) ? FORM_CATEGORIES : [category, ...FORM_CATEGORIES]).map(cat => {
+                const active = category === cat;
+                const Icon = CAT_ICON[cat];
+                return (
+                  <Pressable
+                    key={cat}
+                    onPress={() => setCategory(cat)}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 6,
+                      paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999,
+                      borderWidth: 1,
+                      borderColor: active ? accentColor : T.hairline,
+                      backgroundColor: active ? accentColor : 'transparent',
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                    }}
+                  >
+                    <Icon size={12} color={active ? '#FFF' : T.ink2} strokeWidth={1.8} />
+                    <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? '#FFF' : T.ink2 }}>
+                      {EXPENSE_CATEGORY_LABELS[cat]}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
 
-            {/* Description */}
-            <View style={{ gap: 6 }}>
-              <FL>Açıklama</FL>
-              <FI value={description} onChangeText={setDescription} placeholder="Gider açıklaması..." />
-            </View>
+            <View style={{ height: 1, backgroundColor: T.hairline2, marginBottom: 22 }} />
 
-            {/* Amount + Date */}
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <View style={{ flex: 1.4, gap: 6 }}>
-                <FL>Tutar</FL>
-                <MoneyInput
-                  value={amount}
-                  onChangeValue={setAmount}
-                  currency={currency}
-                  onChangeCurrency={setCurrency}
-                  placeholder="0,00"
-                  showBasePreview
+            {/* ── AÇIKLAMA & TUTAR ── */}
+            <Text style={sectionEyebrow}>Detay</Text>
+            <Text style={sectionSubtitle}>Açıklama, tutar ve tarih</Text>
+            <View style={{ marginBottom: 22, gap: 12 }}>
+              <View>
+                <Text style={fieldLabel}>Açıklama *</Text>
+                <TextInput
+                  style={cleanInput}
+                  value={description}
+                  onChangeText={setDescription}
+                  placeholder="örn. Mart kira, internet faturası…"
+                  placeholderTextColor={T.ink3}
                 />
               </View>
-              <View style={{ flex: 1, gap: 6 }}>
-                <FL>Tarih</FL>
-                <DatePicker value={date} onChange={setDate} placeholder="Tarih seç" />
+              <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
+                <View style={{ flex: 1.4, minWidth: 220 }}>
+                  <Text style={fieldLabel}>Tutar *</Text>
+                  <MoneyInput
+                    value={amount}
+                    onChangeValue={setAmount}
+                    currency={currency}
+                    onChangeCurrency={setCurrency}
+                    accentColor={accentColor}
+                    placeholder="0,00"
+                    showBasePreview
+                  />
+                </View>
+                <View style={{ flex: 1, minWidth: 180 }}>
+                  <Text style={fieldLabel}>Tarih</Text>
+                  <DatePicker value={date} onChange={setDate} placeholder="Tarih seç" />
+                </View>
               </View>
+              {currency !== 'TRY' && (
+                <View style={{ marginTop: 12 }}>
+                  <Text style={fieldLabel}>Kur — 1 {currency} = {baseSymbol()}?</Text>
+                  <TextInput
+                    value={rate}
+                    onChangeText={setRate}
+                    keyboardType="decimal-pad"
+                    placeholder="Boş bırak = o günün TCMB kuru"
+                    placeholderTextColor={T.ink3}
+                    style={{ borderWidth: 1, borderColor: T.hairline, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 15, color: T.ink, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }}
+                  />
+                  {rate.trim() ? (
+                    <Text style={{ fontSize: 11, color: T.ink3, marginTop: 4 }}>
+                      ≈ {baseSymbol()}{((parseFloat(amount.replace(',', '.')) || 0) * (Number(rate.replace(',', '.')) || 0)).toLocaleString('tr-TR', { maximumFractionDigits: 0 })}
+                    </Text>
+                  ) : null}
+                </View>
+              )}
             </View>
 
-            {/* Payment method */}
-            <View style={{ gap: 6 }}>
-              <FL>Ödeme Yöntemi</FL>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                {PAY_METHODS.map(m => {
-                  const active = method === m.v;
-                  return (
-                    <Pressable
-                      key={m.v}
-                      onPress={() => setMethod(m.v)}
-                      style={{
-                        flexDirection: 'row', alignItems: 'center', gap: 5,
-                        paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
-                        borderWidth: 1.5,
-                        borderColor: active ? DS.ink[900] : 'rgba(0,0,0,0.08)',
-                        backgroundColor: active ? DS.ink[50] : '#FFF',
-                        cursor: 'pointer' as any,
-                      }}
-                    >
-                      <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? DS.ink[900] : DS.ink[500] }}>
-                        {m.l}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+            <View style={{ height: 1, backgroundColor: T.hairline2, marginBottom: 22 }} />
+
+            {/* ── ÖDEME ── */}
+            <Text style={sectionEyebrow}>Ödeme</Text>
+            <Text style={sectionSubtitle}>Hangi yöntemle ödendi</Text>
+            <View style={{ marginBottom: 22, flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {PAY_METHODS.map(m => {
+                const active = method === m.v;
+                return (
+                  <Pressable
+                    key={m.v}
+                    onPress={() => setMethod(m.v)}
+                    style={{
+                      paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999,
+                      borderWidth: 1,
+                      borderColor: active ? accentColor : T.hairline,
+                      backgroundColor: active ? accentColor : 'transparent',
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? '#FFF' : T.ink2 }}>
+                      {m.l}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
 
-            {/* Notes */}
-            <View style={{ gap: 6 }}>
-              <FL>Not (opsiyonel)</FL>
-              <FI value={notes} onChangeText={setNotes} placeholder="..." multiline
-                style={{ minHeight: 52, textAlignVertical: 'top' as any }} />
+            <View style={{ height: 1, backgroundColor: T.hairline2, marginBottom: 22 }} />
+
+            {/* ── NOT ── */}
+            <Text style={sectionEyebrow}>Not</Text>
+            <Text style={sectionSubtitle}>Hatırlatma, fatura no, referans (opsiyonel)</Text>
+            <View>
+              <TextInput
+                style={[cleanInput, { height: 72, paddingTop: 11, paddingBottom: 11, textAlignVertical: 'top' }]}
+                value={notes}
+                onChangeText={setNotes}
+                placeholder="Açıklama / not"
+                placeholderTextColor={T.ink3}
+                multiline
+              />
             </View>
 
-            {error ? <Text style={{ fontSize: 12, color: CHIP_TONES.danger.fg }}>{error}</Text> : null}
+            {/* (Hata banner'ı artık form üstünde görünüyor) */}
           </ScrollView>
 
-          {/* Footer — §08 */}
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, padding: 20, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
-            <Pressable onPress={onClose} disabled={saving} style={{ paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, cursor: 'pointer' as any }}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500] }}>İptal</Text>
+          {/* Footer — Patterns §13 */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 28, paddingVertical: 18, borderTopWidth: 1, borderTopColor: T.hairline2, backgroundColor: isDark ? T.cardSoft : '#FBF9F4' }}>
+            <Text style={{ flex: 1, fontSize: 11, color: T.ink3, fontStyle: 'italic' }}>
+              Yabancı para birimi seçilirse o günün kuru ile snapshot alınır.
+            </Text>
+            <Pressable
+              onPress={onClose}
+              disabled={saving}
+              style={{
+                paddingHorizontal: 18, paddingVertical: 10, borderRadius: 9999,
+                backgroundColor: T.card,
+                borderWidth: 1, borderColor: T.hairline,
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink2 }}>Vazgeç</Text>
             </Pressable>
             <Pressable
-              onPress={handleSave} disabled={saving}
-              style={{ paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, backgroundColor: DS.ink[900], opacity: saving ? 0.5 : 1, cursor: 'pointer' as any }}
+              onPress={handleSave}
+              disabled={saving}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 7,
+                paddingHorizontal: 20, paddingVertical: 11, borderRadius: 9999,
+                backgroundColor: accentColor, opacity: saving ? 0.5 : 1,
+                ...(Platform.OS === 'web' ? { cursor: saving ? 'wait' : 'pointer', boxShadow: `0 6px 20px ${accentColor}44` } as any : {}),
+              }}
             >
-              <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFF' }}>
-                {saving ? 'Kaydediliyor...' : expense ? 'Güncelle' : 'Kaydet'}
+              <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFF', letterSpacing: 0.2 }}>
+                {saving ? 'Kaydediliyor…' : expense ? 'Güncelle' : 'Kaydet'}
               </Text>
             </Pressable>
           </View>
@@ -658,47 +1169,60 @@ function ExpenseFormModal({
 }
 
 // ─── Pill button ─────────────────────────────────────────────────────
-function PillBtn({ icon: Icon, label, onPress, variant = 'dark' }: {
+function PillBtn({ icon: Icon, label, onPress, variant = 'dark', onHero, heroAccent }: {
   icon: React.ComponentType<any>; label: string; onPress: () => void;
   variant?: 'dark' | 'ghost';
+  onHero?: boolean;
+  heroAccent?: string;
 }) {
   const dark = variant === 'dark';
+  let bg: string; let fg: string;
+  let borderColor: string = DS.ink[200];
+  let borderWidth = dark ? 0 : 1;
+  if (onHero) {
+    if (dark) { bg = '#FFFFFF'; fg = heroAccent ?? DS.ink[900]; borderWidth = 0; }
+    else { bg = 'transparent'; fg = '#FFFFFF'; borderColor = 'rgba(255,255,255,0.55)'; borderWidth = 1; }
+  } else {
+    bg = dark ? DS.ink[900] : 'transparent';
+    fg = dark ? '#FFF' : DS.ink[700];
+  }
   return (
     <Pressable
       onPress={onPress}
       style={{
         flexDirection: 'row', alignItems: 'center', gap: 6,
         paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999,
-        backgroundColor: dark ? DS.ink[900] : 'transparent',
-        borderWidth: dark ? 0 : 1, borderColor: DS.ink[200],
+        backgroundColor: bg, borderWidth, borderColor,
         cursor: 'pointer' as any,
       }}
     >
-      <Icon size={14} color={dark ? '#FFF' : DS.ink[700]} strokeWidth={1.8} />
-      <Text style={{ fontSize: 12, fontWeight: '600', color: dark ? '#FFF' : DS.ink[700] }}>{label}</Text>
+      <Icon size={14} color={fg} strokeWidth={onHero && dark ? 2.2 : 1.8} />
+      <Text style={{ fontSize: 12, fontWeight: onHero && dark ? '700' : '600', color: fg }}>{label}</Text>
     </Pressable>
   );
 }
 
 // ─── Form helpers ────────────────────────────────────────────────────
 function FL({ children }: { children: string }) {
+  const T = useMobileTokens();
   return (
-    <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[400] }}>
+    <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: T.ink3 }}>
       {children}
     </Text>
   );
 }
 
 function FI(props: any) {
+  const T = useMobileTokens();
   const { style: extra, ...rest } = props;
   return (
     <TextInput
-      placeholderTextColor={DS.ink[300]}
+      placeholderTextColor={T.ink3}
       {...rest}
       style={[{
         height: 44, paddingHorizontal: 14, borderRadius: 14,
-        borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: '#FFF',
-        fontSize: 14, color: DS.ink[900], outline: 'none' as any,
+        borderWidth: 1, borderColor: T.hairline, backgroundColor: T.cardSoft,
+        fontSize: 14, color: T.ink, outline: 'none' as any,
       }, extra]}
     />
   );

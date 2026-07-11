@@ -1,0 +1,50 @@
+{
+  "name": "Siman",
+  "short_name": "Siman",
+  "description": "Siman — Diş laboratuvarları için yönetim platformu",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
+  "orientation": "portrait",
+  "background_color": "#F2EDE3",
+  "theme_color": "#F2EDE3",
+  "lang": "tr",
+  "dir": "ltr",
+  "categories": ["medical", "productivity", "business"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Yeni Sipariş",
+      "short_name": "Sipariş",
+      "url": "/(doctor)/new-order",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Vakalarım",
+      "short_name": "Vakalar",
+      "url": "/(doctor)/orders",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

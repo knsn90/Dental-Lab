@@ -182,7 +182,7 @@ export async function saveWizardData(payload: WizardPayload) {
     if (error) throw error;
   }
 
-  // 4) Çalışan (atlanmadıysa)
+  // 4) Personel (atlanmadıysa)
   if (payload.employee && payload.employee.full_name.trim()) {
     const { error } = await supabase
       .from('employees')

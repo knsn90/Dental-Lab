@@ -16,7 +16,7 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TextInput, Pressable,
-  ActivityIndicator, RefreshControl, useWindowDimensions, Platform,
+  RefreshControl, useWindowDimensions, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -26,6 +26,10 @@ import {
 } from 'lucide-react-native';
 import { supabase } from '../../../core/api/supabase';
 import { DS } from '../../../core/theme/dsTokens';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
+import { CenteredLoader } from '../../../core/ui/CenteredLoader';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 const DISPLAY = {
   fontFamily: 'Inter Tight, Inter, system-ui, sans-serif',
@@ -94,6 +98,9 @@ const BUCKET_LABEL: Record<string, string> = {
 export function StockMovementsScreen({ accentColor = '#6366F1' }: { accentColor?: string }) {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(st => st.resolvedDark);
+  const s = useMemo(() => makeStyles(T, isDark), [T, isDark]);
 
   const [items, setItems]             = useState<Movement[]>([]);
   const [loading, setLoading]         = useState(true);
@@ -195,11 +202,7 @@ export function StockMovementsScreen({ accentColor = '#6366F1' }: { accentColor?
   // ═════════════════════════════════════════════════════════════
 
   if (loading) {
-    return (
-      <View style={s.center}>
-        <ActivityIndicator size="large" color={accentColor} />
-      </View>
-    );
+    return <CenteredLoader color={accentColor} />;
   }
 
   if (!tableExists) {
@@ -226,32 +229,55 @@ export function StockMovementsScreen({ accentColor = '#6366F1' }: { accentColor?
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} />}
         ListHeaderComponent={
           <View>
-            {/* ── KPI Bar ─────────────────────────────────────────── */}
-            <View style={s.kpiRow}>
-              <KPI
-                icon={Activity}
-                label="Toplam"
-                value={String(kpi.total)}
-                accent={accentColor}
-              />
-              <KPI
-                icon={Clock}
-                label="Bugün"
-                value={String(kpi.today)}
-                accent="#0F172A"
-              />
-              <KPI
-                icon={TrendingUp}
-                label="7 Gün Giriş"
-                value={String(kpi.weekIn)}
-                accent="#059669"
-              />
-              <KPI
-                icon={TrendingDown}
-                label="7 Gün Çıkış"
-                value={String(kpi.weekOutWaste)}
-                accent="#DC2626"
-              />
+            {/* ── F1 HeroCard — Hareket özeti ── */}
+            <View style={{
+              borderRadius: 20, overflow: 'hidden',
+              backgroundColor: accentColor, padding: 18,
+              position: 'relative',
+              marginHorizontal: 12, marginTop: 4,
+            }}>
+              <View style={{ position: 'absolute', top: -40, right: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
+              <View style={{ position: 'absolute', bottom: -50, left: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.78)', marginBottom: 8 }}>
+                    Toplam Hareket
+                  </Text>
+                  <Text style={{ ...DISPLAY, fontSize: 36, color: '#FFFFFF', letterSpacing: -1, lineHeight: 40 }}>
+                    {kpi.total}
+                  </Text>
+                  <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.72)', marginTop: 4 }}>
+                    Bugün {kpi.today} işlem
+                  </Text>
+                </View>
+                <View style={{ width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.18)' }}>
+                  <Activity size={20} color="#FFFFFF" strokeWidth={1.6} />
+                </View>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 16 }}>
+                {([
+                  { label: 'Bugün',       value: kpi.today,        icon: Clock         },
+                  { label: '7G Giriş',    value: kpi.weekIn,       icon: TrendingUp    },
+                  { label: '7G Çıkış',    value: kpi.weekOutWaste, icon: TrendingDown  },
+                ] as const).map(stat => {
+                  const Icon = stat.icon;
+                  return (
+                    <View key={stat.label} style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.16)' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 }}>
+                        <Icon size={11} color="rgba(255,255,255,0.85)" strokeWidth={2} />
+                        <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>
+                          {stat.label}
+                        </Text>
+                      </View>
+                      <Text style={{ ...DISPLAY, fontSize: 20, color: '#FFFFFF', letterSpacing: -0.5, lineHeight: 22 }}>
+                        {stat.value}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
             </View>
 
             {/* ── Toolbar (arama + tip filtreleri) ───────────────── */}
@@ -290,7 +316,7 @@ export function StockMovementsScreen({ accentColor = '#6366F1' }: { accentColor?
                   (searchOpen || search.length > 0) && { backgroundColor: accentColor + '14' },
                 ]}
               >
-                <Search size={16} color={(searchOpen || search.length > 0) ? accentColor : '#64748B'} strokeWidth={1.8} />
+                <Search size={16} color={(searchOpen || search.length > 0) ? accentColor : T.ink3} strokeWidth={1.8} />
               </Pressable>
             </View>
 
@@ -329,8 +355,8 @@ export function StockMovementsScreen({ accentColor = '#6366F1' }: { accentColor?
         ListEmptyComponent={
           search || typeFilter !== 'ALL' ? (
             <View style={s.center}>
-              <View style={[s.emptyIcon, { backgroundColor: '#F1F5F9' }]}>
-                <Search size={28} color="#94A3B8" strokeWidth={1.6} />
+              <View style={[s.emptyIcon, { backgroundColor: T.cardSoft }]}>
+                <Search size={28} color={T.ink3} strokeWidth={1.6} />
               </View>
               <Text style={s.emptyTitle}>Sonuç bulunamadı</Text>
               <Text style={s.emptySub}>Arama/filtre kriterlerine uygun hareket yok.</Text>
@@ -369,6 +395,9 @@ export function StockMovementsScreen({ accentColor = '#6366F1' }: { accentColor?
 function KPI({ icon: Icon, label, value, accent }: {
   icon: any; label: string; value: string; accent: string;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(st => st.resolvedDark);
+  const s = useMemo(() => makeStyles(T, isDark), [T, isDark]);
   return (
     <View style={s.kpiCard}>
       <View style={[s.kpiIcon, { backgroundColor: accent + '14' }]}>
@@ -389,6 +418,9 @@ function FilterPill({ active, label, count, icon: Icon, iconColor, onPress, acce
   active: boolean; label: string; count: number;
   icon?: any; iconColor?: string; onPress: () => void; accent: string;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(st => st.resolvedDark);
+  const s = useMemo(() => makeStyles(T, isDark), [T, isDark]);
   return (
     <Pressable
       onPress={onPress}
@@ -416,6 +448,9 @@ function FilterPill({ active, label, count, icon: Icon, iconColor, onPress, acce
 function DesktopRow({ m }: { m: Movement }) {
   const cfg = TYPE_CFG[m.type] ?? TYPE_CFG.OUT;
   const Icon = cfg.Icon;
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(st => st.resolvedDark);
+  const s = useMemo(() => makeStyles(T, isDark), [T, isDark]);
 
   return (
     <View style={[s.row, m.is_reversed && { opacity: 0.5 }]}>
@@ -469,6 +504,9 @@ function DesktopRow({ m }: { m: Movement }) {
 function MobileCard({ m }: { m: Movement }) {
   const cfg = TYPE_CFG[m.type] ?? TYPE_CFG.OUT;
   const Icon = cfg.Icon;
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(st => st.resolvedDark);
+  const s = useMemo(() => makeStyles(T, isDark), [T, isDark]);
 
   return (
     <View style={[s.card, m.is_reversed && { opacity: 0.5 }]}>
@@ -506,9 +544,12 @@ function MobileCard({ m }: { m: Movement }) {
 // Tag
 // ═════════════════════════════════════════════════════════════════
 function Tag({ label, tone = 'default' }: { label: string; tone?: 'default' | 'muted' | 'success' }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(st => st.resolvedDark);
+  const s = useMemo(() => makeStyles(T, isDark), [T, isDark]);
   const colors = {
-    default: { bg: '#F1F5F9', text: '#475569' },
-    muted:   { bg: '#F1F5F9', text: '#94A3B8' },
+    default: { bg: T.cardSoft, text: T.ink2 },
+    muted:   { bg: T.cardSoft, text: T.ink3 },
     success: { bg: '#ECFDF5', text: '#047857' },
   }[tone];
   return (
@@ -526,7 +567,7 @@ const cardShadow = Platform.OS === 'web'
   ? { boxShadow: '0 1px 3px rgba(0,0,0,0.04)' } as any
   : { shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 1 };
 
-const s = StyleSheet.create({
+const makeStyles = (T: ReturnType<typeof useMobileTokens>, isDark: boolean) => StyleSheet.create({
   // Hub içinde embedded olarak renderlandığı için kendi arka planı yok — parent'ın krem/beyaz zemininden yararlanır
   safe:   { flex: 1, backgroundColor: 'transparent' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 40 },
@@ -541,12 +582,12 @@ const s = StyleSheet.create({
     flex: 1, minWidth: 140,
     flexDirection: 'row', alignItems: 'center', gap: 10,
     paddingHorizontal: 14, paddingVertical: 12,
-    backgroundColor: '#FFFFFF', borderRadius: 14,
-    borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)',
+    backgroundColor: T.card, borderRadius: 14,
+    borderWidth: 1, borderColor: T.hairline2,
     ...cardShadow,
   },
   kpiIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  kpiLabel: { fontSize: 10, fontWeight: '600', color: '#64748B', letterSpacing: 0.5, textTransform: 'uppercase' as const },
+  kpiLabel: { fontSize: 10, fontWeight: '600', color: T.ink3, letterSpacing: 0.5, textTransform: 'uppercase' as const },
   kpiValue: { ...DISPLAY, fontSize: 20, letterSpacing: -0.4, marginTop: 2 },
 
   // Toolbar
@@ -559,20 +600,20 @@ const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 5,
     paddingHorizontal: 10, paddingVertical: 6,
     borderRadius: 999,
-    borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
-    backgroundColor: '#FFFFFF',
+    borderWidth: 1, borderColor: T.hairline,
+    backgroundColor: T.card,
   },
-  pillText: { fontSize: 12, fontWeight: '500', color: '#475569' },
+  pillText: { fontSize: 12, fontWeight: '500', color: T.ink2 },
   pillCount: {
     paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: T.cardSoft,
   },
-  pillCountText: { fontSize: 10, fontWeight: '700', color: '#64748B' },
+  pillCountText: { fontSize: 10, fontWeight: '700', color: T.ink3 },
   searchToggle: {
     width: 36, height: 36, borderRadius: 10,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
-    backgroundColor: '#FFFFFF',
+    borderWidth: 1, borderColor: T.hairline,
+    backgroundColor: T.card,
   },
 
   // Search box
@@ -581,11 +622,11 @@ const s = StyleSheet.create({
     height: 42, paddingHorizontal: 14,
     marginHorizontal: 16, marginTop: 8,
     borderRadius: 14,
-    borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
-    backgroundColor: '#FFFFFF',
+    borderWidth: 1, borderColor: T.hairline,
+    backgroundColor: T.card,
   },
   searchInput: {
-    flex: 1, fontSize: 14, color: '#0F172A',
+    flex: 1, fontSize: 14, color: T.ink,
     ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
   },
 
@@ -595,49 +636,49 @@ const s = StyleSheet.create({
     paddingHorizontal: 16, paddingTop: 18, paddingBottom: 8,
   },
   sectionLabel: {
-    fontSize: 11, fontWeight: '700', color: '#64748B',
+    fontSize: 11, fontWeight: '700', color: T.ink3,
     letterSpacing: 0.7, textTransform: 'uppercase' as const,
   },
-  sectionDivider: { flex: 1, height: 1, backgroundColor: 'rgba(0,0,0,0.06)' },
+  sectionDivider: { flex: 1, height: 1, backgroundColor: T.hairline },
 
   // Desktop table head
   tableHead: {
     flexDirection: 'row', alignItems: 'center',
     paddingVertical: 10, paddingHorizontal: 16,
     marginHorizontal: 16, marginTop: 16,
-    backgroundColor: '#FAFAFA', borderRadius: 12,
+    backgroundColor: T.cardSoft, borderRadius: 12,
   },
-  th: { fontSize: 10, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.7, textTransform: 'uppercase' as const },
+  th: { fontSize: 10, fontWeight: '700', color: T.ink3, letterSpacing: 0.7, textTransform: 'uppercase' as const },
 
   // Desktop row
   row: {
     flexDirection: 'row', alignItems: 'center',
     paddingVertical: 12, paddingHorizontal: 14,
     marginHorizontal: 16, marginBottom: 6,
-    backgroundColor: '#FFFFFF', borderRadius: 14,
-    borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)',
+    backgroundColor: T.card, borderRadius: 14,
+    borderWidth: 1, borderColor: T.hairline2,
     ...cardShadow,
   },
   iconCircle: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   itemNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  rowName: { fontSize: 14, fontWeight: '600', color: '#0F172A' },
-  rowNote: { fontSize: 11, color: '#94A3B8', marginTop: 3 },
+  rowName: { fontSize: 14, fontWeight: '600', color: T.ink },
+  rowNote: { fontSize: 11, color: T.ink3, marginTop: 3 },
   rowQty: { fontSize: 14, fontWeight: '700' },
-  rowUnit: { fontSize: 10, color: '#94A3B8', marginTop: 2 },
-  rowDate: { fontSize: 12, fontWeight: '500', color: '#94A3B8' },
+  rowUnit: { fontSize: 10, color: T.ink3, marginTop: 2 },
+  rowDate: { fontSize: 12, fontWeight: '500', color: T.ink3 },
 
   // Mobile card
   card: {
     marginHorizontal: 16, marginBottom: 8,
     paddingHorizontal: 14, paddingVertical: 12,
-    backgroundColor: '#FFFFFF', borderRadius: 14,
-    borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)',
+    backgroundColor: T.card, borderRadius: 14,
+    borderWidth: 1, borderColor: T.hairline2,
     ...cardShadow,
   },
   cardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   cardTagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 },
   cardQty: { fontSize: 17, fontWeight: '700' },
-  cardTime: { fontSize: 11, color: '#94A3B8', marginTop: 8, textAlign: 'right' as const },
+  cardTime: { fontSize: 11, color: T.ink3, marginTop: 8, textAlign: 'right' as const },
 
   // Type pill
   typePill: {
@@ -654,6 +695,6 @@ const s = StyleSheet.create({
 
   // Empty
   emptyIcon: { width: 72, height: 72, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
-  emptyTitle: { ...DISPLAY, fontSize: 20, color: '#0F172A', textAlign: 'center', letterSpacing: -0.3 },
-  emptySub: { fontSize: 13, color: '#94A3B8', textAlign: 'center', lineHeight: 20, maxWidth: 360 },
+  emptyTitle: { ...DISPLAY, fontSize: 20, color: T.ink, textAlign: 'center', letterSpacing: -0.3 },
+  emptySub: { fontSize: 13, color: T.ink3, textAlign: 'center', lineHeight: 20, maxWidth: 360 },
 });

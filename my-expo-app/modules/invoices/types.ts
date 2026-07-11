@@ -58,7 +58,10 @@ export interface Invoice {
   tax_amount: number;
   total: number;
   paid_amount: number;
-  currency: string;                  // 'TRY'
+  currency: string;                  // faturanın kendi para birimi (TRY/EUR/USD/…)
+  rate_at_time: number | null;       // işlem anı kuru (1 birim currency = X baz para)
+  amount_base: number | null;        // total × rate_at_time (baz para karşılığı)
+  base_currency_at_time: string | null;
   notes: string | null;
   created_by: string | null;
   created_at: string;
@@ -159,6 +162,30 @@ export interface ClinicBalance {
   aging_30?: number;                 // 1–30 gün gecikmiş
   aging_60?: number;                 // 31–60 gün gecikmiş
   aging_90?: number;                 // 61+ gün gecikmiş
+  // Orijinal döviz (₺ yanında €/$ gösterimi) — tek TL dışı para birimi varsa
+  currency?: string | null;
+  total_billed_original?: number;
+  total_paid_original?: number;
+  balance_original?: number;
+}
+
+// Cari bakiye — KATI per-currency: her (klinik, para birimi) için bir satır,
+// tüm tutarlar ORİJİNAL para biriminde (v_clinic_balance_ccy view).
+export interface ClinicBalanceCcy {
+  clinic_id: string;
+  clinic_name: string;
+  lab_id: string | null;
+  currency: string;
+  invoice_count: number;
+  total_billed: number;
+  total_paid: number;
+  balance: number;
+  overdue_amount: number;
+  aging_current: number;
+  aging_30: number;
+  aging_60: number;
+  aging_90: number;
+  oldest_overdue_date: string | null;
 }
 
 // ─── Form / Create parametreleri ───────────────────────────────────────────

@@ -40,7 +40,7 @@ export function LabDashboardMockup() {
           <View className="flex-1" />
 
           <View className="flex-row gap-0.5 p-1 rounded-full bg-black/5">
-            {['Dashboard','Siparişler','Üretim','Stok','Hastalar','Faturalar','Ayarlar'].map((tab, i) => (
+            {['Panel','Siparişler','Üretim','Stok','Hastalar','Faturalar','Ayarlar'].map((tab, i) => (
               <Pressable
                 key={tab}
                 className={`px-4 py-2 rounded-full ${i === 0 ? 'bg-ink-900' : ''}`}

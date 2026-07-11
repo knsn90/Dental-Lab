@@ -2,10 +2,13 @@ import React from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LogOut } from 'lucide-react-native';
-import { SetupWizardScreen } from '../../modules/onboarding/screens/SetupWizardScreen';
+import { useTranslation } from 'react-i18next';
+const SetupWizardScreen = lazyRoute(() => import('../../modules/onboarding/screens/SetupWizardScreen'), 'SetupWizardScreen');
 import { supabase } from '../../core/api/supabase';
+import { lazyRoute } from '../../core/_lazyRoute';
 
 export default function AdminSetupWizardRoute() {
+  const { t } = useTranslation();
   const router = useRouter();
 
   const handleLogout = async () => {
@@ -34,7 +37,7 @@ export default function AdminSetupWizardRoute() {
         }}
       >
         <LogOut size={13} color="#6B6B6B" strokeWidth={1.8} />
-        <Text style={{ fontSize: 12, fontWeight: '600', color: '#6B6B6B' }}>Çıkış Yap</Text>
+        <Text style={{ fontSize: 12, fontWeight: '600', color: '#6B6B6B' }}>{t('common.signOut')}</Text>
       </Pressable>
     </View>
   );

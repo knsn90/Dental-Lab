@@ -18,15 +18,19 @@ import { toast } from '../../core/ui/Toast';
 import { supabase } from '../../core/api/supabase';
 import { Profile } from '../../lib/types';
 import { DS } from '../../core/theme/dsTokens';
+import { useMobileTokens } from '../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../core/store/themeModeStore';
 
 const DISPLAY: any = { fontFamily: DS.font.display, fontWeight: '300' };
-const R = { sm: 8, md: 14, lg: 20, xl: 24, pill: 999 };
-const CARD = {
-  backgroundColor: '#FFFFFF',
-  borderRadius: R.xl,
+const R = { sm: 8, md: 12, lg: 16, xl: 18, pill: 999 };
+const makeCard = (isDark: boolean, T: ReturnType<typeof useMobileTokens>) => ({
+  backgroundColor: 'transparent' as const,
+  borderRadius: R.lg,
   borderWidth: 1,
-  borderColor: 'rgba(0,0,0,0.05)',
-} as const;
+  borderColor: isDark ? 'rgba(255,255,255,0.10)' : T.hairline,
+  // @ts-ignore web
+  boxShadow: isDark ? 'none' : '0 1px 3px rgba(15,23,42,0.04)',
+});
 
 // ── Web-safe confirm dialog ──
 function confirmAction(title: string, message: string): Promise<boolean> {
@@ -54,6 +58,8 @@ export function PendingApprovalsScreen() {
   const [showHistory, setShowHistory] = useState(true);
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
 
   const load = useCallback(async () => {
     // Load pending
@@ -170,71 +176,60 @@ export function PendingApprovalsScreen() {
           />
         }
         ListHeaderComponent={
-          <View style={{ padding: isDesktop ? 40 : 16, paddingTop: 16, gap: 14 }}>
+          <View style={{ padding: isDesktop ? 24 : 12, paddingTop: 8, gap: 10 }}>
             {/* ── Pending section ── */}
             {pendingCount === 0 ? (
               <View style={{
                 alignItems: 'center', justifyContent: 'center',
-                gap: 14, paddingVertical: 48,
+                gap: 8, paddingVertical: 36, paddingHorizontal: 18,
+                borderRadius: R.lg, borderWidth: 1, borderStyle: 'dashed' as any,
+                borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.10)', backgroundColor: 'transparent',
               }}>
-                <View style={{
-                  width: 64, height: 64, borderRadius: 32,
-                  backgroundColor: 'rgba(45,154,107,0.1)',
-                  alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <UserCheck size={28} color="#1F6B47" strokeWidth={1.6} />
+                <View style={{ width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.06)' }}>
+                  <UserCheck size={22} color="#1F6B47" strokeWidth={1.6} />
                 </View>
-                <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: T.ink }}>
                   Bekleyen kayıt yok
                 </Text>
-                <Text style={{ fontSize: 13, color: DS.ink[400], textAlign: 'center', lineHeight: 20 }}>
-                  Yeni hekim kaydı geldiğinde burada görünecek.
+                <Text style={{ fontSize: 11.5, color: T.ink3, textAlign: 'center', lineHeight: 16, maxWidth: 320 }}>
+                  Yeni hekim kaydı geldiğinde burada görünür.
                 </Text>
               </View>
             ) : (
               <>
-                {/* Pending header */}
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                {/* Section eyebrow */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 2 }}>
                   <View style={{
-                    paddingHorizontal: 8, paddingVertical: 3,
-                    borderRadius: R.pill, backgroundColor: 'rgba(232,155,42,0.12)',
+                    paddingHorizontal: 8, paddingVertical: 2,
+                    borderRadius: R.pill, backgroundColor: 'rgba(232,155,42,0.14)',
+                    flexDirection: 'row', alignItems: 'center', gap: 4,
                   }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#9C5E0E' }}>
-                      {pendingCount}
+                    <Clock size={10} color="#9C5E0E" strokeWidth={2} />
+                    <Text style={{ fontSize: 10.5, fontWeight: '800', color: '#9C5E0E', letterSpacing: 0.4 }}>
+                      {pendingCount} BEKLEYEN
                     </Text>
                   </View>
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[700] }}>
-                    Bekleyen kayıt
+                  <Text style={{ fontSize: 10.5, fontWeight: '700', color: T.ink3, letterSpacing: 0.8, textTransform: 'uppercase' }}>
+                    Hekim kaydı
                   </Text>
                 </View>
 
-                {/* Pending cards */}
-                {isDesktop ? (
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>
-                    {pending.map(doc => (
-                      <View key={doc.id} style={{ width: '48%' as any }}>
-                        <DoctorCard
-                          doctor={doc}
-                          actioning={actioningId === doc.id}
-                          onApprove={() => handleApprove(doc)}
-                          onReject={() => handleReject(doc)}
-                        />
-                      </View>
-                    ))}
-                  </View>
-                ) : (
-                  <View style={{ gap: 14 }}>
-                    {pending.map(doc => (
+                {/* Pending cards — desktop 3-col grid, mobile stack */}
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                  {pending.map(doc => (
+                    <View key={doc.id} style={{
+                      width: isDesktop ? ('calc(33.333% - 7px)' as any) : '100%',
+                      minWidth: isDesktop ? 280 : 0,
+                    }}>
                       <DoctorCard
-                        key={doc.id}
                         doctor={doc}
                         actioning={actioningId === doc.id}
                         onApprove={() => handleApprove(doc)}
                         onReject={() => handleReject(doc)}
                       />
-                    ))}
-                  </View>
-                )}
+                    </View>
+                  ))}
+                </View>
               </>
             )}
 
@@ -243,54 +238,36 @@ export function PendingApprovalsScreen() {
               <>
                 <Pressable
                   onPress={() => setShowHistory(!showHistory)}
-                  style={{
+                  style={({ hovered }: any) => ({
                     flexDirection: 'row', alignItems: 'center', gap: 8,
-                    marginTop: 16, paddingVertical: 8,
-                    borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
-                  }}
+                    marginTop: 10, paddingVertical: 8, paddingHorizontal: 4,
+                    borderTopWidth: 1, borderTopColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.06)',
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  })}
                 >
-                  <History size={15} color={DS.ink[400]} strokeWidth={1.8} />
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500], flex: 1 }}>
-                    Son işlemler
+                  <History size={12} color={T.ink3} strokeWidth={1.8} />
+                  <Text style={{ fontSize: 10.5, fontWeight: '800', color: T.ink2, letterSpacing: 0.8, textTransform: 'uppercase', flex: 1 }}>
+                    Son işlemler · {historyCount}
                   </Text>
-                  <View style={{
-                    paddingHorizontal: 8, paddingVertical: 3,
-                    borderRadius: R.pill, backgroundColor: DS.ink[100],
-                  }}>
-                    <Text style={{ fontSize: 11, fontWeight: '600', color: DS.ink[500] }}>
-                      {historyCount}
-                    </Text>
-                  </View>
-                  <Text style={{ fontSize: 18, color: DS.ink[400] }}>
+                  <Text style={{ fontSize: 14, color: T.ink3, fontWeight: '600' }}>
                     {showHistory ? '−' : '+'}
                   </Text>
                 </Pressable>
 
                 {showHistory && (
-                  isDesktop ? (
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>
-                      {history.map(doc => (
-                        <View key={doc.id} style={{ width: '48%' as any }}>
-                          <HistoryCard
-                            doctor={doc}
-                            actioning={actioningId === doc.id}
-                            onUndo={() => handleUndo(doc)}
-                          />
-                        </View>
-                      ))}
-                    </View>
-                  ) : (
-                    <View style={{ gap: 10 }}>
-                      {history.map(doc => (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {history.map(doc => (
+                      <View key={doc.id} style={{
+                        width: isDesktop ? ('calc(50% - 4px)' as any) : '100%',
+                      }}>
                         <HistoryCard
-                          key={doc.id}
                           doctor={doc}
                           actioning={actioningId === doc.id}
                           onUndo={() => handleUndo(doc)}
                         />
-                      ))}
-                    </View>
-                  )
+                      </View>
+                    ))}
+                  </View>
                 )}
               </>
             )}
@@ -313,100 +290,95 @@ function DoctorCard({
   onReject: () => void;
 }) {
   const initial = doctor.full_name?.charAt(0)?.toUpperCase() ?? 'H';
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const CARD = makeCard(isDark, T);
 
+  const dateStr = new Date(doctor.created_at).toLocaleDateString('tr-TR', {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+  });
   return (
-    <View style={{ ...CARD, padding: 24, gap: 16 }}>
+    <View style={{ ...CARD, padding: 14, gap: 12 }}>
       {/* Top: avatar + info */}
-      <View style={{ flexDirection: 'row', gap: 14 }}>
+      <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
         <View style={{
-          width: 52, height: 52, borderRadius: 16,
+          width: 42, height: 42, borderRadius: 12,
           backgroundColor: DS.clinic.bg,
           alignItems: 'center', justifyContent: 'center',
+          flexShrink: 0,
         }}>
-          <Text style={{ ...DISPLAY, fontSize: 24, letterSpacing: -0.5, color: DS.clinic.accent }}>
+          <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.4, color: DS.clinic.accent }}>
             {initial}
           </Text>
         </View>
 
-        <View style={{ flex: 1, gap: 4 }}>
-          <Text style={{ fontSize: 16, fontWeight: '700', color: DS.ink[900], letterSpacing: -0.2 }}>
-            {doctor.full_name}
-          </Text>
-          {doctor.clinic_name ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Building2 size={13} color={DS.ink[400]} strokeWidth={1.6} />
-              <Text style={{ fontSize: 12, color: DS.ink[500] }}>{doctor.clinic_name}</Text>
+        <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: T.ink, letterSpacing: -0.1, flex: 1 }} numberOfLines={1}>
+              {doctor.full_name}
+            </Text>
+            <View style={{
+              flexDirection: 'row', alignItems: 'center', gap: 3,
+              paddingHorizontal: 7, paddingVertical: 2,
+              borderRadius: R.pill, backgroundColor: 'rgba(232,155,42,0.14)',
+            }}>
+              <Clock size={9} color="#9C5E0E" strokeWidth={2} />
+              <Text style={{ fontSize: 9.5, fontWeight: '800', color: '#9C5E0E', letterSpacing: 0.3 }}>BEKLİYOR</Text>
             </View>
-          ) : null}
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 2 }}>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            {doctor.clinic_name ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Building2 size={11} color={T.ink3} strokeWidth={1.6} />
+                <Text style={{ fontSize: 11, color: T.ink2 }} numberOfLines={1}>{doctor.clinic_name}</Text>
+              </View>
+            ) : null}
             {doctor.phone ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Phone size={12} color={DS.ink[400]} strokeWidth={1.6} />
-                <Text style={{ fontSize: 11, color: DS.ink[400] }}>{doctor.phone}</Text>
+                <Phone size={11} color={T.ink3} strokeWidth={1.6} />
+                <Text style={{ fontSize: 11, color: T.ink3 }}>{doctor.phone}</Text>
               </View>
             ) : null}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <Clock size={12} color={DS.ink[300]} strokeWidth={1.6} />
-              <Text style={{ fontSize: 11, color: DS.ink[300] }}>
-                {new Date(doctor.created_at).toLocaleDateString('tr-TR', {
-                  day: 'numeric', month: 'short', year: 'numeric',
-                  hour: '2-digit', minute: '2-digit',
-                })}
-              </Text>
+              <Clock size={11} color={T.ink3} strokeWidth={1.6} />
+              <Text style={{ fontSize: 10.5, color: T.ink3 }}>{dateStr}</Text>
             </View>
           </View>
         </View>
       </View>
 
-      {/* Status + actions */}
-      <View style={{
-        flexDirection: 'row', alignItems: 'center',
-        borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)',
-        paddingTop: 14, gap: 10,
-      }}>
-        <View style={{
-          flexDirection: 'row', alignItems: 'center', gap: 5,
-          paddingHorizontal: 10, paddingVertical: 5,
-          borderRadius: R.pill, backgroundColor: 'rgba(232,155,42,0.12)',
-        }}>
-          <Clock size={12} color="#9C5E0E" strokeWidth={1.8} />
-          <Text style={{ fontSize: 11, fontWeight: '600', color: '#9C5E0E' }}>Onay bekliyor</Text>
-        </View>
-
-        <View style={{ flex: 1 }} />
-
+      {/* Actions row — kompakt */}
+      <View style={{ flexDirection: 'row', gap: 6 }}>
         <Pressable
           onPress={onReject}
           disabled={actioning}
-          style={{
-            flexDirection: 'row', alignItems: 'center', gap: 6,
-            paddingHorizontal: 16, paddingVertical: 10,
-            borderRadius: R.pill, borderWidth: 1.5,
-            borderColor: 'rgba(217,75,75,0.2)',
-            backgroundColor: 'rgba(217,75,75,0.06)',
+          style={({ hovered }: any) => ({
+            flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+            height: 32, borderRadius: R.pill,
+            borderWidth: 1, borderColor: hovered ? '#DC2626' : 'rgba(220,38,38,0.25)',
+            backgroundColor: hovered ? 'rgba(220,38,38,0.08)' : 'transparent',
             opacity: actioning ? 0.5 : 1,
-          }}
+            ...(Platform.OS === 'web' ? { cursor: actioning ? 'wait' : 'pointer' } as any : {}),
+          })}
         >
-          <X size={14} color="#9C2E2E" strokeWidth={2} />
-          <Text style={{ fontSize: 13, fontWeight: '600', color: '#9C2E2E' }}>Reddet</Text>
+          <X size={13} color="#DC2626" strokeWidth={2} />
+          <Text style={{ fontSize: 12, fontWeight: '700', color: '#DC2626' }}>Reddet</Text>
         </Pressable>
-
         <Pressable
           onPress={onApprove}
           disabled={actioning}
-          style={{
-            flexDirection: 'row', alignItems: 'center', gap: 6,
-            paddingHorizontal: 20, paddingVertical: 10,
-            borderRadius: R.pill, backgroundColor: DS.ink[900],
-            opacity: actioning ? 0.5 : 1,
-          }}
+          style={({ hovered }: any) => ({
+            flex: 1.4, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+            height: 32, borderRadius: R.pill,
+            backgroundColor: actioning ? DS.ink[400] : (hovered ? DS.ink[700] : DS.ink[900]),
+            opacity: actioning ? 0.6 : 1,
+            ...(Platform.OS === 'web' ? { cursor: actioning ? 'wait' : 'pointer' } as any : {}),
+          })}
         >
-          {actioning ? (
-            <ActivityIndicator size="small" color="#FFF" />
-          ) : (
+          {actioning ? <ActivityIndicator size="small" color="#FFF" /> : (
             <>
-              <Check size={14} color="#FFFFFF" strokeWidth={2} />
-              <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFFFFF' }}>Onayla</Text>
+              <Check size={13} color="#FFFFFF" strokeWidth={2.4} />
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>Onayla</Text>
             </>
           )}
         </Pressable>
@@ -427,6 +399,9 @@ function HistoryCard({
 }) {
   const initial = doctor.full_name?.charAt(0)?.toUpperCase() ?? 'H';
   const isApproved = doctor.approval_status === 'approved';
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const CARD = makeCard(isDark, T);
 
   const statusCfg = isApproved
     ? { label: 'Onaylandı', bg: 'rgba(45,154,107,0.1)', color: '#1F6B47', Icon: CheckCircle2 }
@@ -435,68 +410,58 @@ function HistoryCard({
   return (
     <View style={{
       ...CARD,
-      padding: 18,
+      padding: 10,
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 14,
+      gap: 10,
     }}>
-      {/* Avatar */}
       <View style={{
-        width: 42, height: 42, borderRadius: 13,
+        width: 34, height: 34, borderRadius: 11,
         backgroundColor: isApproved ? 'rgba(45,154,107,0.08)' : 'rgba(217,75,75,0.08)',
-        alignItems: 'center', justifyContent: 'center',
+        alignItems: 'center', justifyContent: 'center', flexShrink: 0,
       }}>
         <Text style={{
-          ...DISPLAY, fontSize: 18, letterSpacing: -0.3,
+          ...DISPLAY, fontSize: 15, letterSpacing: -0.3,
           color: isApproved ? '#1F6B47' : '#9C2E2E',
         }}>
           {initial}
         </Text>
       </View>
 
-      {/* Info */}
-      <View style={{ flex: 1, gap: 2 }}>
-        <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }}>
+      <View style={{ flex: 1, gap: 1, minWidth: 0 }}>
+        <Text style={{ fontSize: 12.5, fontWeight: '700', color: T.ink }} numberOfLines={1}>
           {doctor.full_name}
         </Text>
         {doctor.clinic_name ? (
-          <Text style={{ fontSize: 11, color: DS.ink[400] }}>{doctor.clinic_name}</Text>
+          <Text style={{ fontSize: 10.5, color: T.ink3 }} numberOfLines={1}>{doctor.clinic_name}</Text>
         ) : null}
       </View>
 
-      {/* Status badge */}
       <View style={{
-        flexDirection: 'row', alignItems: 'center', gap: 5,
-        paddingHorizontal: 10, paddingVertical: 5,
+        flexDirection: 'row', alignItems: 'center', gap: 4,
+        paddingHorizontal: 8, paddingVertical: 3,
         borderRadius: R.pill, backgroundColor: statusCfg.bg,
       }}>
-        <statusCfg.Icon size={12} color={statusCfg.color} strokeWidth={1.8} />
-        <Text style={{ fontSize: 11, fontWeight: '600', color: statusCfg.color }}>
-          {statusCfg.label}
+        <statusCfg.Icon size={10} color={statusCfg.color} strokeWidth={2} />
+        <Text style={{ fontSize: 10, fontWeight: '800', color: statusCfg.color, letterSpacing: 0.2 }}>
+          {statusCfg.label.toLocaleUpperCase('tr-TR')}
         </Text>
       </View>
 
-      {/* Undo button */}
       <Pressable
         onPress={onUndo}
         disabled={actioning}
-        style={{
-          flexDirection: 'row', alignItems: 'center', gap: 5,
-          paddingHorizontal: 12, paddingVertical: 8,
-          borderRadius: R.pill,
-          borderWidth: 1.5, borderColor: DS.ink[200],
-          backgroundColor: '#FFFFFF',
+        accessibilityLabel="Geri al"
+        style={({ hovered }: any) => ({
+          width: 30, height: 30, borderRadius: 9,
+          alignItems: 'center', justifyContent: 'center',
+          backgroundColor: hovered ? DS.ink[100] : 'transparent',
+          borderWidth: 1, borderColor: hovered ? DS.ink[300] : 'rgba(15,23,42,0.08)',
           opacity: actioning ? 0.5 : 1,
-        }}
+          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+        })}
       >
-        {actioning ? (
-          <ActivityIndicator size="small" color={DS.ink[500]} />
-        ) : (
-          <>
-            <Undo2 size={13} color={DS.ink[500]} strokeWidth={2} />
-            <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[500] }}>Geri Al</Text>
-          </>
-        )}
+        {actioning ? <ActivityIndicator size="small" color={DS.ink[500]} /> : <Undo2 size={12} color={DS.ink[500]} strokeWidth={1.8} />}
       </Pressable>
     </View>
   );

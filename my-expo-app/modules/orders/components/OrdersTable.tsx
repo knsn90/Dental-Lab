@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-nati
 import { WorkOrder } from '../types';
 import { STATUS_CONFIG, isOrderOverdue } from '../constants';
 import { C } from '../../../core/theme/colors';
+import { getOrderStageLabel } from '../utils/currentStage';
 
 interface Props {
   orders: WorkOrder[];
@@ -101,7 +102,7 @@ export function OrdersTable({ orders, onPress, onStatusAdvance, showDoctor = tru
                 {/* Status */}
                 <View style={[styles.cell, { width: COLS[4].width }]}>
                   <View style={[styles.statusBadge, { backgroundColor: cfg.bgColor }]}>
-                    <Text style={[styles.statusText, { color: cfg.color }]}>{cfg.label}</Text>
+                    <Text style={[styles.statusText, { color: cfg.color }]}>{getOrderStageLabel(order as any)}</Text>
                   </View>
                 </View>
 

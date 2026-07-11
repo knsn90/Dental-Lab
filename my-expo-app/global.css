@@ -47,6 +47,14 @@
     --admin: 222.2 47.4% 11.2%;
   }
 
+  /* Hide Expo Router / Metro dev-mode "Bundling..." overlay (only visible in dev) */
+  #metro-bundle-progress,
+  [data-testid="metro-bundle-progress"],
+  [data-testid="route-info"],
+  [data-testid="bundle-progress"] {
+    display: none !important;
+  }
+
   .dark {
     --background: 240 10% 3.9%;
     --foreground: 0 0% 98%;
@@ -68,4 +76,179 @@
     --input: 240 3.7% 15.9%;
     --ring: 217.2 91.2% 59.8%;
   }
+}
+
+/* ============================================================ */
+/* Form input — browser default :invalid / required error styles  */
+/* ============================================================ */
+/* Firefox: kırmızı box-shadow on :invalid */
+input:invalid,
+textarea:invalid,
+select:invalid {
+  box-shadow: none !important;
+  outline: none !important;
+}
+/* Firefox: required field bordur tooltip kaldır */
+input:-moz-ui-invalid,
+input:-moz-ui-valid,
+textarea:-moz-ui-invalid,
+textarea:-moz-ui-valid {
+  box-shadow: none !important;
+}
+/* Chrome / Safari: autofill yellow background (sarı dolgu) — sadece görselde temiz dursun */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 30px transparent inset !important;
+  -webkit-text-fill-color: inherit !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+/* Generic input — focus outline temizle (tasarımımızla yönetiyoruz) */
+input:focus,
+textarea:focus,
+select:focus,
+button:focus {
+  outline: none !important;
+}
+/* Firefox: dot border on focus */
+input::-moz-focus-inner,
+button::-moz-focus-inner {
+  border: 0 !important;
+  outline: none !important;
+}
+
+/* Browser native password reveal eye / clear X / credentials autofill key — bizim ikonumuz var */
+input::-ms-reveal,
+input::-ms-clear,
+input::-webkit-contacts-auto-fill-button,
+input::-webkit-credentials-auto-fill-button,
+input::-webkit-caps-lock-indicator,
+input::-webkit-strong-password-auto-fill-button {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  position: absolute !important;
+  right: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* ============================================================ */
+/* AnimatedTabBar — notched bottom tab bar (web only)            */
+/* ============================================================ */
+
+.atb-svg-container {
+  width: 0;
+  height: 0;
+  position: absolute;
+  overflow: hidden;
+}
+
+.atb-menu {
+  position: relative;
+  display: flex;
+  background-color: #FFFFFF;
+  border-radius: 32px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.10);
+}
+
+.atb-menu__item {
+  flex: 1;
+  background: transparent;
+  border: none;
+  padding: 16px 0 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 2;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.2s ease;
+}
+
+.atb-menu__item:active {
+  transform: scale(0.92);
+}
+
+.atb-menu__item .icon {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: rgba(60, 60, 60, 0.55);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: stroke 0.3s ease, transform 0.3s ease;
+}
+
+.atb-menu__item.active .icon {
+  stroke: var(--bgColorItem, #3B82F6);
+  transform: translateY(-3px);
+  stroke-dasharray: 400;
+  stroke-dashoffset: 400;
+  animation: strok 1.4s ease-out forwards;
+}
+
+.atb-menu__border {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 64px;
+  height: 8px;
+  background-color: var(--bgColorItem, #3B82F6);
+  -webkit-clip-path: url(#menu-clip-path);
+  clip-path: url(#menu-clip-path);
+  transition:
+    transform var(--timeOut, 0.45s) cubic-bezier(0.45, 1.6, 0.55, 1),
+    background-color 0.4s ease;
+}
+
+@keyframes strok {
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+.atb-menu__item {
+  flex-direction: column;
+  gap: 2px;
+}
+
+.atb-menu__label {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  color: rgba(60, 60, 60, 0.55);
+  transition: color 0.3s ease, transform 0.3s ease;
+  line-height: 1;
+}
+
+.atb-menu__item.active .atb-menu__label {
+  color: var(--bgColorItem, #3B82F6);
+  font-weight: 600;
+  transform: translateY(-3px);
+}
+
+/* Bottom indicator border kaldırıldı — aktif tab kendi rengi ile yeterli */
+.atb-menu__border {
+  display: none;
+}
+
+/* Aktif item lift animasyonunu da sade tutalım — sadece renk değişimi */
+.atb-menu__item.active .icon {
+  animation: none;
+  stroke-dashoffset: 0;
+  transform: none;
+}
+
+.atb-menu__item.active .atb-menu__label {
+  transform: none;
 }

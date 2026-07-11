@@ -89,3 +89,64 @@ export function mapAmountFields(row: any): MoneyEntry | null {
   const amountBase = Number(row?.amount_base ?? row?.amount ?? 0);
   return { amount, currency, amountBase };
 }
+
+// ───────────────────────────────────────────────────────────────────────────
+// STRICT per-currency (base-currency'ye DOKUNMAZ)
+//
+// ERP kuralı: farklı para birimleri ASLA toplanmaz. Bu helper her para birimini
+// kendi orijinal tutarında bağımsız toplar — base/≈ çevirim YOK. Tüm yeni finans
+// ekranları bunu + <MoneyMultiX/> bileşenini kullanır.
+// ───────────────────────────────────────────────────────────────────────────
+
+/** Tek para biriminin bağımsız toplamı (orijinal tutar — base yok). */
+export interface CurrencyTotal {
+  currency: Currency;
+  total: number;   // o para biriminde net toplam (eksi olabilir — borç/alacak)
+  count: number;
+}
+
+const CURRENCY_ORDER: Currency[] = ['TRY', 'EUR', 'USD', 'GBP'];
+
+/**
+ * Kayıtları para birimine göre bağımsız gruplar — base'e çevirmeden.
+ *
+ *   const slices = groupByCurrency(payments, p => ({
+ *     amount: Number(p.amount), currency: p.currency ?? 'TRY',
+ *   }));
+ *   // → [{ currency:'TRY', total: 8450, count: 12 }, { currency:'EUR', total: 1250, count: 3 }]
+ *
+ * @param keepZero  net'i 0 olan para birimleri de listede kalsın mı (varsayılan false).
+ *                  Cari bakiyede bazen 0 EUR'u göstermek istenir → true geç.
+ */
+export function groupByCurrency<T>(
+  items: T[],
+  mapper: (item: T) => { amount: number; currency: Currency } | null,
+  opts: { keepZero?: boolean } = {},
+): CurrencyTotal[] {
+  const by: Record<string, CurrencyTotal> = {};
+  for (const item of items ?? []) {
+    const e = mapper(item);
+    if (!e) continue;
+    const cur = (e.currency ?? 'TRY') as Currency;
+    const amt = Number(e.amount) || 0;
+    if (!by[cur]) by[cur] = { currency: cur, total: 0, count: 0 };
+    by[cur].total += amt;
+    by[cur].count += 1;
+  }
+  return Object.values(by)
+    .filter(s => opts.keepZero || s.count > 0)
+    .sort((a, b) => CURRENCY_ORDER.indexOf(a.currency) - CURRENCY_ORDER.indexOf(b.currency));
+}
+
+/** `{amount, currency}` alanlı satırlar için kısayol (signed=false). */
+export function groupAmountFields(rows: any[], opts?: { keepZero?: boolean }): CurrencyTotal[] {
+  return groupByCurrency(
+    rows,
+    (r: any) => {
+      const amount = Number(r?.amount ?? 0);
+      const currency = (r?.currency ?? 'TRY') as Currency;
+      return { amount, currency };
+    },
+    opts,
+  );
+}

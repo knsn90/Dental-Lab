@@ -9,8 +9,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView,
-  TextInput, ActivityIndicator,
-} from 'react-native';
+  TextInput, Platform, } from 'react-native';
 import { AppIcon } from '../../../core/ui/AppIcon';
 import { Shadows, CardSpec } from '../../../core/theme/shadows';
 import { toast } from '../../../core/ui/Toast';
@@ -20,6 +19,8 @@ import {
   type ReminderTone, type ReminderChannel, type ReminderTemplate, type PaymentReminder,
 } from '../reminders';
 import type { Invoice } from '../types';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
+import { baseSymbol, useBaseCurrency } from '../../../core/money/baseCurrency';
 
 interface Props {
   visible: boolean;
@@ -30,10 +31,11 @@ interface Props {
 }
 
 function fmtMoney(n: number): string {
-  return '₺' + n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return baseSymbol() + n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export function PaymentReminderModal({ visible, invoice, clinicName, onClose, onSent }: Props) {
+  useBaseCurrency();
   const [tone, setTone]         = useState<ReminderTone>('standard');
   const [channel, setChannel]   = useState<ReminderChannel>('in_app');
   const [templates, setTemplates] = useState<ReminderTemplate[]>([]);
@@ -98,7 +100,7 @@ export function PaymentReminderModal({ visible, invoice, clinicName, onClose, on
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={s.overlay}>
+      <View style={[s.overlay, Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } as any : {}]}>
         <View style={s.sheet}>
           {/* Header */}
           <View style={s.header}>
@@ -228,7 +230,7 @@ export function PaymentReminderModal({ visible, invoice, clinicName, onClose, on
               onPress={handleSend}
               style={[s.sendBtn, sending && { opacity: 0.6 }]}
             >
-              {sending ? <ActivityIndicator color="#FFFFFF" size="small" /> : <AppIcon name="send" size={14} color="#FFFFFF" />}
+              <AppIcon name="send" size={14} color="#FFFFFF" />
               <Text style={s.sendText}>{sending ? 'Gönderiliyor...' : 'Hatırlatma Gönder'}</Text>
             </TouchableOpacity>
           </View>
@@ -239,7 +241,7 @@ export function PaymentReminderModal({ visible, invoice, clinicName, onClose, on
 }
 
 const s = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  overlay: { flex: 1, backgroundColor: 'rgba(10,14,26,0.42)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   sheet: {
     width: '100%', maxWidth: 540, maxHeight: '92%',
     backgroundColor: CardSpec.bg, borderRadius: CardSpec.radius,

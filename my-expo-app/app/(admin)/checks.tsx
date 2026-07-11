@@ -1,1 +1,2 @@
-export { ChecksScreen as default } from '../../modules/checks/screens/ChecksScreen';
+import { lazyRoute } from '../../core/_lazyRoute';
+export default lazyRoute(() => import('../../modules/checks/screens/ChecksScreen'), 'ChecksScreen');

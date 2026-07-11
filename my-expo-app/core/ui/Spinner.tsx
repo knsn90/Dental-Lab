@@ -1,6 +1,7 @@
 import React from 'react';
-import { ActivityIndicator, View, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { C } from '../theme/colors';
+import { ActivityIndicator } from './teethCompat';
 
 type SpinnerSize = 'sm' | 'md' | 'lg';
 

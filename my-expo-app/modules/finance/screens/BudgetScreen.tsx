@@ -11,10 +11,11 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, ScrollView, Pressable, Modal,
-  TextInput, ActivityIndicator, RefreshControl, Alert,
+  TextInput, RefreshControl, Alert,
   Platform, useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { confirmAsync } from '../../../core/util/confirm';
 import {
   Plus, PieChart, Wallet, Tag, X, Trash2,
 } from 'lucide-react-native';
@@ -24,6 +25,9 @@ import { HubContext } from '../../../core/ui/HubContext';
 import { DS } from '../../../core/theme/dsTokens';
 import { toast } from '../../../core/ui/Toast';
 import { useAuthStore } from '../../../core/store/authStore';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { baseSymbol, useBaseCurrency } from '../../../core/money/baseCurrency';
 
 // ── Patterns tokens ─────────────────────────────────────────────────
 const DISPLAY = {
@@ -81,7 +85,7 @@ interface BudgetActual {
 }
 
 function fmtMoney(n: number): string {
-  return '₺' + n.toLocaleString('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  return baseSymbol() + n.toLocaleString('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
 function periodLabel(period: BudgetPeriod, start: string): string {
@@ -104,27 +108,45 @@ export function BudgetScreen() {
   const labId      = useAuthStore(st => st.profile?.lab_id);
   const { width }  = useWindowDimensions();
   const isDesktop  = width >= 900;
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  useBaseCurrency();
 
-  const [items, setItems]       = useState<BudgetActual[]>([]);
   const [period, setPeriod]     = useState<BudgetPeriod>('monthly');
-  const [loading, setLoading]   = useState(false);
+
+  const cacheKey = labId ? `budget_screen_v1:${labId}:${period}` : null;
+  const loadCached = (): BudgetActual[] | null => {
+    if (!cacheKey || typeof window === 'undefined' || !window.localStorage) return null;
+    try { const r = window.localStorage.getItem(cacheKey); return r ? JSON.parse(r) : null; } catch { return null; }
+  };
+  const saveCached = (data: BudgetActual[]) => {
+    if (!cacheKey || typeof window === 'undefined' || !window.localStorage) return;
+    try { window.localStorage.setItem(cacheKey, JSON.stringify(data)); } catch { /* quota */ }
+  };
+  const cached = loadCached();
+
+  const [items, setItems]       = useState<BudgetActual[]>(cached ?? []);
+  const [loading, setLoading]   = useState(cached === null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing]   = useState<BudgetActual | null>(null);
 
   const load = async () => {
     if (!labId) return;
-    setLoading(true);
+    const cachedNow = loadCached();
+    if (cachedNow === null) setLoading(true);
     const start = currentPeriodStart(period);
     const { data } = await supabase
       .from('v_budget_actuals')
       .select('*')
       .eq('period', period)
       .eq('period_start', start);
-    setItems((data ?? []) as BudgetActual[]);
+    const rows = (data ?? []) as BudgetActual[];
+    setItems(rows);
+    saveCached(rows);
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [period, labId]);
+  useEffect(() => { load(); }, [period, labId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const totals = useMemo(() => {
     return items.reduce((acc, b) => ({
@@ -138,14 +160,14 @@ export function BudgetScreen() {
   return (
     <SafeAreaView style={{ flex: 1 }} edges={safeEdges}>
       <ScrollView
-        contentContainerStyle={{ padding: 22, gap: 14, paddingBottom: 48 }}
+        contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 4, paddingBottom: 120, gap: 14 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
       >
         {/* Period switcher + Add button */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <View style={{
             flexDirection: 'row', gap: 2, padding: 3,
-            borderRadius: 9999, backgroundColor: DS.ink[100],
+            borderRadius: 9999, backgroundColor: T.cardSoft,
           }}>
             {(['monthly','yearly'] as BudgetPeriod[]).map(p => {
               const active = period === p;
@@ -154,7 +176,7 @@ export function BudgetScreen() {
                   style={{
                     paddingHorizontal: 14, paddingVertical: 7,
                     borderRadius: 9999,
-                    backgroundColor: active ? '#FFF' : 'transparent',
+                    backgroundColor: active ? T.card : 'transparent',
                     // @ts-ignore web
                     boxShadow: active ? '0 1px 3px rgba(0,0,0,0.08)' : undefined,
                     cursor: 'pointer',
@@ -164,7 +186,7 @@ export function BudgetScreen() {
                   <Text style={{
                     fontSize: 13,
                     fontWeight: active ? '600' : '500',
-                    color: active ? DS.ink[900] : DS.ink[500],
+                    color: active ? T.ink : T.ink3,
                   }}>
                     {p === 'monthly' ? 'Aylık' : 'Yıllık'}
                   </Text>
@@ -172,7 +194,7 @@ export function BudgetScreen() {
               );
             })}
           </View>
-          <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[400] }}>
+          <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink3 }}>
             {periodLabel(period, currentPeriodStart(period))}
           </Text>
           <View style={{ flex: 1 }} />
@@ -180,7 +202,7 @@ export function BudgetScreen() {
             style={{
               flexDirection: 'row', alignItems: 'center', gap: 6,
               paddingHorizontal: 16, paddingVertical: 8,
-              borderRadius: 9999, backgroundColor: DS.ink[900],
+              borderRadius: 9999, backgroundColor: T.ink,
               // @ts-ignore web
               cursor: 'pointer',
             }}
@@ -193,34 +215,34 @@ export function BudgetScreen() {
 
         {/* Overall summary */}
         {items.length > 0 && (
-          <View style={{ ...cardSolid, gap: 8 } as any}>
-            <Text style={{ fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.8 }}>
+          <View style={{ ...cardSolid, backgroundColor: T.card, gap: 8 } as any}>
+            <Text style={{ fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.8 }}>
               {period === 'monthly' ? 'Bu Ayın' : 'Bu Yılın'} Bütçesi
             </Text>
             <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 12 }}>
               <View>
-                <Text style={{ fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.8 }}>Gerçekleşen</Text>
-                <Text style={[{ ...DISPLAY, fontSize: 28, color: DS.ink[900], letterSpacing: -0.6 }, overall > 100 && { color: CHIP_TONES.danger.fg }]}>
+                <Text style={{ fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.8 }}>Gerçekleşen</Text>
+                <Text style={[{ ...DISPLAY, fontSize: 28, color: T.ink, letterSpacing: -0.6 }, overall > 100 && { color: CHIP_TONES.danger.fg }]}>
                   {fmtMoney(totals.actual)}
                 </Text>
               </View>
-              <Text style={{ ...DISPLAY, fontSize: 24, color: DS.ink[200] }}>/</Text>
+              <Text style={{ ...DISPLAY, fontSize: 24, color: T.hairline }}>/</Text>
               <View>
-                <Text style={{ fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.8 }}>Bütçe</Text>
-                <Text style={{ ...DISPLAY, fontSize: 18, color: DS.ink[500] }}>{fmtMoney(totals.budget)}</Text>
+                <Text style={{ fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.8 }}>Bütçe</Text>
+                <Text style={{ ...DISPLAY, fontSize: 18, color: T.ink3 }}>{fmtMoney(totals.budget)}</Text>
               </View>
             </View>
             <ProgressBar pct={overall} />
-            <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[500] }}>%{overall.toFixed(0)} kullanıldı</Text>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: T.ink3 }}>%{overall.toFixed(0)} kullanıldı</Text>
           </View>
         )}
 
         {/* Empty state */}
         {!loading && items.length === 0 && (
           <View style={{ alignItems: 'center', paddingVertical: 60, gap: 12 }}>
-            <PieChart size={48} color={DS.ink[300]} strokeWidth={1.4} />
-            <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[500] }}>Bu dönem için bütçe yok</Text>
-            <Text style={{ fontSize: 13, color: DS.ink[400], textAlign: 'center', maxWidth: 260 }}>
+            <PieChart size={48} color={T.ink3} strokeWidth={1.4} />
+            <Text style={{ fontSize: 15, fontWeight: '600', color: T.ink3 }}>Bu dönem için bütçe yok</Text>
+            <Text style={{ fontSize: 13, color: T.ink3, textAlign: 'center', maxWidth: 260 }}>
               "Bütçe Ekle" ile kategorilere limit tanımlayın.
             </Text>
           </View>
@@ -249,6 +271,7 @@ export function BudgetScreen() {
 
 // ─── Budget Card ──────────────────────────────────────────────────────────
 function BudgetCard({ item, onEdit }: { item: BudgetActual; onEdit: () => void }) {
+  const T = useMobileTokens();
   const pct      = item.budget_amount > 0 ? (item.actual_amount / item.budget_amount) * 100 : 0;
   const remaining = item.budget_amount - item.actual_amount;
   const color    = CATEGORY_COLOR[item.category];
@@ -256,7 +279,7 @@ function BudgetCard({ item, onEdit }: { item: BudgetActual; onEdit: () => void }
   return (
     <Pressable
       style={[
-        { ...cardSolid, gap: 8 } as any,
+        { ...cardSolid, backgroundColor: T.card, gap: 8 } as any,
         // @ts-ignore web
         web({ cursor: 'pointer' }),
       ]}
@@ -269,7 +292,7 @@ function BudgetCard({ item, onEdit }: { item: BudgetActual; onEdit: () => void }
             : <Tag size={16} color={color} strokeWidth={1.8} />
           }
         </View>
-        <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: DS.ink[900] }}>
+        <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: T.ink }}>
           {CATEGORY_LABEL[item.category]}
         </Text>
         <Text style={[
@@ -282,7 +305,7 @@ function BudgetCard({ item, onEdit }: { item: BudgetActual; onEdit: () => void }
       </View>
       <ProgressBar pct={pct} accent={color} />
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text style={{ fontSize: 12, color: DS.ink[500], fontWeight: '600' }}>
+        <Text style={{ fontSize: 12, color: T.ink3, fontWeight: '600' }}>
           {fmtMoney(Number(item.actual_amount))} / {fmtMoney(Number(item.budget_amount))}
         </Text>
         <Text style={[
@@ -298,13 +321,14 @@ function BudgetCard({ item, onEdit }: { item: BudgetActual; onEdit: () => void }
 
 // ─── Progress Bar ─────────────────────────────────────────────────────────
 function ProgressBar({ pct, accent }: { pct: number; accent?: string }) {
+  const T = useMobileTokens();
   const clamped = Math.max(0, Math.min(100, pct));
   const color   =
     pct > 100 ? CHIP_TONES.danger.fg :
     pct > 80  ? CHIP_TONES.warning.fg :
                 (accent ?? CHIP_TONES.success.fg);
   return (
-    <View style={{ height: 8, borderRadius: 4, overflow: 'hidden', backgroundColor: DS.ink[100] }}>
+    <View style={{ height: 8, borderRadius: 4, overflow: 'hidden', backgroundColor: T.cardSoft }}>
       <View style={{ height: 8, borderRadius: 4, width: `${clamped}%`, backgroundColor: color }} />
       {pct > 100 && (
         <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 4, backgroundColor: CHIP_TONES.danger.fg }} />
@@ -324,6 +348,7 @@ function BudgetEditor({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const T = useMobileTokens();
   const [category, setCategory] = useState<BudgetCategory>('total');
   const [period, setPeriod]     = useState<BudgetPeriod>('monthly');
   const [amount, setAmount]     = useState('0');
@@ -374,16 +399,14 @@ function BudgetEditor({
     onSaved();
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!record) return;
-    Alert.alert('Bütçeyi Sil', `${CATEGORY_LABEL[record.category]} bütçesi silinsin mi?`, [
-      { text: 'Vazgeç', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: async () => {
-        await supabase.from('budgets').delete().eq('id', record.id);
-        toast.success('Silindi');
-        onSaved();
-      }},
-    ]);
+    // Alert.alert web'de no-op → cross-platform confirmAsync
+    const ok = await confirmAsync('Bütçeyi Sil', `${CATEGORY_LABEL[record.category]} bütçesi silinsin mi?`, { confirmText: 'Sil', destructive: true });
+    if (!ok) return;
+    await supabase.from('budgets').delete().eq('id', record.id);
+    toast.success('Silindi');
+    onSaved();
   };
 
   return (
@@ -391,30 +414,30 @@ function BudgetEditor({
       <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.4)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
         <View style={{
           width: '100%', maxWidth: 480, maxHeight: '92%',
-          backgroundColor: '#FFF', borderRadius: 24,
+          backgroundColor: T.card, borderRadius: 24,
           overflow: 'hidden',
           // @ts-ignore web
           boxShadow: '0 24px 48px -12px rgba(0,0,0,0.18)',
         } as any}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
-            <Text style={{ flex: 1, fontSize: 16, fontWeight: '800', color: DS.ink[900] }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: T.hairline }}>
+            <Text style={{ flex: 1, fontSize: 16, fontWeight: '800', color: T.ink }}>
               {record ? 'Bütçeyi Düzenle' : 'Yeni Bütçe'}
             </Text>
             <Pressable
               onPress={onClose}
               style={[
-                { width: 32, height: 32, borderRadius: 8, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center' },
+                { width: 32, height: 32, borderRadius: 8, backgroundColor: T.cardSoft, alignItems: 'center', justifyContent: 'center' },
                 // @ts-ignore web
                 web({ cursor: 'pointer' }),
               ]}
             >
-              <X size={18} color={DS.ink[500]} strokeWidth={2} />
+              <X size={18} color={T.ink3} strokeWidth={2} />
             </Pressable>
           </View>
 
           <ScrollView contentContainerStyle={{ padding: 16, gap: 14 }}>
             <View>
-              <Text style={{ fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>
+              <Text style={{ fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>
                 Kategori
               </Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
@@ -428,7 +451,7 @@ function BudgetEditor({
                         borderRadius: 9999,
                         borderWidth: 1,
                         borderColor: active ? color : 'rgba(0,0,0,0.08)',
-                        backgroundColor: active ? color + '12' : '#FFF',
+                        backgroundColor: active ? color + '12' : T.card,
                         // @ts-ignore web
                         cursor: 'pointer',
                       }}
@@ -437,7 +460,7 @@ function BudgetEditor({
                       <Text style={{
                         fontSize: 12,
                         fontWeight: active ? '600' : '500',
-                        color: active ? color : DS.ink[500],
+                        color: active ? color : T.ink3,
                       }}>
                         {CATEGORY_LABEL[cat]}
                       </Text>
@@ -448,12 +471,12 @@ function BudgetEditor({
             </View>
 
             <View>
-              <Text style={{ fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>
+              <Text style={{ fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>
                 Periyot
               </Text>
               <View style={{
                 flexDirection: 'row', gap: 2, padding: 3,
-                borderRadius: 9999, backgroundColor: DS.ink[100],
+                borderRadius: 9999, backgroundColor: T.cardSoft,
                 alignSelf: 'flex-start',
               }}>
                 {(['monthly','yearly'] as BudgetPeriod[]).map(p => {
@@ -463,7 +486,7 @@ function BudgetEditor({
                       style={{
                         paddingHorizontal: 14, paddingVertical: 7,
                         borderRadius: 9999,
-                        backgroundColor: active ? '#FFF' : 'transparent',
+                        backgroundColor: active ? T.card : 'transparent',
                         // @ts-ignore web
                         boxShadow: active ? '0 1px 3px rgba(0,0,0,0.08)' : undefined,
                         cursor: 'pointer',
@@ -473,7 +496,7 @@ function BudgetEditor({
                       <Text style={{
                         fontSize: 12,
                         fontWeight: active ? '600' : '500',
-                        color: active ? DS.ink[900] : DS.ink[500],
+                        color: active ? T.ink : T.ink3,
                       }}>
                         {p === 'monthly' ? 'Aylık' : 'Yıllık'}
                       </Text>
@@ -484,28 +507,28 @@ function BudgetEditor({
             </View>
 
             <View>
-              <Text style={{ fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>
-                Tutar (₺)
+              <Text style={{ fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>
+                {`Tutar (${baseSymbol()})`}
               </Text>
               <TextInput
-                style={{ borderWidth: 1, borderColor: DS.ink[200], borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: DS.ink[900], backgroundColor: '#FFFFFF' }}
+                style={{ borderWidth: 1, borderColor: T.hairline, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: T.ink, backgroundColor: T.card }}
                 value={amount} onChangeText={setAmount}
                 keyboardType="decimal-pad" placeholder="0"
               />
             </View>
 
             <View>
-              <Text style={{ fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>
+              <Text style={{ fontSize: 10, fontWeight: '600', color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>
                 Notlar
               </Text>
               <TextInput
-                style={{ borderWidth: 1, borderColor: DS.ink[200], borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: DS.ink[900], backgroundColor: '#FFFFFF', minHeight: 64 }}
+                style={{ borderWidth: 1, borderColor: T.hairline, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: T.ink, backgroundColor: T.card, minHeight: 64 }}
                 multiline value={notes} onChangeText={setNotes}
               />
             </View>
           </ScrollView>
 
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 14, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 14, borderTopWidth: 1, borderTopColor: T.hairline }}>
             {record ? (
               <Pressable
                 style={[
@@ -525,17 +548,17 @@ function BudgetEditor({
             ) : <View style={{ flex: 1 }} />}
             <Pressable
               style={[
-                { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 14, borderWidth: 1, borderColor: DS.ink[200] },
+                { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 14, borderWidth: 1, borderColor: T.hairline },
                 // @ts-ignore web
                 web({ cursor: 'pointer' }),
               ]}
               onPress={onClose}
             >
-              <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[500] }}>İptal</Text>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: T.ink3 }}>İptal</Text>
             </Pressable>
             <Pressable
               style={[
-                { paddingHorizontal: 22, paddingVertical: 10, borderRadius: 14, backgroundColor: DS.ink[900] },
+                { paddingHorizontal: 22, paddingVertical: 10, borderRadius: 14, backgroundColor: T.ink },
                 saving && { opacity: 0.6 },
                 // @ts-ignore web
                 web({ cursor: 'pointer' }),

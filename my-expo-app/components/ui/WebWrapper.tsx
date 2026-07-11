@@ -25,13 +25,11 @@ const styles = StyleSheet.create({
   },
   phone: {
     width: 480,
-    // @ts-ignore
-    height: '100vh',
+    height: '100vh' as any,
     maxHeight: 900,
     backgroundColor: Colors.background,
     overflow: 'hidden',
-    // @ts-ignore
-    boxShadow: '0 8px 40px rgba(0,0,0,0.25)',
+    boxShadow: '0 8px 40px rgba(0,0,0,0.25)' as any,
     borderRadius: 0,
   },
 });

@@ -5,6 +5,6 @@ import { ClinicDashboardScreen } from '../../modules/dashboard/screens/ClinicDas
 export default function ClinicIndexRoute() {
   const { profile, loading } = useAuthStore();
   if (loading || !profile) return null;
-  if (profile.user_type !== 'clinic_admin') return null;
+  if (!['clinic_admin', 'clinic_secretary'].includes(profile.user_type)) return null;
   return <ClinicDashboardScreen />;
 }

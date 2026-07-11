@@ -23,7 +23,7 @@ export function usePerformanceList(period: string) {
   return { list, loading, refetch: load };
 }
 
-// ─── Tek çalışan performans detayı ───────────────────────────────────────────
+// ─── Tek personel performans detayı ───────────────────────────────────────────
 export function usePerformanceDetail(employeeId: string | null, period: string) {
   const [perf, setPerf]         = useState<EmployeePerformance | null>(null);
   const [bonuses, setBonuses]   = useState<PerformanceBonus[]>([]);

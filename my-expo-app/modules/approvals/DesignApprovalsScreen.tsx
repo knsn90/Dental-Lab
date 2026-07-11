@@ -5,12 +5,15 @@
  * DS tokens, DISPLAY typography, inline styles.
  */
 import React from 'react';
-import { View, Text, FlatList, ActivityIndicator, RefreshControl, useWindowDimensions } from 'react-native';
+import { View, Text, FlatList, RefreshControl, useWindowDimensions } from 'react-native';
 import { ClipboardCheck } from 'lucide-react-native';
 import { usePendingApprovals } from './hooks/usePendingApprovals';
 import { ApprovalCard } from './components/ApprovalCard';
 import { useAuthStore } from '../../core/store/authStore';
 import { DS } from '../../core/theme/dsTokens';
+import { ActivityIndicator } from '../../core/ui/teethCompat';
+import { useMobileTokens } from '../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../core/store/themeModeStore';
 
 const DISPLAY: any = { fontFamily: DS.font.display, fontWeight: '300' };
 
@@ -20,6 +23,8 @@ export function DesignApprovalsScreen() {
   const isAdmin = profile?.user_type === 'admin';
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
 
   return (
     <View style={{ flex: 1 }}>
@@ -28,19 +33,24 @@ export function DesignApprovalsScreen() {
           <ActivityIndicator size="large" color={DS.ink[500]} />
         </View>
       ) : approvals.length === 0 ? (
-        /* ── Empty state ── */
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, paddingHorizontal: 40 }}>
+        /* ── Empty state — kompakt dashed card ── */
+        <View style={{
+          margin: isDesktop ? 24 : 12, padding: 36,
+          alignItems: 'center', justifyContent: 'center', gap: 8,
+          borderRadius: 16, borderWidth: 1, borderStyle: 'dashed' as any,
+          borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.10)', backgroundColor: 'transparent',
+        }}>
           <View style={{
-            width: 64, height: 64, borderRadius: 32,
-            backgroundColor: 'rgba(45,154,107,0.1)',
+            width: 52, height: 52, borderRadius: 16,
+            backgroundColor: 'transparent', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.06)',
             alignItems: 'center', justifyContent: 'center',
           }}>
-            <ClipboardCheck size={28} color="#1F6B47" strokeWidth={1.6} />
+            <ClipboardCheck size={22} color="#1F6B47" strokeWidth={1.6} />
           </View>
-          <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>
+          <Text style={{ fontSize: 14, fontWeight: '700', color: T.ink }}>
             Bekleyen onay yok
           </Text>
-          <Text style={{ fontSize: 13, color: DS.ink[400], textAlign: 'center', lineHeight: 20 }}>
+          <Text style={{ fontSize: 11.5, color: T.ink3, textAlign: 'center', lineHeight: 16, maxWidth: 320 }}>
             Tasarım adımı tamamlandığında onay istekleri burada görünür.
           </Text>
         </View>
@@ -52,11 +62,12 @@ export function DesignApprovalsScreen() {
           numColumns={isDesktop ? 2 : 1}
           key={isDesktop ? 'grid-2' : 'grid-1'}
           contentContainerStyle={{
-            padding: isDesktop ? 40 : 16,
-            paddingTop: 16,
-            gap: 14,
+            padding: isDesktop ? 24 : 12,
+            paddingTop: 8,
+            paddingBottom: isDesktop ? 24 : 120,
+            gap: 10,
           }}
-          columnWrapperStyle={isDesktop ? { gap: 14 } : undefined}
+          columnWrapperStyle={isDesktop ? { gap: 10 } : undefined}
           refreshControl={
             <RefreshControl refreshing={false} onRefresh={refetch} tintColor={DS.ink[500]} />
           }

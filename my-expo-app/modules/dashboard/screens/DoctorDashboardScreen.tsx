@@ -8,7 +8,7 @@
  *   4. Bottom row — WeeklyStrip + AnimatedCTACard
  *   5. Extra sections — Orders table, Status dist, Work type
  *
- * Theme: DS.clinic (Sage #6BA888) — doctor & clinic share the same green
+ * Theme: DS.clinic (Zümrüt #32BB78) — doctor & clinic share the same green
  * Patterns NativeWind — NO StyleSheet.create().
  */
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
@@ -18,6 +18,7 @@ import {
   Animated, Easing,
 } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
   Package, Plus, Clock, CheckCircle, Activity,
@@ -25,12 +26,16 @@ import {
   ArrowRight, Check, Layers,
 } from 'lucide-react-native';
 import { useAuthStore } from '../../../core/store/authStore';
+import { useNewOrderModalStore } from '../../../core/store/newOrderModalStore';
 import { supabase } from '../../../core/api/supabase';
 import { useOrders } from '../../orders/hooks/useOrders';
 import { isOrderOverdue, STATUS_CONFIG } from '../../orders/constants';
 import { WorkOrderStatus } from '../../../lib/types';
 import { DS } from '../../../core/theme/dsTokens';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
+import { NumberTickerX } from '../../../core/ui/NumberTickerX';
+import { FaceScanQuickAction } from '../../orders/components/FaceScanQuickAction';
+import { PendingReviewsCard } from '../../reviews/components/PendingReviewsCard';
 
 // ── Display font — Patterns: Inter Tight Light (300) ──
 const SERIF = {
@@ -39,9 +44,9 @@ const SERIF = {
 };
 
 // ── Theme: Doctor sage green (same as clinic) ──
-const P     = DS.clinic.primary;      // #6BA888
-const P_DEEP = DS.clinic.primaryDeep; // #4D8A6B
-const SURFACE_ALT = DS.clinic.surfaceAlt; // #0F2A1F
+const P     = DS.clinic.primary;      // #32BB78
+const P_DEEP = DS.clinic.primaryDeep; // #0C8F56
+const SURFACE_ALT = DS.clinic.surfaceAlt; // #2F313F
 const INK   = DS.ink[900];
 
 const CLR = {
@@ -57,7 +62,7 @@ const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> =
   alindi:          { label: 'Alındı',          color: DS.ink[500],  bg: 'rgba(0,0,0,0.05)' },
   uretimde:        { label: 'Üretimde',        color: '#9C5E0E',   bg: 'rgba(232,155,42,0.15)' },
   kalite_kontrol:  { label: 'Kalite Kontrol',  color: '#1F5689',   bg: 'rgba(74,143,201,0.12)' },
-  teslimata_hazir: { label: 'Teslimata Hazır', color: '#1F6B47',   bg: 'rgba(45,154,107,0.12)' },
+  teslimata_hazir: { label: 'Kuryeye Teslim Edildi', color: '#1F6B47',   bg: 'rgba(45,154,107,0.12)' },
   teslim_edildi:   { label: 'Teslim Edildi',   color: DS.ink[400],  bg: 'rgba(0,0,0,0.04)' },
 };
 const STATUS_KEYS = ['alindi', 'uretimde', 'kalite_kontrol', 'teslimata_hazir', 'teslim_edildi'];
@@ -201,21 +206,28 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function StatPill({ label, value, bg, color }: { label: string; value: string; bg: string; color: string }) {
+function StatPill({ label, value, bg, color }: { label: string; value: string | number; bg: string; color: string }) {
+  const isNum = typeof value === 'number';
   return (
     <View className="flex-row items-center" style={{ gap: 8 }}>
       <Text style={{ fontSize: 11, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.06 * 11 }}>{label}</Text>
       <View className="rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 3, backgroundColor: bg }}>
-        <Text style={{ fontSize: 11, fontWeight: '500', color }}>{value}</Text>
+        {isNum
+          ? <NumberTickerX value={value as number} duration={700} style={{ fontSize: 11, fontWeight: '500', color }} />
+          : <Text style={{ fontSize: 11, fontWeight: '500', color }}>{value}</Text>}
       </View>
     </View>
   );
 }
 
 function BigStat({ value, label }: { value: string | number; label: string }) {
+  const isNum = typeof value === 'number';
+  const numStyle = { ...SERIF, fontSize: DS.size.h2, letterSpacing: -0.025 * DS.size.h2, lineHeight: DS.size.h2, color: INK };
   return (
     <View style={{ alignItems: 'flex-end' }}>
-      <Text style={{ ...SERIF, fontSize: DS.size.h2, letterSpacing: -0.025 * DS.size.h2, lineHeight: DS.size.h2, color: INK }}>{value}</Text>
+      {isNum
+        ? <NumberTickerX value={value as number} duration={900} style={numStyle} />
+        : <Text style={numStyle}>{value}</Text>}
       <Text style={{ fontSize: DS.size.micro, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.06 * DS.size.micro, marginTop: 4 }}>{label}</Text>
     </View>
   );
@@ -372,23 +384,66 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, router 
 }
 
 // ── Production Bar Chart ──
+// Admin panel ile aynı: hatched-rail pill kolonları (sage panel coral yerine sage)
 function ProductionBarChart({ data }: { data: { label: string; count: number }[] }) {
   const max = Math.max(...data.map(d => d.count), 1);
   const highestIdx = data.reduce((best, d, i) => d.count > data[best].count ? i : best, 0);
+
+  const FILL_LIGHT = `${P}55`;  // sage soft (semi-transparent)
+  const FILL_DARK  = P;          // sage primary
+  // Rail + stripe panel temalı (sage)
+  const RAIL_BG    = `${P}08`;
+  const STRIPE_BG  = `repeating-linear-gradient(135deg, ${P}14 0 6px, transparent 6px 12px)`;
+
   return (
-    <View className="flex-row items-end" style={{ flex: 1, gap: 6 }}>
+    <View className="flex-row items-end" style={{ flex: 1, gap: 10, minHeight: 120, paddingHorizontal: 2 }}>
       {data.map((d, i) => {
-        const h = Math.max((d.count / max) * 100, 6);
-        const isHighlight = i === highestIdx;
+        const pct = d.count > 0 ? Math.min(Math.max((d.count / max) * 100, 8), 100) : 0;
+        const isHighlight = i === highestIdx && d.count > 0;
         return (
-          <View key={i} style={{ flex: 1, alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
-            {isHighlight && d.count > 0 && (
-              <View style={{ paddingHorizontal: 8, paddingVertical: 2, backgroundColor: INK, borderRadius: 6 }}>
-                <Text style={{ fontSize: 10, color: '#FFF', fontWeight: '500' }}>{d.count}</Text>
+          <View key={i} style={{ flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end', gap: 6 }}>
+            <View style={{ width: '100%', maxWidth: 56, flex: 1, justifyContent: 'flex-end', alignItems: 'center' }}>
+              {isHighlight && (
+                <View style={{ marginBottom: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[100] }}>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: FILL_DARK }}>{d.count}</Text>
+                </View>
+              )}
+              <View
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  borderRadius: 999,
+                  backgroundColor: RAIL_BG,
+                  // @ts-ignore web hatched bg
+                  backgroundImage: STRIPE_BG,
+                  overflow: 'hidden',
+                  position: 'relative' as any,
+                }}
+              >
+                {d.count > 0 && (
+                  <View
+                    style={{
+                      position: 'absolute',
+                      left: 0, right: 0, bottom: 0,
+                      height: `${pct}%`,
+                      borderRadius: 999,
+                      backgroundColor: isHighlight ? FILL_DARK : FILL_LIGHT,
+                      // @ts-ignore web
+                      transition: 'height 800ms cubic-bezier(0.22, 1, 0.36, 1)',
+                    } as any}
+                  />
+                )}
               </View>
-            )}
-            <View style={{ width: '100%', height: `${h}%` as any, backgroundColor: isHighlight ? P : INK, borderRadius: 4, minHeight: 4 }} />
-            <Text style={{ fontSize: 9, color: DS.ink[400], textTransform: 'uppercase' }}>{d.label}</Text>
+            </View>
+            <Text style={{
+              fontSize: 11,
+              fontWeight: isHighlight ? '700' : '500',
+              color: isHighlight ? INK : DS.ink[400],
+              textTransform: 'uppercase',
+              letterSpacing: 0.05 * 11,
+            }}>
+              {d.label}
+            </Text>
           </View>
         );
       })}
@@ -459,38 +514,85 @@ function AnimatedOverdueCard({ count, onPress }: { count: number; onPress: () =>
   );
 }
 
-// ── Weekly Calendar Strip ──
+// ── Weekly Calendar Strip — Admin panel ile aynı: hatched pill kolonları ──
 function WeeklyStrip({ weekDays, weekCounts, onPress }: {
   weekDays: { label: string; date: string; isToday: boolean }[];
   weekCounts: Record<string, number>; onPress: () => void;
 }) {
-  const totalProduction = Object.values(weekCounts).reduce((a, b) => a + b, 0);
-  const first = weekDays[0]; const last = weekDays[6];
-  const fd = new Date(first.date); const ld = new Date(last.date);
-  const rangeLabel = `${fd.getDate()}–${ld.getDate()} ${MONTHS_TR[ld.getMonth()]} ${ld.getFullYear()}`;
+  const totalReceived = Object.values(weekCounts).reduce((a, b) => a + b, 0);
+  const SCALE_MAX = 20;
+
+  const FILL_LIGHT = `${P}55`; // sage soft
+  const FILL_DARK  = P;
+  // Rail + stripe panel temalı (sage)
+  const RAIL_BG    = `${P}08`;
+  const STRIPE_BG  = `repeating-linear-gradient(135deg, ${P}14 0 6px, transparent 6px 12px)`;
 
   return (
-    <Card style={{ padding: 18, flex: 2 }}>
+    <Card style={{ padding: 18, flex: 1.5 }}>
       <View className="flex-row items-center" style={{ gap: 12, marginBottom: 14 }}>
         <Text style={{ fontSize: 15, fontWeight: '500', color: INK }}>Bu hafta</Text>
-        <Text style={{ fontSize: 12, color: DS.ink[400] }}>{rangeLabel}</Text>
         <View style={{ flex: 1 }} />
-        <View className="rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: hexA(P, 0.1) }}>
-          <Text style={{ fontSize: 11, fontWeight: '500', color: P }}>Toplam {totalProduction}</Text>
+        <View className="flex-row items-center" style={{ gap: 5 }}>
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: FILL_DARK }} />
+          <Text style={{ fontSize: 11, color: DS.ink[500] }}>Toplam {totalReceived}</Text>
         </View>
       </View>
-      <View className="flex-row" style={{ gap: 8, flex: 1 }}>
+
+      {/* Bars */}
+      <View className="flex-row items-end" style={{ gap: 10, flex: 1, minHeight: 140, paddingHorizontal: 2 }}>
         {weekDays.map((day, i) => {
           const count = weekCounts[day.date] ?? 0;
+          const pct = count > 0 ? Math.min(Math.max((count / SCALE_MAX) * 100, 8), 100) : 0;
+          const empty = count === 0;
           return (
-            <Pressable key={i} onPress={onPress} style={{
-              flex: 1, backgroundColor: day.isToday ? INK : DS.ink[50],
-              borderRadius: 14, padding: 12, gap: 8, position: 'relative',
-            }}>
-              <Text style={{ fontSize: 10, opacity: 0.6, letterSpacing: 0.5, textTransform: 'uppercase', color: day.isToday ? '#FFF' : INK }}>{day.label}</Text>
-              <Text style={{ ...SERIF, fontSize: 24, letterSpacing: -0.48, lineHeight: 24, color: day.isToday ? '#FFF' : INK }}>{count}</Text>
-              <Text style={{ fontSize: 9, opacity: 0.5, color: day.isToday ? '#FFF' : INK }}>sipariş</Text>
-              {day.isToday && <View className="absolute rounded-full" style={{ top: 10, right: 10, width: 6, height: 6, backgroundColor: P }} />}
+            <Pressable
+              key={i}
+              onPress={onPress}
+              style={{ flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end', gap: 6 }}
+            >
+              <View style={{ width: '100%', maxWidth: 56, flex: 1, justifyContent: 'flex-end', alignItems: 'center' }}>
+                {day.isToday && count > 0 && (
+                  <View style={{ marginBottom: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[100] }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: FILL_DARK }}>{count}</Text>
+                  </View>
+                )}
+                <View
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    borderRadius: 999,
+                    backgroundColor: RAIL_BG,
+                    // @ts-ignore web hatched bg
+                    backgroundImage: STRIPE_BG,
+                    overflow: 'hidden',
+                    position: 'relative' as any,
+                  }}
+                >
+                  {!empty && (
+                    <View
+                      style={{
+                        position: 'absolute',
+                        left: 0, right: 0, bottom: 0,
+                        height: `${pct}%`,
+                        borderRadius: 999,
+                        backgroundColor: day.isToday ? FILL_DARK : FILL_LIGHT,
+                        // @ts-ignore web
+                        transition: 'height 800ms cubic-bezier(0.22, 1, 0.36, 1)',
+                      } as any}
+                    />
+                  )}
+                </View>
+              </View>
+              <Text style={{
+                fontSize: 11,
+                fontWeight: day.isToday ? '700' : '500',
+                color: day.isToday ? INK : DS.ink[400],
+                textTransform: 'uppercase',
+                letterSpacing: 0.05 * 11,
+              }}>
+                {day.label[0]}
+              </Text>
             </Pressable>
           );
         })}
@@ -610,6 +712,7 @@ export function DoctorDashboardScreen() {
   const { orders, loading, refetch } = useOrders('doctor', profile?.id);
   const { width } = useWindowDimensions();
   const isDesktop = width >= 900;
+  const insets = useSafeAreaInsets();
   const { setTitle, clear } = usePageTitleStore();
 
   useEffect(() => { setTitle(getTodayLabel()); return clear; }, []);
@@ -617,63 +720,88 @@ export function DoctorDashboardScreen() {
   const firstName = profile?.full_name?.split(' ')[0] ?? '';
   const today = todayStr();
 
-  // ── Derived stats ──
-  const total = orders.length;
-  const active = orders.filter(o => o.status !== 'teslim_edildi').length;
-  const overdueList = orders.filter(o => isOrderOverdue(o.delivery_date, o.status));
-  const overdueCount = overdueList.length;
-  const delivered = orders.filter(o => o.status === 'teslim_edildi').length;
-  const thisMonthNew = orders.filter(o => {
-    const d = new Date(o.created_at); d.setHours(0, 0, 0, 0);
+  // ── Derived stats (orders üzerinde TEK pass — eskiden N×status filtre vardı) ──
+  const weekDays = getWeekDays();
+  const derived = useMemo(() => {
     const now = new Date(); now.setHours(0, 0, 0, 0);
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  }).length;
+    const curMonth = now.getMonth(), curYear = now.getFullYear();
+    const todayMs = Date.now() - 86400000;
 
-  // Pipeline counts
-  const pipelineCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    STATUS_KEYS.forEach(k => { counts[k] = orders.filter(o => o.status === k).length; });
-    return counts;
-  }, [orders]);
+    let active = 0, delivered = 0, thisMonthNew = 0;
+    const overdueList: typeof orders = [];
+    const pipelineCounts: Record<string, number> = {};
+    STATUS_KEYS.forEach(k => { pipelineCounts[k] = 0; });
 
+    const monthBuckets: { y: number; m: number; count: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(); d.setMonth(d.getMonth() - i);
+      monthBuckets.push({ y: d.getFullYear(), m: d.getMonth(), count: 0 });
+    }
+
+    const weekCounts: Record<string, number> = {};
+    weekDays.forEach(wd => { weekCounts[wd.date] = 0; });
+
+    const workTypeMap: Record<string, number> = {};
+    const upcomingTmp: typeof orders = [];
+    const pendingApprovals: { id: string; order_number: string; token: string; patient_name: string | null }[] = [];
+
+    for (const o of orders) {
+      if (o.status === 'teslim_edildi') delivered++;
+      else if (o.status !== 'iptal') active++;
+      if (isOrderOverdue(o.delivery_date, o.status)) overdueList.push(o);
+
+      if (o.status && pipelineCounts[o.status] !== undefined) pipelineCounts[o.status]++;
+
+      const c = o.created_at ? new Date(o.created_at) : null;
+      if (c) {
+        if (c.getMonth() === curMonth && c.getFullYear() === curYear) thisMonthNew++;
+        const y = c.getFullYear(), m = c.getMonth();
+        for (const mb of monthBuckets) {
+          if (mb.y === y && mb.m === m) { mb.count++; break; }
+        }
+        const isoDay = o.created_at?.slice(0, 10);
+        if (isoDay && weekCounts[isoDay] !== undefined) weekCounts[isoDay]++;
+      }
+      if (o.work_type) {
+        // work_type diş başına tekrarlı olabilir ("X, X, X…") — tekilleştir
+        const wt = Array.from(new Set(String(o.work_type).split(',').map((s: string) => s.trim()).filter(Boolean))).join(', ');
+        workTypeMap[wt] = (workTypeMap[wt] ?? 0) + 1;
+      }
+
+      // upcoming: not delivered + delivery_date >= yesterday
+      if (o.status !== 'teslim_edildi' && o.status !== 'iptal' && o.delivery_date) {
+        const dd = new Date(o.delivery_date + 'T00:00:00').getTime();
+        if (dd >= todayMs) upcomingTmp.push(o);
+      }
+
+      // pending design approvals (from orders, no separate query)
+      const oo = o as any;
+      if (oo.doctor_approval_status === 'pending' && oo.doctor_approval_token) {
+        pendingApprovals.push({
+          id: o.id, order_number: o.order_number,
+          token: oo.doctor_approval_token, patient_name: o.patient_name ?? null,
+        });
+      }
+    }
+
+    const monthly = monthBuckets.map(b => ({ label: MONTHS_TR[b.m], count: b.count }));
+    const byWorkType = Object.entries(workTypeMap).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([label, count]) => ({ label, count }));
+    const upcoming = upcomingTmp.sort((a, b) => a.delivery_date.localeCompare(b.delivery_date)).slice(0, 5);
+    const recentOrders = orders.slice().sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? '')).slice(0, 8);
+
+    return {
+      total: orders.length, active, delivered, overdueList, overdueCount: overdueList.length, thisMonthNew,
+      pipelineCounts, monthly, weekCounts, byWorkType, upcoming, recentOrders, pendingApprovals,
+    };
+  }, [orders, weekDays]);
+
+  const { total, active, delivered, overdueList, overdueCount, thisMonthNew, pipelineCounts, monthly, weekCounts, byWorkType, upcoming, recentOrders, pendingApprovals } = derived;
   const totalPipe = Object.values(pipelineCounts).reduce((s, v) => s + v, 0) || 1;
   const productionPct = Math.round(((pipelineCounts['uretimde'] ?? 0) / totalPipe) * 100);
   const deliveryPct = Math.round(((pipelineCounts['teslim_edildi'] ?? 0) / totalPipe) * 100);
 
-  // Monthly trend
-  const monthly = useMemo(() => {
-    const bars: { label: string; count: number }[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(); d.setMonth(d.getMonth() - i);
-      const y = d.getFullYear(), m = d.getMonth();
-      bars.push({
-        label: MONTHS_TR[m],
-        count: orders.filter(o => { const c = new Date(o.created_at); return c.getFullYear() === y && c.getMonth() === m; }).length,
-      });
-    }
-    return bars;
-  }, [orders]);
-
-  // Week counts
-  const weekDays = getWeekDays();
-  const weekCounts = useMemo(() => {
-    const wc: Record<string, number> = {};
-    weekDays.forEach(wd => { wc[wd.date] = orders.filter(o => o.created_at?.startsWith(wd.date)).length; });
-    return wc;
-  }, [orders]);
-
-  // Latest active order
-  const recentOrders = useMemo(() =>
-    orders.slice().sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? '')).slice(0, 8),
-    [orders]);
-  const latestOrder = recentOrders.find(o => o.status !== 'teslim_edildi') ?? recentOrders[0];
-
-  // Upcoming deliveries
-  const upcoming = useMemo(() => orders
-    .filter(o => o.status !== 'teslim_edildi')
-    .filter(o => { const d = new Date(o.delivery_date + 'T00:00:00'); return d.getTime() >= Date.now() - 86400000; })
-    .sort((a, b) => a.delivery_date.localeCompare(b.delivery_date))
-    .slice(0, 5), [orders]);
+  // latestOrder: derived recentOrders'tan
+  const latestOrder = recentOrders.find(o => o.status !== 'teslim_edildi' && o.status !== 'iptal') ?? recentOrders[0];
 
   // Tasks
   const taskItems: { icon: React.FC<any>; label: string; time: string; done: boolean; onPress?: () => void }[] = [];
@@ -687,70 +815,148 @@ export function DoctorDashboardScreen() {
     taskItems.push({ icon: CheckCircle as React.FC<any>, label: 'Bekleyen görev yok', time: '', done: true, onPress: undefined });
   }
 
-  // Pending design approvals
-  const [pendingApprovals, setPendingApprovals] = useState<{ id: string; order_number: string; token: string; patient_name: string | null }[]>([]);
-  const loadApprovals = useCallback(async () => {
-    if (!profile?.id) return;
-    const { data } = await supabase
-      .from('work_orders')
-      .select('id, order_number, patient_name, doctor_approval_token')
-      .eq('doctor_id', profile.id)
-      .eq('doctor_approval_status', 'pending')
-      .not('doctor_approval_token', 'is', null);
-    setPendingApprovals(((data ?? []) as any[]).map(r => ({
-      id: r.id, order_number: r.order_number, token: r.doctor_approval_token, patient_name: r.patient_name,
-    })));
-  }, [profile?.id]);
-  useEffect(() => { loadApprovals(); }, [loadApprovals]);
+  // pendingApprovals: derived'dan; ayrı query yok.
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const notificationsPulse = require('../../../core/store/uiOverlayStore').useUiOverlayStore((s: any) => s.notificationsPulse);
+  useEffect(() => { if (notificationsPulse > 0) setNotificationsOpen(true); }, [notificationsPulse]);
 
-  // Status distribution
+  // Status distribution — pipelineCounts'tan türetildi (yeni tarama yok)
   const byStatus = useMemo(() =>
-    STATUS_KEYS.map(k => ({ key: k, label: STATUS_CFG[k]?.label ?? k, count: orders.filter(o => o.status === k).length })),
-    [orders]);
-
-  // Work type
-  const byWorkType = useMemo(() => {
-    const map: Record<string, number> = {};
-    orders.forEach(o => { if (o.work_type) map[o.work_type] = (map[o.work_type] ?? 0) + 1; });
-    return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([label, count]) => ({ label, count }));
-  }, [orders]);
+    STATUS_KEYS.map(k => ({ key: k, label: STATUS_CFG[k]?.label ?? k, count: pipelineCounts[k] ?? 0 })),
+    [pipelineCounts]);
 
   // ══════════════════════════════════════════════════════════════
-  //  MOBILE — Variant B Home (B1)
+  //  MOBILE — Aydın Lab Handoff (DoctorMobileDashboard)
   // ══════════════════════════════════════════════════════════════
   if (!isDesktop) {
-    const { HomeB1: HomeB1Cmp, defaultInsight: defIns } = require('../../../core/ui/HomeB1');
-    const recentOrdersList = orders.slice(0, 3);
-    const kpis = [
-      { label: 'Aktif',    value: String(active), up: true },
-      { label: 'Geciken',  value: String(overdueCount), up: false },
-      { label: 'Bu ay',    value: String(thisMonthNew) },
-      { label: 'Toplam',   value: String(total) },
-    ];
-    const priority = recentOrdersList.map((o: any) => ({
-      id: String(o.order_number ?? o.id).slice(-5),
-      type: o.work_type ?? 'Sipariş',
-      due: o.delivery_date ? fmtDate(o.delivery_date) : '—',
-      status: o.status,
-      statusLabel: STATUS_CFG[o.status]?.label ?? o.status,
-      clinic: o.lab_name ?? '—',
-      avatar: (o.lab_name ?? firstName ?? '?').slice(0, 2).toUpperCase(),
+    const { DoctorMobileDashboard } = require('../components/DoctorMobileDashboard');
+
+    // Live stages — hekim için "alındı / üretim / KK / hazır" sayımı
+    const stageCounts = {
+      alindi: (pipelineCounts['alindi']      ?? 0) + (pipelineCounts['onay_bekliyor'] ?? 0),
+      uretim: (pipelineCounts['uretimde']    ?? 0) + (pipelineCounts['asamada']        ?? 0),
+      kk:     (pipelineCounts['kalite_kontrol'] ?? 0),
+      hazir:  (pipelineCounts['hazir']       ?? 0) + (pipelineCounts['kargoda']        ?? 0),
+    };
+    const deliveredPct = total > 0 ? Math.round((delivered / total) * 100) : 0;
+
+    // Week — Pa..Pz ordering: weekDays is Mon-Sun, we need Sun-Sat for "today is last" UX
+    // Pattern from Admin: ['Pa', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct', 'Pz'] with i===6 as today
+    // Just compute counts in same shape: last 7 days ending today
+    const weekBars: number[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i); d.setHours(0,0,0,0);
+      const dateStr = d.toISOString().slice(0, 10);
+      weekBars.push(orders.filter(o => o.created_at?.startsWith(dateStr)).length);
+    }
+    const weekTotal = weekBars.reduce((a, b) => a + b, 0);
+
+    // Delayed / pending list
+    const delayedItems = [
+      ...pendingApprovals.slice(0, 2).map(a => ({
+        id: String(a.order_number ?? a.id).slice(-6),
+        patient: a.patient_name ?? 'Hasta',
+        workType: 'Tasarım onayı bekliyor',
+        remain: 'Onay',
+        kind: 'pending_approval' as const,
+        _id: a.id,
+      })),
+      ...overdueList.slice(0, 3).map((o: any) => {
+        const due = new Date(o.delivery_date + 'T00:00:00');
+        const days = Math.max(0, Math.floor((Date.now() - due.getTime()) / 86400000));
+        return {
+          id: String(o.order_number ?? o.id).slice(-6),
+          patient: o.patient_name ?? o.work_type ?? 'Sipariş',
+          workType: o.work_type ?? '—',
+          remain: `${days}g geç`,
+          kind: 'delay' as const,
+          _id: o.id,
+        };
+      }),
+    ].slice(0, 3);
+
+    // Week range label (Pazartesi-Pazar)
+    const monthsShort = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
+    const wkStart = new Date(); wkStart.setDate(wkStart.getDate() - 6);
+    const weekRange = `${wkStart.getDate()} ${monthsShort[wkStart.getMonth()]} → ${new Date().getDate()} ${monthsShort[new Date().getMonth()]}`;
+
+    // Build notification lists
+    const { NotificationsSheet } = require('../../../core/ui/mobile/NotificationsSheet');
+    const fmtRemain = (deliveryDate: string): string => {
+      const due = new Date(deliveryDate + 'T00:00:00').getTime();
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const days = Math.ceil((due - today.getTime()) / 86400000);
+      if (days <= 0) return 'Bugün';
+      if (days === 1) return 'Yarın';
+      if (days <= 7) return `${days}g sonra`;
+      return new Date(due).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' });
+    };
+    const notifApprovals = pendingApprovals.map(a => ({
+      id: String(a.order_number ?? a.id),
+      _id: a.id,
+      patient: a.patient_name ?? 'Hasta',
+      workType: 'Tasarım onayı bekliyor',
     }));
+    const notifOverdue = overdueList.slice(0, 8).map((o: any) => {
+      const due = new Date(o.delivery_date + 'T00:00:00').getTime();
+      const days = Math.max(1, Math.floor((Date.now() - due) / 86400000));
+      return {
+        id: String(o.order_number ?? o.id),
+        _id: o.id,
+        patient: o.patient_name ?? 'Hasta',
+        workType: o.work_type ?? '—',
+        daysLate: days,
+      };
+    });
+    const notifUpcoming = upcoming.slice(0, 8).map((o: any) => ({
+      id: String(o.order_number ?? o.id),
+      _id: o.id,
+      patient: o.patient_name ?? 'Hasta',
+      workType: o.work_type ?? '—',
+      remainLabel: fmtRemain(o.delivery_date),
+    }));
+    const totalNotifs = notifApprovals.length + notifOverdue.length + notifUpcoming.length;
+
     return (
-      <HomeB1Cmp
-        kicker={`${active} aktif sipariş`}
-        headline={overdueCount > 0 ? `${overdueCount} geciken vakanız var.` : 'Onaylarınızı takip edin.'}
-        sub={`Bu ay ${thisMonthNew} yeni sipariş, ${delivered} teslim edildi.`}
-        primaryAction={{ label: 'Yeni sipariş', onPress: () => router.push('/(doctor)/new-order' as any) }}
-        secondaryAction={{ label: 'Siparişlerim', onPress: () => router.push('/(doctor)/orders' as any) }}
-        kpis={kpis}
-        priority={priority}
-        onOpenOrder={(o: any) => router.push(`/(doctor)/order/${o.id}` as any)}
-        onSeeAllOrders={() => router.push('/(doctor)/orders' as any)}
-        insight={defIns('clinic')}
-        refreshing={loading}
-        onRefresh={refetch}
-      />
+      <>
+        <DoctorMobileDashboard
+          clinicName={profile?.full_name ?? 'Klinik'}
+          liveActive={active}
+          liveTotal={total}
+          liveStages={stageCounts}
+          livePercent={deliveredPct}
+          activeOrders={active}
+          overdueCount={overdueCount}
+          thisMonthNew={thisMonthNew}
+          pendingApprovalsCount={totalNotifs}
+          weekBars={weekBars}
+          weekRange={weekRange}
+          weekTotal={weekTotal}
+          delayed={delayedItems}
+          onNewOrder={() => useNewOrderModalStore.getState().setOpen(true)}
+          onScan={() => require('../../../core/store/scanStore').useScanStore.getState().setOpen(true)}
+          onApprovals={() => router.push('/(doctor)/orders?filter=approval' as any)}
+          onCalendar={() => router.push('/(doctor)/orders' as any)}
+          onMessages={() => router.push('/(doctor)/messages' as any)}
+          onNotifications={() => setNotificationsOpen(true)}
+          onProfile={() => router.push('/(doctor)/profile' as any)}
+          onOpenOrder={(displayId: string) => {
+            const found = delayedItems.find(x => x.id === displayId);
+            if (found) router.push(`/(doctor)/order/${(found as any)._id}` as any);
+          }}
+          refreshing={loading}
+          onRefresh={refetch}
+        />
+        <NotificationsSheet
+          visible={notificationsOpen}
+          onClose={() => setNotificationsOpen(false)}
+          onOpenOrder={(dbId: string) => router.push(`/(doctor)/order/${dbId}` as any)}
+          panel="doctor"
+          approvals={notifApprovals}
+          overdue={notifOverdue}
+          upcoming={notifUpcoming}
+        />
+      </>
     );
   }
 
@@ -760,7 +966,11 @@ export function DoctorDashboardScreen() {
   return (
     <ScrollView
       className="flex-1"
-      contentContainerStyle={{ padding: isDesktop ? 10 : 16, paddingBottom: 120 }}
+      contentContainerStyle={{
+        padding: isDesktop ? 10 : 16,
+        paddingTop: isDesktop ? 10 : insets.top + 8,
+        paddingBottom: 120,
+      }}
       refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={P} />}
     >
       {/* ════════ HERO ════════ */}
@@ -777,9 +987,10 @@ export function DoctorDashboardScreen() {
             </Text>
             <View className="flex-row flex-wrap items-center" style={{ gap: 14, marginTop: 14 }}>
               <StatPill label="Üretim" value={`${productionPct}%`} bg={INK} color="#FFF" />
-              <StatPill label="Aktif" value={`${active}`} bg={P} color="#FFF" />
-              {overdueCount > 0 && <StatPill label="Geciken" value={`${overdueCount}`} bg="rgba(217,75,75,0.12)" color="#9C2E2E" />}
-              <StatPill label="Bu ay" value={`${thisMonthNew}`} bg="rgba(0,0,0,0.08)" color={INK} />
+              <StatPill label="Aktif" value={active} bg={P} color="#FFF" />
+              {overdueCount > 0 && <StatPill label="Geciken" value={overdueCount} bg="rgba(217,75,75,0.12)" color="#9C2E2E" />}
+              <StatPill label="Bu ay" value={thisMonthNew} bg="rgba(0,0,0,0.08)" color={INK} />
+              <FaceScanQuickAction accentColor={P} compact />
             </View>
           </View>
           <View className="flex-row" style={{ gap: 32, alignItems: 'flex-end' }}>
@@ -819,6 +1030,11 @@ export function DoctorDashboardScreen() {
       {overdueCount > 0 && (
         <AnimatedOverdueCard count={overdueCount} onPress={() => router.push('/(doctor)/orders' as any)} />
       )}
+
+      {/* ════════ DEĞERLENDİRİLECEK İŞLER (Faz 2) ════════ */}
+      <View style={{ marginBottom: 14 }}>
+        <PendingReviewsCard raterRole="doctor" />
+      </View>
 
       {/* ════════ 4-CARD GRID ════════ */}
       <View className={isDesktop ? 'flex-row' : ''} style={{ gap: 14, marginBottom: 14 }}>

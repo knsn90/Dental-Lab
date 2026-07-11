@@ -132,7 +132,7 @@ export const STATUS_TONES: Record<string, StatusTone> = {
   alindi:          { label: 'Alındı',          fg: DS.ink[500], bg: 'rgba(0,0,0,0.06)' },
   uretimde:        { label: 'Üretimde',        fg: '#9C5E0E', bg: 'rgba(232,155,42,0.18)' },
   kalite_kontrol:  { label: 'Kalite',          fg: '#1F5689', bg: 'rgba(74,143,201,0.14)' },
-  teslimata_hazir: { label: 'Teslime Hazır',   fg: '#1F6B47', bg: 'rgba(45,154,107,0.16)' },
+  teslimata_hazir: { label: 'Kuryeye Teslim Edildi', fg: '#1F6B47', bg: 'rgba(45,154,107,0.16)' },
   teslim_edildi:   { label: 'Teslim Edildi',   fg: DS.ink[500], bg: 'rgba(0,0,0,0.06)' },
 };
 

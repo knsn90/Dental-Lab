@@ -21,8 +21,9 @@
  *    <ButtonX variant="destructive" leftIcon="trash">Sil</ButtonX>
  */
 import React from 'react';
-import { Pressable, Text, ActivityIndicator, View, PressableProps } from 'react-native';
+import { Pressable, Text, View, PressableProps } from 'react-native';
 import { AppIcon } from './AppIcon';
+import { ActivityIndicator } from './teethCompat';
 
 type Variant = 'default' | 'secondary' | 'destructive' | 'outline' | 'ghost' | 'link';
 type Size    = 'sm' | 'md' | 'lg' | 'icon';
@@ -108,14 +109,13 @@ export function ButtonX({
       `}
       {...rest}
     >
-      {loading && <ActivityIndicator size="small" color="currentColor" />}
-      {!loading && leftIcon && (
+      {leftIcon && (
         <AppIcon name={leftIcon as any} size={sz.icon} color={iconColorFor(variant)} strokeWidth={2} />
       )}
       {children !== undefined && (
         <Text className={`${sz.text} ${v.text} ${textClassName ?? ''}`}>{children}</Text>
       )}
-      {!loading && rightIcon && (
+      {rightIcon && (
         <AppIcon name={rightIcon as any} size={sz.icon} color={iconColorFor(variant)} strokeWidth={2} />
       )}
     </Pressable>

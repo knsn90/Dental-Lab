@@ -4,9 +4,10 @@
  * Kullanıcı rolüne göre doğru panele yönlendirir.
  */
 import { useEffect } from 'react';
-import { View, Text, ActivityIndicator, StyleSheet, Platform } from 'react-native';
+import { View, Text, StyleSheet, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuthStore } from '../../core/store/authStore';
+import { ActivityIndicator } from '../../core/ui/teethCompat';
 
 export default function OrderRedirect() {
   const { id } = useLocalSearchParams<{ id: string }>();

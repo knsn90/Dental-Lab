@@ -75,6 +75,7 @@ export function DatePicker({
   minDate,
   maxDate,
   disabled,
+  compact = false,
 }: {
   value?: string | null;
   onChange: (iso: string) => void;
@@ -83,6 +84,8 @@ export function DatePicker({
   minDate?: string;
   maxDate?: string;
   disabled?: boolean;
+  /** Daha kısa trigger (height 36 / radius 10) — dar formlar için */
+  compact?: boolean;
 }) {
   const selected = useMemo(() => parseISODate(value), [value]);
   const minD = useMemo(() => parseISODate(minDate), [minDate]);
@@ -191,16 +194,17 @@ export function DatePicker({
         disabled={disabled}
         style={{
           flexDirection: 'row', alignItems: 'center', gap: 8,
-          height: 44, paddingHorizontal: 14, borderRadius: 14,
+          height: compact ? 36 : 44,
+          paddingHorizontal: compact ? 12 : 14,
+          borderRadius: compact ? 10 : 14,
           borderWidth: 1, borderColor: open ? accent : 'rgba(0,0,0,0.08)',
           backgroundColor: '#FFF',
           opacity: disabled ? 0.6 : 1,
-          // @ts-ignore web
-          cursor: disabled ? 'not-allowed' : 'pointer',
+          cursor: (disabled ? 'not-allowed' : 'pointer') as any,
         }}
       >
-        <Calendar size={15} color={selected ? DS.ink[700] : DS.ink[400]} strokeWidth={1.7} />
-        <Text style={{ flex: 1, fontSize: 14, color: selected ? DS.ink[900] : DS.ink[400] }}>
+        <Calendar size={compact ? 14 : 15} color={selected ? DS.ink[700] : DS.ink[400]} strokeWidth={1.7} />
+        <Text style={{ flex: 1, fontSize: compact ? 13 : 14, color: selected ? DS.ink[900] : DS.ink[400] }}>
           {selected ? formatDisplay(value) : placeholder}
         </Text>
       </Pressable>
@@ -313,8 +317,7 @@ export function DatePicker({
                         borderWidth: isToday && !isSelected ? 1 : 0,
                         borderColor: isToday && !isSelected ? accent : 'transparent',
                         opacity: dis ? 0.3 : 1,
-                        // @ts-ignore web
-                        cursor: dis ? 'not-allowed' : 'pointer',
+                        cursor: (dis ? 'not-allowed' : 'pointer') as any,
                       }}
                     >
                       <Text

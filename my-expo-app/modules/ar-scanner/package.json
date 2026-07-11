@@ -1,0 +1,9 @@
+{
+  "name": "ar-scanner",
+  "version": "0.1.0",
+  "description": "TrueDepth-based 3D face capture for dental smile-design workflows. Exports OBJ + STL + texture PNG.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "private": true,
+  "platforms": ["ios"]
+}

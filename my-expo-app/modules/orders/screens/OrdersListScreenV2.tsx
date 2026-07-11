@@ -14,15 +14,42 @@
  *   - Teknisyen atama modalı
  *   - Sayfa başlığı entegrasyonu (PatternsShell)
  */
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+
+// ── Footer "PLANLAMA BEKLİYOR" yazısı için subtle pulse (web only) ──
+function injectFooterPulseKeyframes() {
+  if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+  const id = 'planlama-footer-pulse';
+  if (document.getElementById(id)) return;
+  const style = document.createElement('style');
+  style.id = id;
+  style.textContent = `
+    @keyframes planlama-text-pulse {
+      0%, 100% { opacity: 1.00; letter-spacing: 1.4px; }
+      50%      { opacity: 0.55; letter-spacing: 2.0px; }
+    }
+    .planlama-text-pulse {
+      animation: planlama-text-pulse 2.4s ease-in-out infinite;
+      will-change: opacity, letter-spacing;
+    }
+  `;
+  document.head.appendChild(style);
+}
 import {
   View, Text, ScrollView, RefreshControl, Pressable,
-  TextInput, Modal, ActivityIndicator, Platform, useWindowDimensions,
+  TextInput, Modal, Platform, useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useSegments } from 'expo-router';
-import { Search, X, SlidersHorizontal, ArrowUpDown, ChevronRight, Flame, Clock, LayoutList, Columns3, UserCheck } from 'lucide-react-native';
+import { Search, X, SlidersHorizontal, ArrowUpDown, ChevronRight, Flame, Clock, LayoutList, Columns3, UserCheck, Pencil, Archive, Trash2, RotateCcw, AlertCircle, ShieldAlert, ListChecks, Camera } from 'lucide-react-native';
+import { ScanWorkOrderModal } from '../components/ScanWorkOrderModal';
+import { OrderEditSheet } from '../components/OrderEditSheet';
+import { archiveOrder, restoreOrder, hardDeleteOrder } from '../api';
+import { titleCaseTR } from '../../../core/utils/textCase';
 
 import { useAuthStore } from '../../../core/store/authStore';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 import { toast } from '../../../core/ui/Toast';
 
@@ -34,9 +61,12 @@ import { StatusUpdateModal } from '../components/StatusUpdateModal';
 import { KanbanBoard } from '../components/KanbanBoard';
 import { WorkOrder, WorkOrderStatus } from '../types';
 import { STATUS_CONFIG, isOrderOverdue } from '../constants';
+import { getOrderStageLabel } from '../utils/currentStage';
 import { OrdersKanbanB2Mobile } from './OrdersKanbanB2Mobile';
+import { DoctorOrdersMobile } from './DoctorOrdersMobile';
 import { mapStationToStage } from '../stationMapping';
 import { STAGE_LABEL, STAGE_COLOR, legacyStatusToStage, type Stage } from '../stages';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
 
 // ── Panel detection helper ─────────────────────────────────────────
 type PanelKind = 'lab' | 'clinic' | 'doctor' | 'admin';
@@ -66,7 +96,7 @@ type SortDir  = 'asc' | 'desc';
 
 const STATUS_FILTERS: { value: WorkOrderStatus | 'all'; label: string }[] = [
   { value: 'all',             label: 'Tümü'   },
-  { value: 'alindi',          label: 'Triyaj' },
+  { value: 'alindi',          label: 'Planlama' },
   { value: 'uretimde',        label: 'Üretim' },
   { value: 'kalite_kontrol',  label: 'KK'     },
   { value: 'teslimata_hazir', label: 'Hazır'  },
@@ -114,6 +144,12 @@ export function OrdersListScreenV2() {
   const { profile } = useAuthStore();
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1024;
+  const insets = useSafeAreaInsets();
+  // Ana sayfa (Lab/Admin/Doctor/Clinic dashboard) ile aynı bg tonu.
+  const T = useMobileTokens();
+
+  // Footer "PLANLAMA BEKLİYOR" pulse — bir kez enjekte
+  useEffect(() => { injectFooterPulseKeyframes(); }, []);
   const segments = useSegments() as string[];
   const panelGroup = segments?.[0] ?? '';
   const panel = detectPanel(segments);
@@ -122,9 +158,51 @@ export function OrdersListScreenV2() {
   const isManager    = (panel === 'lab' || panel === 'admin')
                     && ((profile?.user_type === 'lab' && (profile as any)?.role === 'manager')
                         || profile?.user_type === 'admin');
+  const isAdmin      = profile?.user_type === 'admin';
+
+  // Admin "Arşivi göster" toggle (state'i hook'tan önce — fetch param'ı için)
+  const [showArchived, setShowArchived] = useState(false);
+
+  // Admin actions state — düzenle/pasife/sil için modal'lar list seviyesinde tutulur
+  const [adminEditTarget, setAdminEditTarget]     = useState<WorkOrder | null>(null);
+  const [adminArchiveTarget, setAdminArchiveTarget] = useState<WorkOrder | null>(null);
+  const [adminDeleteTarget, setAdminDeleteTarget] = useState<WorkOrder | null>(null);
+  const [adminBusy, setAdminBusy]                 = useState(false);
+  const [adminConfirmText, setAdminConfirmText]   = useState('');
+
+  const handleArchiveConfirm = async () => {
+    if (!adminArchiveTarget) return;
+    setAdminBusy(true);
+    const isArchived = !!(adminArchiveTarget as any).is_archived;
+    const result = isArchived
+      ? await restoreOrder(adminArchiveTarget.id)
+      : await archiveOrder(adminArchiveTarget.id);
+    setAdminBusy(false);
+    if (!result.ok) { toast.error(result.error ?? 'İşlem başarısız'); return; }
+    toast.success(isArchived ? 'Sipariş geri yüklendi' : 'Sipariş pasife alındı');
+    setAdminArchiveTarget(null);
+    await Promise.resolve(refetch?.());
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!adminDeleteTarget) return;
+    setAdminBusy(true);
+    const result = await hardDeleteOrder(adminDeleteTarget.id);
+    setAdminBusy(false);
+    if (!result.ok) { toast.error(result.error ?? 'Silme başarısız'); return; }
+    toast.success('Sipariş kalıcı olarak silindi');
+    setAdminDeleteTarget(null);
+    setAdminConfirmText('');
+    await Promise.resolve(refetch?.());
+  };
 
   // ── Data source: pick the right hook based on panel ──
-  const labData    = useOrders(panel === 'doctor' ? 'doctor' : 'lab', panel === 'doctor' ? profile?.id : undefined);
+  // Admin "Arşivi göster" toggle açıksa fetch'te de arşivli kayıtlar dahil edilir
+  const labData    = useOrders(
+    panel === 'doctor' ? 'doctor' : 'lab',
+    panel === 'doctor' ? profile?.id : undefined,
+    { includeArchived: showArchived },
+  );
   const clinicData = useClinicOrders(panel === 'clinic');
 
   const rawOrders = panel === 'clinic' ? normaliseClinicOrders(clinicData.orders) : labData.orders;
@@ -144,10 +222,11 @@ export function OrdersListScreenV2() {
   const [statusFilter, setStatusFilter] = useState<WorkOrderStatus | 'all'>('all');
   const [search, setSearch]             = useState('');
   const [searchOpen, setSearchOpen]     = useState(false);
+  const [scanOpen, setScanOpen]         = useState(false);
   const [urgentOnly, setUrgentOnly]     = useState(false);
   const [overdueOnly, setOverdueOnly]   = useState(false);
-  const [sortBy, setSortBy]             = useState<SortBy>('delivery_date');
-  const [sortDir, setSortDir]           = useState<SortDir>('asc');
+  const [sortBy, setSortBy]             = useState<SortBy>('created_at');  // en yeni sipariş her zaman üstte
+  const [sortDir, setSortDir]           = useState<SortDir>('desc');
   const [sortOpen, setSortOpen]         = useState(false);
 
   // ── Modals ──
@@ -167,6 +246,10 @@ export function OrdersListScreenV2() {
 
   const filtered = useMemo(() => {
     const list = visibleOrders.filter(o => {
+      // Admin "Arşivi göster" açıkken sadece arşivli, kapalıyken sadece aktif
+      // (non-admin kullanıcılar zaten arşivli görmez — query seviyesinde filtrelenmiş)
+      const isArch = !!(o as any).is_archived;
+      const matchArchive = isAdmin ? (showArchived ? isArch : !isArch) : !isArch;
       const matchStatus = statusFilter === 'all' || o.status === statusFilter;
       const sl = search.toLowerCase();
       const matchSearch = !search
@@ -176,7 +259,7 @@ export function OrdersListScreenV2() {
         || o.work_type.toLowerCase().includes(sl);
       const matchUrgent  = !urgentOnly  || o.is_urgent;
       const matchOverdue = !overdueOnly || (o.delivery_date < today && o.status !== 'teslim_edildi');
-      return matchStatus && matchSearch && matchUrgent && matchOverdue;
+      return matchArchive && matchStatus && matchSearch && matchUrgent && matchOverdue;
     });
     return list.sort((a, b) => {
       let cmp = 0;
@@ -186,7 +269,7 @@ export function OrdersListScreenV2() {
       else if (sortBy === 'is_urgent')     cmp = (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0);
       return sortDir === 'asc' ? cmp : -cmp;
     });
-  }, [visibleOrders, statusFilter, search, urgentOnly, overdueOnly, today, sortBy, sortDir]);
+  }, [visibleOrders, statusFilter, search, urgentOnly, overdueOnly, showArchived, isAdmin, today, sortBy, sortDir]);
 
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = { all: visibleOrders.length };
@@ -200,20 +283,33 @@ export function OrdersListScreenV2() {
     [visibleOrders, today],
   );
 
-  // ── Handlers ──
-  const onCardPress = (order: WorkOrder) => {
-    if (panelGroup && panelGroup.startsWith('(')) {
-      router.push(`/${panelGroup}/order/${order.id}` as any);
-    } else {
-      router.push(`/(lab)/order/${order.id}` as any);
+  // ── Handlers (memo'lu satırlar re-render etmesin diye stable callback) ──
+  const onCardPress = useCallback((order: WorkOrder) => {
+    const needsTriage = order.status === 'alindi' && !(order as any).triaged_at;
+    // İSTASYON (teknisyen): onay bekleyen sipariş listede görünür ama detayı AÇILMAZ.
+    if (panelGroup === '(station)' && needsTriage) {
+      toast.warning('Sipariş henüz onaylanmadı — detay açılamaz.');
+      return;
     }
-  };
+    // LAB & ADMIN: planlama bekleyen iş → yeni tam-ekran Plan Önizleme & Onay ekranı.
+    // Diğer paneller: mevcut davranış korunur (?triage=open → TriageModal).
+    if (needsTriage && (panelGroup === '(lab)' || panelGroup === '(admin)')) {
+      router.push(`/${panelGroup}/order/plan/${order.id}` as any);
+      return;
+    }
+    const qs = needsTriage ? '?triage=open' : '';
+    if (panelGroup && panelGroup.startsWith('(')) {
+      router.push(`/${panelGroup}/order/${order.id}${qs}` as any);
+    } else {
+      router.push(`/(lab)/order/${order.id}${qs}` as any);
+    }
+  }, [panelGroup, router]);
 
-  const onAssignPress = (order: WorkOrder) => {
+  const onAssignPress = useCallback((order: WorkOrder) => {
     setAssignTarget(order);
     setAssignModalVisible(true);
     loadTechnicians();
-  };
+  }, [loadTechnicians]);
 
   const onAssignConfirm = async (techId: string) => {
     if (!assignTarget) return;
@@ -241,9 +337,20 @@ export function OrdersListScreenV2() {
   };
 
   // ═══════════════════════════════════════════════════════════════════
-  // MOBILE — Variant B B2 Kanban swimlanes (early return)
+  // MOBILE — Aydın Lab handoff (hekim için ayrı list component)
+  // Diğer paneller B2 Kanban kullanmaya devam ediyor (sıralı revizyon).
   // ═══════════════════════════════════════════════════════════════════
   if (!isDesktop) {
+    if (panel === 'doctor') {
+      return (
+        <DoctorOrdersMobile
+          orders={orders}
+          loading={loading}
+          refetch={refetch}
+          onOpenOrder={onCardPress}
+        />
+      );
+    }
     return (
       <OrdersKanbanB2Mobile
         orders={orders}
@@ -258,7 +365,7 @@ export function OrdersListScreenV2() {
   // DESKTOP RENDER (mevcut, dokunulmadı)
   // ═══════════════════════════════════════════════════════════════════
   return (
-    <View className="flex-1 bg-cream-page">
+    <View style={{ flex: 1, backgroundColor: T.bg }}>
 
       {/* ── Unified Filter Bar — DESKTOP ONLY (mobile uses block below) ─── */}
       {isDesktop && (
@@ -324,6 +431,37 @@ export function OrdersListScreenV2() {
                 </Text>
               )}
             </Pressable>
+
+            {/* Admin only: Arşivi göster toggle */}
+            {isAdmin && (
+              <Pressable
+                onPress={() => setShowArchived(v => !v)}
+                className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full"
+                style={showArchived
+                  ? { backgroundColor: 'rgba(217,119,6,0.14)', borderWidth: 1, borderColor: 'rgba(217,119,6,0.28)' }
+                  : { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' }
+                }
+              >
+                <Archive size={12} color={showArchived ? '#92400E' : '#9A9A9A'} strokeWidth={1.8} />
+                <Text className="text-[12px] font-semibold" style={{ color: showArchived ? '#92400E' : '#6B6B6B' }}>
+                  {showArchived ? 'Arşivde' : 'Arşiv'}
+                </Text>
+              </Pressable>
+            )}
+
+            {/* Kağıt sipariş tara — klinikler kağıt formla sipariş veriyorsa OCR */}
+            {Platform.OS === 'web' && (
+              <Pressable
+                onPress={() => setScanOpen(true)}
+                className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full"
+                style={{ backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: 'rgba(37,99,235,0.25)' }}
+              >
+                <Camera size={12} color="#2563EB" strokeWidth={1.8} />
+                <Text className="text-[12px] font-semibold" style={{ color: '#2563EB' }}>
+                  Kağıt Sipariş Tara
+                </Text>
+              </Pressable>
+            )}
           </ScrollView>
 
           {/* Search */}
@@ -364,7 +502,7 @@ export function OrdersListScreenV2() {
                 boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
               }}
             >
-              <Search size={15} color={search ? '#0A0A0A' : '#6B6B6B'} strokeWidth={1.8} />
+              <Search size={15} color={search ? T.ink : T.ink2} strokeWidth={1.8} />
             </Pressable>
           )}
 
@@ -401,7 +539,7 @@ export function OrdersListScreenV2() {
 
       {/* ── Mobile Filter Bar — sade, tek elle kullanım ───────────── */}
       {!isDesktop && (
-        <View className="px-4 pt-2 pb-3" style={{ gap: 10 }}>
+        <View className="px-4 pb-3" style={{ paddingTop: insets.top + 8, gap: 10 }}>
           {/* Search + Sort row */}
           <View className="flex-row items-center" style={{ gap: 8 }}>
             <View
@@ -514,7 +652,11 @@ export function OrdersListScreenV2() {
       ) : (
         <ScrollView
           className="flex-1"
-          contentContainerStyle={{ paddingHorizontal: isDesktop ? 16 : 12, paddingTop: 4, paddingBottom: 24 }}
+          contentContainerStyle={{
+            paddingHorizontal: isDesktop ? 16 : 12,
+            paddingTop: 4,
+            paddingBottom: 120,
+          }}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor="#0A0A0A" />}
           showsVerticalScrollIndicator={false}
         >
@@ -525,28 +667,88 @@ export function OrdersListScreenV2() {
             </View>
           ) : filtered.length === 0 ? (
             <EmptyStateV2 search={search} hasFilters={urgentOnly || overdueOnly || statusFilter !== 'all'} />
-          ) : isDesktop ? (
-            /* ═══ DESKTOP TABLE ═══ */
-            <DesktopTable
-              orders={filtered}
-              isManager={isManager}
-              onPress={onCardPress}
-              onAssign={onAssignPress}
-            />
-          ) : (
-            /* ═══ MOBILE CARDS ═══ */
-            <View className="gap-2">
-              {filtered.map(order => (
-                <MobileOrderCard
-                  key={order.id}
-                  order={order}
-                  isManager={isManager}
-                  onPress={() => onCardPress(order)}
-                  onAssign={() => onAssignPress(order)}
-                />
-              ))}
-            </View>
-          )}
+          ) : (() => {
+            // Planlama bekleyen siparişler ayrı bir bloğa alınır
+            const triagePendingOrders = filtered.filter(
+              o => o.status === 'alindi' && !(o as any).triaged_at
+            );
+            const mainOrders = filtered.filter(
+              o => !(o.status === 'alindi' && !(o as any).triaged_at)
+            );
+
+            return (
+              <View style={{ gap: 18 }}>
+                {/* ═══ PLANLAMA BEKLEYEN — Üst tablo (transparent wrapper) ═══ */}
+                {triagePendingOrders.length > 0 && (
+                  <View>{/* DesktopTable kendi köşe radius'unu ve zeminini yönetir */}
+                    {/* Body — desktop tablo veya mobile kartlar */}
+                    {isDesktop ? (
+                      <DesktopTable
+                        orders={triagePendingOrders}
+                        isManager={isManager}
+                        isAdmin={isAdmin}
+                        onPress={onCardPress}
+                        onAssign={onAssignPress}
+                        onEdit={(o) => setAdminEditTarget(o)}
+                        onArchive={(o) => setAdminArchiveTarget(o)}
+                        onDelete={(o) => setAdminDeleteTarget(o)}
+                        footerTitle="Planlama bekliyor"
+                        footerColor="#9C5E0E"
+                      />
+                    ) : (
+                      <View style={{ padding: 12, gap: 8 }}>
+                        {triagePendingOrders.map(order => (
+                          <MobileOrderCard
+                            key={order.id}
+                            order={order}
+                            isManager={isManager}
+                            isAdmin={isAdmin}
+                            onPress={onCardPress}
+                            onAssign={onAssignPress}
+                            onEdit={setAdminEditTarget}
+                            onArchive={setAdminArchiveTarget}
+                            onDelete={setAdminDeleteTarget}
+                          />
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                {/* ═══ ASIL TABLO — Diğer siparişler ═══ */}
+                {mainOrders.length > 0 && (
+                  isDesktop ? (
+                    <DesktopTable
+                      orders={mainOrders}
+                      isManager={isManager}
+                      isAdmin={isAdmin}
+                      onPress={onCardPress}
+                      onAssign={onAssignPress}
+                      onEdit={setAdminEditTarget}
+                      onArchive={setAdminArchiveTarget}
+                      onDelete={setAdminDeleteTarget}
+                    />
+                  ) : (
+                    <View className="gap-2">
+                      {mainOrders.map(order => (
+                        <MobileOrderCard
+                          key={order.id}
+                          order={order}
+                          isManager={isManager}
+                          isAdmin={isAdmin}
+                          onPress={onCardPress}
+                          onAssign={onAssignPress}
+                          onEdit={setAdminEditTarget}
+                          onArchive={setAdminArchiveTarget}
+                          onDelete={setAdminDeleteTarget}
+                        />
+                      ))}
+                    </View>
+                  )
+                )}
+              </View>
+            );
+          })()}
         </ScrollView>
       )}
 
@@ -698,7 +900,164 @@ export function OrdersListScreenV2() {
           onClose={() => { setModalVisible(false); setSelectedOrder(null); }}
         />
       )}
+
+      {/* Admin: kapsamlı düzenleme (tüm alanlar, gate yok) */}
+      <OrderEditSheet
+        visible={!!adminEditTarget}
+        order={adminEditTarget as any}
+        mode="admin"
+        onClose={() => setAdminEditTarget(null)}
+        onSaved={() => { refetch?.(); }}
+      />
+
+      {/* Admin: Archive/Restore Confirm */}
+      {adminArchiveTarget && (
+        <AdminConfirmDialog
+          type={(adminArchiveTarget as any).is_archived ? 'restore' : 'archive'}
+          orderNumber={adminArchiveTarget.order_number}
+          patientName={adminArchiveTarget.patient_name ?? '—'}
+          busy={adminBusy}
+          onCancel={() => setAdminArchiveTarget(null)}
+          onConfirm={handleArchiveConfirm}
+          confirmText=""
+          onChangeConfirmText={() => {}}
+        />
+      )}
+
+      {/* Admin: Delete Confirm */}
+      {adminDeleteTarget && (
+        <AdminConfirmDialog
+          type="delete"
+          orderNumber={adminDeleteTarget.order_number}
+          patientName={adminDeleteTarget.patient_name ?? '—'}
+          busy={adminBusy}
+          onCancel={() => { setAdminDeleteTarget(null); setAdminConfirmText(''); }}
+          onConfirm={handleDeleteConfirm}
+          confirmText={adminConfirmText}
+          onChangeConfirmText={setAdminConfirmText}
+        />
+      )}
+
+      {/* Kağıt iş emri OCR modalı */}
+      <ScanWorkOrderModal
+        visible={scanOpen}
+        onClose={() => setScanOpen(false)}
+        onCreateOrder={(parsed) => {
+          // OCR sonucunu sessionStorage'a yaz → NewOrderScreen ilk yüklendiğinde okuyup form'u doldurabilir
+          try {
+            if (typeof window !== 'undefined' && window.sessionStorage) {
+              window.sessionStorage.setItem('ocr_work_order', JSON.stringify(parsed));
+            }
+          } catch { /* ignore */ }
+          router.push('/(lab)/new-order' as any);
+        }}
+        accentColor="#2563EB"
+      />
     </View>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// ADMIN CONFIRM DIALOG (archive/restore/delete) — Patterns §13
+// ═══════════════════════════════════════════════════════════════════════
+function AdminConfirmDialog({
+  type, orderNumber, patientName, busy, confirmText, onChangeConfirmText, onCancel, onConfirm,
+}: {
+  type: 'archive' | 'restore' | 'delete';
+  orderNumber: string | number;
+  patientName: string;
+  busy: boolean;
+  confirmText: string;
+  onChangeConfirmText: (t: string) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const cfg = {
+    archive: { title: 'Siparişi pasife al', desc: 'Sipariş arşive taşınır ve listelerde görünmez. İstediğin zaman geri yükleyebilirsin.', icon: Archive, c: '#D97706', bg: 'rgba(217,119,6,0.14)', cta: 'Pasife al', requireType: false },
+    restore: { title: 'Siparişi geri yükle', desc: 'Sipariş aktif listeye geri döner.', icon: RotateCcw, c: '#1F6B47', bg: 'rgba(31,107,71,0.14)', cta: 'Geri yükle', requireType: false },
+    delete:  { title: 'Siparişi silmek istediğine emin misin?', desc: 'Sipariş ve tüm bağlı kayıtları (aşamalar, fotoğraflar, ödemeler) kalıcı olarak silinir. Bu işlem geri alınamaz.', icon: Trash2, c: '#9C2E2E', bg: 'rgba(156,46,46,0.14)', cta: 'Evet, sil', requireType: false },
+  }[type];
+
+  const Icon = cfg.icon;
+  const DisplayFont = Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light';
+  const canConfirm = !cfg.requireType || confirmText.trim().toUpperCase() === 'SIL';
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onCancel}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(20,15,10,0.55)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+        <View style={{
+          backgroundColor: isDark ? T.card : '#FFFFFF', borderRadius: 24, width: 460, maxWidth: '100%',
+          overflow: 'hidden',
+          borderWidth: isDark ? 1 : 0,
+          borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'transparent',
+          ...(Platform.OS === 'web' ? { boxShadow: '0 24px 64px rgba(0,0,0,0.22)' } as any : {}),
+        }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingHorizontal: 28, paddingTop: 24, paddingBottom: 18, gap: 16 }}>
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+              <View style={{ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: cfg.bg, borderWidth: 1, borderColor: cfg.c + '33' }}>
+                <Icon size={20} color={cfg.c} strokeWidth={1.8} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: cfg.c, letterSpacing: 1.2, textTransform: 'uppercase' }}>Onay gerekli</Text>
+                <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 22, letterSpacing: -0.4, color: T.ink, lineHeight: 28, marginTop: 2 }}>{cfg.title}</Text>
+              </View>
+            </View>
+            <Pressable onPress={onCancel} disabled={busy} style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? T.cardSoft : '#FFFFFF', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)' }}>
+              <X size={15} color={T.ink3} strokeWidth={1.8} />
+            </Pressable>
+          </View>
+          <View style={{ height: 1, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)', marginHorizontal: 28 }} />
+
+          <View style={{ paddingHorizontal: 28, paddingTop: 18, paddingBottom: 22 }}>
+            <View style={{ padding: 12, borderRadius: 12, backgroundColor: isDark ? T.cardSoft : '#FBF9F4', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)', marginBottom: 14 }}>
+              <Text style={{ fontSize: 11, color: T.ink3, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 3 }}>Sipariş</Text>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: T.ink }}>#{orderNumber} · {patientName}</Text>
+            </View>
+            <Text style={{ fontSize: 13, color: T.ink2, lineHeight: 19 }}>{cfg.desc}</Text>
+            {cfg.requireType && (
+              <View style={{ marginTop: 16 }}>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: T.ink3, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 7 }}>
+                  Onaylamak için <Text style={{ color: cfg.c, fontWeight: '700' }}>SIL</Text> yazın
+                </Text>
+                <TextInput
+                  value={confirmText}
+                  onChangeText={onChangeConfirmText}
+                  placeholder="SIL"
+                  placeholderTextColor={T.ink3}
+                  autoCapitalize="characters"
+                  style={{
+                    backgroundColor: isDark ? T.cardSoft : '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)',
+                    paddingHorizontal: 14, height: 44, fontSize: 14, color: T.ink, fontWeight: '600',
+                    ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
+                  }}
+                />
+              </View>
+            )}
+          </View>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 28, paddingVertical: 18, borderTopWidth: 1, borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)', backgroundColor: isDark ? T.cardSoft : '#FBF9F4' }}>
+            <View style={{ flex: 1 }} />
+            <Pressable onPress={onCancel} disabled={busy} style={{ paddingHorizontal: 18, paddingVertical: 10, borderRadius: 9999, backgroundColor: isDark ? T.card : '#FFFFFF', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)' }}>
+              <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink2 }}>Vazgeç</Text>
+            </Pressable>
+            <Pressable
+              onPress={onConfirm}
+              disabled={busy || !canConfirm}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 7,
+                paddingHorizontal: 22, paddingVertical: 11, borderRadius: 9999,
+                backgroundColor: cfg.c, opacity: (busy || !canConfirm) ? 0.5 : 1,
+              }}
+            >
+              <Icon size={14} color="#FFF" strokeWidth={2.2} />
+              <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFF' }}>{busy ? 'İşleniyor…' : cfg.cta}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -706,15 +1065,17 @@ export function OrdersListScreenV2() {
 // EMPTY STATE
 // ═══════════════════════════════════════════════════════════════════════
 function EmptyStateV2({ search, hasFilters }: { search: string; hasFilters: boolean }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <View className="py-16 items-center gap-2">
-      <View className="w-14 h-14 rounded-2xl bg-ink-50 items-center justify-center mb-2">
-        <LayoutList size={24} color="#9A9A9A" strokeWidth={1.4} />
+      <View className="w-14 h-14 rounded-2xl items-center justify-center mb-2" style={{ backgroundColor: isDark ? T.cardSoft : '#FAFAFA' }}>
+        <LayoutList size={24} color={T.ink3} strokeWidth={1.4} />
       </View>
-      <Text className="text-[16px] font-semibold text-ink-900">
+      <Text className="text-[16px] font-semibold" style={{ color: T.ink }}>
         {search || hasFilters ? 'Eşleşen iş emri yok' : 'Henüz iş emri yok'}
       </Text>
-      <Text className="text-[13px] text-ink-500 text-center" style={{ maxWidth: 280 }}>
+      <Text className="text-[13px] text-center" style={{ maxWidth: 280, color: T.ink2 }}>
         {search || hasFilters
           ? 'Filtreyi temizleyin veya arama terimini değiştirin.'
           : 'Yeni iş emri oluşturulduğunda burada görünür.'}
@@ -726,11 +1087,15 @@ function EmptyStateV2({ search, hasFilters }: { search: string; hasFilters: bool
 // ═══════════════════════════════════════════════════════════════════════
 // MOBILE ORDER CARD
 // ═══════════════════════════════════════════════════════════════════════
-function MobileOrderCard({ order, isManager, onPress, onAssign }: {
+const MobileOrderCard = React.memo(function MobileOrderCard({ order, isManager, isAdmin, onPress, onAssign, onEdit, onArchive, onDelete }: {
   order: WorkOrder;
   isManager: boolean;
-  onPress: () => void;
-  onAssign: () => void;
+  isAdmin?: boolean;
+  onPress: (o: WorkOrder) => void;
+  onAssign: (o: WorkOrder) => void;
+  onEdit?: (o: WorkOrder) => void;
+  onArchive?: (o: WorkOrder) => void;
+  onDelete?: (o: WorkOrder) => void;
 }) {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const due   = new Date(order.delivery_date + 'T00:00:00');
@@ -739,52 +1104,78 @@ function MobileOrderCard({ order, isManager, onPress, onAssign }: {
   const stage   = stageOf(order);
   const stageColor = STAGE_COLOR[stage];
   const dText   = deliveryText(order.delivery_date, order.status);
-  const dColor  = isLate ? '#DC2626' : diff <= 1 && order.status !== 'teslim_edildi' ? '#D97706' : '#6B6B6B';
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const dColor  = isLate ? '#DC2626' : diff <= 1 && order.status !== 'teslim_edildi' ? '#D97706' : T.ink2;
   const canAssign = isManager && order.status === 'alindi' && !order.assigned_to;
+  const needsTriage = order.status === 'alindi' && !(order as any).triaged_at;
 
   return (
     <Pressable
-      onPress={onPress}
-      className="bg-white rounded-2xl p-4 flex-row gap-3"
+      onPress={() => onPress(order)}
+      className="rounded-2xl p-4 flex-row gap-3"
       style={{
-        // @ts-ignore
-        boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+        backgroundColor: needsTriage ? (isDark ? 'rgba(217,119,6,0.10)' : '#FFF7ED') : (isDark ? T.card : '#FFFFFF'),
+        borderWidth: needsTriage ? 1 : (isDark ? 1 : 0),
+        borderColor: needsTriage ? 'rgba(217,119,6,0.30)' : (isDark ? 'rgba(255,255,255,0.10)' : 'transparent'),
+        // @ts-ignore — sabit shadow (animasyonsuz)
+        boxShadow: needsTriage
+          ? '0 0 0 1px rgba(217,119,6,0.15), 0 4px 12px rgba(217,119,6,0.10)'
+          : (isDark ? 'none' : '0 1px 4px rgba(0,0,0,0.04)'),
       }}
     >
-      {/* Stage dot */}
+      {/* Stage dot or Planlama indicator */}
       <View className="pt-1">
-        <View
-          className="w-3 h-3 rounded-full"
-          style={{ backgroundColor: isLate ? '#DC2626' : stageColor }}
-        />
+        {needsTriage ? (
+          <View
+            className="w-7 h-7 rounded-full items-center justify-center"
+            style={{ backgroundColor: '#D97706' }}
+          >
+            <ListChecks size={14} color="#FFF" strokeWidth={2} />
+          </View>
+        ) : (
+          <View
+            className="w-3 h-3 rounded-full"
+            style={{ backgroundColor: isLate ? '#DC2626' : stageColor }}
+          />
+        )}
       </View>
 
       {/* Body */}
       <View className="flex-1 gap-1 min-w-0">
         <View className="flex-row items-center gap-2">
           <Text
-            className={`text-[15px] font-semibold flex-1 ${isLate ? '' : 'text-ink-900'}`}
-            style={isLate ? { color: '#DC2626' } : undefined}
+            className="text-[15px] font-semibold flex-1"
+            style={isLate ? { color: '#DC2626' } : { color: T.ink }}
             numberOfLines={1}
           >
             {order.work_type}
           </Text>
-          {order.is_urgent && (
-            <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: '#FFF4E6' }}>
-              <Flame size={11} color="#D97706" strokeWidth={2} />
-            </View>
-          )}
         </View>
-        <Text className="text-[12px] text-ink-500" numberOfLines={1}>
-          <Text className="font-semibold text-ink-700">#{order.order_number}</Text>
-          {`  ·  ${order.patient_name ?? '—'}  ·  ${order.doctor?.full_name ?? '—'}`}
+        <Text className="text-[12px]" style={{ color: T.ink2 }} numberOfLines={1}>
+          <Text className="font-semibold" style={{ color: T.ink }}>#{order.order_number}</Text>
+          {`  ·  ${order.patient_name ? titleCaseTR(order.patient_name) : '—'}  ·  ${order.doctor?.full_name ?? '—'}`}
         </Text>
         <View className="flex-row items-center gap-2 mt-0.5">
-          <View className="px-2 py-0.5 rounded" style={{ backgroundColor: stageColor + '14' }}>
-            <Text className="text-[10px] font-bold" style={{ color: stageColor, letterSpacing: 0.3 }}>
-              {STAGE_LABEL[stage]}
+          {/* ACİL / YENİ küçük etiketler */}
+          {order.is_urgent && (
+            <Text style={{ fontSize: 8.5, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', color: '#9C2E2E' }}>
+              Acil
             </Text>
-          </View>
+          )}
+          {needsTriage ? (
+            <View className="px-2 py-0.5 rounded flex-row items-center gap-1" style={{ backgroundColor: '#D97706' }}>
+              <Text className="text-[10px] font-bold" style={{ color: '#FFF', letterSpacing: 0.3 }}>
+                PLANLAMA BEKLİYOR
+              </Text>
+            </View>
+          ) : (
+            <View className="px-2 py-0.5 rounded" style={{ backgroundColor: stageColor + '14' }}>
+              <Text className="text-[10px] font-bold" style={{ color: stageColor, letterSpacing: 0.3 }}>
+                {getOrderStageLabel(order as any).toUpperCase()}
+              </Text>
+            </View>
+          )}
           <Text className="text-[11px] font-medium" style={{ color: dColor }}>
             {dText}
           </Text>
@@ -792,10 +1183,40 @@ function MobileOrderCard({ order, isManager, onPress, onAssign }: {
       </View>
 
       {/* Right */}
-      <View className="items-end justify-center gap-1">
-        {canAssign ? (
+      <View className="items-end justify-center gap-1.5">
+        {isAdmin ? (
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            {onEdit && (
+              <Pressable
+                onPress={(e: any) => { e?.stopPropagation?.(); onEdit(order); }}
+                style={{ width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(31,86,137,0.12)' }}
+              >
+                <Pencil size={12} color="#1F5689" strokeWidth={1.8} />
+              </Pressable>
+            )}
+            {onArchive && (
+              <Pressable
+                onPress={(e: any) => { e?.stopPropagation?.(); onArchive(order); }}
+                style={{ width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(217,119,6,0.14)' }}
+              >
+                {(order as any).is_archived
+                  ? <RotateCcw size={12} color="#92400E" strokeWidth={1.8} />
+                  : <Archive size={12} color="#92400E" strokeWidth={1.8} />
+                }
+              </Pressable>
+            )}
+            {onDelete && (
+              <Pressable
+                onPress={(e: any) => { e?.stopPropagation?.(); onDelete(order); }}
+                style={{ width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(156,46,46,0.12)' }}
+              >
+                <Trash2 size={12} color="#9C2E2E" strokeWidth={1.8} />
+              </Pressable>
+            )}
+          </View>
+        ) : canAssign ? (
           <Pressable
-            onPress={e => { (e as any).stopPropagation?.(); onAssign(); }}
+            onPress={e => { (e as any).stopPropagation?.(); onAssign(order); }}
             className="px-3 py-1 rounded-full bg-ink-900"
           >
             <Text className="text-[11px] font-semibold text-white">Ata</Text>
@@ -806,43 +1227,57 @@ function MobileOrderCard({ order, isManager, onPress, onAssign }: {
       </View>
     </Pressable>
   );
-}
+});
 
 // ═══════════════════════════════════════════════════════════════════════
 // DESKTOP TABLE
 // ═══════════════════════════════════════════════════════════════════════
-function DesktopTable({ orders, isManager, onPress, onAssign }: {
+function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, onArchive, onDelete, footerTitle, footerColor }: {
   orders: WorkOrder[];
   isManager: boolean;
+  isAdmin?: boolean;
   onPress: (o: WorkOrder) => void;
   onAssign: (o: WorkOrder) => void;
+  onEdit?: (o: WorkOrder) => void;
+  onArchive?: (o: WorkOrder) => void;
+  onDelete?: (o: WorkOrder) => void;
+  /** Footer'da count yerine ortalanmış başlık (örn. "PLANLAMA BEKLİYOR") */
+  footerTitle?: string;
+  /** Footer title rengi */
+  footerColor?: string;
 }) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const headColor = T.ink3;
   return (
     <View
-      className="bg-white rounded-3xl overflow-hidden"
-      style={{ borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' }}
+      className="rounded-3xl overflow-hidden"
+      style={{ borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.05)', backgroundColor: isDark ? T.card : '#FFFFFF' }}
     >
       {/* Column header */}
-      <View className="flex-row px-5 py-3 border-b" style={{ backgroundColor: '#FAFAFA', borderBottomColor: 'rgba(0,0,0,0.06)' }}>
-        <Text className="uppercase" style={{ width: 90, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: '#6B6B6B' }}>
+      <View className="flex-row px-5 py-3 border-b" style={{ backgroundColor: isDark ? T.cardSoft : '#FAFAFA', borderBottomColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }}>
+        <Text className="uppercase" style={{ width: 90, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
           No
         </Text>
-        <Text className="uppercase" style={{ flex: 2, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: '#6B6B6B' }}>
+        <Text className="uppercase" style={{ flex: 2, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
           Hasta
         </Text>
-        <Text className="uppercase" style={{ flex: 1.8, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: '#6B6B6B' }}>
+        <Text className="uppercase" style={{ flex: 1.8, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
           Vaka
         </Text>
-        <Text className="uppercase" style={{ flex: 1.6, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: '#6B6B6B' }}>
+        <Text className="uppercase" style={{ flex: 1.6, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
           Hekim
         </Text>
-        <Text className="uppercase" style={{ flex: 1.2, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: '#6B6B6B' }}>
+        <Text className="uppercase" style={{ flex: 1.2, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
+          Oluşturma
+        </Text>
+        <Text className="uppercase" style={{ flex: 1.2, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
           Teslim
         </Text>
-        <Text className="uppercase" style={{ flex: 1.2, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: '#6B6B6B' }}>
+        <Text className="uppercase" style={{ flex: 1.6, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
           Durum
         </Text>
-        <Text className="uppercase text-right" style={{ width: 60, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: '#6B6B6B' }}>
+        <Text className="uppercase text-right" style={{ width: 92, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: headColor }}>
           {' '}
         </Text>
       </View>
@@ -853,28 +1288,59 @@ function DesktopTable({ orders, isManager, onPress, onAssign }: {
           key={order.id}
           order={order}
           isManager={isManager}
+          isAdmin={isAdmin}
           isLast={i === orders.length - 1}
           onPress={() => onPress(order)}
           onAssign={() => onAssign(order)}
+          onEdit={onEdit ? () => onEdit(order) : undefined}
+          onArchive={onArchive ? () => onArchive(order) : undefined}
+          onDelete={onDelete ? () => onDelete(order) : undefined}
         />
       ))}
 
-      {/* Footer */}
-      <View className="flex-row items-center px-5 py-3 border-t" style={{ backgroundColor: '#FAFAFA', borderTopColor: 'rgba(0,0,0,0.06)' }}>
-        <Text style={{ fontSize: 11, color: '#6B6B6B' }}>
-          {orders.length} sipariş gösteriliyor
-        </Text>
+      {/* Footer — title varsa "YENİ" + ortalanmış başlık, yoksa sayaç */}
+      <View
+        className="flex-row items-center justify-center px-5 py-3 border-t"
+        style={{
+          backgroundColor: footerTitle ? (isDark ? 'rgba(217,119,6,0.10)' : '#FFF7ED') : (isDark ? T.cardSoft : '#FAFAFA'),
+          borderTopColor: footerTitle ? 'rgba(217,119,6,0.20)' : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'),
+        }}
+      >
+        {footerTitle ? (
+          <Text
+            // @ts-ignore — pulse animation only on web
+            className={Platform.OS === 'web' ? 'planlama-text-pulse' : ''}
+            style={{
+              fontSize: 11,
+              fontWeight: '700',
+              letterSpacing: 1.4,
+              textTransform: 'uppercase',
+              color: footerColor ?? '#9C5E0E',
+              textAlign: 'center',
+            }}
+          >
+            {footerTitle}
+          </Text>
+        ) : (
+          <Text style={{ fontSize: 11, color: T.ink3, flex: 1 }}>
+            {orders.length} sipariş gösteriliyor
+          </Text>
+        )}
       </View>
     </View>
   );
 }
 
-function DesktopRow({ order, isManager, isLast, onPress, onAssign }: {
+const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, isLast, onPress, onAssign, onEdit, onArchive, onDelete }: {
   order: WorkOrder;
   isManager: boolean;
+  isAdmin?: boolean;
   isLast: boolean;
-  onPress: () => void;
-  onAssign: () => void;
+  onPress: (o: WorkOrder) => void;
+  onAssign: (o: WorkOrder) => void;
+  onEdit?: (o: WorkOrder) => void;
+  onArchive?: (o: WorkOrder) => void;
+  onDelete?: (o: WorkOrder) => void;
 }) {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const due   = new Date(order.delivery_date + 'T00:00:00');
@@ -884,6 +1350,9 @@ function DesktopRow({ order, isManager, isLast, onPress, onAssign }: {
   const stageColor = STAGE_COLOR[stage];
   const dText   = deliveryText(order.delivery_date, order.status);
   const canAssign = isManager && order.status === 'alindi' && !order.assigned_to;
+  const needsTriage = order.status === 'alindi' && !(order as any).triaged_at;
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
 
   // Status chip tone
   const chipTone: 'success' | 'warning' | 'danger' | 'info' =
@@ -901,28 +1370,27 @@ function DesktopRow({ order, isManager, isLast, onPress, onAssign }: {
   const tone = CHIP_TONES[chipTone];
 
   // Patient initials for avatar
-  const patientName = order.patient_name ?? '—';
+  const patientName = order.patient_name ? titleCaseTR(order.patient_name) : '—';
   const initials = patientName.trim().split(/\s+/).slice(0, 2).map(p => p[0]?.toUpperCase() ?? '').join('') || '?';
 
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => onPress(order)}
       className="flex-row items-center px-5"
       style={[
         { paddingVertical: 14 },
-        !isLast && { borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' },
+        !isLast && { borderBottomWidth: 1, borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
+        // Planlama bekleyen — sabit soft amber zemin + sol kenar şeridi (animasyon yok)
+        needsTriage && { backgroundColor: 'rgba(217,119,6,0.05)', borderLeftWidth: 3, borderLeftColor: '#D97706' },
         // @ts-ignore web hover
         Platform.OS === 'web' ? { cursor: 'pointer', transition: 'background-color 0.15s' } as any : undefined,
       ]}
     >
       {/* No */}
       <View style={{ width: 90 }} className="flex-row items-center gap-1.5">
-        <Text style={{ fontSize: 11, fontFamily: 'monospace', color: '#6B6B6B' }}>
+        <Text style={{ fontSize: 11, fontFamily: 'monospace', color: T.ink3 }}>
           #{order.order_number}
         </Text>
-        {order.is_urgent && (
-          <Flame size={11} color="#D97706" strokeWidth={2.2} />
-        )}
       </View>
 
       {/* Hasta — avatar + isim */}
@@ -936,7 +1404,7 @@ function DesktopRow({ order, isManager, isLast, onPress, onAssign }: {
           </Text>
         </View>
         <Text
-          style={{ fontSize: 13, fontWeight: '500', color: isLate ? '#DC2626' : '#0A0A0A' }}
+          style={{ fontSize: 13, fontWeight: '500', color: isLate ? '#DC2626' : T.ink }}
           numberOfLines={1}
         >
           {patientName}
@@ -944,52 +1412,131 @@ function DesktopRow({ order, isManager, isLast, onPress, onAssign }: {
       </View>
 
       {/* Vaka */}
-      <Text style={{ flex: 1.8, fontSize: 13, color: '#1A1A1A' }} numberOfLines={1}>
+      <Text style={{ flex: 1.8, fontSize: 13, color: T.ink }} numberOfLines={1}>
         {order.work_type}
       </Text>
 
       {/* Hekim */}
-      <Text style={{ flex: 1.6, fontSize: 13, color: '#6B6B6B' }} numberOfLines={1}>
+      <Text style={{ flex: 1.6, fontSize: 13, color: T.ink2 }} numberOfLines={1}>
         {order.doctor?.full_name ?? '—'}
       </Text>
+
+      {/* Oluşturma tarihi + saati */}
+      <View style={{ flex: 1.2 }}>
+        <Text style={{ fontSize: 13, color: T.ink2 }} numberOfLines={1}>
+          {order.created_at ? new Date(order.created_at).toLocaleDateString('tr-TR') : '—'}
+        </Text>
+        {order.created_at && (
+          <Text style={{ fontSize: 11, color: T.ink3 }} numberOfLines={1}>
+            {new Date(order.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+          </Text>
+        )}
+      </View>
 
       {/* Teslim */}
       <Text
         style={{
           flex: 1.2,
           fontSize: 13,
-          color: isLate ? '#DC2626' : diff <= 1 && order.status !== 'teslim_edildi' ? '#D97706' : '#1A1A1A',
+          color: isLate ? '#DC2626' : diff <= 1 && order.status !== 'teslim_edildi' ? '#D97706' : T.ink,
         }}
       >
         {dText}
       </Text>
 
-      {/* Durum — Patterns Chip */}
-      <View style={{ flex: 1.2 }}>
+      {/* Durum — Patterns Chip + üstte küçük "ACİL" / "YENİ" işaretleri */}
+      <View style={{ flex: 1.6, alignItems: 'flex-start', paddingRight: 8 }}>
+        {/* Üst etiket satırı — birden fazla varsa yan yana */}
+        {(order.is_urgent || needsTriage) && (
+          <View style={{ flexDirection: 'row', gap: 6, marginBottom: 2, marginLeft: 6 }}>
+            {order.is_urgent && (
+              <Text
+                style={{
+                  fontSize: 8.5,
+                  fontWeight: '700',
+                  letterSpacing: 1.4,
+                  textTransform: 'uppercase',
+                  color: '#9C2E2E',
+                }}
+              >
+                Acil
+              </Text>
+            )}
+            {needsTriage && (
+              <Text
+                style={{
+                  fontSize: 8.5,
+                  fontWeight: '700',
+                  letterSpacing: 1.4,
+                  textTransform: 'uppercase',
+                  color: '#9C5E0E',
+                  opacity: 0.7,
+                }}
+              >
+                Yeni
+              </Text>
+            )}
+          </View>
+        )}
         <View
           className="flex-row items-center gap-1.5 self-start px-3 py-1 rounded-full"
-          style={{ backgroundColor: tone.bg }}
+          style={{ backgroundColor: tone.bg, maxWidth: '100%' }}
         >
-          <View className="w-1.5 h-1.5 rounded-full opacity-80" style={{ backgroundColor: tone.fg }} />
-          <Text style={{ fontSize: 12, fontWeight: '500', color: tone.fg }}>
-            {STAGE_LABEL[stage]}
+          <View className="w-1.5 h-1.5 rounded-full opacity-80" style={{ backgroundColor: tone.fg, flexShrink: 0 }} />
+          <Text style={{ fontSize: 12, fontWeight: '500', color: tone.fg, flexShrink: 1 }} numberOfLines={1}>
+            {getOrderStageLabel(order as any)}
           </Text>
         </View>
       </View>
 
       {/* Action */}
-      <View style={{ width: 60 }} className="items-end">
-        {canAssign ? (
+      <View style={{ width: 92 }} className="flex-row items-center justify-end gap-1">
+        {/* Admin inline action ikonları (Düzenle / Pasife / Sil) */}
+        {isAdmin && (
+          <>
+            {onEdit && (
+              <Pressable
+                onPress={(e: any) => { e?.stopPropagation?.(); onEdit(order); }}
+                style={{ width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(31,86,137,0.12)' }}
+                {...(Platform.OS === 'web' ? { title: 'Düzenle' } : {})}
+              >
+                <Pencil size={11} color="#1F5689" strokeWidth={1.8} />
+              </Pressable>
+            )}
+            {onArchive && (
+              <Pressable
+                onPress={(e: any) => { e?.stopPropagation?.(); onArchive(order); }}
+                style={{ width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(217,119,6,0.14)' }}
+                {...(Platform.OS === 'web' ? { title: (order as any).is_archived ? 'Geri yükle' : 'Pasife al' } : {})}
+              >
+                {(order as any).is_archived
+                  ? <RotateCcw size={11} color="#92400E" strokeWidth={1.8} />
+                  : <Archive size={11} color="#92400E" strokeWidth={1.8} />
+                }
+              </Pressable>
+            )}
+            {onDelete && (
+              <Pressable
+                onPress={(e: any) => { e?.stopPropagation?.(); onDelete(order); }}
+                style={{ width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(156,46,46,0.12)' }}
+                {...(Platform.OS === 'web' ? { title: 'Kalıcı sil' } : {})}
+              >
+                <Trash2 size={11} color="#9C2E2E" strokeWidth={1.8} />
+              </Pressable>
+            )}
+          </>
+        )}
+        {!isAdmin && (canAssign ? (
           <Pressable
-            onPress={e => { (e as any).stopPropagation?.(); onAssign(); }}
+            onPress={e => { (e as any).stopPropagation?.(); onAssign(order); }}
             className="px-3 py-1 rounded-full bg-ink-900"
           >
             <Text className="text-[10px] font-semibold text-white">Ata</Text>
           </Pressable>
         ) : (
           <ChevronRight size={14} color="#CCC" strokeWidth={1.6} />
-        )}
+        ))}
       </View>
     </Pressable>
   );
-}
+});

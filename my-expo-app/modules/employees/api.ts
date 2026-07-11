@@ -70,6 +70,7 @@ export interface CreateSalaryParams {
   period_month: number;
   gross_amount: number;
   deductions?: number;
+  currency?: string;
   payment_date?: string;
   payment_method?: SalaryPaymentMethod;
   notes?: string;
@@ -78,8 +79,19 @@ export interface CreateSalaryParams {
 export interface CreateAdvanceParams {
   employee_id: string;
   amount: number;
+  currency?: string;
   advance_date?: string;
   description?: string;
+}
+
+// Per-currency aggregate view satırları (v_employee_*_ccy)
+export interface EmployeeSalaryCcy {
+  employee_id: string; currency: string;
+  total_net: number; total_gross: number; payment_count: number;
+}
+export interface EmployeeAdvancesCcy {
+  employee_id: string; currency: string;
+  total_advances: number; pending_advances: number; advance_count: number;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -166,11 +178,19 @@ export async function createSalaryPayment(params: CreateSalaryParams) {
     period_month: params.period_month,
     gross_amount: params.gross_amount,
     deductions: params.deductions ?? 0,
+    currency: params.currency ?? 'TRY',
     payment_date: params.payment_date ?? new Date().toISOString().slice(0, 10),
     payment_method: params.payment_method ?? 'havale',
     notes: params.notes ?? null,
     created_by: user?.id ?? null,
   }).select().single();
+}
+
+// Maaş — çalışan + para birimi başına toplam (v_employee_salary_ccy).
+// View yoksa (migration uygulanmadıysa) boş döner → ekran fallback'e geçer.
+export async function fetchSalaryTotalsByCurrency() {
+  const res = await supabase.from('v_employee_salary_ccy').select('*').returns<EmployeeSalaryCcy[]>();
+  return { data: res.error ? [] : (res.data ?? []), error: res.error };
 }
 
 export async function deleteSalaryPayment(id: string) {
@@ -191,9 +211,16 @@ export async function createAdvance(params: CreateAdvanceParams) {
   return supabase.from('employee_advances').insert({
     employee_id: params.employee_id,
     amount: params.amount,
+    currency: params.currency ?? 'TRY',
     advance_date: params.advance_date ?? new Date().toISOString().slice(0, 10),
     description: params.description ?? null,
   }).select().single();
+}
+
+// Avans — çalışan + para birimi başına toplam (v_employee_advances_ccy).
+export async function fetchAdvanceTotalsByCurrency() {
+  const res = await supabase.from('v_employee_advances_ccy').select('*').returns<EmployeeAdvancesCcy[]>();
+  return { data: res.error ? [] : (res.data ?? []), error: res.error };
 }
 
 export async function markAdvanceDeducted(id: string) {

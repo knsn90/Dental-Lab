@@ -18,6 +18,8 @@ import {
   FONT_SIZE_OPTIONS,
   useFontStore,
 } from '../../../core/store/fontStore';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 interface Props {
   panelType: string;
@@ -28,6 +30,8 @@ interface Props {
 export function AppearanceSection({ panelType, accentColor, defaultAccent }: Props) {
   const { getTheme, setTheme } = useColorThemeStore();
   const { fontSize: selectedFontSize, setFontSize } = useFontStore();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
 
   const currentTheme = getTheme(panelType);
 
@@ -42,10 +46,10 @@ export function AppearanceSection({ panelType, accentColor, defaultAccent }: Pro
       showsVerticalScrollIndicator={false}
     >
       {/* ── Renk Teması ────────────────────────────────────────────── */}
-      <View style={s.card}>
+      <View style={[s.card, { backgroundColor: T.card, borderColor: T.hairline }]}>
         <View style={s.cardHead}>
-          <Text style={s.cardTitle}>Renk Teması</Text>
-          <Text style={s.cardSub}>
+          <Text style={[s.cardTitle, { color: T.ink }]}>Renk Teması</Text>
+          <Text style={[s.cardSub, { color: T.ink2 }]}>
             Panel genelinde kullanılan ana rengi seçin.
           </Text>
         </View>
@@ -56,7 +60,7 @@ export function AppearanceSection({ panelType, accentColor, defaultAccent }: Pro
           return (
             <TouchableOpacity
               key={theme.key}
-              style={[s.themeCard, active && { borderColor: accentColor, borderWidth: 2 }]}
+              style={[s.themeCard, { backgroundColor: T.cardSoft }, active && { borderColor: accentColor, borderWidth: 2 }]}
               onPress={() => handleSelectTheme(theme)}
               activeOpacity={0.8}
             >
@@ -69,8 +73,8 @@ export function AppearanceSection({ panelType, accentColor, defaultAccent }: Pro
 
               {/* Name + description */}
               <View style={s.themeInfo}>
-                <Text style={s.themeName}>{theme.name}</Text>
-                <Text style={s.themeDesc} numberOfLines={1}>{theme.description}</Text>
+                <Text style={[s.themeName, { color: T.ink }]}>{theme.name}</Text>
+                <Text style={[s.themeDesc, { color: T.ink3 }]} numberOfLines={1}>{theme.description}</Text>
               </View>
 
               {/* Active badge */}
@@ -86,10 +90,10 @@ export function AppearanceSection({ panelType, accentColor, defaultAccent }: Pro
       </View>
 
       {/* ── Yazı Boyutu ────────────────────────────────────────────── */}
-      <View style={[s.card, { marginTop: 14 }]}>
+      <View style={[s.card, { marginTop: 14, backgroundColor: T.card, borderColor: T.hairline }]}>
         <View style={s.cardHead}>
-          <Text style={s.cardTitle}>Yazı Boyutu</Text>
-          <Text style={s.cardSub}>
+          <Text style={[s.cardTitle, { color: T.ink }]}>Yazı Boyutu</Text>
+          <Text style={[s.cardSub, { color: T.ink2 }]}>
             Tüm uygulama bu ölçeğe göre boyutlandırılır.
           </Text>
         </View>
@@ -102,15 +106,16 @@ export function AppearanceSection({ panelType, accentColor, defaultAccent }: Pro
               key={opt.key}
               style={[
                 s.sizeCard,
+                { backgroundColor: T.cardSoft },
                 active && { borderColor: accentColor, borderWidth: 2, backgroundColor: accentColor + '0C' },
               ]}
               onPress={() => setFontSize(opt)}
               activeOpacity={0.8}
             >
-              <Text style={[s.sizePreview, { fontSize: opt.previewSize, color: active ? accentColor : '#0F172A' }]}>
+              <Text style={[s.sizePreview, { fontSize: opt.previewSize, color: active ? accentColor : T.ink }]}>
                 Aa
               </Text>
-              <Text style={[s.sizeLabel, { color: active ? accentColor : '#64748B', fontWeight: active ? '700' : '500' }]}>
+              <Text style={[s.sizeLabel, { color: active ? accentColor : T.ink2, fontWeight: active ? '700' : '500' }]}>
                 {opt.label}
               </Text>
               {active && (

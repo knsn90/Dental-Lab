@@ -1,2 +1,3 @@
+import { lazyRoute } from '../../core/_lazyRoute';
 // app/(lab)/analytics.tsx
-export { AnalyticsScreen as default } from '../../modules/station/screens/AnalyticsScreen';
+export default lazyRoute(() => import('../../modules/station/screens/AnalyticsScreen'), 'AnalyticsScreen');

@@ -25,7 +25,7 @@ const Colors = {
   statusQC: '#7C3AED',
   statusQCBg: '#EDE9FE',
 
-  // Status: Teslimata Hazır (yeşil)
+  // Status: Kuryeye Teslim Edildi (yeşil)
   statusReady: '#059669',
   statusReadyBg: '#D1FAE5',
 

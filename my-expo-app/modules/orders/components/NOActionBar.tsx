@@ -7,7 +7,8 @@
 import React from 'react';
 import { View, Text, Pressable, ActivityIndicator } from 'react-native';
 import { ArrowRight, Check } from 'lucide-react-native';
-import { NO, NORadius } from './NOTokens';
+import { useNOTokens, NORadius } from './NOTokens';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 
 export interface NOActionBarProps {
   onBack?: () => void;
@@ -29,6 +30,8 @@ export function NOActionBar({
   savedTime,
   loading,
 }: NOActionBarProps) {
+  const NO = useNOTokens();
+  const T = useMobileTokens();
   const primaryBg =
     primary === 'success'
       ? NO.success
@@ -49,7 +52,7 @@ export function NOActionBar({
         gap: 12,
         borderTopWidth: 1,
         borderTopColor: NO.borderSoft,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: T.card,
       }}
     >
       {/* Draft status */}
@@ -82,7 +85,7 @@ export function NOActionBar({
             borderRadius: NORadius.md,
             borderWidth: 1,
             borderColor: NO.borderMedium,
-            backgroundColor: '#FFFFFF',
+            backgroundColor: T.card,
             flexDirection: 'row',
             alignItems: 'center',
             gap: 6,

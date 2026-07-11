@@ -126,7 +126,7 @@ export function PageScroll({
         contentStyle,
       ]}
       showsVerticalScrollIndicator={false}
-      refreshControl={refreshControl}
+      refreshControl={refreshControl as React.ReactElement<any> | undefined}
     >
       <View style={{ maxWidth, alignSelf: 'center', width: '100%' }}>
         {children}
@@ -162,7 +162,7 @@ export function Grid({
   return (
     <View style={[{ flexDirection: 'row', flexWrap: 'wrap', gap: g }, style]}>
       {React.Children.map(children, child => (
-        <View style={{ flexBasis: `${(100 / numCols).toFixed(2)}%`, flexGrow: 1, maxWidth: `${(100 / numCols).toFixed(2)}%` }}>
+        <View style={{ flexBasis: `${(100 / numCols).toFixed(2)}%` as any, flexGrow: 1, maxWidth: `${(100 / numCols).toFixed(2)}%` as any }}>
           {child}
         </View>
       ))}

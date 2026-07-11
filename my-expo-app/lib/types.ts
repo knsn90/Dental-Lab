@@ -6,7 +6,8 @@ export type WorkOrderStatus =
   | 'uretimde'
   | 'kalite_kontrol'
   | 'teslimata_hazir'
-  | 'teslim_edildi';
+  | 'teslim_edildi'
+  | 'iptal';
 
 export interface Profile {
   id: string;
@@ -34,6 +35,16 @@ export interface Profile {
   language?: string | null;
   timezone?: string | null;
   kvkk_accepted_at?: string | null;
+  /** Klinik kullanıcıları için rol bazlı yetkiler (JSONB) — clinic_admin / clinic_secretary / doctor */
+  clinic_permissions?: {
+    orders_view?:     boolean;
+    orders_create?:   boolean;
+    orders_edit?:     boolean;
+    doctors_manage?:  boolean;
+    users_manage?:    boolean;
+    settings_manage?: boolean;
+    billing_view?:    boolean;
+  } | null;
   created_at: string;
   updated_at: string;
 }

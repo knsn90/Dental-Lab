@@ -15,7 +15,8 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
     supabase
       .from('work_orders')
       .select('status, delivery_date')
-      .neq('status', 'teslim_edildi'),
+      .neq('status', 'teslim_edildi')
+      .neq('status', 'iptal'),
     supabase
       .from('provas')
       .select('id')

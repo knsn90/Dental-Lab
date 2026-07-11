@@ -1,0 +1,900 @@
+{
+  "common": {
+    "cancel": "لغو",
+    "save": "ذخیره",
+    "signOut": "خروج",
+    "notSet": "تنظیم نشده",
+    "notDefined": "هنوز تعریف نشده",
+    "soon": "به‌زودی.",
+    "language": "زبان",
+    "loading": "در حال بارگذاری…",
+    "accessDenied": "شما دسترسی ندارید",
+    "accessDeniedDesc": "برای دسترسی به این صفحه از مدیر خود درخواست کنید.",
+    "days": "یکشنبه دوشنبه سه‌شنبه چهارشنبه پنجشنبه جمعه شنبه",
+    "months": "ژانویه فوریه مارس آوریل مه ژوئن ژوئیه اوت سپتامبر اکتبر نوامبر دسامبر",
+    "today": "امروز",
+    "total": "مجموع",
+    "stages": "مراحل",
+    "allTime": "کل دوره",
+    "hours": "ساعت",
+    "thisWeek": "این هفته",
+    "status": "وضعیت",
+    "reset": "بازنشانی",
+    "all": "همه",
+    "completed": "تکمیل شد",
+    "inProgress": "در حال انجام",
+    "waiting": "در انتظار",
+    "rejected": "رد شد",
+    "order": "سفارش",
+    "patient": "بیمار",
+    "clinic": "کلینیک",
+    "doctor": "دندانپزشک",
+    "system": "سیستم",
+    "close": "بستن",
+    "duration": "مدت",
+    "stage": "مرحله",
+    "week": "هفته"
+  },
+  "nav": {
+    "items": {
+      "today": "امروز",
+      "orders": "سفارش‌ها",
+      "paperOrders": "سفارش‌های کاغذی",
+      "approvals": "تأییدها",
+      "clinics": "کلینیک‌ها",
+      "team": "تیم",
+      "stock": "موجودی و انبار",
+      "production": "تابلوی تولید",
+      "workflows": "گردش‌کارها",
+      "courier": "پیگیری پیک",
+      "finance": "مالی",
+      "priceList": "فهرست قیمت",
+      "support": "پشتیبانی",
+      "messages": "پیام‌ها",
+      "settings": "تنظیمات",
+      "summary": "خلاصه",
+      "cases": "پرونده‌ها",
+      "search": "جستجو",
+      "more": "بیشتر",
+      "new": "جدید",
+      "paperInbox": "صندوق کاغذی",
+      "deliveries": "تحویل‌ها",
+      "map": "نقشه",
+      "stats": "آمار",
+      "scan": "اسکن",
+      "list": "فهرست",
+      "profile": "پروفایل",
+      "users": "کاربران",
+      "home": "خانه",
+      "myOrders": "سفارش‌های من",
+      "panel": "داشبورد",
+      "myJobs": "کارهای من",
+      "history": "تاریخچه",
+      "requests": "درخواست‌ها"
+    },
+    "sections": {
+      "work": "مدیریت کار",
+      "customers": "مشتریان",
+      "team": "تیم",
+      "warehouse": "انبار",
+      "production": "تولید",
+      "delivery": "تحویل",
+      "finance": "مالی",
+      "help": "راهنما",
+      "performance": "عملکرد",
+      "system": "سیستم",
+      "workArea": "ناحیه کاری",
+      "account": "حساب"
+    }
+  },
+  "roles": {
+    "doctor": "دندانپزشک",
+    "clinicManager": "مدیر کلینیک",
+    "exec": "مدیریت",
+    "technician": "تکنسین",
+    "labUser": "کاربر لابراتوار",
+    "user": "کاربر"
+  },
+  "dashboard": {
+    "greeting": "خوش آمدید.",
+    "greetingName": "خوش آمدید، {{name}}.",
+    "greetingWord": "خوش آمدید،",
+    "delivered": "تحویل شد",
+    "overdueLabel": "عقب‌افتاده",
+    "tryin": "پروو",
+    "totalCases": "کل پرونده‌ها",
+    "todayLine": "{{total}} سفارش امروز در تولید، {{active}} فعال",
+    "todayOverdue": "، {{overdue}} عقب‌افتاده",
+    "weekDoneKicker": "{{count}} تکمیل‌شده این هفته",
+    "newOrderKicker": "سفارش کاری جدید",
+    "activeProduction": "تولید فعال",
+    "stages": {
+      "received": "دریافت شد",
+      "production": "تولید",
+      "qc": "کنترل کیفیت",
+      "ready": "آماده"
+    },
+    "activeOrders": "سفارش‌های فعال",
+    "overdueCount": "{{count}} عقب‌افتاده",
+    "noOverdue": "بدون تأخیر",
+    "doneToday": "انجام‌شده امروز",
+    "thisWeekCount": "{{count}} این هفته",
+    "weekDash": "هفته —",
+    "thisWeek": "این هفته",
+    "received": "دریافت شد",
+    "completed": "تکمیل شد",
+    "overdueCases": "پرونده‌های عقب‌افتاده",
+    "noOverdueCases": "پرونده عقب‌افتاده‌ای نیست",
+    "qc": "کنترل کیفیت",
+    "delay": "تأخیر"
+  },
+  "courier": {
+    "greeting": {
+      "morning": "صبح بخیر",
+      "day": "ظهر بخیر",
+      "evening": "عصر بخیر",
+      "night": "شب بخیر"
+    },
+    "pending": "{{count}} در انتظار",
+    "ready": "همه‌چیز مرتب است",
+    "hoursWorked": "{{h}} ساعت کار شد",
+    "shiftNotStarted": "شیفت شروع نشده",
+    "table": {
+      "customer": "مشتری",
+      "address": "آدرس",
+      "phone": "تلفن",
+      "assigned": "اختصاص‌یافته",
+      "status": "وضعیت",
+      "date": "تاریخ",
+      "duration": "مدت"
+    },
+    "dashboard": {
+      "active": "فعال",
+      "pending": "در انتظار",
+      "today": "امروز",
+      "startNavigation": "شروع مسیریابی",
+      "nextDeliveries": "تحویل‌های بعدی",
+      "viewAll": "مشاهده همه",
+      "noPendingDeliveries": "تحویل در انتظاری نیست",
+      "completedToday": "تکمیل‌شده امروز",
+      "statisticsThisWeek": "آمار · این هفته",
+      "myPerformance": "عملکرد من",
+      "details": "جزئیات",
+      "last7Days": "۷ روز اخیر",
+      "dailyTrend": "روند روزانه",
+      "deliveredMetric": "تحویل‌شده",
+      "noTasksYet": "هنوز کاری نیست",
+      "notifyOnNewDelivery": "وقتی تحویل جدیدی اختصاص یابد به شما اطلاع داده می‌شود.",
+      "todayProgress": "پیشرفت امروز",
+      "onTheWayNow": "اکنون در راه",
+      "deliveredToday": "تحویل‌شده امروز",
+      "upcomingTasks": "کارهای پیش‌رو",
+      "deliveryAverage": "میانگین تحویل",
+      "startDetails": "شروع ← جزئیات",
+      "todaySummary": "خلاصه امروز",
+      "completedCount": "امروز {{count}} تحویل انجام دادید.",
+      "pickTaskStart": "یک کار را انتخاب کنید و شروع کنید.",
+      "todayDate": "امروز · {{date}}",
+      "completedTodayTitle": "تکمیل‌شده امروز"
+    },
+    "kpi": {
+      "delivered": "تحویل‌شده",
+      "averageTime": "میانگین زمان",
+      "active": "فعال",
+      "waiting": "در انتظار",
+      "totalDeliveries": "کل تحویل‌ها",
+      "avgTime": "میانگین زمان",
+      "successRate": "نرخ موفقیت"
+    },
+    "delivery": {
+      "noPending": "تحویل در انتظاری نیست 🎉",
+      "notFound": "تحویل یافت نشد",
+      "back": "← بازگشت",
+      "defaultTitle": "تحویل",
+      "gpsStatus": "GPS · {{status}}",
+      "noPhone": "بدون تلفن",
+      "call": "تماس",
+      "openOnMap": "باز کردن روی نقشه",
+      "contents": "محتویات",
+      "noteLabel": "یادداشت",
+      "progress": "پیشرفت",
+      "clinic": "کلینیک",
+      "message": "پیام",
+      "package": "بسته",
+      "noteLabelDesktop": "یادداشت"
+    },
+    "map": {
+      "liveLocationActive": "موقعیت زنده · GPS فعال",
+      "noActiveTask": "نقشه هنگام وجود کار فعال نمایش داده می‌شود",
+      "fullScreen": "نقشه تمام‌صفحه",
+      "liveMap": "نقشه زنده",
+      "liveMapDesktop": "نقشه زنده",
+      "gpsStatusLabel": "موقعیت · GPS {{status}}",
+      "gpsInactive": "GPS غیرفعال",
+      "fullScreen2": "تمام‌صفحه"
+    },
+    "section": {
+      "list": "فهرست",
+      "location": "موقعیت",
+      "history": "تاریخچه",
+      "location2": "موقعیت"
+    },
+    "stats": {
+      "courierPerformance": "عملکرد پیک",
+      "rangeWeek": "این هفته",
+      "rangeMonth": "این ماه",
+      "rangeAllTime": "کل دوره",
+      "successSummary": "{{count}} تحویل موفق · میانگین {{avgMin}} دقیقه",
+      "noPeriodDeliveries": "در این دوره تحویلی نیست",
+      "total": "مجموع",
+      "success": "موفقیت",
+      "tasksCount": "{{count}} کار",
+      "fastest": "سریع‌ترین {{count}} دقیقه",
+      "thisPeriod": "این دوره",
+      "activeTask": "کار فعال",
+      "last7Days": "۷ روز اخیر",
+      "dailyTrend": "روند روزانه",
+      "totalMetric": "مجموع",
+      "recentDeliveries": "تحویل‌های اخیر",
+      "noPeriodDeliveries2": "در این دوره تحویلی نیست",
+      "greetingEvening": "عصر بخیر",
+      "myPerformance": "عملکرد من",
+      "description": "تحلیل تحویل‌های گذشته و خلاصه عملکرد",
+      "summaryWeek": "خلاصه · این هفته",
+      "summaryMonth": "خلاصه · این ماه",
+      "summaryAllTime": "خلاصه · کل دوره",
+      "deliveriesCount": "{{count}} تحویل",
+      "heroDescription": "{{pct}}% نرخ موفقیت · میانگین زمان تحویل {{avgMin}} دقیقه",
+      "heroFastest": "سریع‌ترین {{count}} دقیقه",
+      "detailedReport": "گزارش تفصیلی",
+      "kpiTotalDeliveries": "کل تحویل‌ها",
+      "kpiAvgTime": "میانگین زمان",
+      "kpiSuccess": "موفقیت",
+      "trendExcellent": "عالی",
+      "trendMiddle": "متوسط",
+      "trendLow": "پایین",
+      "chart1Last7Days": "۷ روز اخیر",
+      "dailyDeliveries": "تحویل‌های روزانه",
+      "efficiency": "کارایی",
+      "timeDistribution": "توزیع زمان",
+      "duration15": "< 15 دقیقه",
+      "duration30": "15-30 دقیقه",
+      "duration60": "30-60 دقیقه",
+      "durationOver60": "> 60 دقیقه",
+      "allDeliveries": "همه تحویل‌ها",
+      "emptyPeriod": "در این دوره تحویلی نیست"
+    },
+    "trend": {
+      "good": "↑ خوب",
+      "average": "— میانگین",
+      "low": "↓ پایین"
+    },
+    "range": {
+      "week": "این هفته",
+      "month": "این ماه",
+      "all": "همه"
+    },
+    "modal": {
+      "directions": "مسیرها",
+      "chooseMapApp": "انتخاب اپلیکیشن نقشه",
+      "openInBrowser": "باز کردن در مرورگر"
+    },
+    "timeline": {
+      "assigned": "تخصیص‌یافته",
+      "pickedUp": "تحویل گرفته شد",
+      "inTransit": "در حال انتقال",
+      "delivered": "تحویل داده شد"
+    },
+    "detail": {
+      "breadcrumb": "تحویل · #{{id}}",
+      "pageTitle": "مسیرها و تحویل",
+      "customer": "مشتری"
+    },
+    "action": {
+      "packagePickedUp": "بسته تحویل گرفته شد",
+      "onTheWay": "در راه",
+      "takePhoto": "گرفتن عکس",
+      "getSignature": "دریافت امضا",
+      "deliver": "تحویل"
+    }
+  },
+  "profile": {
+    "approved": "{{role}} تأییدشده",
+    "pendingApproval": "در انتظار تأیید",
+    "member": "عضو · {{date}}",
+    "sections": {
+      "account": "حساب کاربری",
+      "workplaceClinic": "کلینیک من",
+      "workplaceOrg": "سازمان من",
+      "hr": "درخواست‌های منابع انسانی",
+      "appearance": "ظاهر",
+      "notifications": "اعلان‌ها",
+      "management": "مدیریت",
+      "security": "امنیت",
+      "about": "درباره و راهنما",
+      "language": "زبان"
+    },
+    "rows": {
+      "fullName": "نام کامل",
+      "email": "ایمیل",
+      "phone": "تلفن",
+      "clinic": "کلینیک",
+      "org": "سازمان",
+      "address": "آدرس",
+      "advanceRequest": "درخواست مساعده",
+      "leaveRequest": "درخواست مرخصی",
+      "pushNotif": "اعلان‌های فشاری",
+      "emailNotif": "اعلان‌های ایمیلی",
+      "finance": "مالی",
+      "stock": "موجودی و انبار",
+      "invoices": "فاکتورها",
+      "expenses": "هزینه‌ها",
+      "staff": "کارکنان",
+      "users": "کاربران",
+      "staffValue": "تیم · حقوق · عملکرد",
+      "usersValue": "کارکنان و دسترسی‌ها",
+      "allSettings": "همه تنظیمات",
+      "changePassword": "تغییر رمز عبور",
+      "helpCenter": "مرکز راهنما",
+      "terms": "شرایط استفاده",
+      "privacy": "سیاست حریم خصوصی",
+      "appLanguage": "زبان اپلیکیشن"
+    },
+    "values": {
+      "advance": "ساخت و پیگیری درخواست‌های مساعده",
+      "leave": "ساخت و پیگیری درخواست‌های مرخصی",
+      "finance": "نقد · چک · سود · بودجه",
+      "stock": "موجودی · جابجایی‌ها · هشدارها",
+      "invoices": "فهرست · اکسل · عملیات گروهی",
+      "expenses": "سوابق و خروجی",
+      "staff": "تیم · حقوق · عملکرد",
+      "users": "کارکنان و دسترسی‌ها",
+      "allSettings": "عمومی · اعلان‌ها · یکپارچه‌سازی‌ها"
+    },
+    "subs": {
+      "push": "هشدارهای آنی برای به‌روزرسانی سفارش‌ها",
+      "email": "برای به‌روزرسانی‌های مهم"
+    },
+    "theme": {
+      "title": "تم",
+      "light": "روشن",
+      "dark": "تیره",
+      "system": "سیستم"
+    },
+    "signOutConfirm": "مطمئنید می‌خواهید از حساب خود خارج شوید؟"
+  },
+  "settings": {
+    "title": "تنظیمات",
+    "languageSub": "زبان رابط اپلیکیشن",
+    "sections": {
+      "profile": {
+        "label": "پروفایل",
+        "sub": "اطلاعات شخصی و امنیت"
+      },
+      "notifications": {
+        "label": "اعلان‌ها",
+        "sub": "ترجیحات هشدار و اعلان"
+      },
+      "general": {
+        "label": "عمومی",
+        "sub": "زبان، منطقه زمانی، قالب"
+      },
+      "users": {
+        "label": "کاربران",
+        "sub": "دسترسی کارکنان و مراحل"
+      },
+      "permissions": {
+        "label": "دسترسی‌ها",
+        "sub": "مدیریت دسترسی مبتنی بر نقش"
+      },
+      "checkin": {
+        "label": "ورود با QR",
+        "sub": "تنظیمات پیگیری حضور"
+      },
+      "stations": {
+        "label": "ایستگاه‌ها",
+        "sub": "مراحل تولید"
+      },
+      "workhours": {
+        "label": "ساعات کاری",
+        "sub": "شیفت، ناهار، کار همزمان"
+      },
+      "currency": {
+        "label": "نرخ ارز",
+        "sub": "مدیریت نرخ EUR/USD/GBP"
+      },
+      "integrations": {
+        "label": "یکپارچه‌سازی‌ها",
+        "sub": "تنظیمات فاکتور الکترونیکی و POS"
+      },
+      "logs": {
+        "label": "گزارش‌ها",
+        "sub": "سوابق فعالیت سیستم"
+      }
+    }
+  },
+  "admin": {
+    "more": {
+      "clinics": {
+        "sub": "مراکز مشتری"
+      },
+      "courier": {
+        "sub": "جریان تحویل"
+      },
+      "finance": {
+        "sub": "نقد · فاکتور · هزینه · چک"
+      },
+      "team": {
+        "sub": "کارکنان · حقوق · عملکرد"
+      },
+      "stock": {
+        "sub": "موجودی · هشدار"
+      },
+      "settings": {
+        "sub": "عمومی · اعلان · یکپارچه‌سازی"
+      }
+    },
+    "moreSheet": {
+      "title": "منوی کامل",
+      "subtitle": "صفحات کم‌استفاده"
+    },
+    "tabs": {
+      "newOrder": "سفارش جدید",
+      "users": "کاربران",
+      "doctors": "دندانپزشکان",
+      "stock": "موجودی",
+      "suppliers": "تأمین‌کنندگان",
+      "expenses": "هزینه‌ها",
+      "checks": "چک/سفته",
+      "cash": "نقد/بانک",
+      "financeReport": "درآمد/هزینه",
+      "advanceRequests": "درخواست‌های مساعده",
+      "performance": "عملکرد",
+      "documents": "اسناد",
+      "checkinSettings": "ورود با QR",
+      "logs": "گزارش‌ها",
+      "permissions": "دسترسی‌ها",
+      "setupWizard": "راه‌اندازی"
+    },
+    "status": {
+      "received": "دریافت‌شده",
+      "production": "در حال تولید",
+      "qualityControl": "کنترل کیفیت",
+      "readyForDelivery": "تحویل به پیک",
+      "delivered": "تحویل داده شد",
+      "qcShort": "کنترل کیفیت",
+      "ready": "آماده",
+      "live": "زنده",
+      "awaitingPlanning": "در انتظار برنامه‌ریزی",
+      "overdueOrder": "سفارش عقب‌افتاده",
+      "urgent": "فوری"
+    },
+    "months": {
+      "short": "ژانویه, فوریه, مارس, آوریل, مه, ژوئن, ژوئیه, اوت, سپتامبر, اکتبر, نوامبر, دسامبر",
+      "long": "ژانویه, فوریه, مارس, آوریل, مه, ژوئن, ژوئیه, اوت, سپتامبر, اکتبر, نوامبر, دسامبر"
+    },
+    "days": {
+      "short": "یک, دو, سه, چهار, پنج, جمعه, شنبه",
+      "long": "یکشنبه, دوشنبه, سه‌شنبه, چهارشنبه, پنجشنبه, جمعه, شنبه"
+    },
+    "dashboard": {
+      "thisWeek": "این هفته",
+      "receivedMembers": "دریافت‌شده",
+      "deliveredMembers": "تحویل داده شد",
+      "quickAction": "اقدام سریع",
+      "newOrder": "ساخت سفارش جدید",
+      "noTasks": "وظیفه‌ای در انتظار نیست",
+      "production": "تولید",
+      "active": "فعال",
+      "overdue": "عقب‌افتاده",
+      "today": "امروز",
+      "totalOrders": "کل سفارش‌ها",
+      "doctor": "دندانپزشک",
+      "labUser": "کاربر لابراتوار",
+      "memberTrend": "روند اعضا",
+      "membersThisMonth": "عضو در این ماه",
+      "toothMemberNote": "۱ دندان = ۱ عضو · روند ۶ ماه اخیر",
+      "deliveryRate": "نرخ تحویل",
+      "delivered": "تحویل داده شد",
+      "inProduction": "در حال تولید",
+      "todaysTasks": "وظایف امروز",
+      "recentOrders": "سفارش‌های اخیر",
+      "viewAll": "مشاهده همه ←",
+      "noOrders": "هنوز سفارشی نیست",
+      "unbilledDeliveries": "تحویل‌های فاکتورنشده وجود دارد",
+      "orders": "سفارش · ",
+      "clinicEstimated": "کلینیک · برآورد ",
+      "invoice": "فاکتور ←",
+      "financialSummary": "خلاصه مالی",
+      "monthlyCollection": "وصولی این ماه",
+      "pendingInvoice": "فاکتور در انتظار",
+      "paidInvoiceCount": "تعداد فاکتورهای پرداخت‌شده",
+      "statusDistribution": "توزیع وضعیت",
+      "workTypeDistribution": "توزیع نوع کار",
+      "totalMembers": "واحد",
+      "noOrdersToday": "امروز هنوز سفارشی نیست.",
+      "ordersSummary": "{{total}} سفارش، {{active}} فعال{{overdue}}.",
+      "liveProduction": "تولید زنده",
+      "monthlyRevenue": "درآمد ماهانه",
+      "revenueTarget": "هدف ₺60K",
+      "activeOrders": "سفارش‌های فعال",
+      "overdueCount": "{{count}} عقب‌افتاده",
+      "total": "کل {{total}}",
+      "delayedCases": "پرونده‌های معوق",
+      "noDelayedCases": "پرونده معوقی نیست",
+      "productionOnTrack": "تمام تولید طبق برنامه پیش می‌رود."
+    },
+    "buttons": {
+      "start": "شروع"
+    },
+    "table": {
+      "no": "خیر",
+      "doctor": "دندانپزشک",
+      "workType": "نوع کار",
+      "status": "وضعیت",
+      "delivery": "تحویل"
+    },
+    "task": {
+      "overdue": "عقب‌افتاده",
+      "delivery": "تحویل",
+      "today": "امروز"
+    },
+    "logs": {
+      "actor": {
+        "admin": "مدیر",
+        "doctor": "دندانپزشک",
+        "lab": "لابراتوار"
+      },
+      "tab": {
+        "all": "همه",
+        "users": "کاربران",
+        "doctors": "دندانپزشکان"
+      },
+      "searchPlaceholder": "جستجو بر اساس نام، اقدام یا سابقه...",
+      "loading": "در حال بارگذاری گزارش‌ها…",
+      "empty": {
+        "title": "هنوز گزارشی نیست",
+        "noMatch": "هیچ سابقه‌ای مطابق «{{query}}» نیست",
+        "noActions": "اقدام‌ها همزمان با وقوع اینجا نمایش داده می‌شوند"
+      },
+      "table": {
+        "user": "کاربر",
+        "recordsRealtime": "{{count}} سابقه · لحظه‌ای"
+      },
+      "time": {
+        "justNow": "همین حالا",
+        "minutesAgo": "{{minutes}} دقیقه پیش",
+        "hoursAgo": "{{hours}} ساعت پیش",
+        "yesterday": "دیروز {{time}}",
+        "daysAgo": "{{days}} روز پیش"
+      }
+    },
+    "cta": {
+      "ordersToday": "{{total}} سفارش امروز",
+      "newOrder": "سفارش جدید",
+      "createNewOrder": "ساخت سفارش کاری جدید"
+    },
+    "delayedCase": {
+      "qcIssue": "مشکل کنترل کیفیت",
+      "delay": "تأخیر"
+    }
+  },
+  "clinic": {
+    "tabs": {
+      "cases": "پرونده‌ها",
+      "team": "تیم",
+      "search": "جستجو",
+      "more": "بیشتر"
+    },
+    "fab": {
+      "newOrder": "جدید"
+    },
+    "moreMenu": {
+      "courierSub": "جریان تحویل",
+      "settingsSub": "پروفایل · اعلان‌ها · تم",
+      "title": "منوی کامل"
+    },
+    "screens": {
+      "home": "خانه",
+      "newOrder": "سفارش جدید"
+    },
+    "noPermission": {
+      "title": "بدون دسترسی",
+      "orderCreate": "برای ساخت سفارش جدید از مدیر خود درخواست دسترسی کنید.",
+      "ordersView": "برای مشاهده سفارش‌ها از مدیر خود درخواست دسترسی کنید.",
+      "usersManage": "مدیریت کاربران تنها برای مدیران کلینیک در دسترس است.",
+      "settingsManage": "برای دسترسی به تنظیمات کلینیک از مدیر خود درخواست دسترسی کنید."
+    },
+    "roles": {
+      "doctor": "دندانپزشک",
+      "doctorSub": "سفارش‌ها را ایجاد/پیگیری می‌کند",
+      "secretary": "منشی",
+      "secretarySub": "نوبت‌ها · ارتباطات · پشتیبانی سفارش",
+      "admin": "مدیر",
+      "adminSub": "مدیر کلینیک با دسترسی کامل"
+    },
+    "permissions": {
+      "ordersView": "مشاهده سفارش‌ها",
+      "ordersViewSub": "مشاهده همه سفارش‌های کلینیک",
+      "ordersCreate": "ایجاد سفارش",
+      "ordersCreateSub": "ایجاد سفارش‌های کاری جدید",
+      "ordersEdit": "ویرایش سفارش",
+      "ordersEditSub": "ویرایش/لغو سفارش‌های موجود",
+      "doctorsManage": "مدیریت دندانپزشکان",
+      "doctorsManageSub": "افزودن/ویرایش دندانپزشکان",
+      "usersManage": "مدیریت کاربران",
+      "usersManageSub": "افزودن کاربر / مدیریت دسترسی‌ها",
+      "settingsManage": "تنظیمات کلینیک",
+      "settingsManageSub": "اطلاعات مؤسسه / لوگو / تم",
+      "billingView": "مشاهده سوابق مالی",
+      "billingViewSub": "فاکتورها / حساب‌ها / پرداخت‌ها"
+    },
+    "users": {
+      "teamSummary": "خلاصه تیم",
+      "summaryDesc": "کاربران فعال · دندانپزشکان · منشی‌ها · مدیران",
+      "statDoctor": "دندانپزشکان",
+      "statSecretary": "منشی‌ها",
+      "statAdmin": "مدیران",
+      "filterAll": "همه",
+      "filterDoctor": "دندانپزشکان",
+      "filterSecretary": "منشی‌ها",
+      "filterAdmin": "مدیران",
+      "recordCount": "رکورد",
+      "emptyAll": "هنوز کاربری نیست",
+      "emptyFiltered": "هنوز اضافه نشده",
+      "emptyDesc": "کلینیک خود را با افزودن دندانپزشک، منشی یا مدیر پشتیبان توسعه دهید — هر نقش الگوی دسترسی خاص خود را دارد.",
+      "addFirst": "افزودن اولین کاربر",
+      "modal": {
+        "titleEdit": "ویرایش کاربر",
+        "titleNew": "افزودن کاربر جدید",
+        "subtitleEdit": "نقش، دسترسی‌ها و اطلاعات تماس",
+        "subtitleNew": "افزودن دندانپزشک، منشی یا مدیر پشتیبان",
+        "role": "نقش",
+        "title": "عنوان",
+        "fullName": "نام کامل",
+        "fullNamePlaceholder": "مثلاً جین اسمیت",
+        "email": "ایمیل",
+        "emailPlaceholder": "example@email.com",
+        "editBtn": "ویرایش",
+        "cancelBtn": "لغو",
+        "password": "گذرواژه",
+        "autoGenerate": "تولید خودکار",
+        "passwordPlaceholderEdit": "گذرواژه جدید (حداقل ۶ کاراکتر)",
+        "passwordPlaceholderNew": "حداقل 6 کاراکتر",
+        "hideBtn": "پنهان کردن",
+        "showBtn": "نمایش",
+        "passwordHintEdit": "گذرواژه جدید هنگام ذخیره اعمال می‌شود. فراموش نکنید کاربر را مطلع کنید.",
+        "passwordHintNew": "کاربر با این ایمیل و گذرواژه وارد می‌شود. به‌صورت امن به اشتراک بگذارید.",
+        "phone": "تلفن (اختیاری)",
+        "phonePlaceholder": "0532 ...",
+        "specialty": "تخصص (اختیاری)",
+        "specialtyPlaceholder": "مثلاً دندانپزشکی زیبایی",
+        "permissions": "دسترسی‌ها",
+        "permissionsHintDoctor": "دسترسی‌های سفارش برای دندانپزشکان",
+        "permissionsHintSecretary": "دسترسی‌های عملیاتی برای منشی‌ها",
+        "permissionsHintAdmin": "همه دسترسی‌های کلینیک برای مدیران",
+        "accountStatus": "وضعیت حساب",
+        "deleteConfirm": "آیا مطمئنید می‌خواهید این کاربر را حذف کنید؟",
+        "deleteWarning": "این عمل غیرقابل بازگشت است. حساب، پروفایل و ارتباط کلینیکی کاربر برای همیشه حذف می‌شود.",
+        "deletingBtn": "در حال حذف…",
+        "deleteBtn": "بله، حذف کن",
+        "savingBtn": "در حال ذخیره…",
+        "saveBtn": "ذخیره تغییرات",
+        "createBtn": "ایجاد کاربر"
+      },
+      "validation": {
+        "nameRequired": "نام کامل الزامی است",
+        "emailRequired": "ایمیل الزامی است",
+        "passwordRequired": "گذرواژه الزامی است",
+        "passwordLength": "گذرواژه باید حداقل 6 کاراکتر باشد",
+        "clinicMissing": "اطلاعات کلینیک موجود نیست"
+      },
+      "toast": {
+        "updated": "کاربر به‌روزرسانی شد",
+        "created": "کاربر ایجاد شد",
+        "deleted": "کاربر حذف شد"
+      },
+      "alert": {
+        "deleteError": "کاربر حذف نشد"
+      },
+      "pageKicker": "کلینیک · تیم",
+      "pageTitle": "کاربران"
+    },
+    "doctors": {
+      "statTotal": "کل",
+      "statActive": "فعال",
+      "statInactive": "غیرفعال",
+      "inviteBtn": "دعوت دندانپزشک",
+      "emptyTitle": "هنوز دندانپزشکی نیست",
+      "emptyDesc": "با «دعوت دندانپزشک» دندانپزشک جدید اضافه کنید. حساب آن‌ها را با تعیین ایمیل و گذرواژه بسازید.",
+      "subtitle": "دندانپزشکان ثبت‌شده در کلینیک شما",
+      "pageTitle": "دندانپزشکان",
+      "modal": {
+        "editTitle": "ویرایش دندانپزشک",
+        "phone": "تلفن",
+        "phonePlaceholder": "+90 555 000 00 00",
+        "active": "فعال",
+        "activeHint": "دندانپزشکان غیرفعال نمی‌توانند سفارش جدید دریافت کنند",
+        "reactivateWarning": "این دندانپزشک دوباره فعال می‌شود",
+        "cancelBtn": "لغو",
+        "savingBtn": "در حال ذخیره…",
+        "saveBtn": "ذخیره",
+        "successTitle": "دندانپزشک به سیستم اضافه شد",
+        "successDesc": "این اطلاعات ورود را از طریق کانال امن (واتس‌اپ / پیامک / حضوری) با دندانپزشک به اشتراک بگذارید. این گذرواژه فقط یک‌بار اینجا نمایش داده می‌شود.",
+        "copyBtn": "کپی",
+        "copyBothBtn": "کپی هر دو + لینک",
+        "createdTitle": "حساب ایجاد شد",
+        "createTitle": "ایجاد حساب دندانپزشک",
+        "titleLabel": "عنوان",
+        "nameLabel": "نام کامل *",
+        "namePlaceholder": "جین اسمیت",
+        "willAppear": "نمایش داده می‌شود به‌صورت:",
+        "emailLabel": "ایمیل *",
+        "emailPlaceholder": "example@email.com",
+        "phoneLabel": "تلفن",
+        "passwordLabel": "گذرواژه *",
+        "passwordPlaceholder": "حداقل 8 کاراکتر",
+        "hideBtn": "پنهان کردن",
+        "showBtn": "نمایش",
+        "refreshBtn": "تازه‌سازی",
+        "createHint": "یک حساب سیستمی مستقیماً برای دندانپزشک ایجاد می‌شود. ایمیل + گذرواژه را به‌صورت امن به اشتراک بگذارید.",
+        "creatingBtn": "در حال ایجاد…",
+        "createBtn": "ایجاد حساب",
+        "editNameHint": "برای تغییر نام با لابراتوار تماس بگیرید",
+        "loginSection": "ورود سیستم (اختیاری)",
+        "loginHint": "اگر ایمیل + گذرواژه وارد کنید، دندانپزشک می‌تواند وارد شود. اگر خالی بماند، فقط در فهرست ثبت می‌شود.",
+        "addBtn": "افزودن دندانپزشک",
+        "kicker": "دندانپزشک",
+        "addTitle": "افزودن دندانپزشک جدید",
+        "successMsg": "دندانپزشک به سیستم اضافه شد",
+        "okBtn": "تأیید"
+      },
+      "toast": {
+        "updateError": "به‌روزرسانی ناموفق بود",
+        "updated": "دندانپزشک به‌روزرسانی شد",
+        "createError": "حساب دندانپزشک ایجاد نشد",
+        "created": "حساب ایجاد شد",
+        "copied": "در کلیپ‌بورد کپی شد",
+        "fullSuccess": "دندانپزشک و حساب ورود ایجاد شد",
+        "added": "دندانپزشک اضافه شد"
+      },
+      "validation": {
+        "clinicLoadError": "بارگذاری اطلاعات کلینیک ناموفق بود",
+        "nameEmailRequired": "نام و ایمیل الزامی است",
+        "passwordLength": "گذرواژه باید حداقل 8 کاراکتر باشد",
+        "emailInvalid": "یک ایمیل معتبر وارد کنید",
+        "nameRequired": "نام کامل الزامی است",
+        "tcknLength": "کد ملی باید 11 رقم باشد"
+      },
+      "alert": {
+        "createError": "حساب ایجاد نشد",
+        "unexpectedResponse": "پاسخ غیرمنتظره از سرور. لطفاً دوباره تلاش کنید.",
+        "unexpectedError": "خطای غیرمنتظره‌ای رخ داد",
+        "partialSuccess": "دندانپزشک اضافه شد، اما حساب ورود ایجاد نشد",
+        "saveFailed": "ثبت‌نام ناموفق بود"
+      }
+    },
+    "finance": {
+      "tabs": {
+        "overview": "نمای کلی",
+        "overviewHint": "وضعیت مالی لحظه‌ای",
+        "statement": "صورت‌حساب",
+        "statementHint": "همه تراکنش‌ها",
+        "open": "معوق",
+        "openHint": "فاکتورهای پرداخت‌نشده",
+        "overdue": "عقب‌افتاده",
+        "overdueHint": "وصول‌های فوری",
+        "pos": "POS آنلاین",
+        "posHint": "پرداخت‌های کارتی",
+        "payments": "پرداخت‌ها",
+        "paymentsHint": "تاریخچه وصول"
+      },
+      "error": {
+        "clinicNotFound": "اطلاعات کلینیک یافت نشد. تنظیمات پروفایل خود را بررسی کنید."
+      }
+    }
+  },
+  "doctor": {
+    "nav": {
+      "courierShort": "پیک",
+      "newOrder": "سفارش جدید",
+      "allMenu": "همه منو"
+    }
+  },
+  "station": {
+    "requests": {
+      "materialRequest": "درخواست مواد",
+      "advanceRequest": "درخواست مساعده",
+      "leaveRequest": "درخواست مرخصی"
+    },
+    "actions": {
+      "scan": "اسکن",
+      "newOrder": "سفارش جدید"
+    },
+    "screens": {
+      "jobDetail": "جزئیات کار"
+    },
+    "badges": {
+      "active": "فعال",
+      "critical": "بحرانی"
+    },
+    "dashboard": {
+      "workingOn": "در حال کار روی",
+      "noActiveJob": "کار فعالی نیست",
+      "waitingForAssignment": "در انتظار تخصیص جدید",
+      "activeCount": "فعال",
+      "jobsAppearWhenAssigned": "کارها هنگام تخصیص اینجا نمایش داده می‌شوند",
+      "quickAction": "اقدام سریع",
+      "createNewOrder": "ایجاد سفارش جدید",
+      "start": "شروع",
+      "performance": "عملکرد",
+      "completedStages": "مراحل تکمیل‌شده",
+      "stagesCompleted": "مرحله تکمیل شد",
+      "averageDuration": "میانگین مدت",
+      "perStage": "هر مرحله",
+      "efficiency": "بهره‌وری",
+      "firstTimeSuccess": "موفقیت در بار اول",
+      "totalWaste": "کل ضایعات:",
+      "recentActivity": "فعالیت اخیر",
+      "last5CompletedJobs": "۵ کار آخر تکمیل‌شده",
+      "noCompletedJobsYet": "هنوز کار تکمیل‌شده‌ای نیست"
+    },
+    "history": {
+      "subtitle": "مراحل تکمیل‌شده و سفارش‌های تحویل‌شده من",
+      "breadcrumb": "کار · تاریخچه",
+      "pageTitle": "تاریخچه من",
+      "pageSubtitle": "مراحل تکمیل‌شده و سفارش‌های تحویل‌شده شما",
+      "myStages": "مراحل من",
+      "delivered": "تحویل‌شده",
+      "filter": "فیلتر",
+      "searchPlaceholderStages": "جستجوی مرحله / سفارش / بیمار…",
+      "searchPlaceholderOrders": "جستجوی سفارش / بیمار / دندانپزشک / کلینیک…",
+      "stageDetail": "جزئیات مرحله",
+      "orderNo": "شماره سفارش",
+      "workType": "نوع کار",
+      "clinicDoctor": "کلینیک و دندانپزشک",
+      "doctorNotes": "یادداشت‌های دندانپزشک",
+      "timeline": "خط زمانی",
+      "assigned": "تخصیص‌شده",
+      "started": "شروع‌شده",
+      "durations": "مدت‌زمان‌ها",
+      "waitingDuration": "در انتظار",
+      "betweenAssignmentAndStart": "بین تخصیص و شروع",
+      "workingDuration": "در حال کار",
+      "betweenStartAndCompletion": "بین شروع و تکمیل",
+      "stageId": "شناسه مرحله",
+      "workOrderId": "شناسه سفارش کار",
+      "rawStatus": "وضعیت (خام)",
+      "goToOrder": "رفتن به سفارش",
+      "noAssignedStagesYet": "هنوز مرحله‌ای تخصیص نیافته",
+      "finished": "تمام‌شده",
+      "orderPatient": "سفارش · بیمار",
+      "noDeliveredOrdersYet": "هیچ‌یک از سفارش‌هایی که روی آن‌ها کار کرده‌اید هنوز تحویل نشده",
+      "last30DeliveredOrders": "۳۰ سفارش آخر ارسال‌شده به کلینیک"
+    },
+    "mobile": {
+      "noActiveJobWaiting": "شما کار فعالی ندارید. در انتظار تخصیص جدید.",
+      "activeJobsWaiting": "کار فعال در انتظار شما، امروز تکمیل شد.",
+      "checkIn": "ورود",
+      "checkInWithQr": "ورود با QR",
+      "scanQrInstructions": "کد QR را در اتاق نامه‌ها اسکن کنید · ورود/خروج",
+      "yourQueue": "صف شما",
+      "myActiveJobs": "کارهای فعال من",
+      "noActiveJobNow": "اکنون کار فعالی نیست",
+      "newJobWillAppear": "هنگام تخصیص، کار جدید اینجا نمایش داده می‌شود.",
+      "yourEfficiency": "بهره‌وری شما",
+      "activeCount": "فعال",
+      "avgHours": "میانگین ساعت",
+      "activeJob": "کار فعال",
+      "inProgress": "در حال انجام",
+      "empty": "خالی",
+      "critical": "بحرانی",
+      "completedToday": "امروز تکمیل‌شده",
+      "thisWeek": "این هفته",
+      "working": "در حال کار",
+      "paused": "متوقف‌شده",
+      "urgent": "فوری",
+      "inQueue": "در صف"
+    }
+  }
+}

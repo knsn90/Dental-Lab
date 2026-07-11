@@ -6,11 +6,24 @@ import {
   Image, ActivityIndicator, KeyboardAvoidingView, Pressable,
 } from 'react-native';
 import Svg, { Path, Circle, Line, Polyline } from 'react-native-svg';
+import { User as UserIcon } from 'lucide-react-native';
 import { useAuthStore } from '../../../core/store/authStore';
 import { useOrderChatInbox } from '../hooks/useOrderChatInbox';
 import { useChatMessages } from '../hooks/useChatMessages';
-import { uploadChatAttachment } from '../chatApi';
+import { uploadChatAttachment, isWithinDeleteWindow } from '../chatApi';
+import { ConfirmDialog, type ConfirmState } from '../../../core/ui/ConfirmDialog';
 import { STATUS_CONFIG } from '../constants';
+
+// Viewer3D — tek paylaşılan retry'lı lazy (three.js ayrı chunk)
+import { Viewer3DModalLazy as Viewer3DModal } from '../../viewer-3d/Viewer3DLazy';
+
+function detect3DFmt(name: string): 'stl' | 'ply' | 'obj' | null {
+  const ext = name.toLowerCase().split('.').pop();
+  if (ext === 'stl') return 'stl';
+  if (ext === 'ply') return 'ply';
+  if (ext === 'obj') return 'obj';
+  return null;
+}
 import { UserType, WorkOrderStatus } from '../../../lib/types';
 
 // ── Design tokens ────────────────────────────────────────────────────
@@ -79,7 +92,8 @@ function initials(name?: string | null) {
 }
 
 const AVATAR_PALETTE = ['#0EA5E9','#059669','#D97706','#7C3AED','#DB2777','#0891B2','#EA580C','#4F46E5'];
-function colorFor(id: string): string {
+function colorFor(id: string | null | undefined): string {
+  if (!id) return AVATAR_PALETTE[0];
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) & 0xff;
   return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
@@ -111,42 +125,63 @@ function formatDateShort(ts?: string | null): string {
 function lastPreview(item: any, currentUserId: string | null): string {
   const isMine = !!item.last_sender_id && item.last_sender_id === currentUserId;
   if (!item.last_content && !item.last_attachment_type) return 'Henüz mesaj yok';
-  const prefix = isMine ? 'Siz: ' : '';
+  // Gönderen prefix: "Siz" (kendisi) veya gerçek isim (varsa)
+  const senderName = isMine
+    ? 'Siz'
+    : (item.last_sender_name ? String(item.last_sender_name).split(' ')[0] : null);
+  const prefix = senderName ? `${senderName}: ` : '';
   if (item.last_attachment_type === 'image') return `${prefix}📷 Fotoğraf`;
   if (item.last_attachment_type === 'audio') return `${prefix}🎙️ Sesli mesaj`;
   if (item.last_attachment_type === 'file')  return `${prefix}📎 Dosya`;
   return `${prefix}${item.last_content ?? ''}`;
 }
 
-// İzleyenin user_type'ına göre title/alt-satır kompozisyonu:
-// • lab / admin → title: klinik · hekim, alt: "Hasta: ..."
-// • doctor / clinic_admin → title: "Hasta: ...", alt: klinik · hekim
+/** "İmplant Üstü Kron (Zirkonyum), İmplant Üstü Kron (Zirkonyum), ..." → "İmplant Üstü Kron (Zirkonyum) ×16" */
+function formatWorkTypeCompact(raw: string | null | undefined): string {
+  if (!raw) return '';
+  const items = raw.split(/,\s*/).map(s => s.trim()).filter(Boolean);
+  const counts = new Map<string, number>();
+  items.forEach(it => counts.set(it, (counts.get(it) ?? 0) + 1));
+  return Array.from(counts.entries())
+    .map(([name, n]) => (n > 1 ? `${name} ×${n}` : name))
+    .join(' · ');
+}
+
+// İzleyenin user_type'ına göre title/alt-başlık/meta kompozisyonu:
+// • lab / admin / teknisyen → title: klinik adı, subtitle: hekim adı, meta: "Hasta: ..."
+// • doctor / clinic_admin    → title: hasta adı, subtitle: yok, meta: klinik · hekim
 function composeChatLabels(item: {
   patient_name?: string | null;
   doctor_name?: string | null;
   clinic_name?: string | null;
   work_type?: string | null;
   order_number: string;
-}, viewerType: UserType | null | undefined): { title: string; sub: string } {
+}, viewerType: UserType | null | undefined): { title: string; subtitle: string | null; sub: string } {
   const isLabSide = viewerType === 'lab' || viewerType === 'admin';
   const clinicDoc = [item.clinic_name, item.doctor_name].filter(Boolean).join(' · ');
   const patientLabel = item.patient_name ? `Hasta: ${item.patient_name}` : '';
+  const workCompact = formatWorkTypeCompact(item.work_type);
 
   if (isLabSide) {
+    const title = item.clinic_name || item.doctor_name || workCompact || `#${item.order_number}`;
     return {
-      title: clinicDoc || item.work_type || `#${item.order_number}`,
-      sub:   patientLabel || `#${item.order_number}`,
+      title,
+      // Klinik adı başlık olduysa hekim adını altında göster
+      subtitle: item.clinic_name ? (item.doctor_name ?? null) : null,
+      sub:      patientLabel || `#${item.order_number}`,
     };
   }
   return {
-    title: patientLabel || item.work_type || `#${item.order_number}`,
+    title: patientLabel || workCompact || `#${item.order_number}`,
+    subtitle: null,
     sub:   clinicDoc || `#${item.order_number}`,
   };
 }
 
 // ── Avatar with unread badge overlay ─────────────────────────────────
-function Avatar({ name, color, unreadCount, size = 48, statusColor }: {
+function Avatar({ name, color, unreadCount, size = 48, statusColor, avatarUrl }: {
   name?: string | null; color: string; unreadCount?: number; size?: number; statusColor?: string;
+  avatarUrl?: string | null;
 }) {
   const showBadge = (unreadCount ?? 0) > 0;
   return (
@@ -155,7 +190,15 @@ function Avatar({ name, color, unreadCount, size = 48, statusColor }: {
         avs.circle,
         { width: size, height: size, borderRadius: size / 2, backgroundColor: color },
       ]}>
-        <Text style={[avs.text, { fontSize: size * 0.32 }]}>{initials(name)}</Text>
+        {avatarUrl ? (
+          <Image
+            source={{ uri: avatarUrl }}
+            style={{ width: size, height: size, borderRadius: size / 2 }}
+            resizeMode="cover"
+          />
+        ) : (
+          <Text style={[avs.text, { fontSize: size * 0.32 }]}>{initials(name)}</Text>
+        )}
       </View>
       {statusColor && (
         <View style={[
@@ -204,9 +247,17 @@ interface ChatListItemProps {
   onPress: () => void;
 }
 function ChatListItem({ item, selected, currentUserId, viewerType, accentColor, onPress }: ChatListItemProps) {
-  const { title, sub: metaLine } = composeChatLabels(item, viewerType);
-  const avatarBg   = colorFor(item.work_order_id);
+  const { title, subtitle, sub: metaLine } = composeChatLabels(item, viewerType);
   const statusCfg  = STATUS_CONFIG[item.status as WorkOrderStatus];
+
+  // Avatar: son gönderen profil (kendim değilse) → renk + initials/foto.
+  // Kendim son gönderdiysem chat'in iş emrini referans alacak şekilde
+  // order id'den seed üretilir.
+  const isMine        = !!item.last_sender_id && item.last_sender_id === currentUserId;
+  const senderName    = isMine ? null : (item.last_sender_name as string | null) ?? null;
+  const senderAvatar  = isMine ? null : (item.last_sender_avatar as string | null) ?? null;
+  const avatarSeed    = senderName ?? item.work_order_id ?? '';
+  const avatarBg      = colorFor(avatarSeed);
 
   return (
     <TouchableOpacity
@@ -215,7 +266,8 @@ function ChatListItem({ item, selected, currentUserId, viewerType, accentColor, 
       style={[cl.row, selected && { backgroundColor: hexA(accentColor, 0.08) }]}
     >
       <Avatar
-        name={title}
+        name={senderName ?? title}
+        avatarUrl={senderAvatar}
         color={avatarBg}
         unreadCount={item.unread_for_me}
         statusColor={statusCfg?.color}
@@ -232,6 +284,9 @@ function ChatListItem({ item, selected, currentUserId, viewerType, accentColor, 
             {formatTime(item.last_created_at)}
           </Text>
         </View>
+        {subtitle ? (
+          <Text style={cl.subtitle} numberOfLines={1}>{subtitle}</Text>
+        ) : null}
         <Text style={[cl.preview, item.unread_for_me > 0 && cl.previewBold]} numberOfLines={1}>
           {lastPreview(item, currentUserId)}
         </Text>
@@ -246,6 +301,7 @@ const cl = StyleSheet.create({
   row:     { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 11 },
   topRow:  { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
   name:    { flex: 1, fontSize: 13, fontWeight: '700', color: TEXT, letterSpacing: -0.1 },
+  subtitle:{ fontSize: 11.5, color: '#475569', fontWeight: '600', marginBottom: 2, marginTop: -1 },
   urgent:  { color: '#EF4444', fontSize: 10, fontWeight: '800', letterSpacing: 0.3 },
   time:    { fontSize: 10, color: SUBTLE, fontWeight: '500' },
   preview: { fontSize: 12, color: MUTED, marginBottom: 2 },
@@ -263,7 +319,8 @@ function AudioPlayer({ url, isMine, accentColor }: { url: string; isMine: boolea
   // Stable pseudo-random waveform
   const bars = useMemo(() => {
     let h = 0;
-    for (let i = 0; i < url.length; i++) h = (h * 31 + url.charCodeAt(i)) & 0xffff;
+    const safeUrl = url ?? '';
+    for (let i = 0; i < safeUrl.length; i++) h = (h * 31 + safeUrl.charCodeAt(i)) & 0xffff;
     return Array.from({ length: 28 }, () => {
       h = (h * 1664525 + 1013904223) & 0xffff;
       return 4 + (h % 18);
@@ -470,12 +527,15 @@ function RecordingWave({ color = '#EF4444' }: { color?: string }) {
 }
 
 // ── Message Bubble ───────────────────────────────────────────────────
-function MessageBubble({ msg, isMine, accentColor, showAvatar, senderColor, onImagePress, canApprove, onApprove, onReject }: {
+function MessageBubble({ msg, isMine, accentColor, showAvatar, senderColor, onImagePress, onFilePress, canApprove, onApprove, onReject, canDelete, onDelete }: {
   msg: any; isMine: boolean; accentColor: string; showAvatar: boolean; senderColor: string;
   onImagePress?: (url: string) => void;
+  onFilePress?: (url: string, name: string) => void;
   canApprove?: boolean;
   onApprove?: (id: string) => void;
   onReject?: (id: string) => void;
+  canDelete?: boolean;
+  onDelete?: (id: string) => void;
 }) {
   const hasImage = msg.attachment_type === 'image' && msg.attachment_url;
   const hasFile  = msg.attachment_type === 'file'  && msg.attachment_url;
@@ -483,35 +543,64 @@ function MessageBubble({ msg, isMine, accentColor, showAvatar, senderColor, onIm
   const isPending  = msg.approval_status === 'pending';
   const isRejected = msg.approval_status === 'rejected';
 
+  // Profil RLS bloklarsa sender null gelir — generic ikon + "Kullanıcı" fallback.
+  const senderMissing = !msg.sender?.full_name;
+  const senderLabel   = msg.sender?.full_name ?? 'Kullanıcı';
+
   return (
     <View style={[mb.row, isMine ? mb.rowMine : mb.rowOther]}>
       {!isMine && showAvatar && (
-        <View style={[mb.avatar, { backgroundColor: senderColor }]}>
-          <Text style={mb.avatarText}>{initials(msg.sender?.full_name)}</Text>
+        <View style={[mb.avatar, { backgroundColor: senderMissing ? '#9A9A9A' : senderColor }]}>
+          {senderMissing
+            ? <UserIcon size={14} color="#FFFFFF" strokeWidth={2.4} />
+            : <Text style={mb.avatarText}>{initials(msg.sender?.full_name)}</Text>}
         </View>
       )}
       {!isMine && !showAvatar && <View style={{ width: 28 }} />}
 
-      <View style={{ flexShrink: 1 }}>
-        {/* Sender name — shown at the start of each sender group */}
-        {!isMine && showAvatar && msg.sender?.full_name && (
+      {/* Sil — yalnız kendi mesajın + gönderimden sonraki 5 dk. Otomatik kaybolur. */}
+      {isMine && canDelete && (
+        <Pressable
+          onPress={() => onDelete?.(msg.id)}
+          hitSlop={8}
+          style={({ hovered }: any) => ([
+            { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', alignSelf: 'center' },
+            hovered ? { backgroundColor: 'rgba(217,75,75,0.10)' } : null,
+            Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null,
+          ])}
+        >
+          <Icon name="trash" size={15} color="#D94B4B" strokeWidth={1.9} />
+        </Pressable>
+      )}
+
+      <View style={{ minWidth: 0, maxWidth: '78%', alignItems: isMine ? 'flex-end' : 'flex-start' }}>
+        {/* Sender name — her iki taraf için de gösterilir */}
+        {showAvatar && (
           <Text style={{
             fontSize: 11,
             fontWeight: '600',
-            color: senderColor,
+            color: senderMissing ? '#9A9A9A' : senderColor,
             marginBottom: 2,
-            marginLeft: 4,
+            marginHorizontal: 4,
           }}>
-            {msg.sender.full_name}
-            {msg.sender.user_type ? (
-              <Text style={{ fontWeight: '400', color: '#9A9A9A' }}>
-                {' · '}{msg.sender.user_type === 'admin' ? 'Admin'
-                  : msg.sender.user_type === 'lab' ? 'Lab'
-                  : msg.sender.user_type === 'doctor' ? 'Hekim'
-                  : msg.sender.user_type === 'clinic_admin' ? 'Klinik'
-                  : msg.sender.user_type}
-              </Text>
-            ) : null}
+            {senderLabel}
+            {!senderMissing && msg.sender.user_type ? (() => {
+              const ut = msg.sender.user_type as string;
+              // Klinik tarafıysa gerçek klinik adını göster, yoksa rol fallback
+              const clinicName = (msg.sender as any).clinic_name as string | null | undefined;
+              const roleLabel =
+                ut === 'admin'           ? 'Admin'
+                : ut === 'lab'           ? 'Lab'
+                : ut === 'doctor'        ? (clinicName || 'Hekim')
+                : ut === 'clinic_admin'  ? (clinicName || 'Klinik')
+                : ut === 'clinic_secretary' ? (clinicName || 'Klinik')
+                : ut;
+              return (
+                <Text style={{ fontWeight: '400', color: '#9A9A9A' }}>
+                  {' · '}{roleLabel}
+                </Text>
+              );
+            })() : null}
           </Text>
         )}
         <View style={[
@@ -538,7 +627,10 @@ function MessageBubble({ msg, isMine, accentColor, showAvatar, senderColor, onIm
           </TouchableOpacity>
         )}
         {hasFile && (
-          <View style={mb.fileBlock}>
+          <Pressable
+            onPress={() => onFilePress?.(msg.attachment_url!, msg.attachment_name ?? 'Dosya')}
+            style={({ hovered }: any) => ([mb.fileBlock, hovered ? { opacity: 0.85 } : null, Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}])}
+          >
             <Icon name="file" size={18} color={isMine ? '#FFFFFF' : accentColor} strokeWidth={2} />
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={[mb.fileName, isMine && { color: '#FFFFFF' }]} numberOfLines={1}>
@@ -550,7 +642,7 @@ function MessageBubble({ msg, isMine, accentColor, showAvatar, senderColor, onIm
                 </Text>
               )}
             </View>
-          </View>
+          </Pressable>
         )}
         {hasAudio && (
           <AudioPlayer url={msg.attachment_url} isMine={isMine} accentColor={accentColor} />
@@ -575,6 +667,7 @@ function MessageBubble({ msg, isMine, accentColor, showAvatar, senderColor, onIm
           <Text style={[mb.time, isMine && { color: 'rgba(255,255,255,0.75)' }]}>
             {formatTimeFull(msg.created_at)}
           </Text>
+          {/* placeholder */}
           {isMine && (
             <Icon
               name="check-check"
@@ -613,6 +706,13 @@ function MessageBubble({ msg, isMine, accentColor, showAvatar, senderColor, onIm
         )}
       </View>
       </View>
+
+      {isMine && showAvatar && (
+        <View style={[mb.avatar, { backgroundColor: senderColor }]}>
+          <Text style={mb.avatarText}>{initials(msg.sender?.full_name)}</Text>
+        </View>
+      )}
+      {isMine && !showAvatar && <View style={{ width: 28 }} />}
     </View>
   );
 }
@@ -623,10 +723,10 @@ const mb = StyleSheet.create({
   avatar:   { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   avatarText:{ color: '#FFFFFF', fontSize: 10, fontWeight: '800' },
   bubble:   {
-    maxWidth: '78%',
     borderRadius: 20,
     paddingHorizontal: 14, paddingVertical: 10,
     gap: 4,
+    ...(Platform.OS === 'web' ? ({ wordBreak: 'normal', overflowWrap: 'break-word' } as any) : {}),
   },
   bubbleMine: {
     borderBottomRightRadius: 4,
@@ -683,8 +783,31 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
   // Manager/admin can approve technician messages
   const canApprove = viewerType === 'admin' || (viewerType === 'lab' && profile?.role === 'manager');
 
+  // Kendi mesajını silme onayı (yalnız 5 dk penceresi içinde tetiklenir)
+  const [confirmDel, setConfirmDel] = useState<ConfirmState | null>(null);
+  const askDeleteMessage = (id: string) => {
+    setConfirmDel({
+      title:   'Mesajı sil',
+      message: 'Bu mesaj kalıcı olarak silinecek. Bu işlem geri alınamaz.',
+      label:   'Sil',
+      variant: 'danger',
+      onConfirm: async () => { await chat.remove(id); },
+    });
+  };
+
   // ── Image lightbox ──────────────────────────────────────────────
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  // 3D viewer (STL/PLY/OBJ chat ekleri için)
+  const [viewer3DFile, setViewer3DFile] = useState<{ id: string; name: string; url: string; format: 'stl'|'ply'|'obj' } | null>(null);
+
+  const handleFilePress = (url: string, name: string) => {
+    const fmt = detect3DFmt(name);
+    if (fmt && Platform.OS === 'web') {
+      setViewer3DFile({ id: url, name, url, format: fmt });
+      return;
+    }
+    if (Platform.OS === 'web' && typeof window !== 'undefined') window.open(url, '_blank');
+  };
 
   // ── Attachment state ─────────────────────────────────────────────
   const [attachOpen, setAttachOpen]       = useState(false);
@@ -740,7 +863,7 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
   }
 
   const { title: headerTitle, sub: headerSub } = composeChatLabels(selectedOrder, viewerType);
-  const workType    = selectedOrder.work_type || 'İş emri';
+  const workType    = formatWorkTypeCompact(selectedOrder.work_type) || 'İş emri';
   const avatarBg    = colorFor(selectedOrder.work_order_id);
   const statusCfg   = STATUS_CONFIG[selectedOrder.status as WorkOrderStatus];
 
@@ -989,7 +1112,7 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
           chat.messages.map((m, i) => {
             const isMine     = m.sender_id === currentUserId;
             const prev       = chat.messages[i - 1];
-            const showAvatar = !isMine && (!prev || prev.sender_id !== m.sender_id);
+            const showAvatar = !prev || prev.sender_id !== m.sender_id;
             const senderColor = colorFor(m.sender_id);
             return (
               <MessageBubble
@@ -1000,9 +1123,12 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
                 showAvatar={showAvatar}
                 senderColor={senderColor}
                 onImagePress={setPreviewImageUrl}
+                onFilePress={handleFilePress}
                 canApprove={canApprove}
                 onApprove={chat.approve}
                 onReject={chat.reject}
+                canDelete={isMine && isWithinDeleteWindow(m.created_at)}
+                onDelete={askDeleteMessage}
               />
             );
           })
@@ -1082,6 +1208,21 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
       {previewImageUrl ? (
         <ImageLightbox url={previewImageUrl} onClose={() => setPreviewImageUrl(null)} />
       ) : null}
+
+      {/* Mesaj silme onayı */}
+      <ConfirmDialog state={confirmDel} onClose={() => setConfirmDel(null)} />
+
+      {/* 3D Viewer — STL/PLY/OBJ önizleme (lazy chunk) */}
+      {viewer3DFile && Platform.OS === 'web' && (
+        <React.Suspense fallback={null}>
+          <Viewer3DModal
+            visible={!!viewer3DFile}
+            files={[viewer3DFile]}
+            title={viewer3DFile.name}
+            onClose={() => setViewer3DFile(null)}
+          />
+        </React.Suspense>
+      )}
 
       {/* ── Voice: RECORDING state ───────────────────────────────── */}
       {voiceMode === 'recording' && (
@@ -1561,9 +1702,12 @@ export function MessagesPopup({ visible, onClose, accentColor, initialOrderId }:
   // doğrudan inline style olarak DOM'a basar. Transform array'ini
   // CSS transform string'ine çevirip transition ile yumuşatır.
   const isWeb = Platform.OS === 'web';
-  // Backdrop artık tamamen şeffaf — sadece dışarıya tıklama alanı.
-  // Opacity animasyonu kaldırıldı (görsel etkisi yok, şeffaf olduğu için).
-  const webBackdropStyle: any = isWeb ? {} : null;
+  const webBackdropStyle: any = isWeb ? {
+    opacity: active ? 1 : 0,
+    transitionProperty: 'opacity',
+    transitionDuration: active ? '260ms' : '180ms',
+    transitionTimingFunction: 'ease',
+  } : null;
   const webPanelStyle: any = isWeb ? {
     opacity: active ? 1 : 0,
     transform: [
@@ -1614,22 +1758,8 @@ export function MessagesPopup({ visible, onClose, accentColor, initialOrderId }:
 
   if (!mounted) return null;
 
-  // ── Mobile — Variant B B5 inbox + B5b thread ──────────────────────
-  if (!isDesktop) {
-    const { MessagesB5Mobile } = _requireB5();
-    return (
-      <Modal
-        visible={mounted}
-        transparent={false}
-        statusBarTranslucent
-        onRequestClose={onClose}
-        animationType="slide"
-      >
-        <MessagesB5Mobile onClose={onClose} />
-      </Modal>
-    );
-  }
-
+  // Mobilde de masaüstüyle aynı ChatDetail görünümü (liste → ChatDetail tek-pane).
+  // Eski B5 bottom-sheet (MessagesB5Mobile) kaldırıldı — tüm mesajlar artık ChatDetail tarzı.
   // Mobile: tek pane modu — seçim yoksa liste, varsa chat
   const showListOnMobile = !selected;
 
@@ -1666,6 +1796,9 @@ export function MessagesPopup({ visible, onClose, accentColor, initialOrderId }:
             isWeb
               ? webPanelStyle
               : { opacity, transform: [{ scale }, { translateY }] },
+            // Mobil: frosted-glass yerine solid beyaz (gradient arkadan geçmesin).
+            // Desktop frosted-glass aynen korunur.
+            !isDesktop ? p.panelMobileSolid : null,
           ]}
         >
           {/* Desktop: split pane */}
@@ -1819,10 +1952,11 @@ export function MessagesPopup({ visible, onClose, accentColor, initialOrderId }:
 // İç bölümler = okunabilirlik için yarı-saydam beyaz.
 const p = StyleSheet.create({
   backdrop: {
-    // Tamamen şeffaf — sadece dışarı-tıklama alanı, karartma YOK.
-    // Uygulama arka planda hiç solmadan görünür.
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'transparent',
+    backgroundColor: 'rgba(10,14,26,0.38)',
+    ...(Platform.OS === 'web'
+      ? ({ backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' } as any)
+      : {}),
   },
   centerWrap: {
     ...StyleSheet.absoluteFillObject,
@@ -1857,6 +1991,10 @@ const p = StyleSheet.create({
   panelMobile: {
     width: '100%', height: '92%',
   },
+  // Mobilde opaque beyaz — frosted-glass blur/şeffaflık iptal (gradient sızmaz)
+  panelMobileSolid: Platform.OS === 'web'
+    ? ({ backgroundColor: '#FFFFFF', backdropFilter: 'none', WebkitBackdropFilter: 'none' } as any)
+    : { backgroundColor: '#FFFFFF' },
 
   // İç bölümler — yarı-saydam beyaz: glass blur panel arkasından geçer
   split: { flex: 1, flexDirection: 'row' },
@@ -1918,3 +2056,110 @@ const p = StyleSheet.create({
   emptyList: { padding: 40, alignItems: 'center' },
   emptyListText: { fontSize: 12, color: SUBTLE, textAlign: 'center' },
 });
+
+// ─── MessagesBottomSheet ───────────────────────────────────────────────
+// Sohbetler popup'ı için iOS bottom-sheet wrapper: backdrop blur + dark
+// overlay + alttan slide eden beyaz kart (üst köşeleri yuvarlak, drag handle).
+function MessagesBottomSheet({
+  children, onClose, mounted,
+}: {
+  children: React.ReactNode;
+  onClose: () => void;
+  mounted: boolean;
+}) {
+  const { height } = useWindowDimensions();
+  const BlurView = (() => { try { return require('expo-blur').BlurView; } catch { return null; } })();
+  const backdrop = useRef(new Animated.Value(0)).current;
+  const sheetY = useRef(new Animated.Value(height)).current;
+
+  useEffect(() => {
+    if (mounted) {
+      Animated.parallel([
+        Animated.timing(backdrop, {
+          toValue: 1, duration: 220, easing: Easing.out(Easing.cubic), useNativeDriver: true,
+        }),
+        Animated.spring(sheetY, {
+          toValue: 0, damping: 24, stiffness: 240, mass: 1, useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(backdrop, {
+          toValue: 0, duration: 160, easing: Easing.in(Easing.cubic), useNativeDriver: true,
+        }),
+        Animated.timing(sheetY, {
+          toValue: height, duration: 200, easing: Easing.in(Easing.cubic), useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [mounted, backdrop, sheetY, height]);
+
+  // Sheet ekranın %92'si — full screen'e yakın, drag handle ve safe area için üstte ufak boşluk
+  const sheetMaxHeight = Math.floor(height * 0.92);
+
+  return (
+    <Modal visible={mounted} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+      {/* Native blur */}
+      {BlurView && (Platform.OS === 'ios' || Platform.OS === 'android') && (
+        <Animated.View
+          pointerEvents="none"
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: backdrop }}
+        >
+          <BlurView intensity={25} tint="dark" style={{ flex: 1 }} />
+        </Animated.View>
+      )}
+      {/* Dark overlay */}
+      <Animated.View
+        style={{
+          flex: 1,
+          backgroundColor: 'rgba(15,23,42,0.45)',
+          opacity: backdrop,
+          ...(Platform.OS === 'web' ? {
+            backdropFilter: 'blur(10px) saturate(140%)',
+            WebkitBackdropFilter: 'blur(10px) saturate(140%)',
+          } as any : {}),
+        }}
+      >
+        {/* Tap-to-close — sheet üstündeki backdrop alanı */}
+        <Pressable onPress={onClose} style={{ flex: 1 }} />
+
+        {/* Sheet — alttan kayar. BG transparent → MessagesB5Mobile kendi
+            cream bg'siyle tüm sheet'i doldursun (drag handle alanı dahil),
+            renk farkı görünmesin. */}
+        <Animated.View
+          style={{
+            position: 'absolute',
+            left: 0, right: 0, bottom: 0,
+            height: sheetMaxHeight,
+            transform: [{ translateY: sheetY }],
+            backgroundColor: 'transparent',
+            borderTopLeftRadius: 24,
+            borderTopRightRadius: 24,
+            overflow: 'hidden',
+            ...(Platform.OS === 'ios' ? {
+              shadowColor: '#000', shadowOpacity: 0.22, shadowRadius: 24, shadowOffset: { width: 0, height: -8 },
+            } : Platform.OS === 'web' ? {
+              boxShadow: '0 -12px 36px rgba(0,0,0,0.18)',
+            } as any : { elevation: 20 }),
+          }}
+        >
+          {/* Content (MessagesB5Mobile) — sheet'in tamamını doldurur, kendi bg'si */}
+          <View style={{ flex: 1 }}>
+            {children}
+          </View>
+          {/* Drag handle — content üzerinde absolute overlay */}
+          <View pointerEvents="none" style={{
+            position: 'absolute',
+            top: 8, left: 0, right: 0,
+            alignItems: 'center',
+          }}>
+            <View style={{
+              width: 38, height: 5, borderRadius: 3,
+              backgroundColor: 'rgba(15,23,42,0.20)',
+            }} />
+          </View>
+        </Animated.View>
+      </Animated.View>
+    </Modal>
+  );
+}

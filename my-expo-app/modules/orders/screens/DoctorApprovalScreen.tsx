@@ -5,6 +5,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, StyleSheet, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import { supabase } from '../../../core/api/supabase';
 import { AppIcon } from '../../../core/ui/AppIcon';
@@ -24,6 +25,7 @@ interface PendingApproval {
 
 export function DoctorApprovalScreen() {
   const { token } = useLocalSearchParams<{ token: string }>();
+  const insets = useSafeAreaInsets();
   const [data, setData] = useState<PendingApproval | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
@@ -105,7 +107,7 @@ export function DoctorApprovalScreen() {
   const hoursLeft = Math.max(0, Math.ceil((expires.getTime() - Date.now()) / 3_600_000));
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: '#F1F5F9' }} contentContainerStyle={{ padding: 20, alignItems: 'center' }}>
+    <ScrollView style={{ flex: 1, backgroundColor: '#F1F5F9' }} contentContainerStyle={{ padding: 20, paddingTop: 20 + insets.top, alignItems: 'center' }}>
       <View style={[s.card, { width: '100%', maxWidth: 560 }]}>
         {/* Header */}
         <View style={s.header}>

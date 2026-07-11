@@ -1,14 +1,17 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, RefreshControl, TextInput,
+  RefreshControl, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
+import { localeTag } from '../../core/i18n';
 import { supabase } from '../../core/api/supabase';
 import { IconBtn } from '../../core/ui/IconBtn';
 import { SlideTabBar } from '../../core/ui/SlideTabBar';
 
 import { AppIcon } from '../../core/ui/AppIcon';
+import { ActivityIndicator } from '../../core/ui/teethCompat';
 
 type LogTab = 'all' | 'users' | 'doctors';
 
@@ -27,16 +30,16 @@ interface ActivityLog {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function timeAgo(dateStr: string): string {
+function timeAgo(dateStr: string, t: (k: string, o?: any) => string, lang: string): string {
   const now  = new Date();
   const date = new Date(dateStr);
   const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
-  if (diff < 60)     return 'Az önce';
-  if (diff < 3600)   return `${Math.floor(diff / 60)} dk önce`;
-  if (diff < 86400)  return `${Math.floor(diff / 3600)} saat önce`;
-  if (diff < 172800) return 'Dün ' + date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-  if (diff < 604800) return `${Math.floor(diff / 86400)} gün önce`;
-  return date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' });
+  if (diff < 60)     return t('admin.logs.time.justNow');
+  if (diff < 3600)   return t('admin.logs.time.minutesAgo', { minutes: Math.floor(diff / 60) });
+  if (diff < 86400)  return t('admin.logs.time.hoursAgo', { hours: Math.floor(diff / 3600) });
+  if (diff < 172800) return t('admin.logs.time.yesterday', { time: date.toLocaleTimeString(localeTag(lang), { hour: '2-digit', minute: '2-digit' }) });
+  if (diff < 604800) return t('admin.logs.time.daysAgo', { days: Math.floor(diff / 86400) });
+  return date.toLocaleDateString(localeTag(lang), { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 function actionMeta(action: string): { icon: string; color: string; bg: string } {
@@ -56,11 +59,12 @@ function actionMeta(action: string): { icon: string; color: string; bg: string }
 // ─── Log Row ─────────────────────────────────────────────────────────────────
 
 function LogRow({ log, isLast }: { log: ActivityLog; isLast: boolean }) {
+  const { t, i18n } = useTranslation();
   const meta = actionMeta(log.action);
   const badge =
-    log.actor_type === 'admin'  ? { label: 'Admin', bg: '#FEF3C7', text: '#92400E' } :
-    log.actor_type === 'doctor' ? { label: 'Hekim', bg: '#DBEAFE', text: '#1D4ED8' } :
-                                  { label: 'Lab',   bg: '#DCFCE7', text: '#166534' };
+    log.actor_type === 'admin'  ? { label: t('admin.logs.actor.admin'), bg: '#FEF3C7', text: '#92400E' } :
+    log.actor_type === 'doctor' ? { label: t('admin.logs.actor.doctor'), bg: '#DBEAFE', text: '#1D4ED8' } :
+                                  { label: t('admin.logs.actor.lab'),   bg: '#DCFCE7', text: '#166534' };
 
   return (
     <View style={[lr.row, !isLast && lr.rowBorder]}>
@@ -76,7 +80,7 @@ function LogRow({ log, isLast }: { log: ActivityLog; isLast: boolean }) {
           <View style={[lr.badge, { backgroundColor: badge.bg }]}>
             <Text style={[lr.badgeText, { color: badge.text }]}>{badge.label}</Text>
           </View>
-          <Text style={lr.time}>{timeAgo(log.created_at)}</Text>
+          <Text style={lr.time}>{timeAgo(log.created_at, t, i18n.language)}</Text>
         </View>
         <Text style={lr.action}>{log.action}</Text>
         {log.entity_label ? (
@@ -107,6 +111,7 @@ const lr = StyleSheet.create({
 // ─── Screen ──────────────────────────────────────────────────────────────────
 
 export default function AdminLogsScreen() {
+  const { t } = useTranslation();
   const [logs,          setLogs]          = useState<ActivityLog[]>([]);
   const [loading,       setLoading]       = useState(true);
   const [refreshing,    setRefreshing]    = useState(false);
@@ -154,9 +159,9 @@ export default function AdminLogsScreen() {
   });
 
   const TABS: { key: LogTab; label: string }[] = [
-    { key: 'all',     label: 'Tümü' },
-    { key: 'users',   label: 'Kullanıcılar' },
-    { key: 'doctors', label: 'Hekimler' },
+    { key: 'all',     label: t('admin.logs.tab.all') },
+    { key: 'users',   label: t('admin.logs.tab.users') },
+    { key: 'doctors', label: t('admin.logs.tab.doctors') },
   ];
 
   return (
@@ -198,7 +203,7 @@ export default function AdminLogsScreen() {
                 onChangeText={setSearch}
                 onFocus={() => setSearchFocused(true)}
                 onBlur={() => setSearchFocused(false)}
-                placeholder="İsim, aksiyon veya kayıt ara..."
+                placeholder={t('admin.logs.searchPlaceholder')}
                 placeholderTextColor="#AEAEB2"
                 returnKeyType="search"
                 autoFocus={searchExpanded && search.length === 0}
@@ -217,7 +222,7 @@ export default function AdminLogsScreen() {
       {loading ? (
         <View style={s.center}>
           <ActivityIndicator size="large" color="#0F172A" />
-          <Text style={s.loadingText}>Loglar yükleniyor…</Text>
+          <Text style={s.loadingText}>{t('admin.logs.loading')}</Text>
         </View>
       ) : (
         <ScrollView
@@ -229,15 +234,15 @@ export default function AdminLogsScreen() {
           {filtered.length === 0 ? (
             <View style={s.empty}>
               <AppIcon name="clipboard-text-off-outline" size={44} color="#AEAEB2" />
-              <Text style={s.emptyTitle}>Henüz log yok</Text>
-              <Text style={s.emptySub}>{q ? `"${q}" ile eşleşen kayıt yok` : 'Eylemler gerçekleştikçe burada görünecek'}</Text>
+              <Text style={s.emptyTitle}>{t('admin.logs.empty.title')}</Text>
+              <Text style={s.emptySub}>{q ? t('admin.logs.empty.noMatch', { query: q }) : t('admin.logs.empty.noActions')}</Text>
             </View>
           ) : (
             <View style={s.card}>
               {/* Header */}
               <View style={s.cardHeader}>
-                <Text style={s.hCell} numberOfLines={1}>KULLANICI</Text>
-                <Text style={[s.hCell, { marginLeft: 'auto' as any }]}>{logs.length} kayıt · Gerçek zamanlı</Text>
+                <Text style={s.hCell} numberOfLines={1}>{t('admin.logs.table.user')}</Text>
+                <Text style={[s.hCell, { marginLeft: 'auto' as any }]}>{t('admin.logs.table.recordsRealtime', { count: logs.length })}</Text>
               </View>
               {filtered.map((log, i) => (
                 <LogRow key={log.id} log={log} isLast={i === filtered.length - 1} />

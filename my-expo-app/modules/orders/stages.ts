@@ -32,7 +32,7 @@ export const STAGE_ORDER: Stage[] = [
 ];
 
 export const STAGE_LABEL: Record<Stage, string> = {
-  TRIAGE:           'Triyaj',
+  TRIAGE:           'Planlama',
   MANAGER_REVIEW:   'Müdür Onayı',
   DESIGN:           'Tasarım',
   DOCTOR_APPROVAL:  'Hekim Onayı',

@@ -4,12 +4,16 @@
 // user_stage_skills tablosu — AUTO_ASSIGN bu listeden seçer.
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Platform, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Platform, StyleSheet } from 'react-native';
+import { useRouter, useSegments } from 'expo-router';
 import { supabase } from '../../../core/api/supabase';
 import { toast } from '../../../core/ui/Toast';
 import { AppIcon } from '../../../core/ui/AppIcon';
 import { useAuthStore } from '../../../core/store/authStore';
 import { STAGE_LABEL, STAGE_COLOR, type Stage } from '../../orders/stages';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 const SKILL_STAGES: Stage[] = ['TRIAGE', 'DESIGN', 'CAM', 'MILLING', 'SINTER', 'FINISH', 'QC'];
 
@@ -23,6 +27,8 @@ interface UserRow {
 export function SkillsSection() {
   const { profile } = useAuthStore();
   const labId = (profile as any)?.lab_id ?? profile?.id ?? '';
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
 
   const [rows, setRows]   = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,69 +105,35 @@ export function SkillsSection() {
     });
   }
 
+  const router = useRouter();
+  const segments = useSegments() as string[];
+  const group = segments?.[0] && segments[0].startsWith('(') ? segments[0] : '(lab)';
+
   return (
-    <ScrollView style={s.root} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+    <ScrollView style={[s.root, { backgroundColor: T.bg }]} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
       <View style={s.header}>
-        <Text style={s.title}>Kullanıcı Yetkileri</Text>
-        <Text style={s.subtitle}>
-          Hangi kullanıcı hangi aşamayı yapabilir — AUTO_ASSIGN bu yetkiye göre dağıtır
+        <Text style={[s.title, { color: T.ink }]}>Kullanıcı Yetkileri</Text>
+        <Text style={[s.subtitle, { color: T.ink2 }]}>
+          Teknisyen yetkinlikleri artık tek yerden — Ekip → Personel'den yönetiliyor
         </Text>
       </View>
 
-      {loading ? (
-        <View style={{ padding: 40, alignItems: 'center' }}>
-          <ActivityIndicator size="large" color="#7C3AED" />
-        </View>
-      ) : rows.length === 0 ? (
-        <View style={s.empty}>
-          <Text style={s.emptyText}>Bu lab'a kayıtlı kullanıcı yok.</Text>
-        </View>
-      ) : rows.map(u => (
-        <View key={u.id} style={s.card}>
-          <View style={s.userRow}>
-            <View style={s.avatar}>
-              <Text style={s.avatarText}>
-                {u.full_name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
-              </Text>
-            </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={s.userName} numberOfLines={1}>{u.full_name}</Text>
-              <Text style={s.userRole}>
-                {u.role === 'manager' ? 'Mesul Müdür' : u.role === 'technician' ? 'Teknisyen' : 'Lab'}
-              </Text>
-            </View>
-            <View style={s.skillCount}>
-              <Text style={s.skillCountText}>{u.skills.size}/{SKILL_STAGES.length}</Text>
-            </View>
-          </View>
-
-          <View style={s.chipsRow}>
-            {SKILL_STAGES.map(st => {
-              const has = u.skills.has(st);
-              const busy = pending.has(`${u.id}:${st}`);
-              const color = STAGE_COLOR[st];
-              return (
-                <TouchableOpacity
-                  key={st}
-                  onPress={() => !busy && toggleSkill(u.id, st, has)}
-                  disabled={busy}
-                  style={[
-                    s.chip,
-                    has && { backgroundColor: color, borderColor: color },
-                    busy && { opacity: 0.5 },
-                  ]}
-                  activeOpacity={0.7}
-                >
-                  {has && <AppIcon name="check" size={11} color="#FFFFFF" strokeWidth={3} />}
-                  <Text style={[s.chipText, has && { color: '#FFFFFF' }]}>
-                    {STAGE_LABEL[st]}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-      ))}
+      <View style={[s.card, { backgroundColor: T.card, borderColor: T.hairline, gap: 12, alignItems: 'flex-start' }]}>
+        <View style={s.avatar}><AppIcon name="users" size={18} color="#FFFFFF" /></View>
+        <Text style={[s.userName, { color: T.ink, fontSize: 15 }]}>Yetkinlikler Ekip bölümüne taşındı</Text>
+        <Text style={[s.userRole, { color: T.ink2, fontSize: 12.5, lineHeight: 18 }]}>
+          Her teknisyenin hangi istasyonlarda çalışabileceği, otomatik atama ve "Yeniden Ata" ile birebir aynı
+          kaynağı kullanır. Karışıklığı önlemek için yetkinlikler tek yerden — Ekip → Personel — yönetilir.
+        </Text>
+        <TouchableOpacity
+          onPress={() => router.push(`/${group}/ik-depo?tab=people` as any)}
+          activeOpacity={0.8}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999, backgroundColor: '#7C3AED' }}
+        >
+          <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>Ekip → Personel'i aç</Text>
+          <AppIcon name="chevron-right" size={15} color="#FFFFFF" />
+        </TouchableOpacity>
+      </View>
     </ScrollView>
   );
 }

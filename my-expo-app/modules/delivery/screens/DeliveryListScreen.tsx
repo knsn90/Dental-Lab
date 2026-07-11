@@ -351,7 +351,7 @@ const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 18, paddingVertical: 14,
+    paddingHorizontal: 18, paddingTop: 68, paddingBottom: 14,
     backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#E2E8F0',
   },
   title:      { fontSize: 20, fontWeight: '800', color: '#0F172A' },

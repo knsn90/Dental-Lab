@@ -5,6 +5,32 @@ Mevcut StyleSheet tabanlı dosyalar dokunulmadan kalır; yeni ekranlar bu kurall
 
 ---
 
+## 🛑 Değişiklik & Güvenlik Kuralı (ZORUNLU — her şeyden önce gelir)
+
+Yeni bir özellik veya değişiklik yapılırken **mevcutta çalışan hiçbir yere
+dokunmadan önce kullanıcıya sorulur ve ne olacağı açıkça anlatılır.** Onay
+gelmeden devam edilmez.
+
+1. **Kapsamı izole et.** Bir panelde / ekranda yapılan değişiklik, **diğer
+   panelleri otomatik etkilememeli.** Paylaşılan bir bileşeni/dosyayı
+   değiştirmek başka panelleri de değiştirecekse, önce bunu söyle ve onay al
+   (gerekiyorsa paylaşılan kodu kopyalayıp panele özel ayır).
+2. **Riskli işlemleri önceden bildir.** Login/oturum/auth akışını, RLS
+   politikalarını, migration'ları, ortak store/context'i, route guard'larını
+   ya da sistemi çökertebilecek (build'i bozabilecek, veriyi bozabilecek)
+   işlemleri yapmadan **önce** riski ve olası sonucu açıkla, onay bekle.
+3. **Aktif özellikleri silme.** Güvenlik sıkılaştırma, refactor, temizlik veya
+   "optimizasyon" yaparken **çalışan/aktif özellikleri kaldırma veya devre dışı
+   bırakma.** Bir şeyin silinmesi/kapatılması gerekiyorsa önce sor ve neyin
+   etkileneceğini söyle.
+4. **Önce açıkla, sonra uygula.** Geri alınması zor (destructive) veya çok yere
+   yayılan her değişiklikte: *ne değişecek, nereleri etkileyecek, riski ne* —
+   bunları madde madde söyle, kullanıcı "tamam/onay" dedikten sonra uygula.
+
+> Şüphedeysen DUR ve SOR. Sessizce geniş kapsamlı değişiklik yapma.
+
+---
+
 ## 🎯 Stack
 
 - **Expo + React Native + react-native-web** — tek codebase, hem web hem mobile
@@ -126,6 +152,23 @@ shadow-cardHero → Hero kart için ağır gölge
 ```
 
 ### 7. Renk Tokenleri
+
+> **🎨 Panel-tutarlılığı kuralı (ZORUNLU):**
+> Herhangi bir bölüm/özellik eklerken **her panel kendi renklerini** kullanmalı —
+> kartlar, butonlar ve **sayfa arka plan rengi** o panelin accent + zemin paletinden
+> gelmeli. Hiçbir ekranda renk/zemin hardcode edilmez; aktif panele göre çözülür.
+>
+> - Panel accent + zemin için `usePanelTheme()` (route segment'inden çözer) veya
+>   `MOBILE_PANEL_THEMES[panel]` kullan. Sayfa zemini her zaman o panelin `bgPage`'i
+>   ile aynı olmalı (PatternsShell ile birebir): lab `#F5F1EB` · klinik/hekim
+>   `#F9FAFB` · admin `#F7F9FC` · istasyon `#F5F9FD` · kurye `DS.tech.bg`.
+> - Birden fazla panelde paylaşılan ekranlar (Destek, Kurye Takip, Mesajlar vb.)
+>   panele göre **accent + zemin** almalı; tek bir sabit renk (ör. turuncu) tüm
+>   panellerde kullanılmaz.
+> - Buton/CTA, seçili sekme, rozet, ilerleme çubuğu vb. accent gerektiren her şey
+>   panel `primary` renginden türetilir (`hexA(primary, …)` ile yumuşak tonlar).
+> - Nötr metin (graphite/ink) renkleri panelden bağımsız kalabilir.
+
 **Panel accent'leri:**
 ```
 text-lab     bg-lab     → Lab paneli (#2563EB)
@@ -187,6 +230,7 @@ text-info    bg-info    → #0EA5E9
 6. **Maksimum 4 nested View** — flatten et
 7. **Mobile-only düşünme** — her ekran web'de de güzel olmalı
 8. **NativeWind + StyleSheet karıştırma** — bir komponentte tek yöntem
+9. **Sabit/tek panel rengi & zemini** — kart, buton, arka plan rengini hardcode etme; her panel kendi paletini kullansın (bkz. §7 Panel-tutarlılığı kuralı). Paylaşılan ekranlar `usePanelTheme()` ile accent + zemin almalı.
 
 ## 🎨 Pattern Showcase
 
@@ -246,6 +290,135 @@ modules/<modulename>/
 - [ ] Panel accent rengi kullanılmış (text-lab/doctor/clinic vs. doğrudan hex)
 - [ ] AppIcon kullanılmış (hand-drawn SVG yok)
 - [ ] HubContext kontrol — embedded ise duplicate başlık yok
+
+---
+
+# 📐 Tasarım Dili — Detaylı Referans (`/dev/patterns` + token kaynakları)
+
+> Bu bölüm projenin **gerçek tasarım dilidir.** Tüm yeni bölümler bu değerlerle
+> tasarlanır. Renkler/ölçüler `core/theme/dsTokens.ts`, `mobileDesignTokens.ts`,
+> `typography.ts`, `shadows.ts`, `spacing.ts` dosyalarından gelir; hardcode etme,
+> token kullan. Görsel referans: `/dev/patterns` (desktop) ve `/dev/patterns-mobile`.
+
+## 1. Panel Paletleri (`DS` — dsTokens.ts)
+
+Her panelin tam paleti. `usePanelTheme()` route segment'inden çözer
+(`/(lab)`→lab, `/(admin)`→exec, `/(clinic)`&`/(doctor)`→clinic, `/(station)`→tech).
+
+| Panel | primary | primaryDeep | accent (ink) | bg (soft fill) | bgDeep | surface | surfaceAlt (dark) |
+|---|---|---|---|---|---|---|---|
+| **lab** (Safran) | `#F5C24B` | `#E0A82E` | `#0A0A0A` | `#FBE9B6` | `#F4D078` | `#FFFFFF` | `#1A1A1A` |
+| **clinic** (Zümrüt) | `#32BB78` | `#0C8F56` | `#2F313F` | `#D3F8E0` | `#ABEFC7` | `#FFFFFF` | `#2F313F` |
+| **exec/admin** (Kobalt) | `#4771AB` | `#314F7E` | `#172235` | `#EAF2FB` | `#E7EEF8` | `#FFFFFF` | `#243041` |
+| **tech/station** (Mavi) | `#3B82F6` | `#1E5FBF` | `#0F2840` | `#EAF2FA` | `#D2E1F0` | `#FFFFFF` | `#0F2840` |
+| **plum** (Analitik) | `#8B5CB8` | `#6B3F94` | `#2A1A3D` | `#EFE9F5` | `#DDD0EA` | `#FFFFFF` | `#2A1A3D` |
+| **teal** (Depo) | `#2BA39B` | `#197872` | `#0E2E2C` | `#E4F1F0` | `#C9E2DF` | `#FFFFFF` | `#0E2E2C` |
+
+**Ortak status renkleri (tüm paneller):** success `#2D9A6B` · warning `#E89B2A` ·
+danger `#D94B4B` · info `#4A8FC9`.
+
+**Ink skala:** 900 `#0A0A0A` · 800 `#1A1A1A` · 700 `#2C2C2C` · 500 `#6B6B6B` ·
+400 `#9A9A9A` · 300 `#D4D4D4` · 200 `#EAEAEA` · 100 `#F5F5F5` · 50 `#FAFAFA`.
+
+**Klinik/Hekim yeşil skalası (Zümrüt — 400 = primary):** yeni bir yeşil tonu gerektiğinde
+elle türetme, bu skaladan seç: 50 `#EDFCF3` · 100 `#D3F8E0` · 200 `#ABEFC7` · 300 `#74E1A8` ·
+**400 `#32BB78` (primary)** · 500 `#19B06B` (hover) · 600 `#0C8F56` (primaryDeep) ·
+700 `#0A7247` (kicker/koyu metin) · 800 `#0B5A3A` · 900 `#0A4A31` · 950 `#042A1C`.
+Koyu ink/hero/surfaceAlt = charcoal `#2F313F`, sayfa zemini = `#F9FAFB` (skala dışı, sabit).
+
+## 2. Sayfa Zeminleri (`MOBILE_PANEL_THEMES.bgPage` — shell ile birebir)
+
+Sayfa arka planı **her zaman** aktif panelin `bgPage`'i olmalı (PatternsShell
+content bg ile aynı). Token paletindeki `bg` (soft fill) ≠ sayfa zemini.
+
+| Panel | bgPage (sayfa zemini) | bgHero (koyu hero) | bgDeep (bantlı bölüm) |
+|---|---|---|---|
+| lab | `#F5F1EB` | `#3A2E10` | `#E8DDB5` |
+| klinik / doctor | `#F9FAFB` | `#2F313F` | `#D3F8E0` |
+| exec/admin | `#F7F9FC` | `#243041` | `#E7EEF8` |
+| teknisyen/station | `#F5F9FD` | `#1E3A6F` | `#D2E1F0` |
+
+surface (kart) = `#FFFFFF` her panelde.
+
+## 3. Tipografi
+
+- **Display/başlık fontu:** `Inter Tight` (web) / `InterTight_300Light` (native),
+  **300 light**, negatif tracking. Büyük başlıklarda letter-spacing ≈ `-0.025 × fontSize`
+  (örn. 42px başlık → `-1.05`). Hero/display'de italik *Instrument Serif* görünümü
+  showcase'de kullanılır; production'da Inter Tight 300 display standardı.
+- **UI/gövde fontu:** `Inter` / `Inter Tight`, 400–600.
+- **Mono:** `JetBrains Mono` (tracking no, ID, kod).
+- **Boyut skalası (DS.size):** display 72 · h1 56 · h2 40 · h3 28 · h4 20 ·
+  body 15 · small 13 · micro 11.
+- **Pratikte sık kullanılan:** sayfa başlığı 22–26 (SERIF, ls −0.4/−0.5) · kart
+  başlığı 14–15/600 · section label 10–11/700 UPPERCASE ls 1.2 · gövde 13 ·
+  meta/caption 11 (ink-400/500) · büyük metrik 40–52 (SERIF, ls −1…−1.5).
+
+## 4. Köşe Yarıçapı (radius)
+
+`sm 8` · `md 14` (kart — `rounded-card`/`rounded-lg`) · `lg 20` · `xl 28`
+(büyük kart/section) · `pill 9999` (chip, buton, sekme, arama). Form input 14.
+Pratik: liste kartları 16, büyük panel kartları 22–28, rozet/pill 999.
+
+## 5. Gölgeler (shadows.ts)
+
+`sm` `0 1px 4px rgba(0,0,0,0.06)` · `md` `0 2px 12px /0.08` · `lg` `0 4px 24px /0.10`
+· **card** `0 8px 24px rgba(0,0,0,0.15)` (ağır, kart standardı) · **cardLite**
+`0 4px 12px /0.08`. Flat `shadow-md` Tailwind kullanma — bu token'ları kullan.
+CardSpec: bg `#FFFFFF`, border `rgba(255,255,255,0.95)`, radius 14.
+
+## 6. Boşluk (4px grid — DS.space / spacing.ts)
+
+`4 · 8 · 12 · 16 · 20 · 24 · 32 · 40 · 48 · 64 · 80`. Sayfa padding 20 (mobil 16),
+kart padding 16–24, gap 8–16. **Kenar boşluğu kuralı: sayfa kenarı her zaman 16px.**
+
+## 7. Bileşen Kalıpları (`/dev/patterns` showcase'i)
+
+Canonical `X`-suffix bileşenleri kullan; aşağıdaki kalıplar showcase'de tanımlı:
+
+- **Kart (CardX):** `variant` = `default | elevated | flat | hero | outline`.
+  radius 14, border `rgba(0,0,0,0.08)`, elevated/hero → shadow-md, diğer shadow-sm,
+  padding 24. Alt bileşenler: `CardX.Header/Title/Description/Content/Footer`.
+- **Glass kart:** `backdropFilter: blur(3px) saturate(120%)`, bg `rgba(255,255,255,0.08)`,
+  border `rgba(255,255,255,0.55)`, çift gölge (drop + inset highlight). Harita/overlay
+  panelleri için.
+- **KPI (KPICardX):** value + opsiyonel trend (↑ emerald-600 / ↓ rose-600), icon,
+  radius 14, shadow-sm, value `text-2xl bold`. Animasyonlu sayaç için `NumberTickerX`.
+- **Hero (HeroX / F2 full-bleed):** panel `primary→primaryDeep` gradient veya koyu
+  `bgHero`; başlık `text-3xl/4xl` 300 display; opsiyonel kicker (UPPERCASE micro),
+  breadcrumb, actions satırı, blur orb glow'lar.
+- **Buton (ButtonX):** `variant` = `default(primary) | secondary | destructive |
+  outline | ghost | link`; `size` = `sm(h-9) | md(h-10) | lg(h-11) | icon`. Pill
+  CTA'larda radius 999. Accent = panel primary; web'de cursor-pointer + focus ring.
+- **Rozet/Chip (BadgeX):** `default | secondary | destructive | outline | success |
+  warning | info`; rounded-full, `text-xs font-semibold`, px-2.5 py-0.5. Opsiyonel
+  status dot. Soft ton = `hexA(accent, 0.10–0.14)`.
+- **Sekme (TabButton):** animasyonlu pill; aktif → bg panel accent + beyaz metin,
+  pasif → transparan + ink-500. Alternatifler: underline, segmented, vertical.
+- **İlerleme (ProgressX):** `LinearProgressX` (pill rail + gradient fill + knob glow),
+  `PercentRingX` (SVG donut, soft track + accent→accentDeep arc + beyaz knob, 220px
+  hero ring), `StepsTimelineX` (✓ tamam / pulse-ring aktif / boş daire bekleyen).
+- **Tablo (DesktopTable):** UPPERCASE 10–11px başlık (ink-400), 13px hücre, zebra yok
+  (yalnız hover satır vurgusu), ID'ler monospace, satırlar borderBottom hairline.
+- **Form:** input radius 14, label üstte (13–14/600), hint altta (12 ink-500), hata =
+  kırmızı border + mesaj. Arama: pill, sol lupa ikonu, sağ temizle (X).
+- **Onay dialog:** 3 ton — neutral / destructive (kırmızı) / success (yeşil).
+- **Empty state (EmptyStateX):** 56–80px daire ikon (cardLite gölge), başlık bold,
+  opsiyonel CTA (panel accent / danger). `variant` = `default | error | success`.
+- **Section başlığı (SectionLabelX):** 11px bold UPPERCASE tracking-widest (ink-400) +
+  opsiyonel "Tümünü Gör →" action (panel accent).
+
+## 8. İkonlar
+
+Yalnız **Lucide React Native**, flat 2D line/stroke, `strokeWidth` 1.6–2.2,
+renk panel accent'inden veya ink skaladan. Emoji/solid/3D/gradient ikon YASAK
+(detay: §İkon Kuralı).
+
+## 9. Hareket / Animasyon
+
+`transform` + `opacity` tabanlı (layout animasyonu değil): hover scale ~1.015–1.02,
+nazik float/glow loop (2.4–3s ease-in-out), knob breathing, sayaç count-up
+(ease-out cubic ~700–800ms). Popup arka planlarında ağır blur'dan kaçın (perf).
 
 ---
 

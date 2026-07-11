@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { C } from '../theme/colors';
 import { S } from '../theme/spacing';
+import { MODAL_BACKDROP_COLOR, MODAL_OVERLAY_WEB } from './ModalBackdrop';
 
 interface ModalProps {
   visible: boolean;
@@ -44,10 +45,11 @@ export function Modal({ visible, onClose, title, children, width = 480 }: ModalP
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: MODAL_BACKDROP_COLOR,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
+    ...MODAL_OVERLAY_WEB,
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,

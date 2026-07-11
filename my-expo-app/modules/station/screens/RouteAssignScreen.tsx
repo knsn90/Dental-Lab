@@ -192,7 +192,7 @@ export function RouteAssignScreen() {
         .select(`
           id, order_number, work_type, tooth_numbers,
           shade, delivery_date, is_rush, status,
-          doctor:doctor_id ( full_name, clinic_name )
+          doctor:doctors ( full_name, clinic:clinics(name) )
         `)
         .eq('id', id)
         .single(),
@@ -213,7 +213,7 @@ export function RouteAssignScreen() {
         is_rush:       o.is_rush ?? false,
         status:        o.status,
         doctor_name:   o.doctor?.full_name ?? null,
-        clinic_name:   o.doctor?.clinic_name ?? null,
+        clinic_name:   o.doctor?.clinic?.name ?? null,
       });
     }
 

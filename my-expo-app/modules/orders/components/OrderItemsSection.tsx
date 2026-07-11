@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
-  ScrollView, ActivityIndicator,
-} from 'react-native';
+  ScrollView, } from 'react-native';
 import { fetchOrderItems, addOrderItem, deleteOrderItem } from '../api';
 import { fetchLabServices } from '../../services/api';
 import { OrderItem } from '../types';
 import { LabService } from '../../services/types';
 import { C } from '../../../core/theme/colors';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
 
 export function OrderItemsSection({ workOrderId }: { workOrderId: string }) {
   const [items, setItems] = useState<OrderItem[]>([]);

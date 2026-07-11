@@ -1,2 +1,3 @@
+import { lazyRoute } from '../../core/_lazyRoute';
 // app/(lab)/production.tsx
-export { ProductionKanbanScreen as default } from '../../modules/station/screens/ProductionKanbanScreen';
+export default lazyRoute(() => import('../../modules/station/screens/ProductionKanbanScreen'), 'ProductionKanbanScreen');

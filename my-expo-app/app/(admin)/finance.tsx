@@ -1,1 +1,2 @@
-export { FinanceHubScreen as default } from '../../modules/finance/screens/FinanceHubScreen';
+import { lazyRoute } from '../../core/_lazyRoute';
+export default lazyRoute(() => import('../../modules/finance/screens/FinanceHubScreen'), 'FinanceHubScreen');

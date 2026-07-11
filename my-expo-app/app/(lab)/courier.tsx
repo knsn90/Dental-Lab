@@ -1,3 +1,4 @@
+import { lazyRoute } from '../../core/_lazyRoute';
 // app/(lab)/courier.tsx
 // Kurye ekranı — lab paneli altında kurye rolündeki kullanıcılara açık
-export { CourierDeliveryScreen as default } from '../../modules/delivery/screens/CourierDeliveryScreen';
+export default lazyRoute(() => import('../../modules/delivery/screens/CourierDeliveryScreen'), 'CourierDeliveryScreen');

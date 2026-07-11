@@ -1,6 +1,6 @@
 import { supabase } from '../../core/api/supabase';
 
-export type UserType = 'lab' | 'doctor' | 'admin';
+export type UserType = 'lab' | 'doctor' | 'admin' | 'clinic_admin';
 export type LabRole = 'technician' | 'manager';
 
 export interface SignUpDoctorParams {
@@ -80,12 +80,15 @@ export interface SignUpClinicParams {
 
 export async function signUpClinic(params: SignUpClinicParams) {
   // 1 — Create auth user (clinic admin)
+  //   Migration 033 sonrası 'clinic_admin' geçerli bir user_type.
+  //   Eskiden 'doctor' + role='clinic_admin' yazılıyordu; bu kullanıcı listesinde
+  //   Klinik filtresinde görünmesini engelliyordu.
   const authResult = await supabase.auth.signUp({
     email: params.email,
     password: params.password,
     options: {
       data: {
-        user_type: 'doctor' as UserType,
+        user_type: 'clinic_admin' as UserType,
         full_name: params.full_name,
         clinic_name: params.clinic_name,
         phone: params.phone,

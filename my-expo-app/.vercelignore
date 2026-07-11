@@ -5,3 +5,12 @@ android/
 Podfile
 Podfile.lock
 eas.json
+
+# Build/cache artefaktları — arşive girerse Vercel gerçek build'i atlayıp boş
+# çıktı sunabiliyor (11sn "no files were prepared" → 404). Asla yükleme:
+.vercel
+dist
+.expo
+web-build
+.turbo
+node_modules/.cache

@@ -208,7 +208,7 @@ export function CourierDeliveryScreen() {
             <InfoRow label="Sipariş"   value={`#${wo?.order_number ?? '—'}`} />
             <InfoRow label="İş Türü"   value={wo?.work_type ?? '—'} />
             {wo?.doctor?.full_name  && <InfoRow label="Hekim"  value={wo.doctor.full_name} />}
-            {wo?.doctor?.clinic_name && <InfoRow label="Klinik" value={wo.doctor.clinic_name} />}
+            {wo?.doctor?.clinic?.name && <InfoRow label="Klinik" value={wo.doctor.clinic.name} />}
             <InfoRow
               label="Teslim Tarihi"
               value={wo?.delivery_date
@@ -304,7 +304,7 @@ const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F0FDF4' },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 18, paddingVertical: 14,
+    paddingHorizontal: 18, paddingTop: 68, paddingBottom: 14,
     backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#E2E8F0',
   },
   title:      { fontSize: 20, fontWeight: '800', color: '#0F172A' },

@@ -7,28 +7,39 @@
  *   3. Bottom row — WeeklyStrip + AnimatedCTACard
  *   4. Extra sections — Orders table, Finance, Status dist, Work type
  *
- * Theme: DS.exec (mercan #EA7A4C)
+ * Theme: DS.exec (kobalt #4771AB)
  * Patterns NativeWind — NO StyleSheet.create().
  */
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, ScrollView, Pressable,
-  useWindowDimensions, ActivityIndicator, Animated,
+  useWindowDimensions, Animated,
   Platform, RefreshControl, Easing,
 } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
   Package, Plus, Clock, CheckCircle, Activity, Users,
   CreditCard, Calendar, BarChart3, Layers, TrendingUp,
-  AlertTriangle, ArrowUpRight, ArrowRight, Check, Trophy,
+  AlertTriangle, ArrowUpRight, ArrowRight, Check, Trophy, Inbox, Receipt,
 } from 'lucide-react-native';
+import { useTranslation } from 'react-i18next';
+import { localeTag } from '../../core/i18n';
 import { supabase } from '../../core/api/supabase';
 import { DS } from '../../core/theme/dsTokens';
 import { useIsDesktop } from '../../core/layout/PatternsShell';
 import { usePageTitleStore } from '../../core/store/pageTitleStore';
 import { useAuthStore } from '../../core/store/authStore';
 import { HomeB1, type PriorityOrder, type KpiItem, defaultInsight } from '../../core/ui/HomeB1';
+import { AdminMobileDashboard, type DelayedCase } from '../../modules/admin/components/AdminMobileDashboard';
+import { NumberTickerX } from '../../core/ui/NumberTickerX';
+import { groupByCurrency, type CurrencyTotal } from '../../core/money/aggregations';
+import { formatMoney, useBaseCurrency, type Currency } from '../../core/money/currency';
+import { useDashboardCache } from '../../core/store/dashboardCacheStore';
+import { useNewOrderModalStore } from '../../core/store/newOrderModalStore';
+import { ActivityIndicator } from '../../core/ui/teethCompat';
+import { FaceScanQuickAction } from '../../modules/orders/components/FaceScanQuickAction';
 
 // ── Display font — Patterns: Inter Tight Light (300), tight tracking ──
 const SERIF = {
@@ -49,30 +60,28 @@ const CLR = {
   teal:   '#0D9488',
 };
 
-const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
-  alindi:          { label: 'Alındı',          color: DS.ink[500],  bg: 'rgba(0,0,0,0.05)' },
-  uretimde:        { label: 'Üretimde',        color: '#9C5E0E',   bg: 'rgba(232,155,42,0.15)' },
-  kalite_kontrol:  { label: 'Kalite Kontrol',  color: '#1F5689',   bg: 'rgba(74,143,201,0.12)' },
-  teslimata_hazir: { label: 'Teslimata Hazır', color: '#1F6B47',   bg: 'rgba(45,154,107,0.12)' },
-  teslim_edildi:   { label: 'Teslim Edildi',   color: DS.ink[400],  bg: 'rgba(0,0,0,0.04)' },
+const STATUS_CFG: Record<string, { labelKey: string; color: string; bg: string }> = {
+  alindi:          { labelKey: 'admin.status.received',          color: DS.ink[500],  bg: 'rgba(0,0,0,0.05)' },
+  asamada:         { labelKey: 'admin.status.production',        color: '#9C5E0E',   bg: 'rgba(232,155,42,0.15)' },
+  uretimde:        { labelKey: 'admin.status.production',        color: '#9C5E0E',   bg: 'rgba(232,155,42,0.15)' },
+  kalite_kontrol:  { labelKey: 'admin.status.qualityControl',  color: '#1F5689',   bg: 'rgba(74,143,201,0.12)' },
+  teslimata_hazir: { labelKey: 'admin.status.readyForDelivery', color: '#1F6B47',   bg: 'rgba(45,154,107,0.12)' },
+  teslim_edildi:   { labelKey: 'admin.status.delivered',   color: DS.ink[400],  bg: 'rgba(0,0,0,0.04)' },
 };
 const STATUS_KEYS = ['alindi', 'uretimde', 'kalite_kontrol', 'teslimata_hazir', 'teslim_edildi'];
 
-const MONTHS_TR = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
-const DAYS_SHORT = ['Pz','Pa','Sa','Ça','Pe','Cu','Ct'];
-
 const PIPELINE_STAGES = [
-  { key: 'alindi',          label: 'Alındı'   },
-  { key: 'uretimde',        label: 'Üretimde' },
-  { key: 'kalite_kontrol',  label: 'KK'       },
-  { key: 'teslimata_hazir', label: 'Hazır'    },
+  { key: 'alindi',          labelKey: 'admin.status.received'   },
+  { key: 'uretimde',        labelKey: 'admin.status.production' },
+  { key: 'kalite_kontrol',  labelKey: 'admin.status.qcShort'       },
+  { key: 'teslimata_hazir', labelKey: 'admin.status.ready'    },
 ] as const;
 
 // ── Helpers ──
-function getTodayLabel() {
+function getTodayLabel(t: (k: string) => string) {
   const now = new Date();
-  const days   = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
-  const months = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+  const days   = t('admin.days.long').split(', ');
+  const months = t('admin.months.long').split(', ');
   return `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]}`;
 }
 function todayStr() { return new Date().toISOString().split('T')[0]; }
@@ -101,19 +110,20 @@ function hexA(hex: string, alpha: number) {
 }
 
 /** Get the 7-day window for "Bu hafta" strip (Mon–Sun) */
-function getWeekDays(): { label: string; date: string; isToday: boolean }[] {
+function getWeekDays(t: (k: string) => string): { label: string; date: string; isToday: boolean }[] {
   const now = new Date();
   const dayOfWeek = now.getDay();
   const monday = new Date(now);
   monday.setDate(now.getDate() - ((dayOfWeek + 6) % 7));
   const result: { label: string; date: string; isToday: boolean }[] = [];
   const todayISO = todayStr();
+  const daysShort = t('admin.days.short').split(', ');
   for (let i = 0; i < 7; i++) {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
     const iso = d.toISOString().split('T')[0];
     result.push({
-      label: `${DAYS_SHORT[d.getDay()]} ${d.getDate()}`,
+      label: `${daysShort[d.getDay()]} ${d.getDate()}`,
       date: iso,
       isToday: iso === todayISO,
     });
@@ -209,27 +219,32 @@ function CardHeader({ title, right, display }: { title: string; right?: React.Re
 
 /** Status badge with dot */
 function StatusBadge({ status }: { status: string }) {
-  const c = STATUS_CFG[status] ?? { label: status, color: DS.ink[500], bg: 'rgba(0,0,0,0.05)' };
+  const { t } = useTranslation();
+  const c = STATUS_CFG[status] ?? { labelKey: '', color: DS.ink[500], bg: 'rgba(0,0,0,0.05)' };
+  const label = c.labelKey ? t(c.labelKey) : status;
   return (
     <View
       className="flex-row items-center self-start rounded-full"
       style={{ paddingHorizontal: 8, paddingVertical: 4, backgroundColor: c.bg, gap: 4 }}
     >
       <View className="rounded-full" style={{ width: 6, height: 6, backgroundColor: c.color }} />
-      <Text style={{ fontSize: 11, fontWeight: '600', color: c.color }}>{c.label}</Text>
+      <Text style={{ fontSize: 11, fontWeight: '600', color: c.color }}>{label}</Text>
     </View>
   );
 }
 
 /** Stat Pill (hero) */
-function StatPill({ label, value, bg, color }: { label: string; value: string; bg: string; color: string }) {
+function StatPill({ label, value, bg, color }: { label: string; value: string | number; bg: string; color: string }) {
+  const isNum = typeof value === 'number';
   return (
     <View className="flex-row items-center" style={{ gap: 8 }}>
       <Text style={{ fontSize: 11, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.06 * 11 }}>
         {label}
       </Text>
       <View className="rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 3, backgroundColor: bg }}>
-        <Text style={{ fontSize: 11, fontWeight: '500', color }}>{value}</Text>
+        {isNum
+          ? <NumberTickerX value={value as number} duration={700} style={{ fontSize: 11, fontWeight: '500', color }} />
+          : <Text style={{ fontSize: 11, fontWeight: '500', color }}>{value}</Text>}
       </View>
     </View>
   );
@@ -237,11 +252,13 @@ function StatPill({ label, value, bg, color }: { label: string; value: string; b
 
 /** Big Stat — Patterns hero right side */
 function BigStat({ value, label }: { value: string | number; label: string }) {
+  const isNum = typeof value === 'number';
+  const numStyle = { ...SERIF, fontSize: DS.size.h2, letterSpacing: -0.025 * DS.size.h2, lineHeight: DS.size.h2, color: DS.ink[900] };
   return (
     <View style={{ alignItems: 'flex-end' }}>
-      <Text style={{ ...SERIF, fontSize: DS.size.h2, letterSpacing: -0.025 * DS.size.h2, lineHeight: DS.size.h2, color: DS.ink[900] }}>
-        {value}
-      </Text>
+      {isNum
+        ? <NumberTickerX value={value as number} duration={900} style={numStyle} />
+        : <Text style={numStyle}>{value}</Text>}
       <Text style={{ fontSize: DS.size.micro, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.06 * DS.size.micro, marginTop: 4 }}>
         {label}
       </Text>
@@ -350,6 +367,7 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, router 
   latestOrder: any;
   router: any;
 }) {
+  const { t } = useTranslation();
   const dotAnim = useRef(new Animated.Value(0)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
   const breatheAnim = useRef(new Animated.Value(0)).current;
@@ -384,7 +402,7 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, router 
   const breatheScale = breatheAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] });
 
   return (
-    <Card style={{ flex: isDesktop ? 1.1 : undefined, marginBottom: isDesktop ? 0 : 14 }}>
+    <Card style={{ flex: isDesktop ? 1 : undefined, marginBottom: isDesktop ? 0 : 14 }}>
       {/* Dark section */}
       <View style={{
         flex: 1,
@@ -416,7 +434,7 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, router 
             opacity: dotOpacity,
           }} />
           <Text style={{ fontSize: 10, fontWeight: '500', color: '#FFF', letterSpacing: 0.05 * 10 }}>
-            CANLI
+            {t('admin.status.live')}
           </Text>
         </View>
 
@@ -442,15 +460,17 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, router 
                     transform: active ? [{ scale: breatheScale }] : [],
                   }}
                 >
-                  <Text style={{
-                    ...SERIF, fontSize: 16, letterSpacing: -0.5,
-                    color: active ? '#FFF' : 'rgba(255,255,255,0.3)',
-                  }}>
-                    {count}
-                  </Text>
+                  <NumberTickerX
+                    value={count}
+                    duration={800}
+                    style={{
+                      ...SERIF, fontSize: 16, letterSpacing: -0.5,
+                      color: active ? '#FFF' : 'rgba(255,255,255,0.3)',
+                    } as any}
+                  />
                 </Animated.View>
                 <Text style={{ fontSize: 8, fontWeight: '600', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>
-                  {stage.label}
+                  {t(stage.labelKey)}
                 </Text>
               </Pressable>
             );
@@ -474,38 +494,70 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, router 
             <StatusBadge status={latestOrder.status} />
           </Pressable>
         ) : (
-          <Text style={{ fontSize: 13, color: DS.ink[400] }}>Yükleniyor...</Text>
+          <Text style={{ fontSize: 13, color: DS.ink[400] }}>{t('common.loading')}</Text>
         )}
       </View>
     </Card>
   );
 }
 
-// ── Production Bar Chart (simple) ──
+// ── Production Bar Chart — hatched-rail pill columns (admin coral) ──
 function ProductionBarChart({ data }: { data: { label: string; count: number }[] }) {
   const max = Math.max(...data.map(d => d.count), 1);
   const highestIdx = data.reduce((best, d, i) => d.count > data[best].count ? i : best, 0);
 
+  const FILL_LIGHT = `${P}55`;   // panel soft (semi-transparent)
+  const FILL_DARK  = P;
+  const RAIL_BG    = `${P}08`;
+  const STRIPE_BG  = `repeating-linear-gradient(135deg, ${P}14 0 6px, transparent 6px 12px)`;
+
   return (
-    <View className="flex-row items-end" style={{ flex: 1, gap: 6 }}>
+    <View className="flex-row items-end" style={{ flex: 1, gap: 10, minHeight: 120, paddingHorizontal: 2 }}>
       {data.map((d, i) => {
-        const h = Math.max((d.count / max) * 100, 6);
-        const isHighlight = i === highestIdx;
+        const pct = d.count > 0 ? Math.min(Math.max((d.count / max) * 100, 8), 100) : 0;
+        const isHighlight = i === highestIdx && d.count > 0;
         return (
-          <View key={i} style={{ flex: 1, alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
-            {isHighlight && d.count > 0 && (
-              <View style={{ paddingHorizontal: 8, paddingVertical: 2, backgroundColor: INK, borderRadius: 6 }}>
-                <Text style={{ fontSize: 10, color: '#FFF', fontWeight: '500' }}>{d.count}</Text>
+          <View key={i} style={{ flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end', gap: 6 }}>
+            <View style={{ width: '100%', maxWidth: 56, flex: 1, justifyContent: 'flex-end', alignItems: 'center' }}>
+              {isHighlight && (
+                <View style={{ marginBottom: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[100] }}>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: FILL_DARK }}>{d.count}</Text>
+                </View>
+              )}
+              <View
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  borderRadius: 999,
+                  backgroundColor: RAIL_BG,
+                  // @ts-ignore web hatched bg
+                  backgroundImage: STRIPE_BG,
+                  overflow: 'hidden',
+                  position: 'relative' as any,
+                }}
+              >
+                {d.count > 0 && (
+                  <View
+                    style={{
+                      position: 'absolute',
+                      left: 0, right: 0, bottom: 0,
+                      height: `${pct}%`,
+                      borderRadius: 999,
+                      backgroundColor: isHighlight ? FILL_DARK : FILL_LIGHT,
+                      // @ts-ignore web
+                      transition: 'height 800ms cubic-bezier(0.22, 1, 0.36, 1)',
+                    } as any}
+                  />
+                )}
               </View>
-            )}
-            <View style={{
-              width: '100%',
-              height: `${h}%` as any,
-              backgroundColor: isHighlight ? P : INK,
-              borderRadius: 4,
-              minHeight: 4,
-            }} />
-            <Text style={{ fontSize: 9, color: DS.ink[400], textTransform: 'uppercase' }}>
+            </View>
+            <Text style={{
+              fontSize: 11,
+              fontWeight: isHighlight ? '700' : '500',
+              color: isHighlight ? INK : DS.ink[400],
+              textTransform: 'uppercase',
+              letterSpacing: 0.05 * 11,
+            }}>
               {d.label}
             </Text>
           </View>
@@ -517,69 +569,119 @@ function ProductionBarChart({ data }: { data: { label: string; count: number }[]
 
 // ── Weekly Calendar Strip ──
 function WeeklyStrip({
-  weekDays, weekCounts, onPress,
+  weekDays, weekCounts, weekDone, onPress,
 }: {
   weekDays: { label: string; date: string; isToday: boolean }[];
   weekCounts: Record<string, number>;
+  weekDone: Record<string, number>;
   onPress: () => void;
 }) {
-  const totalProduction = Object.values(weekCounts).reduce((a, b) => a + b, 0);
+  const { t } = useTranslation();
+  const totalReceived  = Object.values(weekCounts).reduce((a, b) => a + b, 0);
+  const totalCompleted = Object.values(weekDone).reduce((a, b) => a + b, 0);
+  const SCALE_MAX = 20; // fixed 1..20 jobs scale
 
-  const first = weekDays[0];
-  const last  = weekDays[6];
-  const fd = new Date(first.date);
-  const ld = new Date(last.date);
-  const rangeLabel = `${fd.getDate()}–${ld.getDate()} ${MONTHS_TR[ld.getMonth()]} ${ld.getFullYear()}`;
+  // Panel palette — soft panel = received, deep panel = completed
+  const SAGE_LIGHT = `${P}55`;   // panel soft (semi-transparent)
+  const SAGE_DARK  = P;
+  const RAIL_BG    = `${P}08`;
+  const STRIPE_BG  = `repeating-linear-gradient(135deg, ${P}14 0 6px, transparent 6px 12px)`;
 
   return (
-    <Card style={{ padding: 18, flex: 2 }}>
+    <Card style={{ padding: 18, flex: 1.5 }}>
       <View className="flex-row items-center" style={{ gap: 12, marginBottom: 14 }}>
-        <Text style={{ fontSize: 15, fontWeight: '500', color: INK }}>Bu hafta</Text>
-        <Text style={{ fontSize: 12, color: DS.ink[400] }}>{rangeLabel}</Text>
+        <Text style={{ fontSize: 15, fontWeight: '500', color: INK }}>{t('admin.dashboard.thisWeek')}</Text>
         <View style={{ flex: 1 }} />
-        <View className="rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: DS.exec.bgSoft }}>
-          <Text style={{ fontSize: 11, fontWeight: '500', color: P }}>Toplam {totalProduction}</Text>
+        <View className="flex-row items-center" style={{ gap: 10 }}>
+          <View className="flex-row items-center" style={{ gap: 5 }}>
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: SAGE_LIGHT }} />
+            <Text style={{ fontSize: 11, color: DS.ink[500] }}>{t('admin.dashboard.receivedMembers')} </Text>
+            <NumberTickerX value={totalReceived} duration={700} style={{ fontSize: 11, color: DS.ink[500] } as any} />
+          </View>
+          <View className="flex-row items-center" style={{ gap: 5 }}>
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: SAGE_DARK }} />
+            <Text style={{ fontSize: 11, color: DS.ink[500] }}>{t('admin.dashboard.deliveredMembers')} </Text>
+            <NumberTickerX value={totalCompleted} duration={700} style={{ fontSize: 11, color: DS.ink[500] } as any} />
+          </View>
         </View>
       </View>
 
-      <View className="flex-row" style={{ gap: 8, flex: 1 }}>
+      {/* Bars */}
+      <View className="flex-row items-end" style={{ gap: 10, flex: 1, minHeight: 140, paddingHorizontal: 2 }}>
         {weekDays.map((day, i) => {
-          const count = weekCounts[day.date] ?? 0;
+          const received  = weekCounts[day.date] ?? 0;
+          const completed = weekDone[day.date] ?? 0;
+          const receivedPct  = received > 0  ? Math.min(Math.max((received / SCALE_MAX) * 100, 8), 100) : 0;
+          const completedRel = received > 0 ? Math.min((completed / received) * 100, 100) : 0;
+          const empty = received === 0;
+          const showLabel = day.isToday && completed > 0;
+          const ratio = received > 0 ? Math.round((completed / received) * 100) : 0;
           return (
             <Pressable
               key={i}
               onPress={onPress}
-              style={{
-                flex: 1,
-                backgroundColor: day.isToday ? INK : DS.ink[50],
-                borderRadius: 14,
-                padding: 12,
-                gap: 8,
-                position: 'relative',
-              }}
+              style={{ flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end', gap: 6 }}
             >
-              <Text style={{
-                fontSize: 10, opacity: 0.6, letterSpacing: 0.05 * 10,
-                textTransform: 'uppercase',
-                color: day.isToday ? '#FFF' : INK,
-              }}>
-                {day.label}
-              </Text>
-              <Text style={{
-                ...SERIF, fontSize: 24, letterSpacing: -0.02 * 24, lineHeight: 24,
-                color: day.isToday ? '#FFF' : INK,
-              }}>
-                {count}
-              </Text>
-              <Text style={{ fontSize: 9, opacity: 0.5, color: day.isToday ? '#FFF' : INK }}>
-                sipariş
-              </Text>
-              {day.isToday && (
+              {/* Pill column — hatched rail always visible */}
+              <View style={{ width: '100%', maxWidth: 56, flex: 1, justifyContent: 'flex-end', alignItems: 'center' }}>
+                {/* Completed label bubble */}
+                {showLabel && (
+                  <View style={{ marginBottom: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[100] }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: SAGE_DARK }}>{ratio}%</Text>
+                  </View>
+                )}
                 <View
-                  className="absolute rounded-full"
-                  style={{ top: 10, right: 10, width: 6, height: 6, backgroundColor: P }}
-                />
-              )}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    borderRadius: 999,
+                    backgroundColor: RAIL_BG,
+                    // @ts-ignore web hatched bg
+                    backgroundImage: STRIPE_BG,
+                    overflow: 'hidden',
+                    position: 'relative' as any,
+                  }}
+                >
+                  {!empty && (
+                    <View
+                      style={{
+                        position: 'absolute',
+                        left: 0, right: 0, bottom: 0,
+                        height: `${receivedPct}%`,
+                        borderRadius: 999,
+                        backgroundColor: SAGE_LIGHT,
+                        overflow: 'hidden',
+                        // @ts-ignore web
+                        transition: 'height 800ms cubic-bezier(0.22, 1, 0.36, 1)',
+                      } as any}
+                    >
+                      {completedRel > 0 && (
+                        <View
+                          style={{
+                            position: 'absolute',
+                            left: 0, right: 0, bottom: 0,
+                            height: `${completedRel}%`,
+                            borderRadius: 999,
+                            backgroundColor: SAGE_DARK,
+                            // @ts-ignore web
+                            transition: 'height 800ms cubic-bezier(0.22, 1, 0.36, 1)',
+                          } as any}
+                        />
+                      )}
+                    </View>
+                  )}
+                </View>
+              </View>
+              {/* Day label */}
+              <Text style={{
+                fontSize: 11,
+                fontWeight: day.isToday ? '700' : '500',
+                color: day.isToday ? INK : DS.ink[400],
+                textTransform: 'uppercase',
+                letterSpacing: 0.05 * 11,
+              }}>
+                {day.label[0]}
+              </Text>
             </Pressable>
           );
         })}
@@ -590,6 +692,7 @@ function WeeklyStrip({
 
 // ── Animated CTA Card — floating circle + shimmer glow + arrow bounce ──
 function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDesktop: boolean }) {
+  const { t } = useTranslation();
   const floatAnim = useRef(new Animated.Value(0)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
   const arrowAnim = useRef(new Animated.Value(0)).current;
@@ -666,19 +769,19 @@ function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDeskto
             fontSize: 11, fontWeight: '500', letterSpacing: 0.1 * 11,
             textTransform: 'uppercase', color: '#FFF', marginBottom: 14,
           }}>
-            Hızlı işlem
+            {t('admin.dashboard.quickAction')}
           </Text>
           <Text style={{
             ...SERIF, fontSize: 32, letterSpacing: -0.02 * 32, lineHeight: 35,
             color: '#FFF', marginBottom: 16,
           }}>
-            Yeni sipariş{'\n'}oluştur
+            {t('admin.dashboard.newOrder')}
           </Text>
           <View
             className="flex-row items-center self-start rounded-full"
             style={{ paddingHorizontal: 18, paddingVertical: 10, backgroundColor: '#FFF', gap: 8 }}
           >
-            <Text style={{ fontSize: 13, fontWeight: '500', color: INK }}>Başla</Text>
+            <Text style={{ fontSize: 13, fontWeight: '500', color: INK }}>{t('admin.buttons.start')}</Text>
             <Animated.View style={{ transform: [{ translateX: arrowX }] }}>
               <ArrowRight size={14} color={INK} strokeWidth={2} />
             </Animated.View>
@@ -690,7 +793,69 @@ function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDeskto
 }
 
 // ── Animated Overdue Alert Card — danger gradient + pulse + glow ──
+// ── Planlama Bekleyen — newly received orders waiting to be planned ──
+function PlanningWaitingCard({ count, onPress }: { count: number; onPress: () => void }) {
+  const { t } = useTranslation();
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.loop(Animated.sequence([
+      Animated.timing(glowAnim, { toValue: 1, duration: 2400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      Animated.timing(glowAnim, { toValue: 0, duration: 2400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+    ])).start();
+  }, [glowAnim]);
+
+  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.06, 0.18] });
+  const glowScale   = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1.2] });
+
+  return (
+    <Pressable onPress={onPress} style={{ flex: 1 }}
+      onHoverIn={() => Animated.spring(scaleAnim, { toValue: 1.015, friction: 8, tension: 200, useNativeDriver: true }).start()}
+      onHoverOut={() => Animated.spring(scaleAnim, { toValue: 1, friction: 8, tension: 200, useNativeDriver: true }).start()}
+    >
+      <Animated.View style={{
+        borderRadius: DS.radius.xl, overflow: 'hidden',
+        // @ts-ignore web gradient — lighter coral (informational tone)
+        backgroundImage: 'linear-gradient(135deg, #C2410C 0%, #EA580C 50%, #F97316 100%)',
+        backgroundColor: '#C2410C',
+        transform: [{ scale: scaleAnim }],
+        position: 'relative',
+      }}>
+        <Animated.View style={{
+          position: 'absolute', top: -30, right: -30,
+          width: 160, height: 160, borderRadius: 80,
+          backgroundColor: '#FDBA74',
+          opacity: glowOpacity, transform: [{ scale: glowScale }],
+        }} pointerEvents="none" />
+
+        <View style={{ paddingHorizontal: 20, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+          <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' }}>
+            <Inbox size={18} color="#FFEDD5" strokeWidth={1.8} />
+          </View>
+
+          <View style={{ flex: 1 }}>
+            <View className="flex-row items-center" style={{ gap: 6 }}>
+              <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: '#FFEDD5' }} />
+              <Text style={{ fontSize: 9, fontWeight: '500', color: '#FFEDD5', letterSpacing: 0.5, textTransform: 'uppercase' }}>Yeni</Text>
+              <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.5, lineHeight: 24, color: '#FFF', marginLeft: 4 }}>
+                {count}
+              </Text>
+              <Text style={{ fontSize: 13, color: '#FFEDD5', marginLeft: 2 }}>{t('admin.status.awaitingPlanning')}</Text>
+            </View>
+          </View>
+
+          <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' }}>
+            <ArrowUpRight size={14} color="#FFEDD5" strokeWidth={1.8} />
+          </View>
+        </View>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
 function AnimatedOverdueCard({ count, onPress }: { count: number; onPress: () => void }) {
+  const { t } = useTranslation();
   const pulseAnim = useRef(new Animated.Value(0)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -712,15 +877,15 @@ function AnimatedOverdueCard({ count, onPress }: { count: number; onPress: () =>
   const glowScale = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1.2] });
 
   return (
-    <Pressable onPress={onPress}
+    <Pressable onPress={onPress} style={{ flex: 1 }}
       onHoverIn={() => Animated.spring(scaleAnim, { toValue: 1.015, friction: 8, tension: 200, useNativeDriver: true }).start()}
       onHoverOut={() => Animated.spring(scaleAnim, { toValue: 1, friction: 8, tension: 200, useNativeDriver: true }).start()}
     >
       <Animated.View style={{
-        borderRadius: DS.radius.xl, overflow: 'hidden', marginBottom: 14,
-        // @ts-ignore web gradient
-        backgroundImage: 'linear-gradient(135deg, #7F1D1D 0%, #991B1B 50%, #B91C1C 100%)',
-        backgroundColor: '#7F1D1D',
+        borderRadius: DS.radius.xl, overflow: 'hidden',
+        // @ts-ignore web gradient — deep burnt coral (urgent tone)
+        backgroundImage: 'linear-gradient(135deg, #5C1A0B 0%, #7C2D12 50%, #9A3412 100%)',
+        backgroundColor: '#5C1A0B',
         transform: [{ scale: scaleAnim }],
         position: 'relative',
       }}>
@@ -728,7 +893,7 @@ function AnimatedOverdueCard({ count, onPress }: { count: number; onPress: () =>
         <Animated.View style={{
           position: 'absolute', top: -30, right: -30,
           width: 160, height: 160, borderRadius: 80,
-          backgroundColor: '#EF4444',
+          backgroundColor: '#F97316',
           opacity: glowOpacity, transform: [{ scale: glowScale }],
         }} pointerEvents="none" />
 
@@ -736,23 +901,23 @@ function AnimatedOverdueCard({ count, onPress }: { count: number; onPress: () =>
           {/* Pulsing icon */}
           <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' }}>
             <Animated.View style={{ opacity: dotOpacity }}>
-              <AlertTriangle size={18} color="#FCA5A5" strokeWidth={1.8} />
+              <AlertTriangle size={18} color="#FED7AA" strokeWidth={1.8} />
             </Animated.View>
           </View>
 
           <View style={{ flex: 1 }}>
             <View className="flex-row items-center" style={{ gap: 6 }}>
-              <Animated.View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: '#FCA5A5', opacity: dotOpacity }} />
-              <Text style={{ fontSize: 9, fontWeight: '500', color: '#FCA5A5', letterSpacing: 0.5, textTransform: 'uppercase' }}>Acil</Text>
+              <Animated.View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: '#FED7AA', opacity: dotOpacity }} />
+              <Text style={{ fontSize: 9, fontWeight: '500', color: '#FED7AA', letterSpacing: 0.5, textTransform: 'uppercase' }}>Acil</Text>
               <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.5, lineHeight: 24, color: '#FFF', marginLeft: 4 }}>
                 {count}
               </Text>
-              <Text style={{ fontSize: 13, color: '#FCA5A5', marginLeft: 2 }}>geciken sipariş</Text>
+              <Text style={{ fontSize: 13, color: '#FED7AA', marginLeft: 2 }}>{t('admin.status.overdueOrder')}</Text>
             </View>
           </View>
 
           <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' }}>
-            <ArrowUpRight size={14} color="#FCA5A5" strokeWidth={1.8} />
+            <ArrowUpRight size={14} color="#FED7AA" strokeWidth={1.8} />
           </View>
         </View>
       </Animated.View>
@@ -766,7 +931,8 @@ function TasksCard({
 }: {
   tasks: { icon: React.FC<any>; label: string; time: string; done: boolean; onPress?: () => void }[];
 }) {
-  const doneCount = tasks.filter(t => t.done).length;
+  const { t } = useTranslation();
+  const doneCount = tasks.filter(task => task.done).length;
   return (
     <View style={{
       backgroundColor: DS.exec.surfaceAlt,
@@ -776,16 +942,16 @@ function TasksCard({
       flex: 1, gap: 0,
     }}>
       <View className="flex-row items-center justify-between" style={{ marginBottom: 14 }}>
-        <Text style={{ fontSize: 14, fontWeight: '500', color: '#FFF' }}>Bugünkü görevler</Text>
+        <Text style={{ fontSize: 14, fontWeight: '500', color: '#FFF' }}>{t('admin.dashboard.todaysTasks')}</Text>
         <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{doneCount}/{tasks.length}</Text>
       </View>
       <View style={{ gap: 10, flex: 1 }}>
-        {tasks.map((t, i) => {
-          const IconComp = t.icon;
+        {tasks.map((task, i) => {
+          const IconComp = task.icon;
           return (
             <Pressable
               key={i}
-              onPress={t.onPress}
+              onPress={task.onPress}
               className="flex-row items-center"
               style={{
                 gap: 10, paddingBottom: 10,
@@ -805,22 +971,22 @@ function TasksCard({
                   numberOfLines={1}
                   style={{
                     fontSize: 12, fontWeight: '500', color: '#FFF',
-                    textDecorationLine: t.done ? 'line-through' : 'none',
-                    opacity: t.done ? 0.4 : 1,
+                    textDecorationLine: task.done ? 'line-through' : 'none',
+                    opacity: task.done ? 0.4 : 1,
                   }}
                 >
-                  {t.label}
+                  {task.label}
                 </Text>
-                <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>{t.time}</Text>
+                <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>{task.time}</Text>
               </View>
               <View style={{
                 width: 18, height: 18, borderRadius: 9,
-                backgroundColor: t.done ? P : 'transparent',
-                borderWidth: t.done ? 0 : 1.5,
-                borderColor: t.done ? undefined : 'rgba(255,255,255,0.2)',
+                backgroundColor: task.done ? P : 'transparent',
+                borderWidth: task.done ? 0 : 1.5,
+                borderColor: task.done ? undefined : 'rgba(255,255,255,0.2)',
                 alignItems: 'center', justifyContent: 'center',
               }}>
-                {t.done && <Check size={10} color="#FFF" strokeWidth={2.5} />}
+                {task.done && <Check size={10} color="#FFF" strokeWidth={2.5} />}
               </View>
             </Pressable>
           );
@@ -832,24 +998,39 @@ function TasksCard({
 
 // ── Status Distribution Card ──
 function StatusDistCard({ byStatus }: { byStatus: { label: string; count: number; key: string }[] }) {
+  const { t } = useTranslation();
   const total = byStatus.reduce((s, x) => s + x.count, 0) || 1;
   return (
-    <Card style={{ padding: 22 }}>
-      <CardHeader title="Statü Dağılımı" display />
-      <View style={{ gap: 12 }}>
-        {byStatus.map(item => {
+    <Card style={{ padding: 0, overflow: 'hidden' }}>
+      {/* Header band */}
+      <View style={{ backgroundColor: DS.exec.surfaceAlt, paddingHorizontal: 20, paddingVertical: 16 }}>
+        <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(255,255,255,0.42)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
+          {t('admin.dashboard.statusDistribution')}
+        </Text>
+        <Text style={{ fontSize: 22, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.5 }}>
+          {total} <Text style={{ fontSize: 13, fontWeight: '500', color: 'rgba(255,255,255,0.5)', letterSpacing: 0 }}>{t('admin.dashboard.totalOrders')}</Text>
+        </Text>
+      </View>
+      {/* Rows */}
+      <View style={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 4 }}>
+        {byStatus.map((item, i) => {
           const pct = Math.round((item.count / total) * 100);
           const cfg = STATUS_CFG[item.key];
+          const color = cfg?.color ?? INK;
           return (
-            <View key={item.key}>
-              <View className="flex-row items-center" style={{ marginBottom: 5 }}>
-                <View className="rounded-full" style={{ width: 7, height: 7, backgroundColor: cfg?.color ?? INK, marginRight: 8 }} />
-                <Text style={{ flex: 1, fontSize: 11, color: DS.ink[500], fontWeight: '500' }}>{item.label}</Text>
-                <Text style={{ fontSize: 12, fontWeight: '700', color: INK }}>{item.count}</Text>
-                <Text style={{ fontSize: 10, color: DS.ink[400], marginLeft: 6, width: 28, textAlign: 'right' }}>{pct}%</Text>
+            <View key={item.key} style={{ paddingVertical: 11, borderBottomWidth: i < byStatus.length - 1 ? 1 : 0, borderBottomColor: DS.ink[100] }}>
+              <View className="flex-row items-center" style={{ gap: 10, marginBottom: 7 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />
+                <Text style={{ flex: 1, fontSize: 12, color: DS.ink[700], fontWeight: '500' }} numberOfLines={1}>
+                  {cfg?.labelKey ? t(cfg.labelKey) : item.label}
+                </Text>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: INK, letterSpacing: -0.3 }}>{item.count}</Text>
+                <View style={{ width: 34, backgroundColor: `${color}18`, borderRadius: 999, paddingVertical: 2, alignItems: 'center' }}>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color }}>{pct}%</Text>
+                </View>
               </View>
-              <View className="rounded overflow-hidden" style={{ height: 4, backgroundColor: DS.ink[100] }}>
-                <View className="rounded" style={{ height: 4, backgroundColor: cfg?.color ?? INK, width: `${pct}%` as any }} />
+              <View style={{ height: 4, backgroundColor: DS.ink[100], borderRadius: 999, overflow: 'hidden' }}>
+                <View style={{ height: 4, backgroundColor: color, borderRadius: 999, width: `${pct}%` as any }} />
               </View>
             </View>
           );
@@ -861,57 +1042,153 @@ function StatusDistCard({ byStatus }: { byStatus: { label: string; count: number
 
 // ── Work Type Card ──
 function WorkTypeCard({ data }: { data: { label: string; count: number }[] }) {
+  const { t } = useTranslation();
   if (!data.length) return null;
-  const max = Math.max(...data.map(d => d.count), 1);
   const palette = [P, CLR.blue, CLR.purple, CLR.teal, CLR.orange];
+  const total = data.reduce((s, d) => s + d.count, 0) || 1;
   return (
-    <Card style={{ padding: 22 }}>
-      <CardHeader title="İş Tipi Dağılımı" display />
-      <View style={{ gap: 10 }}>
-        {data.slice(0, 5).map((w, i) => (
-          <View key={i}>
-            <View className="flex-row items-center" style={{ marginBottom: 5 }}>
-              <View className="rounded-full" style={{ width: 7, height: 7, backgroundColor: palette[i], marginRight: 8 }} />
-              <Text style={{ flex: 1, fontSize: 11, color: INK, fontWeight: '500' }} numberOfLines={1}>{w.label}</Text>
-              <Text style={{ fontSize: 12, fontWeight: '700', color: DS.ink[500] }}>{w.count}</Text>
+    <Card style={{ padding: 0, overflow: 'hidden' }}>
+      {/* Header band */}
+      <View style={{ backgroundColor: DS.exec.surfaceAlt, paddingHorizontal: 20, paddingVertical: 16 }}>
+        <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(255,255,255,0.42)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
+          {t('admin.dashboard.workTypeDistribution')}
+        </Text>
+        <Text style={{ fontSize: 22, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.5 }}>
+          {total} <Text style={{ fontSize: 13, fontWeight: '500', color: 'rgba(255,255,255,0.5)', letterSpacing: 0 }}>{t('admin.dashboard.totalMembers')}</Text>
+        </Text>
+      </View>
+      {/* Rows */}
+      <View style={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 4 }}>
+        {data.slice(0, 5).map((w, i) => {
+          const color = palette[i];
+          const pct = Math.round((w.count / total) * 100);
+          return (
+            <View key={i} style={{ paddingVertical: 11, borderBottomWidth: i < Math.min(data.length, 5) - 1 ? 1 : 0, borderBottomColor: DS.ink[100] }}>
+              <View className="flex-row items-center" style={{ gap: 10, marginBottom: 7 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />
+                <Text style={{ flex: 1, fontSize: 12, color: DS.ink[700], fontWeight: '500' }} numberOfLines={1}>{w.label}</Text>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: INK, letterSpacing: -0.3 }}>{w.count}</Text>
+                <View style={{ width: 34, backgroundColor: `${color}18`, borderRadius: 999, paddingVertical: 2, alignItems: 'center' }}>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color }}>{pct}%</Text>
+                </View>
+              </View>
+              <View style={{ height: 4, backgroundColor: DS.ink[100], borderRadius: 999, overflow: 'hidden' }}>
+                <View style={{ height: 4, backgroundColor: color, borderRadius: 999, width: `${pct}%` as any }} />
+              </View>
             </View>
-            <View className="rounded overflow-hidden" style={{ height: 3, backgroundColor: DS.ink[100] }}>
-              <View className="rounded" style={{ height: 3, backgroundColor: palette[i], width: `${Math.round((w.count / max) * 100)}%` as any, opacity: 0.7 }} />
-            </View>
-          </View>
-        ))}
+          );
+        })}
       </View>
     </Card>
   );
 }
 
 // ── Finance Card ──
-function FinanceCard({ monthly, pending, paid }: { monthly: number; pending: number; paid: number }) {
+function FinanceCard({ monthly, pending, paid }: { monthly: CurrencyTotal[]; pending: CurrencyTotal[]; paid: number }) {
+  const { t } = useTranslation();
+  const baseCurrency = useBaseCurrency();
+
+  const ccyLine = (slicesRaw: CurrencyTotal[], color: string, size = 18) => {
+    const slices = Array.isArray(slicesRaw) ? slicesRaw : [];
+    return slices.length === 0
+      ? <Text style={{ fontSize: size, fontWeight: '800', color, letterSpacing: -0.5 }}>{formatMoney(0, baseCurrency, { fractionDigits: 0 })}</Text>
+      : <View style={{ gap: 0 }}>{slices.map(s => (
+          <Text key={s.currency} style={{ fontSize: size, fontWeight: '800', color, letterSpacing: -0.5 }} numberOfLines={1}>
+            {formatMoney(s.total, s.currency, { fractionDigits: 0 })}
+          </Text>
+        ))}</View>;
+  };
+
+  const totalMonthly = (Array.isArray(monthly) ? monthly : []).reduce((s, c) => s + (Number(c.total) || 0), 0);
+  const totalPending = (Array.isArray(pending) ? pending : []).reduce((s, c) => s + (Number(c.total) || 0), 0);
+  const grandTotal = totalMonthly + totalPending;
+  const collectRatio = grandTotal > 0 ? totalMonthly / grandTotal : 0;
+
+  const RING = 72; const SW = 7;
+  const Rad = (RING - SW) / 2;
+  const CIRC = 2 * Math.PI * Rad;
+  const greenLen = CIRC * collectRatio;
+  const orangeLen = CIRC * (1 - collectRatio);
+
   return (
-    <Card style={{ padding: 22 }}>
-      <CardHeader title="Finansal Özet" display />
-      <View style={{ gap: 14 }}>
-        <View className="flex-row items-center" style={{ gap: 12 }}>
-          <View className="rounded-full" style={{ width: 8, height: 8, backgroundColor: CLR.green }} />
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 11, color: DS.ink[500], fontWeight: '500', marginBottom: 2 }}>Bu Ay Tahsilat</Text>
-            <Text style={{ fontSize: 16, fontWeight: '800', color: CLR.green, letterSpacing: -0.4 }}>{fmtMoney(monthly)}</Text>
+    <Card style={{ padding: 0, overflow: 'hidden' }}>
+      {/* ── Hero band — kobalt dark ── */}
+      <View style={{ backgroundColor: DS.exec.surfaceAlt, paddingHorizontal: 20, paddingTop: 18, paddingBottom: 18, flexDirection: 'row', alignItems: 'center' }}>
+        <View style={{ flex: 1, marginRight: 12 }}>
+          <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(255,255,255,0.42)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>
+            {t('admin.dashboard.financialSummary')}
+          </Text>
+          <Text style={{ fontSize: 10, fontWeight: '600', color: `${CLR.green}BB`, marginBottom: 3 }}>
+            {t('admin.dashboard.monthlyCollection')}
+          </Text>
+          {ccyLine(monthly, '#FFFFFF', 26)}
+        </View>
+
+        {/* Donut ring — collected vs pending */}
+        <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+          <Svg width={RING} height={RING} viewBox={`0 0 ${RING} ${RING}`}>
+            {/* Track */}
+            <Circle cx={RING / 2} cy={RING / 2} r={Rad} stroke="rgba(255,255,255,0.12)" strokeWidth={SW} fill="none" />
+            {/* Orange arc (pending) */}
+            {grandTotal > 0 && orangeLen > 1 && (
+              <Circle
+                cx={RING / 2} cy={RING / 2} r={Rad}
+                stroke={CLR.orange} strokeWidth={SW} fill="none"
+                strokeDasharray={`${orangeLen} ${CIRC}`}
+                strokeDashoffset={greenLen}
+                transform={`rotate(-90 ${RING / 2} ${RING / 2})`}
+              />
+            )}
+            {/* Green arc (collected) */}
+            {grandTotal > 0 && greenLen > 1 && (
+              <Circle
+                cx={RING / 2} cy={RING / 2} r={Rad}
+                stroke={CLR.green} strokeWidth={SW} fill="none"
+                strokeDasharray={`${greenLen} ${CIRC}`}
+                strokeDashoffset={0}
+                transform={`rotate(-90 ${RING / 2} ${RING / 2})`}
+              />
+            )}
+          </Svg>
+          <View style={{ position: 'absolute', alignItems: 'center' }}>
+            <Text style={{ fontSize: 14, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.4 }}>
+              {Math.round(collectRatio * 100)}%
+            </Text>
+            <Text style={{ fontSize: 7, fontWeight: '600', color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+              tahsil
+            </Text>
           </View>
         </View>
-        <View style={{ height: 1, backgroundColor: DS.ink[100] }} />
-        <View className="flex-row items-center" style={{ gap: 12 }}>
-          <View className="rounded-full" style={{ width: 8, height: 8, backgroundColor: CLR.orange }} />
+      </View>
+
+      {/* ── KPI rows ── */}
+      <View style={{ paddingHorizontal: 16, paddingTop: 2, paddingBottom: 2 }}>
+        {/* Bekleyen Fatura */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: DS.ink[100] }}>
+          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: `${CLR.orange}1A`, alignItems: 'center', justifyContent: 'center' }}>
+            <Receipt size={17} color={CLR.orange} strokeWidth={2} />
+          </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 11, color: DS.ink[500], fontWeight: '500', marginBottom: 2 }}>Bekleyen Fatura</Text>
-            <Text style={{ fontSize: 16, fontWeight: '800', color: CLR.orange, letterSpacing: -0.4 }}>{fmtMoney(pending)}</Text>
+            <Text style={{ fontSize: 10, fontWeight: '600', color: DS.ink[400], textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 3 }}>
+              {t('admin.dashboard.pendingInvoice')}
+            </Text>
+            {ccyLine(pending, CLR.orange, 17)}
           </View>
         </View>
-        <View style={{ height: 1, backgroundColor: DS.ink[100] }} />
-        <View className="flex-row items-center" style={{ gap: 12 }}>
-          <View className="rounded-full" style={{ width: 8, height: 8, backgroundColor: INK }} />
+
+        {/* Ödenen Fatura Adedi */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13 }}>
+          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: `${CLR.green}1A`, alignItems: 'center', justifyContent: 'center' }}>
+            <CheckCircle size={17} color={CLR.green} strokeWidth={2} />
+          </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 11, color: DS.ink[500], fontWeight: '500', marginBottom: 2 }}>Ödenen Fatura Adedi</Text>
-            <Text style={{ fontSize: 16, fontWeight: '800', color: INK, letterSpacing: -0.4 }}>{paid}</Text>
+            <Text style={{ fontSize: 10, fontWeight: '600', color: DS.ink[400], textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 3 }}>
+              {t('admin.dashboard.paidInvoiceCount')}
+            </Text>
+            <NumberTickerX value={paid} duration={700} style={{ fontSize: 17, fontWeight: '800', color: CLR.green, letterSpacing: -0.4 } as any} />
+          </View>
+          <View style={{ backgroundColor: `${CLR.green}18`, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999 }}>
+            <Text style={{ fontSize: 10, fontWeight: '700', color: CLR.green, letterSpacing: 0.3 }}>Ödendi</Text>
           </View>
         </View>
       </View>
@@ -923,164 +1200,280 @@ function FinanceCard({ monthly, pending, paid }: { monthly: number; pending: num
 //  MAIN SCREEN
 // ══════════════════════════════════════════════════════════════════
 export default function AdminDashboard() {
+  const { t, i18n } = useTranslation();
   const router    = useRouter();
   const isDesktop = useIsDesktop();
+  const insets    = useSafeAreaInsets();
   const { profile } = useAuthStore();
   const { setTitle, clear } = usePageTitleStore();
   const firstName = profile?.full_name?.split(' ')[0] ?? '';
 
-  useEffect(() => { setTitle(getTodayLabel()); return clear; }, [setTitle, clear]);
+  useEffect(() => { setTitle(getTodayLabel(t)); return clear; }, [setTitle, clear, t]);
 
-  const [loading, setLoading]             = useState(true);
+  // Önceki ziyaretten cache — anında render et, arka planda taze veri çek.
+  const cache = useDashboardCache(s => s.admin);
+  const setCache = useDashboardCache(s => s.setAdmin);
+  const hasCache = !!cache;
+
+  const [loading, setLoading]             = useState(!hasCache);
   const [refreshing, setRefreshing]       = useState(false);
-  const [totalOrders, setTotalOrders]     = useState(0);
-  const [todayOrders, setTodayOrders]     = useState(0);
-  const [overdueCount, setOverdue]        = useState(0);
-  const [totalDoctors, setDoctors]        = useState(0);
-  const [totalLabUsers, setLabUsers]      = useState(0);
-  const [todayDelivery, setTodayDelivery] = useState(0);
-  const [byStatus, setByStatus]           = useState<{ label: string; count: number; key: string }[]>([]);
-  const [byWorkType, setByWorkType]       = useState<{ label: string; count: number }[]>([]);
-  const [monthly, setMonthly]             = useState<{ label: string; count: number }[]>([]);
-  const [recentOrders, setRecentOrders]   = useState<any[]>([]);
-  const [upcoming, setUpcoming]           = useState<any[]>([]);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const notificationsPulse = require('../../core/store/uiOverlayStore').useUiOverlayStore((s: any) => s.notificationsPulse);
+  useEffect(() => { if (notificationsPulse > 0) setNotificationsOpen(true); }, [notificationsPulse]);
+  const [totalOrders, setTotalOrders]     = useState(cache?.totalOrders ?? 0);
+  const [todayOrders, setTodayOrders]     = useState(cache?.todayOrders ?? 0);
+  const [overdueCount, setOverdue]        = useState(cache?.overdue ?? 0);
+  const [totalDoctors, setDoctors]        = useState(cache?.totalDoctors ?? 0);
+  const [totalLabUsers, setLabUsers]      = useState(cache?.totalLabUsers ?? 0);
+  const [todayDelivery, setTodayDelivery] = useState(cache?.todayDelivery ?? 0);
+  const [byStatus, setByStatus]           = useState<{ label: string; count: number; key: string }[]>(cache?.byStatus ?? []);
+  const [byWorkType, setByWorkType]       = useState<{ label: string; count: number }[]>(cache?.byWorkType ?? []);
+  const [monthly, setMonthly]             = useState<{ label: string; count: number }[]>(cache?.monthly ?? []);
+  const [recentOrders, setRecentOrders]   = useState<any[]>(cache?.recentOrders ?? []);
+  const [upcoming, setUpcoming]           = useState<any[]>(cache?.upcoming ?? []);
   const [hovered, setHovered]             = useState<string | null>(null);
-  const [pipelineCounts, setPipelineCounts] = useState<Record<string, number>>({});
-  const [weekCounts, setWeekCounts]       = useState<Record<string, number>>({});
+  const [pipelineCounts, setPipelineCounts] = useState<Record<string, number>>(cache?.pipelineCounts ?? {});
+  const [weekCounts, setWeekCounts]       = useState<Record<string, number>>(cache?.weekCounts ?? {});
+  const [weekDone, setWeekDone]           = useState<Record<string, number>>(cache?.weekDone ?? {});
 
   // Finance state
-  const [finMonthly, setFinMonthly]       = useState(0);
-  const [finPending, setFinPending]       = useState(0);
-  const [finPaidCount, setFinPaidCount]   = useState(0);
+  const [finMonthly, setFinMonthly]       = useState<CurrencyTotal[]>(cache?.finMonthly ?? []);
+  const [finPending, setFinPending]       = useState<CurrencyTotal[]>(cache?.finPending ?? []);
+  const [finPaidCount, setFinPaidCount]   = useState(cache?.finPaidCount ?? 0);
+
+  // Faturalanmamış siparişler (Faz 3 hatırlatma)
+  const [unbilledCount, setUnbilledCount]   = useState(0);
+  const [unbilledClinics, setUnbilledClinics] = useState(0);
+  const [unbilledTotal, setUnbilledTotal]   = useState(0);
+  const loadUnbilled = useCallback(async () => {
+    try {
+      const { data } = await supabase
+        .from('v_unbilled_work_orders')
+        .select('work_order_id, clinic_id, estimated_total');
+      const rows = (data ?? []) as any[];
+      setUnbilledCount(rows.length);
+      setUnbilledClinics(new Set(rows.map(r => r.clinic_id).filter(Boolean)).size);
+      setUnbilledTotal(rows.reduce((s, r) => s + Number(r.estimated_total ?? 0), 0));
+    } catch { /* skip */ }
+  }, []);
+  useEffect(() => { loadUnbilled(); }, [loadUnbilled]);
 
   // ── Data loaders (mirroring Lab dashboard pattern) ──
 
   const loadPipeline = useCallback(async () => {
     try {
       const statuses = STATUS_KEYS;
-      const results = await Promise.all(
-        statuses.map(st =>
+      // 'asamada' = sipariş aktif iş akışı aşamasında → "üretimde" kovasına say
+      // (STATUS_KEYS'te ayrı yer yok; üretim olarak gösterilir).
+      const results = await Promise.all([
+        ...statuses.map(st =>
           supabase.from('work_orders').select('id', { count: 'exact', head: true }).eq('status', st)
-        )
-      );
+        ),
+        supabase.from('work_orders').select('id', { count: 'exact', head: true }).eq('status', 'asamada'),
+      ]);
+      const asamadaCount = results[statuses.length].count ?? 0;
       const counts: Record<string, number> = {};
       statuses.forEach((st, i) => { counts[st] = results[i].count ?? 0; });
+      counts['uretimde'] = (counts['uretimde'] ?? 0) + asamadaCount;
       setPipelineCounts(counts);
 
-      const total = statuses.reduce((s, st, i) => s + (results[i].count ?? 0), 0);
-      setTotalOrders(total);
+      // Toplam = work_orders'ın doğrudan (arşiv hariç) sayısı — status kovaları
+      // toplamı, bilinmeyen/özel durumdaki siparişleri kaçırıyordu.
+      const totalRes = await supabase
+        .from('work_orders')
+        .select('id', { count: 'exact', head: true })
+        .or('is_archived.is.null,is_archived.eq.false');
+      setTotalOrders(totalRes.count ?? statuses.reduce((s, _st, i) => s + (results[i].count ?? 0), 0));
 
-      setByStatus(statuses.map((k, i) => ({ key: k, label: STATUS_CFG[k]?.label ?? k, count: results[i].count ?? 0 })));
+      setByStatus(statuses.map((k, i) => ({ key: k, label: STATUS_CFG[k]?.labelKey ? t(STATUS_CFG[k].labelKey) : k, count: (results[i].count ?? 0) + (k === 'uretimde' ? asamadaCount : 0) })));
     } catch (e) { console.error('[AdminDashboard] loadPipeline error:', e); }
+  }, [t]);
+
+  const loadRecent = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('work_orders')
+      .select('id, order_number, work_type, status, delivery_date, doctor_id')
+      .order('created_at', { ascending: false })
+      .limit(8);
+    if (error) { console.error('[AdminDashboard] loadRecent error:', error); return; }
+    const rows = data ?? [];
+    const doctorIds = Array.from(new Set(rows.map((r: any) => r.doctor_id).filter(Boolean)));
+    const nameMap: Record<string, string> = {};
+    if (doctorIds.length) {
+      // doctor_id polimorfik (doctors.id VEYA profiles.id) — iki tabloyu da çöz,
+      // doctors öncelikli.
+      const [docsR, profsR] = await Promise.all([
+        supabase.from('doctors').select('id, full_name').in('id', doctorIds),
+        supabase.from('profiles').select('id, full_name').in('id', doctorIds),
+      ]);
+      (docsR.data ?? []).forEach((d: any) => { nameMap[d.id] = d.full_name; });
+      (profsR.data ?? []).forEach((p: any) => { if (!nameMap[p.id]) nameMap[p.id] = p.full_name; });
+    }
+    setRecentOrders(rows.map((o: any) => ({
+      id: o.id, order_number: o.order_number, work_type: o.work_type,
+      status: o.status, delivery_date: o.delivery_date, is_urgent: o.is_urgent ?? false,
+      doctor_name: nameMap[o.doctor_id] ?? '--',
+    })));
   }, []);
 
   const loadExtra = useCallback(async () => {
     const today = todayStr();
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
-
-    const { data } = await supabase
-      .from('work_orders')
-      .select('id, order_number, work_type, status, delivery_date, created_at, is_urgent, doctor:doctor_id(full_name)')
-      .gte('created_at', sixMonthsAgo.toISOString())
-      .order('created_at', { ascending: false });
-
-    if (data) {
-      setRecentOrders(data.slice(0, 8).map(o => ({
-        id: o.id, order_number: o.order_number, work_type: o.work_type,
-        status: o.status, delivery_date: o.delivery_date, is_urgent: (o as any).is_urgent ?? false,
-        doctor_name: (o.doctor as any)?.full_name ?? '--',
-      })));
-
-      // Monthly bars
-      const bars: { label: string; count: number }[] = [];
-      for (let i = 5; i >= 0; i--) {
-        const d = new Date(); d.setMonth(d.getMonth() - i);
-        const y = d.getFullYear(), m = d.getMonth();
-        bars.push({
-          label: MONTHS_TR[m],
-          count: data.filter(o => {
-            const c = new Date(o.created_at);
-            return c.getFullYear() === y && c.getMonth() === m;
-          }).length,
-        });
-      }
-      setMonthly(bars);
-
-      // Week counts
-      const weekDays = getWeekDays();
-      const wc: Record<string, number> = {};
-      weekDays.forEach(wd => {
-        wc[wd.date] = data.filter(o => o.created_at?.startsWith(wd.date)).length;
-      });
-      setWeekCounts(wc);
-
-      // Work type breakdown
-      const wtMap: Record<string, number> = {};
-      for (const o of data) { if (o.work_type) wtMap[o.work_type] = (wtMap[o.work_type] ?? 0) + 1; }
-      setByWorkType(Object.entries(wtMap).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([label, count]) => ({ label, count })));
-
-      // Overdue & today counts
-      setOverdue(data.filter(o => o.delivery_date < today && o.status !== 'teslim_edildi').length);
-      setTodayDelivery(data.filter(o => o.delivery_date === today && o.status !== 'teslim_edildi').length);
-    }
-
-    // Today new count
-    const { count: todayCount } = await supabase
-      .from('work_orders')
-      .select('id', { count: 'exact', head: true })
-      .gte('created_at', `${today}T00:00:00`);
-    setTodayOrders(todayCount ?? 0);
-
-    // Upcoming deliveries (3 days)
     const in3Days = new Date(); in3Days.setDate(in3Days.getDate() + 3);
     const in3DaysStr = in3Days.toISOString().split('T')[0];
-    const { data: upcomingData } = await supabase
-      .from('work_orders')
-      .select('id, order_number, status, delivery_date, doctor:doctor_id(full_name)')
-      .gte('delivery_date', today).lte('delivery_date', in3DaysStr)
-      .neq('status', 'teslim_edildi').order('delivery_date');
-    setUpcoming((upcomingData ?? []).map(o => ({
+
+    // 3 sorgu paralel — eskiden seri idi (~3× round-trip).
+    const [mainRes, todayRes, upcomingRes] = await Promise.all([
+      supabase
+        .from('work_orders')
+        .select('id, work_type, status, delivery_date, created_at, tooth_numbers')
+        .gte('created_at', sixMonthsAgo.toISOString())
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('work_orders')
+        .select('id', { count: 'exact', head: true })
+        .gte('created_at', `${today}T00:00:00`),
+      supabase
+        .from('work_orders')
+        .select('id, order_number, status, delivery_date, doctor_id')
+        .gte('delivery_date', today).lte('delivery_date', in3DaysStr)
+        .neq('status', 'teslim_edildi').neq('status', 'iptal').order('delivery_date'),
+    ]);
+
+    const data = mainRes.data;
+    const monthsShort = t('admin.months.short').split(', ');
+    if (data) {
+      // Tek pass — sayaçlar diş bazlı (her tooth_numbers entry'si = 1 üye).
+      const weekDays = getWeekDays(t);
+      const monthBuckets: { y: number; m: number; count: number }[] = [];
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(); d.setMonth(d.getMonth() - i);
+        monthBuckets.push({ y: d.getFullYear(), m: d.getMonth(), count: 0 });
+      }
+      const wc: Record<string, number> = {};
+      const wcDone: Record<string, number> = {};
+      weekDays.forEach(wd => { wc[wd.date] = 0; wcDone[wd.date] = 0; });
+      const wtMap: Record<string, number> = {};
+      let overdueN = 0, todayDeliveryN = 0;
+
+      for (const o of data) {
+        const teeth = Array.isArray((o as any).tooth_numbers) ? (o as any).tooth_numbers.length : 0;
+        const c = o.created_at ? new Date(o.created_at) : null;
+        if (c && teeth > 0) {
+          const y = c.getFullYear(), m = c.getMonth();
+          for (const mb of monthBuckets) {
+            if (mb.y === y && mb.m === m) { mb.count += teeth; break; }
+          }
+          const isoDay = o.created_at?.slice(0, 10);
+          if (isoDay && wc[isoDay] !== undefined) {
+            wc[isoDay] += teeth;
+            if (o.status === 'teslim_edildi') wcDone[isoDay] += teeth;
+          }
+        }
+        if (o.work_type && teeth > 0) {
+          // work_type diş başına tekrarlı olabilir ("X, X, X…") — tekilleştir
+          const wt = Array.from(new Set(String(o.work_type).split(',').map((s: string) => s.trim()).filter(Boolean))).join(', ');
+          wtMap[wt] = (wtMap[wt] ?? 0) + teeth;
+        }
+        if (o.delivery_date < today && o.status !== 'teslim_edildi') overdueN++;
+        if (o.delivery_date === today && o.status !== 'teslim_edildi') todayDeliveryN++;
+      }
+
+      setMonthly(monthBuckets.map(b => ({ label: monthsShort[b.m], count: b.count })));
+      setWeekCounts(wc);
+      setWeekDone(wcDone);
+      setByWorkType(Object.entries(wtMap).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([label, count]) => ({ label, count })));
+      setOverdue(overdueN);
+      setTodayDelivery(todayDeliveryN);
+    }
+
+    setTodayOrders(todayRes.count ?? 0);
+    // Upcoming hekim adlarını polimorfik doctor_id'den çöz (doctors + profiles).
+    const upRows = (upcomingRes.data ?? []) as any[];
+    const upIds = Array.from(new Set(upRows.map(o => o.doctor_id).filter(Boolean)));
+    const upNameMap: Record<string, string> = {};
+    if (upIds.length) {
+      const [docsR, profsR] = await Promise.all([
+        supabase.from('doctors').select('id, full_name').in('id', upIds),
+        supabase.from('profiles').select('id, full_name').in('id', upIds),
+      ]);
+      (docsR.data ?? []).forEach((d: any) => { upNameMap[d.id] = d.full_name; });
+      (profsR.data ?? []).forEach((p: any) => { if (!upNameMap[p.id]) upNameMap[p.id] = p.full_name; });
+    }
+    setUpcoming(upRows.map(o => ({
       id: o.id, order_number: o.order_number, status: o.status,
-      delivery_date: o.delivery_date, doctor_name: (o.doctor as any)?.full_name ?? '--',
+      delivery_date: o.delivery_date, doctor_name: upNameMap[o.doctor_id] ?? '--',
     })));
-  }, []);
+  }, [t]);
 
   const loadProfiles = useCallback(async () => {
-    const { data: profiles } = await supabase.from('profiles').select('user_type').neq('user_type', 'admin');
-    if (profiles) {
-      setDoctors(profiles.filter((p: any) => p.user_type === 'doctor').length);
-      setLabUsers(profiles.filter((p: any) => ['lab', 'lab_user', 'mesul_mudur'].includes(p.user_type)).length);
-    }
+    // 2 count query paralel — eskiden tüm profiles satırları çekiliyordu.
+    const [doctorRes, labRes] = await Promise.all([
+      // Hekimler `doctors` tablosunda (kliniklere bağlı) — profiles user_type='doctor'
+      // sadece uygulamaya giriş yapan hekimleri sayıyordu, çoğu hekimi kaçırıyordu.
+      supabase.from('doctors').select('id', { count: 'exact', head: true }),
+      supabase.from('profiles').select('id', { count: 'exact', head: true }).in('user_type', ['lab', 'lab_user', 'mesul_mudur']),
+    ]);
+    setDoctors(doctorRes.count ?? 0);
+    setLabUsers(labRes.count ?? 0);
   }, []);
 
   const loadFinance = useCallback(async () => {
     try {
       const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+      // KATI per-currency: faturanın kendi para biriminde, asla baz'a çevrilip toplanmaz.
+      const ccyOf = (i: any) => (i.currency || 'TRY') as Currency;
       const [invRes, pendRes] = await Promise.all([
-        supabase.from('invoices').select('total_amount, status').gte('created_at', monthStart.toISOString()),
-        supabase.from('invoices').select('total_amount').eq('status', 'sent'),
+        supabase.from('invoices').select('total, paid_amount, status, currency').gte('created_at', monthStart.toISOString()),
+        // Bekleyen = kesilmiş ama tamamı tahsil edilmemiş (kesildi + kısmi ödenmiş)
+        supabase.from('invoices').select('total, paid_amount, status, currency').in('status', ['kesildi', 'kismi_odendi']),
       ]);
       if (invRes.data) {
-        const paid = invRes.data.filter((i: any) => i.status === 'paid');
-        setFinMonthly(paid.reduce((s: number, i: any) => s + (i.total_amount ?? 0), 0));
+        const paid = invRes.data.filter((i: any) => i.status === 'odendi');
+        setFinMonthly(groupByCurrency(paid, (i: any) => ({ amount: Number(i.total) || 0, currency: ccyOf(i) })));
         setFinPaidCount(paid.length);
       }
       if (pendRes.data) {
-        setFinPending(pendRes.data.reduce((s: number, i: any) => s + (i.total_amount ?? 0), 0));
+        // Bekleyen tutar = kalan (total - paid_amount), kendi para biriminde
+        setFinPending(groupByCurrency(pendRes.data, (i: any) => ({
+          amount: Math.max(0, Number(i.total ?? 0) - Number(i.paid_amount ?? 0)), currency: ccyOf(i),
+        })));
       }
     } catch { /* invoices table may not exist */ }
   }, []);
 
   useEffect(() => {
-    setLoading(true);
-    Promise.all([loadPipeline(), loadExtra(), loadProfiles(), loadFinance()])
-      .finally(() => setLoading(false));
-  }, [loadPipeline, loadExtra, loadProfiles, loadFinance]);
+    // İlk açılışta cache yoksa loading göster, varsa cache değerleriyle direkt
+    // render et — arka planda taze veri çek. Cache yenilenince NumberTickerX
+    // count-up ile yumuşak geçer.
+    if (!hasCache) setLoading(true);
+    loadPipeline().finally(() => setLoading(false));
+    loadRecent();
+    loadExtra();
+    loadProfiles();
+    loadFinance();
+  }, [loadRecent, loadPipeline, loadExtra, loadProfiles, loadFinance, hasCache]);
+
+  // Local state → global cache (debounced; render başına 1 yazım)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setCache({
+        pipelineCounts, byStatus, totalOrders, totalActive: totalOrders - (byStatus.find(s => s.key === 'teslim_edildi')?.count ?? 0),
+        monthly, weekCounts, weekDone, byWorkType, overdue: overdueCount, todayDelivery, todayOrders,
+        recentOrders, upcoming, totalDoctors, totalLabUsers, finMonthly, finPending, finPaidCount,
+      });
+    }, 200);
+    return () => clearTimeout(t);
+  }, [
+    pipelineCounts, byStatus, totalOrders, monthly, weekCounts, weekDone, byWorkType,
+    overdueCount, todayDelivery, todayOrders, recentOrders, upcoming,
+    totalDoctors, totalLabUsers, finMonthly, finPending, finPaidCount, setCache,
+  ]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([loadPipeline(), loadExtra(), loadProfiles(), loadFinance()]);
+    await Promise.all([loadRecent(), loadPipeline(), loadExtra(), loadProfiles(), loadFinance()]);
     setRefreshing(false);
   };
 
@@ -1103,7 +1496,7 @@ export default function AdminDashboard() {
   overdueOrdersFromRecent.slice(0, 2).forEach(o => {
     taskItems.push({
       icon: Clock as React.FC<any>,
-      label: `${o.doctor_name ?? 'Sipariş'} · gecikmiş`,
+      label: `${o.doctor_name ?? 'Sipariş'} · ${t('admin.task.overdue')}`,
       time: fmtDate(o.delivery_date),
       done: false,
       onPress: () => router.push(`/(admin)/order/${o.id}` as any),
@@ -1114,7 +1507,7 @@ export default function AdminDashboard() {
   upcoming.slice(0, 2).forEach(o => {
     taskItems.push({
       icon: Package as React.FC<any>,
-      label: `${o.doctor_name ?? 'Sipariş'} · teslim`,
+      label: `${o.doctor_name ?? 'Sipariş'} · ${t('admin.task.delivery')}`,
       time: fmtDate(o.delivery_date),
       done: false,
       onPress: () => router.push(`/(admin)/order/${o.id}` as any),
@@ -1126,8 +1519,8 @@ export default function AdminDashboard() {
   todayOrdersFromRecent.slice(0, 1).forEach(o => {
     taskItems.push({
       icon: Calendar as React.FC<any>,
-      label: `${o.doctor_name ?? 'Sipariş'} · bugün`,
-      time: 'Bugün',
+      label: `${o.doctor_name ?? 'Sipariş'} · ${t('admin.task.today')}`,
+      time: t('admin.dashboard.today'),
       done: false,
       onPress: () => router.push(`/(admin)/order/${o.id}` as any),
     });
@@ -1135,48 +1528,105 @@ export default function AdminDashboard() {
 
   if (taskItems.length === 0) {
     taskItems.push(
-      { icon: CheckCircle as React.FC<any>, label: 'Bekleyen görev yok', time: '', done: true, onPress: undefined },
+      { icon: CheckCircle as React.FC<any>, label: t('admin.dashboard.noTasks'), time: '', done: true, onPress: undefined },
     );
   }
 
-  const weekDays = getWeekDays();
+  const weekDays = getWeekDays(t);
 
   // ══════════════════════════════════════════════════════════════
   //  MOBILE — Variant B Home (B1)
   // ══════════════════════════════════════════════════════════════
   if (!isDesktop) {
-    const kpis: KpiItem[] = [
-      { label: 'Aktif',     value: String(totalActive),                     up: true  },
-      { label: 'Bugün',     value: String(todayOrders),                                  },
-      { label: 'Geciken',   value: String(overdueCount),                    up: false },
-      { label: 'Hekim',     value: String(totalDoctors)                                  },
-    ];
-    const priority: PriorityOrder[] = recentOrders.slice(0, 3).map((o: any) => ({
-      id: String(o.order_number ?? o.id).slice(-5),
-      type: o.work_type ?? 'Sipariş',
-      due: o.delivery_date ? fmtDate(o.delivery_date) : '—',
-      status: o.status,
-      statusLabel: STATUS_CFG[o.status]?.label ?? o.status,
-      clinic: o.doctor_name ?? '—',
-      teeth: undefined,
-      avatar: (o.doctor_name ?? '?').slice(0, 2).toUpperCase(),
-    }));
+    // Geciken vakalar → handoff delayed cases listesi
+    const delayedCases: DelayedCase[] = recentOrders
+      .filter((o: any) => o.status === 'delayed' || o.status === 'qc_issue' || o.status === 'qc' || o.is_delayed)
+      .slice(0, 3)
+      .map((o: any) => ({
+        id: String(o.order_number ?? o.id),
+        name: o.patient_name ?? '—',
+        clinic: o.doctor_name ?? '—',
+        stage: STATUS_CFG[o.status]?.labelKey ? t(STATUS_CFG[o.status].labelKey) : o.status,
+        remain: o.delivery_date ? fmtDate(o.delivery_date) : '+1g',
+        kind: (o.status === 'qc' || o.status === 'qc_issue') ? 'qc' : 'delay',
+      }));
+
+    // Bu hafta bar değerleri — basit stub (eğer veriniz yoksa 0'lar gösterir)
+    const weekBars = [0, 0, 0, 0, 0, 0, todayOrders];
+
+    // Notification buckets — admin-specific
+    const { NotificationsSheet } = require('../../core/ui/mobile/NotificationsSheet');
+    const notifApprovals = recentOrders
+      .filter((o: any) => o.status === 'onay_bekliyor')
+      .slice(0, 5)
+      .map((o: any) => ({
+        id: String(o.order_number ?? o.id).slice(-6),
+        _id: o.id,
+        patient: o.patient_name ?? 'Hasta',
+        workType: 'Onay bekliyor',
+      }));
+    const notifOverdue = overdueOrdersFromRecent.slice(0, 5).map((o: any) => {
+      const due = new Date(o.delivery_date + 'T00:00:00').getTime();
+      const days = Math.max(1, Math.floor((Date.now() - due) / 86400000));
+      return {
+        id: String(o.order_number ?? o.id).slice(-6),
+        _id: o.id,
+        patient: o.patient_name ?? 'Hasta',
+        workType: o.work_type ?? '—',
+        daysLate: days,
+      };
+    });
+    const notifUpcoming = upcoming.slice(0, 5).map((o: any) => {
+      const due = new Date(o.delivery_date + 'T00:00:00').getTime();
+      const tdy = new Date(); tdy.setHours(0, 0, 0, 0);
+      const days = Math.ceil((due - tdy.getTime()) / 86400000);
+      const remainLabel = days <= 0 ? 'Bugün' : days === 1 ? 'Yarın' : `${days}g sonra`;
+      return {
+        id: String(o.order_number ?? o.id).slice(-6),
+        _id: o.id,
+        patient: o.patient_name ?? 'Hasta',
+        workType: o.work_type ?? '—',
+        remainLabel,
+      };
+    });
 
     return (
-      <HomeB1
-        kicker={`${totalActive} aktif vaka`}
-        headline={`${overdueCount > 0 ? overdueCount + ' geciken vaka var.' : `Bugün ${todayOrders} vaka var.`}`}
-        sub={`Toplam ${totalOrders} sipariş, ${totalDoctors} hekim, ${totalLabUsers} lab kullanıcısı.`}
-        primaryAction={{ label: 'Yeni vaka', onPress: () => router.push('/(admin)/new-order' as any) }}
-        secondaryAction={{ label: 'Siparişler', onPress: () => router.push('/(admin)/orders' as any) }}
-        kpis={kpis}
-        priority={priority}
-        onOpenOrder={(o) => router.push(`/(admin)/order/${(o as any).id}` as any)}
-        onSeeAllOrders={() => router.push('/(admin)/orders' as any)}
-        insight={defaultInsight('exec')}
-        refreshing={refreshing || loading}
-        onRefresh={handleRefresh}
-      />
+      <View style={{ flex: 1 }}>
+        <AdminMobileDashboard
+          liveActive={totalActive}
+          liveTotal={totalOrders}
+          liveStages={{ alindi: 0, uretim: totalActive, kk: 0, hazir: 0 }}
+          livePercent={totalOrders > 0 ? Math.round((totalActive / totalOrders) * 100) : 0}
+          liveTimer={new Date().toLocaleTimeString(localeTag(i18n.language), { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          monthlyRevenue={'—'}
+          monthlyDelta={undefined}
+          activeOrders={totalActive}
+          productionCount={totalActive}
+          overdueCount={overdueCount}
+          pendingApprovalsCount={notifApprovals.length}
+          weekBars={weekBars}
+          weekRange={''}
+          weekTotal={weekBars.reduce((a, b) => a + b, 0)}
+          delayed={delayedCases}
+          onNewOrder={() => useNewOrderModalStore.getState().setOpen(true)}
+          onScan={() => router.push('/(admin)/scan' as any)}
+          onApprovals={() => router.push('/(admin)/approvals' as any)}
+          onNotifications={() => setNotificationsOpen(true)}
+          onProfile={() => router.push('/(admin)/profile' as any)}
+          onOpenOrder={(id) => router.push(`/(admin)/order/${id}` as any)}
+          refreshing={refreshing || loading}
+          onRefresh={handleRefresh}
+        />
+        <NotificationsSheet
+          visible={notificationsOpen}
+          onClose={() => setNotificationsOpen(false)}
+          onOpenOrder={(dbId: string) => router.push(`/(admin)/order/${dbId}` as any)}
+          panel="exec"
+          approvals={notifApprovals}
+          overdue={notifOverdue}
+          upcoming={notifUpcoming}
+        />
+      </View>
     );
   }
 
@@ -1186,7 +1636,11 @@ export default function AdminDashboard() {
   return (
     <ScrollView
       className="flex-1"
-      contentContainerStyle={{ padding: isDesktop ? 10 : 16, paddingBottom: 120 }}
+      contentContainerStyle={{
+        padding: 16,
+        paddingTop: isDesktop ? 16 : insets.top + 8,
+        paddingBottom: 120,
+      }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={P} />}
     >
       {/* ════════ HERO ════════ */}
@@ -1200,39 +1654,50 @@ export default function AdminDashboard() {
               lineHeight: isDesktop ? 56 : 42,
               color: INK,
             }}>
-              Hoş geldin,{' '}
+              {t('dashboard.greetingName', { name: '' }).replace(/\s*\.?\s*$/, '')}{' '}
               <Text style={{ fontStyle: 'italic', color: DS.ink[400] }}>{firstName}</Text>
             </Text>
 
             {/* Stat pills row */}
             <View className="flex-row flex-wrap items-center" style={{ gap: 14, marginTop: 14 }}>
-              <StatPill label="Üretim" value={`${productionPct}%`} bg={INK} color="#FFF" />
-              <StatPill label="Aktif" value={`${totalActive}`} bg={P} color="#FFF" />
+              <StatPill label={t('admin.dashboard.production')} value={`${productionPct}%`} bg={INK} color="#FFF" />
+              <StatPill label={t('admin.dashboard.active')} value={totalActive} bg={P} color="#FFF" />
               {overdueCount > 0 && (
-                <StatPill label="Geciken" value={`${overdueCount}`} bg="rgba(217,75,75,0.12)" color="#9C2E2E" />
+                <StatPill label={t('admin.dashboard.overdue')} value={overdueCount} bg="rgba(217,75,75,0.12)" color="#9C2E2E" />
               )}
-              <StatPill label="Bugün" value={`${todayOrders}`} bg="rgba(0,0,0,0.08)" color={INK} />
+              <StatPill label={t('admin.dashboard.today')} value={todayOrders} bg="rgba(0,0,0,0.08)" color={INK} />
+              <FaceScanQuickAction accentColor={P} compact />
             </View>
           </View>
 
           {/* Right: big stats */}
           <View className="flex-row" style={{ gap: 32, alignItems: 'flex-end' }}>
-            <BigStat value={totalOrders.toLocaleString('tr-TR')} label="Toplam sipariş" />
-            <BigStat value={totalDoctors} label="Hekim" />
-            <BigStat value={totalLabUsers} label="Lab kullanıcı" />
+            <BigStat value={totalOrders} label={t('admin.dashboard.totalOrders')} />
+            <BigStat value={totalDoctors} label={t('admin.dashboard.doctor')} />
+            <BigStat value={totalLabUsers} label={t('admin.dashboard.labUser')} />
           </View>
         </View>
       </View>
 
-      {/* ════════ OVERDUE ALERT ════════ */}
-      {overdueCount > 0 && (
-        <AnimatedOverdueCard count={overdueCount} onPress={() => router.push('/(admin)/orders' as any)} />
+      {/* ════════ OVERDUE + PLANLAMA BEKLEYEN ════════ */}
+      {(overdueCount > 0 || (pipelineCounts['alindi'] ?? 0) > 0) && (
+        <View className={isDesktop ? 'flex-row' : ''} style={{ gap: 16, marginBottom: 16 }}>
+          {overdueCount > 0 && (
+            <AnimatedOverdueCard count={overdueCount} onPress={() => router.push('/(admin)/orders' as any)} />
+          )}
+          {(pipelineCounts['alindi'] ?? 0) > 0 && (
+            <PlanningWaitingCard
+              count={pipelineCounts['alindi'] ?? 0}
+              onPress={() => router.push('/(admin)/orders?status=alindi' as any)}
+            />
+          )}
+        </View>
       )}
 
       {/* ════════ 4-CARD GRID ════════ */}
       <View
         className={isDesktop ? 'flex-row' : ''}
-        style={{ gap: 14, marginBottom: 14 }}
+        style={{ gap: 16, marginBottom: 16 }}
       >
         {/* Card 1: Aktif Vaka — dark top + white bottom + animations */}
         <AnimatedAktifVakaCard
@@ -1243,15 +1708,15 @@ export default function AdminDashboard() {
         />
 
         {/* Card 2: Sipariş Trendi (bar chart) */}
-        <Card style={{ flex: isDesktop ? 1.2 : undefined, padding: 22, marginBottom: isDesktop ? 0 : 14 }}>
+        <Card style={{ flex: isDesktop ? 1 : undefined, padding: 22, marginBottom: isDesktop ? 0 : 16 }}>
           <View className="flex-row items-start justify-between" style={{ marginBottom: 12 }}>
             <View>
-              <Text style={{ fontSize: 18, fontWeight: '500', letterSpacing: -0.015 * 18, color: INK }}>Sipariş Trendi</Text>
+              <Text style={{ fontSize: 18, fontWeight: '500', letterSpacing: -0.015 * 18, color: INK }}>{t('admin.dashboard.memberTrend')}</Text>
               <Text style={{ ...SERIF, fontSize: 42, letterSpacing: -0.025 * 42, lineHeight: 42, marginTop: 8, color: INK }}>
                 {monthly[monthly.length - 1]?.count ?? 0}
-                <Text style={{ fontSize: 14, color: DS.ink[400] }}> bu ay</Text>
+                <Text style={{ fontSize: 14, color: DS.ink[400] }}> {t('admin.dashboard.membersThisMonth')}</Text>
               </Text>
-              <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 4 }}>Son 6 aylık trend</Text>
+              <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 4 }}>{t('admin.dashboard.toothMemberNote')}</Text>
             </View>
             <Pressable
               onPress={() => router.push('/(admin)/orders' as any)}
@@ -1269,46 +1734,47 @@ export default function AdminDashboard() {
         </Card>
 
         {/* Card 3: Üretim Ring — PercentRingHero on white bg */}
-        <Card style={{ flex: isDesktop ? 1 : undefined, padding: 22, alignItems: 'center', marginBottom: isDesktop ? 0 : 14 }}>
+        <Card style={{ flex: isDesktop ? 1 : undefined, padding: 22, alignItems: 'center', marginBottom: isDesktop ? 0 : 16 }}>
           <View className="w-full flex-row items-center justify-between" style={{ marginBottom: 8 }}>
-            <Text style={{ fontSize: 14, fontWeight: '500', color: INK }}>Teslim Oranı</Text>
+            <Text style={{ fontSize: 14, fontWeight: '500', color: INK }}>{t('admin.dashboard.deliveryRate')}</Text>
             <Pressable onPress={() => router.push('/(admin)/orders' as any)}>
               <ArrowUpRight size={14} color={DS.ink[500]} strokeWidth={1.8} />
             </Pressable>
           </View>
           <PercentRingHero value={deliveryPct} size={140} darkText />
           <Text style={{ fontSize: 9, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.08 * 9, marginTop: 10 }}>
-            Teslim
+            {t('admin.dashboard.delivered')}
           </Text>
           {/* Mini pipeline stats */}
           <View className="flex-row" style={{ gap: 8, marginTop: 12 }}>
             <View className="items-center rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: DS.ink[100] }}>
               <Text style={{ fontSize: 10, fontWeight: '500', color: DS.ink[500] }}>
-                {pipelineCounts['uretimde'] ?? 0} üretimde
+                {pipelineCounts['uretimde'] ?? 0} {t('admin.dashboard.inProduction')}
               </Text>
             </View>
             <View className="items-center rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: hexA(P, 0.15) }}>
               <Text style={{ fontSize: 10, fontWeight: '500', color: P }}>
-                {pipelineCounts['teslimata_hazir'] ?? 0} hazır
+                {pipelineCounts['teslimata_hazir'] ?? 0} {t('admin.status.ready')}
               </Text>
             </View>
           </View>
         </Card>
 
-        {/* Card 4: Bugünkü Görevler — Dark */}
-        <View style={{ flex: isDesktop ? 1.4 : undefined }}>
-          <TasksCard tasks={taskItems} />
+        {/* Card 4: Yeni Sipariş CTA — Hero */}
+        <View style={{ flex: isDesktop ? 1 : undefined }}>
+          <AnimatedCTACard onPress={() => router.push('/(admin)/new-order' as any)} isDesktop={isDesktop} />
         </View>
       </View>
 
-      {/* ════════ BOTTOM ROW — Weekly + Hızlı İşlem CTA ════════ */}
-      <View className={isDesktop ? 'flex-row' : ''} style={{ gap: 14, marginBottom: 14 }}>
+      {/* ════════ BOTTOM ROW — Weekly + Bugünkü Görevler ════════ */}
+      <View className={isDesktop ? 'flex-row' : ''} style={{ gap: 16, marginBottom: 16 }}>
         <WeeklyStrip
           weekDays={weekDays}
           weekCounts={weekCounts}
+          weekDone={weekDone}
           onPress={() => router.push('/(admin)/orders' as any)}
         />
-        <AnimatedCTACard onPress={() => router.push('/(admin)/new-order' as any)} isDesktop={isDesktop} />
+        <TasksCard tasks={taskItems} />
       </View>
 
       {/* ════════ EXTRA SECTIONS (below fold) ════════ */}
@@ -1320,11 +1786,11 @@ export default function AdminDashboard() {
       ) : (
         <>
           {/* Son Siparişler — Patterns table */}
-          <Card style={{ marginBottom: 14 }}>
+          <Card style={{ marginBottom: 16 }}>
             <View className="flex-row items-center justify-between" style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
-              <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>Son Siparişler</Text>
+              <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>{t('admin.dashboard.recentOrders')}</Text>
               <Pressable onPress={() => router.push('/(admin)/orders' as any)}>
-                <Text style={{ fontSize: 13, color: P, fontWeight: '700' }}>Tümünü Gör →</Text>
+                <Text style={{ fontSize: 13, color: P, fontWeight: '700' }}>{t('admin.dashboard.viewAll')}</Text>
               </Pressable>
             </View>
 
@@ -1337,15 +1803,15 @@ export default function AdminDashboard() {
                 backgroundColor: DS.ink[50],
               }}
             >
-              <Text style={{ flex: 1.2, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>No</Text>
-              <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Hekim</Text>
-              {isDesktop && <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>İş Tipi</Text>}
-              <Text style={{ flex: 1.4, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Durum</Text>
-              {isDesktop && <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, textAlign: 'right' }}>Teslim</Text>}
+              <Text style={{ flex: 1.2, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>{t('admin.table.no')}</Text>
+              <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>{t('admin.table.doctor')}</Text>
+              {isDesktop && <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>{t('admin.table.workType')}</Text>}
+              <Text style={{ flex: 1.4, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>{t('admin.table.status')}</Text>
+              {isDesktop && <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, textAlign: 'right' }}>{t('admin.table.delivery')}</Text>}
             </View>
 
             {recentOrders.length === 0
-              ? <Text className="p-6 text-center" style={{ fontSize: 13, color: DS.ink[400] }}>Yükleniyor...</Text>
+              ? <Text className="p-6 text-center" style={{ fontSize: 13, color: DS.ink[400] }}>{loading ? t('common.loading') : t('admin.dashboard.noOrders')}</Text>
               : recentOrders.map((order, idx) => {
                   const overdue = order.delivery_date < today && order.status !== 'teslim_edildi';
                   const isLast  = idx === recentOrders.length - 1;
@@ -1372,7 +1838,7 @@ export default function AdminDashboard() {
                         <Text style={{ fontSize: 12, fontWeight: '800', color: P }} numberOfLines={1}>#{order.order_number}</Text>
                         {order.is_urgent && (
                           <View className="rounded" style={{ paddingHorizontal: 4, paddingVertical: 1, backgroundColor: 'rgba(217,75,75,0.1)' }}>
-                            <Text style={{ fontSize: 9, fontWeight: '800', color: CLR.red }}>ACİL</Text>
+                            <Text style={{ fontSize: 9, fontWeight: '800', color: CLR.red }}>{t('admin.status.urgent')}</Text>
                           </View>
                         )}
                       </View>
@@ -1405,13 +1871,55 @@ export default function AdminDashboard() {
             }
           </Card>
 
+          {/* Faturalanmamış sipariş hatırlatması (Faz 3) */}
+          {unbilledCount > 0 && (
+            <Pressable
+              onPress={() => router.push('/(admin)/finance' as any)}
+              style={{
+                marginBottom: 16,
+                padding: 18,
+                borderRadius: 18,
+                backgroundColor: 'rgba(217,119,6,0.08)',
+                borderWidth: 1,
+                borderColor: 'rgba(217,119,6,0.22)',
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 14,
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              }}
+            >
+              <View style={{
+                width: 44, height: 44, borderRadius: 12,
+                backgroundColor: 'rgba(217,119,6,0.18)',
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Receipt size={20} color="#9C5E0E" strokeWidth={1.8} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#9C5E0E', letterSpacing: 0.2 }}>
+                  {t('admin.dashboard.unbilledDeliveries')}
+                </Text>
+                <Text style={{ fontSize: 12, color: DS.ink[700], marginTop: 2 }}>
+                  <NumberTickerX value={unbilledCount} duration={600} style={{ fontWeight: '700', color: DS.ink[800] } as any} />
+                  {` ${t('admin.dashboard.orders')}`}
+                  <NumberTickerX value={unbilledClinics} duration={600} style={{ fontWeight: '700', color: DS.ink[800] } as any} />
+                  {` ${t('admin.dashboard.clinicEstimated')}`}
+                  <NumberTickerX value={unbilledTotal} duration={700} prefix="₺" style={{ fontWeight: '700', color: DS.ink[800] } as any} />
+                </Text>
+              </View>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#9C5E0E', letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                {t('admin.dashboard.invoice')}
+              </Text>
+            </Pressable>
+          )}
+
           {/* Finance + Status + Work Type — 2-column below fold */}
-          <View className={isDesktop ? 'flex-row' : ''} style={{ gap: 14, marginBottom: 14 }}>
-            <View style={{ flex: isDesktop ? 1 : undefined, gap: 14 }}>
+          <View className={isDesktop ? 'flex-row' : ''} style={{ gap: 16, marginBottom: 16 }}>
+            <View style={{ flex: isDesktop ? 1 : undefined, gap: 16 }}>
               <FinanceCard monthly={finMonthly} pending={finPending} paid={finPaidCount} />
               {byWorkType.length > 0 && <WorkTypeCard data={byWorkType} />}
             </View>
-            <View style={{ flex: isDesktop ? 1 : undefined, gap: 14, marginTop: isDesktop ? 0 : 14 }}>
+            <View style={{ flex: isDesktop ? 1 : undefined, gap: 16, marginTop: isDesktop ? 0 : 16 }}>
               <StatusDistCard byStatus={byStatus} />
             </View>
           </View>

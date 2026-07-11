@@ -24,6 +24,7 @@ export interface CreateCheckParams {
   check_number?: string;
   bank_name?: string;
   amount: number;
+  currency?: string;
   issue_date?: string;
   due_date: string;
   notes?: string;

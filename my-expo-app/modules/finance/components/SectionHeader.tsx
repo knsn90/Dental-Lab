@@ -8,6 +8,7 @@
  */
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { baseSymbol, useBaseCurrency } from '../../../core/money/baseCurrency';
 
 interface Props {
   label:    string;
@@ -17,10 +18,11 @@ interface Props {
 }
 
 function fmtMoney(n: number): string {
-  return '₺' + n.toLocaleString('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  return baseSymbol() + n.toLocaleString('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
 export function SectionHeader({ label, count, subtotal, accent = '#64748B' }: Props) {
+  useBaseCurrency();
   return (
     <View style={s.row}>
       <View style={[s.dot, { backgroundColor: accent }]} />

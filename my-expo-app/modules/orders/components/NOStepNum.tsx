@@ -6,7 +6,7 @@
 import React from 'react';
 import { View, Text } from 'react-native';
 import { Check } from 'lucide-react-native';
-import { NO, NORadius } from './NOTokens';
+import { useNOTokens } from './NOTokens';
 
 export type NOStepState = 'done' | 'current' | 'todo';
 
@@ -16,6 +16,7 @@ export interface NOStepNumProps {
 }
 
 export function NOStepNum({ n, state }: NOStepNumProps) {
+  const NO = useNOTokens();
   const isDone = state === 'done';
   const isCurrent = state === 'current';
 
@@ -31,7 +32,7 @@ export function NOStepNum({ n, state }: NOStepNumProps) {
           ? NO.saffron
           : 'transparent',
         borderWidth: state === 'todo' ? 1.5 : 0,
-        borderColor: state === 'todo' ? 'rgba(0,0,0,0.15)' : 'transparent',
+        borderColor: state === 'todo' ? NO.borderMedium : 'transparent',
         alignItems: 'center',
         justifyContent: 'center',
         flexShrink: 0,

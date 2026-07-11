@@ -7,9 +7,10 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView,
-  TextInput, ActivityIndicator, Alert,
+  TextInput, Alert,
 } from 'react-native';
 import { AppIcon } from '../../../core/ui/AppIcon';
+import { confirmAsync } from '../../../core/util/confirm';
 import { DatePicker } from '../../../core/ui/DatePicker';
 import { Shadows, CardSpec } from '../../../core/theme/shadows';
 import { toast } from '../../../core/ui/Toast';
@@ -19,6 +20,9 @@ import {
   type RecurringExpense, type RecurringFrequency,
 } from '../recurring';
 import { EXPENSE_CATEGORY_LABELS } from '../api';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
+import { CenteredLoader } from '../../../core/ui/CenteredLoader';
+import { baseSymbol, useBaseCurrency } from '../../../core/money/baseCurrency';
 
 interface Props {
   visible: boolean;
@@ -38,10 +42,11 @@ const CATEGORIES: { key: RecurringExpense['category']; label: string }[] = [
 const FREQ_OPTS: RecurringFrequency[] = ['weekly','monthly','quarterly','yearly'];
 
 function fmtMoney(n: number): string {
-  return '₺' + n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return baseSymbol() + n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export function RecurringExpensesPanel({ visible, onClose, onAfterGenerate }: Props) {
+  useBaseCurrency();
   const [items, setItems] = useState<RecurringExpense[]>([]);
   const [loading, setLoading] = useState(false);
   const [editor, setEditor] = useState<RecurringExpense | null>(null);
@@ -101,9 +106,7 @@ export function RecurringExpensesPanel({ visible, onClose, onAfterGenerate }: Pr
           {/* Toolbar */}
           <View style={s.toolbar}>
             <TouchableOpacity style={s.genBtn} onPress={handleGenerate} disabled={generating}>
-              {generating
-                ? <ActivityIndicator size="small" color="#FFFFFF" />
-                : <AppIcon name="play-circle-outline" size={15} color="#FFFFFF" />}
+              <AppIcon name="play-circle-outline" size={15} color="#FFFFFF" />
               <Text style={s.genText}>Şimdi Üret</Text>
             </TouchableOpacity>
             <View style={{ flex: 1 }} />
@@ -116,7 +119,7 @@ export function RecurringExpensesPanel({ visible, onClose, onAfterGenerate }: Pr
           {/* List */}
           <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
             {loading ? (
-              <ActivityIndicator color="#2563EB" />
+              <CenteredLoader color="#2563EB" inline minHeight={200} />
             ) : items.length === 0 ? (
               <View style={s.empty}>
                 <AppIcon name="repeat-variant" size={36} color="#CBD5E1" />
@@ -169,6 +172,7 @@ function RecurringEditor({
   visible: boolean; record: RecurringExpense | null;
   onClose: () => void; onSaved: () => void;
 }) {
+  useBaseCurrency();
   const [form, setForm] = useState<RecurringExpense | null>(record);
   const [saving, setSaving] = useState(false);
 
@@ -203,16 +207,14 @@ function RecurringEditor({
     onSaved();
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!form.id) return;
-    Alert.alert('Şablonu Sil', 'Bu şablon silinsin mi? Geçmiş giderler etkilenmez.', [
-      { text: 'Vazgeç', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: async () => {
-        await deleteRecurring(form.id);
-        toast.success('Silindi');
-        onSaved();
-      }},
-    ]);
+    // Alert.alert web'de no-op → cross-platform confirmAsync
+    const ok = await confirmAsync('Şablonu Sil', 'Bu şablon silinsin mi? Geçmiş giderler etkilenmez.', { confirmText: 'Sil', destructive: true });
+    if (!ok) return;
+    await deleteRecurring(form.id);
+    toast.success('Silindi');
+    onSaved();
   };
 
   return (
@@ -234,7 +236,7 @@ function RecurringEditor({
             </Field>
 
             <View style={{ flexDirection: 'row', gap: 10 }}>
-              <Field label="Tutar (₺) *" style={{ flex: 1 }}>
+              <Field label={`Tutar (${baseSymbol()}) *`} style={{ flex: 1 }}>
                 <TextInput style={s.input} value={String(form.amount)}
                   keyboardType="decimal-pad"
                   onChangeText={v => setForm({ ...form, amount: Number(v.replace(',', '.')) || 0 })} />

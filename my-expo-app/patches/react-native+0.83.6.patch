@@ -1,0 +1,35 @@
+diff --git a/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm b/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
+index 35cfd7a..ba51666 100644
+--- a/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
++++ b/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
+@@ -406,7 +406,14 @@ id convertJSIValueToObjCObject(
+         // See https://github.com/reactwg/react-native-new-architecture/discussions/276#discussioncomment-12567155
+         throw convertNSExceptionToJSError(runtime, exception, std::string{moduleName}, methodNameStr);
+       } else {
+-        @throw exception;
++        // PATCH: iOS 26.4 beta + UIKit/CG/Expo Modules paths fırlatıyor Obj-C
++        // exception'larını async TurboModule queue'da. Rethrow edersek app crash
++        // ediyor (queue handler exception swallow etmiyor → abort). Bunun yerine
++        // log + swallow yap. Bilgi olarak NSLog'a yaz; modül sessizce fail eder
++        // ama app yaşamına devam.
++        NSLog(@"[RCTTurboModule] Swallowed Obj-C exception in %s::%s — %@: %@",
++              moduleName, methodNameStr.c_str(),
++              [exception name], [exception reason]);
+       }
+     } @finally {
+       [retainedObjectsForInvocation removeAllObjects];
+@@ -470,9 +477,11 @@ TraceSection s(
+     @try {
+       [inv invokeWithTarget:strongModule];
+     } @catch (NSException *exception) {
+-      // Void methods are always async, re-throw instead of converting to
+-      // JSError, same as the async branch in performMethodInvocation.
+-      @throw exception;
++      // PATCH: iOS 26.4 beta uyumluluğu — @throw yerine log+swallow.
++      // Bkz. performMethodInvocation patch yorumu.
++      NSLog(@"[RCTTurboModule] Swallowed Obj-C exception (void) in %s::%s — %@: %@",
++            moduleName, methodNameStr.c_str(),
++            [exception name], [exception reason]);
+     } @finally {
+       [retainedObjectsForInvocation removeAllObjects];
+     }

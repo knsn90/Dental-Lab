@@ -16,6 +16,8 @@ import {
   AlertCircle, Search, Lock, XCircle, Check, Plus, Building2,
 } from 'lucide-react-native';
 import { DS } from '../../../core/theme/dsTokens';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 // ── Web-only portal ────────────────────────────────────────────────
 let _portal: ((node: React.ReactNode) => React.ReactNode) | null = null;
@@ -195,6 +197,8 @@ export function Field({
   label, value, onChangeText, placeholder,
   multiline, flex, style, required, error,
 }: FieldProps) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <View style={[{ marginBottom: 0 }, flex && { flex: 1 }]}>
       {/* Label */}
@@ -203,7 +207,7 @@ export function Field({
           <Text
             style={{
               fontSize: 13, fontWeight: '700', lineHeight: 16,
-              color: error ? '#EF4444' : DS.ink[900],
+              color: error ? '#EF4444' : T.ink,
             }}
           >
             *
@@ -212,7 +216,7 @@ export function Field({
         <Text
           style={{
             fontSize: 12, fontWeight: '500',
-            color: error ? '#EF4444' : DS.ink[800],
+            color: error ? '#EF4444' : T.ink2,
           }}
         >
           {label}
@@ -223,6 +227,7 @@ export function Field({
       <TextInput
         style={[
           INPUT_STYLE,
+          { backgroundColor: isDark ? T.card : '#FFFFFF', borderColor: T.hairline, color: T.ink },
           multiline && { minHeight: 88, textAlignVertical: 'top' as const, paddingTop: 12, height: undefined },
           error && { borderColor: 'rgba(239,68,68,0.5)', backgroundColor: 'rgba(239,68,68,0.04)' },
           style,
@@ -230,7 +235,7 @@ export function Field({
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor={DS.ink[300]}
+        placeholderTextColor={T.ink3}
         multiline={multiline}
         textAlignVertical={multiline ? 'top' : 'auto'}
       />
@@ -267,6 +272,8 @@ export function SearchableDropdown({
   onAddNew, addNewLabel, disabled, disabledHint,
   required, error, accentColor = DS.ink[900],
 }: SearchableDropdownProps) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const [focused, setFocused] = useState(false);
   const [query, setQuery]     = useState('');
   const [adding, setAdding]   = useState(false);
@@ -337,7 +344,7 @@ export function SearchableDropdown({
     return (
       <View style={{ position: 'relative' as const, flex: 1 }}>
         {label ? (
-          <Text style={{ fontSize: 12, fontWeight: '500', color: DS.ink[400], marginBottom: 6 }}>
+          <Text style={{ fontSize: 12, fontWeight: '500', color: T.ink3, marginBottom: 6 }}>
             {label}
           </Text>
         ) : null}
@@ -345,13 +352,13 @@ export function SearchableDropdown({
           style={{
             flexDirection: 'row', alignItems: 'center', gap: 8,
             ...INPUT_STYLE,
-            backgroundColor: DS.ink[50],
-            borderColor: 'rgba(0,0,0,0.04)',
+            backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : DS.ink[50],
+            borderColor: T.hairline2,
           }}
         >
-          <Lock size={14} color={DS.ink[300]} strokeWidth={1.8} />
+          <Lock size={14} color={T.ink3} strokeWidth={1.8} />
           <Text
-            style={{ flex: 1, fontSize: 14, color: DS.ink[300] }}
+            style={{ flex: 1, fontSize: 14, color: T.ink3 }}
             numberOfLines={1}
           >
             {disabledHint ?? placeholder}
@@ -393,24 +400,26 @@ export function SearchableDropdown({
             ...INPUT_STYLE,
             height: undefined,
             paddingVertical: 11,
+            backgroundColor: isDark ? T.card : '#FFFFFF',
+            borderColor: T.hairline,
           },
-          focused && { borderColor: DS.ink[900] },
+          focused && { borderColor: T.ink },
           error && { borderColor: 'rgba(239,68,68,0.5)', backgroundColor: 'rgba(239,68,68,0.04)' },
         ]}
       >
-        <Search size={15} color={DS.ink[300]} strokeWidth={1.8} />
+        <Search size={15} color={T.ink3} strokeWidth={1.8} />
         <TextInput
           style={{
-            flex: 1, fontSize: 14, color: DS.ink[900],
+            flex: 1, fontSize: 14, color: T.ink,
             // @ts-ignore
-            outlineStyle: 'none',
+            outlineStyle: 'none' as any,
           }}
           value={query}
           onChangeText={(text) => { setQuery(text); if (!text) onSelect(''); }}
           onFocus={() => { setFocused(true); measureWrap(); }}
           onBlur={() => setTimeout(() => setFocused(false), 250)}
           placeholder={placeholder}
-          placeholderTextColor={DS.ink[300]}
+          placeholderTextColor={T.ink3}
         />
         {selectedId ? (
           <Pressable
@@ -419,7 +428,7 @@ export function SearchableDropdown({
             // @ts-ignore web
             style={{ cursor: 'pointer' }}
           >
-            <XCircle size={16} color={DS.ink[300]} strokeWidth={1.6} />
+            <XCircle size={16} color={T.ink3} strokeWidth={1.6} />
           </Pressable>
         ) : null}
       </View>
@@ -433,17 +442,17 @@ export function SearchableDropdown({
           <View
             style={[
               {
-                marginTop: 4,
-                backgroundColor: '#FFFFFF',
-                borderRadius: 14,
+                marginTop: 6,
+                backgroundColor: T.card,
+                borderRadius: 16,
                 borderWidth: 1,
-                borderColor: 'rgba(0,0,0,0.06)',
+                borderColor: T.hairline,
                 overflow: 'hidden' as const,
               },
               Platform.select({
-                web: { boxShadow: '0 4px 20px rgba(0,0,0,0.10)' } as any,
+                web: { boxShadow: isDark ? '0 4px 20px rgba(0,0,0,0.55)' : '0 4px 20px rgba(0,0,0,0.10)' } as any,
                 default: {
-                  shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 20,
+                  shadowColor: '#000', shadowOpacity: isDark ? 0.4 : 0.1, shadowRadius: 20,
                   shadowOffset: { width: 0, height: 4 }, elevation: 8,
                 },
               }),
@@ -454,7 +463,10 @@ export function SearchableDropdown({
                     left: dropPos.left, width: dropPos.width,
                     marginTop: 0, zIndex: 9999,
                   }
-                : { display: 'none' as any },
+                : Platform.OS === 'web'
+                  ? { display: 'none' as any }
+                  // Mobile: inline render below the input
+                  : { zIndex: 9999 } as any,
             ]}
             {...(Platform.OS === 'web' ? { onMouseDown: (e: any) => e.preventDefault() } : {})}
           >
@@ -467,47 +479,58 @@ export function SearchableDropdown({
               {filtered.length === 0 && !showAdd && (
                 <Text
                   style={{
-                    textAlign: 'center', color: DS.ink[400],
+                    textAlign: 'center', color: T.ink3,
                     paddingVertical: 24, fontSize: 13,
                   }}
                 >
                   Sonuc bulunamadi
                 </Text>
               )}
-              {filtered.map(item => {
+              {filtered.map((item, idx) => {
                 const active = item.id === selectedId;
+                const initials = (item.label ?? '?')
+                  .trim().split(/\s+/).slice(0, 2).map((w: string) => w[0]).join('').toUpperCase() || '?';
+                const isLast = idx === filtered.length - 1;
                 return (
                   <Pressable
                     key={item.id}
                     onPress={() => handleSelect(item.id, item.label)}
-                    style={({ pressed }: any) => [
-                      {
-                        flexDirection: 'row', alignItems: 'center',
-                        paddingHorizontal: 16, paddingVertical: 12,
-                        borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.03)',
-                        gap: 10,
-                      },
-                      active && { backgroundColor: DS.ink[50] },
-                      pressed && { backgroundColor: DS.ink[100] },
-                    ]}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 12,
+                      paddingHorizontal: 14, paddingVertical: 11,
+                      borderBottomWidth: isLast ? 0 : 1, borderBottomColor: T.hairline2,
+                      backgroundColor: active ? `${accentColor}12` : 'transparent',
+                    }}
                   >
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={{
-                          fontSize: 14,
-                          color: DS.ink[900],
-                          fontWeight: active ? '500' : '400',
-                        }}
-                      >
+                    {/* Avatar — baş harfler, accent tonlu */}
+                    <View style={{
+                      width: 38, height: 38, borderRadius: 19, flexShrink: 0,
+                      backgroundColor: active ? accentColor : `${accentColor}18`,
+                      borderWidth: 1, borderColor: active ? accentColor : `${accentColor}2E`,
+                      alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: active ? '#FFFFFF' : accentColor }}>
+                        {initials}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ fontSize: 14.5, color: T.ink, fontWeight: '600', letterSpacing: -0.1 }} numberOfLines={1}>
                         {item.label}
                       </Text>
                       {item.sublabel && (
-                        <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 1 }}>
+                        <Text style={{ fontSize: 12, color: T.ink3, marginTop: 2 }} numberOfLines={1}>
                           {item.sublabel}
                         </Text>
                       )}
                     </View>
-                    {active && <Check size={16} color={DS.ink[900]} strokeWidth={2} />}
+                    {active && (
+                      <View style={{
+                        width: 22, height: 22, borderRadius: 11, flexShrink: 0,
+                        backgroundColor: accentColor, alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <Check size={13} color="#FFFFFF" strokeWidth={2.6} />
+                      </View>
+                    )}
                   </Pressable>
                 );
               })}
@@ -518,29 +541,30 @@ export function SearchableDropdown({
                 onPress={handleAdd}
                 disabled={adding}
                 style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 10,
-                  paddingHorizontal: 16, paddingVertical: 13,
-                  borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)',
-                  backgroundColor: DS.ink[50],
+                  flexDirection: 'row', alignItems: 'center', gap: 12,
+                  paddingHorizontal: 14, paddingVertical: 13,
+                  borderTopWidth: 1, borderTopColor: T.hairline2,
+                  backgroundColor: `${accentColor}0D`,
                   // @ts-ignore web
                   cursor: 'pointer',
                 }}
               >
                 <View
                   style={{
-                    width: 26, height: 26, borderRadius: 13,
-                    backgroundColor: DS.ink[200],
+                    width: 38, height: 38, borderRadius: 19, flexShrink: 0,
+                    backgroundColor: `${accentColor}18`,
+                    borderWidth: 1, borderColor: `${accentColor}33`, borderStyle: 'dashed',
                     alignItems: 'center', justifyContent: 'center',
                   }}
                 >
                   {adding
-                    ? <ActivityIndicator size="small" color={DS.ink[900]} />
-                    : <Plus size={14} color={DS.ink[900]} strokeWidth={2} />
+                    ? <ActivityIndicator size="small" color={accentColor} />
+                    : <Plus size={16} color={accentColor} strokeWidth={2.4} />
                   }
                 </View>
-                <Text style={{ fontSize: 14, fontWeight: '500', color: DS.ink[900] }}>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: accentColor, flex: 1 }} numberOfLines={1}>
                   {adding
-                    ? 'Ekleniyor...'
+                    ? 'Ekleniyor…'
                     : query.trim()
                       ? `${addNewLabel ?? 'Ekle'}: "${query.trim()}"`
                       : (addNewLabel ?? 'Yeni ekle')

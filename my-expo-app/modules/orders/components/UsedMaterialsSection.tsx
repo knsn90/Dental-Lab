@@ -2,9 +2,10 @@
 // list_order_materials RPC'si üzerinden çekilir; her stage geçişinde audit kaydı birikir.
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Platform} from 'react-native';
 import { supabase } from '../../../core/api/supabase';
 import { AppIcon } from '../../../core/ui/AppIcon';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
 
 interface MovementRow {
   movement_id:   string;
@@ -60,7 +61,6 @@ export function UsedMaterialsSection({ workOrderId }: Props) {
   if (loading) {
     return (
       <View style={s.card}>
-        <ActivityIndicator size="small" color="#94A3B8" />
       </View>
     );
   }

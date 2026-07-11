@@ -75,17 +75,23 @@ export function KanbanBoard({ orders, userGroup, onStatusAdvance }: Props) {
   const BOARD_PAD = 12;
   const COL_GAP   = 8;
   const MIN_COL_W = 220;
-  const numCols   = STAGE_COLUMNS.length;
-  const available = width - BOARD_PAD * 2 - COL_GAP * (numCols - 1);
-  const colWidth  = Math.max(MIN_COL_W, available / numCols);
-  const isWide    = available / numCols >= MIN_COL_W;
 
   const byStage = STAGE_COLUMNS.reduce<Record<Stage, WorkOrder[]>>(
     (acc, s) => { acc[s] = orders.filter(o => getOrderStage(o) === s); return acc; },
     {} as Record<Stage, WorkOrder[]>,
   );
 
-  const columnViews = STAGE_COLUMNS.map(stage => {
+  // Sadece aktif iş bulunan sütunları göster — boş aşamalar gizlenir.
+  // Hiç iş yoksa (filtrelendi vb.) yine TRIAGE'ı göster ki kullanıcı boş kart yapısını görsün.
+  const visibleStages = STAGE_COLUMNS.filter(s => (byStage[s]?.length ?? 0) > 0);
+  const stagesToRender: Stage[] = visibleStages.length > 0 ? visibleStages : ['TRIAGE'];
+
+  const numCols   = stagesToRender.length;
+  const available = width - BOARD_PAD * 2 - COL_GAP * (numCols - 1);
+  const colWidth  = Math.max(MIN_COL_W, available / numCols);
+  const isWide    = available / numCols >= MIN_COL_W;
+
+  const columnViews = stagesToRender.map(stage => {
     const col    = byStage[stage] ?? [];
     const accent = STAGE_COLOR[stage];
     const label  = STAGE_LABEL[stage];

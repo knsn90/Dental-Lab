@@ -5,9 +5,11 @@
  * Krem (#F5F2EA) zemin üzerinde düz beyaz olarak ayrılır.
  */
 import React from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, Platform } from 'react-native';
 import { Check } from 'lucide-react-native';
-import { NO, NOType, NORadius } from './NOTokens';
+import { useNOTokens, NOType, NORadius } from './NOTokens';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 // ── NOCard ─────────────────────────────────────────────────────────
 export interface NOCardProps {
@@ -17,14 +19,29 @@ export interface NOCardProps {
 }
 
 export function NOCard({ children, padded = true, style }: NOCardProps) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   return (
     <View
       style={[
         {
-          backgroundColor: '#FFFFFF',
+          // Beyaz kart yüzeyi — sayfa cream bg'sinden ayrışsın
+          backgroundColor: isDark ? T.card : '#FFFFFF',
           borderRadius: NORadius.xl,
+          borderWidth: 1,
+          borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
           padding: padded ? 16 : 0,
           flexDirection: 'column' as const,
+          // Hafif gölge — yüzey hissi
+          ...(Platform.OS === 'web'
+            ? { boxShadow: isDark ? 'none' : '0 1px 3px rgba(15,23,42,0.04), 0 4px 12px rgba(15,23,42,0.04)' }
+            : {
+                shadowColor: '#0F172A',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: isDark ? 0 : 0.05,
+                shadowRadius: 8,
+                elevation: 1,
+              }),
         },
         style,
       ]}
@@ -53,22 +70,24 @@ export interface NOCardHeadProps {
 }
 
 // Hex'e %15 alpha ekleyerek soft tone üret (#RRGGBB → #RRGGBB26)
-function softTone(hex?: string) {
-  if (!hex) return NO.saffronSoft;
+function softTone(hex: string, fallback: string) {
+  if (!hex) return fallback;
   if (hex.length === 7) return hex + '26';
   return hex;
 }
 
 export function NOCardHead({ num, title, sub, state, badge, headerRight, accent }: NOCardHeadProps) {
+  const NO = useNOTokens();
   const isDone = state === 'done';
   const accentColor = accent ?? NO.saffron;
-  const accentSoft  = accent ? softTone(accent) : NO.saffronSoft;
+  const accentSoft  = accent ? softTone(accent, NO.saffronSoft) : NO.saffronSoft;
 
   return (
     <View
       style={{
         flexDirection: 'row',
         alignItems: 'flex-start',
+        flexWrap: 'wrap',
         gap: 10,
         marginBottom: 12,
         paddingBottom: 10,
@@ -106,13 +125,13 @@ export function NOCardHead({ num, title, sub, state, badge, headerRight, accent 
         </View>
       )}
 
-      {/* Title + subtitle */}
-      <View style={{ flex: 1 }}>
-        <Text style={{ ...NOType.headingSm, color: NO.inkStrong }}>
+      {/* Title + subtitle — minWidth garantili, dar ekranda headerRight bir alt satıra sarar */}
+      <View style={{ flex: 1, minWidth: 180 }}>
+        <Text style={{ ...NOType.headingSm, color: NO.inkStrong }} numberOfLines={1}>
           {title}
         </Text>
         {sub && (
-          <Text style={{ fontSize: 11, color: NO.inkMute, marginTop: 2 }}>
+          <Text style={{ fontSize: 11, color: NO.inkMute, marginTop: 2 }} numberOfLines={1}>
             {sub}
           </Text>
         )}

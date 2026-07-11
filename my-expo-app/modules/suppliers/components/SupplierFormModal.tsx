@@ -4,13 +4,16 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable, Platform, Modal, TextInput, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, Platform, Modal, TextInput, ScrollView} from 'react-native';
 import { X, Check, Building2 } from 'lucide-react-native';
 import {
   Supplier, SupplierCategory, CATEGORY_LABELS,
   createSupplier, updateSupplier,
 } from '../api';
 import { SUPPORTED_CURRENCIES, type Currency } from '../../../core/money/currency';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 interface Props {
   visible: boolean;
@@ -20,7 +23,30 @@ interface Props {
   onSaved: () => void;
 }
 
+// Module-level Section bileşeni — fonksiyon içinde tanımlanırsa her render'da
+// yeni identity oluşur ve React remount eder (hooks order sorunlarına neden olabilir).
+function Section({
+  title, subtitle, eyebrowStyle, children,
+}: {
+  title: string;
+  subtitle?: string;
+  eyebrowStyle: any;
+  children: any;
+}) {
+  return (
+    <View style={{ gap: 14 }}>
+      <View style={{ gap: 2 }}>
+        <Text style={eyebrowStyle}>{title}</Text>
+        {subtitle ? <Text style={{ fontSize: 11, color: '#9A9A9A', fontWeight: '400' }}>{subtitle}</Text> : null}
+      </View>
+      <View style={{ gap: 12 }}>{children}</View>
+    </View>
+  );
+}
+
 export function SupplierFormModal({ visible, supplier, accentColor = '#0A0A0A', onClose, onSaved }: Props) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const isEdit = supplier !== null;
 
   const [name, setName] = useState('');
@@ -87,50 +113,74 @@ export function SupplierFormModal({ visible, supplier, accentColor = '#0A0A0A', 
 
   const DisplayFont = Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light';
 
+  // Patterns §13 form tokens
   const inputStyle: any = {
-    backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
-    paddingHorizontal: 14, height: 44, fontSize: 14, color: '#0A0A0A',
+    backgroundColor: T.cardSoft, borderRadius: 12, borderWidth: 1, borderColor: T.hairline,
+    paddingHorizontal: 14, height: 44, fontSize: 14, color: T.ink,
     ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
   };
-  const label: any = { fontSize: 11, fontWeight: '600', color: '#6B6B6B', letterSpacing: 0.6, marginBottom: 6 };
+  const label: any = { fontSize: 11, fontWeight: '600', color: T.ink3, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 7 };
+  const sectionEyebrow: any = { fontSize: 10, fontWeight: '700', color: accentColor, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 2 };
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.42)', justifyContent: 'center', alignItems: 'center', padding: 20, ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}) }}>
         <View style={{
-          backgroundColor: '#FFFFFF', borderRadius: 20, width: 560, maxWidth: '100%', maxHeight: '90%',
-          ...(Platform.OS === 'web' ? { boxShadow: '0 16px 48px rgba(0,0,0,0.2)' } as any : {}),
+          backgroundColor: T.card, borderRadius: 24, width: 600, maxWidth: '100%', maxHeight: '92%',
+          overflow: 'hidden',
+          ...(Platform.OS === 'web' ? { boxShadow: '0 24px 64px rgba(0,0,0,0.22)' } as any : {}),
         }}>
-          {/* Header */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' }}>
-            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <View style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor + '14' }}>
-                <Building2 size={18} color={accentColor} strokeWidth={1.6} />
+          {/* Header — Patterns §13 form */}
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingHorizontal: 28, paddingTop: 24, paddingBottom: 18, gap: 16 }}>
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+              <View style={{
+                width: 44, height: 44, borderRadius: 22,
+                alignItems: 'center', justifyContent: 'center',
+                backgroundColor: accentColor + '14',
+                borderWidth: 1, borderColor: accentColor + '22',
+              }}>
+                <Building2 size={20} color={accentColor} strokeWidth={1.6} />
               </View>
-              <View>
-                <Text style={{ fontSize: 11, fontWeight: '600', color: '#9A9A9A', letterSpacing: 1, textTransform: 'uppercase' }}>Tedarikçi</Text>
-                <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 22, letterSpacing: -0.4, color: '#0A0A0A' }}>
-                  {isEdit ? 'Düzenle' : 'Yeni tedarikçi'}
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: accentColor, letterSpacing: 1.2, textTransform: 'uppercase' }}>
+                  {isEdit ? 'Tedarikçi düzenle' : 'Yeni tedarikçi'}
+                </Text>
+                <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 26, letterSpacing: -0.6, color: T.ink, lineHeight: 32, marginTop: 2 }} numberOfLines={1}>
+                  {isEdit ? name || 'Firma' : 'Cari hesap aç'}
+                </Text>
+                <Text style={{ fontSize: 12, color: '#9A9A9A', marginTop: 2 }}>
+                  Bilgileri tamamla — kayıt sonrası firma cari hesap olarak görünür.
                 </Text>
               </View>
             </View>
-            <Pressable onPress={onClose} style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.04)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-              <X size={14} color="#6B6B6B" strokeWidth={1.8} />
+            <Pressable
+              onPress={onClose}
+              style={{
+                width: 36, height: 36, borderRadius: 18,
+                alignItems: 'center', justifyContent: 'center',
+                backgroundColor: T.card,
+                borderWidth: 1, borderColor: T.hairline,
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              }}
+            >
+              <X size={15} color="#6B6B6B" strokeWidth={1.8} />
             </Pressable>
           </View>
 
-          <ScrollView style={{ padding: 20 }} contentContainerStyle={{ gap: 14 }}>
-            {/* Name */}
-            <View>
-              <Text style={label}>FİRMA ADI *</Text>
-              <TextInput style={inputStyle} value={name} onChangeText={setName} placeholder="ABC Dental Tic. Ltd. Şti." placeholderTextColor="#9A9A9A" />
-            </View>
+          <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.04)', marginHorizontal: 28 }} />
 
-            {/* Category + Currency */}
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={label}>KATEGORİ</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>
+          <ScrollView contentContainerStyle={{ paddingHorizontal: 28, paddingTop: 22, paddingBottom: 22, gap: 26 }} showsVerticalScrollIndicator={false}>
+
+            {/* ── KIMLIK ── */}
+            <Section title="Kimlik" subtitle="Firma adı ve sınıflandırma" eyebrowStyle={sectionEyebrow}>
+              <View>
+                <Text style={label}>Firma adı *</Text>
+                <TextInput style={inputStyle} value={name} onChangeText={setName} placeholder="ABC Dental Tic. Ltd. Şti." placeholderTextColor="#9A9A9A" />
+              </View>
+
+              <View>
+                <Text style={label}>Kategori</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                   {(Object.keys(CATEGORY_LABELS) as SupplierCategory[]).map(c => {
                     const active = category === c;
                     return (
@@ -138,21 +188,22 @@ export function SupplierFormModal({ visible, supplier, accentColor = '#0A0A0A', 
                         key={c}
                         onPress={() => setCategory(c)}
                         style={{
-                          paddingHorizontal: 11, paddingVertical: 7, borderRadius: 9999,
-                          backgroundColor: active ? accentColor : '#FFFFFF',
-                          borderWidth: 1, borderColor: active ? accentColor : 'rgba(0,0,0,0.08)',
+                          paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9999,
+                          backgroundColor: active ? accentColor : 'transparent',
+                          borderWidth: 1, borderColor: active ? accentColor : T.hairline,
                           ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
                         }}
                       >
-                        <Text style={{ fontSize: 11, fontWeight: active ? '600' : '500', color: active ? '#FFF' : '#6B6B6B' }}>{CATEGORY_LABELS[c]}</Text>
+                        <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? '#FFF' : T.ink2 }}>{CATEGORY_LABELS[c]}</Text>
                       </Pressable>
                     );
                   })}
                 </View>
               </View>
-              <View style={{ width: 140 }}>
-                <Text style={label}>VARSAYILAN PARA</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+
+              <View>
+                <Text style={label}>Varsayılan para birimi</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                   {SUPPORTED_CURRENCIES.map(c => {
                     const active = currency === c;
                     return (
@@ -160,114 +211,178 @@ export function SupplierFormModal({ visible, supplier, accentColor = '#0A0A0A', 
                         key={c}
                         onPress={() => setCurrency(c)}
                         style={{
-                          paddingHorizontal: 10, paddingVertical: 7, borderRadius: 9999,
-                          backgroundColor: active ? accentColor : '#FFFFFF',
-                          borderWidth: 1, borderColor: active ? accentColor : 'rgba(0,0,0,0.08)',
+                          paddingHorizontal: 14, paddingVertical: 8, borderRadius: 9999,
+                          backgroundColor: active ? accentColor : 'transparent',
+                          borderWidth: 1, borderColor: active ? accentColor : T.hairline,
                           ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
                         }}
                       >
-                        <Text style={{ fontSize: 11, fontWeight: active ? '700' : '500', color: active ? '#FFF' : '#6B6B6B', letterSpacing: 0.3 }}>{c}</Text>
+                        <Text style={{ fontSize: 12, fontWeight: active ? '700' : '500', color: active ? '#FFF' : T.ink2, letterSpacing: 0.4 }}>{c}</Text>
                       </Pressable>
                     );
                   })}
                 </View>
+                <Text style={{ fontSize: 11, color: '#9A9A9A', marginTop: 6 }}>
+                  Bu firmadan alış yapılırken otomatik bu para birimi seçilir.
+                </Text>
               </View>
-            </View>
+            </Section>
 
-            {/* Contact */}
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={label}>İLGİLİ KİŞİ</Text>
-                <TextInput style={inputStyle} value={contactPerson} onChangeText={setContactPerson} placeholder="Ad Soyad" placeholderTextColor="#9A9A9A" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={label}>TELEFON</Text>
-                <TextInput style={inputStyle} value={phone} onChangeText={setPhone} placeholder="+90 5xx…" placeholderTextColor="#9A9A9A" keyboardType="phone-pad" />
-              </View>
-            </View>
+            <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.04)' }} />
 
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={label}>E-POSTA</Text>
-                <TextInput style={inputStyle} value={email} onChangeText={setEmail} placeholder="info@firma.com" placeholderTextColor="#9A9A9A" keyboardType="email-address" autoCapitalize="none" />
+            {/* ── ILETIŞIM ── */}
+            <Section title="İletişim" subtitle="Yetkili kişi ve iletişim bilgileri" eyebrowStyle={sectionEyebrow}>
+              <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
+                <View style={{ flex: 1, minWidth: 200 }}>
+                  <Text style={label}>İlgili kişi</Text>
+                  <TextInput style={inputStyle} value={contactPerson} onChangeText={setContactPerson} placeholder="Ad Soyad" placeholderTextColor="#9A9A9A" />
+                </View>
+                <View style={{ flex: 1, minWidth: 200 }}>
+                  <Text style={label}>Telefon</Text>
+                  <TextInput style={inputStyle} value={phone} onChangeText={setPhone} placeholder="+90 5xx…" placeholderTextColor="#9A9A9A" keyboardType="phone-pad" />
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={label}>WEB SİTESİ</Text>
-                <TextInput style={inputStyle} value={website} onChangeText={setWebsite} placeholder="firma.com" placeholderTextColor="#9A9A9A" autoCapitalize="none" />
+              <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
+                <View style={{ flex: 1, minWidth: 200 }}>
+                  <Text style={label}>E-posta</Text>
+                  <TextInput style={inputStyle} value={email} onChangeText={setEmail} placeholder="info@firma.com" placeholderTextColor="#9A9A9A" keyboardType="email-address" autoCapitalize="none" />
+                </View>
+                <View style={{ flex: 1, minWidth: 200 }}>
+                  <Text style={label}>Web sitesi</Text>
+                  <TextInput style={inputStyle} value={website} onChangeText={setWebsite} placeholder="firma.com" placeholderTextColor="#9A9A9A" autoCapitalize="none" />
+                </View>
               </View>
-            </View>
-
-            {/* Address */}
-            <View>
-              <Text style={label}>ADRES</Text>
-              <TextInput
-                style={[inputStyle, { height: 56, paddingTop: 11, paddingBottom: 11, textAlignVertical: 'top' }]}
-                value={address} onChangeText={setAddress}
-                placeholder="Tam adres…" placeholderTextColor="#9A9A9A" multiline
-              />
-            </View>
-
-            {/* Tax */}
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={label}>VERGİ NO (VKN/TCKN)</Text>
-                <TextInput style={inputStyle} value={taxNo} onChangeText={setTaxNo} placeholder="1234567890" placeholderTextColor="#9A9A9A" keyboardType="numeric" />
+              <View>
+                <Text style={label}>Adres</Text>
+                <TextInput
+                  style={[inputStyle, { height: 64, paddingTop: 11, paddingBottom: 11, textAlignVertical: 'top' }]}
+                  value={address} onChangeText={setAddress}
+                  placeholder="Açık adres…" placeholderTextColor="#9A9A9A" multiline
+                />
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={label}>VERGİ DAİRESİ</Text>
-                <TextInput style={inputStyle} value={taxOffice} onChangeText={setTaxOffice} placeholder="örn. Beşiktaş" placeholderTextColor="#9A9A9A" />
+            </Section>
+
+            <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.04)' }} />
+
+            {/* ── VERGI & BANKA ── */}
+            <Section title="Vergi & banka" subtitle="Fatura ve havale için" eyebrowStyle={sectionEyebrow}>
+              <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
+                <View style={{ flex: 1, minWidth: 200 }}>
+                  <Text style={label}>Vergi no (VKN/TCKN)</Text>
+                  <TextInput style={inputStyle} value={taxNo} onChangeText={setTaxNo} placeholder="1234567890" placeholderTextColor="#9A9A9A" keyboardType="numeric" />
+                </View>
+                <View style={{ flex: 1, minWidth: 200 }}>
+                  <Text style={label}>Vergi dairesi</Text>
+                  <TextInput style={inputStyle} value={taxOffice} onChangeText={setTaxOffice} placeholder="örn. Beşiktaş" placeholderTextColor="#9A9A9A" />
+                </View>
               </View>
-            </View>
-
-            {/* Bank */}
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <View style={{ flex: 1.4 }}>
-                <Text style={label}>IBAN</Text>
-                <TextInput style={inputStyle} value={iban} onChangeText={setIban} placeholder="TR…" placeholderTextColor="#9A9A9A" autoCapitalize="characters" />
+              <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
+                <View style={{ flex: 1.4, minWidth: 240 }}>
+                  <Text style={label}>IBAN</Text>
+                  <TextInput style={inputStyle} value={iban} onChangeText={setIban} placeholder="TR…" placeholderTextColor="#9A9A9A" autoCapitalize="characters" />
+                </View>
+                <View style={{ flex: 1, minWidth: 180 }}>
+                  <Text style={label}>Banka</Text>
+                  <TextInput style={inputStyle} value={bankName} onChangeText={setBankName} placeholder="örn. Garanti BBVA" placeholderTextColor="#9A9A9A" />
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={label}>BANKA</Text>
-                <TextInput style={inputStyle} value={bankName} onChangeText={setBankName} placeholder="örn. Garanti BBVA" placeholderTextColor="#9A9A9A" />
+            </Section>
+
+            <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.04)' }} />
+
+            {/* ── ANLAŞMA ── */}
+            <Section title="Anlaşma" subtitle="Vade koşulları ve özel notlar" eyebrowStyle={sectionEyebrow}>
+              <View>
+                <Text style={label}>Vade (gün)</Text>
+                <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                  {[
+                    { v: '0',  l: 'Peşin' },
+                    { v: '15', l: '15 gün' },
+                    { v: '30', l: '30 gün' },
+                    { v: '60', l: '60 gün' },
+                    { v: '90', l: '90 gün' },
+                  ].map(opt => {
+                    const active = paymentTerms === opt.v;
+                    return (
+                      <Pressable
+                        key={opt.v}
+                        onPress={() => setPaymentTerms(opt.v)}
+                        style={{
+                          paddingHorizontal: 14, paddingVertical: 8, borderRadius: 9999,
+                          backgroundColor: active ? accentColor : 'transparent',
+                          borderWidth: 1, borderColor: active ? accentColor : T.hairline,
+                          ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                        }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? '#FFF' : T.ink2 }}>{opt.l}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <TextInput
+                  style={[inputStyle, { paddingHorizontal: 14 }]}
+                  value={paymentTerms}
+                  onChangeText={setPaymentTerms}
+                  placeholder="Özel: gün sayısı"
+                  placeholderTextColor="#9A9A9A"
+                  keyboardType="numeric"
+                />
               </View>
-            </View>
 
-            {/* Payment terms */}
-            <View>
-              <Text style={label}>VADE (GÜN)</Text>
-              <TextInput style={inputStyle} value={paymentTerms} onChangeText={setPaymentTerms} placeholder="0 = peşin" placeholderTextColor="#9A9A9A" keyboardType="numeric" />
-              <Text style={{ fontSize: 11, color: '#9A9A9A', marginTop: 4 }}>0 peşin · 30 = 30 gün vade · 60 = 60 gün vade vb.</Text>
-            </View>
+              <View>
+                <Text style={label}>Not</Text>
+                <TextInput
+                  style={[inputStyle, { height: 72, paddingTop: 11, paddingBottom: 11, textAlignVertical: 'top' }]}
+                  value={notes} onChangeText={setNotes}
+                  placeholder="Hatırlatma, anlaşma şartı vb." placeholderTextColor="#9A9A9A" multiline
+                />
+              </View>
+            </Section>
 
-            {/* Notes */}
-            <View>
-              <Text style={label}>NOT</Text>
-              <TextInput
-                style={[inputStyle, { height: 64, paddingTop: 11, paddingBottom: 11, textAlignVertical: 'top' }]}
-                value={notes} onChangeText={setNotes}
-                placeholder="Hatırlatma, anlaşma şartı vb." placeholderTextColor="#9A9A9A" multiline
-              />
-            </View>
-
-            {error ? <Text style={{ fontSize: 12, color: '#9C2E2E', fontWeight: '500' }}>{error}</Text> : null}
+            {error ? (
+              <View style={{
+                flexDirection: 'row', alignItems: 'center', gap: 8,
+                padding: 12, backgroundColor: '#9C2E2E0F', borderRadius: 12,
+                borderWidth: 1, borderColor: '#9C2E2E22',
+              }}>
+                <View style={{ width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: '#9C2E2E22' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#9C2E2E' }}>!</Text>
+                </View>
+                <Text style={{ flex: 1, fontSize: 12, color: '#9C2E2E', fontWeight: '500' }}>{error}</Text>
+              </View>
+            ) : null}
           </ScrollView>
 
           {/* Footer */}
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, padding: 16, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)' }}>
-            <Pressable onPress={onClose} style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 9999, backgroundColor: 'rgba(0,0,0,0.04)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-              <Text style={{ fontSize: 13, fontWeight: '500', color: '#6B6B6B' }}>Vazgeç</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 28, paddingVertical: 18, borderTopWidth: 1, borderTopColor: T.hairline2, backgroundColor: isDark ? T.cardSoft : '#FBF9F4' }}>
+            {!isEdit ? (
+              <Text style={{ flex: 1, fontSize: 11, color: '#9A9A9A', fontStyle: 'italic' }}>
+                Kayıt sonrası bu firmaya stok girişi & ödeme yapılabilir.
+              </Text>
+            ) : <View style={{ flex: 1 }} />}
+            <Pressable
+              onPress={onClose}
+              style={{
+                paddingHorizontal: 18, paddingVertical: 10, borderRadius: 9999,
+                backgroundColor: T.card,
+                borderWidth: 1, borderColor: T.hairline,
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink2 }}>Vazgeç</Text>
             </Pressable>
             <Pressable
               onPress={handleSave}
               disabled={saving}
               style={{
-                flexDirection: 'row', alignItems: 'center', gap: 6,
-                paddingHorizontal: 16, paddingVertical: 10, borderRadius: 9999,
+                flexDirection: 'row', alignItems: 'center', gap: 7,
+                paddingHorizontal: 20, paddingVertical: 11, borderRadius: 9999,
                 backgroundColor: accentColor, opacity: saving ? 0.5 : 1,
-                ...(Platform.OS === 'web' ? { cursor: saving ? 'wait' : 'pointer' } as any : {}),
+                ...(Platform.OS === 'web' ? { cursor: saving ? 'wait' : 'pointer', boxShadow: `0 6px 20px ${accentColor}44` } as any : {}),
               }}
             >
-              {saving ? <ActivityIndicator size="small" color="#FFF" /> : <Check size={13} color="#FFF" strokeWidth={2} />}
-              <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFF' }}>{isEdit ? 'Güncelle' : 'Kaydet'}</Text>
+              <Check size={14} color="#FFF" strokeWidth={2.2} />
+              <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFF', letterSpacing: 0.2 }}>{isEdit ? 'Güncelle' : 'Kaydet'}</Text>
             </Pressable>
           </View>
         </View>

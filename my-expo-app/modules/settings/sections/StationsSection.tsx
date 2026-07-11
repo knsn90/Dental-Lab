@@ -20,6 +20,8 @@ import { DS } from '../../../core/theme/dsTokens';
 import { supabase } from '../../../core/api/supabase';
 import { useAuthStore } from '../../../core/store/authStore';
 import { toast } from '../../../core/ui/Toast';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 // ── Constants ───────────────────────────────────────────────────────────
 const CARD_SHADOW = Platform.select({
@@ -115,7 +117,7 @@ const DIGITAL_DENTAL_LAB_STATIONS: DefaultStation[] = [
   { name: 'Metal Döküm',           color: '#9333EA', icon: 'flask-outline',               is_critical: false, info: 'Geleneksel veya dijital metal döküm' },
   { name: 'Porselen / Makyaj',     color: '#BE185D', icon: 'palette-outline',             is_critical: false, info: 'Renk karakterizasyonu & estetik boyama' },
   { name: 'Tesviye / Bitim',       color: '#059669', icon: 'tools',                       is_critical: false, info: 'Kenar tesviye, uyum kontrolü, oklüzyon' },
-  { name: 'Polisaj',               color: '#16A34A', icon: 'brush-outline',               is_critical: false, info: 'Yüzey parlatma & glaçaj işlemi' },
+  { name: 'Polisaj/Glaze',         color: '#16A34A', icon: 'brush-outline',               is_critical: false, info: 'Yüzey parlatma & glaze (glaçaj) işlemi' },
   { name: 'İmplant Montajı',       color: '#1D4ED8', icon: 'wrench-outline',              is_critical: false, info: 'İmplant üst yapısı & vidalama torku' },
   { name: 'Kalite Kontrol',        color: '#DC2626', icon: 'microscope',                  is_critical: true,  info: 'Son kalite denetimi — geçiş için onay zorunlu' },
   { name: 'Paketleme & Kargo',     color: '#475569', icon: 'package-variant-closed',      is_critical: false, info: 'Steril paketleme & klinik teslimat hazırlığı' },
@@ -192,7 +194,7 @@ function StationFormModal({
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
       <Pressable
-        style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 24 }}
+        style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.42)', justifyContent: 'center', alignItems: 'center', padding: 24, ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}) }}
         onPress={onClose}
       >
         <Pressable
@@ -570,6 +572,8 @@ function DefaultStationsPreviewModal({
 export function StationsSection({ accentColor = '#F5C24B' }: Props) {
   const { profile } = useAuthStore();
   const labId = profile?.lab_id ?? profile?.id ?? '';
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
 
   const [stations, setStations]   = useState<Station[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -701,7 +705,7 @@ export function StationsSection({ accentColor = '#F5C24B' }: Props) {
     return (
       <View className="flex-1 items-center justify-center gap-3 pt-20">
         <ActivityIndicator size="large" color={accentColor} />
-        <Text className="text-[13px] text-ink-300">Yükleniyor…</Text>
+        <Text className="text-[13px]" style={{ color: T.ink3 }}>Yükleniyor…</Text>
       </View>
     );
   }
@@ -717,7 +721,7 @@ export function StationsSection({ accentColor = '#F5C24B' }: Props) {
       {/* ── Header row ─────────────────────────────────────── */}
       <View className="flex-row items-center justify-between mb-3">
         <View>
-          <Text className="text-[13px] text-ink-400">
+          <Text className="text-[13px]" style={{ color: T.ink3 }}>
             {stations.length > 0
               ? `${stations.length} istasyon tanımlı · ${stations.filter(st => st.is_active).length} aktif`
               : 'Henüz istasyon eklenmemiş'
@@ -736,7 +740,7 @@ export function StationsSection({ accentColor = '#F5C24B' }: Props) {
 
       {/* ── Empty state ────────────────────────────────────── */}
       {stations.length === 0 && (
-        <View className="bg-white rounded-[24px] p-8 items-center" style={{ ...CARD_SHADOW, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', borderStyle: 'dashed' }}>
+        <View className="rounded-[24px] p-8 items-center" style={{ ...CARD_SHADOW, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline, borderStyle: 'dashed' }}>
           {/* Illustration dots */}
           <View className="flex-row gap-1.5 mb-4">
             {DIGITAL_DENTAL_LAB_STATIONS.slice(0, 6).map((ds, i) => (
@@ -746,10 +750,10 @@ export function StationsSection({ accentColor = '#F5C24B' }: Props) {
               />
             ))}
           </View>
-          <Text style={{ ...DISPLAY_FONT, fontSize: 17, letterSpacing: -0.3, color: '#0A0A0A', marginBottom: 6 }}>
+          <Text style={{ ...DISPLAY_FONT, fontSize: 17, letterSpacing: -0.3, color: T.ink, marginBottom: 6 }}>
             İstasyon Tanımlı Değil
           </Text>
-          <Text className="text-[13px] text-ink-400 text-center leading-5 mb-5">
+          <Text className="text-[13px] text-center leading-5 mb-5" style={{ color: T.ink3 }}>
             Üretim akışınızı belirlemek için istasyonlarınızı tanımlayın.{'\n'}
             Dijital diş laboratuvarı şablonuyla tek tıkla başlayın.
           </Text>
@@ -775,16 +779,16 @@ export function StationsSection({ accentColor = '#F5C24B' }: Props) {
 
       {/* ── Station list ───────────────────────────────────── */}
       {stations.length > 0 && (
-        <View className="bg-white rounded-[24px] p-[22px]" style={CARD_SHADOW}>
+        <View className="rounded-[24px] p-[22px]" style={[CARD_SHADOW, { backgroundColor: T.card }]}>
           <View className="gap-2">
             {stations.map((station, index) => (
               <View
                 key={station.id}
                 className="flex-row items-center gap-2.5 rounded-2xl px-3 py-2.5"
                 style={{
-                  backgroundColor: 'rgba(0,0,0,0.02)',
+                  backgroundColor: T.cardSoft,
                   borderWidth: 1,
-                  borderColor: 'rgba(0,0,0,0.04)',
+                  borderColor: T.hairline2,
                   opacity: station.is_active ? 1 : 0.5,
                 }}
               >
@@ -810,7 +814,7 @@ export function StationsSection({ accentColor = '#F5C24B' }: Props) {
                 {/* Info */}
                 <View className="flex-1">
                   <View className="flex-row items-center gap-1.5 flex-wrap">
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: station.is_active ? '#0A0A0A' : '#9A9A9A' }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: station.is_active ? T.ink : T.ink3 }}>
                       {station.name}
                     </Text>
                     {station.is_critical && (
@@ -820,8 +824,8 @@ export function StationsSection({ accentColor = '#F5C24B' }: Props) {
                       </View>
                     )}
                     {!station.is_active && (
-                      <View className="px-1.5 py-0.5 rounded" style={{ backgroundColor: 'rgba(0,0,0,0.04)' }}>
-                        <Text style={{ fontSize: 9, fontWeight: '500', color: '#9A9A9A' }}>Devre Dışı</Text>
+                      <View className="px-1.5 py-0.5 rounded" style={{ backgroundColor: T.hairline2 }}>
+                        <Text style={{ fontSize: 9, fontWeight: '500', color: T.ink3 }}>Devre Dışı</Text>
                       </View>
                     )}
                   </View>
@@ -833,17 +837,17 @@ export function StationsSection({ accentColor = '#F5C24B' }: Props) {
                     onPress={() => moveStation(index, -1)}
                     disabled={index === 0}
                     className="w-7 h-7 rounded-lg items-center justify-center"
-                    style={{ backgroundColor: 'rgba(0,0,0,0.03)', opacity: index === 0 ? 0.3 : 1 }}
+                    style={{ backgroundColor: T.hairline2, opacity: index === 0 ? 0.3 : 1 }}
                   >
-                    <ChevronUp size={13} color="#6B6B6B" strokeWidth={1.8} />
+                    <ChevronUp size={13} color={T.ink2} strokeWidth={1.8} />
                   </Pressable>
                   <Pressable
                     onPress={() => moveStation(index, 1)}
                     disabled={index === stations.length - 1}
                     className="w-7 h-7 rounded-lg items-center justify-center"
-                    style={{ backgroundColor: 'rgba(0,0,0,0.03)', opacity: index === stations.length - 1 ? 0.3 : 1 }}
+                    style={{ backgroundColor: T.hairline2, opacity: index === stations.length - 1 ? 0.3 : 1 }}
                   >
-                    <ChevronDown size={13} color="#6B6B6B" strokeWidth={1.8} />
+                    <ChevronDown size={13} color={T.ink2} strokeWidth={1.8} />
                   </Pressable>
                   <Pressable
                     onPress={() => { setEditing(station); setFormVisible(true); }}

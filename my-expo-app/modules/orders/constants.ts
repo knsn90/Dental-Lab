@@ -98,7 +98,7 @@ export const STATUS_CONFIG: Record<string, StatusConfig> = {
     ionIcon: 'shield-check-outline',
   },
   teslimata_hazir: {
-    label: 'Teslimata Hazır',
+    label: 'Kuryeye Teslim Edildi',
     color: '#059669',
     bgColor: '#D1FAE5',
     next: 'teslim_edildi',
@@ -132,7 +132,7 @@ export function getNextStatus(status: WorkOrderStatus): WorkOrderStatus | null {
 }
 
 export function isOrderOverdue(deliveryDate: string, status: WorkOrderStatus): boolean {
-  if (status === 'teslim_edildi') return false;
+  if (status === 'teslim_edildi' || status === 'iptal') return false;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   return new Date(deliveryDate) < today;
@@ -191,7 +191,16 @@ export const OP_CATEGORY: Record<string, OpCategory> = {
   'Diğer':                             'other',
 };
 
+/** İş türü implant kategorisinde mi? (OP_CATEGORY eşlemesi + serbest-metin fallback) */
+export function isImplantWorkType(workType?: string | null): boolean {
+  if (!workType) return false;
+  if (OP_CATEGORY[workType] === 'implant') return true;
+  // Türkçe "İ" (U+0130) ASCII /i/ ile eşleşmez — locale-aware küçült.
+  return workType.toLocaleLowerCase('tr-TR').includes('implant');
+}
+
 export const IMPLANT_SYSTEMS = ['Straumann', 'Nobel', 'Osstem', 'Zimmer', 'Dentsply', 'Megagen', 'Diğer'] as const;
+export const IMPLANT_TYPES   = ['Bone Level', 'Tissue Level', 'Mini', 'Diğer'] as const;
 export const ABUTMENT_TYPES  = ['Anatomik', 'Düz', 'Açılı (Angled)', 'Ti-base', 'Zirkonyum'] as const;
 export const SCREW_TYPES     = ['Multi-unit', 'Tekli', 'Hex'] as const;
 export const REMOVABLE_MATS  = ['Akrilik', 'Krom-Kobalt', 'Flexible (Valplast)', 'Diğer'] as const;
@@ -251,11 +260,10 @@ export const WORK_TYPE_TREE: WorkTypeNode[] = [
     ],
   },
   {
-    label: 'Diğer',
-    icon: 'dots-horizontal',
+    label: 'Cerrahi Şablon',
+    icon: 'cube-outline',
     subtypes: [
       { value: 'Cerrahi Şablon', label: 'Cerrahi Şablon' },
-      { value: 'Diğer',          label: 'Diğer' },
     ],
   },
 ];

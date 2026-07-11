@@ -24,6 +24,6 @@ export const Shadows = {
 export const CardSpec = {
   bg: '#FFFFFF',
   pageBg: '#F1F5F9',
-  border: 'rgba(255,255,255,0.95)',
+  border: 'rgba(0,0,0,0.06)',   // çok ince gri hairline — açık zeminde kartı ayırır
   radius: 14,
 } as const;

@@ -6,12 +6,15 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import { supabase } from '../../core/api/supabase';
+import { dispatchToClinic } from '../../core/notifications/dispatch';
 import type {
-  Invoice, InvoiceItem, Payment, ClinicBalance, InvoiceStatus,
+  Invoice, InvoiceItem, Payment, ClinicBalance, ClinicBalanceCcy, InvoiceStatus,
   CreateInvoiceParams, InvoiceItemInput, RecordPaymentParams,
   InvoiceListFilters, CreateBulkInvoiceParams, UnbilledWorkOrder,
   LinkedWorkOrder,
 } from './types';
+import { groupByCurrency, type CurrencyTotal } from '../../core/money/aggregations';
+import type { Currency } from '../../core/money/currency';
 
 // ─── Listeler ──────────────────────────────────────────────────────────────
 
@@ -126,7 +129,39 @@ export async function createInvoice(params: CreateInvoiceParams) {
   }
 
   // 3) Güncel invoice'u geri oku (total dolu halde)
-  return fetchInvoiceById(invoice.id);
+  const result = await fetchInvoiceById(invoice.id);
+
+  // ─── Notification: payment (invoice_created) → klinik kullanıcıları ──
+  try {
+    const clinicId = (invoice as any).clinic_id as string | null;
+    if (clinicId) {
+      const inv = result.data as any;
+      const invoiceNum = inv?.invoice_number ?? '';
+      const total      = inv?.total_amount ?? inv?.total ?? null;
+      const due        = inv?.due_date ?? null;
+      const totalStr   = total != null
+        ? new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(total)
+        : '';
+      dispatchToClinic({
+        clinicId,
+        input: {
+          category:     'payment',
+          title:        `Yeni fatura${invoiceNum ? ` · ${invoiceNum}` : ''}`,
+          body:         [totalStr, due ? `Vade: ${due}` : ''].filter(Boolean).join(' · '),
+          resourceType: 'invoice',
+          resourceId:   invoice.id,
+          actionUrl:    `/(clinic)/invoice/${invoice.id}`,
+          payload: {
+            invoiceNumber: invoiceNum,
+            amount:        totalStr,
+            dueDate:       due ?? '',
+          },
+        },
+      }).catch(() => null);
+    }
+  } catch { /* sessiz */ }
+
+  return result;
 }
 
 /**
@@ -194,7 +229,7 @@ export async function updateInvoice(
   id: string,
   patch: Partial<Pick<Invoice,
     'status' | 'issue_date' | 'due_date' | 'tax_rate' | 'notes' |
-    'doctor_id' | 'clinic_id'
+    'doctor_id' | 'clinic_id' | 'currency' | 'rate_at_time'
   >>,
 ) {
   return supabase
@@ -254,11 +289,22 @@ export async function fetchPaymentsForInvoice(invoiceId: string) {
 export async function recordPayment(params: RecordPaymentParams) {
   const { invoice_id, amount, payment_date, payment_method, reference_no, notes } = params;
   const { data: { user } } = await supabase.auth.getUser();
-  return supabase
+
+  // Ödeme, faturanın para birimi + kilitli kuruyla saklanır → baz (₺) raporlama doğru.
+  const { data: inv0 } = await supabase
+    .from('invoices').select('currency, rate_at_time').eq('id', invoice_id).single();
+  const pCurrency = (inv0 as any)?.currency ?? 'TRY';
+  const pRate = Number((inv0 as any)?.rate_at_time ?? 1) || 1;
+
+  const result = await supabase
     .from('payments')
     .insert({
       invoice_id,
       amount,
+      currency: pCurrency,
+      rate_at_time: pRate,
+      amount_base: amount * pRate,
+      base_currency_at_time: 'TRY',
       payment_date: payment_date ?? new Date().toISOString().slice(0, 10),
       payment_method: payment_method ?? 'nakit',
       reference_no: reference_no ?? null,
@@ -267,6 +313,42 @@ export async function recordPayment(params: RecordPaymentParams) {
     })
     .select()
     .single();
+
+  // ─── Notification: payment (received) → klinik kullanıcıları ─────
+  if (!result.error && result.data) {
+    try {
+      const { data: inv } = await supabase
+        .from('invoices')
+        .select('clinic_id, invoice_number')
+        .eq('id', invoice_id)
+        .single();
+      const clinicId = (inv as any)?.clinic_id as string | null;
+      if (clinicId) {
+        const invNum = (inv as any)?.invoice_number ?? '';
+        const amountStr = new Intl.NumberFormat('tr-TR', {
+          style: 'currency', currency: 'TRY', maximumFractionDigits: 0,
+        }).format(amount);
+        dispatchToClinic({
+          clinicId,
+          input: {
+            category:     'payment',
+            title:        `Tahsilat alındı${invNum ? ` · ${invNum}` : ''}`,
+            body:         `${amountStr} ödeme kaydedildi`,
+            resourceType: 'invoice',
+            resourceId:   invoice_id,
+            actionUrl:    `/(clinic)/invoice/${invoice_id}`,
+            payload: {
+              invoiceNumber: invNum,
+              amount:        amountStr,
+              status:        'Tahsil edildi',
+            },
+          },
+        }).catch(() => null);
+      }
+    } catch { /* sessiz */ }
+  }
+
+  return result;
 }
 
 export async function updatePayment(
@@ -320,6 +402,44 @@ export async function fetchClinicBalance(clinicId: string) {
     .then(r => r as unknown as { data: ClinicBalance | null; error: any });
 }
 
+// ─── Cari bakiye PER-CURRENCY (v_clinic_balance_ccy) ───────────────────────
+// Katı per-currency: her (klinik, para birimi) için ayrı satır, orijinal tutarda.
+// Migration henüz uygulanmadıysa view yoktur → eski v_clinic_balance'tan türetir
+// (mono-currency klinikler doğru; karışık klinikler migration'a kadar TRY/base gösterir).
+function deriveCcyFromBase(rows: ClinicBalance[]): ClinicBalanceCcy[] {
+  return (rows ?? []).map(b => {
+    const foreign = !!b.currency && b.currency !== 'TRY';
+    return {
+      clinic_id: b.clinic_id,
+      clinic_name: b.clinic_name,
+      lab_id: b.lab_id,
+      currency: foreign ? (b.currency as string) : 'TRY',
+      invoice_count: Number(b.invoice_count ?? 0),
+      total_billed: foreign ? Number(b.total_billed_original ?? 0) : Number(b.total_billed ?? 0),
+      total_paid:   foreign ? Number(b.total_paid_original ?? 0)   : Number(b.total_paid ?? 0),
+      balance:      foreign ? Number(b.balance_original ?? 0)      : Number(b.balance ?? 0),
+      overdue_amount: Number(b.overdue_amount ?? 0),
+      aging_current: Number(b.aging_current ?? 0),
+      aging_30: Number(b.aging_30 ?? 0),
+      aging_60: Number(b.aging_60 ?? 0),
+      aging_90: Number(b.aging_90 ?? 0),
+      oldest_overdue_date: b.oldest_overdue_date ?? null,
+    };
+  });
+}
+
+export async function fetchClinicBalancesByCurrency(): Promise<{ data: ClinicBalanceCcy[]; error: any }> {
+  const res = await supabase
+    .from('v_clinic_balance_ccy')
+    .select('*')
+    .returns<ClinicBalanceCcy[]>();
+  if (!res.error) return { data: res.data ?? [], error: null };
+  // Fallback — view yok (migration uygulanmamış): eski view'dan türet
+  const old = await fetchClinicBalances();
+  if (old.error) return { data: [], error: old.error };
+  return { data: deriveCcyFromBase((old.data ?? []) as ClinicBalance[]), error: null };
+}
+
 const CLINIC_STATEMENT_SELECT = `
   *,
   doctor:doctors!invoices_doctor_id_fkey(id, full_name, phone, clinic_id),
@@ -339,29 +459,34 @@ export async function fetchInvoicesForClinic(clinicId: string) {
 
 // ─── Özet istatistikler (dashboard) ────────────────────────────────────────
 
-export async function fetchInvoiceStats() {
+// KATI per-currency: tüm istatistikler para birimine göre BAĞIMSIZ — base'e çevrilmez.
+export interface InvoiceStats {
+  thisMonth: CurrencyTotal[];   // bu ay kesilen
+  outstanding: CurrencyTotal[]; // toplam bakiye (kesilen − tahsil)
+  overdue: CurrencyTotal[];     // vadesi geçen
+  paid: CurrencyTotal[];        // toplam tahsilat
+  invoiceCount: number;
+}
+
+export async function fetchInvoiceStats(): Promise<InvoiceStats> {
   const today = new Date().toISOString().slice(0, 10);
   const firstOfMonth = today.slice(0, 7) + '-01';
 
   const [{ data: all }, { data: thisMonth }, { data: overdue }] = await Promise.all([
-    supabase.from('invoices').select('status, total, paid_amount'),
-    supabase.from('invoices').select('total').gte('issue_date', firstOfMonth),
-    supabase.from('invoices').select('total, paid_amount')
+    supabase.from('invoices').select('status, total, paid_amount, currency'),
+    supabase.from('invoices').select('total, currency').gte('issue_date', firstOfMonth),
+    supabase.from('invoices').select('total, paid_amount, currency')
       .lt('due_date', today).neq('status', 'odendi').neq('status', 'iptal'),
   ]);
 
-  const nonCancelled = (all ?? []).filter(i => i.status !== 'iptal');
-  const totalBilled  = nonCancelled.reduce((s, i) => s + Number(i.total), 0);
-  const totalPaid    = nonCancelled.reduce((s, i) => s + Number(i.paid_amount), 0);
-  const monthTotal   = (thisMonth ?? []).reduce((s, i) => s + Number(i.total), 0);
-  const overdueAmt   = (overdue ?? []).reduce((s, i) => s + (Number(i.total) - Number(i.paid_amount)), 0);
+  const nonCancelled = ((all ?? []) as any[]).filter(i => i.status !== 'iptal');
+  const cur = (r: any) => (r.currency ?? 'TRY') as Currency;
 
   return {
-    totalBilled,
-    totalPaid,
-    outstandingBalance: totalBilled - totalPaid,
-    thisMonthBilled: monthTotal,
-    overdueAmount: overdueAmt,
+    thisMonth:   groupByCurrency(((thisMonth ?? []) as any[]), r => ({ amount: Number(r.total) || 0, currency: cur(r) })),
+    outstanding: groupByCurrency(nonCancelled, r => ({ amount: (Number(r.total) || 0) - (Number(r.paid_amount) || 0), currency: cur(r) }), { keepZero: true }),
+    overdue:     groupByCurrency(((overdue ?? []) as any[]), r => ({ amount: (Number(r.total) || 0) - (Number(r.paid_amount) || 0), currency: cur(r) })),
+    paid:        groupByCurrency(nonCancelled, r => ({ amount: Number(r.paid_amount) || 0, currency: cur(r) })),
     invoiceCount: nonCancelled.length,
   };
 }

@@ -4,13 +4,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, ScrollView, Pressable,
-  ActivityIndicator, Platform, useWindowDimensions,
+  Platform, useWindowDimensions,
 } from 'react-native';
 
 import { Users } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../../core/api/supabase';
 import { useAuthStore } from '../../../core/store/authStore';
 import { DS } from '../../../core/theme/dsTokens';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
+import { CenteredLoader } from '../../../core/ui/CenteredLoader';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { baseSymbol, useBaseCurrency } from '../../../core/money/baseCurrency';
 
 // ── Patterns tokens ─────────────────────────────────────────────────
 const DISPLAY = {
@@ -69,8 +75,8 @@ const RANGE_OPTIONS: { key: Range; label: string }[] = [
 
 const MATERIAL_TYPES = ['all', 'zirconia', 'emax', 'pmma', 'metal', 'glaze'];
 
-const fmt = (n: number) => n.toLocaleString('tr-TR', { maximumFractionDigits: 0 });
-const fmt1 = (n: number) => n.toLocaleString('tr-TR', { maximumFractionDigits: 1 });
+const fmt = (n: number | null | undefined) => (Number(n) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 0 });
+const fmt1 = (n: number | null | undefined) => (Number(n) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 1 });
 
 function getRange(r: Range): { from: string | null; to: string | null } {
   const now = new Date();
@@ -92,7 +98,11 @@ export function TechnicianPerformanceScreen() {
   const { profile } = useAuthStore();
   const { width }   = useWindowDimensions();
   const isWide      = width >= 900;
+  const insets      = useSafeAreaInsets();
   const labId       = profile?.lab_id ?? profile?.id ?? null;
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  useBaseCurrency();
 
   const [range, setRange]       = useState<Range>('thisMonth');
   const [matType, setMatType]   = useState<string>('all');
@@ -136,11 +146,11 @@ export function TechnicianPerformanceScreen() {
   return (
     <ScrollView
       style={{ flex: 1 }}
-      contentContainerStyle={{ padding: 22, paddingTop: 4, paddingBottom: 48, gap: 14 }}
+      contentContainerStyle={{ paddingHorizontal: 12, paddingTop: isWide ? 4 : insets.top + 8, paddingBottom: 120, gap: 14 }}
       showsVerticalScrollIndicator={false}
     >
       {/* Range filter */}
-      <View style={{ flexDirection: 'row', gap: 2, padding: 3, borderRadius: 9999, backgroundColor: DS.ink[100] }}>
+      <View style={{ flexDirection: 'row', gap: 2, padding: 3, borderRadius: 9999, backgroundColor: T.cardSoft }}>
         {RANGE_OPTIONS.map(opt => {
           const active = range === opt.key;
           return (
@@ -154,15 +164,15 @@ export function TechnicianPerformanceScreen() {
                   ...(Platform.OS === 'web' ? { cursor: 'pointer' as any } : {}),
                 },
                 active && {
-                  backgroundColor: '#FFF',
+                  backgroundColor: T.card,
                   // @ts-ignore web
                   boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
                 },
               ]}
             >
               <Text style={[
-                { fontSize: 12, fontWeight: '500', color: DS.ink[500] },
-                active && { fontWeight: '600', color: DS.ink[900] },
+                { fontSize: 12, fontWeight: '500', color: T.ink3 },
+                active && { fontWeight: '600', color: T.ink },
               ]}>{opt.label}</Text>
             </Pressable>
           );
@@ -171,8 +181,8 @@ export function TechnicianPerformanceScreen() {
 
       {/* Material type filter */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500], letterSpacing: 0.3, marginRight: 4 }}>Materyal:</Text>
-        <View style={{ flexDirection: 'row', gap: 2, padding: 3, borderRadius: 9999, backgroundColor: DS.ink[100] }}>
+        <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink3, letterSpacing: 0.3, marginRight: 4 }}>Materyal:</Text>
+        <View style={{ flexDirection: 'row', gap: 2, padding: 3, borderRadius: 9999, backgroundColor: T.cardSoft }}>
           {MATERIAL_TYPES.map(t => {
             const active = matType === t;
             const label = t === 'all' ? 'Tümü' : t;
@@ -187,15 +197,15 @@ export function TechnicianPerformanceScreen() {
                     ...(Platform.OS === 'web' ? { cursor: 'pointer' as any } : {}),
                   },
                   active && {
-                    backgroundColor: '#FFF',
+                    backgroundColor: T.card,
                     // @ts-ignore web
                     boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
                   },
                 ]}
               >
                 <Text style={[
-                  { fontSize: 12, fontWeight: '500', color: DS.ink[500] },
-                  active && { fontWeight: '600', color: DS.ink[900] },
+                  { fontSize: 12, fontWeight: '500', color: T.ink3 },
+                  active && { fontWeight: '600', color: T.ink },
                 ]}>{label}</Text>
               </Pressable>
             );
@@ -205,8 +215,8 @@ export function TechnicianPerformanceScreen() {
 
       {/* Sort filter */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500], letterSpacing: 0.3, marginRight: 4 }}>Sırala:</Text>
-        <View style={{ flexDirection: 'row', gap: 2, padding: 3, borderRadius: 9999, backgroundColor: DS.ink[100] }}>
+        <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink3, letterSpacing: 0.3, marginRight: 4 }}>Sırala:</Text>
+        <View style={{ flexDirection: 'row', gap: 2, padding: 3, borderRadius: 9999, backgroundColor: T.cardSoft }}>
           {([
             { key: 'efficiency', label: 'En düşük verim' },
             { key: 'waste',      label: 'En çok fire'    },
@@ -226,15 +236,15 @@ export function TechnicianPerformanceScreen() {
                     ...(Platform.OS === 'web' ? { cursor: 'pointer' as any } : {}),
                   },
                   active && {
-                    backgroundColor: '#FFF',
+                    backgroundColor: T.card,
                     // @ts-ignore web
                     boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
                   },
                 ]}
               >
                 <Text style={[
-                  { fontSize: 12, fontWeight: '500', color: DS.ink[500] },
-                  active && { fontWeight: '600', color: DS.ink[900] },
+                  { fontSize: 12, fontWeight: '500', color: T.ink3 },
+                  active && { fontWeight: '600', color: T.ink },
                 ]}>{opt.label}</Text>
               </Pressable>
             );
@@ -243,38 +253,39 @@ export function TechnicianPerformanceScreen() {
       </View>
 
       {loading ? (
-        <View style={{ padding: 60, alignItems: 'center' }}>
-          <ActivityIndicator size="large" color="#2563EB" />
-        </View>
+        <CenteredLoader color="#2563EB" inline />
       ) : sorted.length === 0 ? (
         <View style={{
           ...cardSolid,
+          backgroundColor: T.card,
           paddingVertical: 60, alignItems: 'center', gap: 8,
         }}>
-          <Users size={32} color={DS.ink[300]} strokeWidth={1.6} />
-          <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[500] }}>Veri yok</Text>
-          <Text style={{ fontSize: 12, color: DS.ink[400], textAlign: 'center', maxWidth: 280, lineHeight: 18 }}>
+          <Users size={32} color={T.ink3} strokeWidth={1.6} />
+          <Text style={{ fontSize: 15, fontWeight: '600', color: T.ink3 }}>Veri yok</Text>
+          <Text style={{ fontSize: 12, color: T.ink3, textAlign: 'center', maxWidth: 280, lineHeight: 18 }}>
             Bu aralıkta teknisyen aktivitesi bulunamadı.
           </Text>
         </View>
       ) : (
         <View style={{
           ...tableCard,
+          backgroundColor: T.card,
+          borderColor: T.hairline,
         }}>
           {/* Desktop table header */}
           {isWide && (
             <View style={{
               flexDirection: 'row', alignItems: 'center',
               paddingHorizontal: 18, paddingVertical: 14,
-              backgroundColor: DS.ink[50],
-              borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
+              backgroundColor: T.cardSoft,
+              borderBottomWidth: 1, borderBottomColor: T.hairline,
             }}>
-              <Text style={{ flex: 2.4, fontSize: 10, fontWeight: '600', color: DS.ink[500], letterSpacing: 0.8, textTransform: 'uppercase' }}>Teknisyen</Text>
-              <Text style={{ flex: 1.2, fontSize: 10, fontWeight: '600', color: DS.ink[500], letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'right' }}>Kullanım</Text>
-              <Text style={{ flex: 1.2, fontSize: 10, fontWeight: '600', color: DS.ink[500], letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'right' }}>Fire</Text>
-              <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: DS.ink[500], letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'center' }}>Verim</Text>
-              <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: DS.ink[500], letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'right' }}>Süre</Text>
-              <Text style={{ flex: 1.4, fontSize: 10, fontWeight: '600', color: DS.ink[500], letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'right' }}>Kar Katkısı</Text>
+              <Text style={{ flex: 2.4, fontSize: 10, fontWeight: '600', color: T.ink3, letterSpacing: 0.8, textTransform: 'uppercase' }}>Teknisyen</Text>
+              <Text style={{ flex: 1.2, fontSize: 10, fontWeight: '600', color: T.ink3, letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'right' }}>Kullanım</Text>
+              <Text style={{ flex: 1.2, fontSize: 10, fontWeight: '600', color: T.ink3, letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'right' }}>Fire</Text>
+              <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: T.ink3, letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'center' }}>Verim</Text>
+              <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: T.ink3, letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'right' }}>Süre</Text>
+              <Text style={{ flex: 1.4, fontSize: 10, fontWeight: '600', color: T.ink3, letterSpacing: 0.8, textTransform: 'uppercase', textAlign: 'right' }}>Kar Katkısı</Text>
             </View>
           )}
 
@@ -295,6 +306,7 @@ export function TechnicianPerformanceScreen() {
 // ─── Row ────────────────────────────────────────────────────────────────────
 
 function PerfRowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; isWide: boolean }) {
+  const T = useMobileTokens();
   const eff = row.efficiency_pct;
   const tone = eff === null ? null : eff >= 95 ? 'success' : eff >= 80 ? 'warning' : 'danger';
   const chipTone = tone ? CHIP_TONES[tone] : null;
@@ -308,33 +320,33 @@ function PerfRowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; i
     return (
       <View style={[
         { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 14 },
-        !isLast && { borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' },
+        !isLast && { borderBottomWidth: 1, borderBottomColor: T.hairline },
       ]}>
         <View style={{ flex: 2.4, flexDirection: 'row', alignItems: 'center', gap: 10, paddingRight: 8 }}>
-          <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[500] }}>{initials}</Text>
+          <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: T.cardSoft, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: T.ink3 }}>{initials}</Text>
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>{row.user_name ?? '—'}</Text>
-            <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }} numberOfLines={1}>
-              {row.orders_worked} sipariş{row.hourly_rate > 0 ? ` · ${fmt(row.hourly_rate)} ₺/sa` : ''}
+            <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink }} numberOfLines={1}>{row.user_name ?? '—'}</Text>
+            <Text style={{ fontSize: 11, color: T.ink3, marginTop: 1 }} numberOfLines={1}>
+              {row.orders_worked} sipariş{row.hourly_rate > 0 ? ` · ${fmt(row.hourly_rate)} ${baseSymbol()}/sa` : ''}
             </Text>
           </View>
         </View>
 
         <View style={{ flex: 1.2, alignItems: 'flex-end', paddingRight: 8 }}>
-          <Text style={{ ...DISPLAY, fontSize: 14, color: DS.ink[900] }}>{fmt1(row.used_qty)}</Text>
-          {row.used_cost > 0 && <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }}>{fmt(row.used_cost)} ₺</Text>}
+          <Text style={{ ...DISPLAY, fontSize: 14, color: T.ink }}>{fmt1(row.used_qty)}</Text>
+          {row.used_cost > 0 && <Text style={{ fontSize: 11, color: T.ink3, marginTop: 1 }}>{fmt(row.used_cost)} {baseSymbol()}</Text>}
         </View>
 
         <View style={{ flex: 1.2, alignItems: 'flex-end', paddingRight: 8 }}>
           <Text style={[
-            { ...DISPLAY, fontSize: 14, color: DS.ink[900] },
+            { ...DISPLAY, fontSize: 14, color: T.ink },
             wasteHigh && { color: CHIP_TONES.danger.fg },
           ]}>
             {fmt1(row.waste_qty)}
           </Text>
-          {row.waste_cost > 0 && <Text style={{ fontSize: 11, color: CHIP_TONES.danger.fg, marginTop: 1 }}>−{fmt(row.waste_cost)} ₺</Text>}
+          {row.waste_cost > 0 && <Text style={{ fontSize: 11, color: CHIP_TONES.danger.fg, marginTop: 1 }}>−{fmt(row.waste_cost)} {baseSymbol()}</Text>}
         </View>
 
         <View style={{ flex: 1, alignItems: 'center', paddingRight: 8 }}>
@@ -343,15 +355,15 @@ function PerfRowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; i
               <Text style={{ fontSize: 13, fontWeight: '600', letterSpacing: -0.2, color: fg }}>%{fmt1(eff)}</Text>
             </View>
           ) : (
-            <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }}>—</Text>
+            <Text style={{ fontSize: 11, color: T.ink3, marginTop: 1 }}>—</Text>
           )}
         </View>
 
         <View style={{ flex: 1, alignItems: 'flex-end', paddingRight: 8 }}>
-          <Text style={{ ...DISPLAY, fontSize: 14, color: DS.ink[900] }}>
-            {fmt1(row.labor_hours)}<Text style={{ fontSize: 10, color: DS.ink[400], fontWeight: '600' }}> sa</Text>
+          <Text style={{ ...DISPLAY, fontSize: 14, color: T.ink }}>
+            {fmt1(row.labor_hours)}<Text style={{ fontSize: 10, color: T.ink3, fontWeight: '600' }}> sa</Text>
           </Text>
-          {row.labor_cost > 0 && <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }}>{fmt(row.labor_cost)} ₺</Text>}
+          {row.labor_cost > 0 && <Text style={{ fontSize: 11, color: T.ink3, marginTop: 1 }}>{fmt(row.labor_cost)} {baseSymbol()}</Text>}
         </View>
 
         <View style={{ flex: 1.4, alignItems: 'flex-end', paddingRight: 8 }}>
@@ -359,7 +371,7 @@ function PerfRowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; i
             { ...DISPLAY, fontSize: 14, color: CHIP_TONES.success.fg },
             row.profit_contribution < 0 && { color: CHIP_TONES.danger.fg },
           ]}>
-            {row.profit_contribution >= 0 ? '+' : '−'}{fmt(Math.abs(row.profit_contribution))} ₺
+            {row.profit_contribution >= 0 ? '+' : '−'}{fmt(Math.abs(row.profit_contribution))} {baseSymbol()}
           </Text>
         </View>
       </View>
@@ -370,15 +382,15 @@ function PerfRowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; i
   return (
     <View style={[
       { paddingHorizontal: 18, paddingVertical: 14, gap: 10 },
-      !isLast && { borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' },
+      !isLast && { borderBottomWidth: 1, borderBottomColor: T.hairline },
     ]}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[500] }}>{initials}</Text>
+        <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: T.cardSoft, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ fontSize: 12, fontWeight: '600', color: T.ink3 }}>{initials}</Text>
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>{row.user_name ?? '—'}</Text>
-          <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }} numberOfLines={1}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink }} numberOfLines={1}>{row.user_name ?? '—'}</Text>
+          <Text style={{ fontSize: 11, color: T.ink3, marginTop: 1 }} numberOfLines={1}>
             {row.orders_worked} sipariş · {fmt1(row.labor_hours)} sa
           </Text>
         </View>
@@ -391,19 +403,20 @@ function PerfRowView({ row, isLast, isWide }: { row: PerfRow; isLast: boolean; i
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <MStat label="Kullanım"  value={fmt1(row.used_qty)}  cost={row.used_cost} />
         <MStat label="Fire"      value={fmt1(row.waste_qty)} cost={row.waste_cost} costColor={CHIP_TONES.danger.fg} />
-        <MStat label="Kar"       value={`${row.profit_contribution >= 0 ? '+' : '−'}${fmt(Math.abs(row.profit_contribution))} ₺`} />
+        <MStat label="Kar"       value={`${row.profit_contribution >= 0 ? '+' : '−'}${fmt(Math.abs(row.profit_contribution))} ${baseSymbol()}`} />
       </View>
     </View>
   );
 }
 
 function MStat({ label, value, cost, costColor }: { label: string; value: string; cost?: number; costColor?: string }) {
+  const T = useMobileTokens();
   return (
-    <View style={{ flex: 1, padding: 8, backgroundColor: DS.ink[50], borderRadius: 12 }}>
-      <Text style={{ fontSize: 10, fontWeight: '600', color: DS.ink[400], letterSpacing: 0.8, textTransform: 'uppercase' }}>{label}</Text>
-      <Text style={{ ...DISPLAY, fontSize: 13, color: DS.ink[900], marginTop: 2 }} numberOfLines={1}>{value}</Text>
+    <View style={{ flex: 1, padding: 8, backgroundColor: T.cardSoft, borderRadius: 12 }}>
+      <Text style={{ fontSize: 10, fontWeight: '600', color: T.ink3, letterSpacing: 0.8, textTransform: 'uppercase' }}>{label}</Text>
+      <Text style={{ ...DISPLAY, fontSize: 13, color: T.ink, marginTop: 2 }} numberOfLines={1}>{value}</Text>
       {cost !== undefined && cost > 0 && (
-        <Text style={[{ fontSize: 10, fontWeight: '600', color: DS.ink[400], marginTop: 1 }, costColor ? { color: costColor } : undefined]}>{fmt(cost)} ₺</Text>
+        <Text style={[{ fontSize: 10, fontWeight: '600', color: T.ink3, marginTop: 1 }, costColor ? { color: costColor } : undefined]}>{fmt(cost)} {baseSymbol()}</Text>
       )}
     </View>
   );

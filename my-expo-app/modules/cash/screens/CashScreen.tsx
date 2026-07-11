@@ -7,6 +7,7 @@
  */
 import React, { useState, useMemo, useContext } from 'react';
 import { HubContext } from '../../../core/ui/HubContext';
+import { MobilePageTitle } from '../../../core/ui/mobile/MobilePageTitle';
 import {
   View, Text, ScrollView, Pressable, TextInput,
   Modal, Alert, RefreshControl, ActivityIndicator, Platform,
@@ -21,8 +22,14 @@ import {
   type CashAccount, type AccountType, type MovementCategory, type MovementDirection,
 } from '../api';
 import { DS } from '../../../core/theme/dsTokens';
+import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { confirmAsync } from '../../../core/util/confirm';
 import { DatePicker } from '../../../core/ui/DatePicker';
 import { toast } from '../../../core/ui/Toast';
+import { useBaseCurrency } from '../../../core/money/baseCurrency';
+import { formatMoney, CURRENCY_META, SUPPORTED_CURRENCIES, type Currency } from '../../../core/money/currency';
+import { groupByCurrency } from '../../../core/money/aggregations';
+import { MoneyMultiX } from '../../../core/money/MoneyMultiX';
 import {
   Plus, X, Inbox, Pencil, Trash2, Search,
   Wallet, Landmark, ArrowDownCircle, ArrowUpCircle,
@@ -88,9 +95,10 @@ const CATEGORIES: MovementCategory[] = ['tahsilat', 'odeme', 'maas', 'kira', 'ma
 const DIRECTION_COLORS = { giris: '#1F6B47', cikis: '#9C2E2E' };
 
 // ── Helpers ──────────────────────────────────────────────────────────
-function fmtMoney(n: number | string | null | undefined): string {
+// Her hesap KENDİ para biriminde gösterilir (katı per-currency — base'e çevrilmez).
+function fmtCur(n: number | string | null | undefined, currency?: string | null): string {
   const v = typeof n === 'string' ? Number(n) : (n ?? 0);
-  return '₺' + v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return formatMoney(Number(v) || 0, ((currency || 'TRY') as Currency), { fractionDigits: 2 });
 }
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—';
@@ -130,9 +138,11 @@ function PillBtn({ icon: Icon, label, onPress, variant = 'dark', size = 'md', di
 // MAIN
 // ═════════════════════════════════════════════════════════════════════
 export function CashScreen() {
+  useBaseCurrency();
   const isEmbedded = useContext(HubContext);
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1024;
+  const TH = usePanelTheme();    // panel rotasına göre renk paleti (admin=mercan, lab=saffron, vs.)
 
   const { accounts, loading, refetch } = useCashAccounts();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -148,9 +158,22 @@ export function CashScreen() {
   const activeAccountId = selectedAccount?.id ?? null;
   const { movements, loading: movLoading, refetch: refetchMov } = useMovements(activeAccountId);
 
-  const totalBalance = accounts.reduce((s, a) => s + Number(a.balance ?? 0), 0);
-  const totalKasa   = accounts.filter(a => a.account_type === 'kasa').reduce((s, a) => s + Number(a.balance ?? 0), 0);
-  const totalBanka  = accounts.filter(a => a.account_type === 'banka').reduce((s, a) => s + Number(a.balance ?? 0), 0);
+  // Katı per-currency: bakiyeler para birimine göre BAĞIMSIZ toplanır (asla karışmaz).
+  const balByCurrency = groupByCurrency(
+    accounts,
+    a => ({ amount: Number(a.balance ?? 0), currency: (a.currency ?? 'TRY') as Currency }),
+    { keepZero: true },
+  );
+  const kasaByCurrency = groupByCurrency(
+    accounts.filter(a => a.account_type === 'kasa'),
+    a => ({ amount: Number(a.balance ?? 0), currency: (a.currency ?? 'TRY') as Currency }),
+    { keepZero: true },
+  );
+  const bankaByCurrency = groupByCurrency(
+    accounts.filter(a => a.account_type === 'banka'),
+    a => ({ amount: Number(a.balance ?? 0), currency: (a.currency ?? 'TRY') as Currency }),
+    { keepZero: true },
+  );
 
   const filteredMovements = useMemo(() => {
     if (!search) return movements;
@@ -161,59 +184,54 @@ export function CashScreen() {
     );
   }, [movements, search]);
 
-  const handleDeleteAccount = (acc: CashAccount) => {
-    Alert.alert('Hesabı Sil', `"${acc.name}" hesabını silmek istiyor musunuz? Tüm hareketler silinecek.`, [
-      { text: 'İptal', style: 'cancel' },
-      {
-        text: 'Sil', style: 'destructive',
-        onPress: async () => {
-          const { error } = await deleteCashAccount(acc.id);
-          if (error) toast.error((error as any).message);
-          else { if (selectedId === acc.id) setSelectedId(null); refetch(); }
-        },
-      },
-    ]);
+  const handleDeleteAccount = async (acc: CashAccount) => {
+    // Alert.alert web'de no-op → cross-platform confirmAsync
+    const ok = await confirmAsync('Hesabı Sil', `"${acc.name}" hesabını silmek istiyor musunuz? Tüm hareketler silinecek.`, { confirmText: 'Sil', destructive: true });
+    if (!ok) return;
+    const { error } = await deleteCashAccount(acc.id);
+    if (error) toast.error((error as any).message);
+    else { if (selectedId === acc.id) setSelectedId(null); refetch(); }
   };
 
-  const handleDeleteMovement = (id: string) => {
-    Alert.alert('Hareketi Sil', 'Bu hareketi silmek istiyor musunuz?', [
-      { text: 'İptal', style: 'cancel' },
-      {
-        text: 'Sil', style: 'destructive',
-        onPress: async () => {
-          await deleteMovement(id);
-          refetchMov(); refetch();
-        },
-      },
-    ]);
+  const handleDeleteMovement = async (id: string) => {
+    const ok = await confirmAsync('Hareketi Sil', 'Bu hareketi silmek istiyor musunuz?', { confirmText: 'Sil', destructive: true });
+    if (!ok) return;
+    await deleteMovement(id);
+    refetchMov(); refetch();
   };
 
   return (
     <View style={{ flex: 1 }}>
+      <MobilePageTitle title="Kasa & Banka" subtitle="Nakit ve hesap bakiyeleri" />
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: isDesktop ? 0 : 16, paddingBottom: 48, gap: 16 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 48, gap: 16 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={DS.ink[300]} />}
         showsVerticalScrollIndicator={false}
       >
         {/* ── Hero — §10 glassmorphism ─────────────────────────── */}
         <View style={{
           borderRadius: 28, overflow: 'hidden',
-          backgroundColor: DS.lab.bg, padding: isDesktop ? 36 : 24,
+          backgroundColor: TH.bg, padding: 16,
           position: 'relative',
         }}>
-          <View style={{ position: 'absolute', top: -40, right: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: DS.lab.bgDeep, opacity: 0.6 }} />
-          <View style={{ position: 'absolute', bottom: -50, left: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: DS.lab.bgDeep, opacity: 0.4 }} />
+          <View style={{ position: 'absolute', top: -40, right: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: TH.bgDeep, opacity: 0.6 }} />
+          <View style={{ position: 'absolute', bottom: -50, left: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: TH.bgDeep, opacity: 0.4 }} />
 
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
-            <View>
+            <View style={{ flex: 1, minWidth: 220 }}>
               <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 12 }}>
                 Toplam Bakiye
               </Text>
-              <Text style={{ ...DISPLAY, fontSize: isDesktop ? 48 : 36, letterSpacing: -1.4, color: DS.ink[900] }}>
-                {fmtMoney(totalBalance)}
-              </Text>
-              <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 6 }}>
+              {/* Katı per-currency: her para birimi ayrı kart, asla tek toplama indirilmez */}
+              <MoneyMultiX
+                slices={balByCurrency}
+                variant="cards"
+                size="lg"
+                colorBySign
+                accentColor={TH.primary}
+              />
+              <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 8 }}>
                 {accounts.length} hesap
               </Text>
             </View>
@@ -224,29 +242,25 @@ export function CashScreen() {
             </View>
           </View>
 
-          {/* Kasa / Banka breakdown */}
-          <View style={{ flexDirection: 'row', gap: isDesktop ? 36 : 20, marginTop: 20 }}>
-            <View>
+          {/* Kasa / Banka breakdown — her biri kendi para birimlerinde (inline) */}
+          <View style={{ flexDirection: 'row', gap: 24, marginTop: 20, flexWrap: 'wrap' }}>
+            <View style={{ gap: 4 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Wallet size={11} color={ACCOUNT_COLORS.kasa} strokeWidth={1.8} />
                 <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: DS.ink[400] }}>
                   Kasa
                 </Text>
               </View>
-              <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color: DS.ink[700], marginTop: 2 }}>
-                {fmtMoney(totalKasa)}
-              </Text>
+              <MoneyMultiX slices={kasaByCurrency} variant="inline" colorBySign emptyText="—" />
             </View>
-            <View>
+            <View style={{ gap: 4 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Landmark size={11} color={ACCOUNT_COLORS.banka} strokeWidth={1.8} />
                 <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', color: DS.ink[400] }}>
                   Banka
                 </Text>
               </View>
-              <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color: DS.ink[700], marginTop: 2 }}>
-                {fmtMoney(totalBanka)}
-              </Text>
+              <MoneyMultiX slices={bankaByCurrency} variant="inline" colorBySign emptyText="—" />
             </View>
           </View>
         </View>
@@ -324,13 +338,13 @@ export function CashScreen() {
                       {acc.bank_name || '—'}
                     </Text>
                     <Text style={{ flex: 1, fontSize: 12, fontWeight: '500', color: CHIP_TONES.success.fg, textAlign: 'right' }}>
-                      {acc.total_in ? fmtMoney(acc.total_in) : '—'}
+                      {acc.total_in ? fmtCur(acc.total_in, acc.currency) : '—'}
                     </Text>
                     <Text style={{ flex: 1, fontSize: 12, fontWeight: '500', color: CHIP_TONES.danger.fg, textAlign: 'right' }}>
-                      {acc.total_out ? fmtMoney(acc.total_out) : '—'}
+                      {acc.total_out ? fmtCur(acc.total_out, acc.currency) : '—'}
                     </Text>
                     <Text style={{ flex: 1.2, fontSize: 13, fontWeight: '700', color: bal >= 0 ? DS.ink[900] : CHIP_TONES.danger.fg, textAlign: 'right' }}>
-                      {fmtMoney(bal)}
+                      {fmtCur(bal, acc.currency)}
                     </Text>
                     <View style={{ flex: 0.8, flexDirection: 'row', gap: 4 }}>
                       <Pressable
@@ -360,7 +374,7 @@ export function CashScreen() {
                   </Text>
                   {selectedAccount && (
                     <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 2 }}>
-                      Bakiye: {fmtMoney(selectedAccount.balance)}
+                      Bakiye: {fmtCur(selectedAccount.balance, selectedAccount.currency)}
                     </Text>
                   )}
                 </View>
@@ -416,7 +430,7 @@ export function CashScreen() {
                   <Text style={{ fontSize: 14, fontWeight: '500', color: DS.ink[400] }}>Hesap seçin</Text>
                 </View>
               ) : movLoading ? (
-                <ActivityIndicator style={{ marginTop: 40 }} color={DS.lab.primary} />
+                <ActivityIndicator style={{ marginTop: 40 }} color={TH.primary} />
               ) : filteredMovements.length === 0 ? (
                 <View style={{ alignItems: 'center', paddingVertical: 48, gap: 10 }}>
                   <Inbox size={32} color={DS.ink[300]} strokeWidth={1.4} />
@@ -448,7 +462,7 @@ export function CashScreen() {
                           {mv.description}
                         </Text>
                         <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color, textAlign: 'right' }}>
-                          {isIn ? '+' : '−'}{fmtMoney(mv.amount)}
+                          {isIn ? '+' : '−'}{fmtCur(mv.amount, selectedAccount?.currency)}
                         </Text>
                         <View style={{ flex: 0.5, alignItems: 'flex-end' }}>
                           <Pressable
@@ -497,7 +511,7 @@ export function CashScreen() {
                       </View>
                     </View>
                     <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.5, color: bal >= 0 ? DS.ink[900] : CHIP_TONES.danger.fg }}>
-                      {fmtMoney(bal)}
+                      {fmtCur(bal, acc.currency)}
                     </Text>
                     <View style={{ flexDirection: 'row', gap: 4, marginTop: 8 }}>
                       <Pressable
@@ -533,7 +547,7 @@ export function CashScreen() {
                       {selectedAccount?.name} Hareketleri
                     </Text>
                     <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 1 }}>
-                      Bakiye: {fmtMoney(selectedAccount?.balance)}
+                      Bakiye: {fmtCur(selectedAccount?.balance, selectedAccount?.currency)}
                     </Text>
                   </View>
                   <PillBtn icon={Plus} label="Hareket" size="sm" onPress={() => setAddMovementOpen(true)} />
@@ -561,7 +575,7 @@ export function CashScreen() {
                 </View>
 
                 {movLoading ? (
-                  <ActivityIndicator style={{ marginTop: 24 }} color={DS.lab.primary} />
+                  <ActivityIndicator style={{ marginTop: 24 }} color={TH.primary} />
                 ) : filteredMovements.length === 0 ? (
                   <View style={{ ...cardSolid, alignItems: 'center', paddingVertical: 36, gap: 10 }}>
                     <Inbox size={28} color={DS.ink[300]} strokeWidth={1.4} />
@@ -589,7 +603,7 @@ export function CashScreen() {
                       </View>
                       <View style={{ alignItems: 'flex-end', gap: 4 }}>
                         <Text style={{ ...DISPLAY, fontSize: 16, fontWeight: '400', letterSpacing: -0.3, color }}>
-                          {isIn ? '+' : '−'}{fmtMoney(mv.amount)}
+                          {isIn ? '+' : '−'}{fmtCur(mv.amount, selectedAccount?.currency)}
                         </Text>
                         <Pressable
                           onPress={() => handleDeleteMovement(mv.id)}
@@ -621,6 +635,7 @@ export function CashScreen() {
           visible={addMovementOpen}
           accountId={activeAccountId}
           accountName={selectedAccount?.name ?? ''}
+          accountCurrency={selectedAccount?.currency ?? 'TRY'}
           onClose={() => setAddMovementOpen(false)}
           onSaved={() => { setAddMovementOpen(false); refetchMov(); refetch(); }}
         />
@@ -638,11 +653,13 @@ function AccountModal({
   visible: boolean; account: CashAccount | null;
   onClose: () => void; onSaved: () => void;
 }) {
+  useBaseCurrency();
   const [name, setName]           = useState('');
   const [type, setType]           = useState<AccountType>('kasa');
   const [bankName, setBankName]   = useState('');
   const [iban, setIban]           = useState('');
   const [opening, setOpening]     = useState('');
+  const [currency, setCurrency]   = useState<Currency>('TRY');
   const [saving, setSaving]       = useState(false);
 
   React.useEffect(() => {
@@ -652,6 +669,7 @@ function AccountModal({
       setBankName(account?.bank_name ?? '');
       setIban(account?.iban ?? '');
       setOpening(account ? String(account.opening_balance ?? 0) : '');
+      setCurrency(((account?.currency as Currency) ?? 'TRY'));
     }
   }, [visible, account]);
 
@@ -663,6 +681,7 @@ function AccountModal({
       account_type: type,
       bank_name: bankName.trim() || undefined,
       iban: iban.trim() || undefined,
+      currency,
       opening_balance: Number(opening.replace(',', '.')) || 0,
     };
     const { error } = account
@@ -773,8 +792,38 @@ function AccountModal({
               </>
             )}
 
+            {/* Para birimi — hesap KENDİ para biriminde tutulur (katı per-currency) */}
             <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 6 }}>
-              Açılış Bakiyesi (₺)
+              Para Birimi
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+              {SUPPORTED_CURRENCIES.map(cur => {
+                const active = currency === cur;
+                return (
+                  <Pressable
+                    key={cur}
+                    onPress={() => setCurrency(cur)}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 6,
+                      paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12, borderWidth: 1.5,
+                      borderColor: active ? DS.ink[900] : 'rgba(0,0,0,0.08)',
+                      backgroundColor: active ? DS.ink[900] : '#FFF',
+                      cursor: 'pointer' as any,
+                    }}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: active ? '#FFF' : DS.ink[500] }}>
+                      {CURRENCY_META[cur].symbol}
+                    </Text>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: active ? '#FFF' : DS.ink[700] }}>
+                      {cur}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 6 }}>
+              Açılış Bakiyesi ({CURRENCY_META[currency].symbol})
             </Text>
             <TextInput
               style={{
@@ -821,11 +870,12 @@ function AccountModal({
 // MovementModal — §08 dialog
 // ═════════════════════════════════════════════════════════════════════
 function MovementModal({
-  visible, accountId, accountName, onClose, onSaved,
+  visible, accountId, accountName, accountCurrency, onClose, onSaved,
 }: {
-  visible: boolean; accountId: string; accountName: string;
+  visible: boolean; accountId: string; accountName: string; accountCurrency: string;
   onClose: () => void; onSaved: () => void;
 }) {
+  const curSymbol = CURRENCY_META[((accountCurrency || 'TRY') as Currency)]?.symbol ?? '₺';
   const [direction, setDirection] = useState<MovementDirection>('giris');
   const [amount, setAmount]       = useState('');
   const [category, setCategory]   = useState<MovementCategory>('tahsilat');
@@ -932,7 +982,7 @@ function MovementModal({
 
             {/* Amount */}
             <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 6 }}>
-              Tutar (₺)
+              Tutar ({curSymbol})
             </Text>
             <TextInput
               style={{

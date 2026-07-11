@@ -7,7 +7,7 @@
  *   3. Bottom row — WeeklyStrip + AnimatedCTACard
  *   4. Extra sections — Orders table, Hekim performansı, Status dist
  *
- * Theme: DS.clinic (Sage #6BA888)
+ * Theme: DS.clinic (Zümrüt #32BB78)
  * Patterns NativeWind — NO StyleSheet.create().
  */
 import React, { useState, useEffect, useRef, useMemo } from 'react';
@@ -17,6 +17,7 @@ import {
   Animated, Easing,
 } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
   Package, Plus, Clock, CheckCircle, Activity, Users,
@@ -24,11 +25,21 @@ import {
   ArrowRight, Check, Layers,
 } from 'lucide-react-native';
 import { useAuthStore } from '../../../core/store/authStore';
+import { useNewOrderModalStore } from '../../../core/store/newOrderModalStore';
 import { useClinicOrders } from '../../clinic/hooks/useClinicOrders';
 import { isOrderOverdue, STATUS_CONFIG } from '../../orders/constants';
 import { WorkOrderStatus } from '../../../lib/types';
 import { DS } from '../../../core/theme/dsTokens';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
+import { FaceScanQuickAction } from '../../orders/components/FaceScanQuickAction';
+import { titleCaseTR } from '../../../core/utils/textCase';
+import { PendingReviewsCard } from '../../reviews/components/PendingReviewsCard';
+import { shortClinicName } from '../../../core/utils/clinicName';
+import { fetchClinicBalances } from '../../invoices/api';
+import type { ClinicBalance } from '../../invoices/types';
+import { baseSymbol, getBaseCurrency } from '../../../core/money/baseCurrency';
+import { rateToBase } from '../../../core/money/rateCache';
+import { CURRENCY_META, type Currency } from '../../../core/money/currency';
 
 // ── Display font ──
 const SERIF = {
@@ -37,9 +48,9 @@ const SERIF = {
 };
 
 // ── Theme: Clinic sage green ──
-const P     = DS.clinic.primary;     // #6BA888
-const P_DEEP = DS.clinic.primaryDeep; // #4D8A6B
-const SURFACE_ALT = DS.clinic.surfaceAlt; // #0F2A1F
+const P     = DS.clinic.primary;     // #32BB78
+const P_DEEP = DS.clinic.primaryDeep; // #0C8F56
+const SURFACE_ALT = DS.clinic.surfaceAlt; // #2F313F
 const INK   = DS.ink[900];
 
 const CLR = {
@@ -55,7 +66,7 @@ const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> =
   alindi:          { label: 'Alındı',          color: DS.ink[500],  bg: 'rgba(0,0,0,0.05)' },
   uretimde:        { label: 'Üretimde',        color: '#9C5E0E',   bg: 'rgba(232,155,42,0.15)' },
   kalite_kontrol:  { label: 'Kalite Kontrol',  color: '#1F5689',   bg: 'rgba(74,143,201,0.12)' },
-  teslimata_hazir: { label: 'Teslimata Hazır', color: '#1F6B47',   bg: 'rgba(45,154,107,0.12)' },
+  teslimata_hazir: { label: 'Kuryeye Teslim Edildi', color: '#1F6B47',   bg: 'rgba(45,154,107,0.12)' },
   teslim_edildi:   { label: 'Teslim Edildi',   color: DS.ink[400],  bg: 'rgba(0,0,0,0.04)' },
 };
 const STATUS_KEYS = ['alindi', 'uretimde', 'kalite_kontrol', 'teslimata_hazir', 'teslim_edildi'];
@@ -274,8 +285,8 @@ function PercentRingHero({ value: targetValue, size = 200, darkText = false }: {
 }
 
 // ── Animated Aktif Vaka Card ──
-function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, router }: {
-  isDesktop: boolean; pipelineCounts: Record<string, number>; latestOrder: any; router: any;
+function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, planningWaitingCount, latestOrder, router }: {
+  isDesktop: boolean; pipelineCounts: Record<string, number>; planningWaitingCount?: number; latestOrder: any; router: any;
 }) {
   const dotAnim = useRef(new Animated.Value(0)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
@@ -316,12 +327,31 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, router 
           position: 'absolute', width: 160, height: 160, borderRadius: 80,
           backgroundColor: P, opacity: glowOpacity, transform: [{ scale: glowScale }],
         }} pointerEvents="none" />
-        <View className="absolute rounded-full" style={{
-          top: 14, left: 14, paddingHorizontal: 10, paddingVertical: 4,
-          backgroundColor: `${P}E6`, flexDirection: 'row', alignItems: 'center', gap: 6,
+        <View className="absolute" style={{
+          top: 14, left: 14, flexDirection: 'row', alignItems: 'center', gap: 6,
         }}>
-          <Animated.View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFF', opacity: dotOpacity }} />
-          <Text style={{ fontSize: 10, fontWeight: '500', color: '#FFF', letterSpacing: 0.5 }}>CANLI</Text>
+          <View className="rounded-full" style={{
+            paddingHorizontal: 10, paddingVertical: 4,
+            backgroundColor: `${P}E6`, flexDirection: 'row', alignItems: 'center', gap: 6,
+          }}>
+            <Animated.View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFF', opacity: dotOpacity }} />
+            <Text style={{ fontSize: 10, fontWeight: '500', color: '#FFF', letterSpacing: 0.5 }}>CANLI</Text>
+          </View>
+          {(planningWaitingCount ?? 0) > 0 && (
+            <View className="rounded-full" style={{
+              paddingHorizontal: 10, paddingVertical: 4,
+              backgroundColor: 'rgba(255,255,255,0.12)',
+              borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+              flexDirection: 'row', alignItems: 'center', gap: 5,
+            }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', color: '#FFF', fontVariant: ['tabular-nums'] as any }}>
+                {planningWaitingCount}
+              </Text>
+              <Text style={{ fontSize: 9.5, fontWeight: '500', color: 'rgba(255,255,255,0.85)', letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                planlama bekliyor
+              </Text>
+            </View>
+          )}
         </View>
         <View className="flex-row items-center" style={{ gap: 12 }}>
           {PIPELINE_STAGES.map((stage) => {
@@ -363,24 +393,65 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, router 
   );
 }
 
-// ── Production Bar Chart ──
+// ── Üretim Süresi Bar Chart (admin paneli ile aynı pill design) ──
 function ProductionBarChart({ data }: { data: { label: string; count: number }[] }) {
   const max = Math.max(...data.map(d => d.count), 1);
   const highestIdx = data.reduce((best, d, i) => d.count > data[best].count ? i : best, 0);
+
+  const FILL_LIGHT = `${P}55`;
+  const FILL_DARK  = P;
+  const RAIL_BG    = `${P}08`;
+  const STRIPE_BG  = `repeating-linear-gradient(135deg, ${P}14 0 6px, transparent 6px 12px)`;
+
   return (
-    <View className="flex-row items-end" style={{ flex: 1, gap: 6 }}>
+    <View className="flex-row items-end" style={{ flex: 1, gap: 10, minHeight: 120, paddingHorizontal: 2 }}>
       {data.map((d, i) => {
-        const h = Math.max((d.count / max) * 100, 6);
-        const isHighlight = i === highestIdx;
+        const pct = d.count > 0 ? Math.min(Math.max((d.count / max) * 100, 8), 100) : 0;
+        const isHighlight = i === highestIdx && d.count > 0;
         return (
-          <View key={i} style={{ flex: 1, alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
-            {isHighlight && d.count > 0 && (
-              <View style={{ paddingHorizontal: 8, paddingVertical: 2, backgroundColor: INK, borderRadius: 6 }}>
-                <Text style={{ fontSize: 10, color: '#FFF', fontWeight: '500' }}>{d.count}</Text>
+          <View key={i} style={{ flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end', gap: 6 }}>
+            <View style={{ width: '100%', maxWidth: 56, flex: 1, justifyContent: 'flex-end', alignItems: 'center' }}>
+              {isHighlight && (
+                <View style={{ marginBottom: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[100] }}>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: FILL_DARK }}>{d.count}</Text>
+                </View>
+              )}
+              <View
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  borderRadius: 999,
+                  backgroundColor: RAIL_BG,
+                  // @ts-ignore web
+                  backgroundImage: STRIPE_BG,
+                  overflow: 'hidden',
+                  position: 'relative' as any,
+                }}
+              >
+                {d.count > 0 && (
+                  <View
+                    style={{
+                      position: 'absolute',
+                      left: 0, right: 0, bottom: 0,
+                      height: `${pct}%`,
+                      borderRadius: 999,
+                      backgroundColor: isHighlight ? FILL_DARK : FILL_LIGHT,
+                      // @ts-ignore
+                      transition: 'height 800ms cubic-bezier(0.22, 1, 0.36, 1)',
+                    } as any}
+                  />
+                )}
               </View>
-            )}
-            <View style={{ width: '100%', height: `${h}%` as any, backgroundColor: isHighlight ? P : INK, borderRadius: 4, minHeight: 4 }} />
-            <Text style={{ fontSize: 9, color: DS.ink[400], textTransform: 'uppercase' }}>{d.label}</Text>
+            </View>
+            <Text style={{
+              fontSize: 11,
+              fontWeight: isHighlight ? '700' : '500',
+              color: isHighlight ? INK : DS.ink[400],
+              textTransform: 'uppercase',
+              letterSpacing: 0.05 * 11,
+            }}>
+              {d.label}
+            </Text>
           </View>
         );
       })}
@@ -451,38 +522,118 @@ function AnimatedOverdueCard({ count, onPress }: { count: number; onPress: () =>
   );
 }
 
-// ── Weekly Calendar Strip ──
-function WeeklyStrip({ weekDays, weekCounts, onPress }: {
+// ── Weekly Calendar Strip (admin paneli ile aynı: hatched pill + alınan/tamamlanan overlay) ──
+function WeeklyStrip({ weekDays, weekCounts, weekDone, onPress }: {
   weekDays: { label: string; date: string; isToday: boolean }[];
-  weekCounts: Record<string, number>; onPress: () => void;
+  weekCounts: Record<string, number>;
+  weekDone: Record<string, number>;
+  onPress: () => void;
 }) {
-  const totalProduction = Object.values(weekCounts).reduce((a, b) => a + b, 0);
-  const first = weekDays[0]; const last = weekDays[6];
-  const fd = new Date(first.date); const ld = new Date(last.date);
-  const rangeLabel = `${fd.getDate()}–${ld.getDate()} ${MONTHS_TR[ld.getMonth()]} ${ld.getFullYear()}`;
+  const totalReceived  = Object.values(weekCounts).reduce((a, b) => a + b, 0);
+  const totalCompleted = Object.values(weekDone).reduce((a, b) => a + b, 0);
+  const SCALE_MAX = 20;
+
+  const SAGE_LIGHT = `${P}55`;
+  const SAGE_DARK  = P;
+  const RAIL_BG    = `${P}08`;
+  const STRIPE_BG  = `repeating-linear-gradient(135deg, ${P}14 0 6px, transparent 6px 12px)`;
 
   return (
     <Card style={{ padding: 18, flex: 2 }}>
       <View className="flex-row items-center" style={{ gap: 12, marginBottom: 14 }}>
         <Text style={{ fontSize: 15, fontWeight: '500', color: INK }}>Bu hafta</Text>
-        <Text style={{ fontSize: 12, color: DS.ink[400] }}>{rangeLabel}</Text>
         <View style={{ flex: 1 }} />
-        <View className="rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: DS.clinic.bgSoft }}>
-          <Text style={{ fontSize: 11, fontWeight: '500', color: P }}>Toplam {totalProduction}</Text>
+        <View className="flex-row items-center" style={{ gap: 10 }}>
+          <View className="flex-row items-center" style={{ gap: 5 }}>
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: SAGE_LIGHT }} />
+            <Text style={{ fontSize: 11, color: DS.ink[500] }}>Alınan {totalReceived} iş</Text>
+          </View>
+          <View className="flex-row items-center" style={{ gap: 5 }}>
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: SAGE_DARK }} />
+            <Text style={{ fontSize: 11, color: DS.ink[500] }}>Teslim edilen {totalCompleted} iş</Text>
+          </View>
         </View>
       </View>
-      <View className="flex-row" style={{ gap: 8, flex: 1 }}>
+
+      <View className="flex-row items-end" style={{ gap: 10, flex: 1, minHeight: 140, paddingHorizontal: 2 }}>
         {weekDays.map((day, i) => {
-          const count = weekCounts[day.date] ?? 0;
+          const received  = weekCounts[day.date] ?? 0;
+          const completed = weekDone[day.date] ?? 0;
+          const receivedPct  = received > 0 ? Math.min(Math.max((received / SCALE_MAX) * 100, 8), 100) : 0;
+          const completedRel = received > 0 ? Math.min((completed / received) * 100, 100) : 0;
+          const empty = received === 0;
+          const showLabel = day.isToday && completed > 0;
+          const ratio = received > 0 ? Math.round((completed / received) * 100) : 0;
           return (
-            <Pressable key={i} onPress={onPress} style={{
-              flex: 1, backgroundColor: day.isToday ? INK : DS.ink[50],
-              borderRadius: 14, padding: 12, gap: 8, position: 'relative',
-            }}>
-              <Text style={{ fontSize: 10, opacity: 0.6, letterSpacing: 0.5, textTransform: 'uppercase', color: day.isToday ? '#FFF' : INK }}>{day.label}</Text>
-              <Text style={{ ...SERIF, fontSize: 24, letterSpacing: -0.48, lineHeight: 24, color: day.isToday ? '#FFF' : INK }}>{count}</Text>
-              <Text style={{ fontSize: 9, opacity: 0.5, color: day.isToday ? '#FFF' : INK }}>sipariş</Text>
-              {day.isToday && <View className="absolute rounded-full" style={{ top: 10, right: 10, width: 6, height: 6, backgroundColor: P }} />}
+            <Pressable
+              key={i}
+              onPress={onPress}
+              style={{ flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end', gap: 6 }}
+            >
+              <View style={{ width: '100%', maxWidth: 56, flex: 1, justifyContent: 'flex-end', alignItems: 'center' }}>
+                {/* Sabit yükseklikli etiket zonu — dolu bar üst legend ile çakışmasın */}
+                <View style={{ height: 20, justifyContent: 'center', alignItems: 'center' }}>
+                  {showLabel ? (
+                    <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: '#FFF', borderWidth: 1, borderColor: DS.ink[100] }}>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: SAGE_DARK }}>{ratio}%</Text>
+                    </View>
+                  ) : !empty ? (
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: day.isToday ? INK : DS.ink[500] }}>
+                      {received}
+                    </Text>
+                  ) : null}
+                </View>
+                <View
+                  style={{
+                    width: '100%',
+                    flex: 1,
+                    borderRadius: 999,
+                    backgroundColor: RAIL_BG,
+                    // @ts-ignore web
+                    backgroundImage: STRIPE_BG,
+                    overflow: 'hidden',
+                    position: 'relative' as any,
+                  }}
+                >
+                  {!empty && (
+                    <View
+                      style={{
+                        position: 'absolute',
+                        left: 0, right: 0, bottom: 0,
+                        height: `${receivedPct}%`,
+                        borderRadius: 999,
+                        backgroundColor: SAGE_LIGHT,
+                        overflow: 'hidden',
+                        // @ts-ignore
+                        transition: 'height 800ms cubic-bezier(0.22, 1, 0.36, 1)',
+                      } as any}
+                    >
+                      {completedRel > 0 && (
+                        <View
+                          style={{
+                            position: 'absolute',
+                            left: 0, right: 0, bottom: 0,
+                            height: `${completedRel}%`,
+                            borderRadius: 999,
+                            backgroundColor: SAGE_DARK,
+                            // @ts-ignore
+                            transition: 'height 800ms cubic-bezier(0.22, 1, 0.36, 1)',
+                          } as any}
+                        />
+                      )}
+                    </View>
+                  )}
+                </View>
+              </View>
+              <Text style={{
+                fontSize: 11,
+                fontWeight: day.isToday ? '700' : '500',
+                color: day.isToday ? INK : DS.ink[400],
+                textTransform: 'uppercase',
+                letterSpacing: 0.05 * 11,
+              }}>
+                {day.label[0]}
+              </Text>
             </Pressable>
           );
         })}
@@ -593,6 +744,245 @@ function TasksCard({ tasks }: { tasks: { icon: React.FC<any>; label: string; tim
   );
 }
 
+// ── Statü Dağılımı — daire solda + şeritler sağda (Hekim Performansı yanında) ──
+const STATUS_DONUT_COLORS: Record<string, string> = {
+  alindi:          '#22C55E',
+  uretimde:        '#F59E0B',
+  kalite_kontrol:  '#3B82F6',
+  teslimata_hazir: '#10B981',
+  teslim_edildi:   '#15803D',
+};
+
+function StatusDistributionCard({
+  byStatus, total, isDesktop,
+}: {
+  byStatus: { key: string; label: string; count: number }[];
+  total: number;
+  isDesktop: boolean;
+}) {
+  const segments = byStatus.map(s => ({
+    ...s,
+    pct: total > 0 ? Math.round((s.count / total) * 100) : 0,
+    color: STATUS_DONUT_COLORS[s.key] ?? P,
+  }));
+  const top = [...segments].sort((a, b) => b.count - a.count)[0];
+
+  // Donut geometri — r=38, çevre = 2πr
+  const R = 38;
+  const C = 2 * Math.PI * R;
+  let acc = 0;
+  const arcs = segments.map(s => {
+    const frac = total > 0 ? s.count / total : 0;
+    const dash = frac * C;
+    const rot  = acc * 360 - 90;
+    acc += frac;
+    return { dash, rot, color: s.color, show: s.count > 0 };
+  });
+
+  const DONUT = 150;
+
+  return (
+    <Card style={{ flex: isDesktop ? 1 : undefined, padding: 24, marginBottom: isDesktop ? 0 : 14 }}>
+      {/* Header */}
+      <View className="flex-row items-center justify-between" style={{ marginBottom: 20, gap: 12 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ ...SERIF, fontSize: 26, letterSpacing: -0.5, color: INK }}>
+            Statü Dağılımı
+          </Text>
+          <Text style={{ fontSize: 13, color: DS.ink[500], marginTop: 3 }}>
+            Toplam {total} sipariş
+          </Text>
+        </View>
+        <View
+          className="rounded-xl"
+          style={{
+            paddingHorizontal: 13, paddingVertical: 7,
+            borderWidth: 1, borderColor: hexA(P, 0.35), backgroundColor: hexA(P, 0.10),
+          }}
+        >
+          <Text style={{ fontSize: 12, fontWeight: '700', color: '#1F6B47' }}>Tüm Zamanlar</Text>
+        </View>
+      </View>
+
+      {/* Body — daire solda, şeritler sağda */}
+      <View className="flex-row" style={{ gap: 16 }}>
+        {/* Sol: yeşil gradient kutu içinde donut + en yüksek oran */}
+        <View
+          className="rounded-3xl"
+          style={{
+            width: 210, padding: 18,
+            // @ts-ignore web gradient — yeşil → beyaz
+            backgroundImage: `linear-gradient(180deg, ${hexA(P, 0.14)} 0%, #FFFFFF 100%)`,
+            backgroundColor: hexA(P, 0.06),
+          }}
+        >
+          <View style={{ width: DONUT, height: DONUT, alignSelf: 'center', position: 'relative' }}>
+            <Svg viewBox="0 0 100 100" width={DONUT} height={DONUT}>
+              <Circle cx={50} cy={50} r={R} fill="none" stroke="#E8F5E9" strokeWidth={10} />
+              {arcs.map((a, i) => a.show ? (
+                <Circle
+                  key={i}
+                  cx={50} cy={50} r={R}
+                  fill="none"
+                  stroke={a.color}
+                  strokeWidth={10}
+                  strokeLinecap="butt"
+                  strokeDasharray={`${a.dash} ${C}`}
+                  transform={`rotate(${a.rot} 50 50)`}
+                />
+              ) : null)}
+            </Svg>
+            <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ ...SERIF, fontSize: 40, letterSpacing: -1, lineHeight: 44, color: INK }}>{total}</Text>
+              <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: -2 }}>Toplam</Text>
+            </View>
+          </View>
+
+          {top && top.count > 0 && (
+            <View
+              className="rounded-2xl"
+              style={{ marginTop: 16, backgroundColor: '#FFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', padding: 14 }}
+            >
+              <Text style={{ fontSize: 11, color: DS.ink[500] }}>En yüksek oran</Text>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: '#1F6B47', marginTop: 2 }}>
+                {top.label} (%{top.pct})
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Sağ: statü şeritleri */}
+        <View style={{ flex: 1, gap: 10 }}>
+          {segments.map(item => (
+            <View
+              key={item.key}
+              className="rounded-2xl"
+              style={{ borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', padding: 14, backgroundColor: '#FFF' }}
+            >
+              <View className="flex-row items-center justify-between" style={{ marginBottom: 10 }}>
+                <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: DS.ink[800] }} numberOfLines={1}>{item.label}</Text>
+                <View className="flex-row items-center" style={{ gap: 14 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: INK }}>{item.count}</Text>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#1F6B47', width: 38, textAlign: 'right' }}>%{item.pct}</Text>
+                </View>
+              </View>
+              <View className="rounded-full overflow-hidden" style={{ height: 8, backgroundColor: DS.ink[100] }}>
+                <View className="rounded-full" style={{ height: 8, backgroundColor: item.color, width: `${item.pct}%` as any }} />
+              </View>
+            </View>
+          ))}
+        </View>
+      </View>
+    </Card>
+  );
+}
+
+// ── Mali Durum kartı — kliniğin lab ile cari hesabı (baz ₺) ──
+const fmtMoney = (n: number | null | undefined) =>
+  baseSymbol() + (Number(n) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 0 });
+/** ₺ yanına orijinal döviz "(€420)" — tek TL dışı para birimi varsa. */
+const origSuffix = (cur?: string | null, amt?: number | null) => {
+  const v = Number(amt) || 0;
+  if (!cur || cur === 'TRY' || v <= 0) return '';
+  const sym = CURRENCY_META[cur as Currency]?.symbol ?? cur;
+  return ` (${sym}${v.toLocaleString('tr-TR', { maximumFractionDigits: 0 })})`;
+};
+
+function ClinicFinanceCard({ fin, isDesktop, onPress }: { fin: ClinicBalance | null; isDesktop: boolean; onPress: () => void }) {
+  const balance = Number(fin?.balance ?? 0);
+  const overdue = Number(fin?.overdue_amount ?? 0);
+  const billed = Number(fin?.total_billed ?? 0);
+  const paid = Number(fin?.total_paid ?? 0);
+  const owes = balance > 0.01;
+  // KATI per-currency: kliniğin parası baz değilse kendi para biriminde göster (₺/≈ yok).
+  // Orijinali olan alanlar (balance/billed/paid) doğrudan; olmayanlar (aging/overdue) kurla türetilir.
+  const baseCur = getBaseCurrency();
+  const fcur = fin?.currency || baseCur;
+  const isForeign = !!fin?.currency && fin.currency !== baseCur;
+  const fSym = CURRENCY_META[fcur as Currency]?.symbol ?? fcur;
+  // Orijinali olmayan alanları (aging/overdue) gerçek orijinal toplama ORANLA ölçekle
+  // (güncel kurla bölmek hero €420 ↔ aging €423 gibi drift yaratıyordu). balance_original
+  // varsa onu kullan; yoksa kur-türevine düş.
+  const balOrig = Math.abs(Number(fin?.balance_original ?? 0));
+  const scale = isForeign
+    ? (Math.abs(balance) > 0.01 && balOrig > 0 ? balOrig / Math.abs(balance) : 1 / (rateToBase(fcur) || 1))
+    : 1;
+  const own = (baseAmt: number, origAmt?: number | null) => {
+    if (!isForeign) return fmtMoney(baseAmt);
+    const v = origAmt != null && Number(origAmt) !== 0
+      ? Number(origAmt)
+      : Number(baseAmt) * scale;
+    return fSym + (Number(v) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 0 });
+  };
+  const balColor = owes ? '#9C2E2E' : '#1F6B47';
+  // Aging stacked bar (varsa)
+  const ag = [
+    { k: 'Güncel', v: Number(fin?.aging_current ?? 0), c: hexA(P, 0.55) },
+    { k: '1–30',   v: Number(fin?.aging_30 ?? 0),      c: '#E89B2A' },
+    { k: '31–60',  v: Number(fin?.aging_60 ?? 0),      c: '#D98324' },
+    { k: '61+',    v: Number(fin?.aging_90 ?? 0),      c: '#D94B4B' },
+  ];
+  const agTotal = ag.reduce((s, a) => s + a.v, 0);
+
+  return (
+    <Card style={{ flex: isDesktop ? 1 : undefined, marginBottom: isDesktop ? 0 : 14, padding: 0, overflow: 'hidden' }}>
+      <View className="flex-row items-center justify-between" style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
+        <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.4, color: INK }}>Mali Durum</Text>
+        <Pressable onPress={onPress}>
+          <Text style={{ fontSize: 13, color: P, fontWeight: '700' }}>Finans →</Text>
+        </Pressable>
+      </View>
+
+      <View style={{ padding: 20, gap: 16 }}>
+        {/* Bakiye hero */}
+        <View>
+          <Text style={{ fontSize: 11, color: DS.ink[500], fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.6 }}>
+            {owes ? 'Güncel Borç' : 'Bakiye'}
+          </Text>
+          <Text style={{ ...SERIF, fontSize: 42, letterSpacing: -1.05, lineHeight: 46, color: balColor, marginTop: 4 }}>
+            {own(Math.abs(balance), Math.abs(Number(fin?.balance_original ?? 0)))}
+          </Text>
+          {overdue > 0.01 && (
+            <View className="flex-row items-center" style={{ gap: 5, marginTop: 6 }}>
+              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#D94B4B' }} />
+              <Text style={{ fontSize: 12, color: '#9C2E2E', fontWeight: '600' }}>{own(overdue)} gecikmiş</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Aging stacked bar */}
+        {agTotal > 0.01 && (
+          <View style={{ gap: 6 }}>
+            <View className="flex-row" style={{ height: 8, borderRadius: 999, overflow: 'hidden', backgroundColor: DS.ink[100] }}>
+              {ag.map(a => a.v > 0 ? <View key={a.k} style={{ flex: a.v / agTotal, backgroundColor: a.c }} /> : null)}
+            </View>
+            <View className="flex-row flex-wrap" style={{ gap: 10 }}>
+              {ag.filter(a => a.v > 0).map(a => (
+                <View key={a.k} className="flex-row items-center" style={{ gap: 4 }}>
+                  <View style={{ width: 7, height: 7, borderRadius: 2, backgroundColor: a.c }} />
+                  <Text style={{ fontSize: 10, color: DS.ink[500] }}>{a.k}: {own(a.v)}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* Kesilen / Ödenen */}
+        <View className="flex-row" style={{ gap: 10 }}>
+          <View style={{ flex: 1, backgroundColor: DS.ink[50], borderRadius: 12, padding: 12 }}>
+            <Text style={{ fontSize: 10, color: DS.ink[500], fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4 }}>Kesilen</Text>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: INK, marginTop: 3 }}>{own(billed, fin?.total_billed_original)}</Text>
+          </View>
+          <View style={{ flex: 1, backgroundColor: hexA(P, 0.08), borderRadius: 12, padding: 12 }}>
+            <Text style={{ fontSize: 10, color: DS.ink[500], fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4 }}>Tahsil Edilen</Text>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: '#1F6B47', marginTop: 3 }}>{own(paid, fin?.total_paid_original)}</Text>
+          </View>
+        </View>
+      </View>
+    </Card>
+  );
+}
+
 // ══════════════════════════════════════════════════════════════════
 //  MAIN SCREEN
 // ══════════════════════════════════════════════════════════════════
@@ -602,17 +992,31 @@ export function ClinicDashboardScreen() {
   const { orders, loading, refetch } = useClinicOrders();
   const { width } = useWindowDimensions();
   const isDesktop = width >= 900;
+  const insets = useSafeAreaInsets();
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const notificationsPulse = require('../../../core/store/uiOverlayStore').useUiOverlayStore((s: any) => s.notificationsPulse);
+  useEffect(() => { if (notificationsPulse > 0) setNotificationsOpen(true); }, [notificationsPulse]);
   const { setTitle, clear } = usePageTitleStore();
 
   useEffect(() => { setTitle(getTodayLabel()); return clear; }, []);
 
   const firstName = profile?.full_name?.split(' ')[0] ?? '';
-  const clinicName = profile?.clinic_name ?? 'Kliniğiniz';
+  const clinicName = shortClinicName(profile?.clinic_name) || 'Kliniğiniz';
+  // Mali durum (cari hesap) — RLS kliniği kendi satırına kısıtlar
+  const [finance, setFinance] = useState<ClinicBalance | null>(null);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const { data } = await fetchClinicBalances();
+      if (alive) setFinance((data ?? [])[0] ?? null);
+    })();
+    return () => { alive = false; };
+  }, []);
   const today = todayStr();
 
   // ── Derived stats ──
   const total = orders.length;
-  const activeCount = orders.filter(o => o.status !== 'teslim_edildi').length;
+  const activeCount = orders.filter(o => o.status !== 'teslim_edildi' && o.status !== 'iptal').length;
   const overdueList = orders.filter(o => isOrderOverdue(o.delivery_date, o.status));
   const overdueCount = overdueList.length;
   const delivered = orders.filter(o => o.status === 'teslim_edildi').length;
@@ -624,48 +1028,81 @@ export function ClinicDashboardScreen() {
     }).length;
   }, [orders]);
 
-  // Pipeline counts
+  // Pipeline counts — pipeline'da 'uretimde' bucket'ı work_orders.status='uretimde' VE
+  // 'asamada' (triaj sonrası aşama akışında) işleri kapsar. Aynı şekilde 'alindi' bucket'ı
+  // henüz planlanması onaylanmamış (triage_approved_at IS NULL) tüm işleri içerir.
   const pipelineCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    STATUS_KEYS.forEach(k => { counts[k] = orders.filter(o => o.status === k).length; });
+    STATUS_KEYS.forEach(k => { counts[k] = 0; });
+    for (const o of orders) {
+      const s: string = (o as any).status;
+      if (s === 'asamada' || s === 'uretimde') counts['uretimde'] = (counts['uretimde'] ?? 0) + 1;
+      else if (s === 'kargoda') counts['teslimata_hazir'] = (counts['teslimata_hazir'] ?? 0) + 1;
+      else if (counts[s] != null) counts[s] = counts[s] + 1;
+    }
     return counts;
   }, [orders]);
+
+  // Planlama bekleyen (triage_approved_at IS NULL ve henüz teslim edilmemiş) — CANLI rozetinde göstermek için
+  const planningWaitingCount = useMemo(
+    () => orders.filter(o => !(o as any).triage_approved_at && (o as any).status !== 'teslim_edildi' && (o as any).status !== 'iptal').length,
+    [orders],
+  );
 
   const totalPipe = Object.values(pipelineCounts).reduce((s, v) => s + v, 0) || 1;
   const productionPct = Math.round(((pipelineCounts['uretimde'] ?? 0) / totalPipe) * 100);
   const deliveryPct = Math.round(((pipelineCounts['teslim_edildi'] ?? 0) / totalPipe) * 100);
 
-  // Monthly trend
+  // Monthly trend — her diş 1 üye olarak sayılır (tooth_numbers.length toplamı)
   const monthly = useMemo(() => {
     const bars: { label: string; count: number }[] = [];
     for (let i = 5; i >= 0; i--) {
       const d = new Date(); d.setMonth(d.getMonth() - i);
       const y = d.getFullYear(), m = d.getMonth();
-      bars.push({
-        label: MONTHS_TR[m],
-        count: orders.filter(o => { const c = new Date(o.created_at); return c.getFullYear() === y && c.getMonth() === m; }).length,
-      });
+      const memberCount = orders
+        .filter(o => { const c = new Date(o.created_at); return c.getFullYear() === y && c.getMonth() === m; })
+        .reduce((sum, o) => sum + (Array.isArray((o as any).tooth_numbers) ? (o as any).tooth_numbers.length : 0), 0);
+      bars.push({ label: MONTHS_TR[m], count: memberCount });
     }
     return bars;
   }, [orders]);
 
   // Week counts
   const weekDays = getWeekDays();
+  // Her diş 1 üye sayılır — tooth_numbers.length toplamı
+  const teethOf = (o: any) => Array.isArray(o?.tooth_numbers) ? o.tooth_numbers.length : 0;
   const weekCounts = useMemo(() => {
     const wc: Record<string, number> = {};
-    weekDays.forEach(wd => { wc[wd.date] = orders.filter(o => o.created_at?.startsWith(wd.date)).length; });
+    weekDays.forEach(wd => {
+      wc[wd.date] = orders
+        .filter(o => o.created_at?.startsWith(wd.date))
+        .reduce((sum, o) => sum + teethOf(o), 0);
+    });
     return wc;
+  }, [orders]);
+  // Tamamlanan = o gün ALINAN (created) siparişlerden artık 'teslim_edildi' olanların
+  // diş sayısı (cohort mantığı — lab Özet ile aynı). work_orders'ta completed_at YOK;
+  // eski kod olmayan kolonlar yüzünden created_at'e düşüp tamamlananları yanlış güne
+  // yazıyordu. Aynı cohort kullanılınca günlük tamamlanma oranı da doğru olur.
+  const weekDone = useMemo(() => {
+    const wd: Record<string, number> = {};
+    weekDays.forEach(day => {
+      wd[day.date] = orders
+        .filter(o => o.status === 'teslim_edildi' && o.created_at?.startsWith(day.date))
+        .reduce((sum, o) => sum + teethOf(o), 0);
+    });
+    return wd;
   }, [orders]);
 
   // Recent orders
   const recentOrders = useMemo(() =>
     orders.slice().sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? '')).slice(0, 8),
     [orders]);
-  const latestOrder = recentOrders.find(o => o.status !== 'teslim_edildi') ?? recentOrders[0];
+  const latestOrder = recentOrders.find(o => o.status !== 'teslim_edildi' && o.status !== 'iptal') ?? recentOrders[0];
 
   // Upcoming deliveries
   const upcoming = useMemo(() => orders
-    .filter(o => o.status !== 'teslim_edildi')
+    .filter(o => o.status !== 'teslim_edildi' && o.status !== 'iptal')
     .filter(o => { const d = new Date(o.delivery_date + 'T00:00:00'); return d.getTime() >= Date.now() - 86400000; })
     .sort((a, b) => a.delivery_date.localeCompare(b.delivery_date))
     .slice(0, 5), [orders]);
@@ -679,7 +1116,7 @@ export function ClinicDashboardScreen() {
       if (!map.has(docId)) map.set(docId, { id: docId, name: docName, total: 0, active: 0, overdue: 0 });
       const row = map.get(docId)!;
       row.total += 1;
-      if (o.status !== 'teslim_edildi') row.active += 1;
+      if (o.status !== 'teslim_edildi' && o.status !== 'iptal') row.active += 1;
       if (isOrderOverdue(o.delivery_date, o.status)) row.overdue += 1;
     }
     return Array.from(map.values()).sort((a, b) => b.total - a.total).slice(0, 8);
@@ -711,38 +1148,110 @@ export function ClinicDashboardScreen() {
   //  MOBILE — Variant B Home (B1)
   // ══════════════════════════════════════════════════════════════
   if (!isDesktop) {
-    const { HomeB1: HomeB1Cmp, defaultInsight: defIns } = require('../../../core/ui/HomeB1');
-    const recentOrdersList = orders.slice(0, 3);
-    const kpis = [
-      { label: 'Aktif',    value: String(activeCount), up: true },
-      { label: 'Geciken',  value: String(overdueCount), up: false },
-      { label: 'Teslim',   value: String(delivered) },
-      { label: 'Toplam',   value: String(total) },
-    ];
-    const priority = recentOrdersList.map((o: any) => ({
-      id: String(o.order_number ?? o.id).slice(-5),
-      type: o.work_type ?? 'Sipariş',
-      due: o.delivery_date ? fmtDate(o.delivery_date) : '—',
-      status: o.status,
-      statusLabel: STATUS_CFG[o.status]?.label ?? o.status,
-      clinic: clinicName,
-      avatar: clinicName.slice(0, 2).toUpperCase(),
-    }));
+    const { ClinicMobileDashboard } = require('../components/ClinicMobileDashboard');
+    const { NotificationsSheet } = require('../../../core/ui/mobile/NotificationsSheet');
+
+    // Stage counts
+    const stageCounts = {
+      alindi: (pipelineCounts['alindi']         ?? 0) + (pipelineCounts['onay_bekliyor'] ?? 0),
+      uretim: (pipelineCounts['uretimde']       ?? 0) + (pipelineCounts['asamada']        ?? 0),
+      kk:     (pipelineCounts['kalite_kontrol'] ?? 0),
+      hazir:  (pipelineCounts['teslimata_hazir'] ?? 0) + (pipelineCounts['kargoda']       ?? 0),
+    };
+    const deliveredPct = total > 0 ? Math.round((delivered / total) * 100) : 0;
+
+    // Week bars
+    const weekBars: number[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i); d.setHours(0, 0, 0, 0);
+      const iso = d.toISOString().slice(0, 10);
+      weekBars.push(orders.filter((o: any) => o.created_at?.startsWith(iso)).length);
+    }
+    const monthsShort = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
+    const wkStart = new Date(); wkStart.setDate(wkStart.getDate() - 6);
+    const weekRange = `${wkStart.getDate()} ${monthsShort[wkStart.getMonth()]} → ${new Date().getDate()} ${monthsShort[new Date().getMonth()]}`;
+    const thisMonthCount = orders.filter((o: any) => {
+      const d = new Date(o.created_at); d.setHours(0,0,0,0);
+      const n = new Date(); n.setHours(0,0,0,0);
+      return d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear();
+    }).length;
+
+    // Delayed cases
+    const delayedItems = overdueList.slice(0, 3).map((o: any) => {
+      const due = new Date(o.delivery_date + 'T00:00:00').getTime();
+      const days = Math.max(1, Math.floor((Date.now() - due) / 86400000));
+      return {
+        id: String(o.order_number ?? o.id).slice(-6),
+        _id: o.id,
+        patient: o.patient_name ?? 'Hasta',
+        workType: o.work_type ?? '—',
+        doctorName: (o as any).doctor_name ?? undefined,
+        remain: `${days}g geç`,
+        kind: 'delay' as const,
+      };
+    });
+
+    // Notifications
+    const notifApprovals = orders
+      .filter((o: any) => o.status === 'onay_bekliyor')
+      .slice(0, 5)
+      .map((o: any) => ({
+        id: String(o.order_number ?? o.id).slice(-6),
+        _id: o.id,
+        patient: o.patient_name ?? 'Hasta',
+        workType: 'Onay bekliyor',
+      }));
+    const notifOverdue = overdueList.slice(0, 5).map((o: any) => {
+      const due = new Date(o.delivery_date + 'T00:00:00').getTime();
+      const days = Math.max(1, Math.floor((Date.now() - due) / 86400000));
+      return {
+        id: String(o.order_number ?? o.id).slice(-6),
+        _id: o.id,
+        patient: o.patient_name ?? 'Hasta',
+        workType: o.work_type ?? '—',
+        daysLate: days,
+      };
+    });
+
     return (
-      <HomeB1Cmp
-        kicker={`${activeCount} aktif sipariş`}
-        headline={overdueCount > 0 ? `${overdueCount} geciken vakanız var.` : 'Bugün takipte olun.'}
-        sub={`${total} toplam sipariş, ${delivered} teslim edildi.`}
-        primaryAction={{ label: 'Yeni sipariş', onPress: () => router.push('/(clinic)/new-order' as any) }}
-        secondaryAction={{ label: 'Siparişler', onPress: () => router.push('/(clinic)/orders' as any) }}
-        kpis={kpis}
-        priority={priority}
-        onOpenOrder={(o: any) => router.push(`/(clinic)/order/${o.id}` as any)}
-        onSeeAllOrders={() => router.push('/(clinic)/orders' as any)}
-        insight={defIns('clinic')}
-        refreshing={loading}
-        onRefresh={refetch}
-      />
+      <>
+        <ClinicMobileDashboard
+          clinicName={clinicName}
+          liveActive={activeCount}
+          liveTotal={total}
+          liveStages={stageCounts}
+          livePercent={deliveredPct}
+          activeOrders={activeCount}
+          overdueCount={overdueCount}
+          thisMonthNew={thisMonthCount}
+          pendingApprovalsCount={notifApprovals.length}
+          weekBars={weekBars}
+          weekRange={weekRange}
+          weekTotal={weekBars.reduce((a, b) => a + b, 0)}
+          delayed={delayedItems}
+          onNewOrder={() => useNewOrderModalStore.getState().setOpen(true)}
+          onScan={() => require('../../../core/store/scanStore').useScanStore.getState().setOpen(true)}
+          onApprovals={() => router.push('/(clinic)/orders?filter=approval' as any)}
+          onMessages={() => router.push('/(clinic)/messages' as any)}
+          onNotifications={() => setNotificationsOpen(true)}
+          onProfile={() => router.push('/(clinic)/profile' as any)}
+          onOpenOrder={(id: string) => {
+            const found = delayedItems.find((x: any) => x.id === id);
+            if (found) router.push(`/(clinic)/order/${(found as any)._id}` as any);
+          }}
+          refreshing={loading}
+          onRefresh={refetch}
+        />
+        <NotificationsSheet
+          visible={notificationsOpen}
+          onClose={() => setNotificationsOpen(false)}
+          onOpenOrder={(dbId: string) => router.push(`/(clinic)/order/${dbId}` as any)}
+          panel="klinik"
+          approvals={notifApprovals}
+          overdue={notifOverdue}
+          upcoming={[]}
+        />
+      </>
     );
   }
 
@@ -752,7 +1261,11 @@ export function ClinicDashboardScreen() {
   return (
     <ScrollView
       className="flex-1"
-      contentContainerStyle={{ padding: isDesktop ? 10 : 16, paddingBottom: 120 }}
+      contentContainerStyle={{
+        padding: isDesktop ? 10 : 16,
+        paddingTop: isDesktop ? 10 : insets.top + 8,
+        paddingBottom: 120,
+      }}
       refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={P} />}
     >
       {/* ════════ HERO ════════ */}
@@ -765,14 +1278,17 @@ export function ClinicDashboardScreen() {
               lineHeight: isDesktop ? 56 : 42, color: INK,
             }}>
               Merhaba,{' '}
-              <Text style={{ fontStyle: 'italic', color: DS.ink[400] }}>{firstName}</Text>
+              <Text style={{ fontStyle: 'italic', color: DS.ink[400] }}>{clinicName}</Text>
             </Text>
-            <Text style={{ fontSize: 14, color: DS.ink[500], marginTop: 4 }}>{clinicName}</Text>
+            <Text style={{ fontSize: 14, color: DS.ink[500], marginTop: 4 }}>
+              Yetkili: <Text style={{ fontWeight: '600', color: DS.ink[700] }}>{profile?.full_name ?? firstName}</Text>
+            </Text>
             <View className="flex-row flex-wrap items-center" style={{ gap: 14, marginTop: 14 }}>
               <StatPill label="Üretim" value={`${productionPct}%`} bg={INK} color="#FFF" />
               <StatPill label="Aktif" value={`${activeCount}`} bg={P} color="#FFF" />
               {overdueCount > 0 && <StatPill label="Geciken" value={`${overdueCount}`} bg="rgba(217,75,75,0.12)" color="#9C2E2E" />}
               <StatPill label="Bu ay" value={`${thisMonthNew}`} bg="rgba(0,0,0,0.08)" color={INK} />
+              <FaceScanQuickAction accentColor={P} compact />
             </View>
           </View>
           <View className="flex-row" style={{ gap: 32, alignItems: 'flex-end' }}>
@@ -788,9 +1304,14 @@ export function ClinicDashboardScreen() {
         <AnimatedOverdueCard count={overdueCount} onPress={() => router.push('/(clinic)/orders' as any)} />
       )}
 
+      {/* ════════ DEĞERLENDİRİLECEK İŞLER (Faz 2) ════════ */}
+      <View style={{ marginBottom: 14 }}>
+        <PendingReviewsCard raterRole="clinic" />
+      </View>
+
       {/* ════════ 4-CARD GRID ════════ */}
       <View className={isDesktop ? 'flex-row' : ''} style={{ gap: 14, marginBottom: 14 }}>
-        <AnimatedAktifVakaCard isDesktop={isDesktop} pipelineCounts={pipelineCounts} latestOrder={latestOrder} router={router} />
+        <AnimatedAktifVakaCard isDesktop={isDesktop} pipelineCounts={pipelineCounts} planningWaitingCount={planningWaitingCount} latestOrder={latestOrder} router={router} />
 
         <Card style={{ flex: isDesktop ? 1.2 : undefined, padding: 22, marginBottom: isDesktop ? 0 : 14 }}>
           <View className="flex-row items-start justify-between" style={{ marginBottom: 12 }}>
@@ -798,9 +1319,9 @@ export function ClinicDashboardScreen() {
               <Text style={{ fontSize: 18, fontWeight: '500', letterSpacing: -0.27, color: INK }}>Sipariş Trendi</Text>
               <Text style={{ ...SERIF, fontSize: 42, letterSpacing: -1.05, lineHeight: 42, marginTop: 8, color: INK }}>
                 {monthly[monthly.length - 1]?.count ?? 0}
-                <Text style={{ fontSize: 14, color: DS.ink[400] }}> bu ay</Text>
+                <Text style={{ fontSize: 14, color: DS.ink[400] }}> üye bu ay</Text>
               </Text>
-              <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 4 }}>Son 6 aylık trend</Text>
+              <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 4 }}>Her diş 1 üye · Son 6 ay</Text>
             </View>
             <Pressable onPress={() => router.push('/(clinic)/orders' as any)} className="items-center justify-center rounded-full" style={{ width: 32, height: 32, backgroundColor: DS.ink[100] }}>
               <ArrowUpRight size={14} color={DS.ink[500]} strokeWidth={1.8} />
@@ -828,15 +1349,19 @@ export function ClinicDashboardScreen() {
           </View>
         </Card>
 
+        {/* Hızlı İşlem CTA — "Yeni sipariş oluştur" (görevler ile yer değişti) */}
         <View style={{ flex: isDesktop ? 1.4 : undefined }}>
-          <TasksCard tasks={taskItems} />
+          <AnimatedCTACard onPress={() => router.push('/(clinic)/new-order' as any)} isDesktop={isDesktop} />
         </View>
       </View>
 
-      {/* ════════ BOTTOM ROW — Weekly + CTA ════════ */}
+      {/* ════════ BOTTOM ROW — Weekly + Bugünkü Görevler ════════ */}
       <View className={isDesktop ? 'flex-row' : ''} style={{ gap: 14, marginBottom: 14 }}>
-        <WeeklyStrip weekDays={weekDays} weekCounts={weekCounts} onPress={() => router.push('/(clinic)/orders' as any)} />
-        <AnimatedCTACard onPress={() => router.push('/(clinic)/new-order' as any)} isDesktop={isDesktop} />
+        <WeeklyStrip weekDays={weekDays} weekCounts={weekCounts} weekDone={weekDone} onPress={() => router.push('/(clinic)/orders' as any)} />
+        {/* Bugünkü Görevler — Dark (CTA ile yer değişti) */}
+        <View style={{ flex: isDesktop ? 1 : undefined, marginTop: isDesktop ? 0 : 14 }}>
+          <TasksCard tasks={taskItems} />
+        </View>
       </View>
 
       {/* ════════ ORDERS TABLE ════════ */}
@@ -849,17 +1374,17 @@ export function ClinicDashboardScreen() {
         </View>
         <View className="flex-row items-center" style={{ paddingHorizontal: 20, paddingVertical: 11, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)', backgroundColor: DS.ink[50] }}>
           <Text style={{ flex: 1.2, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>No</Text>
-          <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Hekim</Text>
+          <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Hasta</Text>
           {isDesktop && <Text style={{ flex: 2, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>İş Tipi</Text>}
           <Text style={{ flex: 1.4, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7 }}>Durum</Text>
           {isDesktop && <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.7, textAlign: 'right' }}>Teslim</Text>}
         </View>
         {recentOrders.length === 0
-          ? <Text className="p-6 text-center" style={{ fontSize: 13, color: DS.ink[400] }}>Yükleniyor...</Text>
+          ? <Text className="p-6 text-center" style={{ fontSize: 13, color: DS.ink[400] }}>{loading ? 'Yükleniyor...' : 'Henüz sipariş yok'}</Text>
           : recentOrders.map((order, idx) => {
-              const overdue = order.delivery_date < today && order.status !== 'teslim_edildi';
+              const overdue = order.delivery_date < today && order.status !== 'teslim_edildi' && order.status !== 'iptal';
               const isLast = idx === recentOrders.length - 1;
-              const drName = (order as any).doctor_profile?.full_name ?? '--';
+              const drName = (order as any).patient_name ? titleCaseTR((order as any).patient_name) : '--';
               return (
                 <Pressable key={order.id} className="flex-row items-center" style={{
                   paddingHorizontal: 20, paddingVertical: 13, gap: 8, minHeight: 54,
@@ -882,7 +1407,7 @@ export function ClinicDashboardScreen() {
         }
       </Card>
 
-      {/* ════════ EXTRA: Hekim Performansı + Status ════════ */}
+      {/* ════════ EXTRA: Hekim Performansı + Mali Durum (Statü Dağılımı yerine) ════════ */}
       <View className={isDesktop ? 'flex-row' : ''} style={{ gap: 14, marginBottom: 14 }}>
         {/* Hekim Performansı */}
         {byDoctor.length > 0 && (
@@ -917,30 +1442,8 @@ export function ClinicDashboardScreen() {
             })}
           </Card>
         )}
-
-        {/* Status Distribution */}
-        <Card style={{ flex: isDesktop ? 1 : undefined, padding: 22 }}>
-          <CardHeader title="Statü Dağılımı" display />
-          <View style={{ gap: 12 }}>
-            {byStatus.map(item => {
-              const pct = Math.round((item.count / (total || 1)) * 100);
-              const cfg = STATUS_CFG[item.key];
-              return (
-                <View key={item.key}>
-                  <View className="flex-row items-center" style={{ marginBottom: 5 }}>
-                    <View className="rounded-full" style={{ width: 7, height: 7, backgroundColor: cfg?.color ?? INK, marginRight: 8 }} />
-                    <Text style={{ flex: 1, fontSize: 11, color: DS.ink[500], fontWeight: '500' }}>{item.label}</Text>
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: INK }}>{item.count}</Text>
-                    <Text style={{ fontSize: 10, color: DS.ink[400], marginLeft: 6, width: 28, textAlign: 'right' }}>{pct}%</Text>
-                  </View>
-                  <View className="rounded overflow-hidden" style={{ height: 4, backgroundColor: DS.ink[100] }}>
-                    <View className="rounded" style={{ height: 4, backgroundColor: cfg?.color ?? INK, width: `${pct}%` as any }} />
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        </Card>
+        {/* Mali Durum — Statü Dağılımı yerine finansa özel kart */}
+        <ClinicFinanceCard fin={finance} isDesktop={isDesktop} onPress={() => router.push('/(clinic)/finance' as any)} />
       </View>
 
       <View style={{ height: 40 }} />

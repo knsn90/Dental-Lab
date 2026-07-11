@@ -6,7 +6,8 @@
  */
 import React from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { NO, NORadius } from './NOTokens';
+import { useNOTokens, NORadius } from './NOTokens';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 
 export interface NOTopBarProps {
   hekim?: string;
@@ -16,6 +17,8 @@ export interface NOTopBarProps {
 }
 
 export function NOTopBar({ hekim, hasta, toothCount, onCancel }: NOTopBarProps) {
+  const NO = useNOTokens();
+  const T = useMobileTokens();
   return (
     <View
       style={{
@@ -26,7 +29,7 @@ export function NOTopBar({ hekim, hasta, toothCount, onCancel }: NOTopBarProps) 
         gap: 14,
         borderBottomWidth: 1,
         borderBottomColor: NO.borderSoft,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: T.card,
       }}
     >
       {/* Left: breadcrumb */}
@@ -35,10 +38,10 @@ export function NOTopBar({ hekim, hasta, toothCount, onCancel }: NOTopBarProps) 
           paddingVertical: 4,
           paddingHorizontal: 10,
           borderRadius: 6,
-          backgroundColor: 'rgba(0,0,0,0.05)',
+          backgroundColor: NO.borderSoft,
         }}
       >
-        <Text style={{ fontSize: 11, fontFamily: 'monospace' }}>
+        <Text style={{ fontSize: 11, fontFamily: 'monospace', color: NO.inkStrong }}>
           Yeni Sipariş
         </Text>
       </View>

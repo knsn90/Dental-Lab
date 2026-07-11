@@ -65,7 +65,7 @@ export async function fetchMyStages(technicianId: string) {
         is_rush,
         notes,
         manager_notes,
-        doctor:doctor_id ( full_name, clinic_name ),
+        doctor:doctors ( full_name, clinic:clinics(name) ),
         box:box_id ( box_code )
       ),
       station:station_id ( name, color )

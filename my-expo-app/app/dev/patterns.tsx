@@ -13,8 +13,10 @@ import { DS, dsTheme, type DsTheme } from '../../core/theme/dsTokens';
 import {
   Search, X, Paperclip, Mic, Play, Pin, CheckCheck, Smile,
   UserPlus, Check, Wrench, Stethoscope, Building2, ShieldCheck, UserCog,
-  Receipt, Truck, Sparkles, Headphones, GraduationCap,
+  Receipt, Truck, Sparkles, Headphones, GraduationCap, Calendar,
 } from 'lucide-react-native';
+import { DatePicker } from '../../core/ui/DatePicker';
+import PatternsMobileScreen from './patterns-mobile';
 
 // Tüm display başlıklar — Inter Tight Light (300), sıkı tracking
 const DISPLAY = {
@@ -22,7 +24,59 @@ const DISPLAY = {
   fontWeight: '300' as const,
 };
 
+type ViewMode = 'desktop' | 'mobile';
+
 export default function PatternsScreen() {
+  const [mode, setMode] = useState<ViewMode>('desktop');
+
+  /* Top-level mode switcher — yapıştırılmış pill bar */
+  const Switcher = (
+    <View style={{
+      position: 'absolute', top: 16, right: 16, zIndex: 100,
+      flexDirection: 'row', gap: 2, padding: 4,
+      backgroundColor: 'rgba(255,255,255,0.92)',
+      borderRadius: 999, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
+      shadowColor: '#000', shadowOpacity: 0.06, shadowOffset: { width: 0, height: 4 }, shadowRadius: 10,
+    }}>
+      {(['desktop', 'mobile'] as ViewMode[]).map(m => {
+        const active = m === mode;
+        return (
+          <Pressable
+            key={m}
+            onPress={() => setMode(m)}
+            style={{
+              paddingHorizontal: 14, paddingVertical: 6,
+              borderRadius: 999,
+              backgroundColor: active ? DS.ink[900] : 'transparent',
+            }}
+          >
+            <Text style={{ fontSize: 12, fontWeight: '600', color: active ? '#FFF' : DS.ink[700] }}>
+              {m === 'desktop' ? 'Desktop' : 'Mobile'}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+
+  if (mode === 'mobile') {
+    return (
+      <View style={{ flex: 1 }}>
+        {Switcher}
+        <PatternsMobileScreen />
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ flex: 1 }}>
+      {Switcher}
+      <PatternsDesktopContent />
+    </View>
+  );
+}
+
+function PatternsDesktopContent() {
   return (
     <ScrollView style={{ flex: 1, backgroundColor: DS.ink[50] }} contentContainerStyle={{ padding: 56 }}>
 
@@ -33,7 +87,7 @@ export default function PatternsScreen() {
             Tasarım Sistemi · v1.0
           </Text>
           <Text style={{ ...DISPLAY, fontSize: 88, letterSpacing: -3.1, lineHeight: 84, color: DS.ink[900] }}>
-            Dental Lab{'\n'}
+            Laboratuvar{'\n'}
             <Text style={{ color: DS.ink[500] }}>tasarım sistemi</Text>
           </Text>
           <Text style={{ fontSize: 17, color: '#3C3C3C', maxWidth: 560, lineHeight: 25, marginTop: 24 }}>
@@ -157,6 +211,147 @@ export default function PatternsScreen() {
         </View>
       </View>
 
+      {/* ═════ 05.3 — GLASS CARD (Kurye haritası formülü) ═════ */}
+      <SecHeader
+        eyebrow="05.3 · Glass Card"
+        title="Cam efektli kart — kurye haritası dilinden"
+        desc="backdrop-filter: blur + saturate, %8 beyaz tint, %55 beyaz kenar ve çift gölge (derin drop + iç highlight). Arka plana karşı yüzen şeffaf yüzeyler için."
+      />
+
+      <View
+        style={{
+          marginBottom: 80,
+          borderRadius: 24,
+          overflow: 'hidden',
+          minHeight: 360,
+          padding: 28,
+          justifyContent: 'flex-end',
+          gap: 16,
+          // @ts-ignore web bg image
+          backgroundImage:
+            "linear-gradient(135deg, rgba(15,23,42,0.45) 0%, rgba(15,23,42,0.15) 100%), url('https://images.unsplash.com/photo-1604933834413-4e7af3e6b889?q=80&w=1600&auto=format&fit=crop')",
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        }}
+      >
+        {/* Üst etiket */}
+        <View style={{ alignSelf: 'flex-start' }}>
+          <View
+            style={{
+              paddingHorizontal: 10, paddingVertical: 9, borderRadius: 18,
+              backgroundColor: 'rgba(255,255,255,0.08)',
+              borderWidth: 1, borderColor: 'rgba(255,255,255,0.55)',
+              flexDirection: 'row', alignItems: 'center', gap: 10,
+              // @ts-ignore
+              backdropFilter: 'blur(3px) saturate(120%)',
+              WebkitBackdropFilter: 'blur(3px) saturate(120%)',
+              boxShadow: '0 12px 32px rgba(15,23,42,0.18), inset 0 1px 0 rgba(255,255,255,0.6)',
+            } as any}
+          >
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#10B981' }} />
+            <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFF', letterSpacing: 0.2 }}>
+              Canlı — 4 kurye yolda
+            </Text>
+          </View>
+        </View>
+
+        {/* Ana glass card */}
+        <View
+          style={{
+            padding: 18, borderRadius: 20, gap: 12,
+            backgroundColor: 'rgba(255,255,255,0.08)',
+            borderWidth: 1, borderColor: 'rgba(255,255,255,0.55)',
+            // @ts-ignore
+            backdropFilter: 'blur(3px) saturate(120%)',
+            WebkitBackdropFilter: 'blur(3px) saturate(120%)',
+            boxShadow: '0 16px 40px rgba(15,23,42,0.18), inset 0 1px 0 rgba(255,255,255,0.6)',
+          } as any}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View
+              style={{
+                width: 38, height: 38, borderRadius: 19,
+                alignItems: 'center', justifyContent: 'center',
+                backgroundColor: 'rgba(37,99,235,0.18)',
+              }}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '800', color: '#1E3A8A' }}>K</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 15, fontWeight: '800', color: '#0F172A', letterSpacing: -0.2 }}>
+                Kurye · Ahmet Yılmaz
+              </Text>
+              <Text style={{ fontSize: 12, color: 'rgba(15,23,42,0.62)', marginTop: 2 }}>
+                3 teslimat · 8.4 km · ETA 14:32
+              </Text>
+            </View>
+            <View
+              style={{
+                paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
+                backgroundColor: 'rgba(37,99,235,0.20)',
+              }}
+            >
+              <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E3A8A', letterSpacing: 0.3 }}>
+                YOLDA
+              </Text>
+            </View>
+          </View>
+
+          {/* Progress */}
+          <View style={{ gap: 6 }}>
+            <View
+              style={{
+                height: 4, borderRadius: 2,
+                backgroundColor: 'rgba(15,23,42,0.10)',
+                overflow: 'hidden',
+              }}
+            >
+              <View style={{ height: '100%', width: '64%', backgroundColor: '#2563EB' }} />
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text style={{ fontSize: 10, color: 'rgba(15,23,42,0.55)', fontWeight: '600' }}>
+                Aldı → Yolda
+              </Text>
+              <Text style={{ fontSize: 10, color: 'rgba(15,23,42,0.55)', fontWeight: '600' }}>
+                %64
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Sağ alt — action button glass */}
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View
+            style={{
+              width: 38, height: 38, borderRadius: 19,
+              alignItems: 'center', justifyContent: 'center',
+              backgroundColor: 'rgba(255,255,255,0.08)',
+              borderWidth: 1, borderColor: 'rgba(255,255,255,0.55)',
+              // @ts-ignore
+              backdropFilter: 'blur(3px) saturate(120%)',
+              WebkitBackdropFilter: 'blur(3px) saturate(120%)',
+              boxShadow: '0 10px 24px rgba(15,23,42,0.18), inset 0 1px 0 rgba(255,255,255,0.6)',
+            } as any}
+          >
+            <Text style={{ fontSize: 16, color: '#FFF' }}>＋</Text>
+          </View>
+          <View
+            style={{
+              width: 38, height: 38, borderRadius: 19,
+              alignItems: 'center', justifyContent: 'center',
+              backgroundColor: 'rgba(255,255,255,0.08)',
+              borderWidth: 1, borderColor: 'rgba(255,255,255,0.55)',
+              // @ts-ignore
+              backdropFilter: 'blur(3px) saturate(120%)',
+              WebkitBackdropFilter: 'blur(3px) saturate(120%)',
+              boxShadow: '0 10px 24px rgba(15,23,42,0.18), inset 0 1px 0 rgba(255,255,255,0.6)',
+            } as any}
+          >
+            <Text style={{ fontSize: 16, color: '#FFF' }}>−</Text>
+          </View>
+        </View>
+      </View>
+
       {/* ═════ 05.5 — FORM ELEMANLARI ═════ */}
       <SecHeader eyebrow="05 · Form Elemanları" title="Net, sade, dokunmaya davet" desc="Pill yerine yumuşak köşeli (14px) input'lar. Label üstte, hint altta. Hata için kırmızı border + mesaj." />
 
@@ -207,6 +402,15 @@ export default function PatternsScreen() {
           <PillButton variant="dark">Vakayı Oluştur</PillButton>
         </View>
       </View>
+
+      {/* ═════ 05.6 — TARİH SEÇİCİ ═════ */}
+      <SecHeader
+        eyebrow="05.6 · Tarih Seçici"
+        title="Takvim popover — ay & yıl dropdown"
+        desc="Patterns §13 form dilinde: yumuşak köşeli trigger, ay/yıl chevron seçicisi, panel accent rengiyle seçili gün ve bugün çerçevesi. core/ui/DatePicker → ISO string in/out."
+      />
+
+      <DatePickerShowcase />
 
       {/* ═════ 06 — LİNEER İLERLEME (eski yüzde halkaları kaldırıldı, yenisi 11.7'de) ═════ */}
       <SecHeader eyebrow="06 · Lineer İlerleme" title="Modern bar — gradient + knob + glow" desc="Her panel kendi accent rengiyle. Yüzde halkaları için bkz. bölüm 11.7." />
@@ -1078,7 +1282,7 @@ export default function PatternsScreen() {
                           <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: '#1A1A1A' }}>Stage</Text>
                           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>
                             {[
-                              { lbl: 'Triyaj',    active: true  },
+                              { lbl: 'Planlama',  active: true  },
                               { lbl: 'Tasarım',   active: true  },
                               { lbl: 'CAM',       active: false },
                               { lbl: 'Frezeleme', active: false },
@@ -1543,6 +1747,133 @@ function NewPaletteShowcase() {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+// ── Date Picker Showcase — 4 panel theme + min/max + disabled ─────
+function DatePickerShowcase() {
+  const [d1, setD1] = useState<string | null>(null);
+  const [d2, setD2] = useState<string | null>('2026-05-12');
+  const [d3, setD3] = useState<string | null>(null);
+  const [d4, setD4] = useState<string | null>(null);
+  const [d5, setD5] = useState<string | null>('2026-04-15');
+  const [d6, setD6] = useState<string | null>(null);
+
+  const themes: Array<{ key: DsTheme; sub: string }> = [
+    { key: 'lab',    sub: 'Üretim & teslimat tarihleri'       },
+    { key: 'clinic', sub: 'Doğum tarihi, randevu, takip'      },
+    { key: 'exec',   sub: 'Mali raporlama, vade, fatura'      },
+    { key: 'tech',   sub: 'İstasyon planlama, vardiya'        },
+  ];
+
+  return (
+    <View style={{ marginBottom: 80, gap: 24 }}>
+      {/* 4 panel — accent rengiyle aynı picker */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16 }}>
+        {themes.map(({ key, sub }, idx) => {
+          const t = dsTheme(key);
+          const states: Array<{ v: string | null; setV: (s: string) => void }> = [
+            { v: d1, setV: setD1 }, { v: d2, setV: setD2 },
+            { v: d3, setV: setD3 }, { v: d4, setV: setD4 },
+          ];
+          const st = states[idx];
+          return (
+            <View
+              key={key}
+              style={{
+                flex: 1, minWidth: 280,
+                backgroundColor: '#FFFFFF',
+                borderRadius: 24, padding: 24,
+                borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
+                gap: 16,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{
+                  width: 36, height: 36, borderRadius: 10,
+                  backgroundColor: t.primary,
+                  alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Calendar size={16} color="#FFFFFF" strokeWidth={1.8} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[500] }}>
+                    {t.name}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 2 }}>{sub}</Text>
+                </View>
+              </View>
+
+              <View style={{ gap: 6 }}>
+                <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', color: DS.ink[500] }}>
+                  Tarih
+                </Text>
+                <DatePicker
+                  value={st.v}
+                  onChange={st.setV}
+                  accent={t.primary}
+                  placeholder="Tarih seç"
+                />
+              </View>
+            </View>
+          );
+        })}
+      </View>
+
+      {/* Variant kartı — min/max + disabled + dolu */}
+      <View style={{
+        backgroundColor: '#FFFFFF',
+        borderRadius: 24, padding: 32,
+        borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
+        gap: 20,
+      }}>
+        <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900] }}>Variantlar</Text>
+
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 24 }}>
+          <View style={{ flex: 1, minWidth: 220, gap: 6 }}>
+            <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', color: DS.ink[500] }}>
+              Önceden seçili
+            </Text>
+            <DatePicker value={d5} onChange={setD5} accent={DS.lab.primary} />
+            <Text style={{ fontSize: 11, color: DS.ink[400] }}>value="2026-04-15"</Text>
+          </View>
+
+          <View style={{ flex: 1, minWidth: 220, gap: 6 }}>
+            <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', color: DS.ink[500] }}>
+              Min sınırı (bugünden ileri)
+            </Text>
+            <DatePicker
+              value={d6}
+              onChange={setD6}
+              accent={DS.clinic.primary}
+              minDate={new Date().toISOString().slice(0, 10)}
+            />
+            <Text style={{ fontSize: 11, color: DS.ink[400] }}>minDate=today</Text>
+          </View>
+
+          <View style={{ flex: 1, minWidth: 220, gap: 6 }}>
+            <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', color: DS.ink[500] }}>
+              Disabled
+            </Text>
+            <DatePicker value="2026-01-01" onChange={() => {}} accent={DS.exec.primary} disabled />
+            <Text style={{ fontSize: 11, color: DS.ink[400] }}>disabled prop</Text>
+          </View>
+        </View>
+
+        {/* Code snippet */}
+        <View style={{
+          marginTop: 8, padding: 16, borderRadius: 14,
+          backgroundColor: DS.ink[900],
+        }}>
+          <Text style={{
+            fontSize: 12, lineHeight: 19, color: '#E2E8F0',
+            fontFamily: 'monospace',
+          }}>
+            {`import { DatePicker } from 'core/ui/DatePicker';\n\n<DatePicker\n  value={iso}              // 'YYYY-MM-DD' | null\n  onChange={setIso}        // (iso: string) => void\n  accent={DS.lab.primary}  // panel rengi\n  minDate="2026-01-01"\n  maxDate="2026-12-31"\n  placeholder="Tarih seç"\n/>`}
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 function SecHeader({ eyebrow, title, desc }: { eyebrow: string; title: string; desc?: string }) {
   return (
     <View style={{ marginBottom: 24, gap: 8 }}>
@@ -2313,10 +2644,9 @@ function DentalPatternBg({ opacity = 0.6 }: { opacity?: number }) {
     <ImageBackground
       source={require('../../assets/images/chat-bg-dental.png')}
       // @ts-ignore web absolute fill
-      style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity }}
+      style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity, pointerEvents: 'none' }}
       // RN: 'repeat' web + ios + android'de tile eder
       resizeMode="repeat"
-      pointerEvents="none"
     />
   );
 }
@@ -2451,7 +2781,7 @@ function ChatPanelMockup() {
 
         {/* Mesaj listesi — dental pattern bg */}
         <View style={{ flex: 1, position: 'relative' }}>
-          <DentalPatternBg color={DS.ink[900]} opacity={0.04} />
+          <DentalPatternBg opacity={0.04} />
           <ScrollView contentContainerStyle={{ padding: 24, gap: 14 }}>
             {messages.map(m => {
               const mine = m.from === 'me';

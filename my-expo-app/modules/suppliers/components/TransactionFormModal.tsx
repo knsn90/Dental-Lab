@@ -3,27 +3,35 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable, Platform, Modal, TextInput, ScrollView, ActivityIndicator } from 'react-native';
-import { X, Check, ArrowDownCircle, ArrowUpCircle, RotateCcw, Settings as Adjust, AlertCircle } from 'lucide-react-native';
+import { View, Text, Pressable, Platform, Modal, TextInput, ScrollView} from 'react-native';
+import { X, Check, ArrowDownCircle, ArrowUpCircle, RotateCcw, Settings as Adjust, AlertCircle, FileUp, Sparkles } from 'lucide-react-native';
 import {
-  Supplier, TransactionType, PaymentMethod,
-  TX_TYPE_LABELS, PAYMENT_METHOD_LABELS, recordTransaction,
+  Supplier, SupplierTransaction, TransactionType, PaymentMethod,
+  TX_TYPE_LABELS, PAYMENT_METHOD_LABELS, recordTransaction, updateTransaction,
 } from '../api';
 import { useAuthStore } from '../../../core/store/authStore';
 import { MoneyInput } from '../../../core/money/MoneyInput';
 import { DatePicker } from '../../../core/ui/DatePicker';
 import type { Currency } from '../../../core/money/currency';
+import { supabase } from '../../../core/api/supabase';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 interface Props {
   visible: boolean;
   type: TransactionType;
   supplier: Supplier;
+  /** Edit modu — bu varsa form mevcut hareketi düzenler. Tip prop'u "type" alanından okunur. */
+  editing?: SupplierTransaction | null;
   accentColor?: string;
   onClose: () => void;
   onSaved: () => void;
 }
 
-export function TransactionFormModal({ visible, type, supplier, accentColor = '#0A0A0A', onClose, onSaved }: Props) {
+export function TransactionFormModal({ visible, type, supplier, editing = null, accentColor = '#0A0A0A', onClose, onSaved }: Props) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const isEdit = !!editing;
   const profile = useAuthStore(s => s.profile);
   const labId = (profile as any)?.lab_id ?? null;
 
@@ -32,27 +40,118 @@ export function TransactionFormModal({ visible, type, supplier, accentColor = '#
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('transfer');
   const [invoiceNo, setInvoiceNo] = useState('');
   const [description, setDescription] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [referenceNo, setReferenceNo] = useState('');
+  const [iban, setIban] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [dueDate, setDueDate] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [parsing, setParsing] = useState(false);
+  const [parseInfo, setParseInfo] = useState<string | null>(null);
 
   useEffect(() => {
     if (!visible) return;
-    setAmount('');
-    setCurrency(supplier.default_currency ?? 'TRY');
-    setPaymentMethod('transfer');
-    setInvoiceNo('');
-    setDescription('');
-    setDate(new Date().toISOString().slice(0, 10));
-    setDueDate('');
+    if (editing) {
+      setAmount(String(editing.amount));
+      setCurrency((editing.currency as Currency) ?? 'TRY');
+      setPaymentMethod((editing.payment_method as PaymentMethod) ?? 'transfer');
+      setInvoiceNo(editing.invoice_no ?? '');
+      setDescription(editing.description ?? '');
+      setBankName(editing.bank_name ?? '');
+      setReferenceNo(editing.reference_no ?? '');
+      setIban(editing.iban ?? '');
+      setDate(editing.transaction_date);
+      setDueDate(editing.due_date ?? '');
+    } else {
+      setAmount('');
+      setCurrency(supplier.default_currency ?? 'TRY');
+      setPaymentMethod('transfer');
+      setInvoiceNo('');
+      setDescription('');
+      setBankName(''); setReferenceNo(''); setIban('');
+      setDate(new Date().toISOString().slice(0, 10));
+      setDueDate('');
+    }
     setError('');
-  }, [visible, type, supplier]);
+    setParseInfo(null); setParsing(false);
+  }, [visible, type, supplier, editing]);
+
+  // ── Dekont OCR ──
+  const handleParseReceipt = async (file: File) => {
+    setError(''); setParseInfo(null); setParsing(true);
+    try {
+      const buf = await file.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let binary = '';
+      const chunkSize = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunkSize)));
+      }
+      const file_base64 = btoa(binary);
+      const mime_type = file.type || 'application/pdf';
+
+      const { data, error: fnErr } = await supabase.functions.invoke('parse-receipt', {
+        body: { file_base64, mime_type },
+      });
+      if (fnErr) throw new Error(fnErr.message);
+      if (!data?.ok) throw new Error(data?.error ?? 'Parse başarısız');
+
+      const d = data.data;
+      if (d.amount != null)         setAmount(String(d.amount));
+      if (d.currency && ['TRY','USD','EUR'].includes(d.currency)) setCurrency(d.currency as Currency);
+      if (d.transaction_date)       setDate(d.transaction_date);
+      if (d.payment_method && ['transfer','cash','card','check'].includes(d.payment_method)) {
+        setPaymentMethod(d.payment_method as PaymentMethod);
+      }
+      if (d.bank_name)      setBankName(String(d.bank_name));
+      if (d.reference_no)   setReferenceNo(String(d.reference_no));
+      if (d.recipient_iban) setIban(String(d.recipient_iban));
+      if (d.description)    setDescription(String(d.description));
+
+      setParseInfo('Dekont okundu — alanları kontrol et.');
+    } catch (e: any) {
+      setError('Dekont işlenemedi: ' + (e?.message ?? 'bilinmeyen hata'));
+    } finally {
+      setParsing(false);
+    }
+  };
+
+  const handlePickReceipt = () => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/pdf,image/png,image/jpeg,image/webp';
+    input.onchange = () => {
+      const f = input.files?.[0];
+      if (f) handleParseReceipt(f);
+    };
+    input.click();
+  };
 
   const handleSave = async () => {
     const amt = parseFloat(amount.replace(',', '.'));
     if (!amt || amt <= 0) { setError('Geçerli bir tutar girin'); return; }
     setSaving(true); setError('');
+
+    if (isEdit && editing) {
+      const result = await updateTransaction(editing.id, {
+        amount: amt,
+        paymentMethod: type === 'PURCHASE' || type === 'PAYMENT' ? paymentMethod : null,
+        invoiceNo: invoiceNo.trim() || null,
+        description: description.trim() || null,
+        transactionDate: date,
+        dueDate: dueDate || null,
+        bankName: bankName.trim() || null,
+        referenceNo: referenceNo.trim() || null,
+        iban: iban.trim().replace(/\s+/g, '') || null,
+      });
+      setSaving(false);
+      if (!result.ok) { setError(result.error ?? 'Güncelleme hatası'); return; }
+      onSaved();
+      return;
+    }
+
     const result = await recordTransaction({
       labId,
       supplierId: supplier.id,
@@ -64,6 +163,9 @@ export function TransactionFormModal({ visible, type, supplier, accentColor = '#
       description: description.trim() || undefined,
       transactionDate: date,
       dueDate: dueDate || null,
+      bankName: bankName.trim() || null,
+      referenceNo: referenceNo.trim() || null,
+      iban: iban.trim().replace(/\s+/g, '') || null,
     });
     setSaving(false);
     if (!result.ok) { setError(result.error ?? 'Kayıt hatası'); return; }
@@ -80,38 +182,73 @@ export function TransactionFormModal({ visible, type, supplier, accentColor = '#
 
   const DisplayFont = Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light';
   const inputStyle: any = {
-    backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
-    paddingHorizontal: 14, height: 44, fontSize: 14, color: '#0A0A0A',
+    backgroundColor: T.cardSoft, borderRadius: 12, borderWidth: 1, borderColor: T.hairline,
+    paddingHorizontal: 14, height: 44, fontSize: 14, color: T.ink,
     ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
   };
-  const label: any = { fontSize: 11, fontWeight: '600', color: '#6B6B6B', letterSpacing: 0.6, marginBottom: 6 };
+  const label: any = { fontSize: 11, fontWeight: '600', color: T.ink3, letterSpacing: 0.6, marginBottom: 6 };
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.42)', justifyContent: 'center', alignItems: 'center', padding: 20, ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}) }}>
         <View style={{
-          backgroundColor: '#FFFFFF', borderRadius: 20, width: 480, maxWidth: '100%', maxHeight: '90%',
+          backgroundColor: T.card, borderRadius: 20, width: 480, maxWidth: '100%', maxHeight: '90%',
           ...(Platform.OS === 'web' ? { boxShadow: '0 16px 48px rgba(0,0,0,0.2)' } as any : {}),
         }}>
           {/* Header */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: T.hairline2 }}>
             <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <View style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: typeColor + '14' }}>
                 <Icon size={18} color={typeColor} strokeWidth={1.6} />
               </View>
               <View>
-                <Text style={{ fontSize: 11, fontWeight: '600', color: '#9A9A9A', letterSpacing: 1, textTransform: 'uppercase' }}>{supplier.name}</Text>
-                <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 22, letterSpacing: -0.4, color: '#0A0A0A' }}>
-                  {TX_TYPE_LABELS[type]}
+                <Text style={{ fontSize: 11, fontWeight: '600', color: T.ink3, letterSpacing: 1, textTransform: 'uppercase' }}>{supplier.name}</Text>
+                <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 22, letterSpacing: -0.4, color: T.ink }}>
+                  {isEdit ? `${TX_TYPE_LABELS[type]} · Düzenle` : TX_TYPE_LABELS[type]}
                 </Text>
               </View>
             </View>
-            <Pressable onPress={onClose} style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.04)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+            <Pressable onPress={onClose} style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: T.cardSoft, borderWidth: 1, borderColor: T.hairline, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
               <X size={14} color="#6B6B6B" strokeWidth={1.8} />
             </Pressable>
           </View>
 
           <ScrollView style={{ padding: 20 }} contentContainerStyle={{ gap: 14 }}>
+            {/* Dekont OCR — sadece PAYMENT/RETURN için */}
+            {Platform.OS === 'web' && (type === 'PAYMENT' || type === 'RETURN') && (
+              <View>
+                <Pressable
+                  onPress={handlePickReceipt}
+                  disabled={parsing}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    paddingVertical: 11, paddingHorizontal: 14,
+                    borderRadius: 12, borderWidth: 1.5, borderStyle: 'dashed',
+                    borderColor: typeColor + '55',
+                    backgroundColor: typeColor + '08',
+                    opacity: parsing ? 0.6 : 1,
+                    ...(Platform.OS === 'web' ? { cursor: parsing ? 'wait' : 'pointer' } as any : {}),
+                  }}
+                >
+                  <FileUp size={15} color={typeColor} strokeWidth={1.8} />
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: typeColor }}>
+                    {parsing ? 'Dekont okunuyor…' : 'Dekont/Makbuz Yükle (PDF, JPG, PNG)'}
+                  </Text>
+                  {!parsing && <Sparkles size={12} color={typeColor} strokeWidth={1.8} />}
+                </Pressable>
+                {parseInfo && (
+                  <View style={{
+                    marginTop: 6, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8,
+                    backgroundColor: 'rgba(16,185,129,0.08)',
+                    flexDirection: 'row', alignItems: 'center', gap: 6,
+                  }}>
+                    <Check size={12} color="#0F6E50" strokeWidth={2} />
+                    <Text style={{ fontSize: 11, color: '#0F6E50', fontWeight: '600' }}>{parseInfo}</Text>
+                  </View>
+                )}
+              </View>
+            )}
+
             {/* Hint card */}
             <View style={{
               flexDirection: 'row', alignItems: 'flex-start', gap: 8,
@@ -164,12 +301,12 @@ export function TransactionFormModal({ visible, type, supplier, accentColor = '#
                         onPress={() => setPaymentMethod(m)}
                         style={{
                           paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999,
-                          backgroundColor: active ? accentColor : '#FFFFFF',
-                          borderWidth: 1, borderColor: active ? accentColor : 'rgba(0,0,0,0.08)',
+                          backgroundColor: active ? accentColor : 'transparent',
+                          borderWidth: 1, borderColor: active ? accentColor : T.hairline,
                           ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
                         }}
                       >
-                        <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? '#FFF' : '#6B6B6B' }}>{PAYMENT_METHOD_LABELS[m]}</Text>
+                        <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? '#FFF' : T.ink2 }}>{PAYMENT_METHOD_LABELS[m]}</Text>
                       </Pressable>
                     );
                   })}
@@ -183,6 +320,45 @@ export function TransactionFormModal({ visible, type, supplier, accentColor = '#
                 <Text style={label}>FATURA NO (ops.)</Text>
                 <TextInput style={inputStyle} value={invoiceNo} onChangeText={setInvoiceNo} placeholder="örn. ABC-2026/00123" placeholderTextColor="#9A9A9A" />
               </View>
+            )}
+
+            {/* Bank fields — sadece PAYMENT/RETURN için */}
+            {(type === 'PAYMENT' || type === 'RETURN') && (
+              <>
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={label}>BANKA</Text>
+                    <TextInput
+                      style={inputStyle}
+                      value={bankName}
+                      onChangeText={setBankName}
+                      placeholder="Vakıf, Ziraat, İş Bankası…"
+                      placeholderTextColor="#9A9A9A"
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={label}>HAVALE / DEKONT NO</Text>
+                    <TextInput
+                      style={inputStyle}
+                      value={referenceNo}
+                      onChangeText={setReferenceNo}
+                      placeholder="Ref / işlem no"
+                      placeholderTextColor="#9A9A9A"
+                    />
+                  </View>
+                </View>
+                <View>
+                  <Text style={label}>IBAN</Text>
+                  <TextInput
+                    style={inputStyle}
+                    value={iban}
+                    onChangeText={setIban}
+                    placeholder="TR.. .... .... .... .... .... .."
+                    placeholderTextColor="#9A9A9A"
+                    autoCapitalize="characters"
+                  />
+                </View>
+              </>
             )}
 
             {/* Description */}
@@ -202,9 +378,9 @@ export function TransactionFormModal({ visible, type, supplier, accentColor = '#
           </ScrollView>
 
           {/* Footer */}
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, padding: 16, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)' }}>
-            <Pressable onPress={onClose} style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 9999, backgroundColor: 'rgba(0,0,0,0.04)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-              <Text style={{ fontSize: 13, fontWeight: '500', color: '#6B6B6B' }}>Vazgeç</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, padding: 16, borderTopWidth: 1, borderTopColor: T.hairline2, backgroundColor: isDark ? T.cardSoft : '#FBF9F4' }}>
+            <Pressable onPress={onClose} style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 9999, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+              <Text style={{ fontSize: 13, fontWeight: '500', color: T.ink2 }}>Vazgeç</Text>
             </Pressable>
             <Pressable
               onPress={handleSave}
@@ -216,7 +392,7 @@ export function TransactionFormModal({ visible, type, supplier, accentColor = '#
                 ...(Platform.OS === 'web' ? { cursor: saving ? 'wait' : 'pointer' } as any : {}),
               }}
             >
-              {saving ? <ActivityIndicator size="small" color="#FFF" /> : <Check size={13} color="#FFF" strokeWidth={2} />}
+              <Check size={13} color="#FFF" strokeWidth={2} />
               <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFF' }}>Kaydet</Text>
             </Pressable>
           </View>

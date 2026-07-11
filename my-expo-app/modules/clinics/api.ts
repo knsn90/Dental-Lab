@@ -38,6 +38,18 @@ export async function updateClinic(
   return supabase.from('clinics').update(data).eq('id', id).select().single();
 }
 
+/**
+ * Tüm klinik üyelerini döndür — clinic_admin + clinic_secretary
+ * (Hekimler ayrı `fetchAllDoctors` ile geliyor)
+ */
+export async function fetchAllClinicMembers() {
+  return supabase
+    .from('profiles')
+    .select('id, full_name, phone, email, avatar_url, clinic_id, user_type, is_active, clinic_permissions')
+    .in('user_type', ['clinic_admin', 'clinic_secretary'])
+    .order('full_name');
+}
+
 export async function fetchDoctors(clinicId?: string) {
   let query = supabase
     .from('doctors')

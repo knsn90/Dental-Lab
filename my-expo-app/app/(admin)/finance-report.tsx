@@ -1,1 +1,2 @@
-export { FinanceReportScreen as default } from '../../modules/finance/screens/FinanceReportScreen';
+import { lazyRoute } from '../../core/_lazyRoute';
+export default lazyRoute(() => import('../../modules/finance/screens/FinanceReportScreen'), 'FinanceReportScreen');

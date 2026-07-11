@@ -153,7 +153,7 @@ const m = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 11,
     fontSize: 14, color: '#0F172A', backgroundColor: '#FFFFFF',
     // @ts-ignore
-    outlineStyle: 'none',
+    outlineStyle: 'none' as any,
   },
   footer: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end',

@@ -11,6 +11,7 @@
  */
 import React from 'react';
 import { ScrollView, TouchableOpacity, Text, StyleSheet, View, ViewStyle } from 'react-native';
+import { ymdLocal } from '../../../core/util/dates';
 
 export type RangeKey = 'this_month' | 'last_month' | 'this_year' | 'last_12_months' | 'all';
 
@@ -32,7 +33,7 @@ export function getRangeBounds(key: RangeKey): { from: string | null; to: string
   const now = new Date();
   const y = now.getFullYear();
   const m = now.getMonth();
-  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const iso = (d: Date) => ymdLocal(d); // yerel gün — UTC kayması yok
 
   switch (key) {
     case 'this_month': {

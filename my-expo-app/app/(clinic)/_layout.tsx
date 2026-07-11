@@ -1,36 +1,57 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+const NewOrderScreen: any = React.lazy(() => import('../../modules/orders/screens/NewOrderScreen').then(m => ({ default: (m as any).NewOrderScreen })));
+const MessagesPopup: any = React.lazy(() => import('../../modules/orders/components/MessagesPopup').then(m => ({ default: (m as any).MessagesPopup })));
+const CommandPalette: any = React.lazy(() => import('../../core/ui/CommandPalette').then(m => ({ default: (m as any).CommandPalette })));
+const ScanB6Mobile: any = React.lazy(() => import('../../modules/orders/screens/ScanB6Mobile').then(m => ({ default: (m as any).ScanB6Mobile })));
+const MoreMenuSheet: any = React.lazy(() => import('../../core/ui/mobile/MoreMenuSheet').then(m => ({ default: (m as any).MoreMenuSheet })));
 import { Modal, Text, View } from 'react-native';
-import { Slot, Tabs, useRouter } from 'expo-router';
-import { C as Colors } from '../../core/theme/colors';
+import { Slot, Tabs, useRouter, usePathname } from 'expo-router';
+import {
+  Home, ClipboardList, QrCode, MessageCircle, User, Plus, MoreHorizontal, Search, Users,
+  Stethoscope as Stethoscope2, Truck as Truck2, Settings as Settings2,
+} from 'lucide-react-native';
+
+import { TopActionBar } from '../../core/ui/mobile/TopActionBar';
+import { PanelTopHeader } from '../../core/ui/mobile/PanelTopHeader';
 import { PatternsShell, useIsDesktop } from '../../core/layout/PatternsShell';
-import { MobileHeader } from '../../core/ui/MobileHeader';
-import { MobileTabBar } from '../../core/ui/MobileTabBar';
-import type { MobileTabItem } from '../../core/ui/MobileTabBar';
+import { PillTabBar, type PillTabItem } from '../../core/ui/mobile/PillTabBar';
+import { MOBILE_PANEL_THEMES } from '../../core/theme/mobileDesignTokens';
 import { useAuthStore } from '../../core/store/authStore';
-import { NewOrderScreen } from '../../modules/orders/screens/NewOrderScreen';
-import { ScanB6Mobile } from '../../modules/orders/screens/ScanB6Mobile';
+import { resolveClinicPerms } from '../../modules/clinic/permissions';
+
+
 import { useThemeModeStore } from '../../core/store/themeModeStore';
-import { MessagesPopup } from '../../modules/orders/components/MessagesPopup';
+
 import { useOrderChatInbox } from '../../modules/orders/hooks/useOrderChatInbox';
+import { usePendingApprovalsCount } from '../../modules/orders/hooks/usePendingApprovalsCount';
 import { useColorThemeStore, applyColorThemeWeb } from '../../core/store/colorThemeStore';
+import { useScanStore } from '../../core/store/scanStore';
+import { useNewOrderModalStore } from '../../core/store/newOrderModalStore';
+
 
 // Klinik paneli teması — patterns dili: sage yeşil
-// Lab=saffron #F5C24B · Clinic=sage #6BA888 · Exec=coral #E97757 · Tech=blue #3B82F6
-const CLINIC_DEFAULT_ACCENT = '#6BA888';
-
-function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
-  return <Text style={{ fontSize: focused ? 24 : 22, opacity: focused ? 1 : 0.6 }}>{emoji}</Text>;
-}
+// Lab=saffron #F5C24B · Clinic=emerald #32BB78 · Exec=coral #E97757 · Tech=blue #3B82F6
+const CLINIC_DEFAULT_ACCENT = '#32BB78';
 
 export default function ClinicLayout() {
+  const { t } = useTranslation();
   const { profile, loading } = useAuthStore();
   const isDesktop = useIsDesktop();
   const router = useRouter();
-  const [newOrderOpen, setNewOrderOpen] = useState(false);
+  const pathname = usePathname();
+  const hideTopActionBar =
+    /^\/(order|invoice|statement|delivery)\//.test(pathname);
+  const newOrderOpen    = useNewOrderModalStore(s => s.open);
+  const setNewOrderOpen = useNewOrderModalStore(s => s.setOpen);
   const [messagesOpen, setMessagesOpen] = useState(false);
-  const [scanOpen,     setScanOpen]     = useState(false);
+  const [moreOpen,     setMoreOpen]     = useState(false);
+  // Global scan modal — dashboard QR butonu da bu store'u tetikler
+  const scanOpen    = useScanStore(s => s.open);
+  const setScanOpen = useScanStore(s => s.setOpen);
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const { totalUnread } = useOrderChatInbox();
+  const pendingApprovals = usePendingApprovalsCount();
 
   // Load saved color theme
   const { getTheme, loadTheme } = useColorThemeStore();
@@ -40,26 +61,49 @@ export default function ClinicLayout() {
   }, []);
   const accentColor = getTheme('clinic_admin').primary;
 
+  // Klinik kullanıcısının yetki tablosu — clinic_admin: full / secretary: clinic_permissions JSONB
+  const perms = resolveClinicPerms(profile as any);
+  const isClinicAdmin = profile?.user_type === 'clinic_admin';
+
+  // Nav item'ları yetkilere göre filtrele — sıra: Özet · Siparişler · Kullanıcılar ·
+  // Mali İşlemler · Kurye Takip · Destek · Mesajlar · Ayarlar
   const CLINIC_NAV = [
-    { label: 'Dashboard',  href: '/(clinic)',          iconName: 'home' },
-    { label: 'Hekimler',   href: '/(clinic)/doctors',  iconName: 'users',          matchPrefix: true },
-    { label: 'Siparişler', href: '/(clinic)/orders',   iconName: 'clipboard-list', matchPrefix: true },
-    { label: 'Ayarlar',    href: '/(clinic)/settings', iconName: 'settings',       matchPrefix: true },
+    { label: t('nav.items.summary'), href: '/(clinic)', iconName: 'home' },
+    ...(perms.orders_view
+      ? [{ label: t('nav.items.orders'), href: '/(clinic)/orders', iconName: 'list-check',     matchPrefix: true }]
+      : []),
+    ...(perms.orders_view
+      ? [{ label: t('nav.items.approvals'), href: '/(clinic)/approvals', iconName: 'badge-check', matchPrefix: true, badgeCount: pendingApprovals, badgeColor: '#D94B4B' }]
+      : []),
+    ...(perms.users_manage
+      ? [{ label: t('nav.items.users'), href: '/(clinic)/users', iconName: 'users', matchPrefix: true }]
+      : []),
+    { label: t('nav.items.finance'), href: '/(clinic)/finance', iconName: 'wallet', matchPrefix: true },
+    { label: t('nav.items.courier'), href: '/(clinic)/courier-tracking', iconName: 'scooter', matchPrefix: true },
+    { label: t('nav.items.support'), href: '/(clinic)/support', iconName: 'help-circle', matchPrefix: true },
+    // Mesajlar — Ayarlar'dan önce; sidebar'a sabit eklemek yerine nav item
+    // (popup açar). hideSidebarMessages=true ile shell'in otomatik alt satırı kapatılır.
+    { label: t('nav.items.messages'), href: '/(clinic)/messages', iconName: 'messages-square', matchPrefix: true, onPress: () => setMessagesOpen(true), badgeCount: totalUnread },
+    ...(perms.settings_manage
+      ? [{ label: t('nav.items.settings'), href: '/(clinic)/settings', iconName: 'settings', matchPrefix: true }]
+      : []),
   ];
 
-  // Klinik müdürü olmayan kullanıcı bu layout'a düştüyse sidebar gösterme
-  if (loading || !profile || profile.user_type !== 'clinic_admin') {
+  // Klinik kullanıcısı (admin veya sekreter) değilse layout chrome'unu gösterme
+  if (!profile || !['clinic_admin', 'clinic_secretary'].includes(profile.user_type)) {
     return <Slot />;
   }
 
   if (isDesktop) {
     return (
+      <React.Suspense fallback={null}>
       <>
         <PatternsShell
           navItems={CLINIC_NAV}
           accentColor={accentColor}
           onPressMessages={() => setMessagesOpen(true)}
           messagesUnreadCount={totalUnread}
+          hideSidebarMessages
           panelType="clinic_admin"
           newOrderHref="/(clinic)/new-order"
         />
@@ -69,21 +113,42 @@ export default function ClinicLayout() {
           accentColor={accentColor}
         />
       </>
+      </React.Suspense>
     );
   }
 
-  const MOBILE_TABS: MobileTabItem[] = [
-    { routeName: 'index',    label: 'Ana',     icon: 'home' },
-    { routeName: 'orders',   label: 'Vakalar', icon: 'clipboard-list' },
-    { routeName: 'scan',     label: 'Tara',    icon: 'qr-code',        onPress: () => setScanOpen(true), fab: true },
-    { routeName: 'messages', label: 'Mesaj',   icon: 'message-circle', onPress: () => setMessagesOpen(true), badgeCount: totalUnread },
-    { routeName: 'profile',  label: 'Profil',  icon: 'user' },
+  const PILL_TABS: PillTabItem[] = [
+    { routeName: 'index',    label: t('nav.items.summary'), icon: Home },
+    ...(perms.orders_view
+      ? [{ routeName: 'orders', label: t('clinic.tabs.cases'), icon: ClipboardList }]
+      : []),
+    ...(perms.users_manage
+      ? [{ routeName: 'users', label: t('clinic.tabs.team'), icon: Users }]
+      : []),
+    // Mesaj artık üst bardaki (TopActionBar) butonda — bu slot Ara oldu.
+    { routeName: 'search',   label: t('clinic.tabs.search'),  icon: Search },
+    { routeName: 'more',     label: t('clinic.tabs.more'), icon: MoreHorizontal, onPress: () => setMoreOpen(true) },
+  ];
+  // Navbar "Ara" → sayfa araması (PillTabBar morph)
+  const SEARCH_ITEMS = CLINIC_NAV.map((n: any) => ({ label: n.label, href: n.href, sublabel: n.sectionLabel }));
+  // Yeni sipariş FAB — sadece orders_create yetkisi olanlar için
+  const FAB_ITEM: PillTabItem | undefined = perms.orders_create
+    ? { routeName: 'new', label: t('clinic.fab.newOrder'), icon: Plus, onPress: () => setNewOrderOpen(true) }
+    : undefined;
+
+  // "Daha" bottom-sheet — yetkilere göre filtre.
+  // Kullanıcılar artık navbar'da, bu menüden kaldırıldı.
+  const MORE_ITEMS: import('../../core/ui/mobile/MoreMenuSheet').MoreItem[] = [
+    { key: 'courier',  label: t('nav.items.courier'),  sub: t('clinic.moreMenu.courierSub'),           icon: Truck2,    accent: '#059669', onPress: () => router.push('/(clinic)/courier-tracking' as any) },
+    ...(perms.settings_manage
+      ? [{ key: 'settings', label: t('nav.items.settings'), sub: t('clinic.moreMenu.settingsSub'), icon: Settings2, accent: '#475569', onPress: () => router.push('/(clinic)/settings' as any) }]
+      : []),
   ];
 
   return (
+    <React.Suspense fallback={null}>
     <>
-      <View style={{ flex: 1, backgroundColor: isDark ? '#0E0E0E' : '#F5F2EA' }}>
-        <MobileHeader accentColor={accentColor} />
+      <View style={{ flex: 1, backgroundColor: isDark ? '#0E0E0E' : MOBILE_PANEL_THEMES.klinik.bgPage }}>
         <Tabs
           screenOptions={{
             headerShown: false,
@@ -91,22 +156,32 @@ export default function ClinicLayout() {
             tabBarStyle: { display: 'none' },
           }}
         >
-          <Tabs.Screen name="index"      options={{ title: 'Dashboard' }} />
-          <Tabs.Screen name="orders"     options={{ title: 'Siparişler' }} />
-          <Tabs.Screen name="messages"   options={{ title: 'Mesajlar' }} />
-          <Tabs.Screen name="new-order"  options={{ title: 'Yeni Sipariş' }} />
-          <Tabs.Screen name="doctors"    options={{ title: 'Hekimler' }} />
-          <Tabs.Screen name="settings"   options={{ title: 'Ayarlar' }} />
+          <Tabs.Screen name="index"      options={{ title: t('clinic.screens.home') }} />
+          <Tabs.Screen name="orders"     options={{ title: t('nav.items.orders') }} />
+          <Tabs.Screen name="approvals"  options={{ title: t('nav.items.approvals'), href: null }} />
+          <Tabs.Screen name="messages"   options={{ title: t('nav.items.messages') }} />
+          <Tabs.Screen name="new-order"  options={{ title: t('clinic.screens.newOrder') }} />
+          <Tabs.Screen name="users"      options={{ title: t('nav.items.users') }} />
+          <Tabs.Screen name="doctors"    options={{ href: null } as any} />
+          <Tabs.Screen name="settings"   options={{ title: t('nav.items.settings') }} />
           <Tabs.Screen name="profile"    options={{ href: null } as any} />
-          <Tabs.Screen name="order/[id]" options={{ href: null, title: 'İş Emri' } as any} />
+          <Tabs.Screen name="support"          options={{ title: t('nav.items.support') }} />
+          <Tabs.Screen name="courier-tracking" options={{ href: null } as any} />
+          <Tabs.Screen name="finance"          options={{ title: t('nav.items.finance') }} />
+          {/* order/[id] nested route — expo-router auto-discovers; declaring it inside Tabs triggers BottomTabNavigator "filter of undefined" crash on RN 0.76+ */}
         </Tabs>
 
-        {/* Floating tab bar — rendered OUTSIDE Tabs so its pointerEvents are fully ours */}
-        <MobileTabBar
-          items={MOBILE_TABS}
-          baseRoute="/(clinic)"
-          accentColor={accentColor}
-        />
+        {/* Asymmetric tab bar — pill + accent FAB (hidden when fullscreen modal open) */}
+        {!newOrderOpen && !scanOpen && (
+          <PillTabBar
+            items={PILL_TABS}
+            fabItem={FAB_ITEM}
+            baseRoute="/(clinic)"
+            accentColor={accentColor}
+            searchItems={SEARCH_ITEMS}
+            onSearchNavigate={(href) => router.push(href as any)}
+          />
+        )}
       </View>
 
       {/* Mobilde sayfa üstü modal yeni iş emri (opsiyonel kullanım) */}
@@ -139,9 +214,30 @@ export default function ClinicLayout() {
       >
         <ScanB6Mobile
           onClose={() => setScanOpen(false)}
-          onOpenOrder={(id) => { setScanOpen(false); router.push(`/(clinic)/order/${id}` as any); }}
+          onOpenOrder={(id: string) => { setScanOpen(false); router.push(`/(clinic)/order/${id}` as any); }}
         />
       </Modal>
+
+      {/* Daha menüsü (mobil PillTabBar 'Daha' tab'ından açılır) */}
+      <MoreMenuSheet
+        visible={moreOpen}
+        onClose={() => setMoreOpen(false)}
+        title={t('clinic.moreMenu.title')}
+        items={MORE_ITEMS}
+        accentColor={accentColor}
+      />
+
+      {/* Sağ üst kalıcı aksiyon butonları (mobile only) — QR · Bell · Profile */}
+      {!hideTopActionBar && <TopActionBar routePrefix="/(clinic)" accentColor={accentColor} />}
+      {!hideTopActionBar && <PanelTopHeader />}
+
+      {/* Command Palette — mobile search FAB üzerinden de erişilebilir */}
+      <CommandPalette
+        navItems={CLINIC_NAV}
+        onNavigate={(href: string) => router.push(href as any)}
+        accentColor={accentColor}
+      />
     </>
+    </React.Suspense>
   );
 }

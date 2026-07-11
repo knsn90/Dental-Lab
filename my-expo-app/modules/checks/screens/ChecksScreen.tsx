@@ -6,11 +6,12 @@
  * Lucide icons.
  */
 import React, { useState, useContext, useMemo } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HubContext } from '../../../core/ui/HubContext';
+import { MobilePageTitle } from '../../../core/ui/mobile/MobilePageTitle';
 import {
   View, Text, ScrollView, Pressable, TextInput,
-  Modal, Alert, RefreshControl, Platform, ActivityIndicator,
-  useWindowDimensions,
+  Modal, Alert, RefreshControl, Platform, useWindowDimensions,
 } from 'react-native';
 
 import { useChecks } from '../hooks/useChecks';
@@ -21,11 +22,16 @@ import {
 } from '../api';
 import { useClinics } from '../../clinics/hooks/useClinics';
 import { DS } from '../../../core/theme/dsTokens';
+import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { confirmAsync } from '../../../core/util/confirm';
 import { DatePicker } from '../../../core/ui/DatePicker';
+import { groupByCurrency, type CurrencyTotal } from '../../../core/money/aggregations';
+import { MoneyMultiX } from '../../../core/money/MoneyMultiX';
+import { formatMoney, CURRENCY_META, SUPPORTED_CURRENCIES, type Currency } from '../../../core/money/currency';
 import {
   Plus, FileText, Building2, Landmark as BankIcon, Hash,
   Calendar, Clock, CircleCheck, Undo2, Trash2,
-  X, Inbox, AlertTriangle, ChevronRight,
+  X, Inbox, AlertTriangle, ChevronRight, SlidersHorizontal,
 } from 'lucide-react-native';
 
 // ── Patterns tokens ─────────────────────────────────────────────────
@@ -67,12 +73,29 @@ const STATUS_CHIP: Record<CheckStatus, { bg: string; fg: string }> = {
 const modalShadow = '0 8px 40px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08)';
 
 // ── Helpers ──────────────────────────────────────────────────────────
-function fmtMoney(n: number): string {
-  return '₺' + n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Katı per-currency: çek tutarı KENDİ para biriminde.
+function fmtMoney(n: number, currency: string = 'TRY'): string {
+  return formatMoney(Number(n) || 0, (currency as Currency), { fractionDigits: 2 });
 }
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—';
   return new Date(iso + 'T00:00:00').toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+// Hero quick-stat — per-currency, beyaz metin (renkli hero üstünde okunaklı).
+function CcyLinesWhite({ slices }: { slices: CurrencyTotal[] }) {
+  if (!slices || slices.length === 0) {
+    return <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.3, color: '#FFFFFF', marginTop: 4 }}>—</Text>;
+  }
+  return (
+    <View style={{ marginTop: 4, gap: 1 }}>
+      {slices.map(s => (
+        <Text key={s.currency} style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.3, color: '#FFFFFF' }}>
+          {formatMoney(s.total, s.currency, { fractionDigits: 0 })}
+        </Text>
+      ))}
+    </View>
+  );
 }
 
 const STATUS_FILTERS: { v: CheckStatus | 'all'; l: string }[] = [
@@ -87,144 +110,189 @@ const STATUS_FILTERS: { v: CheckStatus | 'all'; l: string }[] = [
 // MAIN
 // ═════════════════════════════════════════════════════════════════════
 export function ChecksScreen() {
+  const theme = usePanelTheme();
   const isEmbedded = useContext(HubContext);
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1024;
   const [statusFilter, setStatusFilter] = useState<CheckStatus | 'all'>('all');
+  const [filterOpen, setFilterOpen] = useState(false);
+  const insets = useSafeAreaInsets();
   const [addOpen, setAddOpen] = useState(false);
   const { checks, loading, refetch } = useChecks(statusFilter === 'all' ? undefined : statusFilter);
 
   const today = new Date().toISOString().slice(0, 10);
 
   const stats = useMemo(() => {
+    const ccyOf = (c: any) => ((c.currency ?? 'TRY') as Currency);
+    const byCcy = (list: any[]) => groupByCurrency(list, c => ({ amount: Number(c.amount) || 0, currency: ccyOf(c) }));
     const pending = checks.filter(c => c.status === 'beklemede');
-    const totalPending = pending.reduce((s, c) => s + Number(c.amount), 0);
     const overdue = pending.filter(c => c.due_date < today);
-    const totalOverdue = overdue.reduce((s, c) => s + Number(c.amount), 0);
     const soon = pending.filter(c => {
       const days = Math.round((new Date(c.due_date).getTime() - Date.now()) / 86400000);
       return days >= 0 && days <= 7;
     });
-    const totalSoon = soon.reduce((s, c) => s + Number(c.amount), 0);
-    return { totalPending, totalOverdue, overdueCount: overdue.length, totalSoon, soonCount: soon.length, pendingCount: pending.length };
+    // Katı per-currency — asla toplanmaz
+    return {
+      pendingByCcy: byCcy(pending),
+      overdueByCcy: byCcy(overdue),
+      soonByCcy: byCcy(soon),
+      overdueCount: overdue.length, soonCount: soon.length, pendingCount: pending.length,
+    };
   }, [checks, today]);
 
-  const handleStatusChange = (check: Check, newStatus: CheckStatus) => {
-    Alert.alert(
-      'Durum Güncelle',
-      `"${CHECK_STATUS_LABELS[newStatus]}" olarak işaretlensin mi?`,
-      [
-        { text: 'Vazgeç', style: 'cancel' },
-        { text: 'Evet', onPress: async () => { await updateCheckStatus(check.id, newStatus); refetch(); } },
-      ],
-    );
+  const handleStatusChange = async (check: Check, newStatus: CheckStatus) => {
+    // Alert.alert web'de no-op → cross-platform confirmAsync
+    const ok = await confirmAsync('Durum Güncelle', `"${CHECK_STATUS_LABELS[newStatus]}" olarak işaretlensin mi?`, { confirmText: 'Evet' });
+    if (!ok) return;
+    await updateCheckStatus(check.id, newStatus);
+    refetch();
   };
 
-  const handleDelete = (check: Check) => {
-    Alert.alert('Çek Sil', 'Bu çek kaydını silmek istediğinize emin misiniz?', [
-      { text: 'Vazgeç', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: async () => { await deleteCheck(check.id); refetch(); } },
-    ]);
+  const handleDelete = async (check: Check) => {
+    const ok = await confirmAsync('Çek Sil', 'Bu çek kaydını silmek istediğinize emin misiniz?', { confirmText: 'Sil', destructive: true });
+    if (!ok) return;
+    await deleteCheck(check.id);
+    refetch();
   };
 
   return (
     <View style={{ flex: 1 }}>
+      <MobilePageTitle title="Çek & Senet" subtitle="Tahsilat ve ödeme takibi" />
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: isDesktop ? 0 : 16, paddingBottom: 48, gap: 16 }}
+        contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 4, paddingBottom: 48, gap: 14 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={DS.ink[300]} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Hero — §10 glassmorphism ────────────────────────── */}
+        {/* ── Hero — panel primary bg, white text (NewOrderCTACard dili) ── */}
         <View style={{
           borderRadius: 28, overflow: 'hidden',
-          backgroundColor: DS.lab.bg, padding: isDesktop ? 36 : 24,
+          backgroundColor: theme.primary, padding: 16,
           position: 'relative',
         }}>
-          <View style={{ position: 'absolute', top: -40, right: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: DS.lab.bgDeep, opacity: 0.6 }} />
-          <View style={{ position: 'absolute', bottom: -50, left: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: DS.lab.bgDeep, opacity: 0.4 }} />
+          <View style={{ position: 'absolute', top: -40, right: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.18)' }} />
+          <View style={{ position: 'absolute', bottom: -50, left: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
 
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
             <View>
-              <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[500], marginBottom: 12 }}>
+              <Text style={{ fontSize: 10, fontWeight: '400', letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.78)', marginBottom: 12 }}>
                 Bekleyen Çek / Senet
               </Text>
-              <Text style={{ ...DISPLAY, fontSize: isDesktop ? 48 : 36, letterSpacing: -1.4, color: DS.ink[900] }}>
-                {fmtMoney(stats.totalPending)}
-              </Text>
-              <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 6 }}>
+              {/* Katı per-currency: her para birimi ayrı kart, asla toplanmaz */}
+              <MoneyMultiX slices={stats.pendingByCcy} variant="cards" size="lg" accentColor={theme.primary} emptyText="—" />
+              <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)', marginTop: 8 }}>
                 {stats.pendingCount} adet beklemede
               </Text>
             </View>
 
-            {/* Add button — §03 pill dark */}
+            {/* Add button — beyaz cam */}
             <Pressable
               onPress={() => setAddOpen(true)}
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 6,
                 paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999,
-                backgroundColor: DS.ink[900], cursor: 'pointer' as any,
+                backgroundColor: '#FFFFFF', cursor: 'pointer' as any,
               }}
             >
-              <Plus size={14} color="#FFF" strokeWidth={2} />
-              <Text style={{ fontSize: 12, fontWeight: '600', color: '#FFF' }}>Çek Ekle</Text>
+              <Plus size={14} color={theme.primary} strokeWidth={2.4} />
+              <Text style={{ fontSize: 12, fontWeight: '400', color: theme.primary }}>Çek Ekle</Text>
             </Pressable>
           </View>
 
-          {/* Quick stats */}
+          {/* Quick stats — para birimi başına (beyaz metin) */}
           <View style={{ flexDirection: 'row', gap: isDesktop ? 32 : 20, marginTop: 20, flexWrap: 'wrap' }}>
-            {stats.totalOverdue > 0 && (
+            {stats.overdueByCcy.length > 0 && (
               <View>
-                <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[400] }}>Gecikmiş</Text>
-                <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.3, color: CHIP_TONES.danger.fg, marginTop: 4 }}>
-                  {fmtMoney(stats.totalOverdue)}
-                </Text>
-                <Text style={{ fontSize: 10, color: CHIP_TONES.danger.fg }}>{stats.overdueCount} adet</Text>
+                <Text style={{ fontSize: 9, fontWeight: '400', letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.72)' }}>Gecikmiş</Text>
+                <CcyLinesWhite slices={stats.overdueByCcy} />
+                <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.78)' }}>{stats.overdueCount} adet</Text>
               </View>
             )}
-            {stats.totalSoon > 0 && (
+            {stats.soonByCcy.length > 0 && (
               <View>
-                <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[400] }}>7 gün içinde</Text>
-                <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.3, color: CHIP_TONES.warning.fg, marginTop: 4 }}>
-                  {fmtMoney(stats.totalSoon)}
-                </Text>
-                <Text style={{ fontSize: 10, color: CHIP_TONES.warning.fg }}>{stats.soonCount} adet</Text>
+                <Text style={{ fontSize: 9, fontWeight: '400', letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.72)' }}>7 gün içinde</Text>
+                <CcyLinesWhite slices={stats.soonByCcy} />
+                <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.78)' }}>{stats.soonCount} adet</Text>
               </View>
             )}
           </View>
         </View>
 
-        {/* ── Status filter pills ─────────────────────────────── */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 6, alignItems: 'center' }}
-        >
-          {STATUS_FILTERS.map(f => {
-            const active = statusFilter === f.v;
-            const chip = f.v !== 'all' ? STATUS_CHIP[f.v as CheckStatus] : null;
+        {/* ── Filtre butonu ───────────────────────────────────── */}
+        <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+          {(() => {
+            const hasFilter = statusFilter !== 'all';
             return (
               <Pressable
-                key={f.v}
-                onPress={() => setStatusFilter(f.v)}
+                onPress={() => setFilterOpen(true)}
                 style={{
-                  paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
-                  borderWidth: 1,
-                  borderColor: active ? (chip?.fg ?? DS.ink[900]) : 'rgba(0,0,0,0.08)',
-                  backgroundColor: active ? (chip?.bg ?? DS.ink[50]) : '#FFF',
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                  paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14,
+                  backgroundColor: hasFilter ? DS.ink[900] : '#FFF',
+                  borderWidth: hasFilter ? 0 : 1, borderColor: 'rgba(0,0,0,0.08)',
                   cursor: 'pointer' as any,
                 }}
               >
-                <Text style={{
-                  fontSize: 12, fontWeight: active ? '600' : '500',
-                  color: active ? (chip?.fg ?? DS.ink[900]) : DS.ink[500],
-                }}>
-                  {f.l}
+                <SlidersHorizontal size={14} strokeWidth={1.8} color={hasFilter ? '#FFFFFF' : DS.ink[700]} />
+                <Text style={{ fontSize: 12, fontWeight: hasFilter ? '700' : '600', color: hasFilter ? '#FFFFFF' : DS.ink[700] }}>
+                  Filtre{hasFilter ? ` (1)` : ''}
                 </Text>
               </Pressable>
             );
-          })}
-        </ScrollView>
+          })()}
+        </View>
+
+        {/* ── Filtre Sheet ──────────────────────────────────── */}
+        <Modal visible={filterOpen} transparent animationType="fade" onRequestClose={() => setFilterOpen(false)}>
+          <Pressable onPress={() => setFilterOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.42)', justifyContent: 'flex-end', ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}) }}>
+            <Pressable onPress={(e) => e.stopPropagation()} style={{
+              backgroundColor: '#FFFFFF',
+              borderTopLeftRadius: 24, borderTopRightRadius: 24,
+              paddingTop: 12, paddingBottom: Math.max(insets.bottom, 16) + 12,
+              maxHeight: '85%',
+            }}>
+              <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: DS.ink[200], marginBottom: 14 }} />
+              <View style={{ paddingHorizontal: 20, paddingBottom: 12, flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={{ fontSize: 18, fontWeight: '400', color: DS.ink[900], flex: 1 }}>Filtrele</Text>
+                <Pressable onPress={() => setStatusFilter('all')} style={{ paddingHorizontal: 10, paddingVertical: 6 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '400', color: DS.ink[500] }}>Temizle</Text>
+                </Pressable>
+                <Pressable onPress={() => setFilterOpen(false)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', marginLeft: 4 }}>
+                  <X size={16} color={DS.ink[700]} strokeWidth={2} />
+                </Pressable>
+              </View>
+              <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 12, gap: 18 }}>
+                <View style={{ gap: 8 }}>
+                  <Text style={{ fontSize: 10, fontWeight: '400', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[400], paddingHorizontal: 4 }}>Durum</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {STATUS_FILTERS.map(f => {
+                      const active = statusFilter === f.v;
+                      return (
+                        <Pressable key={f.v} onPress={() => setStatusFilter(f.v)} style={{
+                          paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999,
+                          borderWidth: active ? 0 : 1, borderColor: 'rgba(0,0,0,0.08)',
+                          backgroundColor: active ? DS.ink[900] : '#FFF',
+                          cursor: 'pointer' as any,
+                        }}>
+                          <Text style={{ fontSize: 12.5, fontWeight: active ? '700' : '500', color: active ? '#FFFFFF' : DS.ink[700] }}>{f.l}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              </ScrollView>
+              <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
+                <Pressable onPress={() => setFilterOpen(false)} style={{
+                  height: 48, borderRadius: 14, backgroundColor: DS.ink[900],
+                  alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer' as any,
+                }}>
+                  <Text style={{ fontSize: 14, fontWeight: '400', color: '#FFFFFF' }}>Uygula</Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
 
         {/* ── Check list ──────────────────────────────────────── */}
         {checks.length === 0 ? (
@@ -260,7 +328,7 @@ export function ChecksScreen() {
                 { label: 'DURUM',     flex: 1 },
                 { label: 'İŞLEM',     flex: 1.5 },
               ].map((h, i) => (
-                <Text key={i} style={{ flex: h.flex, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, color: DS.ink[500] }}>
+                <Text key={i} style={{ flex: h.flex, fontSize: 10, fontWeight: '400', letterSpacing: 0.7, color: DS.ink[500] }}>
                   {h.label}
                 </Text>
               ))}
@@ -280,8 +348,8 @@ export function ChecksScreen() {
                   backgroundColor: isOverdue ? 'rgba(217,75,75,0.03)' : 'transparent',
                 }}>
                   {/* Amount */}
-                  <Text style={{ flex: 1.3, fontSize: 14, fontWeight: '600', color: isOverdue ? CHIP_TONES.danger.fg : DS.ink[900] }}>
-                    {fmtMoney(Number(ck.amount))}
+                  <Text style={{ flex: 1.3, fontSize: 14, fontWeight: '400', color: isOverdue ? CHIP_TONES.danger.fg : DS.ink[900] }}>
+                    {fmtMoney(Number(ck.amount), (ck as any).currency ?? 'TRY')}
                   </Text>
 
                   {/* Clinic */}
@@ -323,7 +391,7 @@ export function ChecksScreen() {
                   {/* Days left */}
                   <View style={{ flex: 0.8 }}>
                     {ck.status === 'beklemede' && (
-                      <Text style={{ fontSize: 11, fontWeight: '600', color: isOverdue ? CHIP_TONES.danger.fg : daysLeft <= 7 ? CHIP_TONES.warning.fg : DS.ink[500] }}>
+                      <Text style={{ fontSize: 11, fontWeight: '400', color: isOverdue ? CHIP_TONES.danger.fg : daysLeft <= 7 ? CHIP_TONES.warning.fg : DS.ink[500] }}>
                         {isOverdue ? `${Math.abs(daysLeft)}g gecikti` : `${daysLeft}g`}
                       </Text>
                     )}
@@ -332,7 +400,7 @@ export function ChecksScreen() {
                   {/* Status */}
                   <View style={{ flex: 1 }}>
                     <View style={{ alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: sc.bg }}>
-                      <Text style={{ fontSize: 10, fontWeight: '600', color: sc.fg }}>
+                      <Text style={{ fontSize: 10, fontWeight: '400', color: sc.fg }}>
                         {CHECK_STATUS_LABELS[ck.status]}
                       </Text>
                     </View>
@@ -347,14 +415,14 @@ export function ChecksScreen() {
                           style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 999, backgroundColor: CHIP_TONES.success.bg, cursor: 'pointer' as any }}
                         >
                           <CircleCheck size={11} color={CHIP_TONES.success.fg} strokeWidth={2} />
-                          <Text style={{ fontSize: 10, fontWeight: '600', color: CHIP_TONES.success.fg }}>Tahsil</Text>
+                          <Text style={{ fontSize: 10, fontWeight: '400', color: CHIP_TONES.success.fg }}>Tahsil</Text>
                         </Pressable>
                         <Pressable
                           onPress={() => handleStatusChange(ck, 'iade')}
                           style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 999, backgroundColor: CHIP_TONES.warning.bg, cursor: 'pointer' as any }}
                         >
                           <Undo2 size={11} color={CHIP_TONES.warning.fg} strokeWidth={2} />
-                          <Text style={{ fontSize: 10, fontWeight: '600', color: CHIP_TONES.warning.fg }}>İade</Text>
+                          <Text style={{ fontSize: 10, fontWeight: '400', color: CHIP_TONES.warning.fg }}>İade</Text>
                         </Pressable>
                         <Pressable
                           onPress={() => handleDelete(ck)}
@@ -370,12 +438,11 @@ export function ChecksScreen() {
             })}
 
             {/* Footer */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)', backgroundColor: '#FAFAFA' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)', backgroundColor: '#FAFAFA', gap: 10 }}>
               <Text style={{ fontSize: 11, color: DS.ink[500] }}>{checks.length} kayıt</Text>
               <View style={{ flex: 1 }} />
-              <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[900] }}>
-                Bekleyen: {fmtMoney(stats.totalPending)}
-              </Text>
+              <Text style={{ fontSize: 12, fontWeight: '400', color: DS.ink[900] }}>Bekleyen:</Text>
+              <MoneyMultiX slices={stats.pendingByCcy} variant="inline" />
             </View>
           </View>
         ) : (
@@ -404,10 +471,10 @@ export function ChecksScreen() {
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                         <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.3, color: isOverdue ? CHIP_TONES.danger.fg : DS.ink[900] }}>
-                          {fmtMoney(Number(ck.amount))}
+                          {fmtMoney(Number(ck.amount), (ck as any).currency ?? 'TRY')}
                         </Text>
                         <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: sc.bg }}>
-                          <Text style={{ fontSize: 10, fontWeight: '600', color: sc.fg }}>{CHECK_STATUS_LABELS[ck.status]}</Text>
+                          <Text style={{ fontSize: 10, fontWeight: '400', color: sc.fg }}>{CHECK_STATUS_LABELS[ck.status]}</Text>
                         </View>
                       </View>
                       {ck.clinic?.name && (
@@ -415,7 +482,7 @@ export function ChecksScreen() {
                       )}
                     </View>
                     <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={{ fontSize: 12, fontWeight: '600', color: isOverdue ? CHIP_TONES.danger.fg : DS.ink[800] }}>
+                      <Text style={{ fontSize: 12, fontWeight: '400', color: isOverdue ? CHIP_TONES.danger.fg : DS.ink[800] }}>
                         {fmtDate(ck.due_date)}
                       </Text>
                       {ck.status === 'beklemede' && (
@@ -444,14 +511,14 @@ export function ChecksScreen() {
                         style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: CHIP_TONES.success.bg, cursor: 'pointer' as any }}
                       >
                         <CircleCheck size={13} color={CHIP_TONES.success.fg} strokeWidth={2} />
-                        <Text style={{ fontSize: 11, fontWeight: '600', color: CHIP_TONES.success.fg }}>Tahsil Edildi</Text>
+                        <Text style={{ fontSize: 11, fontWeight: '400', color: CHIP_TONES.success.fg }}>Tahsil Edildi</Text>
                       </Pressable>
                       <Pressable
                         onPress={() => handleStatusChange(ck, 'iade')}
                         style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: CHIP_TONES.warning.bg, cursor: 'pointer' as any }}
                       >
                         <Undo2 size={13} color={CHIP_TONES.warning.fg} strokeWidth={2} />
-                        <Text style={{ fontSize: 11, fontWeight: '600', color: CHIP_TONES.warning.fg }}>İade</Text>
+                        <Text style={{ fontSize: 11, fontWeight: '400', color: CHIP_TONES.warning.fg }}>İade</Text>
                       </Pressable>
                       <Pressable
                         onPress={() => handleDelete(ck)}
@@ -489,6 +556,7 @@ function CheckFormModal({ visible, onClose, onSaved }: {
   const [checkNumber, setCheckNumber] = useState('');
   const [bankName, setBankName] = useState('');
   const [amount, setAmount] = useState('');
+  const [currency, setCurrency] = useState<Currency>('TRY');
   const [issueDate, setIssueDate] = useState(new Date().toISOString().slice(0, 10));
   const [dueDate, setDueDate] = useState('');
   const [notes, setNotes] = useState('');
@@ -498,7 +566,7 @@ function CheckFormModal({ visible, onClose, onSaved }: {
   React.useEffect(() => {
     if (visible) {
       setClinicId(''); setCheckNumber(''); setBankName('');
-      setAmount(''); setDueDate(''); setNotes(''); setError('');
+      setAmount(''); setCurrency('TRY'); setDueDate(''); setNotes(''); setError('');
       setIssueDate(new Date().toISOString().slice(0, 10));
     }
   }, [visible]);
@@ -511,7 +579,7 @@ function CheckFormModal({ visible, onClose, onSaved }: {
     setSaving(true);
     const params: CreateCheckParams = {
       clinic_id: clinicId || null, check_number: checkNumber || undefined,
-      bank_name: bankName || undefined, amount: amt,
+      bank_name: bankName || undefined, amount: amt, currency,
       issue_date: issueDate, due_date: dueDate, notes: notes || undefined,
     };
     const { error: apiErr } = await createCheck(params);
@@ -522,7 +590,7 @@ function CheckFormModal({ visible, onClose, onSaved }: {
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.42)', justifyContent: 'center', alignItems: 'center', padding: 24, ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}) }}>
         <View style={{ backgroundColor: '#FFF', borderRadius: 24, width: '100%', maxWidth: 520, maxHeight: '90%', overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', boxShadow: modalShadow } as any}>
 
           {/* Header */}
@@ -572,10 +640,36 @@ function CheckFormModal({ visible, onClose, onSaved }: {
               </ScrollView>
             </View>
 
+            {/* Para birimi — çek KENDİ para biriminde tutulur (katı per-currency) */}
+            <View style={{ gap: 6 }}>
+              <FL>Para Birimi</FL>
+              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                {SUPPORTED_CURRENCIES.map(cur => {
+                  const active = currency === cur;
+                  return (
+                    <Pressable
+                      key={cur}
+                      onPress={() => setCurrency(cur)}
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 6,
+                        paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, borderWidth: 1.5,
+                        borderColor: active ? DS.ink[900] : 'rgba(0,0,0,0.08)',
+                        backgroundColor: active ? DS.ink[900] : '#FFF',
+                        ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                      }}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: active ? '#FFF' : DS.ink[500] }}>{CURRENCY_META[cur].symbol}</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: active ? '#FFF' : DS.ink[700] }}>{cur}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+
             {/* Amount + Due */}
             <View style={{ flexDirection: 'row', gap: 12 }}>
               <View style={{ flex: 1, gap: 6 }}>
-                <FL>Tutar</FL>
+                <FL>{`Tutar (${CURRENCY_META[currency].symbol})`}</FL>
                 <FI value={amount} onChangeText={setAmount} placeholder="0,00"
                   keyboardType={Platform.OS === 'web' ? 'default' : 'decimal-pad'} />
               </View>
@@ -620,7 +714,7 @@ function CheckFormModal({ visible, onClose, onSaved }: {
               disabled={saving}
               style={{ paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, cursor: 'pointer' as any }}
             >
-              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500] }}>İptal</Text>
+              <Text style={{ fontSize: 13, fontWeight: '400', color: DS.ink[500] }}>İptal</Text>
             </Pressable>
             <Pressable
               onPress={handleSave}
@@ -631,7 +725,7 @@ function CheckFormModal({ visible, onClose, onSaved }: {
                 cursor: 'pointer' as any,
               }}
             >
-              <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFF' }}>
+              <Text style={{ fontSize: 13, fontWeight: '400', color: '#FFF' }}>
                 {saving ? 'Kaydediliyor...' : 'Kaydet'}
               </Text>
             </Pressable>
@@ -645,7 +739,7 @@ function CheckFormModal({ visible, onClose, onSaved }: {
 // ─── Form helpers ────────────────────────────────────────────────────
 function FL({ children }: { children: string }) {
   return (
-    <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[400] }}>
+    <Text style={{ fontSize: 10, fontWeight: '400', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[400] }}>
       {children}
     </Text>
   );

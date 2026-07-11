@@ -1,2 +1,3 @@
+import { lazyRoute } from '../../core/_lazyRoute';
 // app/(lab)/deliveries.tsx
-export { DeliveryListScreen as default } from '../../modules/delivery/screens/DeliveryListScreen';
+export default lazyRoute(() => import('../../modules/delivery/screens/DeliveryListScreen'), 'DeliveryListScreen');

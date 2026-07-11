@@ -2,10 +2,11 @@
 // Üretim başlamadan/sürerken hangi materyalden ne kadar gerekli ve stok yeterli mi gösterir.
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Platform} from 'react-native';
 import { supabase } from '../../../core/api/supabase';
 import { AppIcon } from '../../../core/ui/AppIcon';
 import { STAGE_LABEL, STAGE_COLOR, type Stage } from '../stages';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
 
 interface ForecastRow {
   item_id:          string;
@@ -61,7 +62,6 @@ export function MaterialForecastSection({ workOrderId }: Props) {
   if (loading) {
     return (
       <View style={s.card}>
-        <ActivityIndicator size="small" color="#94A3B8" />
       </View>
     );
   }

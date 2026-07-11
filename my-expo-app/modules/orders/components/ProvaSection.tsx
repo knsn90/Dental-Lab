@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   TextInput,
-  ActivityIndicator,
   ScrollView,
   Modal,
   Platform,
@@ -17,6 +16,7 @@ import { Prova, ProvaType, PROVA_TYPES } from '../../provas/types';
 import { OrderItem } from '../types';
 import { C } from '../../../core/theme/colors';
 import { DatePicker } from '../../../core/ui/DatePicker';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
 
 const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
   planlandı:   { label: '📅 Planlandı',    color: '#1D4ED8', bg: '#F1F5F9' },

@@ -1,4 +1,5 @@
 import { supabase } from '../../core/api/supabase';
+import { dispatchChatPush } from '../../core/notifications/dispatch';
 
 export type AttachmentType = 'image' | 'audio' | 'file';
 
@@ -31,7 +32,7 @@ export interface OrderMessage {
 export async function fetchMessages(workOrderId: string) {
   return supabase
     .from('order_messages')
-    .select('*, sender:profiles(id, full_name, user_type)')
+    .select('*, sender:profiles!order_messages_sender_id_fkey(id, full_name, user_type, avatar_url, clinic_name)')
     .eq('work_order_id', workOrderId)
     .order('created_at', { ascending: true });
 }
@@ -87,12 +88,15 @@ export interface OrderChatInboxItem {
   delivery_date: string | null;
   notes:         string | null;
   /** Son mesajın gövdesi (yoksa null) */
-  last_content:      string | null;
+  last_content:        string | null;
   last_attachment_type: AttachmentType | null;
-  last_created_at:   string | null;
-  last_sender_id:    string | null;
-  last_sender_type:  string | null;
-  total_count:       number;
+  last_created_at:     string | null;
+  last_sender_id:      string | null;
+  last_sender_type:    string | null;
+  /** Son mesajı gönderen profilin bilgileri (avatar + isim) */
+  last_sender_name:    string | null;
+  last_sender_avatar:  string | null;
+  total_count:         number;
   /** "Benden sonra gelen" diğer kullanıcı mesaj sayısı (basit yaklaşım) */
   unread_for_me: number;
 }
@@ -103,14 +107,21 @@ export interface OrderChatInboxItem {
  *
  * Yaklaşım: order_messages'tan tüm mesajları (RLS filtreli) çeker,
  * client-side work_order_id'ye göre gruplar. ~1K mesaja kadar performanslı.
+ *
+ * Teknisyen filtresi: `restrictTechnician=true` verilirse yalnızca kullanıcının
+ * dahil olduğu (work_orders.assigned_to = me VEYA order_stages.technician_id = me)
+ * iş emirleri gösterilir.
  */
-export async function fetchOrderChatInbox(currentUserId: string): Promise<{
+export async function fetchOrderChatInbox(
+  currentUserId: string,
+  opts?: { restrictTechnician?: boolean },
+): Promise<{
   data: OrderChatInboxItem[] | null; error: any;
 }> {
   // 1) Tüm mesajlar (RLS otomatik filter) — read_at dahil
   const { data: msgs, error: msgErr } = await supabase
     .from('order_messages')
-    .select('id, work_order_id, sender_id, content, attachment_type, attachment_name, created_at, read_at, sender:profiles(id, full_name, user_type)')
+    .select('id, work_order_id, sender_id, content, attachment_type, attachment_name, created_at, read_at, sender:profiles!order_messages_sender_id_fkey(id, full_name, user_type, avatar_url)')
     .order('created_at', { ascending: false })
     .limit(2000);
   if (msgErr) return { data: null, error: msgErr };
@@ -123,8 +134,32 @@ export async function fetchOrderChatInbox(currentUserId: string): Promise<{
     byOrder.set(m.work_order_id, list);
   }
 
-  const orderIds = Array.from(byOrder.keys());
+  let orderIds = Array.from(byOrder.keys());
   if (orderIds.length === 0) return { data: [], error: null };
+
+  // Teknisyen kısıtlaması: yalnızca dahil olduğu iş emirleri
+  if (opts?.restrictTechnician && currentUserId) {
+    const allowed = new Set<string>();
+
+    // 1) work_orders.assigned_to = me
+    const [{ data: ownedOrders }, { data: stages }] = await Promise.all([
+      supabase
+        .from('work_orders')
+        .select('id')
+        .eq('assigned_to', currentUserId)
+        .in('id', orderIds),
+      supabase
+        .from('order_stages')
+        .select('work_order_id')
+        .eq('technician_id', currentUserId)
+        .in('work_order_id', orderIds),
+    ]);
+    (ownedOrders ?? []).forEach((o: any) => allowed.add(o.id));
+    (stages ?? []).forEach((s: any) => allowed.add(s.work_order_id));
+
+    orderIds = orderIds.filter(id => allowed.has(id));
+    if (orderIds.length === 0) return { data: [], error: null };
+  }
 
   // 2) İlgili iş emirleri detayı (RLS: kullanıcı zaten erişebildiği mesajları
   //    gördüğü için bu iş emirlerine de erişimi olmalı)
@@ -191,12 +226,14 @@ export async function fetchOrderChatInbox(currentUserId: string): Promise<{
       machine_type:  o.machine_type ?? null,
       delivery_date: o.delivery_date ?? null,
       notes:         o.notes ?? null,
-      last_content:     last?.content ?? null,
+      last_content:       last?.content ?? null,
       last_attachment_type: last?.attachment_type ?? null,
-      last_created_at:  last?.created_at ?? null,
-      last_sender_id:   last?.sender_id ?? null,
-      last_sender_type: last?.sender?.user_type ?? null,
-      total_count:      list.length,
+      last_created_at:    last?.created_at ?? null,
+      last_sender_id:     last?.sender_id ?? null,
+      last_sender_type:   last?.sender?.user_type ?? null,
+      last_sender_name:   last?.sender?.full_name ?? null,
+      last_sender_avatar: last?.sender?.avatar_url ?? null,
+      total_count:        list.length,
       unread_for_me,
     };
   });
@@ -215,7 +252,7 @@ export async function sendMessage(
   content: string,
   attachment?: ChatAttachment
 ) {
-  return supabase.from('order_messages').insert({
+  const res = await supabase.from('order_messages').insert({
     work_order_id: workOrderId,
     sender_id: senderId,
     content: content.trim(),
@@ -224,6 +261,133 @@ export async function sendMessage(
     attachment_name: attachment?.name ?? null,
     attachment_size: attachment?.size ?? null,
   });
+
+  // ─── Push bildirimi (fire-and-forget) ─────────────────────────────
+  // Insert başarılıysa thread'in diğer katılımcılarına web + native push.
+  // Hata olursa mesaj akışını ASLA bozma (sessiz geç).
+  if (!res.error) {
+    void notifyChatRecipients(workOrderId, senderId, content, attachment).catch(() => null);
+  }
+
+  return res;
+}
+
+/**
+ * Yeni mesaj için push alıcılarını çözer ve push-only dispatch'i tetikler.
+ * Alıcı kümesi (gönderen hariç):
+ *   • thread'e daha önce mesaj yazmış herkes (distinct sender_id)
+ *   • iş emrinin hekimi (doctor_id bir profiles app-kullanıcısı ise)
+ *   • bağlı kliniğin kullanıcıları (clinic_id)
+ *   • lab tarafı: atanan teknisyen (assigned_to) + lab admin/owner/manager rolleri
+ */
+async function notifyChatRecipients(
+  workOrderId: string,
+  senderId: string,
+  content: string,
+  attachment?: ChatAttachment,
+): Promise<void> {
+  // İş emri temel alanları
+  const { data: wo } = await supabase
+    .from('work_orders')
+    .select('id, order_number, lab_id, clinic_id, doctor_id, assigned_to')
+    .eq('id', workOrderId)
+    .maybeSingle();
+  if (!wo) return;
+
+  const targets = new Set<string>();
+
+  // 1) Thread'e daha önce katılanlar
+  const { data: priorMsgs } = await supabase
+    .from('order_messages')
+    .select('sender_id')
+    .eq('work_order_id', workOrderId);
+  for (const m of (priorMsgs ?? []) as any[]) if (m?.sender_id) targets.add(m.sender_id);
+
+  // 2) Hekim — doctor_id bir profiles (app kullanıcısı) ise
+  if ((wo as any).doctor_id) {
+    const { data: doc } = await supabase
+      .from('profiles').select('id').eq('id', (wo as any).doctor_id).maybeSingle();
+    if ((doc as any)?.id) targets.add((doc as any).id);
+  }
+
+  // 3) Klinik kullanıcıları
+  if ((wo as any).clinic_id) {
+    const { data: clinicUsers } = await supabase
+      .from('profiles').select('id').eq('clinic_id', (wo as any).clinic_id);
+    for (const r of (clinicUsers ?? []) as any[]) if (r?.id) targets.add(r.id);
+  }
+
+  // 4) Lab tarafı — atanan teknisyen + lab yöneticileri (tüm lab'a yaymadan)
+  if ((wo as any).assigned_to) targets.add((wo as any).assigned_to);
+  if ((wo as any).lab_id) {
+    const { data: labAdmins } = await supabase
+      .from('profiles').select('id')
+      .eq('lab_id', (wo as any).lab_id)
+      .in('role', ['admin', 'owner', 'manager']);
+    for (const r of (labAdmins ?? []) as any[]) if (r?.id) targets.add(r.id);
+  }
+
+  // Gönderen kendine push almaz
+  targets.delete(senderId);
+  if (targets.size === 0) return;
+
+  const orderNum = (wo as any).order_number ? ` · ${(wo as any).order_number}` : '';
+  const preview = content?.trim()
+    ? content.trim().slice(0, 120)
+    : (attachment ? 'Ek dosya gönderildi' : 'Yeni mesaj');
+
+  await dispatchChatPush({
+    userIds:   Array.from(targets),
+    title:     `Yeni mesaj${orderNum}`,
+    body:      preview,
+    actionUrl: `/order/${workOrderId}`,
+    tag:       `chat-${workOrderId}`,
+  });
+}
+
+/** Kullanıcının kendi mesajını silebileceği süre — gönderimden sonra 5 dakika. */
+export const MESSAGE_DELETE_WINDOW_MS = 5 * 60 * 1000;
+
+/** created_at hâlâ silme penceresi içinde mi? (gönderici için UI gating'i) */
+export function isWithinDeleteWindow(createdAt?: string | null): boolean {
+  if (!createdAt) return false;
+  const t = new Date(createdAt).getTime();
+  if (Number.isNaN(t)) return false;
+  return Date.now() - t < MESSAGE_DELETE_WINDOW_MS;
+}
+
+/**
+ * Mesajı kalıcı olarak siler (hard delete). RLS gönderici+5dk veya
+ * admin/lab-manager dışında reddeder. Eki varsa storage'dan da temizler
+ * (best-effort — başarısız olursa sessiz geçer).
+ */
+export async function deleteMessage(messageId: string) {
+  // Eki temizlemek için önce attachment_url'i çek (silmeden önce)
+  let attachmentUrl: string | null = null;
+  try {
+    const { data: row } = await supabase
+      .from('order_messages')
+      .select('attachment_url')
+      .eq('id', messageId)
+      .maybeSingle();
+    attachmentUrl = (row as any)?.attachment_url ?? null;
+  } catch { /* sessiz */ }
+
+  const res = await supabase.from('order_messages').delete().eq('id', messageId);
+
+  // Storage'daki eki best-effort sil (satır silindiyse)
+  if (!res.error && attachmentUrl) {
+    try {
+      const marker = `/${BUCKET}/`;
+      const idx = attachmentUrl.indexOf(marker);
+      if (idx >= 0) {
+        const path = decodeURIComponent(attachmentUrl.slice(idx + marker.length));
+        await supabase.storage.from(BUCKET).remove([path]);
+      }
+    } catch { /* sessiz — orphan ek kritik değil */ }
+  }
+
+  return res;
 }
 
 const BUCKET = 'chat-attachments';

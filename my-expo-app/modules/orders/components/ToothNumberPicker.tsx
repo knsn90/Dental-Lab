@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Platform, View, Text, useWindowDimensions } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { Platform, View, Text, Pressable, useWindowDimensions } from 'react-native';
 import Svg, { G, Path, Text as SvgText, Rect, Circle } from 'react-native-svg';
 
 // Web tarafında "tooth-active-pulse" keyframes — bir kez document.head'e enjekte
@@ -43,7 +43,20 @@ function injectToothPulseKeyframes() {
 }
 import { C } from '../../../core/theme/colors';
 import { F } from '../../../core/theme/typography';
-import { TOOTH_PATHS, TOOTH_LABEL_POS } from '../assets/toothPaths';
+// Dinamik import — 190 KB tooth SVG data ayrı chunk'a düşsün, entry'yi şişirmesin.
+// Kullanılana kadar (modal açılana kadar) indirilmez.
+let TOOTH_PATHS: Record<number, string[]> = {};
+let TOOTH_LABEL_POS: Record<number, [number, number]> = {};
+let toothDataLoading: Promise<void> | null = null;
+function ensureToothData(): Promise<void> {
+  if (toothDataLoading) return toothDataLoading;
+  toothDataLoading = import('../assets/toothPaths').then((m) => {
+    TOOTH_PATHS = (m as any).TOOTH_PATHS;
+    TOOTH_LABEL_POS = (m as any).TOOTH_LABEL_POS;
+  });
+  return toothDataLoading;
+}
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 // ── FDI quadrant groups ──────────────────────────────────────────────
 const Q1 = [18, 17, 16, 15, 14, 13, 12, 11]; // upper-right
@@ -129,9 +142,26 @@ export function ToothNumberPicker({
 }: Props) {
   const PRIMARY = accentColor ?? C.primary;
   const { width: screenWidth } = useWindowDimensions();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  // Unselected tooth tones — dark mode'da daha görünür beyaz alpha kullan
+  const UNSEL_STROKE = isDark ? 'rgba(247,242,233,0.45)' : 'rgba(148,163,184,0.35)';
+  const UNSEL_DETAIL = isDark ? 'rgba(247,242,233,0.35)' : 'rgba(148,163,184,0.35)';
+  const UNSEL_TEXT   = isDark ? 'rgba(247,242,233,0.75)' : 'rgba(71,85,105,0.45)';
+  const ACTIVE_FILL  = isDark ? 'rgba(255,255,255,0.08)' : '#F1F5F9';
+  const ACTIVE_TEXT  = isDark ? '#F7F2E9' : '#0F172A';
+  const ACTIVE_DETAIL = isDark ? 'rgba(247,242,233,0.20)' : 'rgba(15,23,42,0.12)';
 
   // Web: keyframes (active + selected pulse) bir kez document.head'e enjekte et
   useEffect(() => { injectToothPulseKeyframes(); }, []);
+
+  // Lazy load tooth SVG data — 190 KB ayrı chunk
+  const [toothDataReady, setToothDataReady] = useState(Object.keys(TOOTH_PATHS).length > 0);
+  useEffect(() => {
+    if (toothDataReady) return;
+    let cancelled = false;
+    ensureToothData().then(() => { if (!cancelled) setToothDataReady(true); });
+    return () => { cancelled = true; };
+  }, [toothDataReady]);
 
   const dW = containerWidth
     ? Math.max(Math.round(containerWidth - 16), 160)
@@ -198,13 +228,15 @@ export function ToothNumberPicker({
 
   // Web-only hover state
   const [hoverTooth, setHoverTooth] = useState<number | null>(null);
+  // Double-fire guard (onClick + onPress aynı tıklamada tetiklenirse 200ms içinde 2. fire iptal)
+  const lastFireRef = useRef<Map<number, number>>(new Map());
 
   // Scale factors — aktif viewBox genişliği kullan (kırpma uygulanmışsa daha küçük)
   const svgPx     = vbW / dW;
   const SW_MAIN   = svgPx * 1.1;     // ana hat — incelendi (2 → 1.1)
   const SW_DETAIL = svgPx * 0.7;     // detay (oluk vs.) — incelendi (1.3 → 0.7)
-  const FONT_SZ   = svgPx * 10.5;
-  const FONT_OUT  = svgPx * 2;
+  const FONT_SZ   = svgPx * 9;       // diş içinde durmalı (10.5 → 9)
+  const FONT_OUT  = svgPx * 1.4;     // halo daha ince (2 → 1.4), dış taşma az
 
   const handlePress = (fdi: number) => {
     if (onToothPress) {
@@ -241,63 +273,85 @@ export function ToothNumberPicker({
     const isHovered  = fdi === hoverTooth;
     const confirmedColor = colorMap?.[fdi]; // color assigned when tooth is confirmed
 
-    // Fill: confirmed=assigned color, selected=primary, active=light, hovered=very light, default=TRANSPARENT
+    // Fill: confirmed=assigned color, selected=primary fill (light) / transparent (dark — sadece stroke),
+    //       active=light, hovered=very light, default=TRANSPARENT
     const fillColor = confirmedColor
       ? confirmedColor
       : isSelected
-      ? PRIMARY
+      ? (isDark ? `${PRIMARY}1F` : PRIMARY)  // dark: low-alpha tint; light: solid
       : isActive
-      ? '#F1F5F9'
+      ? ACTIVE_FILL
       : isHovered
-      ? '#F1F5F9'
-      : 'transparent';                          // seçili olmayan: transparan
+      ? ACTIVE_FILL
+      : 'transparent';
 
-    // Stroke: confirmed/selected/active = canlı renk, default = SOLUK gri (transparan hissi)
+    // Selected dark mode'da stroke kalın olsun — sadece stroke ile vurgulanır
+    const isSelectedDark = isSelected && isDark && !confirmedColor;
+
+    // Stroke: confirmed/selected/active = canlı renk, default = tema-aware soluk
     const strokeColor = confirmedColor
       ? confirmedColor
       : isSelected || isActive
       ? PRIMARY
       : isHovered
       ? '#93C5FD'
-      : 'rgba(148,163,184,0.35)';                // slate-400 alpha 35% — soluk
+      : UNSEL_STROKE;
 
-    const strokeWidth = isActive && !isSelected && !confirmedColor ? SW_MAIN * 2.2 : SW_MAIN;
+    const strokeWidth = isSelectedDark
+      ? SW_MAIN * 2.0
+      : isActive && !isSelected && !confirmedColor
+      ? SW_MAIN * 2.2
+      : SW_MAIN;
 
-    const detailColor = (confirmedColor || isSelected)
+    const detailColor = confirmedColor
       ? 'rgba(255,255,255,0.38)'
+      : isSelected
+      ? (isDark ? `${PRIMARY}55` : 'rgba(255,255,255,0.38)')
       : isActive
-      ? 'rgba(15,23,42,0.12)'
-      : 'rgba(148,163,184,0.35)';                // detay çizgileri de soluk
+      ? ACTIVE_DETAIL
+      : UNSEL_DETAIL;
 
-    const textColor = (confirmedColor || isSelected)
+    const textColor = confirmedColor
       ? '#FFFFFF'
+      : isSelected
+      ? (isDark ? PRIMARY : '#FFFFFF')  // dark: accent text; light: beyaz on solid
       : isActive
-      ? '#0F172A'
-      : 'rgba(71,85,105,0.45)';                  // numaraları da soluk
+      ? ACTIVE_TEXT
+      : UNSEL_TEXT;
 
-    const haloColor = confirmedColor ?? (isSelected ? PRIMARY : isActive ? '#F1F5F9' : 'transparent');
+    // Halo — text'in contrast outline'ı. Dark'ta dış arka plan rengini takip
+    // eder ki numaralar net dururken outline taşması azalsın.
+    const haloColor = confirmedColor
+      ? confirmedColor
+      : isSelected
+      ? (isDark ? '#0E0E0E' /* dark page bg */ : PRIMARY)
+      : isActive
+      ? ACTIVE_FILL
+      : (isDark ? '#0E0E0E' : 'transparent');
 
     // Sadece SEÇİLİ dişler tıklanabilir (popup için).
     // onToothPress yoksa (seçim modu): hepsi tıklanabilir.
     const isInteractive = onToothPress ? isSelected : true;
 
-    // Click & hover handlers — uygulanacak ELEMENT'e göre ayrılmış.
-    // <G> üzerinde onClick bazı RN-Web sürümlerinde tutarsız tetikleniyor;
-    // bu yüzden tıklama VE hover, görünür <Path> outline'ına bağlanır.
-    // <G>'de yalnızca pointerEvents kontrolü tutulur.
+    // Web: SVG sadece görsel, tıklama HTML overlay'de.
+    // Native: react-native-svg WebShape mevcut değil → onPressIn kullanılabilir.
+    // Hit-test ve hover handler'ları SVG'ye burada bağlanmaz.
     const gProps: any = !isInteractive ? { pointerEvents: 'none' } : {};
 
-    const pathInteractiveProps: any = !isInteractive
-      ? {}
-      : Platform.OS === 'web'
-        ? {
-            onClick: () => handlePress(fdi),
-            onMouseEnter: () => handleHoverEnter(fdi),
-            onMouseLeave: handleHoverLeave,
-            // @ts-ignore — RN-Web cursor passthrough on SVG path
-            style: { cursor: 'pointer' },
-          }
-        : { onPress: () => handlePress(fdi) };
+    const fire = () => {
+      const now = Date.now();
+      const last = lastFireRef.current.get(fdi) ?? 0;
+      if (now - last < 200) return;  // 200ms double-fire guard
+      lastFireRef.current.set(fdi, now);
+      handlePress(fdi);
+    };
+
+    const pathInteractiveProps: any =
+      !isInteractive || Platform.OS === 'web'
+        ? {}
+        : {
+            onPressIn: fire,
+          };
 
     return (
       <G key={fdi} {...gProps}>
@@ -329,10 +383,10 @@ export function ToothNumberPicker({
           />
         )}
 
-        {/* Tooth outline — click + hover handlers buraya bağlı */}
+        {/* Tooth outline — click + hover handlers buraya bağlı.
+            ÖNEMLI: className/style burada YOK (css-interop wrap'leyince
+            responder prop'ları SVG Path'e enjekte oluyor → tıklama bozulur). */}
         <Path
-          // @ts-ignore — seçili dişlerde fill nefes alır gibi (web only)
-          className={Platform.OS === 'web' && (isSelected || !!confirmedColor) ? 'tooth-selected-breathe' : undefined}
           d={paths[0]}
           fill={fillColor === 'transparent' ? 'rgba(0,0,0,0.001)' : fillColor}
           stroke={strokeColor}
@@ -342,7 +396,23 @@ export function ToothNumberPicker({
           {...pathInteractiveProps}
         />
 
-        {/* Internal detail lines */}
+        {/* Breathe animation overlay — sadece görsel, click outline'a düşer */}
+        {Platform.OS === 'web' && (isSelected || !!confirmedColor) && (
+          <Path
+            // @ts-ignore — RN-Web SVG className passthrough
+            className="tooth-selected-breathe"
+            d={paths[0]}
+            fill={fillColor}
+            stroke={strokeColor}
+            strokeWidth={strokeWidth}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            // @ts-ignore — pointerEvents none → tıklamayı interactive Path'e bırak
+            pointerEvents="none"
+          />
+        )}
+
+        {/* Internal detail lines — pointerEvents none, click outline'a düşer */}
         {paths.slice(1).map((d, i) => (
           <Path
             key={i}
@@ -352,10 +422,12 @@ export function ToothNumberPicker({
             strokeWidth={isSelected ? SW_DETAIL * 1.8 : SW_DETAIL}
             strokeLinecap="round"
             strokeLinejoin="round"
+            // @ts-ignore — RN-Web SVG pointerEvents passthrough
+            pointerEvents="none"
           />
         ))}
 
-        {/* Number label — halo + fill (Outfit fontu) */}
+        {/* Number label — halo + fill (numara da pointerEvents none) */}
         <SvgText
           x={cx} y={cy}
           fontSize={FONT_SZ} fontWeight="700"
@@ -365,6 +437,8 @@ export function ToothNumberPicker({
           textAnchor="middle"
           // @ts-ignore
           dominantBaseline="central"
+          // @ts-ignore
+          pointerEvents="none"
         >
           {String(fdi)}
         </SvgText>
@@ -376,6 +450,8 @@ export function ToothNumberPicker({
           textAnchor="middle"
           // @ts-ignore
           dominantBaseline="central"
+          // @ts-ignore
+          pointerEvents="none"
         >
           {String(fdi)}
         </SvgText>
@@ -440,13 +516,43 @@ export function ToothNumberPicker({
   // Çene label pozisyonları (viewBox koordinatlarında, x merkezde)
   const JAW_LABEL_CX = vbX + vbW / 2;              // aktif viewBox merkezi (kırpılmış olabilir)
   const JAW_LABEL_FS = 140;                         // viewBox-relative font size
-  const JAW_LABEL_FILL = 'rgba(148,163,184,0.55)';  // slate-400 alpha
+  const JAW_LABEL_FILL = isDark ? 'rgba(247,242,233,0.55)' : 'rgba(148,163,184,0.55)';  // tema-aware
+
+  // ── HTML overlay click targets (web only) ───────────────────────
+  // SVG Path'e onClick bağlamak react-native-svg-web tarafında güvenilir
+  // değil. Web'de görünmez Pressable kareler tooth pozisyonlarına
+  // yerleştirilir; native'de onPressIn SVG Path'e bağlı kalır.
+  const svgH = containerHeight ?? dH;
+  const renderTeeth = jawMode === 'lower'
+    ? [...Q4, ...Q3]
+    : jawMode === 'upper'
+      ? [...Q1, ...Q2]
+      : [...Q1, ...Q2, ...Q4, ...Q3];
+
+  // SVG → DOM koordinat dönüşümü (preserveAspectRatio='xMidYMid meet' varsayım)
+  const svgToDom = (sx: number, sy: number) => {
+    const scale = Math.min(dW / vbW, svgH / activeVB.h);
+    const renderedW = vbW * scale;
+    const renderedH = activeVB.h * scale;
+    const offsetX = (dW - renderedW) / 2;
+    const offsetY = (svgH - renderedH) / 2;
+    return {
+      x: offsetX + (sx - vbX) * scale,
+      y: offsetY + (sy - activeVB.y) * scale,
+      scale,
+    };
+  };
+
+  // Hit area boyutu — bir dişin yaklaşık genişlik/yüksekliği SVG units cinsinden
+  const TOOTH_HIT_W = 220;
+  const TOOTH_HIT_H = 380;
 
   return (
     <View style={{ alignItems: 'center' }}>
+      <View style={{ width: dW, height: svgH, position: 'relative' }}>
       <Svg
         width={dW}
-        height={containerHeight ?? dH}
+        height={svgH}
         viewBox={viewBox}
         preserveAspectRatio={
           fit === 'none'  ? 'none'                :
@@ -517,6 +623,48 @@ export function ToothNumberPicker({
 
         {renderHoverTooltip()}
       </Svg>
+
+      {/* HTML overlay click targets (web only) — invisible Pressable per tooth */}
+      {Platform.OS === 'web' && renderTeeth.map(fdi => {
+        const pos = TOOTH_LABEL_POS[fdi];
+        if (!pos) return null;
+        const isSelected = selected.includes(fdi);
+        const isInteractive = onToothPress ? isSelected : true;
+        if (!isInteractive) return null;
+
+        const [sx, sy] = pos;
+        const dom = svgToDom(sx, sy);
+        const w = TOOTH_HIT_W * dom.scale;
+        const h = TOOTH_HIT_H * dom.scale;
+
+        const fire = () => {
+          const now = Date.now();
+          const last = lastFireRef.current.get(fdi) ?? 0;
+          if (now - last < 200) return;
+          lastFireRef.current.set(fdi, now);
+          handlePress(fdi);
+        };
+
+        return (
+          <Pressable
+            key={`hit-${fdi}`}
+            onPress={fire}
+            onHoverIn={() => handleHoverEnter(fdi)}
+            onHoverOut={handleHoverLeave}
+            style={{
+              position: 'absolute',
+              left: dom.x - w / 2,
+              top:  dom.y - h / 2,
+              width: w,
+              height: h,
+              // @ts-ignore — web cursor passthrough
+              cursor: 'pointer',
+              backgroundColor: 'transparent',
+            }}
+          />
+        );
+      })}
+      </View>
 
       {/* "Seçili: ..." özet satırı kaldırıldı */}
     </View>

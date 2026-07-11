@@ -42,7 +42,7 @@ export function useStationJobs(technicianId: string | undefined) {
           is_rush:      row.work_orders?.is_rush ?? false,
           notes:        row.work_orders?.notes ?? null,
           doctor_name:  row.work_orders?.doctor?.full_name ?? null,
-          clinic_name:  row.work_orders?.doctor?.clinic_name ?? null,
+          clinic_name:  row.work_orders?.doctor?.clinic?.name ?? null,
           box_code:     row.work_orders?.box?.box_code ?? null,
         },
       })) as StationJob[];

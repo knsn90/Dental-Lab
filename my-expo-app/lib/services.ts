@@ -25,6 +25,7 @@ export async function createLabService(data: {
   price?: number;
   currency?: string;
   sort_order?: number;
+  production_days?: number | null;
 }) {
   return supabase.from('lab_services').insert(data).select().single();
 }
@@ -38,6 +39,7 @@ export async function updateLabService(
     currency: string;
     is_active: boolean;
     sort_order: number;
+    production_days: number | null;
   }>
 ) {
   return supabase.from('lab_services').update(data).eq('id', id).select().single();

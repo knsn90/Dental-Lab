@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nexadent Trifold — Outer (A4 landscape, print-ready)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  /* ================================================================
+     Nexadent — Kurumsal Katalog 2026 · Trifold A4 · OUTER face
+     Panels (L→R): 01 Inner flap · Back cover · Front cover
+     Fold order when printed: this sheet is the OUTSIDE of the fold.
+     297mm × 210mm (A4 landscape). Three equal 99mm columns.
+     ================================================================ */
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  :root {
+    --ink:        #131c34;   /* primary dark ink (light panel)   */
+    --ink-strong: #111a30;
+    --brand:      #1d2f6f;   /* accent blue                      */
+    --brand-soft: #9fb0e0;   /* soft periwinkle accent (dark bg) */
+    --mono:       #5566a6;   /* mono label on light panel        */
+    --paper:      #f3f5fb;   /* inner-flap paper                 */
+  }
+
+  html, body { margin: 0; }
+
+  /* Screen preview: dark stage, sheet centered like the mock. */
+  body {
+    background: #2a2f3a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 24px;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .sheet {
+    width: 297mm;
+    height: 210mm;
+    position: relative;
+    background: #0a1228;
+    display: grid;
+    /* Trifold (letter / C-fold) geometry. The tuck-in flap folds INSIDE
+       first, so it must be ~3mm narrower than the two outer panels or it
+       buckles at the fold. Outer sheet L→R: Inner flap · Back · Front.
+       Columns: flap 97mm | back 100mm | front 100mm. Folds at 97 & 197mm. */
+    grid-template-columns: 97mm 100mm 100mm;
+    font-family: 'Manrope', sans-serif;
+    color: #eef1fa;
+    overflow: hidden;
+    box-shadow: 0 24px 80px rgba(0,0,0,.4);
+  }
+
+  .panel { position: relative; display: flex; flex-direction: column; }
+  .spacer { flex: 1; }
+
+  /* mono eyebrow / label helper */
+  .mono { font-family: 'Space Mono', monospace; }
+  em.plain { font-style: normal; }
+
+  /* ---- image slots -------------------------------------------------
+     In the mock these were user-fillable <image-slot> placeholders.
+     Here they are real, intentional photo frames: drop a photo by
+     replacing the .img-slot div with <img class="img-slot" src="…">,
+     or set a background-image on it. Until filled they render a
+     tasteful captioned frame so the layout stays print-complete.     */
+  .img-slot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    overflow: hidden;
+    object-fit: cover;
+  }
+  .img-slot .cap {
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    padding: 0 14px;
+    line-height: 1.5;
+  }
+  /* light-panel slot (flap-macro) */
+  .img-slot--light {
+    background: linear-gradient(135deg, #e7ebf7 0%, #dbe1f2 100%);
+    border: 1px solid #cdd6ec;
+    color: #8791b3;
+  }
+  /* dark-panel slot (front-hero) */
+  .img-slot--dark {
+    background: linear-gradient(135deg, rgba(30,47,111,.30) 0%, rgba(12,20,50,.55) 100%);
+    border: 1px solid rgba(120,140,200,.28);
+    color: #7f8bc0;
+  }
+
+  /* ============ PANEL 1 · INNER FLAP (folds in) ============ */
+  .flap {
+    background: var(--paper);
+    color: var(--ink);
+    padding: 46px 40px 40px;
+  }
+  .eyebrow { display: flex; align-items: center; gap: 9px; }
+  .eyebrow .num  { font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: .22em; color: var(--mono); }
+  .eyebrow .rule { height: 1px; flex: 1; background: #c7cfe6; }
+  .eyebrow .tag  { font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: .24em; color: var(--mono); }
+
+  .flap h2 {
+    font-weight: 800; font-size: 25px; line-height: 1.12; letter-spacing: -.02em;
+    margin: 30px 0 0; color: var(--ink-strong);
+  }
+  .flap h2 em { font-style: normal; color: var(--brand); }
+  .flap .lede { font-size: 11.5px; line-height: 1.72; color: #3c4358; margin: 16px 0 0; max-width: 44ch; }
+  .flap .divider { height: 1px; background: #d3daec; margin: 26px 0 4px; }
+
+  .stats { display: flex; flex-direction: column; }
+  .stat  {
+    display: flex; align-items: baseline; justify-content: space-between;
+    padding: 13px 0; border-bottom: 1px solid #e2e7f4;
+  }
+  .stat:last-child { border-bottom: 0; }
+  .stat .val    { font-weight: 800; font-size: 23px; letter-spacing: -.01em; color: var(--brand); }
+  .stat .val u  { font-size: 16px; text-decoration: none; }
+  .stat .label  {
+    font-family: 'Space Mono', monospace; font-size: 9.5px; letter-spacing: .16em;
+    color: #6a7290; text-align: right;
+  }
+
+  .flap .footer { display: flex; align-items: center; justify-content: space-between; margin-top: 18px; }
+  .flap .footer span { font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: .2em; color: #8790ab; }
+
+  /* ============ PANEL 2 · BACK COVER ============ */
+  .back {
+    background: radial-gradient(120% 80% at 50% -10%, #142145 0%, #0b1330 46%, #0a0f24 100%);
+    padding: 46px 40px 40px;
+    border-left: 1px solid rgba(120,140,200,.14);
+    border-right: 1px solid rgba(120,140,200,.14);
+  }
+  .back .eyebrow .rule { background: rgba(140,151,194,.35); }
+  .back .eyebrow .tag  { color: var(--brand-soft); letter-spacing: .24em; }
+
+  .back h2 {
+    font-weight: 800; font-size: 33px; line-height: 1.04; letter-spacing: -.02em;
+    margin: 34px 0 0; color: #f4f6ff;
+  }
+  .back h2 em { font-style: normal; color: var(--brand-soft); }
+  .back .lede { font-size: 11.5px; line-height: 1.72; color: #aab3cf; margin: 18px 0 0; max-width: 42ch; }
+  .back .divider { height: 1px; background: rgba(120,140,200,.18); margin: 28px 0 6px; }
+
+  .contact { display: flex; flex-direction: column; gap: 15px; margin-top: 16px; }
+  .contact .field { display: flex; flex-direction: column; gap: 3px; }
+  .contact .k {
+    font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: .22em; color: #6e7fbc;
+  }
+  .contact .phone { font-size: 19px; font-weight: 600; letter-spacing: .01em; color: #f4f6ff; }
+  .contact .grid  { display: grid; grid-template-columns: 1fr 1fr; gap: 15px 18px; }
+  .contact .v     { font-size: 12px; font-weight: 500; color: #dfe4f4; }
+  .contact .v.addr { line-height: 1.5; }
+
+  .back .logo { width: 92px; height: auto; display: block; margin: 0 auto 18px; }
+  .back .tagline { display: flex; align-items: center; gap: 9px; }
+  .back .tagline .rule { height: 1px; flex: 1; background: rgba(120,140,200,.18); }
+  .back .tagline .txt  {
+    font-family: 'Space Mono', monospace; font-size: 8.5px; letter-spacing: .22em;
+    color: #7a84a6; text-align: center;
+  }
+
+  /* ============ PANEL 3 · FRONT COVER ============ */
+  .front {
+    background: radial-gradient(130% 70% at 78% 8%, #172656 0%, #0d1638 42%, #0a0f26 100%);
+    padding: 46px 40px 38px;
+  }
+  .front .brand { display: flex; flex-direction: column; gap: 13px; }
+  .front .brand img { width: 196px; height: auto; display: block; }
+  .front .brand .sub {
+    font-family: 'Space Mono', monospace; font-size: 8px; letter-spacing: .3em; color: var(--brand-soft);
+  }
+  .front .kicker {
+    font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: .22em;
+    color: #8790ab; margin-top: 22px;
+  }
+  .front .hero { margin-top: 16px; }
+
+  .front h1 {
+    font-weight: 800; font-size: 35px; line-height: 1.03; letter-spacing: -.025em;
+    margin: 0; color: #f5f7ff;
+  }
+  .front h1 em { font-style: normal; color: var(--brand-soft); }
+  .front .lede { font-size: 11px; line-height: 1.65; color: #a4adca; margin: 16px 0 0; max-width: 40ch; }
+  .front .divider { height: 1px; background: rgba(120,140,200,.2); margin: 20px 0 14px; }
+  .front .footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .front .footer .l { font-family: 'Space Mono', monospace; font-size: 8px; letter-spacing: .1em; color: var(--brand-soft); white-space: nowrap; }
+  .front .footer .r { font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: .14em; color: #dfe4f4; font-weight: 700; white-space: nowrap; }
+
+  /* ---- fold guides (trim marks at the two fold lines) ---- */
+  .fold { position: absolute; width: 1px; height: 7px; background: rgba(110,127,188,.5); }
+  .fold.t1 { top: 0;    left: 97mm; }
+  .fold.b1 { bottom: 0; left: 97mm; }
+  .fold.t2 { top: 0;    left: 197mm; }
+  .fold.b2 { bottom: 0; left: 197mm; }
+
+  /* ---- print ---- */
+  @page { size: 297mm 210mm; margin: 0; }
+  @media print {
+    body { background: #fff; padding: 0; display: block; }
+    .sheet { box-shadow: none; width: 297mm; height: 210mm; }
+  }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <!-- ============ PANEL 1 · INNER FLAP (folds in) ============ -->
+  <section class="panel flap" aria-label="Inner flap">
+    <div class="eyebrow">
+      <span class="num">01</span>
+      <span class="rule"></span>
+      <span class="tag">HAKKINDA</span>
+    </div>
+
+    <h2>Dijital diş hekimliğinde <em>ölçülebilir</em> hassasiyet.</h2>
+
+    <p class="lede">
+      Nexadent, intraoral tarama verisinden CAD/CAM üretim, 3D baskı ve photogrammetry'ye kadar tüm süreci tek kontrollü dijital iş akışında birleştirir. Her vaka izlenebilir, tekrarlanabilir ve arşivlenir.
+    </p>
+
+    <div class="divider"></div>
+
+    <div class="stats">
+      <div class="stat">
+        <span class="val">&lt;10&nbsp;<u>μm</u></span>
+        <span class="label">ÜRETİM<br>TOLERANSI</span>
+      </div>
+      <div class="stat">
+        <span class="val">%100</span>
+        <span class="label">DİJİTAL<br>İŞ AKIŞI</span>
+      </div>
+      <div class="stat">
+        <span class="val">48&nbsp;<u>sa</u></span>
+        <span class="label">TİPİK<br>TESLİM SÜRESİ</span>
+      </div>
+      <div class="stat">
+        <span class="val">5&nbsp;<u>Eksen</u></span>
+        <span class="label">CAD/CAM<br>KAZIMA</span>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <!-- flap-macro · monolitik zirkonya makro -->
+    <img class="img-slot" src="assets/macro-zirkonya.jpg" alt="Monolitik zirkonya kron — makro"
+         style="width:100%;height:118px;border-radius:4px;object-fit:cover;object-position:50% 42%;">
+
+    <div class="footer">
+      <span>KURUMSAL KATALOG · 2026</span>
+      <span>02 / 12</span>
+    </div>
+  </section>
+
+  <!-- ============ PANEL 2 · BACK COVER ============ -->
+  <section class="panel back" aria-label="Back cover">
+    <div class="eyebrow">
+      <span class="rule"></span>
+      <span class="tag">İLETİŞİM · CONTACT</span>
+    </div>
+
+    <h2>Birlikte<br><em>Çalışalım.</em></h2>
+
+    <p class="lede">
+      İlk vakanızı dijital iş akışımıza taşıyın. Tarama dosyanızı gönderin; tasarım, onay ve üretim sürecini sizin için yönetelim.
+    </p>
+
+    <div class="divider"></div>
+
+    <div class="contact">
+      <div class="field">
+        <span class="k">TELEFON</span>
+        <span class="phone">0216 606 66 11</span>
+      </div>
+      <div class="grid">
+        <div class="field">
+          <span class="k">WHATSAPP</span>
+          <span class="v">0216 606 66 11</span>
+        </div>
+        <div class="field">
+          <span class="k">INSTAGRAM</span>
+          <span class="v">@nexadentlab</span>
+        </div>
+        <div class="field">
+          <span class="k">E-POSTA</span>
+          <span class="v">info@nexadentlab.com</span>
+        </div>
+        <div class="field">
+          <span class="k">WEB</span>
+          <span class="v">nexadentlab.com</span>
+        </div>
+      </div>
+      <div class="field">
+        <span class="k">ADRES</span>
+        <span class="v addr">Atatürk Mah. Vatan Cad. No:21 D:2,<br>Ataşehir / İstanbul</span>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <img class="logo" src="assets/beyaz-2.png" alt="Nexadent">
+
+    <div class="tagline">
+      <span class="rule"></span>
+      <span class="txt">DİJİTAL HASSASİYET · KUSURSUZ SONUÇLAR</span>
+      <span class="rule"></span>
+    </div>
+  </section>
+
+  <!-- ============ PANEL 3 · FRONT COVER ============ -->
+  <section class="panel front" aria-label="Front cover">
+    <div class="brand">
+      <img src="assets/nexadent-white.png" alt="Nexadent — dijital diş laboratuvarı">
+      <span class="sub">PRECISION · DENTAL · TECHNOLOGY</span>
+    </div>
+
+    <span class="kicker">KURUMSAL KATALOG · 2026 / DIGITAL DENTAL LAB</span>
+
+    <!-- front-hero · dijital laboratuvar ekipmanları (koyu zemin, kapak gradyanına oturur) -->
+    <img class="img-slot hero" src="assets/hero-equipment.jpg" alt="Dijital diş laboratuvarı — 3D yazıcı, intraoral tarayıcı, porselen fırını"
+         style="width:100%;height:250px;border-radius:5px;object-fit:cover;object-position:50% 60%;">
+
+    <div class="spacer" style="min-height:20px;"></div>
+
+    <h1>Dijital<br>Hassasiyet.<br><em>Kusursuz Sonuçlar.</em></h1>
+
+    <p class="lede">
+      Tam dijital iş akışıyla üretilen, yüksek hassasiyetli sabit ve implant üstü restorasyonlar.
+    </p>
+
+    <div class="divider"></div>
+
+    <div class="footer">
+      <span class="l">CAD/CAM · 3D · PHOTOGRAMMETRY</span>
+      <span class="r">0216 606 66 11</span>
+    </div>
+  </section>
+
+  <!-- fold guides -->
+  <div class="fold t1"></div>
+  <div class="fold b1"></div>
+  <div class="fold t2"></div>
+  <div class="fold b2"></div>
+
+</div>
+</body>
+</html>

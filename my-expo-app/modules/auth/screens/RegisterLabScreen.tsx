@@ -1,43 +1,50 @@
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-  TouchableOpacity,
-} from 'react-native';
+/**
+ * RegisterLabScreen — Lab personeli kayıt (teknisyen / mesul müdür).
+ * AuthShell ile beyaz tema, mor accent.
+ */
+import React, { useState, useRef } from 'react';
+import { View, Text, Pressable, Platform, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  Mail, Lock, Eye, EyeOff, User as UserIcon, Phone,
+  AlertCircle, Check, ChevronLeft,
+} from 'lucide-react-native';
 import { signUpLabUser, LabRole } from '../api';
-import { Input } from '../../../core/ui/Input';
-import { Button } from '../../../core/ui/Button';
-import { C } from '../../../core/theme/colors';
+import { AuthShell, AuthInput, AuthButton, AUTH, AUTH_FONT } from '../components/AuthShell';
 
 const ROLES: { value: LabRole; label: string; desc: string }[] = [
-  { value: 'technician', label: 'Teknisyen', desc: 'İş emirlerini üretir' },
-  { value: 'manager', label: 'Mesul Müdür', desc: 'Tüm işlemleri yönetir' },
+  { value: 'technician', label: 'Teknisyen',    desc: 'İş emirlerini üretir' },
+  { value: 'manager',    label: 'Mesul Müdür',  desc: 'Tüm işlemleri yönetir' },
 ];
 
 export function RegisterLabScreen() {
   const router = useRouter();
   const [form, setForm] = useState({
-    full_name: '',
-    phone: '',
-    email: '',
-    password: '',
-    passwordConfirm: '',
+    full_name: '', phone: '', email: '', password: '', passwordConfirm: '',
     role: 'technician' as LabRole,
   });
-  const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState<Partial<Record<keyof typeof form, string>>>({});
+  const [loading,    setLoading]    = useState(false);
+  const [errors,     setErrors]     = useState<Partial<Record<keyof typeof form, string>>>({});
   const [successMsg, setSuccessMsg] = useState('');
-  const [errorMsg, setErrorMsg] = useState('');
+  const [errorMsg,   setErrorMsg]   = useState('');
+  const [showPass,   setShowPass]   = useState(false);
+  const [showPassC,  setShowPassC]  = useState(false);
+
+  const shakeX = useRef(new Animated.Value(0)).current;
+  const triggerShake = () => {
+    shakeX.setValue(0);
+    Animated.sequence([
+      Animated.timing(shakeX, { toValue: 8,  duration: 55, useNativeDriver: true }),
+      Animated.timing(shakeX, { toValue: -8, duration: 55, useNativeDriver: true }),
+      Animated.timing(shakeX, { toValue: 5,  duration: 55, useNativeDriver: true }),
+      Animated.timing(shakeX, { toValue: -5, duration: 55, useNativeDriver: true }),
+      Animated.timing(shakeX, { toValue: 0,  duration: 55, useNativeDriver: true }),
+    ]).start();
+  };
 
   const set = (key: keyof typeof form) => (val: string) => {
-    setForm((prev) => ({ ...prev, [key]: val }));
-    setErrors((prev) => ({ ...prev, [key]: '' }));
+    setForm(prev => ({ ...prev, [key]: val }));
+    setErrors(prev => ({ ...prev, [key]: '' }));
     setErrorMsg('');
   };
 
@@ -49,15 +56,13 @@ export function RegisterLabScreen() {
     if (form.password.length < 8) e.password = 'Şifre en az 8 karakter olmalı';
     if (form.password !== form.passwordConfirm) e.passwordConfirm = 'Şifreler eşleşmiyor';
     setErrors(e);
+    if (Object.keys(e).length) triggerShake();
     return Object.keys(e).length === 0;
   };
 
   const handleRegister = async () => {
     if (!validate()) return;
-    setLoading(true);
-    setErrorMsg('');
-    setSuccessMsg('');
-
+    setLoading(true); setErrorMsg(''); setSuccessMsg('');
     const { data, error } = await signUpLabUser({
       email: form.email.trim().toLowerCase(),
       password: form.password,
@@ -65,171 +70,176 @@ export function RegisterLabScreen() {
       role: form.role,
       phone: form.phone.trim() || undefined,
     });
-
     setLoading(false);
-
     if (error) {
       if (error.message.includes('already registered') || error.message.includes('already been registered')) {
-        setErrorMsg('Bu e-posta adresi zaten kayıtlı. Giriş yapmayı deneyin.');
+        setErrorMsg('Bu e-posta zaten kayıtlı. Giriş yapmayı dene.');
       } else if (error.message.includes('Password')) {
         setErrorMsg('Şifre en az 8 karakter olmalı.');
       } else {
         setErrorMsg(error.message);
       }
+      triggerShake();
       return;
     }
-
     if (!data?.session) {
-      setSuccessMsg('Kayıt başarılı! Lütfen e-posta adresinizi onaylayın, ardından giriş yapın.');
+      setSuccessMsg('Kayıt başarılı! E-posta adresini onayla, ardından giriş yap.');
     }
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.flex}
-      >
-        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-          <TouchableOpacity onPress={() => router.back()} style={styles.back}>
-            <Text style={styles.backText}>← Geri</Text>
-          </TouchableOpacity>
+    <AuthShell
+      eyebrow="Lab Personeli"
+      heading="Kayıt Ol"
+      subtitle="Lab takımının bir üyesi olarak kayıt ol."
+      illustrationCaption="Teknisyen ve yöneticiler&#10;için tek panel."
+      footerLink={{
+        text: 'Zaten hesabın var mı?',
+        linkText: 'Giriş Yap',
+        onPress: () => router.replace('/(auth)/login'),
+      }}
+    >
+      <Animated.View style={{ transform: [{ translateX: shakeX }] }}>
+        <Pressable
+          onPress={() => router.back()}
+          style={({ hovered }: any) => ({
+            flexDirection: 'row', alignItems: 'center', gap: 4,
+            alignSelf: 'flex-start', marginBottom: 16,
+            opacity: hovered ? 0.6 : 1,
+            ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+          })}
+        >
+          <ChevronLeft size={14} color={AUTH.inkSoft} strokeWidth={2} />
+          <Text style={{ fontFamily: AUTH_FONT.sans, fontSize: 12, color: AUTH.inkSoft, fontWeight: '600' }}>Geri</Text>
+        </Pressable>
 
-          <Text style={styles.title}>Lab Kullanıcı Kaydı</Text>
-          <Text style={styles.subtitle}>Laborant hesabı oluşturun</Text>
-
-          {errorMsg ? (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorBoxText}>⚠️  {errorMsg}</Text>
-            </View>
-          ) : null}
-
-          {successMsg ? (
-            <View style={styles.successBox}>
-              <Text style={styles.successBoxText}>✅  {successMsg}</Text>
-            </View>
-          ) : null}
-
-          <Input
-            label="Ad Soyad"
-            value={form.full_name}
-            onChangeText={set('full_name')}
-            placeholder="Mehmet Kaya"
-            error={errors.full_name}
-          />
-
-          <Text style={styles.roleLabel}>Rol</Text>
-          <View style={styles.roleRow}>
-            {ROLES.map((r) => (
-              <TouchableOpacity
-                key={r.value}
-                onPress={() => setForm((prev) => ({ ...prev, role: r.value }))}
-                style={[styles.roleBtn, form.role === r.value && styles.roleBtnActive]}
-              >
-                <Text style={[styles.roleBtnTitle, form.role === r.value && styles.roleBtnTitleActive]}>
-                  {r.label}
-                </Text>
-                <Text style={[styles.roleBtnDesc, form.role === r.value && styles.roleBtnDescActive]}>
-                  {r.desc}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <Input
-            label="Telefon (isteğe bağlı)"
-            value={form.phone}
-            onChangeText={set('phone')}
-            placeholder="0532 000 00 00"
-            keyboardType="phone-pad"
-          />
-          <Input
-            label="E-posta"
-            value={form.email}
-            onChangeText={set('email')}
-            placeholder="ornek@email.com"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            error={errors.email}
-          />
-          <Input
-            label="Şifre"
-            value={form.password}
-            onChangeText={set('password')}
-            placeholder="En az 8 karakter"
-            secureTextEntry
-            error={errors.password}
-          />
-          <Input
-            label="Şifre Tekrar"
-            value={form.passwordConfirm}
-            onChangeText={set('passwordConfirm')}
-            placeholder="Şifrenizi tekrar girin"
-            secureTextEntry
-            error={errors.passwordConfirm}
-          />
-
-          <Button
-            onPress={handleRegister}
-            label="Kayıt Ol"
-            loading={loading}
-            style={styles.submitBtn}
-          />
-
-          <TouchableOpacity onPress={() => router.replace('/(auth)/login')} style={styles.loginLink}>
-            <Text style={styles.loginLinkText}>
-              Zaten hesabınız var mı? <Text style={styles.link}>Giriş yapın</Text>
+        {errorMsg ? (
+          <View style={{
+            flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+            backgroundColor: 'rgba(220,38,38,0.06)',
+            borderRadius: 10, padding: 12, marginBottom: 14,
+            borderLeftWidth: 3, borderLeftColor: AUTH.danger,
+          }}>
+            <AlertCircle size={14} color={AUTH.danger} strokeWidth={2} style={{ marginTop: 1 }} />
+            <Text style={{ flex: 1, fontFamily: AUTH_FONT.sans, fontSize: 12.5, color: AUTH.danger, lineHeight: 18 }}>
+              {errorMsg}
             </Text>
-          </TouchableOpacity>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+          </View>
+        ) : null}
+
+        {successMsg ? (
+          <View style={{
+            flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+            backgroundColor: 'rgba(22,163,74,0.08)',
+            borderRadius: 10, padding: 12, marginBottom: 14,
+            borderLeftWidth: 3, borderLeftColor: AUTH.success,
+          }}>
+            <Check size={14} color={AUTH.success} strokeWidth={2.4} style={{ marginTop: 1 }} />
+            <Text style={{ flex: 1, fontFamily: AUTH_FONT.sans, fontSize: 12.5, color: AUTH.success, lineHeight: 18, fontWeight: '500' }}>
+              {successMsg}
+            </Text>
+          </View>
+        ) : null}
+
+        {/* Role segment */}
+        <View style={{ marginBottom: 14 }}>
+          <Text style={{
+            fontFamily: AUTH_FONT.sans,
+            fontSize: 11, color: AUTH.inkSoft, fontWeight: '600',
+            marginBottom: 8, letterSpacing: 0.4, textTransform: 'uppercase',
+          }}>
+            Rol
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {ROLES.map(r => {
+              const active = r.value === form.role;
+              return (
+                <Pressable
+                  key={r.value}
+                  onPress={() => setForm(p => ({ ...p, role: r.value }))}
+                  style={({ hovered }: any) => ({
+                    flex: 1, padding: 12, borderRadius: 10,
+                    backgroundColor: active ? AUTH.primary : (hovered ? `${AUTH.primary}08` : '#FFFFFF'),
+                    borderWidth: 1, borderColor: active ? AUTH.primary : AUTH.border,
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  })}
+                >
+                  <Text style={{
+                    fontFamily: AUTH_FONT.display,
+                    fontSize: 13, fontWeight: '700',
+                    color: active ? '#FFFFFF' : AUTH.ink,
+                  }}>
+                    {r.label}
+                  </Text>
+                  <Text style={{
+                    fontFamily: AUTH_FONT.sans,
+                    fontSize: 11, color: active ? 'rgba(255,255,255,0.85)' : AUTH.inkSoft,
+                    marginTop: 2,
+                  }}>
+                    {r.desc}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        <AuthInput
+          value={form.full_name}
+          onChangeText={set('full_name')}
+          placeholder="Ad Soyad"
+          autoCapitalize="sentences"
+          error={errors.full_name}
+          icon={<UserIcon size={15} color={AUTH.inkMuted} strokeWidth={1.8} />}
+        />
+        <AuthInput
+          value={form.phone}
+          onChangeText={set('phone')}
+          placeholder="Telefon (opsiyonel)"
+          keyboardType="phone-pad"
+          error={errors.phone}
+          icon={<Phone size={15} color={AUTH.inkMuted} strokeWidth={1.8} />}
+        />
+        <AuthInput
+          value={form.email}
+          onChangeText={set('email')}
+          placeholder="E-posta"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          error={errors.email}
+          icon={<Mail size={15} color={AUTH.inkMuted} strokeWidth={1.8} />}
+        />
+        <AuthInput
+          value={form.password}
+          onChangeText={set('password')}
+          placeholder="Şifre (en az 8 karakter)"
+          secureTextEntry={!showPass}
+          error={errors.password}
+          icon={<Lock size={15} color={AUTH.inkMuted} strokeWidth={1.8} />}
+          rightElement={
+            <Pressable onPress={() => setShowPass(!showPass)} hitSlop={8} style={({ hovered }: any) => ({ opacity: hovered ? 0.6 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) })}>
+              {showPass ? <EyeOff size={15} color={AUTH.inkMuted} strokeWidth={1.8} /> : <Eye size={15} color={AUTH.inkMuted} strokeWidth={1.8} />}
+            </Pressable>
+          }
+        />
+        <AuthInput
+          value={form.passwordConfirm}
+          onChangeText={set('passwordConfirm')}
+          placeholder="Şifre (tekrar)"
+          secureTextEntry={!showPassC}
+          error={errors.passwordConfirm}
+          icon={<Lock size={15} color={AUTH.inkMuted} strokeWidth={1.8} />}
+          rightElement={
+            <Pressable onPress={() => setShowPassC(!showPassC)} hitSlop={8} style={({ hovered }: any) => ({ opacity: hovered ? 0.6 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) })}>
+              {showPassC ? <EyeOff size={15} color={AUTH.inkMuted} strokeWidth={1.8} /> : <Eye size={15} color={AUTH.inkMuted} strokeWidth={1.8} />}
+            </Pressable>
+          }
+        />
+
+        <View style={{ marginTop: 8 }}>
+          <AuthButton label="Hesap Oluştur" onPress={handleRegister} loading={loading} />
+        </View>
+      </Animated.View>
+    </AuthShell>
   );
 }
-
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: C.background },
-  flex: { flex: 1 },
-  container: { flexGrow: 1, padding: 24 },
-  back: { marginBottom: 16 },
-  backText: { fontSize: 16, color: C.primary, fontWeight: '600' },
-  title: { fontSize: 26, fontWeight: '800', color: C.textPrimary, marginBottom: 4 },
-  subtitle: { fontSize: 14, color: C.textSecondary, marginBottom: 20 },
-  errorBox: {
-    backgroundColor: C.dangerBg,
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#FECACA',
-  },
-  errorBoxText: { color: C.danger, fontSize: 14, fontWeight: '500' },
-  successBox: {
-    backgroundColor: '#ECFDF5',
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#6EE7B7',
-  },
-  successBoxText: { color: '#059669', fontSize: 14, fontWeight: '500' },
-  roleLabel: { fontSize: 14, fontWeight: '600', color: C.textPrimary, marginBottom: 8 },
-  roleRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
-  roleBtn: {
-    flex: 1,
-    borderWidth: 1.5,
-    borderColor: C.border,
-    borderRadius: 10,
-    padding: 14,
-    backgroundColor: C.surface,
-  },
-  roleBtnActive: { borderColor: C.primary, backgroundColor: C.primaryBg },
-  roleBtnTitle: { fontSize: 14, fontWeight: '700', color: C.textSecondary, marginBottom: 2 },
-  roleBtnTitleActive: { color: C.primary },
-  roleBtnDesc: { fontSize: 11, color: C.textMuted },
-  roleBtnDescActive: { color: C.primary },
-  submitBtn: { marginTop: 8, marginBottom: 16 },
-  loginLink: { alignItems: 'center' },
-  loginLinkText: { fontSize: 14, color: C.textSecondary },
-  link: { color: C.primary, fontWeight: '600' },
-});

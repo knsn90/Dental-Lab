@@ -7,7 +7,6 @@ import {
   Platform,
   TouchableOpacity,
   TextInput,
-  ActivityIndicator,
   Animated,
   ScrollView,
 } from 'react-native';
@@ -20,6 +19,7 @@ import { F } from '../../core/theme/typography';
 import { useIsDesktop } from '../../core/layout/DesktopShell';
 
 import { AppIcon } from '../../core/ui/AppIcon';
+import { ActivityIndicator } from '../../core/ui/teethCompat';
 
 // ─── Admin palette ────────────────────────────────────────────────────────────
 const BRAND  = '#0F172A';  // dark navy
@@ -430,7 +430,7 @@ export default function AdminLoginScreen() {
           <ScrollView
             contentContainerStyle={dsk.formScroll}
             showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
+            keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
           >
             <View style={dsk.formInner}>{formJsx}</View>
           </ScrollView>
@@ -466,7 +466,7 @@ export default function AdminLoginScreen() {
         >
           <ScrollView
             showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
+            keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
             contentContainerStyle={{ flexGrow: 1 }}
           >
             {formJsx}

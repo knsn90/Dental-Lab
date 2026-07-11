@@ -7,13 +7,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, Pressable, TextInput, Switch,
-  ActivityIndicator, Platform, Modal, useWindowDimensions,
+  Platform, Modal, useWindowDimensions,
 } from 'react-native';
 import {
   Plus, Search, X, Save, Trash2, Edit3, User, Wrench,
   Monitor, Cog, AlertTriangle, CheckCircle, MapPin,
   Flame, Hammer, Drill, Sparkles, Wind, Microwave, Crosshair,
+  SlidersHorizontal, QrCode, Printer, Minus,
 } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   IntraoralScannerIcon, Printer3DIcon,
   MillingMachineIcon,
@@ -21,6 +23,13 @@ import {
 import { supabase } from '../../../core/api/supabase';
 import { DS } from '../../../core/theme/dsTokens';
 import { DatePicker } from '../../../core/ui/DatePicker';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
+import { CenteredLoader } from '../../../core/ui/CenteredLoader';
+import { HubContext } from '../../../core/ui/HubContext';
+import QRCode from 'react-native-qrcode-svg';
+import { printEquipmentLabel } from './equipment/printEquipmentLabel';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 // ─── Patterns tokens ─────────────────────────────────────────
 const DISPLAY = {
@@ -98,6 +107,8 @@ interface Props {
 export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
 
   const [items, setItems] = useState<Equipment[]>([]);
   const [techs, setTechs] = useState<Technician[]>([]);
@@ -105,9 +116,16 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterCat, setFilterCat] = useState<string | null>(null);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const insets = useSafeAreaInsets();
   const [modalOpen, setModalOpen] = useState(false);
   const [editItem, setEditItem] = useState<Equipment | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // QR etiket preview
+  const [qrItem, setQrItem] = useState<Equipment | null>(null);
+  const [qrCopies, setQrCopies] = useState(1);
+  const [qrPrinting, setQrPrinting] = useState(false);
 
   // Form state
   const [form, setForm] = useState({
@@ -237,119 +255,209 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
     ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
   };
 
+  // Embedded modda (StockScreen/SettingsHub) parent paddingHorizontal verir;
+  // standalone modda kendi 12px outer padding'imizi uygularız.
+  const isEmbedded = React.useContext(HubContext) === true;
+
   return (
     <ScrollView
       style={{ flex: 1 }}
-      contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
+      contentContainerStyle={{ paddingHorizontal: isEmbedded ? 0 : 12, paddingTop: 4, paddingBottom: 48, gap: 14 }}
       showsVerticalScrollIndicator={false}
     >
-      {/* KPI strip */}
-      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-        {[
-          { label: 'Toplam', value: items.length, color: accentColor },
-          { label: 'Aktif', value: activeCount, color: '#059669' },
-          { label: 'Bakımda', value: maintenanceCount, color: '#D97706' },
-          { label: 'Atanmış', value: assignedCount, color: '#2563EB' },
-        ].map(kpi => (
-          <View key={kpi.label} style={{
-            flex: 1, minWidth: 100, paddingVertical: 12, paddingHorizontal: 14,
-            borderRadius: 16, backgroundColor: '#FFF',
-            ...(Platform.OS === 'web' ? { boxShadow: '0 1px 3px rgba(0,0,0,0.04)' } as any : {}),
-          }}>
-            <Text style={{ fontSize: 20, fontWeight: '700', color: kpi.color }}>{kpi.value}</Text>
-            <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 2 }}>{kpi.label}</Text>
+      {/* F1 HeroCard — Demirbaş özeti */}
+      <View style={{
+        borderRadius: 20, overflow: 'hidden',
+        backgroundColor: accentColor, padding: 18,
+        position: 'relative',
+      }}>
+        <View style={{ position: 'absolute', top: -40, right: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.18)' }} />
+        <View style={{ position: 'absolute', bottom: -50, left: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{
+              fontSize: 10, fontWeight: '600', letterSpacing: 1,
+              textTransform: 'uppercase', color: 'rgba(255,255,255,0.78)', marginBottom: 8,
+            }}>
+              Toplam Demirbaş
+            </Text>
+            <Text style={{ ...DISPLAY, fontSize: 36, color: '#FFFFFF', letterSpacing: -1, lineHeight: 40 }}>
+              {items.length}
+            </Text>
+            <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.72)', marginTop: 4 }}>
+              {assignedCount} atanmış · {items.length - assignedCount} havuzda
+            </Text>
           </View>
-        ))}
+
+          <View style={{
+            width: 44, height: 44, borderRadius: 14,
+            alignItems: 'center', justifyContent: 'center',
+            backgroundColor: 'rgba(255,255,255,0.18)',
+          }}>
+            <Wrench size={20} color="#FFFFFF" strokeWidth={1.6} />
+          </View>
+        </View>
+
+        {/* Mini stats row */}
+        <View style={{
+          flexDirection: 'row', gap: 8, marginTop: 16,
+        }}>
+          {[
+            { label: 'Aktif', value: activeCount, icon: CheckCircle },
+            { label: 'Bakımda', value: maintenanceCount, icon: AlertTriangle },
+            { label: 'Atanmış', value: assignedCount, icon: User },
+          ].map(stat => {
+            const Icon = stat.icon;
+            return (
+              <View key={stat.label} style={{
+                flex: 1, paddingVertical: 10, paddingHorizontal: 10,
+                borderRadius: 14,
+                backgroundColor: 'rgba(255,255,255,0.16)',
+              }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 }}>
+                  <Icon size={11} color="rgba(255,255,255,0.85)" strokeWidth={2} />
+                  <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>
+                    {stat.label}
+                  </Text>
+                </View>
+                <Text style={{ ...DISPLAY, fontSize: 20, color: '#FFFFFF', letterSpacing: -0.5, lineHeight: 22 }}>
+                  {stat.value}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
       </View>
 
-      {/* Search + Add */}
-      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12, alignItems: 'center' }}>
+      {/* F3 SearchFilterBar — Search + Filtre + Ekle (44px) */}
+      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14, alignItems: 'center' }}>
         <View style={{
-          flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
-          height: 40, borderRadius: 12, backgroundColor: '#FFF',
-          paddingHorizontal: 12, borderWidth: 1, borderColor: DS.ink[200],
+          flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8,
+          height: 44, borderRadius: 14, backgroundColor: T.card,
+          paddingHorizontal: 12, borderWidth: 1, borderColor: T.hairline,
         }}>
-          <Search size={15} color={DS.ink[400]} strokeWidth={1.8} />
+          <Search size={15} color={T.ink3} strokeWidth={1.8} />
           <TextInput
             value={search}
             onChangeText={setSearch}
             placeholder="Cihaz ara..."
-            placeholderTextColor={DS.ink[400]}
+            placeholderTextColor={T.ink3}
             style={{
-              flex: 1, fontSize: 13, color: DS.ink[900],
+              flex: 1, fontSize: 13, color: T.ink,
               ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
             } as any}
           />
           {search ? (
             <Pressable onPress={() => setSearch('')} style={{ padding: 2 }}>
-              <X size={14} color={DS.ink[400]} strokeWidth={2} />
+              <X size={14} color={T.ink3} strokeWidth={2} />
             </Pressable>
           ) : null}
         </View>
+
+        {/* F3 Filtre butonu */}
+        {(() => {
+          const hasFilter = filterCat !== null;
+          return (
+            <Pressable
+              onPress={() => setFilterOpen(true)}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 6,
+                height: 44, paddingHorizontal: 14, borderRadius: 14,
+                backgroundColor: hasFilter ? (isDark ? T.ink : DS.ink[900]) : T.card,
+                borderWidth: hasFilter ? 0 : 1, borderColor: T.hairline,
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              }}
+            >
+              <SlidersHorizontal size={14} strokeWidth={1.8} color={hasFilter ? (isDark ? T.bg : '#FFFFFF') : T.ink2} />
+              <Text style={{ fontSize: 12, fontWeight: hasFilter ? '700' : '600', color: hasFilter ? (isDark ? T.bg : '#FFFFFF') : T.ink2 }}>
+                Filtre{hasFilter ? ' (1)' : ''}
+              </Text>
+            </Pressable>
+          );
+        })()}
+
         <Pressable
           onPress={openNew}
           style={{
             flexDirection: 'row', alignItems: 'center', gap: 5,
-            height: 40, paddingHorizontal: 14, borderRadius: 9999,
-            backgroundColor: accentColor,
+            height: 44, paddingHorizontal: 14, borderRadius: 14,
+            backgroundColor: isDark ? T.ink : DS.ink[900],
             ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
           } as any}
         >
-          <Plus size={15} color="#FFF" strokeWidth={2} />
-          <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFF' }}>Ekle</Text>
+          <Plus size={15} color={isDark ? T.bg : '#FFF'} strokeWidth={2.2} />
+          <Text style={{ fontSize: 12, fontWeight: '700', color: isDark ? T.bg : '#FFF' }}>Ekle</Text>
         </Pressable>
       </View>
 
-      {/* Category filter pills */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
-        <View style={{ flexDirection: 'row', gap: 4 }}>
-          <Pressable
-            onPress={() => setFilterCat(null)}
-            style={{
-              paddingHorizontal: 10, paddingVertical: 5, borderRadius: 9999,
-              backgroundColor: !filterCat ? accentColor : DS.ink[100],
-              ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
-            } as any}
-          >
-            <Text style={{ fontSize: 11, fontWeight: '600', color: !filterCat ? '#FFF' : DS.ink[500] }}>
-              Tümü
-            </Text>
-          </Pressable>
-          {CATEGORIES.map(cat => {
-            const active = filterCat === cat.key;
-            const count = items.filter(i => i.category === cat.key).length;
-            if (count === 0) return null;
-            return (
-              <Pressable
-                key={cat.key}
-                onPress={() => setFilterCat(active ? null : cat.key)}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 4,
-                  paddingHorizontal: 10, paddingVertical: 5, borderRadius: 9999,
-                  backgroundColor: active ? accentColor : DS.ink[100],
-                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
-                } as any}
-              >
-                <Text style={{ fontSize: 11, fontWeight: '600', color: active ? '#FFF' : DS.ink[500] }}>
-                  {cat.label}
-                </Text>
-                <View style={{
-                  minWidth: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
-                  backgroundColor: active ? 'rgba(255,255,255,0.25)' : DS.ink[200],
-                }}>
-                  <Text style={{ fontSize: 9, fontWeight: '800', color: active ? '#FFF' : DS.ink[500] }}>
-                    {count}
-                  </Text>
-                </View>
+      {/* F5 FilterSheet — Kategori */}
+      <Modal visible={filterOpen} transparent animationType="fade" onRequestClose={() => setFilterOpen(false)}>
+        <Pressable onPress={() => setFilterOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.42)', justifyContent: 'flex-end', ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}) }}>
+          <Pressable onPress={(e) => e.stopPropagation()} style={{
+            backgroundColor: T.card,
+            borderTopLeftRadius: 24, borderTopRightRadius: 24,
+            paddingTop: 12, paddingBottom: Math.max(insets.bottom, 16) + 12,
+            maxHeight: '85%',
+          }}>
+            <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: DS.ink[200], marginBottom: 14 }} />
+            <View style={{ paddingHorizontal: 20, paddingBottom: 12, flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={{ fontSize: 18, fontWeight: '700', color: DS.ink[900], flex: 1 }}>Filtrele</Text>
+              <Pressable onPress={() => setFilterCat(null)} style={{ paddingHorizontal: 10, paddingVertical: 6 }}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[500] }}>Temizle</Text>
               </Pressable>
-            );
-          })}
-        </View>
-      </ScrollView>
+              <Pressable onPress={() => setFilterOpen(false)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', marginLeft: 4 }}>
+                <X size={16} color={DS.ink[700]} strokeWidth={2} />
+              </Pressable>
+            </View>
+            <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 12, gap: 18 }}>
+              <View style={{ gap: 8 }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[400], paddingHorizontal: 4 }}>Kategori</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  <Pressable onPress={() => setFilterCat(null)} style={{
+                    paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999,
+                    borderWidth: !filterCat ? 0 : 1, borderColor: 'rgba(0,0,0,0.08)',
+                    backgroundColor: !filterCat ? DS.ink[900] : '#FFF',
+                    cursor: 'pointer' as any,
+                  }}>
+                    <Text style={{ fontSize: 12.5, fontWeight: !filterCat ? '700' : '500', color: !filterCat ? '#FFFFFF' : DS.ink[700] }}>Tümü</Text>
+                  </Pressable>
+                  {CATEGORIES.map(cat => {
+                    const active = filterCat === cat.key;
+                    const count = items.filter(i => i.category === cat.key).length;
+                    if (count === 0) return null;
+                    return (
+                      <Pressable key={cat.key} onPress={() => setFilterCat(active ? null : cat.key)} style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 6,
+                        paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999,
+                        borderWidth: active ? 0 : 1, borderColor: 'rgba(0,0,0,0.08)',
+                        backgroundColor: active ? DS.ink[900] : '#FFF',
+                        cursor: 'pointer' as any,
+                      }}>
+                        <Text style={{ fontSize: 12.5, fontWeight: active ? '700' : '500', color: active ? '#FFFFFF' : DS.ink[700] }}>{cat.label}</Text>
+                        <Text style={{ fontSize: 10.5, fontWeight: '700', color: active ? 'rgba(255,255,255,0.78)' : DS.ink[400] }}>{count}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            </ScrollView>
+            <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
+              <Pressable onPress={() => setFilterOpen(false)} style={{
+                height: 48, borderRadius: 14, backgroundColor: DS.ink[900],
+                alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer' as any,
+              }}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>Uygula</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Equipment list */}
       {loading ? (
-        <ActivityIndicator color={accentColor} style={{ marginTop: 40 }} />
+        <CenteredLoader color={accentColor} inline />
       ) : filtered.length === 0 ? (
         <View style={{ alignItems: 'center', paddingVertical: 60 }}>
           <Wrench size={32} color={DS.ink[300]} strokeWidth={1.2} />
@@ -381,6 +489,7 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
                 onPress={() => openEdit(item)}
                 style={{
                   ...cardSolid,
+                  backgroundColor: T.card,
                   flexDirection: 'row', alignItems: 'center', gap: 14,
                   padding: 16,
                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
@@ -398,14 +507,14 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
                 {/* Info */}
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: T.ink }} numberOfLines={1}>
                       {item.name}
                     </Text>
                     <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 9999, backgroundColor: st.bg }}>
                       <Text style={{ fontSize: 9, fontWeight: '700', color: st.color }}>{st.label}</Text>
                     </View>
                   </View>
-                  <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 2 }} numberOfLines={1}>
+                  <Text style={{ fontSize: 12, color: T.ink3, marginTop: 2 }} numberOfLines={1}>
                     {[item.brand, item.model].filter(Boolean).join(' · ') || cat.label}
                     {item.serial_number ? ` — SN: ${item.serial_number}` : ''}
                   </Text>
@@ -443,8 +552,22 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
                   ) : null}
                 </View>
 
-                {/* Edit icon */}
-                <Edit3 size={14} color={DS.ink[300]} strokeWidth={1.6} />
+                {/* Actions: QR + Edit */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Pressable
+                    onPress={(e: any) => { e?.stopPropagation?.(); setQrCopies(1); setQrItem(item); }}
+                    hitSlop={8}
+                    style={({ pressed }: any) => ({
+                      width: 32, height: 32, borderRadius: 10,
+                      alignItems: 'center', justifyContent: 'center',
+                      backgroundColor: pressed ? `${accentColor}18` : `${accentColor}0D`,
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                    })}
+                  >
+                    <QrCode size={15} color={accentColor} strokeWidth={1.8} />
+                  </Pressable>
+                  <Edit3 size={14} color={DS.ink[300]} strokeWidth={1.6} />
+                </View>
               </Pressable>
             );
           })}
@@ -460,34 +583,35 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
       >
         <View style={{
           flex: 1, justifyContent: 'center', alignItems: 'center',
-          backgroundColor: 'rgba(0,0,0,0.4)',
+          backgroundColor: 'rgba(10,14,26,0.42)',
+          ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}),
         }}>
           <View style={{
             width: isDesktop ? 520 : '92%',
             maxHeight: '85%',
-            backgroundColor: '#FFF',
+            backgroundColor: T.card,
             borderRadius: 24,
             overflow: 'hidden',
-            ...(Platform.OS === 'web' ? { boxShadow: '0 8px 32px rgba(0,0,0,0.18)' } as any : {}),
+            ...(Platform.OS === 'web' ? { boxShadow: isDark ? '0 8px 32px rgba(0,0,0,0.6)' : '0 8px 32px rgba(0,0,0,0.18)' } as any : {}),
           }}>
             {/* Header */}
             <View style={{
               flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
               paddingHorizontal: 24, paddingVertical: 16,
-              borderBottomWidth: 1, borderBottomColor: DS.ink[100],
+              borderBottomWidth: 1, borderBottomColor: T.hairline,
             }}>
-              <Text style={{ ...DISPLAY, fontSize: 18, color: DS.ink[900] }}>
+              <Text style={{ ...DISPLAY, fontSize: 18, color: T.ink }}>
                 {editItem ? 'Demirbaş Düzenle' : 'Yeni Demirbaş'}
               </Text>
               <Pressable
                 onPress={() => setModalOpen(false)}
                 style={{
                   width: 32, height: 32, borderRadius: 10,
-                  backgroundColor: DS.ink[50], alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: T.cardSoft, alignItems: 'center', justifyContent: 'center',
                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
                 } as any}
               >
-                <X size={16} color={DS.ink[500]} strokeWidth={2} />
+                <X size={16} color={T.ink2} strokeWidth={2} />
               </Pressable>
             </View>
 
@@ -765,18 +889,32 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
               borderTopWidth: 1, borderTopColor: DS.ink[100],
             }}>
               {editItem ? (
-                <Pressable
-                  onPress={() => { handleDelete(editItem.id); setModalOpen(false); }}
-                  style={{
-                    flexDirection: 'row', alignItems: 'center', gap: 5,
-                    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9999,
-                    backgroundColor: 'rgba(220,38,38,0.08)',
-                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
-                  } as any}
-                >
-                  <Trash2 size={13} color="#DC2626" strokeWidth={1.8} />
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: '#DC2626' }}>Sil</Text>
-                </Pressable>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Pressable
+                    onPress={() => { handleDelete(editItem.id); setModalOpen(false); }}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 5,
+                      paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9999,
+                      backgroundColor: 'rgba(220,38,38,0.08)',
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                    } as any}
+                  >
+                    <Trash2 size={13} color="#DC2626" strokeWidth={1.8} />
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#DC2626' }}>Sil</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => { setQrCopies(1); setQrItem(editItem); setModalOpen(false); }}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 5,
+                      paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9999,
+                      backgroundColor: `${accentColor}14`,
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                    } as any}
+                  >
+                    <QrCode size={13} color={accentColor} strokeWidth={1.8} />
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: accentColor }}>Etiket</Text>
+                  </Pressable>
+                </View>
               ) : <View />}
 
               <Pressable
@@ -796,6 +934,229 @@ export function EquipmentSection({ accentColor = '#0F172A' }: Props) {
                 </Text>
               </Pressable>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─── QR Label Preview Modal ─────────────────────────────── */}
+      <Modal
+        visible={!!qrItem}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setQrItem(null)}
+      >
+        <View style={{
+          flex: 1, justifyContent: 'center', alignItems: 'center',
+          backgroundColor: 'rgba(10,14,26,0.42)',
+          ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' } : {}),
+          paddingHorizontal: 16, paddingVertical: 24,
+        }}>
+          <Pressable
+            onPress={() => setQrItem(null)}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+          />
+
+          <View style={{
+            width: '100%',
+            maxWidth: 380,
+            maxHeight: '92%',
+            flexShrink: 1,
+            backgroundColor: '#FFFFFF',
+            borderRadius: 24,
+            overflow: 'hidden',
+            ...(Platform.OS === 'web' ? { boxShadow: '0 8px 32px rgba(0,0,0,0.18)' } as any : {}),
+          }}>
+            {/* Header */}
+            <View style={{
+              flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+              paddingHorizontal: 20, paddingVertical: 14,
+              borderBottomWidth: 1, borderBottomColor: DS.ink[100],
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                <QrCode size={18} color={accentColor} strokeWidth={1.8} />
+                <Text style={{ ...DISPLAY, fontSize: 17, color: DS.ink[900] }} numberOfLines={1}>
+                  Demirbaş Etiketi
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => setQrItem(null)}
+                hitSlop={8}
+                style={{ padding: 6, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) } as any}
+              >
+                <X size={18} color={DS.ink[500]} strokeWidth={1.6} />
+              </Pressable>
+            </View>
+
+            {qrItem ? (
+              <ScrollView
+                style={{ flexShrink: 1 }}
+                contentContainerStyle={{ padding: 16, gap: 12, alignItems: 'stretch' }}
+                showsVerticalScrollIndicator={false}
+              >
+                {/* Label Preview — QR + info ÜST/ALT */}
+                <View style={{
+                  alignItems: 'center',
+                  padding: 14,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: DS.ink[100],
+                  backgroundColor: '#FAFAFA',
+                  gap: 10,
+                }}>
+                  <View style={{
+                    padding: 10, borderRadius: 14, backgroundColor: '#FFFFFF',
+                    ...(Platform.OS === 'web' ? { boxShadow: '0 1px 2px rgba(0,0,0,0.04)' } as any : {}),
+                  }}>
+                    <QRCode
+                      value={JSON.stringify({ type: 'equipment', id: qrItem.id, name: qrItem.name })}
+                      size={130}
+                      color={DS.ink[900]}
+                      backgroundColor="#FFFFFF"
+                      ecl="H"
+                    />
+                  </View>
+
+                  <View style={{ width: '100%', alignItems: 'center', gap: 3 }}>
+                    <Text style={{
+                      fontSize: 9, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase',
+                      color: DS.ink[400],
+                    }} numberOfLines={1}>
+                      Siman
+                    </Text>
+                    <Text style={{
+                      fontSize: 16, fontWeight: '700', color: DS.ink[900],
+                      textAlign: 'center', marginTop: 2,
+                    }} numberOfLines={2}>
+                      {qrItem.name}
+                    </Text>
+
+                    {([qrItem.brand, qrItem.model].filter(Boolean).join(' ').trim()) ? (
+                      <Text style={{ fontSize: 12, color: DS.ink[500], textAlign: 'center' }} numberOfLines={1}>
+                        {[qrItem.brand, qrItem.model].filter(Boolean).join(' ')}
+                      </Text>
+                    ) : null}
+
+                    {qrItem.serial_number ? (
+                      <View style={{
+                        marginTop: 4,
+                        paddingHorizontal: 10, paddingVertical: 3,
+                        borderRadius: 9999,
+                        backgroundColor: DS.ink[100],
+                      }}>
+                        <Text style={{
+                          fontSize: 10, fontWeight: '700', color: DS.ink[900], letterSpacing: 0.4,
+                          fontFamily: Platform.OS === 'web' ? 'ui-monospace, Menlo, monospace' : undefined,
+                        }}>
+                          SN: {qrItem.serial_number}
+                        </Text>
+                      </View>
+                    ) : null}
+
+                    {qrItem.station?.name || qrItem.assignee?.full_name ? (
+                      <View style={{
+                        flexDirection: 'row', flexWrap: 'wrap', gap: 6,
+                        justifyContent: 'center', marginTop: 6,
+                      }}>
+                        {qrItem.station?.name ? (
+                          <View style={{
+                            flexDirection: 'row', alignItems: 'center', gap: 4,
+                            paddingHorizontal: 8, paddingVertical: 3, borderRadius: 9999,
+                            backgroundColor: 'rgba(124,58,237,0.10)',
+                          }}>
+                            <MapPin size={10} color="#7C3AED" strokeWidth={2} />
+                            <Text style={{ fontSize: 10, fontWeight: '600', color: '#7C3AED' }}>
+                              {qrItem.station.name}
+                            </Text>
+                          </View>
+                        ) : null}
+                        {qrItem.assignee?.full_name ? (
+                          <View style={{
+                            flexDirection: 'row', alignItems: 'center', gap: 4,
+                            paddingHorizontal: 8, paddingVertical: 3, borderRadius: 9999,
+                            backgroundColor: 'rgba(37,99,235,0.10)',
+                          }}>
+                            <User size={10} color="#2563EB" strokeWidth={2} />
+                            <Text style={{ fontSize: 10, fontWeight: '600', color: '#2563EB' }}>
+                              {qrItem.assignee.full_name}
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    ) : null}
+
+                    <Text style={{
+                      fontSize: 9, color: DS.ink[300], letterSpacing: 0.6, marginTop: 8,
+                      fontFamily: Platform.OS === 'web' ? 'ui-monospace, Menlo, monospace' : undefined,
+                    }}>
+                      {qrItem.id.slice(0, 8).toUpperCase()}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Copies stepper */}
+                <View style={{
+                  flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                  paddingHorizontal: 4,
+                }}>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[700] }}>
+                    Kopya sayısı
+                  </Text>
+                  <View style={{
+                    flexDirection: 'row', alignItems: 'center',
+                    borderRadius: 9999, borderWidth: 1, borderColor: DS.ink[200],
+                    overflow: 'hidden', backgroundColor: '#FFFFFF',
+                  }}>
+                    <Pressable
+                      onPress={() => setQrCopies(c => Math.max(1, c - 1))}
+                      hitSlop={6}
+                      style={{ paddingHorizontal: 12, paddingVertical: 7, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) } as any}
+                    >
+                      <Minus size={14} color={DS.ink[700]} strokeWidth={2} />
+                    </Pressable>
+                    <Text style={{
+                      minWidth: 28, textAlign: 'center',
+                      fontSize: 13, fontWeight: '700', color: DS.ink[900],
+                    }}>
+                      {qrCopies}
+                    </Text>
+                    <Pressable
+                      onPress={() => setQrCopies(c => Math.min(6, c + 1))}
+                      hitSlop={6}
+                      style={{ paddingHorizontal: 12, paddingVertical: 7, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) } as any}
+                    >
+                      <Plus size={14} color={DS.ink[700]} strokeWidth={2} />
+                    </Pressable>
+                  </View>
+                </View>
+
+                {/* Print CTA */}
+                <Pressable
+                  onPress={async () => {
+                    if (!qrItem || qrPrinting) return;
+                    setQrPrinting(true);
+                    await printEquipmentLabel(qrItem, { copies: qrCopies });
+                    setQrPrinting(false);
+                  }}
+                  disabled={qrPrinting}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    paddingVertical: 13, borderRadius: 14,
+                    backgroundColor: accentColor,
+                    opacity: qrPrinting ? 0.6 : 1,
+                    ...(Platform.OS === 'web' ? { cursor: qrPrinting ? 'default' : 'pointer' } : {}),
+                  } as any}
+                >
+                  <Printer size={15} color="#FFF" strokeWidth={1.8} />
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFF' }}>
+                    {qrPrinting ? 'Hazırlanıyor...' : Platform.OS === 'web' ? 'Yazdır / PDF' : 'PDF Olarak Paylaş'}
+                  </Text>
+                </Pressable>
+
+                <Text style={{ fontSize: 11, color: DS.ink[400], textAlign: 'center' }}>
+                  Etiket boyutu: 62 × 40 mm · QR tarandığında bu cihaza ulaşır.
+                </Text>
+              </ScrollView>
+            ) : null}
           </View>
         </View>
       </Modal>

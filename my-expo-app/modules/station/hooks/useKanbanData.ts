@@ -1,11 +1,13 @@
 // modules/station/hooks/useKanbanData.ts
-// Stage-driven Kanban data layer. Groups by Stage (TRIAGE → QC), not by station name.
+// Üretim panosu veri katmanı. Kolonlar lab'ın GERÇEK istasyonlarından (lab_stations,
+// sequence_hint sırasıyla) üretilir; kartlar current_station_name ile o kolona düşer.
+// card.current_stage (checklist/SLA için) yine stage eşlemesinden gelir.
 // Realtime: order_stages + work_orders.
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../../../core/api/supabase';
-import { mapStationToStage, KANBAN_STAGES } from '../../orders/stationMapping';
-import { STAGE_LABEL, STAGE_COLOR, type Stage } from '../../orders/stages';
+import { mapStationToStage } from '../../orders/stationMapping';
+import { type Stage } from '../../orders/stages';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -25,6 +27,7 @@ export interface KanbanCard {
 
   current_station_name:  string | null;
   current_station_color: string | null;
+  parallel_group:        number | null;
 
   technician_id:    string | null;
   technician_name:  string | null;
@@ -33,7 +36,7 @@ export interface KanbanCard {
   clinic_name:      string | null;
 
   // Derived (added in hook)
-  current_stage:    Stage;             // explicit, never undefined
+  current_stage:    Stage;             // checklist/SLA için stage eşlemesi
   priority?:        string;
   delay_reason?:    string | null;
   rework_count?:    number;
@@ -42,20 +45,25 @@ export interface KanbanCard {
 }
 
 export interface KanbanColumn {
-  stage:        Stage | 'UNASSIGNED';
+  key:          string;            // station id veya 'UNASSIGNED'
   label:        string;
   color:        string;
   cards:        KanbanCard[];
-  /** workload by technician for the workload summary line */
   workload:     { name: string; count: number }[];
+  isUnassigned: boolean;
+  overdue:      number;            // teslim tarihi geçmiş kart sayısı (operasyonel zeka)
 }
 
+interface StationRow { id: string; name: string; color: string | null; sequence_hint: number | null; }
+
 const UNASSIGNED_LABEL = 'Atanmamış';
+const isOverdue = (d: string | null) => { if (!d) return false; const t = new Date(d).getTime(); return Number.isFinite(t) && t < Date.now(); };
 
 // ── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useKanbanData(labId: string | null | undefined) {
   const [cards,    setCards]    = useState<KanbanCard[]>([]);
+  const [stations, setStations] = useState<StationRow[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<Date | null>(null);
@@ -64,10 +72,10 @@ export function useKanbanData(labId: string | null | undefined) {
     if (!labId) return;
     setLoading(true);
 
-    const { data, error: err } = await supabase
-      .from('v_active_orders_kanban')
-      .select('*')
-      .order('delivery_date', { ascending: true });
+    const [{ data, error: err }, stRes] = await Promise.all([
+      supabase.from('v_active_orders_kanban').select('*').order('delivery_date', { ascending: true }),
+      supabase.from('lab_stations').select('id, name, color, sequence_hint').eq('is_active', true).order('sequence_hint', { ascending: true }),
+    ]);
 
     if (err) {
       setError(err.message);
@@ -75,13 +83,17 @@ export function useKanbanData(labId: string | null | undefined) {
       return;
     }
 
-    const rows = (data ?? []) as Omit<KanbanCard, 'current_stage'>[];
+    // 'iptal' savunması — view migration'ı (20260711140000) uygulanana kadar
+    // iptal edilen siparişler view'dan gelebilir; panoda asla gösterme.
+    const rows = ((data ?? []) as Omit<KanbanCard, 'current_stage'>[])
+      .filter(r => r.status !== 'iptal');
     const enriched: KanbanCard[] = rows.map(r => ({
       ...r,
       current_stage: mapStationToStage(r.current_station_name, 'TRIAGE'),
     }));
 
     setCards(enriched);
+    setStations(((stRes.data ?? []) as StationRow[]));
     setLastSync(new Date());
     setError(null);
     setLoading(false);
@@ -99,54 +111,57 @@ export function useKanbanData(labId: string | null | undefined) {
     return () => { supabase.removeChannel(channel); };
   }, [labId, load]);
 
-  // Build columns: 7 stage columns + Atanmamış. Always render all (empty incl).
+  // Kolonlar: gerçek istasyonlar (sequence sırasıyla) + kartlarda görülen ekstra istasyonlar + Atanmamış.
   const columns = useMemo<KanbanColumn[]>(() => {
-    const buckets = new Map<string, KanbanCard[]>();
-    for (const stage of KANBAN_STAGES) buckets.set(stage, []);
+    const byName = new Map<string, KanbanCard[]>();   // station name → cards
     const unassigned: KanbanCard[] = [];
 
     for (const c of cards) {
       const noOwner = !c.technician_id || !c.current_station_name || c.stage_status === null;
-      if (noOwner) {
-        unassigned.push(c);
-        continue;
-      }
-      buckets.get(c.current_stage)?.push(c);
+      if (noOwner) { unassigned.push(c); continue; }
+      const key = c.current_station_name as string;
+      (byName.get(key) ?? byName.set(key, []).get(key)!).push(c);
     }
 
-    const stageCols: KanbanColumn[] = KANBAN_STAGES.map(stage => {
-      const list = buckets.get(stage) ?? [];
-      // workload summary by technician
+    // İstasyon sırası: aktif istasyonlar (sequence) önce; kartlarda olup listede olmayanlar sona.
+    const ordered: StationRow[] = [...stations];
+    const known = new Set(stations.map(s => s.name));
+    for (const name of byName.keys()) {
+      if (!known.has(name)) ordered.push({ id: `x:${name}`, name, color: null, sequence_hint: 9999 });
+    }
+
+    const sortCards = (list: KanbanCard[]) => list.sort((a, b) => {
+      const order = { aktif: 0, bekliyor: 1, tamamlandi: 2 } as Record<string, number>;
+      return (order[a.stage_status as string] ?? 3) - (order[b.stage_status as string] ?? 3);
+    });
+
+    const stationCols: KanbanColumn[] = ordered.map((st) => {
+      const list = byName.get(st.name) ?? [];
       const wmap = new Map<string, number>();
-      for (const c of list) {
-        const n = c.technician_name ?? 'Atanmadı';
-        wmap.set(n, (wmap.get(n) ?? 0) + 1);
-      }
+      for (const c of list) { const n = c.technician_name ?? 'Atanmadı'; wmap.set(n, (wmap.get(n) ?? 0) + 1); }
       return {
-        stage,
-        label: STAGE_LABEL[stage],
-        color: STAGE_COLOR[stage],
-        cards: list.sort((a, b) => {
-          const order = { aktif: 0, bekliyor: 1, tamamlandi: 2 };
-          return (order[a.stage_status as keyof typeof order] ?? 3) -
-                 (order[b.stage_status as keyof typeof order] ?? 3);
-        }),
-        workload: Array.from(wmap.entries())
-          .map(([name, count]) => ({ name, count }))
-          .sort((a, b) => b.count - a.count),
+        key: st.id,
+        label: st.name,
+        color: st.color || list[0]?.current_station_color || '#3B82F6',
+        cards: sortCards(list),
+        workload: Array.from(wmap.entries()).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),
+        isUnassigned: false,
+        overdue: list.filter(c => isOverdue(c.delivery_date)).length,
       };
     });
 
     const unassignedCol: KanbanColumn = {
-      stage: 'UNASSIGNED',
+      key: 'UNASSIGNED',
       label: UNASSIGNED_LABEL,
       color: '#94A3B8',
-      cards: unassigned,
+      cards: sortCards(unassigned),
       workload: [],
+      isUnassigned: true,
+      overdue: unassigned.filter(c => isOverdue(c.delivery_date)).length,
     };
 
-    return [...stageCols, unassignedCol];
-  }, [cards]);
+    return [...stationCols, unassignedCol];
+  }, [cards, stations]);
 
   return { columns, cards, loading, error, lastSync, refresh: load };
 }

@@ -1,1 +1,2 @@
-export { AdminApprovalsScreen as default } from '../../modules/approvals/AdminApprovalsScreen';
+import { lazyRoute } from '../../core/_lazyRoute';
+export default lazyRoute(() => import('../../modules/approvals/AdminApprovalsScreen'), 'AdminApprovalsScreen');

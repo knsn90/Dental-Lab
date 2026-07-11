@@ -16,7 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   QrCode, MapPin, Crosshair, Share2, RefreshCw,
-  Save, Info, AlertCircle,
+  Save, Info, AlertCircle, Printer,
 } from 'lucide-react-native';
 import * as Location from 'expo-location';
 
@@ -36,13 +36,18 @@ const DISPLAY = {
 };
 
 // ─── Public checkin URL base ─────────────────────────────────────────────────
-const APP_URL = 'https://dental-lab-steel.vercel.app/checkin';
+// Check-in hedefi — domaine bağlanmadan, çalışılan origin'den türetilir
+// (web'de deploy edilen domain neyse onu kullanır; native/fallback siman.app).
+const APP_URL =
+  typeof window !== 'undefined' && window.location?.origin
+    ? `${window.location.origin}/checkin`
+    : 'https://siman.app/checkin';
 
 interface Props {
   accentColor?: string;
 }
 
-export function LabCheckinSettings({ accentColor = '#EA7A4C' }: Props) {
+export function LabCheckinSettings({ accentColor = '#4771AB' }: Props) {
   const [lab, setLab]         = useState<LabLocation | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving]   = useState(false);
@@ -133,6 +138,21 @@ export function LabCheckinSettings({ accentColor = '#EA7A4C' }: Props) {
     await Share.share({ message: `QR Check-in URL: ${url}` });
   }
 
+  // ── A4/A5 poster yazdır (web) ─────────────────────────────────────────────
+  async function printPoster(size: 'A4' | 'A5') {
+    if (!lab?.checkin_token) { toast.error('QR token yüklenmedi.'); return; }
+    if (Platform.OS !== 'web' || typeof window === 'undefined') {
+      toast.error('Poster yazdırma yalnızca web üzerinden yapılabilir.');
+      return;
+    }
+    const { buildCheckinPosterHtml } = await import('../../../lib/printCheckinPoster');
+    const html = buildCheckinPosterHtml({ qrUrl: qrValue, labName: lab.name, size });
+    const w = window.open('', '_blank');
+    if (!w) { toast.error('Açılır pencere engellendi. İzin verin.'); return; }
+    w.document.write(html);
+    w.document.close();
+  }
+
   const qrValue = lab ? `${APP_URL}?token=${lab.checkin_token}` : '';
 
   if (loading) {
@@ -161,7 +181,7 @@ export function LabCheckinSettings({ accentColor = '#EA7A4C' }: Props) {
               QR Check-in
             </Text>
             <Text style={{ fontSize: 13, color: DS.ink[500], marginTop: 2 }}>
-              Çalışanlar bu QR kodu okutarak giriş/çıkış yapar
+              Ekip bu QR kodu okutarak giriş/çıkış yapar
             </Text>
           </View>
         </View>
@@ -253,6 +273,29 @@ export function LabCheckinSettings({ accentColor = '#EA7A4C' }: Props) {
               <Text style={{ fontSize: 13, fontWeight: '700', color: '#DC2626' }}>Yenile</Text>
             </Pressable>
           </View>
+
+          {/* Poster yazdır — girişe asmak için A4/A5 */}
+          {lab?.checkin_token && (
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+              {(['A4', 'A5'] as const).map(sz => (
+                <Pressable
+                  key={sz}
+                  onPress={() => printPoster(sz)}
+                  style={{
+                    flex: 1,
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    paddingVertical: 11, borderRadius: 12,
+                    borderWidth: 1, borderColor: DS.ink[200],
+                    backgroundColor: '#FFFFFF',
+                    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+                  }}
+                >
+                  <Printer size={14} color={DS.ink[700]} strokeWidth={1.8} />
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[800] }}>{sz} Poster</Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
         </View>
 
         {/* ── GPS Location Card ──────────────────────────────────────── */}
@@ -266,7 +309,7 @@ export function LabCheckinSettings({ accentColor = '#EA7A4C' }: Props) {
                 </Text>
               </View>
               <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 4 }}>
-                Boş bırakılırsa GPS kontrolü yapılmaz (sadece QR yeterli)
+                Konum girilmeli — boş bırakılırsa QR ile giriş reddedilir (mesafe kontrolü zorunlu)
               </Text>
             </View>
             <Pressable
@@ -321,7 +364,7 @@ export function LabCheckinSettings({ accentColor = '#EA7A4C' }: Props) {
               placeholderTextColor={DS.ink[400]}
             />
             <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 6, lineHeight: 16 }}>
-              Varsayılan 150m. QR tarandığında çalışanın bu mesafe içinde olması gerekir.
+              Varsayılan 150m. QR tarandığında personelın bu mesafe içinde olması gerekir.
             </Text>
           </View>
         </View>
@@ -342,8 +385,8 @@ export function LabCheckinSettings({ accentColor = '#EA7A4C' }: Props) {
             <Info size={14} color={accentColor} strokeWidth={1.8} />
           </View>
           <Text style={{ flex: 1, fontSize: 12, color: DS.ink[700], lineHeight: 18 }}>
-            GPS'siz check-in için çalışanın sadece QR'ı okuması yeterlidir.
-            GPS etkinleştirilirse, çalışanın konum izni vermesi gerekir ve
+            GPS'siz check-in için personelın sadece QR'ı okuması yeterlidir.
+            GPS etkinleştirilirse, personelın konum izni vermesi gerekir ve
             belirlenen yarıçap dışındaysa giriş reddedilir.
             {'\n\n'}
             Yetkili kişi (müdür/admin) gerektiğinde İzin & Devam ekranından

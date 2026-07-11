@@ -10,8 +10,9 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, Pressable, TextInput,
-  ActivityIndicator, Platform, useWindowDimensions,
+  Platform, useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
   ArrowLeft, Printer, Download, FileSpreadsheet,
@@ -35,6 +36,10 @@ import { supabase } from '../../../core/api/supabase';
 import type { LabLetterhead } from '../../receipt/buildReceiptHtml';
 import { toast } from '../../../core/ui/Toast';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
+import { CenteredLoader } from '../../../core/ui/CenteredLoader';
+import { useBaseCurrency } from '../../../core/money/baseCurrency';
+import { CURRENCY_META, formatMoney, type Currency } from '../../../core/money/currency';
 
 // ── Patterns tokens ─────────────────────────────────────────────────
 const DISPLAY = {
@@ -82,10 +87,17 @@ const METHOD_ICON: Record<PaymentMethod, React.ComponentType<any>> = {
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────
-function fmtMoney(n: number | string | null | undefined): string {
+// Katı per-currency: tutar seçili/satırın para biriminde (base'e çevrilmez).
+function fmtMoney(n: number | string | null | undefined, currency: string = 'TRY'): string {
   const v = typeof n === 'string' ? Number(n) : (n ?? 0);
   if (!Number.isFinite(v)) return '—';
-  return '₺' + v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return formatMoney(Number(v) || 0, (currency as Currency), { fractionDigits: 2 });
+}
+/** Faturanın aslı döviz ise ₺ tutarın yanına küçük "(€35)" karşılığını üretir. */
+function origSuffix(cur?: string, amt?: number): string {
+  if (!cur || cur === 'TRY' || amt == null || !Number.isFinite(amt)) return '';
+  const sym = CURRENCY_META[cur as Currency]?.symbol ?? cur;
+  return ` (${sym}${amt.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`;
 }
 function fmtDateShort(d: string | null | undefined): string {
   if (!d) return '—';
@@ -110,26 +122,62 @@ async function fetchLab(): Promise<LabLetterhead> {
 }
 
 // ── Excel export ─────────────────────────────────────────────────────
-function exportExcel(clinicName: string, lines: StatementLine[]) {
-  // TSV → download as .xls (Excel opens TSV with .xls extension)
-  const header = ['Tarih', 'Tip', 'Açıklama', 'Durum', 'Ödeme Yöntemi', 'Borç', 'Alacak', 'Bakiye'].join('\t');
-  const rows = lines.map(l => [
-    l.date,
-    l.type === 'invoice' ? 'Fatura' : 'Tahsilat',
-    l.description,
-    l.type === 'invoice' && l.status ? (INVOICE_STATUS_LABELS[l.status as InvoiceStatus] ?? l.status) : '',
-    l.type === 'payment' && l.method ? (PAYMENT_METHOD_LABELS[l.method as PaymentMethod] ?? l.method) : '',
-    l.debit > 0 ? l.debit.toFixed(2) : '',
-    l.credit > 0 ? l.credit.toFixed(2) : '',
-    l.balance.toFixed(2),
-  ].join('\t'));
-  const tsv = [header, ...rows].join('\n');
-  const blob = new Blob(['﻿' + tsv], { type: 'application/vnd.ms-excel;charset=utf-8' });
+// Tedarikçi cari ile aynı T-hesap CSV formatı.
+function escapeCsv(v: any): string {
+  const s = v == null ? '' : String(v);
+  if (s.includes('"') || s.includes(',') || s.includes('\n') || s.includes(';')) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
+function exportExcel(clinicName: string, lines: StatementLine[], periodFrom?: string, periodTo?: string, currency: string = 'TRY') {
+  const totalDebit  = lines.reduce((s, l) => s + l.debit, 0);
+  const totalCredit = lines.reduce((s, l) => s + l.credit, 0);
+  const closing     = totalDebit - totalCredit;
+  const ba = (n: number) => n > 0.01 ? 'B' : n < -0.01 ? 'A' : '—';
+  const fmtNum = (n: number) => n === 0 ? '' : n.toFixed(2);
+
+  // Header metadata
+  const titleRows: string[][] = [
+    ['CARİ HESAP EKSTRESİ'],
+    [`Sağlık Kurumu: ${clinicName}`],
+    [periodFrom && periodTo ? `Dönem: ${new Date(periodFrom).toLocaleDateString('tr-TR')} – ${new Date(periodTo).toLocaleDateString('tr-TR')}` : 'Dönem: Tüm hareketler'],
+    [`Düzenlenme: ${new Date().toLocaleDateString('tr-TR')}`],
+    [`Para Birimi: ${currency}`],
+    [''],
+  ];
+
+  const headers = ['Tarih', 'Belge No', 'Açıklama', `Borç (${currency})`, `Alacak (${currency})`, `Bakiye (${currency})`, 'B/A', 'Durum', 'Ödeme Yöntemi'];
+
+  const rows = lines.map(l => {
+    const status = l.type === 'invoice' && l.status
+      ? (INVOICE_STATUS_LABELS[l.status as InvoiceStatus] ?? l.status) : '';
+    const method = l.type === 'payment' && l.method
+      ? (PAYMENT_METHOD_LABELS[l.method as PaymentMethod] ?? l.method) : '';
+    return [
+      new Date(l.date + 'T00:00:00').toLocaleDateString('tr-TR'),
+      l.invoiceNo ?? '',
+      `${l.type === 'invoice' ? 'Fatura' : 'Tahsilat'} — ${l.description}`,
+      fmtNum(l.debit),
+      fmtNum(l.credit),
+      Math.abs(l.balance).toFixed(2),
+      ba(l.balance),
+      status,
+      method,
+    ];
+  });
+
+  const totalRow = ['', '', 'TOPLAM', totalDebit.toFixed(2), totalCredit.toFixed(2), Math.abs(closing).toFixed(2), ba(closing), '', ''];
+  const all = [...titleRows, headers, ...rows, totalRow];
+  const csv = all.map(r => r.map(escapeCsv).join(',')).join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `Hesap-Ekstresi-${clinicName.replace(/\s+/g, '-')}.xls`;
-  a.click();
+  const safeName = clinicName.replace(/[^\p{L}\p{N}_-]+/gu, '_').slice(0, 60);
+  a.download = `cari_ekstre_${safeName}_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
 
@@ -137,10 +185,12 @@ function exportExcel(clinicName: string, lines: StatementLine[]) {
 // MAIN
 // ═════════════════════════════════════════════════════════════════════
 export function ClinicStatementScreen() {
+  useBaseCurrency();
   const router = useRouter();
   const { clinicId } = useLocalSearchParams<{ clinicId: string }>();
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1024;
+  const insets = useSafeAreaInsets();
 
   // Page title
   const { setTitle, clear } = usePageTitleStore();
@@ -159,6 +209,9 @@ export function ClinicStatementScreen() {
 
   // Export state
   const [exporting, setExporting] = useState(false);
+
+  // Seçili para birimi — ekstre tek dövizde gösterilir (katı per-currency).
+  const [selectedCcy, setSelectedCcy] = useState<string>('TRY');
 
   useEffect(() => {
     if (!clinicId) return;
@@ -184,8 +237,39 @@ export function ClinicStatementScreen() {
     return clear;
   }, [clinicInfo?.clinic_name]);
 
-  // Build statement + filter
-  const allLines = useMemo(() => buildStatementLines(invoices), [invoices]);
+  // Faturalardaki para birimleri (katı per-currency — ekstre tek dövizde)
+  const currencies = useMemo(() => {
+    const set = new Set<string>();
+    for (const i of invoices) if (i.status !== 'iptal') set.add(i.currency || 'TRY');
+    const order = ['TRY', 'EUR', 'USD', 'GBP'];
+    const arr = Array.from(set).sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    return arr.length ? arr : ['TRY'];
+  }, [invoices]);
+
+  useEffect(() => {
+    if (!currencies.includes(selectedCcy)) setSelectedCcy(currencies[0]);
+  }, [currencies]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const ccyInvoices = useMemo(
+    () => invoices.filter(i => (i.currency || 'TRY') === selectedCcy),
+    [invoices, selectedCcy],
+  );
+
+  // Build statement (orijinal tutarda) — yalnız seçili dövizin faturaları
+  const allLines = useMemo(() => buildStatementLines(ccyInvoices, { original: true }), [ccyInvoices]);
+
+  // KPI'lar seçili dövizde, ccyInvoices'tan hesaplanır (clinicInfo base'di → kullanılmaz)
+  const kpis = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    let billed = 0, paid = 0, overdue = 0;
+    for (const i of ccyInvoices) {
+      if (i.status === 'iptal') continue;
+      const t = Number(i.total || 0), pd = Number(i.paid_amount || 0);
+      billed += t; paid += pd;
+      if (i.due_date && i.due_date < today && pd < t) overdue += t - pd;
+    }
+    return { billed, paid, balance: billed - paid, overdue };
+  }, [ccyInvoices]);
 
   const filtered = useMemo(() => {
     return allLines.filter(l => {
@@ -218,6 +302,7 @@ export function ClinicStatementScreen() {
         filtered,
         lab,
         { from: dateFrom || undefined, to: dateTo || undefined },
+        selectedCcy,
       );
 
       if (Platform.OS === 'web') {
@@ -242,7 +327,7 @@ export function ClinicStatementScreen() {
     } finally {
       setExporting(false);
     }
-  }, [clinicInfo, filtered, dateFrom, dateTo]);
+  }, [clinicInfo, filtered, dateFrom, dateTo, selectedCcy]);
 
   // ── Excel ──────────────────────────────────────────────
   const handleExcel = useCallback(() => {
@@ -250,24 +335,19 @@ export function ClinicStatementScreen() {
       toast.info('Excel dışa aktarma web üzerinde desteklenir');
       return;
     }
-    exportExcel(clinicInfo?.clinic_name ?? 'Klinik', filtered);
+    exportExcel(clinicInfo?.clinic_name ?? 'Sağlık Kurumu', filtered, dateFrom || undefined, dateTo || undefined, selectedCcy);
     toast.success('Excel indirildi');
-  }, [clinicInfo, filtered]);
+  }, [clinicInfo, filtered, dateFrom, dateTo, selectedCcy]);
 
   const clinicName = clinicInfo?.clinic_name ?? '';
-  const totalBilled = Number(clinicInfo?.total_billed ?? 0);
-  const totalPaid = Number(clinicInfo?.total_paid ?? 0);
-  const balance = Number(clinicInfo?.balance ?? 0);
-  const overdue = Number(clinicInfo?.overdue_amount ?? 0);
+  const totalBilled = kpis.billed;
+  const totalPaid = kpis.paid;
+  const balance = kpis.balance;
+  const overdue = kpis.overdue;
   const pct = totalBilled > 0 ? Math.min(100, (totalPaid / totalBilled) * 100) : 0;
 
   if (loading) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-        <ActivityIndicator size="large" color={DS.ink[400]} />
-        <Text style={{ fontSize: 13, color: DS.ink[400] }}>Ekstre yükleniyor...</Text>
-      </View>
-    );
+    return <CenteredLoader color={DS.ink[400]} label="Ekstre yükleniyor..." />;
   }
 
   return (
@@ -275,7 +355,7 @@ export function ClinicStatementScreen() {
       {/* ── Header ────────────────────────────────────────── */}
       <View style={{
         flexDirection: 'row', alignItems: 'center', gap: 12,
-        paddingHorizontal: isDesktop ? 24 : 16, paddingTop: 14, paddingBottom: 10,
+        paddingHorizontal: 16, paddingTop: 16 + (isDesktop ? 0 : insets.top), paddingBottom: 16,
         borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
       }}>
         <Pressable
@@ -308,15 +388,41 @@ export function ClinicStatementScreen() {
 
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: isDesktop ? 24 : 16, paddingBottom: 48, gap: 16 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 48, gap: 16 }}
         showsVerticalScrollIndicator={false}
       >
+        {/* ── Para birimi seçici (çok dövizli klinikte) ──────── */}
+        {currencies.length > 1 && (
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            {currencies.map(cur => {
+              const active = selectedCcy === cur;
+              const sym = CURRENCY_META[(cur as Currency)]?.symbol ?? cur;
+              return (
+                <Pressable
+                  key={cur}
+                  onPress={() => setSelectedCcy(cur)}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 6,
+                    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, borderWidth: 1.5,
+                    borderColor: active ? DS.ink[900] : 'rgba(0,0,0,0.08)',
+                    backgroundColor: active ? DS.ink[900] : '#FFF',
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: active ? '#FFF' : DS.ink[500] }}>{sym}</Text>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: active ? '#FFF' : DS.ink[700] }}>{cur}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+
         {/* ── Summary KPIs ─────────────────────────────────── */}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-          <MiniKPI label="Kesilen" value={fmtMoney(totalBilled)} color={DS.ink[900]} />
-          <MiniKPI label="Tahsil Edilen" value={fmtMoney(totalPaid)} color={CHIP_TONES.success.fg} />
-          <MiniKPI label="Bakiye" value={fmtMoney(balance)} color={overdue > 0 ? CHIP_TONES.danger.fg : DS.ink[900]} />
-          {overdue > 0 && <MiniKPI label="Gecikmiş" value={fmtMoney(overdue)} color={CHIP_TONES.danger.fg} />}
+          <MiniKPI label="Kesilen" value={fmtMoney(totalBilled, selectedCcy)} color={DS.ink[900]} />
+          <MiniKPI label="Tahsil Edilen" value={fmtMoney(totalPaid, selectedCcy)} color={CHIP_TONES.success.fg} />
+          <MiniKPI label="Bakiye" value={fmtMoney(balance, selectedCcy)} color={overdue > 0 ? CHIP_TONES.danger.fg : DS.ink[900]} />
+          {overdue > 0 && <MiniKPI label="Gecikmiş" value={fmtMoney(overdue, selectedCcy)} color={CHIP_TONES.danger.fg} />}
           <View style={{ flex: 1, minWidth: 120, backgroundColor: '#FFF', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' }}>
             <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[400], marginBottom: 6 }}>
               Tahsilat
@@ -505,7 +611,7 @@ export function ClinicStatementScreen() {
 
             {/* Rows */}
             {filtered.map((line, i) => (
-              <StatementRow key={line.id ?? i} line={line} last={i === filtered.length - 1} />
+              <StatementRow key={line.id ?? i} line={line} last={i === filtered.length - 1} currency={selectedCcy} />
             ))}
 
             {/* Footer */}
@@ -520,13 +626,13 @@ export function ClinicStatementScreen() {
               <View style={{ flex: 3 }} />
               <View style={{ flex: 1 }} />
               <Text style={{ flex: 1.2, fontSize: 12, fontWeight: '700', color: DS.ink[900], textAlign: 'right' }}>
-                {fmtMoney(totals.debit)}
+                {fmtMoney(totals.debit, selectedCcy)}
               </Text>
               <Text style={{ flex: 1.2, fontSize: 12, fontWeight: '700', color: CHIP_TONES.success.fg, textAlign: 'right' }}>
-                {fmtMoney(totals.credit)}
+                {fmtMoney(totals.credit, selectedCcy)}
               </Text>
               <Text style={{ flex: 1.2, fontSize: 12, fontWeight: '700', color: totals.balance > 0 ? DS.ink[900] : CHIP_TONES.success.fg, textAlign: 'right' }}>
-                {fmtMoney(totals.balance)}
+                {fmtMoney(totals.balance, selectedCcy)}
               </Text>
             </View>
           </View>
@@ -583,10 +689,10 @@ export function ClinicStatementScreen() {
                       fontSize: 13, fontWeight: '600',
                       color: isInvoice ? DS.ink[900] : CHIP_TONES.success.fg,
                     }}>
-                      {isInvoice ? fmtMoney(line.debit) : `-${fmtMoney(line.credit)}`}
+                      {isInvoice ? fmtMoney(line.debit, selectedCcy) : `-${fmtMoney(line.credit, selectedCcy)}`}
                     </Text>
                     <Text style={{ fontSize: 10, color: DS.ink[400], marginTop: 1 }}>
-                      {fmtMoney(line.balance)}
+                      {fmtMoney(line.balance, selectedCcy)}
                     </Text>
                   </View>
                 </View>
@@ -601,7 +707,7 @@ export function ClinicStatementScreen() {
             }}>
               <Text style={{ fontSize: 11, color: DS.ink[500] }}>{filtered.length} hareket</Text>
               <Text style={{ fontSize: 13, fontWeight: '700', color: totals.balance > 0 ? DS.ink[900] : CHIP_TONES.success.fg }}>
-                Bakiye: {fmtMoney(totals.balance)}
+                Bakiye: {fmtMoney(totals.balance, selectedCcy)}
               </Text>
             </View>
           </View>
@@ -612,7 +718,7 @@ export function ClinicStatementScreen() {
 }
 
 // ─── Desktop statement row ───────────────────────────────────────────
-function StatementRow({ line, last }: { line: StatementLine; last: boolean }) {
+function StatementRow({ line, last, currency }: { line: StatementLine; last: boolean; currency: string }) {
   const isInvoice = line.type === 'invoice';
   const Icon = isInvoice ? ArrowUpRight : ArrowDownLeft;
   const chip = isInvoice && line.status ? STATUS_CHIP[line.status as InvoiceStatus] : null;
@@ -667,21 +773,21 @@ function StatementRow({ line, last }: { line: StatementLine; last: boolean }) {
         flex: 1.2, fontSize: 13, fontWeight: line.debit > 0 ? '600' : '400',
         color: line.debit > 0 ? DS.ink[900] : DS.ink[300], textAlign: 'right',
       }}>
-        {line.debit > 0 ? fmtMoney(line.debit) : '—'}
+        {line.debit > 0 ? fmtMoney(line.debit, currency) : '—'}
       </Text>
 
       <Text style={{
         flex: 1.2, fontSize: 13, fontWeight: line.credit > 0 ? '600' : '400',
         color: line.credit > 0 ? CHIP_TONES.success.fg : DS.ink[300], textAlign: 'right',
       }}>
-        {line.credit > 0 ? fmtMoney(line.credit) : '—'}
+        {line.credit > 0 ? fmtMoney(line.credit, currency) : '—'}
       </Text>
 
       <Text style={{
         flex: 1.2, fontSize: 13, fontWeight: '600',
         color: line.balance > 0 ? DS.ink[900] : CHIP_TONES.success.fg, textAlign: 'right',
       }}>
-        {fmtMoney(line.balance)}
+        {fmtMoney(line.balance, currency)}
       </Text>
     </View>
   );
@@ -720,10 +826,7 @@ function PillBtn({ icon: Icon, label, onPress, variant = 'dark', busy }: {
         cursor: 'pointer' as any,
       }}
     >
-      {busy
-        ? <ActivityIndicator size={14} color={dark ? '#FFF' : DS.ink[700]} />
-        : <Icon size={14} color={dark ? '#FFF' : DS.ink[700]} strokeWidth={1.8} />
-      }
+      <Icon size={14} color={dark ? '#FFF' : DS.ink[700]} strokeWidth={1.8} />
       {!!label && (
         <Text style={{ fontSize: 12, fontWeight: '600', color: dark ? '#FFF' : DS.ink[700] }}>
           {label}

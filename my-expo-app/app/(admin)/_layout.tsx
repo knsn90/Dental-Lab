@@ -1,40 +1,66 @@
 import React, { useState, useEffect } from 'react';
+const NewOrderScreen: any = React.lazy(() => import('../../modules/orders/screens/NewOrderScreen').then(m => ({ default: (m as any).NewOrderScreen })));
+const MessagesPopup: any = React.lazy(() => import('../../modules/orders/components/MessagesPopup').then(m => ({ default: (m as any).MessagesPopup })));
+const ScanB6Mobile: any = React.lazy(() => import('../../modules/orders/screens/ScanB6Mobile').then(m => ({ default: (m as any).ScanB6Mobile })));
+const MoreMenuSheet: any = React.lazy(() => import('../../core/ui/mobile/MoreMenuSheet').then(m => ({ default: (m as any).MoreMenuSheet })));
+const CommandPalette: any = React.lazy(() => import('../../core/ui/CommandPalette').then(m => ({ default: (m as any).CommandPalette })));
+const CommandPaletteFAB: any = React.lazy(() => import('../../core/ui/CommandPalette').then(m => ({ default: (m as any).CommandPaletteFAB })));
 import { Modal, View } from 'react-native';
-import { Slot, Tabs, useRouter } from 'expo-router';
+import { useTranslation } from 'react-i18next';
+import { Slot, Tabs, useRouter, usePathname } from 'expo-router';
+import {
+  Home, ClipboardList, QrCode, MessageCircle, User, Plus, MoreHorizontal,
+  Landmark as Landmark2, FileSpreadsheet as FileSpreadsheet2, Banknote as Banknote2,
+  Package as Package2, Building2 as Building22, Truck as Truck2,
+  CheckCircle2 as CheckCircle22, Users as Users2, Settings as Settings2,
+  TrendingUp as TrendingUp2, FileText as FileText2,
+} from 'lucide-react-native';
+
+import { TopActionBar } from '../../core/ui/mobile/TopActionBar';
+import { PanelTopHeader } from '../../core/ui/mobile/PanelTopHeader';
 import { PatternsShell, useIsDesktop } from '../../core/layout/PatternsShell';
-import { MobileHeader } from '../../core/ui/MobileHeader';
+import { PillTabBar, type PillTabItem } from '../../core/ui/mobile/PillTabBar';
+import { MOBILE_TOKENS as T } from '../../core/theme/mobileDesignTokens';
 import { usePendingApprovals } from '../../core/hooks/usePendingApprovals';
 import { useStockAlert } from '../../core/hooks/useStockAlert';
 import { useAuthStore } from '../../core/store/authStore';
-import { MobileTabBar } from '../../core/ui/MobileTabBar';
-import type { MobileTabItem } from '../../core/ui/MobileTabBar';
-import { NewOrderScreen } from '../../modules/orders/screens/NewOrderScreen';
-import { ScanB6Mobile } from '../../modules/orders/screens/ScanB6Mobile';
-import { MessagesPopup } from '../../modules/orders/components/MessagesPopup';
+import { useScanStore } from '../../core/store/scanStore';
+import { useNewOrderModalStore } from '../../core/store/newOrderModalStore';
+
+
+
 // usePendingLeaveCount removed — leave tracking no longer in this module
 import { useOrderChatInbox } from '../../modules/orders/hooks/useOrderChatInbox';
 import { useColorThemeStore, applyColorThemeWeb } from '../../core/store/colorThemeStore';
 import { usePermissionStore } from '../../core/store/permissionStore';
-import { CommandPalette, CommandPaletteFAB } from '../../core/ui/CommandPalette';
+
 import { useThemeModeStore } from '../../core/store/themeModeStore';
 
 // Patterns admin teması — krem/mercan palette
-const ADMIN_DEFAULT_ACCENT = '#EA7A4C';
+const ADMIN_DEFAULT_ACCENT = '#4771AB';
 
 // NOT: Desktop'ta "Yeni İş Emri" → route navigate eder (/(admin)/new-order),
 // sidebar kaybolmaz. Modal SADECE mobil için.
 
 export default function AdminLayout() {
+  const { t } = useTranslation();
   const router = useRouter();
+  const pathname = usePathname();
+  const hideTopActionBar =
+    /^\/(order|invoice|statement|delivery)\//.test(pathname);
   const { profile, loading } = useAuthStore();
   const pendingCount      = usePendingApprovals();
   const stockAlert        = useStockAlert();
   const isDesktop         = useIsDesktop();
   // pendingLeaveCount removed
   const { totalUnread: chatUnread } = useOrderChatInbox();
-  const [newOrderOpen, setNewOrderOpen] = useState(false);
+  // Global store — dashboard CTA card + FAB aynı modal'ı tetikler
+  const newOrderOpen    = useNewOrderModalStore(s => s.open);
+  const setNewOrderOpen = useNewOrderModalStore(s => s.setOpen);
   const [messagesOpen, setMessagesOpen] = useState(false);
-  const [scanOpen,     setScanOpen]     = useState(false);
+  const scanOpen    = useScanStore(s => s.open);
+  const setScanOpen = useScanStore(s => s.setOpen);
+  const [moreOpen,     setMoreOpen]     = useState(false);
   const isDark = useThemeModeStore(s => s.resolvedDark);
 
   // Load saved color theme
@@ -51,53 +77,63 @@ export default function AdminLayout() {
     fetchForPanel('admin', profile?.user_type);
   }, [profile?.user_type]);
 
-  // Yükleme tamamlandı ve kesinlikle admin değil → sidebar gösterme
-  if (!loading && profile && profile.user_type !== 'admin') {
+  // Loading sırasında veya kullanıcı admin değilken hiçbir panel UI çizme
+  // (önceki davranış: loading=true iken FabTabBar mount oluyordu → panel flicker)
+  if (!profile || profile.user_type !== 'admin') {
     return <Slot />;
   }
 
+  // Sıra: Özet · Siparişler · Onaylar · Sağlık Kurumları · Ekip ·
+  //       Stok ve Depo · Finans · Destek Yönetim · Mesajlar · Ayarlar
   const ADMIN_NAV = [
     // ── Ana ekran ──────────────────────────────────────────────────────────
-    { label: 'Özet',         href: '/(admin)',              iconName: 'home' },
+    { label: t('nav.items.summary'),              href: '/(admin)',                  iconName: 'home' },
 
     // ── İş Yönetimi ────────────────────────────────────────────────────────
-    // "Yeni İş Emri" CTA pill artık sidebar üst kısmında — nav'dan kaldırıldı
-    { label: 'Siparişler',   href: '/(admin)/orders',       iconName: 'clipboard-list',  matchPrefix: true, sectionLabel: 'İş Yönetimi',
+    { label: t('nav.items.orders'),        href: '/(admin)/orders',           iconName: 'list-check',     matchPrefix: true, sectionLabel: t('nav.sections.work'),
       requiresPermission: 'view_orders' },
-    { label: 'Onaylar',      href: '/(admin)/approvals',    iconName: 'check-circle',    matchPrefix: true,
+    { label: t('nav.items.approvals'),           href: '/(admin)/approvals',        iconName: 'check-circle',   matchPrefix: true,
       badgeCount: pendingCount > 0 ? pendingCount : undefined,
       requiresPermission: 'view_approvals' },
 
     // ── Müşteriler ─────────────────────────────────────────────────────────
-    { label: 'Sağlık Kurumları', href: '/(admin)/clinics',  iconName: 'building-2',      matchPrefix: true, sectionLabel: 'Müşteriler' },
+    { label: t('nav.items.clinics'),  href: '/(admin)/clinics',          iconName: 'building-2',     matchPrefix: true, sectionLabel: t('nav.sections.customers') },
 
-    // ── Finans — tek hub
-    { label: 'Finans',       href: '/(admin)/finance',     iconName: 'landmark',        matchPrefix: false, sectionLabel: 'Finans',
-      requiresPermission: 'view_financials' },
-
-    // ── Ekip — tek hub ──────────────────────────────────────────────────
-    { label: 'Ekip', href: '/(admin)/ik-depo',  iconName: 'users',           matchPrefix: false, sectionLabel: 'Ekip',
+    // ── Ekip ───────────────────────────────────────────────────────────────
+    { label: t('nav.items.team'),              href: '/(admin)/ik-depo',          iconName: 'users',          matchPrefix: false, sectionLabel: t('nav.sections.team'),
       requiresPermission: 'view_team' },
 
-    // ── Stok & Depo ───────────────────────────────────────────────────────
-    { label: 'Stok & Depo',  href: '/(admin)/stock',        iconName: 'package',         matchPrefix: true, sectionLabel: 'Stok & Depo', badgeCount: stockAlert,
+    // ── Depo / Finans ──────────────────────────────────────────────────────
+    { label: t('nav.items.stock'),      href: '/(admin)/stock',            iconName: 'package',        matchPrefix: true, sectionLabel: t('nav.sections.warehouse'),
+      badgeCount: stockAlert,
       requiresPermission: 'view_stock' },
-    { label: 'Tedarikçiler', href: '/(admin)/suppliers',    iconName: 'building',        matchPrefix: true, sectionLabel: 'Stok & Depo',
-      requiresPermission: 'view_stock' },
+    { label: t('nav.items.production'),     href: '/(admin)/production',       iconName: 'activity',       matchPrefix: true, sectionLabel: t('nav.sections.production') },
+    { label: t('nav.items.workflows'),       href: '/(admin)/workflows',        iconName: 'list-todo',      matchPrefix: true },
 
-    // ── Sistem ─────────────────────────────────────────────────────────────
-    { label: 'Ayarlar',      href: '/(admin)/settings',         iconName: 'settings',    matchPrefix: true, sectionLabel: 'Sistem',
+    // ── Teslimat ───────────────────────────────────────────────────────────
+    { label: t('nav.items.courier'),       href: '/(admin)/courier-tracking', iconName: 'scooter',        matchPrefix: true, sectionLabel: t('nav.sections.delivery') },
+    { label: t('nav.items.finance'),            href: '/(admin)/finance',          iconName: 'landmark',       matchPrefix: false, sectionLabel: t('nav.sections.finance'),
+      requiresPermission: 'view_financials' },
+
+    // ── Destek / İletişim / Hesap ─────────────────────────────────────────
+    { label: t('nav.items.support'),    href: '/(admin)/support',          iconName: 'help-circle',    matchPrefix: true, sectionLabel: t('nav.sections.help') },
+    { label: t('nav.items.messages'),          href: '/(admin)/messages',         iconName: 'messages-square', matchPrefix: false,
+      onPress: () => setMessagesOpen(true),
+      badgeCount: chatUnread > 0 ? chatUnread : undefined },
+    { label: t('nav.items.settings'),           href: '/(admin)/settings',         iconName: 'settings',       matchPrefix: true, sectionLabel: t('nav.sections.system'),
       requiresPermission: 'view_settings' },
   ];
 
   if (isDesktop) {
     return (
+      <React.Suspense fallback={null}>
       <>
         <PatternsShell
           navItems={ADMIN_NAV}
           accentColor={accentColor}
           onPressMessages={() => setMessagesOpen(true)}
           messagesUnreadCount={chatUnread}
+          hideSidebarMessages
           panelType="admin"
           newOrderHref="/(admin)/new-order"
         />
@@ -108,26 +144,45 @@ export default function AdminLayout() {
         />
         <CommandPalette
           navItems={ADMIN_NAV}
-          onNavigate={(href) => router.push(href as any)}
+          onNavigate={(href: string) => router.push(href as any)}
           accentColor={accentColor}
         />
       </>
+      </React.Suspense>
     );
   }
 
-  const MOBILE_TABS: MobileTabItem[] = [
-    { routeName: 'index',     label: 'Ana',     icon: 'home' },
-    { routeName: 'orders',    label: 'Vakalar', icon: 'clipboard-list' },
-    { routeName: 'scan',      label: 'Tara',    icon: 'qr-code',         onPress: () => setScanOpen(true), fab: true },
-    { routeName: 'messages',  label: 'Mesaj',   icon: 'message-circle',  onPress: () => setMessagesOpen(true), badgeCount: chatUnread },
-    { routeName: 'profile',   label: 'Profil',  icon: 'user' },
+  // Asymmetric pill + side FAB — Ana / Vakalar / Onaylar / Mesaj / Daha
+  const PILL_TABS: PillTabItem[] = [
+    { routeName: 'index',     label: t('nav.items.summary'),     icon: Home },
+    { routeName: 'orders',    label: t('nav.items.cases'), icon: ClipboardList },
+    { routeName: 'approvals', label: t('nav.items.approvals'), icon: CheckCircle22, badgeCount: pendingCount > 0 ? pendingCount : undefined },
+    { routeName: 'messages',  label: t('nav.items.messages'),   icon: MessageCircle, onPress: () => setMessagesOpen(true), badgeCount: chatUnread },
+    { routeName: 'more',      label: t('nav.items.more'),    icon: MoreHorizontal, onPress: () => setMoreOpen(true) },
   ];
+  const FAB_ITEM: PillTabItem = {
+    routeName: 'new',
+    label: 'Yeni',
+    icon: Plus,
+    onPress: () => setNewOrderOpen(true),
+  };
   void stockAlert;
 
+  // "Daha" bottom-sheet — Onaylar pill'de
+  const MORE_ITEMS: import('../../core/ui/mobile/MoreMenuSheet').MoreItem[] = [
+    { key: 'clinics',  label: t('nav.items.clinics'), sub: t('admin.more.clinics.sub'),               icon: Building22,onPress: () => router.push('/(admin)/clinics' as any) },
+    { key: 'courier',  label: t('nav.items.courier'),      sub: t('admin.more.courier.sub'),                 icon: Truck2,    onPress: () => router.push('/(admin)/courier-tracking' as any) },
+    { key: 'finance',  label: t('nav.items.finance'),           sub: t('admin.more.finance.sub'),    icon: Landmark2, onPress: () => router.push('/(admin)/finance' as any) },
+    { key: 'team',     label: t('nav.items.team'),             sub: t('admin.more.team.sub'),   icon: Users2,    onPress: () => router.push('/(admin)/ik-depo' as any) },
+    { key: 'stock',    label: t('nav.items.stock'),      sub: t('admin.more.stock.sub'),               icon: Package2,  onPress: () => router.push('/(admin)/stock' as any) },
+    { key: 'settings', label: t('nav.items.settings'),          sub: t('admin.more.settings.sub'), icon: Settings2, onPress: () => router.push('/(admin)/settings' as any) },
+  ];
+
   return (
+    <React.Suspense fallback={null}>
     <>
-      <View style={{ flex: 1, backgroundColor: isDark ? '#0E0E0E' : '#F5F2EA' }}>
-        <MobileHeader accentColor={accentColor} />
+      <View style={{ flex: 1, backgroundColor: isDark ? T.dark : T.bg }}>
+        {/* MobileHeader kaldırıldı — yeni AdminMobileDashboard kendi başlığını taşıyor */}
         <Tabs
           screenOptions={{
             headerShown: false,
@@ -135,39 +190,50 @@ export default function AdminLayout() {
             tabBarStyle: { display: 'none' },
           }}
         >
-        <Tabs.Screen name="index" options={{ title: 'Özet' }} />
-        <Tabs.Screen name="new-order" options={{ title: 'Yeni Sipariş' }} />
-        <Tabs.Screen name="users" options={{ title: 'Kullanıcılar' }} />
-        <Tabs.Screen name="clinics" options={{ title: 'Sağlık Kurumları' }} />
-        <Tabs.Screen name="doctors" options={{ title: 'Hekimler' }} />
-        <Tabs.Screen name="orders" options={{ title: 'Siparişler' }} />
-        <Tabs.Screen name="stock" options={{ title: 'Stok' }} />
-        <Tabs.Screen name="suppliers" options={{ title: 'Tedarikçiler' }} />
-        <Tabs.Screen name="expenses" options={{ title: 'Giderler' }} />
-        <Tabs.Screen name="checks" options={{ title: 'Çek/Senet' }} />
-        <Tabs.Screen name="cash" options={{ title: 'Kasa/Banka' }} />
-        <Tabs.Screen name="finance-report" options={{ title: 'Gelir/Gider' }} />
-        <Tabs.Screen name="employees" options={{ title: 'Ekip' }} />
-        <Tabs.Screen name="performance" options={{ title: 'Performans' }} />
-        <Tabs.Screen name="documents" options={{ title: 'Dosyalar' }} />
-        <Tabs.Screen name="ik-depo" options={{ title: 'Ekip' }} />
-        <Tabs.Screen name="checkin-settings" options={{ title: 'QR Check-in' }} />
-        <Tabs.Screen name="approvals" options={{ title: 'Onaylar' }} />
-        <Tabs.Screen name="logs" options={{ title: 'Loglar' }} />
-        <Tabs.Screen name="profile" options={{ title: 'Profil' }} />
-        <Tabs.Screen name="permissions" options={{ title: 'Yetkiler' }} />
-        <Tabs.Screen name="settings" options={{ title: 'Ayarlar' }} />
-        <Tabs.Screen name="order/[id]" options={{ title: 'İş Emri' }} />
-        <Tabs.Screen name="order/occlusion/[id]" options={{ title: 'Oklüzyon' }} />
-        <Tabs.Screen name="setup-wizard" options={{ title: 'Kurulum' }} />
+        <Tabs.Screen name="index" options={{ title: t('nav.items.summary') }} />
+        <Tabs.Screen name="new-order" options={{ title: t('admin.tabs.newOrder') }} />
+        <Tabs.Screen name="users" options={{ title: t('admin.tabs.users') }} />
+        <Tabs.Screen name="clinics" options={{ title: t('nav.items.clinics') }} />
+        <Tabs.Screen name="doctors" options={{ title: t('admin.tabs.doctors') }} />
+        <Tabs.Screen name="orders" options={{ title: t('nav.items.orders') }} />
+        <Tabs.Screen name="courier-tracking" options={{ title: t('nav.items.courier') }} />
+        <Tabs.Screen name="stock" options={{ title: t('admin.tabs.stock') }} />
+        <Tabs.Screen name="production" options={{ title: t('nav.items.production') }} />
+        <Tabs.Screen name="workflows" options={{ title: t('nav.items.workflows') }} />
+        {/* suppliers route Settings hub içinden açılır — tabs'ta gizli */}
+        <Tabs.Screen name="suppliers" options={{ title: t('admin.tabs.suppliers'), href: null }} />
+        <Tabs.Screen name="expenses" options={{ title: t('admin.tabs.expenses') }} />
+        <Tabs.Screen name="checks" options={{ title: t('admin.tabs.checks') }} />
+        <Tabs.Screen name="cash" options={{ title: t('admin.tabs.cash') }} />
+        <Tabs.Screen name="finance-report" options={{ title: t('admin.tabs.financeReport') }} />
+        <Tabs.Screen name="employees" options={{ title: t('nav.items.team') }} />
+        <Tabs.Screen name="advance-requests" options={{ title: t('admin.tabs.advanceRequests') }} />
+        <Tabs.Screen name="performance" options={{ title: t('admin.tabs.performance') }} />
+        <Tabs.Screen name="documents" options={{ title: t('admin.tabs.documents') }} />
+        <Tabs.Screen name="ik-depo" options={{ title: t('nav.items.team') }} />
+        <Tabs.Screen name="checkin-settings" options={{ title: t('admin.tabs.checkinSettings') }} />
+        <Tabs.Screen name="approvals" options={{ title: t('nav.items.approvals') }} />
+        <Tabs.Screen name="logs" options={{ title: t('admin.tabs.logs') }} />
+        <Tabs.Screen name="profile" options={{ title: t('nav.items.profile') }} />
+        <Tabs.Screen name="permissions" options={{ title: t('admin.tabs.permissions') }} />
+        <Tabs.Screen name="settings" options={{ title: t('nav.items.settings') }} />
+        <Tabs.Screen name="finance" options={{ title: t('nav.items.finance'), href: null }} />
+        <Tabs.Screen name="messages" options={{ title: t('nav.items.messages'), href: null }} />
+        <Tabs.Screen name="setup-wizard" options={{ title: t('admin.tabs.setupWizard'), href: null }} />
+        {/* Nested routes (order/[id], statement/[clinicId]) —
+           expo-router auto-discovers; declaring them inside Tabs causes
+           "Cannot read properties of undefined (reading 'filter')" in BottomTabNavigator */}
         </Tabs>
 
-        {/* Floating tab bar — rendered OUTSIDE Tabs so its pointerEvents are fully ours */}
-        <MobileTabBar
-          items={MOBILE_TABS}
-          baseRoute="/(admin)"
-          accentColor={accentColor}
-        />
+        {/* Asymmetric tab bar — pill + accent FAB (hidden when fullscreen modal open) */}
+        {!newOrderOpen && !scanOpen && (
+          <PillTabBar
+            items={PILL_TABS}
+            fabItem={FAB_ITEM}
+            baseRoute="/(admin)"
+            accentColor={accentColor}
+          />
+        )}
       </View>
 
       {/* Yeni İş Emri — SADECE mobilde modal olarak açılır */}
@@ -177,7 +243,7 @@ export default function AdminLayout() {
         presentationStyle="pageSheet"
         onRequestClose={() => setNewOrderOpen(false)}
       >
-        <NewOrderScreen accentColor={accentColor} onClose={() => setNewOrderOpen(false)} />
+        <NewOrderScreen panel="admin" accentColor={accentColor} onClose={() => setNewOrderOpen(false)} />
       </Modal>
 
       {/* Mesajlar Popup */}
@@ -196,9 +262,31 @@ export default function AdminLayout() {
       >
         <ScanB6Mobile
           onClose={() => setScanOpen(false)}
-          onOpenOrder={(id) => { setScanOpen(false); router.push(`/(admin)/order/${id}` as any); }}
+          onOpenOrder={(id: string) => { setScanOpen(false); router.push(`/(admin)/order/${id}` as any); }}
         />
       </Modal>
+
+      {/* Daha menüsü (mobil PillTabBar 'Daha' tab'ından açılır) */}
+      <MoreMenuSheet
+        visible={moreOpen}
+        onClose={() => setMoreOpen(false)}
+        title={t('admin.moreSheet.title')}
+        subtitle={t('admin.moreSheet.subtitle')}
+        items={MORE_ITEMS}
+        accentColor={accentColor}
+      />
+
+      {/* Sağ üst kalıcı aksiyon butonları (mobile only) — QR · Bell · Profile */}
+      {!hideTopActionBar && <TopActionBar routePrefix="/(admin)" accentColor={accentColor} />}
+      {!hideTopActionBar && <PanelTopHeader />}
+
+      {/* Command Palette — mobile search FAB üzerinden de erişilebilir */}
+      <CommandPalette
+        navItems={ADMIN_NAV}
+        onNavigate={(href: string) => router.push(href as any)}
+        accentColor={accentColor}
+      />
     </>
+    </React.Suspense>
   );
 }

@@ -1,6 +1,7 @@
 import React from 'react';
 import { useAuthStore } from '../../core/store/authStore';
-import { MessagesInboxScreen } from '../../modules/orders/screens/MessagesInboxScreen';
+const MessagesInboxScreen = lazyRoute(() => import('../../modules/orders/screens/MessagesInboxScreen'), 'MessagesInboxScreen');
+import { lazyRoute } from '../../core/_lazyRoute';
 
 export default function DoctorMessagesRoute() {
   const { profile, loading } = useAuthStore();

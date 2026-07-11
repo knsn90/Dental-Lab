@@ -3,11 +3,60 @@
   <head>
     <meta charset="utf-8" />
     <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     <title>Dental Lab</title>
+
+    <!-- ── PWA Manifest ──────────────────────────────────────────────── -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#F2EDE3" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0E0E0E" media="(prefers-color-scheme: dark)" />
+
+    <!-- ── iOS (Apple PWA capable) ──────────────────────────────────── -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Dental Lab" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="512x512" href="/icons/icon-512.png" />
+
+    <!-- ── Android / general ─────────────────────────────────────────── -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="Dental Lab" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png" />
+
+    <!-- ── Safe area CSS (üst notch + alt home indicator) ───────────── -->
+    <style>
+      html { background-color: var(--app-bg, #FFFFFF); }
+      body {
+        /* iOS standalone PWA — status bar transparent olunca safe-area body'den okunabilir */
+        padding-top:    env(safe-area-inset-top, 0px);
+        padding-right:  env(safe-area-inset-right, 0px);
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+        padding-left:   env(safe-area-inset-left, 0px);
+        background-color: var(--app-bg, #FFFFFF);
+      }
+      /* Standalone mode (PWA olarak açıldı) → body padding'i react-native-safe-area-context ile çakışmasın */
+      @media all and (display-mode: standalone) {
+        body {
+          /* SafeAreaProvider tüm padding'i handle eder; body'de sadece bg tutmak yeterli */
+          padding: 0;
+        }
+        body::before {
+          /* Status bar arkası için renkli şerit — SafeAreaView edges=top kullanmayan yerlerde fallback */
+          content: '';
+          position: fixed;
+          top: 0; left: 0; right: 0;
+          height: env(safe-area-inset-top, 0px);
+          background-color: var(--app-bg, #FFFFFF);
+          z-index: 9999;
+          pointer-events: none;
+        }
+      }
+    </style>
     <style id="expo-reset">
       html, body { height: 100%; }
       body { overflow: hidden; }

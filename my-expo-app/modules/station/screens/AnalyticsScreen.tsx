@@ -5,13 +5,14 @@ import React, { useCallback, useEffect, useState, useContext } from 'react';
 import { HubContext } from '../../../core/ui/HubContext';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, RefreshControl, useWindowDimensions,
+  RefreshControl, useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Rect, Text as SvgText, Line, G } from 'react-native-svg';
 import { useAuthStore } from '../../../core/store/authStore';
 import { supabase } from '../../../core/api/supabase';
 import { AppIcon } from '../../../core/ui/AppIcon';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
 
 const ACCENT = '#2563EB';
 
@@ -78,7 +79,8 @@ async function fetchAnalytics(labId: string) {
     supabase
       .from('work_orders')
       .select('status, delivery_date, is_rush, created_at')
-      .neq('status', 'teslim_edildi'),
+      .neq('status', 'teslim_edildi')
+      .neq('status', 'iptal'),
 
     // Teslimat özeti (son 30 gün)
     supabase
@@ -506,7 +508,7 @@ const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 18, paddingVertical: 14,
+    paddingHorizontal: 18, paddingTop: 68, paddingBottom: 14,
     backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#E2E8F0',
   },
   title:      { fontSize: 20, fontWeight: '800', color: '#0F172A' },

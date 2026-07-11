@@ -20,23 +20,63 @@ export const useAuthStore = create<AuthState>((set) => ({
   loading: true,
 
   setSession: (session) => set({ session }),
-  setProfile: (profile) => set({ profile }),
+  setProfile: (profile) => {
+    set({ profile });
+    if (profile && typeof window !== 'undefined') {
+      const p: any = profile;
+      const panel =
+        p.user_type === 'admin'        ? 'exec'      :
+        p.user_type === 'doctor'       ? 'doctor'    :
+        p.user_type === 'clinic_admin' ? 'klinik'    :
+        p.user_type === 'lab' && p.role === 'technician' ? 'teknisyen' :
+        p.user_type === 'lab'          ? 'lab'       : null;
+      if (panel) {
+        try { window.localStorage.setItem('lastPanel', panel); } catch { /* noop */ }
+      }
+    }
+  },
   setLoading: (loading) => set({ loading }),
 
   fetchProfile: async (userId: string) => {
     try {
-      const timeout = new Promise<null>((resolve) =>
-        setTimeout(() => resolve(null), 5000)
-      );
-      const query = supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single()
-        .then(({ data }) => data);
+      // 5sn timeout tek başına profili kalıcı düşürüyordu (yanlış panel).
+      // Timeout/boş sonuçta backoff'lu 2 tekrar daha dene.
+      const TIMED_OUT = Symbol('timeout');
+      const attemptOnce = async (timeoutMs: number): Promise<Profile | null | typeof TIMED_OUT> => {
+        const timeout = new Promise<typeof TIMED_OUT>((resolve) =>
+          setTimeout(() => resolve(TIMED_OUT), timeoutMs)
+        );
+        const query = supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .single()
+          .then(({ data }) => data as Profile | null);
+        return Promise.race([query, timeout]);
+      };
 
-      const data = await Promise.race([query, timeout]);
-      if (data) set({ profile: data as Profile });
+      let data: Profile | null = null;
+      for (let i = 0; i < 3; i++) {
+        if (i > 0) await new Promise((r) => setTimeout(r, 1000 * i)); // backoff: 1s, 2s
+        const res = await attemptOnce(5000);
+        if (res !== TIMED_OUT) { data = res; break; } // yalnız timeout'ta tekrar dene
+      }
+      if (data) {
+        set({ profile: data as Profile });
+        // Persist last-known panel for the loader on next refresh
+        if (typeof window !== 'undefined') {
+          const p: any = data;
+          const panel =
+            p.user_type === 'admin'        ? 'exec'      :
+            p.user_type === 'doctor'       ? 'doctor'    :
+            p.user_type === 'clinic_admin' ? 'klinik'    :
+            p.user_type === 'lab' && (p.role === 'technician' || p.role === 'courier') ? 'teknisyen' :
+            p.user_type === 'lab'          ? 'lab'       : null;
+          if (panel) {
+            try { window.localStorage.setItem('lastPanel', panel); } catch { /* noop */ }
+          }
+        }
+      }
     } catch (_) {
       // sessizce geç
     } finally {

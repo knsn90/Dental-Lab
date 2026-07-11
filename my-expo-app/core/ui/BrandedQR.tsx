@@ -7,9 +7,13 @@
 // Kullanım:
 //   <BrandedQR value={qrUrl} size={200} color="#0F172A" />
 
-import React from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
-import QRCodeStyled from 'react-native-qrcode-styled';
+import React, { useState } from 'react';
+import { View, Image, StyleSheet, Platform } from 'react-native';
+import QRCodeStyledBase from 'react-native-qrcode-styled';
+
+// Paketin .d.ts'i eksik (size/padding/onChangePieceSize/errorCorrectionLevel runtime'da
+// var ama tiplerde yok); valid runtime proplarını geçebilmek için any cast.
+const QRCodeStyled = QRCodeStyledBase as any;
 
 export interface BrandedQRProps {
   /** QR içeriği (URL, JSON string, vs.) */
@@ -46,38 +50,52 @@ export function BrandedQR({
   pieceShape = 'dot',
   borderRadius = 14,
 }: BrandedQRProps) {
-  // Integer pieceSize — qrcode-styled float ignore ediyor.
-  // QR doğal boyutu = pieceSize * matrixSize. Bu boyut size'dan küçük olur,
-  // wrap padding ile beraber tam size'a oturtulur (overflow: hidden YOK).
-  const matrixSize    = estimateMatrixSize(value, errorCorrectionLevel);
-  const innerWidth    = Math.max(1, size - padding * 2);
-  const pieceSize     = pieceSizeOverride
-    ?? Math.max(1, Math.floor(innerWidth / matrixSize));
-  const renderedQR    = pieceSize * matrixSize;
-  // Kalan boşluğu eşit padding olarak ekle — QR ortalanır, kırpılmaz.
-  const slack         = Math.max(0, innerWidth - renderedQR);
-  const effectivePad  = padding + slack / 2;
+  // qrcode-styled v0.4: bileşen `size`'tan kendi pieceSize'ını hesaplar
+  // (`pieceSize` prop'u DEĞİL — verilirse DOM'a sızar). Yuvarlaklık yarıçapları için
+  // gerçek pieceSize'ı `onChangePieceSize` callback'inden alıp state'te tutuyoruz.
+  const innerWidth = Math.max(1, size - padding * 2);
+  // pieceSizeOverride (modül başı px) verilmişse onu hedef pieceSize kabul edip
+  // size'ı türet; yoksa matris tahmini ile başlangıç değeri.
+  const matrixSize = estimateMatrixSize(value, errorCorrectionLevel);
+  const initialPiece = pieceSizeOverride ?? Math.max(1, innerWidth / matrixSize);
+  const [piece, setPiece] = useState(initialPiece);
 
   const isDot = pieceShape === 'dot';
+
+  // Web: styled SVG QR, react-native-svg üzerinden DOM'a `transform-origin` (kebab)
+  // sızdırıp konsol uyarısı veriyor. Web'de düz QR görseli kullan (uyarı yok, baskı/ekran net).
+  if (Platform.OS === 'web') {
+    const hex = (color || '#0F172A').replace('#', '');
+    const bg  = (backgroundColor || '#FFFFFF').replace('#', '');
+    const px  = Math.max(120, Math.round(innerWidth * 2)); // net çözünürlük
+    const src = `https://api.qrserver.com/v1/create-qr-code/?size=${px}x${px}&margin=0&format=png&ecc=${errorCorrectionLevel}&color=${hex}&bgcolor=${bg}&data=${encodeURIComponent(value)}`;
+    return (
+      <View style={[styles.wrap, { width: size, height: size, backgroundColor, padding, borderRadius }]}>
+        <Image source={{ uri: src }} style={{ width: innerWidth, height: innerWidth }} resizeMode="contain" />
+      </View>
+    );
+  }
 
   return (
     <View style={[
       styles.wrap,
-      { width: size, height: size, backgroundColor, padding: effectivePad, borderRadius },
+      { width: size, height: size, backgroundColor, padding, borderRadius },
     ]}>
       <QRCodeStyled
         data={value}
-        pieceSize={pieceSize}
+        size={innerWidth}
+        padding={0}
+        onChangePieceSize={setPiece}
         pieceCornerType="rounded"
-        pieceBorderRadius={isDot ? pieceSize / 2 : Math.max(1, pieceSize * 0.25)}
+        pieceBorderRadius={isDot ? piece / 2 : Math.max(1, piece * 0.25)}
         pieceScale={isDot ? 0.92 : 1}
         outerEyesOptions={{
-          topLeft:    { borderRadius: pieceSize * 1.5 },
-          topRight:   { borderRadius: pieceSize * 1.5 },
-          bottomLeft: { borderRadius: pieceSize * 1.5 },
+          topLeft:    { borderRadius: piece * 1.5 },
+          topRight:   { borderRadius: piece * 1.5 },
+          bottomLeft: { borderRadius: piece * 1.5 },
         }}
         innerEyesOptions={{
-          borderRadius: pieceSize,
+          borderRadius: piece,
         }}
         color={color}
         errorCorrectionLevel={errorCorrectionLevel}
@@ -109,8 +127,12 @@ function estimateMatrixSize(value: string, ecl: 'L' | 'M' | 'Q' | 'H'): number {
   const bytes = new TextEncoder().encode(value).length;
   const caps = QR_BYTE_CAPACITY[ecl];
   for (let v = 0; v < caps.length; v++) {
-    if (bytes <= caps[v]) return 17 + (v + 1) * 4;
+    if (bytes <= caps[v]) {
+      // +1 version safety buffer — capacity table mode/length indicator
+      // overhead'i tam yansıtmıyor, qrcode-styled bazen bir üst version'a
+      // geçiyor. Buffer ile QR matrix container'ı taşmıyor.
+      return 17 + Math.min(v + 2, caps.length) * 4;
+    }
   }
-  // Çok uzun veri için emniyetli üst sınır — version 20
   return 17 + 20 * 4;
 }

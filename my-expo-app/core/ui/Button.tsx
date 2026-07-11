@@ -2,7 +2,6 @@ import React from 'react';
 import {
   TouchableOpacity,
   Text,
-  ActivityIndicator,
   StyleSheet,
   ViewStyle,
   TextStyle,
@@ -10,6 +9,7 @@ import {
 } from 'react-native';
 import { C } from '../theme/colors';
 import { S } from '../theme/spacing';
+import { ActivityIndicator } from './teethCompat';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
 type Size = 'sm' | 'md' | 'lg';
@@ -53,17 +53,10 @@ export function Button({
       ]}
       activeOpacity={0.75}
     >
-      {loading ? (
-        <ActivityIndicator
-          size="small"
-          color={variant === 'primary' || variant === 'danger' ? '#FFFFFF' : C.primary}
-        />
-      ) : (
-        <View style={styles.inner}>
-          {icon && <Text style={[styles.icon, labelSizes[size]]}>{icon}</Text>}
-          <Text style={[styles.label, labelStyles[variant], labelSizes[size]]}>{label}</Text>
-        </View>
-      )}
+      <View style={styles.inner}>
+        {icon && <Text style={[styles.icon, labelSizes[size]]}>{icon}</Text>}
+        <Text style={[styles.label, labelStyles[variant], labelSizes[size]]}>{label}</Text>
+      </View>
     </TouchableOpacity>
   );
 }

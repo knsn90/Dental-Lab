@@ -1,7 +1,7 @@
 /**
  * HRHubScreen — İnsan Kaynakları tek modül hub ekranı
  *
- * 4 sekme: Çalışanlar · İzin & Devam · Performans · Dosyalar
+ * 4 sekme: Ekip · İzin & Devam · Performans · Dosyalar
  *
  * Desktop: sol sidebar (icon + label) + sağ content
  * Mobile:  horizontal pill bar + full-width content
@@ -13,17 +13,23 @@ import {
   View, Text, ScrollView, Pressable,
   useWindowDimensions, Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HubContext } from '../../../core/ui/HubContext';
 import { DS } from '../../../core/theme/dsTokens';
+import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import {
-  Users, CalendarDays, Trophy, FolderOpen, Plus,
+  Users, CalendarDays, Trophy, FolderOpen, Plus, Cpu, UserCog,
 } from 'lucide-react-native';
+import { useLocalSearchParams } from 'expo-router';
 
 import { EmployeesScreen }   from '../../employees/screens/EmployeesScreen';
 import { HRScreen }          from './HRScreen';
 import { PerformanceScreen } from '../../performance/screens/PerformanceScreen';
 import { DocumentsScreen }   from '../../documents/screens/DocumentsScreen';
+import { SkillCatalogScreen, StationPermissionsScreen } from './TeamCompetencyScreens';
 
 // ── Display font ──
 const DISPLAY = {
@@ -33,7 +39,9 @@ const DISPLAY = {
 
 // ── Tab tanımları ──
 const TABS = [
-  { key: 'employees',   label: 'Çalışanlar',   hint: 'Çalışan listesi ve profilleri',    icon: Users,        accent: '#0F172A' },
+  { key: 'employees',   label: 'Ekip',   hint: 'Personel listesi ve profilleri',    icon: Users,        accent: '#0F172A' },
+  { key: 'people',      label: 'Personel',       hint: 'Teknisyen istasyon yetkileri',      icon: UserCog,      accent: '#0F172A' },
+  { key: 'skills',      label: 'Yetkinlikler',   hint: 'Beceri kataloğu',                   icon: Cpu,          accent: '#0F172A' },
   { key: 'hr',          label: 'İzin & Devam',  hint: 'İzin talepleri ve devamsızlık',     icon: CalendarDays, accent: '#0F172A' },
   { key: 'performance', label: 'Performans',     hint: 'Teknisyen ve istasyon performansı', icon: Trophy,       accent: '#D97706' },
   { key: 'documents',   label: 'Dosyalar',       hint: 'Belgeler ve dökümanlar',            icon: FolderOpen,   accent: '#DC2626' },
@@ -43,15 +51,23 @@ type TabKey = typeof TABS[number]['key'];
 
 // ── Hub Screen ──
 export function HRHubScreen() {
-  const [tab, setTab] = useState<TabKey>('employees');
+  const params = useLocalSearchParams<{ tab?: string }>();
+  const initialTab: TabKey = (TABS.some(t => t.key === params.tab) ? params.tab : 'employees') as TabKey;
+  const [tab, setTab] = useState<TabKey>(initialTab);
   const { width } = useWindowDimensions();
   const isDesktop = width >= 900;
+  const insets = useSafeAreaInsets();
+  const theme = usePanelTheme();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const activeTab = TABS.find(t => t.key === tab)!;
-  const accentColor = activeTab.accent;
+  const accentColor = theme.primary;
 
   const renderContent = () => {
     switch (tab) {
       case 'employees':   return <EmployeesScreen />;
+      case 'people':      return <StationPermissionsScreen />;
+      case 'skills':      return <SkillCatalogScreen />;
       case 'hr':          return <HRScreen />;
       case 'performance': return <PerformanceScreen />;
       case 'documents':   return <DocumentsScreen />;
@@ -60,17 +76,17 @@ export function HRHubScreen() {
   };
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, backgroundColor: T.bg }}>
 
       {/* ── Mobile: Horizontal pill bar ─────────────────────────── */}
       {!isDesktop && (
-        <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 }}>
+        <View style={{ paddingHorizontal: 12, paddingTop: Math.max(insets.top, 8) + 72, paddingBottom: 8 }}>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{ gap: 6, alignItems: 'center' }}
           >
-            <View style={{ flexDirection: 'row', gap: 3, padding: 3, backgroundColor: DS.ink[50], borderRadius: 9999 }}>
+            <View style={{ flexDirection: 'row', gap: 3, padding: 3, backgroundColor: T.cardSoft, borderRadius: 9999 }}>
               {TABS.map(t => {
                 const active = t.key === tab;
                 const TabIcon = t.icon;
@@ -81,15 +97,15 @@ export function HRHubScreen() {
                     style={{
                       flexDirection: 'row', alignItems: 'center', gap: 5,
                       paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9999,
-                      backgroundColor: active ? t.accent : 'transparent',
+                      backgroundColor: active ? theme.primary : 'transparent',
                     }}
                   >
                     <TabIcon
                       size={12}
                       strokeWidth={active ? 2.2 : 1.8}
-                      color={active ? '#FFFFFF' : t.accent}
+                      color={active ? '#FFFFFF' : theme.primary}
                     />
-                    <Text style={{ fontSize: 11, fontWeight: active ? '700' : '600', color: active ? '#FFFFFF' : DS.ink[500] }}>
+                    <Text style={{ fontSize: 11, fontWeight: active ? '700' : '600', color: active ? '#FFFFFF' : T.ink3 }}>
                       {t.label}
                     </Text>
                   </Pressable>
@@ -124,7 +140,7 @@ export function HRHubScreen() {
                       paddingHorizontal: 14,
                       paddingVertical: 10,
                       borderRadius: 12,
-                      backgroundColor: isActive ? '#FFFFFF' : 'transparent',
+                      backgroundColor: isActive ? T.card : 'transparent',
                       // @ts-ignore web
                       cursor: 'pointer',
                     }}
@@ -149,14 +165,14 @@ export function HRHubScreen() {
                       <TabIcon
                         size={15}
                         strokeWidth={isActive ? 2 : 1.6}
-                        color={isActive ? t.accent : '#9A9A9A'}
+                        color={isActive ? t.accent : T.ink3}
                       />
                     </View>
                     <Text
                       style={{
                         fontSize: 13,
                         fontWeight: isActive ? '600' : '400',
-                        color: isActive ? '#0A0A0A' : '#6B6B6B',
+                        color: isActive ? T.ink : T.ink2,
                         flex: 1,
                       }}
                     >
@@ -181,13 +197,13 @@ export function HRHubScreen() {
                     ...DISPLAY,
                     fontSize: 24,
                     letterSpacing: -0.5,
-                    color: '#0A0A0A',
+                    color: T.ink,
                     marginBottom: 4,
                   }}
                 >
                   {activeTab.label}
                 </Text>
-                <Text style={{ fontSize: 13, color: '#9A9A9A', lineHeight: 19 }}>
+                <Text style={{ fontSize: 13, color: T.ink3, lineHeight: 19 }}>
                   {activeTab.hint}
                 </Text>
               </View>

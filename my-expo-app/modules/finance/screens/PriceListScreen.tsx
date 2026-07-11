@@ -6,30 +6,57 @@
  *   Özel Listeler → Klinik / hekim bazlı fiyat istisnası
  *   Promosyonlar  → Kampanya, iskonto ve promosyon yönetimi
  */
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, Pressable,
-  TextInput, Modal, ActivityIndicator, Alert,
+  TextInput, Modal, Alert,
   Platform, useWindowDimensions,
 } from 'react-native';
 import {
   Search, X, Plus, Tag, Pencil, Info, Building2,
-  ChevronRight, ArrowLeft, PlusCircle, Trash2, Calendar,
+  ChevronRight, ChevronDown, ChevronUp, ArrowLeft, PlusCircle, Trash2, Calendar, FileDown,
+  GitMerge, Scissors, Check, Zap, GripVertical, Sparkles,
 } from 'lucide-react-native';
 import { supabase } from '../../../core/api/supabase';
+import { CURRENCY_META, type Currency } from '../../../core/money/currency';
+import { baseSymbol, useBaseCurrency } from '../../../core/money/baseCurrency';
+import { buildCatalogPdfHtml, CATALOG_PALETTES, type CatalogTech } from '../../../lib/catalogPdf';
+
+/** Bir servisin para birimine göre sembol (€/$/£/₺). */
+const priceSym = (cur?: string | null) => CURRENCY_META[(cur || 'TRY') as Currency]?.symbol ?? '₺';
+import { useAuthStore } from '../../../core/store/authStore';
 import { DS } from '../../../core/theme/dsTokens';
+import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { DatePicker } from '../../../core/ui/DatePicker';
 import { AppSwitch } from '../../../core/ui/AppSwitch';
 
-import { fetchAllLabServices, createLabService, updateLabService } from '../../services/api';
+import { fetchAllLabServices, createLabService, updateLabService, deleteLabService, aiCatalogCopy } from '../../services/api';
+import { fetchCategories, createCategory, renameCategoryRow, deleteCategoryRow, type ServiceCategory } from '../../../lib/serviceCategories';
 import { fetchClinics } from '../../clinics/api';
-import type { LabService } from '../../services/types';
+import type { LabService, PriceType } from '../../services/types';
 import type { Clinic } from '../../clinics/types';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
+import { CenteredLoader } from '../../../core/ui/CenteredLoader';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Constants
 // ────────────────────────────────────────────────────────────────────────────
 const PRIMARY = '#0891B2';
+function tint(hex: string, a: number) {
+  try {
+    const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${a})`;
+  } catch { return hex; }
+}
+// Panel accent açık tonsa (safran/mercan gibi) hero üzerinde koyu metin gerekir.
+function isLightHex(hex: string) {
+  try {
+    const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+    return (0.299 * r + 0.587 * g + 0.114 * b) > 140;
+  } catch { return false; }
+}
 
 const SERVICE_CATEGORIES = [
   'Sabit Protez', 'Hareketli Protez', 'İmplant',
@@ -174,53 +201,59 @@ const s = {
     borderRadius: 9999,
   },
   catPillActive: {
-    backgroundColor: '#FFF',
-    // @ts-ignore web
-    boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+    backgroundColor: PRIMARY,
   },
   catPillText: {
-    fontWeight: '500' as const,
+    fontWeight: '600' as const,
     color: DS.ink[500],
     fontSize: 13,
   },
   catPillTextActive: {
-    fontWeight: '600' as const,
-    color: DS.ink[900],
+    fontWeight: '700' as const,
+    color: '#FFFFFF',
   },
 
-  list: { padding: 22, paddingBottom: 48 } as const,
+  list: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 48 } as const,
 
+  // Kategori bölümü — beyaz kart içinde satırlar (modern)
+  catCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+    overflow: 'hidden' as const,
+    marginBottom: 14,
+    // @ts-ignore web
+    boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 8px 20px rgba(0,0,0,0.04)',
+  },
   groupHeader: {
     flexDirection: 'row' as const,
     justifyContent: 'space-between' as const,
     alignItems: 'center' as const,
-    paddingVertical: 8,
-    paddingHorizontal: 2,
-    marginTop: 6,
-    marginBottom: 2,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.06)',
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    marginBottom: 8,
   },
   groupTitle: {
-    fontSize: 10,
-    fontWeight: '600' as const,
+    fontSize: 11,
+    fontWeight: '700' as const,
     color: DS.ink[500],
-    letterSpacing: 0.8,
+    letterSpacing: 1,
     textTransform: 'uppercase' as const,
   },
-  groupCount: { fontSize: 11, color: DS.ink[400] },
+  groupCount: { fontSize: 11, color: DS.ink[400], fontWeight: '600' as const },
 
   serviceRow: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    paddingVertical: 14,
-    paddingHorizontal: 18,
+    paddingVertical: 13,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.06)',
+    borderBottomColor: 'rgba(0,0,0,0.05)',
     gap: 12,
   },
   serviceName: { fontSize: 14, fontWeight: '600' as const, color: DS.ink[900] },
-  servicePrice: { ...DISPLAY, fontSize: 14, color: PRIMARY, marginTop: 2 },
+  servicePrice: { ...DISPLAY, fontSize: 15, color: PRIMARY, marginTop: 2 },
   editBtn: {
     width: 32,
     height: 32,
@@ -527,16 +560,113 @@ const m = {
 // Root
 // ────────────────────────────────────────────────────────────────────────────
 export function PriceListScreen() {
+  useBaseCurrency();   // baz para birimi sembolü için (label'lar)
   const [tab, setTab] = useState('standard');
+  const rootTheme = usePanelTheme();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(st => st.resolvedDark);
+  const { profile } = useAuthStore();
+  const labId = (profile as any)?.lab_id ?? null;
+
+  // Acil ek ücret oranı — F2 hero içine gömülü editör
+  const [rate, setRate] = useState('');
+  const [savedRate, setSavedRate] = useState(0);
+  const [surDirty, setSurDirty] = useState(false);
+  const [surSaving, setSurSaving] = useState(false);
+  useEffect(() => {
+    if (!labId) return;
+    let cancel = false;
+    (async () => {
+      const { data } = await supabase.from('lab_settings').select('urgent_surcharge_rate').eq('lab_id', labId).maybeSingle();
+      if (cancel) return;
+      const v = Number(data?.urgent_surcharge_rate ?? 0);
+      setSavedRate(v); setRate(v ? String(v) : '');
+    })();
+    return () => { cancel = true; };
+  }, [labId]);
+  const saveSurcharge = async () => {
+    if (!labId) return;
+    const num = Math.max(0, Math.min(100, parseFloat(rate.replace(',', '.')) || 0));
+    setSurSaving(true);
+    await supabase.from('lab_settings').upsert({ lab_id: labId, urgent_surcharge_rate: num }, { onConflict: 'lab_id' });
+    setSavedRate(num); setRate(num ? String(num) : ''); setSurDirty(false); setSurSaving(false);
+  };
+
+  // Hero renkleri — aktif panel paletinden (lab safran / admin mercan ...)
+  const heroP = rootTheme.primary;
+  const heroPD = rootTheme.primaryDeep;
+  const heroLight = isLightHex(heroP);
+  const onInk = '#FFFFFF';                                       // hero metinleri beyaz
+  const glassBg = 'rgba(255,255,255,0.18)';
+  const glassBorder = 'rgba(255,255,255,0.34)';
+  const saveActive = surDirty && !surSaving;
 
   return (
-    <View style={s.root}>
-      {/* ── Tab pills ── */}
-      <View style={{ paddingHorizontal: 22, paddingTop: 14, paddingBottom: 10 }}>
+    <View style={[s.root, { backgroundColor: T.bg }]}>
+      {/* ── F2 Hero — başlık + acil ek ücret editörü (panel paletinde) ── */}
+      <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 4 }}>
         <View style={{
-          flexDirection: 'row', gap: 2, padding: 3,
-          borderRadius: 9999, backgroundColor: DS.ink[100],
-          alignSelf: 'flex-start',
+          borderRadius: 24, padding: 22, overflow: 'hidden',
+          backgroundColor: heroP,
+          // @ts-ignore web gradient
+          backgroundImage: `linear-gradient(135deg, ${heroP} 0%, ${heroPD} 100%)`,
+        }}>
+          {/* Dekoratif daireler */}
+          <View pointerEvents="none" style={{ position: 'absolute', top: -50, right: -40, width: 200, height: 200, borderRadius: 100, backgroundColor: heroLight ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.12)' }} />
+          <View pointerEvents="none" style={{ position: 'absolute', bottom: -60, left: -30, width: 170, height: 170, borderRadius: 85, backgroundColor: 'rgba(0,0,0,0.06)' }} />
+
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+            {/* Sol: kicker + title + subtitle */}
+            <View style={{ flex: 1, minWidth: 200 }}>
+              <Text style={{ fontSize: 10.5, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', color: tint(onInk, 0.7) }}>Mali İşlemler</Text>
+              <Text style={{ ...DISPLAY, fontSize: 30, color: onInk, letterSpacing: -0.9, lineHeight: 34, marginTop: 4 }}>Fiyat Listesi</Text>
+              <Text style={{ fontSize: 12.5, color: tint(onInk, 0.82), marginTop: 4 }}>Hizmet kataloğu, kategoriler ve fiyatlandırma.</Text>
+            </View>
+
+            {/* Sağ: Acil ek ücret editörü (cam pill) */}
+            <View style={{
+              minWidth: 240, gap: 8, padding: 14, borderRadius: 16,
+              backgroundColor: glassBg,
+              borderWidth: 1, borderColor: glassBorder,
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Zap size={13} color={onInk} strokeWidth={2.2} />
+                <Text style={{ fontSize: 11, fontWeight: '700', color: onInk, letterSpacing: 0.3 }}>Acil vaka ek ücreti</Text>
+              </View>
+              <Text style={{ fontSize: 10.5, color: tint(onInk, 0.78), lineHeight: 15 }}>
+                &quot;Acil&quot; işaretli siparişlere faturada eklenir.
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, gap: 4, flex: 1 }}>
+                  <TextInput
+                    value={rate}
+                    onChangeText={(v) => { setRate(v); setSurDirty(true); }}
+                    placeholder="0" keyboardType="numeric" placeholderTextColor={DS.ink[300]}
+                    style={{ flex: 1, fontSize: 15, fontWeight: '700', color: DS.ink[900], textAlign: 'right', outlineStyle: 'none' } as any}
+                  />
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[500] }}>%</Text>
+                </View>
+                <Pressable
+                  onPress={saveSurcharge}
+                  disabled={!saveActive}
+                  style={{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10, backgroundColor: saveActive ? rootTheme.accent : tint(onInk, heroLight ? 0.12 : 0.22), ...(Platform.OS === 'web' ? { cursor: surDirty ? 'pointer' : 'default' } as any : {}) }}
+                >
+                  <Text style={{ fontSize: 12.5, fontWeight: '800', color: saveActive ? (isLightHex(rootTheme.accent) ? '#0A0A0A' : '#FFFFFF') : tint(onInk, 0.65) }}>
+                    {surSaving ? '…' : surDirty ? 'Kaydet' : `%${savedRate}`}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </View>
+      </View>
+
+      {/* ── Tab pills — panel theme tab bar paterni ── */}
+      <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 }}>
+        <View style={{
+          flexDirection: 'row', gap: 3, padding: 3,
+          borderRadius: 9999, backgroundColor: T.cardSoft,
+          alignItems: 'center',
         }}>
           {([
             { key: 'standard',   label: 'Standart' },
@@ -549,19 +679,19 @@ export function PriceListScreen() {
                 key={t.key}
                 onPress={() => setTab(t.key)}
                 style={{
-                  paddingHorizontal: 14, paddingVertical: 7,
+                  flex: 1,
+                  alignItems: 'center', justifyContent: 'center',
+                  paddingHorizontal: 8, paddingVertical: 7,
                   borderRadius: 9999,
-                  backgroundColor: active ? '#FFF' : 'transparent',
-                  // @ts-ignore web
-                  boxShadow: active ? '0 1px 3px rgba(0,0,0,0.08)' : undefined,
-                  cursor: 'pointer',
+                  backgroundColor: active ? rootTheme.primary : 'transparent',
+                  cursor: 'pointer' as any,
                 }}
               >
                 <Text style={{
-                  fontSize: 13,
-                  fontWeight: active ? '600' : '500',
-                  color: active ? DS.ink[900] : DS.ink[500],
-                }}>
+                  fontSize: 12,
+                  fontWeight: active ? '700' : '600',
+                  color: active ? '#FFFFFF' : T.ink3,
+                }} numberOfLines={1}>
                   {t.label}
                 </Text>
               </Pressable>
@@ -581,11 +711,237 @@ export function PriceListScreen() {
 // Tab 1 — Standart Fiyat Listesi
 // ────────────────────────────────────────────────────────────────────────────
 interface ServiceForm {
-  name: string; category: string; price: string; currency: string;
+  name: string; category: string; price: string; currency: string; production_days: string;
+  priceType: PriceType; unit: string;
 }
-const EMPTY_SVC: ServiceForm = { name: '', category: '', price: '0', currency: 'TRY' };
+const EMPTY_SVC: ServiceForm = { name: '', category: '', price: '0', currency: 'TRY', production_days: '', priceType: 'fixed', unit: 'Üye' };
+
+// Fiyat birimleri — bu fiyat neyin başına? (üye/diş, çene, vaka...)
+const UNIT_OPTIONS = ['Üye', 'Çene', 'Vaka', 'Adet', 'Seans'];
+
+// Fiyatı tipe göre biçimlendir — tutar / yüzde / ücretsiz (+ birim)
+function fmtServicePrice(sv: { price: number; currency: string; price_type?: PriceType | null; unit?: string | null }): string {
+  if (sv.price_type === 'free') return 'Ücretsiz';
+  const u = sv.unit ? ` / ${sv.unit}` : '';
+  if (sv.price_type === 'percent') return `%${(sv.price ?? 0).toLocaleString('tr-TR')}${u}`;
+  return sv.price > 0 ? `${sv.price.toLocaleString('tr-TR')} ${sv.currency}${u}` : '—';
+}
+
+// ── PDF export — Nexadent fiyat listesi tasarımı ────────────────────────
+function buildPriceListPdfHtml(opts: {
+  labName: string;
+  labLogoUrl?: string | null;
+  services: LabService[];
+  showPrices: boolean;
+  currency: string;
+  /** Klinik bazlı özel fiyat listesi başlığı (varsa) */
+  clinicName?: string;
+  /** Override map: service_id → effective price (varsa fiyat olarak göster) */
+  overrides?: Record<string, { customPrice: number | null; discountPercent: number | null }>;
+}): string {
+  const { labName, labLogoUrl, services, showPrices, currency, clinicName, overrides } = opts;
+  const escape = (s: string) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const fmtPrice = (sv: LabService) => {
+    const placeholder = '<span style="color:#94A3B8;letter-spacing:2px">_____________</span>';
+    if (!showPrices) return placeholder;
+    // Birim eki — "/ Üye" gibi (ücretsiz hariç)
+    const u = sv.unit ? ` <span style="font-size:9px;color:#94A3B8">/ ${escape(sv.unit)}</span>` : '';
+    // Tipe göre özel gösterim — ücretsiz / yüzde (override hesabı uygulanmaz)
+    if (sv.price_type === 'free') return 'Ücretsiz';
+    if (sv.price_type === 'percent') return `%${(Number(sv.price) || 0).toLocaleString('tr-TR')}${u}`;
+    // Override varsa effective price hesapla
+    const ov = overrides?.[sv.id];
+    let effective = Number(sv.price) || 0;
+    let isCustom = false;
+    if (ov) {
+      if (ov.customPrice != null) { effective = ov.customPrice; isCustom = true; }
+      else if (ov.discountPercent != null) { effective = effective * (1 - ov.discountPercent / 100); isCustom = true; }
+    }
+    if (effective === 0) return placeholder;
+    const sym = sv.currency === 'EUR' ? '€' : sv.currency === 'USD' ? '$' : sv.currency === 'GBP' ? '£' : '₺';
+    const priceStr = `${sym}${effective.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}`;
+    if (isCustom && ov?.discountPercent != null) {
+      const baseStr = `${sym}${(Number(sv.price) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 })}`;
+      return `${priceStr}${u} <span style="font-size:9px;color:#94A3B8;text-decoration:line-through;margin-left:6px">${baseStr}</span> <span style="font-size:9px;color:#1E3A8A;font-weight:700;margin-left:4px">-%${ov.discountPercent}</span>`;
+    }
+    return priceStr + u;
+  };
+
+  // Kategori bazlı grupla (sadece aktif)
+  const active = services.filter(s => s.is_active);
+  const grouped: Record<string, LabService[]> = {};
+  active.forEach(sv => {
+    const cat = sv.category || 'Diğer';
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push(sv);
+  });
+  // Her kategori içindeki hizmetleri sort_order'a göre sırala (ekrandaki düzenle aynı)
+  Object.keys(grouped).forEach(cat => {
+    grouped[cat].sort((a, b) => {
+      const sa = a.sort_order ?? 0, sb = b.sort_order ?? 0;
+      if (sa !== sb) return sa - sb;
+      return a.name.localeCompare(b.name, 'tr');
+    });
+  });
+  // Kategori sırası — services'taki min(sort_order)'a göre (ekrandaki düzenle aynı)
+  const minOrderFor = (cat: string) => {
+    const inCat = grouped[cat] ?? [];
+    if (inCat.length === 0) return Number.POSITIVE_INFINITY;
+    return Math.min(...inCat.map(sv => sv.sort_order ?? 0));
+  };
+  const ordered = Object.keys(grouped).sort((a, b) => {
+    const ma = minOrderFor(a), mb = minOrderFor(b);
+    if (ma !== mb) return ma - mb;
+    // sort_order eşit veya tanımsızsa varsayılan SERVICE_CATEGORIES sırasına düş
+    const ia = SERVICE_CATEGORIES.indexOf(a);
+    const ib = SERVICE_CATEGORIES.indexOf(b);
+    if (ia !== -1 && ib !== -1) return ia - ib;
+    if (ia !== -1) return -1;
+    if (ib !== -1) return 1;
+    return a.localeCompare(b, 'tr');
+  });
+
+  const sectionLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+  const sections = ordered.map((cat, idx) => {
+    const letter = sectionLetters[idx] ?? '';
+    const items = grouped[cat] ?? [];
+    return `
+      <div class="section">
+        <h2 class="secTitle">${letter ? `${letter}. ` : ''}${escape(cat.toLocaleUpperCase('tr-TR'))}</h2>
+        <table class="priceTable">
+          <thead>
+            <tr>
+              <th class="thName">HİZMET</th>
+              <th class="thPrice">FİYAT (${escape(currency)})</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${items.map(sv => `
+              <tr>
+                <td>${escape(sv.name)}</td>
+                <td class="tdPrice">${fmtPrice(sv)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }).join('');
+
+  return `<!doctype html><html lang="tr"><head><meta charset="utf-8" />
+<title>${escape(labName)} · Fiyat Listesi</title>
+<style>
+@page { size: A4 portrait; margin: 16mm 14mm; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { font-family: 'Inter','Helvetica Neue',Arial,sans-serif; color: #0F172A; background: #FFFFFF; font-size: 11px; line-height: 1.45; -webkit-font-smoothing: antialiased; }
+.doc { max-width: 182mm; margin: 0 auto; }
+
+/* ── HEADER ── */
+.headerBar { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 18px 4px 18px 4px; border-bottom: 2px solid #0F172A; margin-bottom: 18px; }
+.headerLeft { display: flex; align-items: center; gap: 18px; }
+.brandLogo { display: block; height: 110px; max-height: 110px; width: auto; max-width: 240px; object-fit: contain; flex-shrink: 0; }
+.brandLogoFallback { width: 88px; height: 88px; border-radius: 14px; background: #0F172A; display: flex; align-items: center; justify-content: center; font-size: 36px; font-weight: 800; color: #FFFFFF; letter-spacing: 0.5px; flex-shrink: 0; }
+.brandMeta { display: flex; flex-direction: column; gap: 3px; }
+.brandName { font-size: 17px; font-weight: 800; letter-spacing: 0.8px; color: #0F172A; line-height: 1.1; }
+.brandTag { font-size: 8.5px; font-weight: 700; color: #64748B; letter-spacing: 3.2px; }
+.headerRight { text-align: right; }
+.docEyebrow { font-size: 8.5px; font-weight: 700; color: #64748B; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; }
+.docTitle { font-size: 13px; font-weight: 700; color: #0F172A; letter-spacing: 0.4px; }
+.docMeta { font-size: 9.5px; color: #94A3B8; margin-top: 3px; letter-spacing: 0.3px; }
+
+.titleBlock { padding: 4px 0 14px; }
+.title { font-size: 22px; font-weight: 300; letter-spacing: -0.5px; color: #0F172A; line-height: 1.15; }
+.titleAccent { color: #1E3A8A; font-weight: 600; }
+.subtitle { font-size: 11px; color: #475569; margin-top: 8px; line-height: 1.55; }
+.clinicTag { display: inline-block; padding: 3px 10px; border-radius: 9999px; background: rgba(30,58,138,0.08); color: #1E3A8A; font-size: 10.5px; font-weight: 700; letter-spacing: 0.4px; margin-top: 6px; }
+.subNote { font-size: 10px; color: #475569; margin-top: 8px; padding: 8px 12px; background: #F8FAFC; border-radius: 8px; border-left: 3px solid #CBD5E1; }
+.divider { display: none; }
+
+/* ── SECTIONS ── */
+.section { margin-bottom: 22px; break-inside: avoid; page-break-inside: avoid; }
+.secTitle { font-size: 14px; font-weight: 600; color: #1E3A8A; letter-spacing: 0.3px; margin-bottom: 10px; }
+
+/* ── PRICE TABLE ── */
+.priceTable { width: 100%; border-collapse: collapse; border: 1px solid #CBD5E1; }
+.priceTable thead { background: #1E3A8A; }
+.priceTable th { padding: 9px 14px; font-size: 10px; font-weight: 700; color: #FFFFFF; letter-spacing: 1.3px; text-transform: uppercase; text-align: left; border-right: 1px solid rgba(255,255,255,0.18); }
+.priceTable th:last-child { border-right: none; }
+.priceTable th.thName { width: 70%; }
+.priceTable th.thPrice { width: 30%; }
+.priceTable tbody tr { border-bottom: 1px solid #E2E8F0; }
+.priceTable tbody tr:last-child { border-bottom: none; }
+.priceTable td { padding: 10px 14px; font-size: 11px; color: #0F172A; vertical-align: middle; }
+.priceTable td.tdPrice { font-weight: 600; color: #0F172A; }
+
+/* ── FOOTER ── */
+.footer { margin-top: 26px; padding-top: 12px; border-top: 1px solid #E2E8F0; text-align: center; font-size: 10px; color: #94A3B8; letter-spacing: 0.4px; }
+
+@media print { * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } }
+</style></head><body>
+<div class="doc">
+
+  <div class="headerBar">
+    <div class="headerLeft">
+      ${labLogoUrl
+        ? `<img class="brandLogo" src="${escape(labLogoUrl)}" alt="${escape(labName)}" />`
+        : `<div class="brandLogoFallback">${escape((labName[0] ?? 'L').toLocaleUpperCase('tr-TR'))}</div>`}
+      ${(() => {
+        const upper = labName.toLocaleUpperCase('tr-TR');
+        const probe = labName.toLocaleLowerCase('tr-TR');
+        const alreadyHasTag = /lab(oratuvar|oratory)?|dijital|di̇jital/.test(probe);
+        return `<div class="brandMeta">
+          <span class="brandName">${escape(upper)}</span>
+          ${alreadyHasTag ? '' : '<span class="brandTag">DİJİTAL DİŞ LABORATUVARI</span>'}
+        </div>`;
+      })()}
+    </div>
+    <div class="headerRight">
+      <div class="docEyebrow">${clinicName ? 'KLİNİK ÖZEL LİSTE' : 'GÜNCEL FİYAT LİSTESİ'}</div>
+      <div class="docTitle">${escape(currency)} · ${new Date().toLocaleDateString('tr-TR', { year: 'numeric', month: 'long' })}</div>
+      <div class="docMeta">Ref: FL-${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}</div>
+    </div>
+  </div>
+
+  <div class="titleBlock">
+    <h1 class="title">
+      ${clinicName ? 'Klinik özel<br/><span class="titleAccent">fiyat teklifi</span>' : 'Güncel hizmet<br/><span class="titleAccent">fiyat listesi</span>'}
+    </h1>
+    ${clinicName ? `<div class="clinicTag">${escape(clinicName)}</div>` : ''}
+    <p class="subtitle">Gelişmiş CAD/CAM · Dijital Sabit Protez · 3D Baskı Çözümleri</p>
+    ${!showPrices ? '<p class="subNote">Tüm fiyat alanları klinik bazlı özel fiyatlandırma için boş bırakılmıştır.</p>' : ''}
+  </div>
+
+  <div class="divider"></div>
+
+  ${sections}
+
+  <div class="footer">
+    ${escape(labName.toLocaleUpperCase('tr-TR'))} · Gelişmiş CAD/CAM İş Akışı · ${new Date().toLocaleDateString('tr-TR')}
+  </div>
+
+</div>
+</body></html>`;
+}
+
 
 function StandardTab() {
+  const catTheme = usePanelTheme();
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(st => st.resolvedDark);
+  const { profile } = useAuthStore();
+  const [pdfModalOpen, setPdfModalOpen] = useState(false);
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const catScrollRef = useRef<ScrollView>(null);
+  // Bir kerelik scroll-hint — sayfa açıldıktan ~800ms sonra ufak bir
+  // ileri-geri kayma ile "kaydırılabilir" olduğunu göster
+  useEffect(() => {
+    const tShow = setTimeout(() => {
+      catScrollRef.current?.scrollTo({ x: 48, animated: true });
+      const tBack = setTimeout(() => {
+        catScrollRef.current?.scrollTo({ x: 0, animated: true });
+      }, 650);
+      return () => clearTimeout(tBack);
+    }, 800);
+    return () => clearTimeout(tShow);
+  }, []);
   const [services, setServices]       = useState<LabService[]>([]);
   const [loading, setLoading]         = useState(true);
   const [search, setSearch]           = useState('');
@@ -596,82 +952,529 @@ function StandardTab() {
   const [saving, setSaving]           = useState(false);
   const [error, setError]             = useState('');
 
+  const labId = (profile as any)?.lab_id ?? null;
+  const [dbCats, setDbCats] = useState<ServiceCategory[]>([]);
+  const [catManagerOpen, setCatManagerOpen] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
-    const { data } = await fetchAllLabServices();
-    setServices((data as LabService[]) ?? []);
+    const [svc, cats] = await Promise.all([
+      fetchAllLabServices(),
+      labId ? fetchCategories(labId) : Promise.resolve({ data: [] } as any),
+    ]);
+    setServices((svc.data as LabService[]) ?? []);
+    setDbCats((cats.data as ServiceCategory[]) ?? []);
     setLoading(false);
-  }, []);
+  }, [labId]);
 
   useEffect(() => { load(); }, [load]);
 
   const openAdd  = () => { setEdit(null); setForm(EMPTY_SVC); setError(''); setModal(true); };
   const openEdit = (sv: LabService) => {
     setEdit(sv);
-    setForm({ name: sv.name, category: sv.category ?? '', price: String(sv.price), currency: sv.currency });
+    setForm({
+      name: sv.name,
+      category: sv.category ?? '',
+      price: String(sv.price),
+      currency: sv.currency,
+      production_days: sv.production_days != null ? String(sv.production_days) : '',
+      priceType: sv.price_type ?? 'fixed',
+      unit: sv.unit ?? '',
+    });
     setError(''); setModal(true);
   };
 
   const handleSave = async () => {
     if (!form.name.trim()) { setError('Hizmet adı zorunludur.'); return; }
-    const price = parseFloat(form.price) || 0;
+    // Ücretsiz → fiyat 0; yüzde/tutar → girilen sayı
+    const price = form.priceType === 'free' ? 0 : (parseFloat(form.price) || 0);
     setSaving(true);
-    const payload = { name: form.name.trim(), category: form.category || undefined, price, currency: form.currency };
-    if (edit) await updateLabService(edit.id, payload);
-    else await createLabService(payload);
-    setSaving(false); setModal(false); load();
+    const days = form.production_days.trim() === '' ? null : Math.max(0, parseInt(form.production_days, 10) || 0);
+    const payload = {
+      name: form.name.trim(),
+      category: form.category || undefined,
+      price,
+      currency: form.currency,
+      production_days: days,
+      price_type: form.priceType,
+      unit: form.priceType === 'free' ? null : (form.unit.trim() || null),
+    };
+    const res = edit ? await updateLabService(edit.id, payload) : await createLabService(payload);
+    setSaving(false);
+    if ((res as any)?.error) {
+      setError((res as any).error.message ?? 'Kayıt başarısız.');
+      return;
+    }
+    setModal(false); load();
   };
 
   const handleToggle = async (sv: LabService) => {
     await updateLabService(sv.id, { is_active: !sv.is_active }); load();
   };
 
-  const allCats   = ['Tümü', ...SERVICE_CATEGORIES];
+  // Kategorinin tamamını üste/alta taşı — kategorideki tüm hizmetlerin sort_order'larını blok olarak kaydır
+  const handleMoveCategory = async (cat: string, dir: -1 | 1) => {
+    const orderedCats = visibleFilterCats; // sıralanmış, hizmeti olan kategoriler
+    const idx = orderedCats.indexOf(cat);
+    const swapIdx = idx + dir;
+    if (idx < 0 || swapIdx < 0 || swapIdx >= orderedCats.length) return;
+    // Yeni sıra: swap
+    const newOrder = [...orderedCats];
+    [newOrder[idx], newOrder[swapIdx]] = [newOrder[swapIdx], newOrder[idx]];
+    // Global renumber — her kategori 1000 aralıkla, kendi içinde mevcut sırayı koru
+    const sortInCat = (arr: LabService[]) => [...arr].sort((a, b) => {
+      const sa = a.sort_order ?? 0, sb = b.sort_order ?? 0;
+      if (sa !== sb) return sa - sb;
+      return a.name.localeCompare(b.name, 'tr');
+    });
+    const updates: Promise<any>[] = [];
+    const next: LabService[] = [...services];
+    newOrder.forEach((c, ci) => {
+      const inCat = sortInCat(next.filter(sv => (sv.category ?? '') === c));
+      inCat.forEach((sv, i) => {
+        const newSort = ci * 1000 + i;
+        if ((sv.sort_order ?? -1) !== newSort) {
+          updates.push(updateLabService(sv.id, { sort_order: newSort }));
+          const j = next.findIndex(s => s.id === sv.id);
+          if (j >= 0) next[j] = { ...next[j], sort_order: newSort };
+        }
+      });
+    });
+    const snapshot = services;
+    setServices(next);
+    if (updates.length) {
+      try { await Promise.all(updates); } catch { setServices(snapshot); }
+    }
+  };
+
+  // Kullanılmayan varsayılan kategorileri gizle
+  const handleCleanupEmpty = () => {
+    if (emptyDefaultCats.length === 0) {
+      const msg = 'Temizlenecek boş kategori yok.';
+      if (Platform.OS === 'web') window.alert(msg); else Alert.alert('Bilgi', msg);
+      return;
+    }
+    const msg = `Şu boş kategoriler önerilenden kaldırılsın mı?\n\n• ${emptyDefaultCats.join('\n• ')}\n\nYeni bir hizmet eklerken bu kategoriler artık önerilmez. Geri getirmek için bir hizmete adını yazıp atayabilirsin.`;
+    const ok = Platform.OS === 'web' ? window.confirm(msg) : true;
+    if (!ok) return;
+    persistHidden(new Set([...hiddenCats, ...emptyDefaultCats]));
+  };
+
+  // Kategori birleştirme & bölme modali state'i
+  const [catMgmt, setCatMgmt] = useState<
+    | { mode: 'merge';  source: string }
+    | { mode: 'split';  source: string }
+    | null
+  >(null);
+
+  // Bir kategoriyi sil — o kategorideki tüm hizmetler "kategorisiz" olur
+  const handleDeleteCategory = async (name: string) => {
+    const count = services.filter(sv => (sv.category ?? '') === name).length;
+    const msg = count > 0
+      ? `"${name}" kategorisini silmek istediğine emin misin?\n\nBu kategorideki ${count} hizmet "Diğer" altına taşınacak (silinmez).`
+      : `"${name}" kategorisini silmek istediğine emin misin?`;
+    const ok = Platform.OS === 'web'
+      ? (typeof window !== 'undefined' && window.confirm(msg))
+      : await new Promise<boolean>((resolve) => {
+          Alert.alert('Kategoriyi sil', msg, [
+            { text: 'İptal', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Sil', style: 'destructive', onPress: () => resolve(true) },
+          ]);
+        });
+    if (!ok) return;
+    const targets = services.filter(sv => (sv.category ?? '') === name);
+    setServices(prev => prev.map(sv => sv.category === name ? { ...sv, category: undefined } : sv) as LabService[]);
+    if (catFilter === name) setCatFilter('Tümü');
+    await Promise.all(targets.map(sv => updateLabService(sv.id, { category: '' })));
+    load();
+  };
+
+  // İki kategoriyi birleştir — source'taki hizmetler target'a taşınır
+  const handleMergeCategory = async (source: string, target: string) => {
+    if (!target || target === source) return;
+    const targets = services.filter(sv => (sv.category ?? '') === source);
+    setServices(prev => prev.map(sv => sv.category === source ? { ...sv, category: target } : sv));
+    if (catFilter === source) setCatFilter(target);
+    await Promise.all(targets.map(sv => updateLabService(sv.id, { category: target })));
+    load();
+  };
+
+  // Kategoriyi böl — seçili hizmetler yeni kategoriye taşınır
+  const handleSplitCategory = async (source: string, newCatName: string, serviceIds: string[]) => {
+    const trimmed = newCatName.trim();
+    if (!trimmed || serviceIds.length === 0) return;
+    const existing = Array.from(new Set([
+      ...SERVICE_CATEGORIES,
+      ...services.map(sv => sv.category).filter((c): c is string => !!c && c.trim().length > 0),
+    ]));
+    if (existing.includes(trimmed) && trimmed !== source) {
+      // Mevcut kategoriye taşımaya izin ver; sadece uyar
+      const ok = Platform.OS === 'web'
+        ? window.confirm(`"${trimmed}" zaten mevcut. Seçili ${serviceIds.length} hizmet bu kategoriye taşınsın mı?`)
+        : true;
+      if (!ok) return;
+    }
+    setServices(prev => prev.map(sv => serviceIds.includes(sv.id) ? { ...sv, category: trimmed } : sv));
+    await Promise.all(serviceIds.map(id => updateLabService(id, { category: trimmed })));
+    load();
+  };
+
+  // Kategori adını topluca değiştir — bu kategoriyi kullanan tüm hizmetlerin category alanını güncelle
+  const handleRenameCategory = async (oldName: string, rawNew: string) => {
+    const newName = rawNew.trim();
+    if (!newName || newName === oldName) return;
+    const dynamicCats = Array.from(new Set([
+      ...SERVICE_CATEGORIES,
+      ...services.map(sv => sv.category).filter((c): c is string => !!c && c.trim().length > 0),
+    ]));
+    if (dynamicCats.includes(newName)) {
+      const msg = `"${newName}" zaten mevcut bir kategori. Birleştirmek için bu kategorideki hizmetleri tek tek düzenleyebilirsin.`;
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Kategori adı kullanılıyor', msg);
+      return;
+    }
+    const targets = services.filter(sv => (sv.category ?? '') === oldName);
+    // Optimistik
+    setServices(prev => prev.map(sv => sv.category === oldName ? { ...sv, category: newName } : sv));
+    if (catFilter === oldName) setCatFilter(newName);
+    await Promise.all(targets.map(sv => updateLabService(sv.id, { category: newName })));
+    load();
+  };
+
+  // ── Merkezî kategori yönetimi (categories tablosu + hizmet metni) ──────────
+  // Yeni (boş dahil) kategori oluştur
+  const catCreate = async (rawName: string) => {
+    const name = rawName.trim();
+    if (!name || !labId) return;
+    const exists = [...dbCatNames, ...usedCats].some(c => c.toLocaleLowerCase('tr') === name.toLocaleLowerCase('tr'));
+    if (exists) return;
+    const res = await createCategory(labId, name);
+    if (!(res as any)?.error) load();
+  };
+  // Kategori adını değiştir — categories satırı (varsa) + bu kategorideki hizmetler
+  const catRename = async (oldName: string, rawNew: string, catId: string | null) => {
+    const newName = rawNew.trim();
+    if (!newName || newName === oldName) return;
+    if (catId) await renameCategoryRow(catId, newName);
+    const targets = services.filter(sv => (sv.category ?? '') === oldName);
+    setServices(prev => prev.map(sv => sv.category === oldName ? { ...sv, category: newName } : sv));
+    if (catFilter === oldName) setCatFilter(newName);
+    await Promise.all(targets.map(sv => updateLabService(sv.id, { category: newName })));
+    load();
+  };
+  // Kategoriyi sil — categories satırı (varsa) + hizmetleri gruptan çıkar
+  const catDelete = async (name: string, catId: string | null) => {
+    if (catId) await deleteCategoryRow(catId);
+    const targets = services.filter(sv => (sv.category ?? '') === name);
+    setServices(prev => prev.map(sv => sv.category === name ? { ...sv, category: undefined } : sv) as LabService[]);
+    if (catFilter === name) setCatFilter('Tümü');
+    await Promise.all(targets.map(sv => updateLabService(sv.id, { category: '' })));
+    load();
+  };
+
+  // Sıralama: aynı kategori içinde sort_order'a göre sırala, komşuyla swap et
+  const handleMove = async (sv: LabService, dir: -1 | 1) => {
+    const sameCat = services.filter(s => (s.category ?? '') === (sv.category ?? ''));
+    sameCat.sort((a, b) => {
+      const sa = a.sort_order ?? 0, sb = b.sort_order ?? 0;
+      if (sa !== sb) return sa - sb;
+      return a.name.localeCompare(b.name, 'tr');
+    });
+    const idx = sameCat.findIndex(s => s.id === sv.id);
+    const swapIdx = idx + dir;
+    if (idx < 0 || swapIdx < 0 || swapIdx >= sameCat.length) return;
+    const a = sameCat[idx], b = sameCat[swapIdx];
+    // Sort_order'ları normalize et (null/duplikeler için)
+    const aOrder = (a.sort_order ?? idx) === (b.sort_order ?? swapIdx)
+      ? { aNew: swapIdx, bNew: idx }
+      : { aNew: b.sort_order ?? swapIdx, bNew: a.sort_order ?? idx };
+    // Optimistik UI
+    const snapshot = services;
+    setServices(prev => prev.map(s => {
+      if (s.id === a.id) return { ...s, sort_order: aOrder.aNew };
+      if (s.id === b.id) return { ...s, sort_order: aOrder.bNew };
+      return s;
+    }));
+    try {
+      await Promise.all([
+        updateLabService(a.id, { sort_order: aOrder.aNew }),
+        updateLabService(b.id, { sort_order: aOrder.bNew }),
+      ]);
+    } catch {
+      setServices(snapshot);
+    }
+  };
+
+  // ── Sürükle-bırak sıralama (kategori içinde) ───────────────────────────────
+  const [dragInfo, setDragInfo] = useState<{ id: string; key: string } | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
+  const reorderServices = async (group: LabService[], fromId: string, toId: string) => {
+    if (fromId === toId) return;
+    const ids = group.map(g => g.id);
+    const from = ids.indexOf(fromId), to = ids.indexOf(toId);
+    if (from < 0 || to < 0) return;
+    const next = [...group];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    // Grubun mevcut sort_order tabanını koru → kategori sırası değişmez
+    const base = Math.min(...group.map(g => g.sort_order ?? 0));
+    const updates = next.map((sv, i) => ({ id: sv.id, sort_order: base + i }));
+    const snapshot = services;
+    setServices(prev => prev.map(sv => {
+      const u = updates.find(x => x.id === sv.id);
+      return u ? { ...sv, sort_order: u.sort_order } : sv;
+    }));
+    try { await Promise.all(updates.map(u => updateLabService(u.id, { sort_order: u.sort_order }))); }
+    catch { setServices(snapshot); }
+  };
+
+  const handleDelete = async (sv: LabService) => {
+    const message = `"${sv.name}" hizmetini silmek istediğine emin misin?\n\nBu işlem geri alınamaz.`;
+    const confirmed = Platform.OS === 'web'
+      ? (typeof window !== 'undefined' && window.confirm(message))
+      : await new Promise<boolean>((resolve) => {
+          Alert.alert('Hizmeti sil', message, [
+            { text: 'İptal', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Sil', style: 'destructive', onPress: () => resolve(true) },
+          ]);
+        });
+    if (!confirmed) return;
+    const { error } = await deleteLabService(sv.id);
+    if (error) {
+      const msg = (error as any).code === '23503' || /foreign key|reference/i.test(error.message ?? '')
+        ? 'Bu hizmet mevcut siparişlerde veya özel fiyat listelerinde kullanılıyor. Silmek yerine pasifleştirebilirsin.'
+        : `Silme başarısız: ${error.message}`;
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Hata', msg);
+      return;
+    }
+    load();
+  };
+
+  // Kullanıcının manuel olarak kaldırdığı (kullanılmayan) kategoriler — localStorage'da
+  const [hiddenCats, setHiddenCats] = useState<Set<string>>(() => {
+    if (typeof window === 'undefined') return new Set<string>();
+    try {
+      const stored = window.localStorage.getItem('priceList:hiddenCats');
+      return new Set<string>(stored ? JSON.parse(stored) : []);
+    } catch { return new Set<string>(); }
+  });
+  const persistHidden = (next: Set<string>) => {
+    setHiddenCats(next);
+    if (typeof window !== 'undefined') {
+      try { window.localStorage.setItem('priceList:hiddenCats', JSON.stringify([...next])); } catch {}
+    }
+  };
+
+  // Tüm kategoriler — varsayılan + DB'de fiilen kullanılan kategoriler
+  const usedCats = Array.from(new Set(
+    services.map(sv => sv.category).filter((c): c is string => !!c && c.trim().length > 0)
+  ));
+  const dbCatNames = dbCats.map(c => c.name).filter((c): c is string => !!c && c.trim().length > 0);
+  const dynamicCategoriesRaw = Array.from(new Set([...SERVICE_CATEGORIES, ...dbCatNames, ...usedCats]));
+  // Hidden filtre: kullanılmayan + kullanıcı tarafından gizlenmiş kategorileri at
+  const dynamicCategoriesUnsorted = dynamicCategoriesRaw.filter(c => usedCats.includes(c) || !hiddenCats.has(c));
+  // Kategori sırası — services içindeki min(sort_order)'a göre
+  const minOrderFor = (cat: string) => {
+    const inCat = services.filter(sv => (sv.category ?? '') === cat);
+    if (inCat.length === 0) return Number.POSITIVE_INFINITY;
+    return Math.min(...inCat.map(sv => sv.sort_order ?? 0));
+  };
+  const dynamicCategories = [...dynamicCategoriesUnsorted].sort((a, b) => {
+    const ma = minOrderFor(a), mb = minOrderFor(b);
+    if (ma !== mb) return ma - mb;
+    return dynamicCategoriesRaw.indexOf(a) - dynamicCategoriesRaw.indexOf(b);
+  });
+  // Filtre pill bar — sadece en az 1 hizmeti olan kategoriler (boş kategoriler gizli)
+  const visibleFilterCats = dynamicCategories.filter(c => usedCats.includes(c));
+  const allCats   = ['Tümü', ...visibleFilterCats];
+  // Boş varsayılan kategoriler (henüz gizlenmemiş) — toolbar temizleme butonu için
+  const emptyDefaultCats = SERVICE_CATEGORIES.filter(c => !usedCats.includes(c) && !hiddenCats.has(c));
   const filtered  = services.filter((sv) => {
     const matchCat    = catFilter === 'Tümü' || sv.category === catFilter;
     const matchSearch = !search || sv.name.toLowerCase().includes(search.toLowerCase());
     return matchCat && matchSearch;
   });
-  const grouped = SERVICE_CATEGORIES.reduce<Record<string, LabService[]>>((acc, cat) => {
+  const sortByOrder = (arr: LabService[]) =>
+    [...arr].sort((a, b) => {
+      const sa = a.sort_order ?? 0, sb = b.sort_order ?? 0;
+      if (sa !== sb) return sa - sb;
+      return a.name.localeCompare(b.name, 'tr');
+    });
+  const grouped = dynamicCategories.reduce<Record<string, LabService[]>>((acc, cat) => {
     const items = filtered.filter((sv) => sv.category === cat);
-    if (items.length) acc[cat] = items;
+    if (items.length) acc[cat] = sortByOrder(items);
     return acc;
   }, {});
-  const ungrouped = filtered.filter((sv) => !sv.category || !SERVICE_CATEGORIES.includes(sv.category));
+  const ungrouped = sortByOrder(filtered.filter((sv) => !sv.category || !dynamicCategories.includes(sv.category)));
 
   return (
-    <View style={s.tabContent}>
-      {/* Toolbar */}
-      <View style={s.toolbar}>
-        <View style={s.searchWrap}>
-          <Search size={15} color={DS.ink[400]} strokeWidth={1.6} />
+    <View style={[s.tabContent, { backgroundColor: T.bg }]}>
+      {/* Toolbar — arama + aksiyonlar (başlık hub tarafından gösterilir) */}
+      <View style={[s.toolbar, { borderBottomColor: T.hairline }]}>
+        <View style={[s.searchWrap, { backgroundColor: T.card, borderColor: T.hairline }]}>
+          <Search size={15} color={T.ink3} strokeWidth={1.6} />
           <TextInput
-            style={s.searchInput}
+            style={[s.searchInput as any, { color: T.ink }]}
             value={search}
             onChangeText={setSearch}
             placeholder="Hizmet ara..."
-            placeholderTextColor={DS.ink[300]}
+            placeholderTextColor={T.ink3}
           />
           {search.length > 0 && (
             <Pressable onPress={() => setSearch('')}>
-              <X size={14} color={DS.ink[400]} strokeWidth={1.6} />
+              <X size={14} color={T.ink3} strokeWidth={1.6} />
             </Pressable>
           )}
         </View>
-        <Pressable style={s.addBtn} onPress={openAdd}>
-          <Plus size={15} color="#FFFFFF" strokeWidth={2} />
-          <Text style={s.addBtnText}>Ekle</Text>
+        {emptyDefaultCats.length > 0 && (
+          <Pressable
+            style={({ hovered }: any) => ({
+              flexDirection: 'row', alignItems: 'center', gap: 6,
+              paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9999,
+              backgroundColor: hovered ? DS.ink[50] : '#FFFFFF',
+              borderWidth: 1, borderColor: DS.ink[200],
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+            })}
+            onPress={handleCleanupEmpty}
+            accessibilityLabel="Boş kategorileri temizle"
+          >
+            <Trash2 size={13} color={DS.ink[500]} strokeWidth={1.8} />
+            <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[700] }}>
+              Boşları Temizle ({emptyDefaultCats.length})
+            </Text>
+          </Pressable>
+        )}
+        <Pressable
+          style={({ hovered }: any) => ({
+            flexDirection: 'row', alignItems: 'center', gap: 6,
+            paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9999,
+            backgroundColor: hovered ? DS.ink[50] : '#FFFFFF',
+            borderWidth: 1, borderColor: DS.ink[200],
+            ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+          })}
+          onPress={() => setCatManagerOpen(true)}
+        >
+          <Tag size={14} color={DS.ink[700]} strokeWidth={1.8} />
+          <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[900] }}>Kategoriler</Text>
+        </Pressable>
+        <Pressable
+          style={{
+            flexDirection: 'row', alignItems: 'center', gap: 6,
+            paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9999,
+            backgroundColor: '#FFFFFF',
+            borderWidth: 1, borderColor: DS.ink[200],
+            ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+          }}
+          onPress={() => setPdfModalOpen(true)}
+        >
+          <FileDown size={14} color={DS.ink[700]} strokeWidth={1.8} />
+          <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[900] }}>PDF</Text>
+        </Pressable>
+        <Pressable style={[s.addBtn, { backgroundColor: catTheme.accent }] as any} onPress={openAdd}>
+          <Plus size={15} color="#FFFFFF" strokeWidth={2.2} />
+          <Text style={s.addBtnText}>Hizmet Ekle</Text>
         </Pressable>
       </View>
 
-      {/* Category filter pills */}
-      <View style={{ paddingHorizontal: 22, paddingVertical: 8 }}>
+      {/* PDF export modal */}
+      <Modal visible={pdfModalOpen} transparent animationType="fade" onRequestClose={() => setPdfModalOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.55)', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <View style={{ width: 440, maxWidth: '100%', backgroundColor: '#FFFFFF', borderRadius: 18, overflow: 'hidden' }}>
+            <View style={{ paddingHorizontal: 22, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
+              <Text style={{ fontSize: 16, fontWeight: '700', color: DS.ink[900] }}>Fiyat Listesi PDF</Text>
+              <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 4 }}>
+                Yeni sekmede açılır, yazdır veya PDF olarak kaydet (Ctrl/Cmd+P).
+              </Text>
+            </View>
+            <View style={{ padding: 18, gap: 12 }}>
+              <Pressable
+                onPress={async () => {
+                  setPdfModalOpen(false);
+                  let labName = 'Nexadent Dijital Laboratuvar', labLogoUrl: string | null = null;
+                  if ((profile as any)?.lab_id) {
+                    const { data } = await supabase.from('labs').select('name, logo_url').eq('id', (profile as any).lab_id).maybeSingle();
+                    if (data) { labName = data.name || labName; labLogoUrl = data.logo_url || null; }
+                  }
+                  const html = buildPriceListPdfHtml({ labName, labLogoUrl, services, showPrices: false, currency: 'EUR' });
+                  const w = window.open('', '_blank');
+                  if (w) { w.document.write(html); w.document.close(); }
+                }}
+                style={({ hovered }: any) => ({
+                  padding: 14, borderRadius: 12,
+                  backgroundColor: hovered ? '#F8FAFC' : '#FFFFFF',
+                  borderWidth: 1, borderColor: DS.ink[200],
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                })}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900], marginBottom: 3 }}>Boş Fiyat Listesi</Text>
+                <Text style={{ fontSize: 11, color: DS.ink[500] }}>
+                  Klinik için boş — fiyat alanları el ile yazılır. Klinik bazlı pazarlık için ideal.
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={async () => {
+                  setPdfModalOpen(false);
+                  let labName = 'Nexadent Dijital Laboratuvar', labLogoUrl: string | null = null;
+                  if ((profile as any)?.lab_id) {
+                    const { data } = await supabase.from('labs').select('name, logo_url').eq('id', (profile as any).lab_id).maybeSingle();
+                    if (data) { labName = data.name || labName; labLogoUrl = data.logo_url || null; }
+                  }
+                  const html = buildPriceListPdfHtml({ labName, labLogoUrl, services, showPrices: true, currency: 'EUR' });
+                  const w = window.open('', '_blank');
+                  if (w) { w.document.write(html); w.document.close(); }
+                }}
+                style={({ hovered }: any) => ({
+                  padding: 14, borderRadius: 12,
+                  backgroundColor: hovered ? '#F8FAFC' : '#FFFFFF',
+                  borderWidth: 1, borderColor: DS.ink[200],
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                })}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900], marginBottom: 3 }}>Fiyatlı Liste</Text>
+                <Text style={{ fontSize: 11, color: DS.ink[500] }}>
+                  Mevcut fiyatlar ile — referans/online katalog amaçlı.
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => { setPdfModalOpen(false); setCatalogOpen(true); }}
+                style={({ hovered }: any) => ({
+                  padding: 14, borderRadius: 12,
+                  backgroundColor: hovered ? catTheme.primary + '12' : catTheme.primary + '0A',
+                  borderWidth: 1, borderColor: catTheme.primary + '50',
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                })}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: catTheme.primary }}>Katalog (Pazarlama)</Text>
+                  <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 9999, backgroundColor: catTheme.primary }}>
+                    <Text style={{ fontSize: 8.5, fontWeight: '800', color: '#FFFFFF', letterSpacing: 0.4 }}>YENİ</Text>
+                  </View>
+                </View>
+                <Text style={{ fontSize: 11, color: DS.ink[500] }}>
+                  Kapak + hakkımızda + teknolojiler + hizmetler + iletişim — çok sayfalı, modern brosur tarzı.
+                </Text>
+              </Pressable>
+            </View>
+            <View style={{ paddingHorizontal: 18, paddingBottom: 16, alignItems: 'flex-end' }}>
+              <Pressable onPress={() => setPdfModalOpen(false)} style={{ paddingHorizontal: 16, paddingVertical: 8 }}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[500] }}>İptal</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Category filter pills — panel theme tab bar paterni */}
+      <View style={{ paddingHorizontal: 12, paddingVertical: 6 }}>
         <ScrollView
+          ref={catScrollRef}
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{
-            flexDirection: 'row', gap: 2, padding: 3,
-            borderRadius: 9999, backgroundColor: DS.ink[100],
+            flexDirection: 'row', gap: 3, padding: 3,
+            borderRadius: 9999, backgroundColor: DS.ink[50],
+            alignItems: 'center',
           }}
         >
           {allCats.map((c) => {
@@ -681,19 +1484,20 @@ function StandardTab() {
                 key={c}
                 onPress={() => setCatFilter(c)}
                 style={{
-                  paddingHorizontal: 12, paddingVertical: 6,
+                  paddingHorizontal: 14, paddingVertical: 7,
                   borderRadius: 9999,
-                  backgroundColor: active ? '#FFF' : 'transparent',
-                  // @ts-ignore web
-                  boxShadow: active ? '0 1px 3px rgba(0,0,0,0.08)' : undefined,
-                  cursor: 'pointer',
+                  backgroundColor: active ? catTheme.primary : 'transparent',
+                  cursor: 'pointer' as any,
+                  outlineStyle: 'none' as any,
                 }}
               >
                 <Text style={{
-                  fontSize: 12,
-                  fontWeight: active ? '600' : '500',
-                  color: active ? DS.ink[900] : DS.ink[500],
-                }}>
+                  fontSize: 11.5,
+                  fontWeight: active ? '700' : '600',
+                  letterSpacing: 0.2,
+                  textTransform: 'none',
+                  color: active ? '#FFFFFF' : DS.ink[500],
+                }} numberOfLines={1}>
                   {c}
                 </Text>
               </Pressable>
@@ -703,29 +1507,70 @@ function StandardTab() {
       </View>
 
       {loading ? (
-        <ActivityIndicator color={PRIMARY} style={{ marginTop: 40 }} />
+        <CenteredLoader color={PRIMARY} inline />
       ) : (
         <ScrollView contentContainerStyle={s.list}>
           {Object.entries(grouped).map(([cat, items]) => (
             <View key={cat}>
-              <View style={s.groupHeader}>
-                <Text style={s.groupTitle}>{cat}</Text>
-                <Text style={s.groupCount}>{items.length} hizmet</Text>
-              </View>
-              {items.map((sv) => (
-                <ServiceRow key={sv.id} service={sv} onEdit={openEdit} onToggle={handleToggle} />
+              <CategoryHeader
+                name={cat}
+                count={items.length}
+                onRename={(nv) => handleRenameCategory(cat, nv)}
+                onDelete={() => handleDeleteCategory(cat)}
+                onMerge={() => setCatMgmt({ mode: 'merge', source: cat })}
+                onSplit={() => setCatMgmt({ mode: 'split', source: cat })}
+                onMove={(dir) => handleMoveCategory(cat, dir)}
+                isFirst={visibleFilterCats.indexOf(cat) === 0}
+                isLast={visibleFilterCats.indexOf(cat) === visibleFilterCats.length - 1}
+              />
+              <View style={s.catCard}>
+              {items.map((sv, idx) => (
+                <ServiceRow
+                  key={sv.id}
+                  service={sv}
+                  onEdit={openEdit}
+                  onToggle={handleToggle}
+                  onDelete={handleDelete}
+                  onMove={handleMove}
+                  isFirst={idx === 0}
+                  isLast={idx === items.length - 1}
+                  dragging={dragInfo?.id === sv.id}
+                  isOver={overId === sv.id && dragInfo?.key === cat && dragInfo?.id !== sv.id}
+                  onDragStart={() => setDragInfo({ id: sv.id, key: cat })}
+                  onDragEnter={() => setOverId(sv.id)}
+                  onDrop={() => { if (dragInfo?.key === cat) reorderServices(items, dragInfo.id, sv.id); setDragInfo(null); setOverId(null); }}
+                  onDragEnd={() => { setDragInfo(null); setOverId(null); }}
+                />
               ))}
+              </View>
             </View>
           ))}
           {ungrouped.length > 0 && (
             <View>
               <View style={s.groupHeader}>
-                <Text style={s.groupTitle}>Diger</Text>
+                <Text style={s.groupTitle}>Diğer</Text>
                 <Text style={s.groupCount}>{ungrouped.length} hizmet</Text>
               </View>
-              {ungrouped.map((sv) => (
-                <ServiceRow key={sv.id} service={sv} onEdit={openEdit} onToggle={handleToggle} />
+              <View style={s.catCard}>
+              {ungrouped.map((sv, idx) => (
+                <ServiceRow
+                  key={sv.id}
+                  service={sv}
+                  onEdit={openEdit}
+                  onToggle={handleToggle}
+                  onDelete={handleDelete}
+                  onMove={handleMove}
+                  isFirst={idx === 0}
+                  isLast={idx === ungrouped.length - 1}
+                  dragging={dragInfo?.id === sv.id}
+                  isOver={overId === sv.id && dragInfo?.key === '__ungrouped' && dragInfo?.id !== sv.id}
+                  onDragStart={() => setDragInfo({ id: sv.id, key: '__ungrouped' })}
+                  onDragEnter={() => setOverId(sv.id)}
+                  onDrop={() => { if (dragInfo?.key === '__ungrouped') reorderServices(ungrouped, dragInfo.id, sv.id); setDragInfo(null); setOverId(null); }}
+                  onDragEnd={() => { setDragInfo(null); setOverId(null); }}
+                />
               ))}
+              </View>
             </View>
           )}
           {filtered.length === 0 && (
@@ -733,7 +1578,7 @@ function StandardTab() {
               <Tag size={36} color={DS.ink[300]} strokeWidth={1.4} />
               <Text style={s.emptyTitle}>{search ? 'Sonuc bulunamadi' : 'Henuz hizmet eklenmemis'}</Text>
               {!search && (
-                <Pressable style={s.emptyBtn} onPress={openAdd}>
+                <Pressable style={s.emptyBtn as any} onPress={openAdd}>
                   <Text style={s.emptyBtnText}>Ilk hizmeti ekle</Text>
                 </Pressable>
               )}
@@ -752,34 +1597,281 @@ function StandardTab() {
         saving={saving}
         onClose={() => setModal(false)}
         onSave={handleSave}
+        categories={Array.from(new Set([
+          ...SERVICE_CATEGORIES,
+          ...services.map(sv => sv.category).filter((c): c is string => !!c && c.trim().length > 0),
+        ])).filter(c => usedCats.includes(c) || !hiddenCats.has(c))}
+      />
+
+      {catMgmt && (
+        <CategoryManageModal
+          mode={catMgmt.mode}
+          source={catMgmt.source}
+          services={services}
+          allCategories={dynamicCategories}
+          onClose={() => setCatMgmt(null)}
+          onMerge={handleMergeCategory}
+          onSplit={handleSplitCategory}
+        />
+      )}
+
+      <CategoriesManagerModal
+        visible={catManagerOpen}
+        onClose={() => setCatManagerOpen(false)}
+        dbCats={dbCats}
+        usedCounts={usedCats.reduce((acc, c) => { acc[c] = services.filter(sv => (sv.category ?? '') === c).length; return acc; }, {} as Record<string, number>)}
+        onCreate={catCreate}
+        onRename={catRename}
+        onDelete={catDelete}
+      />
+
+      <CatalogBuilderModal
+        visible={catalogOpen}
+        onClose={() => setCatalogOpen(false)}
+        services={services}
+        dynamicCategories={dynamicCategories}
+        currency="EUR"
+        labId={(profile as any)?.lab_id ?? null}
       />
     </View>
   );
 }
 
-function ServiceRow({
-  service: sv, onEdit, onToggle,
-}: { service: LabService; onEdit: (s: LabService) => void; onToggle: (s: LabService) => void }) {
+function CategoryHeader({
+  name, count, onRename, onDelete, onMerge, onSplit, onMove, isFirst, isLast,
+}: {
+  name: string;
+  count: number;
+  onRename: (newName: string) => void;
+  onDelete: () => void;
+  onMerge: () => void;
+  onSplit: () => void;
+  onMove: (dir: -1 | 1) => void;
+  isFirst: boolean;
+  isLast: boolean;
+}) {
+  const T = useMobileTokens();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(name);
+  const commit = () => {
+    const trimmed = draft.trim();
+    if (trimmed && trimmed !== name) onRename(trimmed);
+    setEditing(false);
+  };
+  const iconBtn = (color: string = DS.ink[500]) => ({ hovered }: any) => ({
+    padding: 5, borderRadius: 6,
+    backgroundColor: hovered ? DS.ink[100] : 'transparent',
+    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+  });
   return (
-    <View style={[s.serviceRow, !sv.is_active && { opacity: 0.5 }]}>
-      <View style={{ flex: 1 }}>
-        <Text style={s.serviceName}>{sv.name}</Text>
-        <Text style={s.servicePrice}>
-          {sv.price > 0 ? `${sv.price.toLocaleString('tr-TR')} ${sv.currency}` : '—'}
-        </Text>
-      </View>
-      <Pressable style={s.editBtn} onPress={() => onEdit(sv)}>
-        <Pencil size={14} color={DS.ink[500]} strokeWidth={1.6} />
-      </Pressable>
-      <AppSwitch value={sv.is_active} onValueChange={() => onToggle(sv)} accentColor={PRIMARY} />
+    <View style={[s.groupHeader, { borderBottomColor: T.hairline }]}>
+      {editing ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+          <TextInput
+            value={draft}
+            onChangeText={setDraft}
+            autoFocus
+            onSubmitEditing={commit}
+            onBlur={commit}
+            placeholderTextColor={DS.ink[300]}
+            style={[
+              s.groupTitle as any,
+              {
+                flex: 1,
+                paddingVertical: 2, paddingHorizontal: 6,
+                borderRadius: 6, borderWidth: 1, borderColor: DS.ink[300],
+                backgroundColor: '#FFFFFF',
+                ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
+              },
+            ]}
+          />
+          <Pressable
+            onPress={() => { setDraft(name); setEditing(false); }}
+            hitSlop={6}
+            style={iconBtn()}
+          >
+            <X size={12} color={DS.ink[500]} strokeWidth={1.8} />
+          </Pressable>
+        </View>
+      ) : (
+        <>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flex: 1 }}>
+            <View style={{ gap: 2, marginRight: 6 }}>
+              <Pressable
+                onPress={() => !isFirst && onMove(-1)}
+                disabled={isFirst}
+                hitSlop={4}
+                style={({ hovered }: any) => ({
+                  width: 18, height: 14, borderRadius: 4,
+                  alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: isFirst ? 'transparent' : (hovered ? DS.ink[100] : DS.ink[50]),
+                  opacity: isFirst ? 0.3 : 1,
+                  ...(Platform.OS === 'web' && !isFirst ? { cursor: 'pointer' } as any : {}),
+                })}
+                accessibilityLabel={`${name} kategorisini yukarı taşı`}
+              >
+                <ChevronUp size={10} color={DS.ink[700]} strokeWidth={2} />
+              </Pressable>
+              <Pressable
+                onPress={() => !isLast && onMove(1)}
+                disabled={isLast}
+                hitSlop={4}
+                style={({ hovered }: any) => ({
+                  width: 18, height: 14, borderRadius: 4,
+                  alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: isLast ? 'transparent' : (hovered ? DS.ink[100] : DS.ink[50]),
+                  opacity: isLast ? 0.3 : 1,
+                  ...(Platform.OS === 'web' && !isLast ? { cursor: 'pointer' } as any : {}),
+                })}
+                accessibilityLabel={`${name} kategorisini aşağı taşı`}
+              >
+                <ChevronDown size={10} color={DS.ink[700]} strokeWidth={2} />
+              </Pressable>
+            </View>
+            <Text style={s.groupTitle}>{name}</Text>
+            <Pressable
+              onPress={() => { setDraft(name); setEditing(true); }}
+              hitSlop={6}
+              style={iconBtn()}
+              accessibilityLabel={`${name} kategorisini yeniden adlandır`}
+            >
+              <Pencil size={11} color={DS.ink[500]} strokeWidth={1.6} />
+            </Pressable>
+            <Pressable
+              onPress={onMerge}
+              hitSlop={6}
+              style={iconBtn()}
+              accessibilityLabel={`${name} kategorisini birleştir`}
+            >
+              <GitMerge size={11} color={DS.ink[500]} strokeWidth={1.6} />
+            </Pressable>
+            <Pressable
+              onPress={onSplit}
+              hitSlop={6}
+              style={iconBtn()}
+              accessibilityLabel={`${name} kategorisini böl`}
+            >
+              <Scissors size={11} color={DS.ink[500]} strokeWidth={1.6} />
+            </Pressable>
+            <Pressable
+              onPress={onDelete}
+              hitSlop={6}
+              style={({ hovered }: any) => ({
+                padding: 5, borderRadius: 6,
+                backgroundColor: hovered ? 'rgba(217,75,75,0.10)' : 'transparent',
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              })}
+              accessibilityLabel={`${name} kategorisini sil`}
+            >
+              <Trash2 size={11} color="#D94B4B" strokeWidth={1.6} />
+            </Pressable>
+          </View>
+          <Text style={s.groupCount}>{count} hizmet</Text>
+        </>
+      )}
     </View>
   );
+}
+
+function ServiceRow({
+  service: sv, onEdit, onToggle, onDelete, onMove, isFirst, isLast,
+  dragging, isOver, onDragStart, onDragEnter, onDrop, onDragEnd,
+}: {
+  service: LabService;
+  onEdit: (s: LabService) => void;
+  onToggle: (s: LabService) => void;
+  onDelete: (s: LabService) => void;
+  onMove: (s: LabService, dir: -1 | 1) => void;
+  isFirst: boolean;
+  isLast: boolean;
+  dragging?: boolean; isOver?: boolean;
+  onDragStart?: () => void; onDragEnter?: () => void; onDrop?: () => void; onDragEnd?: () => void;
+}) {
+  const theme = usePanelTheme();
+  const T = useMobileTokens();
+  const isWeb = Platform.OS === 'web';
+  const arrowBtnStyle = (disabled: boolean) => ({ hovered }: any) => ({
+    width: 22, height: 18, borderRadius: 6,
+    alignItems: 'center' as const, justifyContent: 'center' as const,
+    backgroundColor: disabled ? 'transparent' : (hovered ? DS.ink[100] : DS.ink[50]),
+    opacity: disabled ? 0.3 : 1,
+    ...(Platform.OS === 'web' && !disabled ? { cursor: 'pointer' } as any : {}),
+  });
+
+  const row = (
+    <View style={[
+      s.serviceRow,
+      isLast && { borderBottomWidth: 0 },
+      !sv.is_active && { opacity: 0.5 },
+      dragging && { opacity: 0.4 },
+      isOver && { backgroundColor: 'rgba(8,145,178,0.06)' },
+    ]}>
+      {/* Sürükle tutamacı (web) — mobilde ↑↓ okları */}
+      {isWeb ? (
+        React.createElement('div', {
+          draggable: true,
+          onDragStart: (e: any) => { try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', sv.id); } catch {} onDragStart?.(); },
+          onDragEnd: () => onDragEnd?.(),
+          style: { cursor: 'grab', display: 'flex', alignItems: 'center', marginRight: 8, touchAction: 'none' },
+          title: 'Sürükleyerek sırala',
+        }, <GripVertical size={16} color={DS.ink[400]} strokeWidth={1.9} />)
+      ) : (
+        <View style={{ gap: 2, marginRight: 8 }}>
+          <Pressable onPress={() => !isFirst && onMove(sv, -1)} disabled={isFirst} hitSlop={4} style={arrowBtnStyle(isFirst)}>
+            <ChevronUp size={12} color={DS.ink[500]} strokeWidth={2} />
+          </Pressable>
+          <Pressable onPress={() => !isLast && onMove(sv, 1)} disabled={isLast} hitSlop={4} style={arrowBtnStyle(isLast)}>
+            <ChevronDown size={12} color={DS.ink[500]} strokeWidth={2} />
+          </Pressable>
+        </View>
+      )}
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={[s.serviceName, { color: T.ink }]} numberOfLines={1}>{sv.name}</Text>
+        {sv.production_days != null && (
+          <Text style={{ fontSize: 11, color: DS.ink[400], fontWeight: '500', marginTop: 2 }}>
+            {sv.production_days} gün
+          </Text>
+        )}
+      </View>
+      {/* Fiyat — sağda, satırın önünde (başlık altında değil) */}
+      <Text style={[s.servicePrice, { color: sv.price_type === 'free' ? '#1F6B47' : theme.primary, marginTop: 0, textAlign: 'right' }]}>
+        {fmtServicePrice(sv)}
+      </Text>
+      <Pressable style={s.editBtn as any} onPress={() => onEdit(sv)}>
+        <Pencil size={14} color={DS.ink[500]} strokeWidth={1.6} />
+      </Pressable>
+      <Pressable
+        onPress={() => onDelete(sv)}
+        hitSlop={6}
+        style={({ hovered }: any) => ({
+          width: 30, height: 30, borderRadius: 8,
+          alignItems: 'center', justifyContent: 'center',
+          backgroundColor: hovered ? 'rgba(217,75,75,0.10)' : 'transparent',
+          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+        })}
+        accessibilityLabel={`${sv.name} hizmetini sil`}
+      >
+        <Trash2 size={14} color="#D94B4B" strokeWidth={1.6} />
+      </Pressable>
+      <AppSwitch value={sv.is_active} onValueChange={() => onToggle(sv)} accentColor={theme.primary} />
+    </View>
+  );
+
+  if (isWeb) {
+    return React.createElement('div', {
+      onDragOver: (e: any) => { e.preventDefault(); onDragEnter?.(); },
+      onDrop: (e: any) => { e.preventDefault(); onDrop?.(); },
+    }, row);
+  }
+  return row;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
 // Tab 2 — Ozel Listeler (clinic / doctor-specific prices)
 // ────────────────────────────────────────────────────────────────────────────
 function CustomTab() {
+  const T = useMobileTokens();
+  const { profile } = useAuthStore();
   const [clinics, setClinics]         = useState<Clinic[]>([]);
   const [services, setServices]       = useState<LabService[]>([]);
   const [overrides, setOverrides]     = useState<PriceOverride[]>([]);
@@ -788,8 +1880,39 @@ function CustomTab() {
   const [loading, setLoading]         = useState(true);
   const [editModal, setEditModal]     = useState(false);
   const [editSvc, setEditSvc]         = useState<LabService | null>(null);
-  const [oForm, setOForm]             = useState({ custom_price: '', discount_percent: '', notes: '' });
+  const [oForm, setOForm]             = useState({ custom_price: '', discount_percent: '', notes: '', currency: 'TRY' });
   const [saving, setSaving]           = useState(false);
+  const [pdfBusy, setPdfBusy]         = useState(false);
+  const [importing, setImporting]     = useState(false);
+
+  const exportClinicPdf = async () => {
+    if (!selectedClinic) return;
+    setPdfBusy(true);
+    try {
+      let labName = 'Nexadent Dijital Laboratuvar', labLogoUrl: string | null = null;
+      if ((profile as any)?.lab_id) {
+        const { data } = await supabase.from('labs').select('name, logo_url').eq('id', (profile as any).lab_id).maybeSingle();
+        if (data) { labName = data.name || labName; labLogoUrl = data.logo_url || null; }
+      }
+      // Override map'i oluştur
+      const overrideMap: Record<string, { customPrice: number | null; discountPercent: number | null }> = {};
+      overrides.forEach(o => {
+        overrideMap[o.service_id] = { customPrice: o.custom_price, discountPercent: o.discount_percent };
+      });
+      const html = buildPriceListPdfHtml({
+        labName, labLogoUrl,
+        services,
+        showPrices: true,
+        currency: 'TRY',
+        clinicName: selectedClinic.name,
+        overrides: overrideMap,
+      });
+      const w = window.open('', '_blank');
+      if (w) { w.document.write(html); w.document.close(); }
+    } finally {
+      setPdfBusy(false);
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -831,6 +1954,7 @@ function CustomTab() {
       custom_price:     existing?.custom_price != null ? String(existing.custom_price) : '',
       discount_percent: existing?.discount_percent != null ? String(existing.discount_percent) : '',
       notes:            existing?.notes ?? '',
+      currency:         existing?.currency || sv.currency || 'TRY',
     });
     setEditModal(true);
   };
@@ -844,7 +1968,7 @@ function CustomTab() {
       service_id:       editSvc.id,
       custom_price:     oForm.custom_price ? parseFloat(oForm.custom_price) : null,
       discount_percent: oForm.discount_percent ? parseFloat(oForm.discount_percent) : null,
-      currency:         'TRY',
+      currency:         oForm.currency || 'TRY',
       notes:            oForm.notes || null,
     };
     let isNew = false;
@@ -872,6 +1996,36 @@ function CustomTab() {
     setOverrideCounts(prev => ({ ...prev, [selectedClinic.id]: Math.max(0, (prev[selectedClinic.id] ?? 1) - 1) }));
   };
 
+  // F2: Standart listeyi bu kliniğe toplu aktar — override'ı olmayan tüm aktif
+  // hizmetler için standart fiyatıyla bir özel-fiyat satırı oluştur (başlangıç noktası).
+  const handleImportStandard = async () => {
+    if (!selectedClinic) return;
+    const existing = new Set(overrides.map((o) => o.service_id));
+    const toAdd = services.filter((sv) => sv.is_active && !existing.has(sv.id));
+    if (toAdd.length === 0) {
+      if (typeof window !== 'undefined') window.alert('Tüm hizmetler zaten bu kliniğe aktarılmış.');
+      return;
+    }
+    const ok = typeof window !== 'undefined'
+      ? window.confirm(`${toAdd.length} hizmet standart fiyatıyla "${selectedClinic.name}" kliniğine kopyalanacak. Sonra tek tek düzenleyebilirsin.`)
+      : true;
+    if (!ok) return;
+    setImporting(true);
+    const rows = toAdd.map((sv) => ({
+      clinic_id:        selectedClinic.id,
+      service_id:       sv.id,
+      custom_price:     sv.price,
+      discount_percent: null,
+      currency:         sv.currency ?? 'TRY',
+      notes:            null,
+    }));
+    const { error } = await supabase.from('clinic_price_overrides').insert(rows);
+    setImporting(false);
+    if (error) { if (typeof window !== 'undefined') window.alert('Aktarım başarısız: ' + error.message); return; }
+    loadOverrides(selectedClinic.id);
+    setOverrideCounts((prev) => ({ ...prev, [selectedClinic.id]: (prev[selectedClinic.id] ?? 0) + toAdd.length }));
+  };
+
   const getEffectivePrice = (sv: LabService, override?: PriceOverride) => {
     if (!override) return null;
     if (override.custom_price != null) return override.custom_price;
@@ -883,7 +2037,7 @@ function CustomTab() {
 
   const activeSvcs = services.filter((sv) => sv.is_active);
 
-  if (loading) return <ActivityIndicator color={PRIMARY} style={{ marginTop: 40 }} />;
+  if (loading) return <CenteredLoader color={PRIMARY} inline />;
 
   return (
     <View style={s.tabContent}>
@@ -906,7 +2060,7 @@ function CustomTab() {
             clinics.map((c) => {
               const overrideCount = overrideCounts[c.id] ?? 0;
               return (
-                <Pressable key={c.id} style={s.clinicCard} onPress={() => selectClinic(c)}>
+                <Pressable key={c.id} style={s.clinicCard as any} onPress={() => selectClinic(c)}>
                   <View style={s.clinicIcon}>
                     <Building2 size={18} color="#2563EB" strokeWidth={1.6} />
                   </View>
@@ -932,21 +2086,61 @@ function CustomTab() {
         <View style={{ flex: 1 }}>
           {/* Back + clinic name header */}
           <View style={s.clinicHeader}>
-            <Pressable style={s.backBtn} onPress={() => setSelected(null)}>
+            <Pressable style={s.backBtn as any} onPress={() => setSelected(null)}>
               <ArrowLeft size={16} color="#2563EB" strokeWidth={1.6} />
             </Pressable>
             <View style={{ flex: 1 }}>
               <Text style={s.clinicHeaderTitle}>{selectedClinic.name}</Text>
               <Text style={s.clinicHeaderSub}>Ozel fiyat listesi</Text>
             </View>
+            {/* F2: Standart listeyi bu kliniğe toplu aktar (başlangıç noktası) */}
+            <Pressable
+              onPress={handleImportStandard}
+              disabled={importing}
+              style={({ hovered }: any) => ({
+                flexDirection: 'row', alignItems: 'center', gap: 6,
+                paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9999,
+                backgroundColor: hovered ? '#1D4ED8' : '#2563EB',
+                opacity: importing ? 0.6 : 1,
+                ...(Platform.OS === 'web' ? { cursor: importing ? 'wait' as any : 'pointer' as any } as any : {}),
+              })}
+            >
+              <PlusCircle size={14} color="#FFFFFF" strokeWidth={1.9} />
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>{importing ? 'Aktarılıyor…' : 'Standart listeyi aktar'}</Text>
+            </Pressable>
+            <Pressable
+              onPress={exportClinicPdf}
+              disabled={pdfBusy}
+              style={({ hovered }: any) => ({
+                flexDirection: 'row', alignItems: 'center', gap: 6,
+                paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9999,
+                backgroundColor: hovered ? '#F1F5F9' : '#FFFFFF',
+                borderWidth: 1, borderColor: DS.ink[200],
+                opacity: pdfBusy ? 0.6 : 1,
+                ...(Platform.OS === 'web' ? { cursor: pdfBusy ? 'wait' as any : 'pointer' as any } as any : {}),
+              })}
+            >
+              <FileDown size={14} color={DS.ink[700]} strokeWidth={1.8} />
+              <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[900] }}>{pdfBusy ? 'Hazırlanıyor…' : 'PDF'}</Text>
+            </Pressable>
             <View style={s.overrideBadge}>
               <Text style={s.overrideBadgeText}>{overrides.length} ozel fiyat</Text>
             </View>
           </View>
 
           <ScrollView contentContainerStyle={s.list}>
-            {SERVICE_CATEGORIES.map((cat) => {
-              const catSvcs = activeSvcs.filter((sv) => sv.category === cat);
+            {(() => {
+              // Dinamik: hizmetlerin GERÇEK kategorileri (kategorisiz → 'Diğer').
+              // Hardcoded SERVICE_CATEGORIES kullanılmıyordu → özel kategorili hizmetler
+              // filtrelenip ekran boş kalıyordu. Artık tüm hizmetler listelenir.
+              const cats = Array.from(new Set(activeSvcs.map((sv) => sv.category || 'Diğer')));
+              cats.sort((a, b) => {
+                const ia = SERVICE_CATEGORIES.indexOf(a), ib = SERVICE_CATEGORIES.indexOf(b);
+                if (ia < 0 && ib < 0) return a.localeCompare(b, 'tr');
+                if (ia < 0) return 1; if (ib < 0) return -1; return ia - ib;
+              });
+              return cats.map((cat) => {
+              const catSvcs = activeSvcs.filter((sv) => (sv.category || 'Diğer') === cat);
               if (!catSvcs.length) return null;
               return (
                 <View key={cat}>
@@ -959,16 +2153,16 @@ function CustomTab() {
                     return (
                       <Pressable
                         key={sv.id}
-                        style={s.overrideRow}
+                        style={s.overrideRow as any}
                         onPress={() => openEditOverride(sv)}
                       >
                         <View style={{ flex: 1 }}>
-                          <Text style={s.serviceName}>{sv.name}</Text>
+                          <Text style={[s.serviceName, { color: T.ink }]}>{sv.name}</Text>
                           <View style={{ flexDirection: 'row', gap: 8, marginTop: 3, alignItems: 'center' }}>
                             {effPrice != null ? (
                               <>
-                                <Text style={s.overridePrice}>{effPrice.toLocaleString('tr-TR')} ₺</Text>
-                                <Text style={s.standardPrice}>{sv.price.toLocaleString('tr-TR')} ₺</Text>
+                                <Text style={s.overridePrice}>{effPrice.toLocaleString('tr-TR')} {priceSym(override?.custom_price != null ? (override.currency || sv.currency) : sv.currency)}</Text>
+                                <Text style={s.standardPrice}>{sv.price.toLocaleString('tr-TR')} {priceSym(sv.currency)}</Text>
                                 {override?.discount_percent != null && (
                                   <View style={s.discountBadge}>
                                     <Text style={s.discountText}>-{override.discount_percent}%</Text>
@@ -976,7 +2170,7 @@ function CustomTab() {
                                 )}
                               </>
                             ) : (
-                              <Text style={s.stdPriceLabel}>Standart: {sv.price.toLocaleString('tr-TR')} ₺</Text>
+                              <Text style={s.stdPriceLabel}>Standart: {sv.price.toLocaleString('tr-TR')} {priceSym(sv.currency)}</Text>
                             )}
                           </View>
                         </View>
@@ -989,7 +2183,8 @@ function CustomTab() {
                   })}
                 </View>
               );
-            })}
+              });
+            })()}
           </ScrollView>
         </View>
       )}
@@ -1000,11 +2195,11 @@ function CustomTab() {
           <View style={m.sheet}>
             <View style={m.header}>
               <Text style={m.title}>Ozel Fiyat Belirle</Text>
-              <Pressable style={m.closeBtn} onPress={() => setEditModal(false)}>
+              <Pressable style={m.closeBtn as any} onPress={() => setEditModal(false)}>
                 <X size={16} color={DS.ink[500]} strokeWidth={1.6} />
               </Pressable>
             </View>
-            <ScrollView style={m.body} keyboardShouldPersistTaps="handled">
+            <ScrollView style={m.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}>
               {editSvc && (
                 <View style={m.svcInfoCard}>
                   <Text style={m.svcInfoLabel}>Hizmet</Text>
@@ -1014,13 +2209,39 @@ function CustomTab() {
               )}
 
               <View style={m.sectionCard}>
-                <Text style={m.sectionTitle}>Fiyatlandirma Yontemi</Text>
+                <Text style={m.sectionTitle}>Fiyatlandırma Yontemi</Text>
                 <Text style={m.hint}>Ozel fiyat VEYA iskonto orani belirleyebilirsiniz. Ikisi birden girilirse ozel fiyat onceliklidir.</Text>
 
+                {/* Para birimi — kliniğe özel liste farklı dövizde olabilir */}
                 <View style={m.fieldWrap}>
-                  <Text style={m.fieldLabel}>Ozel Fiyat (₺)</Text>
+                  <Text style={m.fieldLabel}>Para Birimi</Text>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    {(['TRY', 'EUR', 'USD', 'GBP'] as const).map((c) => {
+                      const active = oForm.currency === c;
+                      return (
+                        <Pressable
+                          key={c}
+                          onPress={() => setOForm((f) => ({ ...f, currency: c }))}
+                          style={{
+                            flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 10, borderWidth: 1,
+                            borderColor: active ? '#2563EB' : DS.ink[200],
+                            backgroundColor: active ? 'rgba(37,99,235,0.10)' : '#FFFFFF',
+                            ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                          }}
+                        >
+                          <Text style={{ fontSize: 12.5, fontWeight: active ? '800' : '600', color: active ? '#2563EB' : DS.ink[700] }}>
+                            {priceSym(c)} {c}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                <View style={m.fieldWrap}>
+                  <Text style={m.fieldLabel}>{`Ozel Fiyat (${priceSym(oForm.currency)})`}</Text>
                   <TextInput
-                    style={m.fieldInput}
+                    style={m.fieldInput as any}
                     value={oForm.custom_price}
                     onChangeText={(v) => setOForm((f) => ({ ...f, custom_price: v }))}
                     placeholder="Orn: 850.00"
@@ -1038,7 +2259,7 @@ function CustomTab() {
                 <View style={m.fieldWrap}>
                   <Text style={m.fieldLabel}>Iskonto Orani (%)</Text>
                   <TextInput
-                    style={m.fieldInput}
+                    style={m.fieldInput as any}
                     value={oForm.discount_percent}
                     onChangeText={(v) => setOForm((f) => ({ ...f, discount_percent: v }))}
                     placeholder="Orn: 15"
@@ -1051,7 +2272,7 @@ function CustomTab() {
               <View style={m.sectionCard}>
                 <Text style={m.sectionTitle}>Not</Text>
                 <TextInput
-                  style={[m.fieldInput, { minHeight: 72, textAlignVertical: 'top' }]}
+                  style={[m.fieldInput, { minHeight: 72, textAlignVertical: 'top' }] as any}
                   value={oForm.notes}
                   onChangeText={(v) => setOForm((f) => ({ ...f, notes: v }))}
                   placeholder="Istege bagli aciklama..."
@@ -1065,17 +2286,17 @@ function CustomTab() {
 
             <View style={m.footer}>
               {overrides.find((o) => o.service_id === editSvc?.id) && (
-                <Pressable style={m.deleteBtn} onPress={handleDeleteOverride}>
+                <Pressable style={m.deleteBtn as any} onPress={handleDeleteOverride}>
                   <Trash2 size={15} color="#D94B4B" strokeWidth={1.6} />
                   <Text style={m.deleteText}>Sil</Text>
                 </Pressable>
               )}
               <View style={{ flex: 1 }} />
-              <Pressable style={m.cancelBtn} onPress={() => setEditModal(false)}>
-                <Text style={m.cancelText}>Iptal</Text>
+              <Pressable style={m.cancelBtn as any} onPress={() => setEditModal(false)}>
+                <Text style={m.cancelText}>İptal</Text>
               </Pressable>
               <Pressable
-                style={[m.saveBtn, saving && { opacity: 0.6 }]}
+                style={[m.saveBtn, saving && { opacity: 0.6 }] as any}
                 onPress={handleSaveOverride}
                 disabled={saving}
               >
@@ -1099,6 +2320,7 @@ const DISCOUNT_COLORS: Record<string, string> = {
 };
 
 function PromotionsTab() {
+  const T = useMobileTokens();
   const [promos, setPromos]   = useState<Promotion[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal]     = useState(false);
@@ -1182,13 +2404,13 @@ function PromotionsTab() {
     return new Date(iso).toLocaleDateString('tr-TR');
   };
 
-  if (loading) return <ActivityIndicator color={PRIMARY} style={{ marginTop: 40 }} />;
+  if (loading) return <CenteredLoader color={PRIMARY} inline />;
 
   return (
     <View style={s.tabContent}>
       <View style={s.toolbar}>
         <Text style={s.toolbarTitle}>{promos.length} kampanya / promosyon</Text>
-        <Pressable style={s.addBtn} onPress={openAdd}>
+        <Pressable style={s.addBtn as any} onPress={openAdd}>
           <Plus size={15} color="#FFFFFF" strokeWidth={2} />
           <Text style={s.addBtnText}>Ekle</Text>
         </Pressable>
@@ -1200,7 +2422,7 @@ function PromotionsTab() {
             <Tag size={36} color={DS.ink[300]} strokeWidth={1.4} />
             <Text style={s.emptyTitle}>Henuz promosyon eklenmemis</Text>
             <Text style={s.emptySubtitle}>Kampanya veya toplu iskonto olusturun</Text>
-            <Pressable style={s.emptyBtn} onPress={openAdd}>
+            <Pressable style={s.emptyBtn as any} onPress={openAdd}>
               <Text style={s.emptyBtnText}>Ilk kampanyayi ekle</Text>
             </Pressable>
           </View>
@@ -1219,7 +2441,7 @@ function PromotionsTab() {
                   <Text style={[s.discountCircleText, { color }]}>
                     {p.discount_type === 'percent'
                       ? `%${p.discount_value}`
-                      : `${p.discount_value} ₺`}
+                      : `${p.discount_value} ${baseSymbol()}`}
                   </Text>
                 </View>
                 <View style={{ flex: 1 }}>
@@ -1244,9 +2466,9 @@ function PromotionsTab() {
                   <Calendar size={12} color={DS.ink[400]} strokeWidth={1.6} />
                   <Text style={s.dateChipText}>{formatDate(p.starts_at)} → {formatDate(p.ends_at)}</Text>
                 </View>
-                <Pressable style={s.editSmallBtn} onPress={() => openEdit(p)}>
+                <Pressable style={s.editSmallBtn as any} onPress={() => openEdit(p)}>
                   <Pencil size={13} color={DS.ink[500]} strokeWidth={1.6} />
-                  <Text style={s.editSmallText}>Duzenle</Text>
+                  <Text style={s.editSmallText}>Düzenle</Text>
                 </Pressable>
               </View>
             </View>
@@ -1259,17 +2481,17 @@ function PromotionsTab() {
         <View style={m.overlay}>
           <View style={m.sheet}>
             <View style={m.header}>
-              <Text style={m.title}>{editPromo ? 'Promosyon Duzenle' : 'Yeni Promosyon'}</Text>
-              <Pressable style={m.closeBtn} onPress={() => setModal(false)}>
+              <Text style={m.title}>{editPromo ? 'Promosyon Düzenle' : 'Yeni Promosyon'}</Text>
+              <Pressable style={m.closeBtn as any} onPress={() => setModal(false)}>
                 <X size={16} color={DS.ink[500]} strokeWidth={1.6} />
               </Pressable>
             </View>
 
-            <ScrollView style={m.body} keyboardShouldPersistTaps="handled">
+            <ScrollView style={m.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}>
               <View style={m.sectionCard}>
                 <Text style={m.sectionTitle}>Promosyon Adi</Text>
                 <TextInput
-                  style={m.fieldInput}
+                  style={m.fieldInput as any}
                   value={form.name}
                   onChangeText={(v) => setForm((f) => ({ ...f, name: v }))}
                   placeholder="Orn: Agustos Kampanyasi"
@@ -1287,7 +2509,7 @@ function PromotionsTab() {
                       onPress={() => setForm((f) => ({ ...f, discount_type: t }))}
                     >
                       <Text style={[s.toggleChipText, form.discount_type === t && s.toggleChipTextActive]}>
-                        {t === 'percent' ? 'Yuzde (%)' : 'Sabit (₺)'}
+                        {t === 'percent' ? 'Yüzde (%)' : `Sabit (${baseSymbol()})`}
                       </Text>
                     </Pressable>
                   ))}
@@ -1295,7 +2517,7 @@ function PromotionsTab() {
                 <View style={[m.fieldWrap, { marginTop: 14 }]}>
                   <Text style={m.fieldLabel}>Iskonto Degeri</Text>
                   <TextInput
-                    style={m.fieldInput}
+                    style={m.fieldInput as any}
                     value={form.discount_value}
                     onChangeText={(v) => setForm((f) => ({ ...f, discount_value: v }))}
                     placeholder={form.discount_type === 'percent' ? 'Orn: 15' : 'Orn: 200'}
@@ -1367,15 +2589,15 @@ function PromotionsTab() {
             </ScrollView>
 
             <View style={m.footer}>
-              <Pressable style={m.cancelBtn} onPress={() => setModal(false)}>
-                <Text style={m.cancelText}>Iptal</Text>
+              <Pressable style={m.cancelBtn as any} onPress={() => setModal(false)}>
+                <Text style={m.cancelText}>İptal</Text>
               </Pressable>
               <Pressable
-                style={[m.saveBtn, saving && { opacity: 0.6 }]}
+                style={[m.saveBtn, saving && { opacity: 0.6 }] as any}
                 onPress={handleSave}
                 disabled={saving}
               >
-                <Text style={m.saveText}>{saving ? 'Kaydediliyor...' : editPromo ? 'Guncelle' : 'Olustur'}</Text>
+                <Text style={m.saveText}>{saving ? 'Kaydediliyor...' : editPromo ? 'Güncelle' : 'Oluştur'}</Text>
               </Pressable>
             </View>
           </View>
@@ -1386,10 +2608,1106 @@ function PromotionsTab() {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Category management modal — merge & split
+// ────────────────────────────────────────────────────────────────────────────
+// ── Merkezî Kategori Yönetimi modalı ─────────────────────────────────────────
+function CategoriesManagerModal({
+  visible, onClose, dbCats, usedCounts, onCreate, onRename, onDelete,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  dbCats: ServiceCategory[];
+  usedCounts: Record<string, number>;
+  onCreate: (name: string) => void;
+  onRename: (oldName: string, newName: string, catId: string | null) => void;
+  onDelete: (name: string, catId: string | null) => void;
+}) {
+  const [newName, setNewName] = useState('');
+  const [editKey, setEditKey] = useState<string | null>(null);
+  const [editVal, setEditVal] = useState('');
+
+  // Birleşik liste: categories tablosu + hizmette kullanılan adlar
+  const idByName = new Map(dbCats.map(c => [c.name, c.id]));
+  const names = Array.from(new Set([...dbCats.map(c => c.name), ...Object.keys(usedCounts)]))
+    .filter(n => !!n && n.trim().length > 0)
+    .sort((a, b) => a.localeCompare(b, 'tr'));
+
+  const startEdit = (name: string) => { setEditKey(name); setEditVal(name); };
+  const commitEdit = (name: string) => {
+    const v = editVal.trim();
+    if (v && v !== name) onRename(name, v, idByName.get(name) ?? null);
+    setEditKey(null); setEditVal('');
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+        <Pressable onPress={() => {}} style={{ width: '100%', maxWidth: 520, maxHeight: '88%', backgroundColor: '#FFFFFF', borderRadius: 20, overflow: 'hidden' }}>
+          {/* başlık */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
+            <View style={{ width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(PRIMARY, 0.12) }}>
+              <Tag size={17} color={PRIMARY} strokeWidth={1.9} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 16, fontWeight: '800', color: DS.ink[900] }}>Kategori Yönetimi</Text>
+              <Text style={{ fontSize: 12, color: DS.ink[500] }}>{names.length} kategori</Text>
+            </View>
+            <Pressable onPress={onClose} style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.05)' }}>
+              <X size={15} color={DS.ink[500]} strokeWidth={2} />
+            </Pressable>
+          </View>
+
+          {/* yeni kategori ekle */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }}>
+            <TextInput
+              value={newName} onChangeText={setNewName}
+              onSubmitEditing={() => { onCreate(newName); setNewName(''); }}
+              placeholder="Yeni kategori adı…" placeholderTextColor={DS.ink[400]}
+              style={{ flex: 1, fontSize: 14, color: DS.ink[900], backgroundColor: '#F5F1EB', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' } as any}
+            />
+            <Pressable
+              onPress={() => { onCreate(newName); setNewName(''); }}
+              disabled={!newName.trim()}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, backgroundColor: PRIMARY, opacity: newName.trim() ? 1 : 0.5, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+            >
+              <Plus size={15} color="#FFFFFF" strokeWidth={2.4} />
+              <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>Ekle</Text>
+            </Pressable>
+          </View>
+
+          {/* liste */}
+          <ScrollView contentContainerStyle={{ padding: 12, gap: 6 }}>
+            {names.length === 0 ? (
+              <Text style={{ fontSize: 13, color: DS.ink[400], fontStyle: 'italic', padding: 16, textAlign: 'center' }}>Henüz kategori yok. Yukarıdan ekle.</Text>
+            ) : names.map(name => {
+              const count = usedCounts[name] ?? 0;
+              const catId = idByName.get(name) ?? null;
+              const editing = editKey === name;
+              return (
+                <View key={name} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', backgroundColor: '#FFFFFF' }}>
+                  {editing ? (
+                    <TextInput
+                      value={editVal} onChangeText={setEditVal} autoFocus
+                      onSubmitEditing={() => commitEdit(name)} onBlur={() => commitEdit(name)}
+                      style={{ flex: 1, fontSize: 14, fontWeight: '600', color: DS.ink[900], backgroundColor: '#F5F1EB', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, borderWidth: 1, borderColor: tint(PRIMARY, 0.4) } as any}
+                    />
+                  ) : (
+                    <Pressable onPress={() => startEdit(name)} style={{ flex: 1, ...(Platform.OS === 'web' ? { cursor: 'text' } as any : {}) }}>
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }}>{name}</Text>
+                      <Text style={{ fontSize: 11, color: count > 0 ? DS.ink[500] : DS.ink[400] }}>
+                        {count > 0 ? `${count} hizmet` : 'boş'}
+                      </Text>
+                    </Pressable>
+                  )}
+                  {editing ? (
+                    <Pressable onPress={() => commitEdit(name)} style={{ width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(PRIMARY, 0.14) }}>
+                      <Check size={15} color={PRIMARY} strokeWidth={2.5} />
+                    </Pressable>
+                  ) : (
+                    <>
+                      <Pressable onPress={() => startEdit(name)} style={{ width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.04)' }}>
+                        <Pencil size={14} color={DS.ink[500]} strokeWidth={1.9} />
+                      </Pressable>
+                      <Pressable onPress={() => onDelete(name, catId)} style={{ width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(217,75,75,0.10)' }}>
+                        <Trash2 size={14} color="#9C2E2E" strokeWidth={1.9} />
+                      </Pressable>
+                    </>
+                  )}
+                </View>
+              );
+            })}
+          </ScrollView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function CategoryManageModal({
+  mode, source, services, allCategories, onClose, onMerge, onSplit,
+}: {
+  mode: 'merge' | 'split';
+  source: string;
+  services: LabService[];
+  allCategories: string[];
+  onClose: () => void;
+  onMerge: (source: string, target: string) => void;
+  onSplit: (source: string, newCatName: string, serviceIds: string[]) => void;
+}) {
+  const inCat = services.filter(sv => (sv.category ?? '') === source);
+  const [target, setTarget] = useState('');
+  const [newCatName, setNewCatName] = useState('');
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const otherCats = allCategories.filter(c => c !== source);
+  const selectedIds = Object.keys(selected).filter(k => selected[k]);
+
+  const handleSubmit = () => {
+    if (mode === 'merge') {
+      if (!target) return;
+      onMerge(source, target);
+    } else {
+      if (!newCatName.trim() || selectedIds.length === 0) return;
+      onSplit(source, newCatName.trim(), selectedIds);
+    }
+    onClose();
+  };
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.55)', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+        <View style={{ width: 480, maxWidth: '100%', maxHeight: '85%', backgroundColor: '#FFFFFF', borderRadius: 18, overflow: 'hidden' }}>
+          <View style={{ paddingHorizontal: 22, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View>
+              <Text style={{ fontSize: 16, fontWeight: '700', color: DS.ink[900] }}>
+                {mode === 'merge' ? 'Kategoriyi Birleştir' : 'Kategoriyi Böl'}
+              </Text>
+              <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 4 }}>
+                {mode === 'merge'
+                  ? `"${source}" kategorisindeki ${inCat.length} hizmet seçtiğin kategoriye taşınacak.`
+                  : `"${source}" kategorisinden seçtiğin hizmetler yeni kategoriye taşınacak.`}
+              </Text>
+            </View>
+            <Pressable onPress={onClose} hitSlop={8}>
+              <X size={18} color={DS.ink[500]} strokeWidth={1.6} />
+            </Pressable>
+          </View>
+
+          <ScrollView style={{ padding: 18 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}>
+            {mode === 'merge' ? (
+              <View style={{ gap: 6 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: DS.ink[500], marginBottom: 4, letterSpacing: 0.4, textTransform: 'uppercase' }}>
+                  Hedef Kategori
+                </Text>
+                {otherCats.length === 0 ? (
+                  <Text style={{ fontSize: 13, color: DS.ink[500], paddingVertical: 12 }}>
+                    Birleştirilebilecek başka kategori yok. Önce başka bir kategori oluştur.
+                  </Text>
+                ) : (
+                  otherCats.map(c => {
+                    const active = target === c;
+                    return (
+                      <Pressable
+                        key={c}
+                        onPress={() => setTarget(c)}
+                        style={({ hovered }: any) => ({
+                          flexDirection: 'row', alignItems: 'center', gap: 10,
+                          paddingHorizontal: 12, paddingVertical: 10,
+                          borderRadius: 10, borderWidth: 1,
+                          borderColor: active ? DS.ink[700] : DS.ink[200],
+                          backgroundColor: active ? DS.ink[50] : (hovered ? DS.ink[50] : '#FFFFFF'),
+                          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                        })}
+                      >
+                        <View style={{
+                          width: 16, height: 16, borderRadius: 9999,
+                          borderWidth: 1.5, borderColor: active ? DS.ink[900] : DS.ink[300],
+                          alignItems: 'center', justifyContent: 'center',
+                        }}>
+                          {active && <View style={{ width: 8, height: 8, borderRadius: 9999, backgroundColor: DS.ink[900] }} />}
+                        </View>
+                        <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>{c}</Text>
+                        <Text style={{ fontSize: 11, color: DS.ink[500] }}>
+                          {services.filter(sv => (sv.category ?? '') === c).length} hizmet
+                        </Text>
+                      </Pressable>
+                    );
+                  })
+                )}
+              </View>
+            ) : (
+              <View style={{ gap: 12 }}>
+                <View>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: DS.ink[500], marginBottom: 6, letterSpacing: 0.4, textTransform: 'uppercase' }}>
+                    Yeni Kategori Adı
+                  </Text>
+                  <TextInput
+                    value={newCatName}
+                    onChangeText={setNewCatName}
+                    placeholder="Örn: Premium Zirkonyum"
+                    placeholderTextColor={DS.ink[300]}
+                    style={{
+                      paddingHorizontal: 12, paddingVertical: 10,
+                      borderRadius: 10, borderWidth: 1, borderColor: DS.ink[200],
+                      backgroundColor: '#FFFFFF', fontSize: 14, color: DS.ink[900],
+                      ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
+                    } as any}
+                  />
+                </View>
+
+                <View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: DS.ink[500], letterSpacing: 0.4, textTransform: 'uppercase' }}>
+                      Taşınacak Hizmetler ({selectedIds.length}/{inCat.length})
+                    </Text>
+                    {inCat.length > 0 && (
+                      <Pressable
+                        onPress={() => {
+                          const allSelected = selectedIds.length === inCat.length;
+                          setSelected(allSelected ? {} : Object.fromEntries(inCat.map(sv => [sv.id, true])));
+                        }}
+                      >
+                        <Text style={{ fontSize: 11, fontWeight: '600', color: DS.ink[700] }}>
+                          {selectedIds.length === inCat.length ? 'Tümünü Bırak' : 'Tümünü Seç'}
+                        </Text>
+                      </Pressable>
+                    )}
+                  </View>
+                  <View style={{ borderRadius: 10, borderWidth: 1, borderColor: DS.ink[200], overflow: 'hidden' }}>
+                    {inCat.map((sv, i) => {
+                      const checked = !!selected[sv.id];
+                      return (
+                        <Pressable
+                          key={sv.id}
+                          onPress={() => setSelected(prev => ({ ...prev, [sv.id]: !prev[sv.id] }))}
+                          style={({ hovered }: any) => ({
+                            flexDirection: 'row', alignItems: 'center', gap: 10,
+                            paddingHorizontal: 12, paddingVertical: 10,
+                            borderTopWidth: i === 0 ? 0 : 1, borderTopColor: DS.ink[100],
+                            backgroundColor: checked ? DS.ink[50] : (hovered ? DS.ink[50] : '#FFFFFF'),
+                            ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                          })}
+                        >
+                          <View style={{
+                            width: 16, height: 16, borderRadius: 4,
+                            borderWidth: 1.5, borderColor: checked ? DS.ink[900] : DS.ink[300],
+                            backgroundColor: checked ? DS.ink[900] : '#FFFFFF',
+                            alignItems: 'center', justifyContent: 'center',
+                          }}>
+                            {checked && <Check size={11} color="#FFFFFF" strokeWidth={3} />}
+                          </View>
+                          <Text style={{ flex: 1, fontSize: 13, fontWeight: '500', color: DS.ink[900] }}>{sv.name}</Text>
+                          <Text style={{ fontSize: 11, color: DS.ink[500] }}>
+                            {fmtServicePrice(sv)}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              </View>
+            )}
+          </ScrollView>
+
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, padding: 16, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
+            <Pressable
+              onPress={onClose}
+              style={({ hovered }: any) => ({
+                paddingHorizontal: 16, paddingVertical: 10, borderRadius: 9999,
+                backgroundColor: hovered ? DS.ink[100] : 'transparent',
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              })}
+            >
+              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500] }}>İptal</Text>
+            </Pressable>
+            <Pressable
+              onPress={handleSubmit}
+              disabled={mode === 'merge' ? !target : (!newCatName.trim() || selectedIds.length === 0)}
+              style={({ hovered }: any) => {
+                const disabled = mode === 'merge' ? !target : (!newCatName.trim() || selectedIds.length === 0);
+                return {
+                  paddingHorizontal: 18, paddingVertical: 10, borderRadius: 9999,
+                  backgroundColor: disabled ? DS.ink[200] : (hovered ? DS.ink[800] : DS.ink[900]),
+                  opacity: disabled ? 0.6 : 1,
+                  ...(Platform.OS === 'web' && !disabled ? { cursor: 'pointer' } as any : {}),
+                };
+              }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>
+                {mode === 'merge' ? 'Birleştir' : 'Böl'}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Catalog Builder Modal — kapak + hakkımızda + teknolojiler + hizmetler + iletişim
+// ────────────────────────────────────────────────────────────────────────────
+type LabRow = {
+  name?: string | null; logo_url?: string | null;
+  address?: string | null; phone?: string | null; email?: string | null;
+  website?: string | null;
+};
+type EquipRow = { id: string; name: string; brand?: string | null; category?: string | null; status?: string | null };
+
+function CatalogBuilderModal({
+  visible, onClose, services, dynamicCategories, currency, labId,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  services: LabService[];
+  dynamicCategories: string[];
+  currency: string;
+  labId: string | null;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [lab, setLab] = useState<LabRow>({});
+  const [equipment, setEquipment] = useState<EquipRow[]>([]);
+
+  // Persisted form state — labId'e bağlı localStorage'da saklanır
+  const storageKey = `catalogConfig:${labId ?? 'default'}`;
+  const loadStored = (): any => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  };
+  const stored = loadStored();
+
+  const [coverTitle, setCoverTitle] = useState<string>(stored?.coverTitle ?? 'Hizmet Kataloğu');
+  const [coverSubtitle, setCoverSubtitle] = useState<string>(stored?.coverSubtitle ?? 'Dijital Diş Laboratuvarı');
+  const [coverTagline, setCoverTagline] = useState<string>(stored?.coverTagline ?? 'Modern dijital iş akışı · Hassas üretim · Estetik sonuçlar');
+  const [aboutTitle, setAboutTitle] = useState<string>(stored?.aboutTitle ?? 'Tanışalım');
+  const [aboutText, setAboutText] = useState<string>(stored?.aboutText ?? '');
+  const [whyUs, setWhyUs] = useState<string[]>(stored?.whyUs ?? [
+    'Tamamen dijital CAD/CAM iş akışı',
+    'Hızlı teslimat, ortalama 5 iş günü',
+    'Estetik odaklı premium malzemeler',
+  ]);
+  const [techIntro, setTechIntro] = useState<string>(stored?.techIntro ?? 'Yatırım yaptığımız donanımlar:');
+  const [techSelected, setTechSelected] = useState<Record<string, boolean>>(stored?.techSelected ?? {});
+  const [techCustom, setTechCustom] = useState<CatalogTech[]>(stored?.techCustom ?? []);
+  const [techDraftName, setTechDraftName] = useState('');
+  const [techDraftBrand, setTechDraftBrand] = useState('');
+  const [serviceSelected, setServiceSelected] = useState<Record<string, boolean>>(stored?.serviceSelected ?? {});
+  const [showPrices, setShowPrices] = useState<boolean>(stored?.showPrices ?? false);
+  const [pdfCurrency, setPdfCurrency] = useState<string>(stored?.pdfCurrency ?? currency);
+  const [paletteId, setPaletteId] = useState<string>(stored?.paletteId ?? 'lacivert');
+  const [contactAddress, setContactAddress] = useState<string>(stored?.contactAddress ?? '');
+  const [contactPhone, setContactPhone] = useState<string>(stored?.contactPhone ?? '');
+  const [contactEmail, setContactEmail] = useState<string>(stored?.contactEmail ?? '');
+  const [contactWebsite, setContactWebsite] = useState<string>(stored?.contactWebsite ?? '');
+  const [contactInstagram, setContactInstagram] = useState<string>(stored?.contactInstagram ?? '');
+  const [footerNote, setFooterNote] = useState<string>(stored?.footerNote ?? 'Fiyatlar KDV hariçtir. Geçerlilik: 30 gün.');
+  const [aiBusy, setAiBusy] = useState(false);
+
+  // AI ile kapak/tanıtım metinlerini doldur
+  const runAiFill = async () => {
+    setAiBusy(true);
+    const cats = dynamicCategories ?? [];
+    const svcNames = services.filter(s => s.is_active).map(s => s.name).slice(0, 60);
+    const res = await aiCatalogCopy(lab.name || 'Diş Laboratuvarı', cats, svcNames);
+    setAiBusy(false);
+    if (!res.ok || !res.data) {
+      if (Platform.OS === 'web') window.alert(res.error ?? 'Üretilemedi. ANTHROPIC_API_KEY tanımlı mı?');
+      return;
+    }
+    const d = res.data;
+    if (d.coverTitle) setCoverTitle(d.coverTitle);
+    if (d.coverSubtitle) setCoverSubtitle(d.coverSubtitle);
+    if (d.coverTagline) setCoverTagline(d.coverTagline);
+    if (d.aboutTitle) setAboutTitle(d.aboutTitle);
+    if (d.aboutText) setAboutText(d.aboutText);
+    if (Array.isArray(d.whyUs) && d.whyUs.length) setWhyUs(d.whyUs.filter(Boolean));
+  };
+
+  // Form değiştikçe localStorage'a yaz (debounced'a benzer — her render sonu)
+  useEffect(() => {
+    if (typeof window === 'undefined' || loading) return;
+    const payload = {
+      coverTitle, coverSubtitle, coverTagline,
+      aboutTitle, aboutText, whyUs,
+      techIntro, techSelected, techCustom,
+      serviceSelected, showPrices, pdfCurrency, paletteId,
+      contactAddress, contactPhone, contactEmail, contactWebsite, contactInstagram,
+      footerNote,
+    };
+    try { window.localStorage.setItem(storageKey, JSON.stringify(payload)); } catch {}
+  }, [
+    loading, storageKey,
+    coverTitle, coverSubtitle, coverTagline,
+    aboutTitle, aboutText, whyUs,
+    techIntro, techSelected, techCustom,
+    serviceSelected, showPrices, pdfCurrency, paletteId,
+    contactAddress, contactPhone, contactEmail, contactWebsite, contactInstagram,
+    footerNote,
+  ]);
+
+  // Load lab + equipment when modal opens — sadece açılıştan bir kere
+  const loadedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!visible || !labId) return;
+    // Aynı modal açılışında tekrar tetiklenmesin (services prop ref değişiyor olabilir)
+    const sessionKey = `${labId}:${visible}`;
+    if (loadedFor.current === sessionKey) return;
+    loadedFor.current = sessionKey;
+
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      const [{ data: labData }, { data: eqData }] = await Promise.all([
+        supabase.from('labs').select('name, logo_url, address, phone, email, website').eq('id', labId).maybeSingle(),
+        supabase.from('equipment').select('id, name, brand, category, status').eq('lab_id', labId).neq('status', 'retired').order('category').order('name'),
+      ]);
+      if (cancelled) return;
+      const l = (labData ?? {}) as LabRow;
+      setLab(l);
+      const eq = (eqData ?? []) as EquipRow[];
+      setEquipment(eq);
+      // Teknolojiler kullanıcı tercihi — otomatik seçilmez
+      // Sadece HİÇ kayıt yoksa servis varsayılanını set et
+      const hasStoredService = stored?.serviceSelected && Object.keys(stored.serviceSelected).length > 0;
+      if (!hasStoredService) {
+        setServiceSelected(Object.fromEntries(services.map(sv => [sv.id, true])));
+      }
+      // Contact varsayılanları — sadece storage'da hiç değer yoksa lab'dan doldur
+      if (!stored?.contactAddress && l.address)   setContactAddress(l.address);
+      if (!stored?.contactPhone   && l.phone)     setContactPhone(l.phone);
+      if (!stored?.contactEmail   && l.email)     setContactEmail(l.email);
+      if (!stored?.contactWebsite && l.website)   setContactWebsite(l.website);
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+    // services kasıtlı olarak deps'te yok — array ref her render değişiyor
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, labId]);
+
+  // Modal kapanınca session reset
+  useEffect(() => {
+    if (!visible) loadedFor.current = null;
+  }, [visible]);
+
+  const [generating, setGenerating] = useState(false);
+
+  if (!visible) return null;
+
+  const palette = CATALOG_PALETTES.find(p => p.id === paletteId) ?? CATALOG_PALETTES[0];
+
+  const buildHtml = () => {
+    const selectedTechs: CatalogTech[] = [
+      ...equipment.filter(e => techSelected[e.id]).map(e => ({
+        id: e.id, name: e.name, brand: e.brand ?? undefined, category: e.category ?? undefined,
+      })),
+      ...techCustom,
+    ];
+    const selectedServices = services
+      .filter(sv => serviceSelected[sv.id])
+      .map(sv => ({
+        id: sv.id, name: sv.name, category: sv.category ?? null,
+        price: sv.price, currency: sv.currency, sort_order: sv.sort_order,
+        production_days: sv.production_days, unit: sv.unit ?? null,
+      }));
+    return buildCatalogPdfHtml({
+      labName: lab.name || 'Lab',
+      labLogoUrl: lab.logo_url || null,
+      coverTitle, coverSubtitle, coverTagline,
+      aboutTitle, aboutText,
+      whyUs: whyUs.filter(w => w.trim()),
+      techIntro, technologies: selectedTechs,
+      services: selectedServices,
+      categoryOrder: dynamicCategories,
+      showPrices, currency: pdfCurrency,
+      contact: {
+        address: contactAddress || undefined,
+        phone: contactPhone || undefined,
+        email: contactEmail || undefined,
+        website: contactWebsite || undefined,
+        instagram: contactInstagram || undefined,
+      },
+      accent: palette.accent,
+      accentSoft: palette.accentSoft,
+      footerNote: footerNote || undefined,
+    });
+  };
+
+  // PDF dosyası indir — html2pdf.js ile client-side
+  const handleDownloadPdf = async () => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    setGenerating(true);
+    try {
+      const html = buildHtml();
+      // Geçici iframe oluştur → HTML yükle → html2pdf ile yakala
+      const iframe = document.createElement('iframe');
+      iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:1280px;height:auto;border:none;';
+      document.body.appendChild(iframe);
+      const doc = iframe.contentDocument!;
+      doc.open(); doc.write(html); doc.close();
+
+      // Görseller + fontlar yüklensin
+      await new Promise<void>((resolve) => {
+        const imgs = Array.from(doc.images);
+        if (imgs.length === 0) return resolve();
+        let loaded = 0;
+        const tick = () => { if (++loaded >= imgs.length) resolve(); };
+        imgs.forEach(img => {
+          if (img.complete) tick();
+          else { img.onload = tick; img.onerror = tick; }
+        });
+        // Güvenlik için 5sn timeout
+        setTimeout(resolve, 5000);
+      });
+      await new Promise(r => setTimeout(r, 400));
+
+      const target = doc.querySelector('.catalog') as HTMLElement | null;
+      if (!target) throw new Error('Katalog elementi bulunamadı');
+
+      const html2pdfMod: any = await import('html2pdf.js');
+      const html2pdf = html2pdfMod.default ?? html2pdfMod;
+
+      const fileName = `${(lab.name || 'Lab').replace(/[^\wÀ-ſĞğŞşİıÇçÜüÖö -]/g, '').trim() || 'Katalog'}_Katalog_${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}.pdf`;
+
+      await html2pdf()
+        .from(target)
+        .set({
+          margin: [10, 8, 10, 8],
+          filename: fileName,
+          image: { type: 'jpeg', quality: 0.95 },
+          html2canvas: {
+            scale: 2,
+            useCORS: true,
+            allowTaint: true,
+            backgroundColor: '#FFFFFF',
+            logging: false,
+          },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+          pagebreak: { mode: ['css', 'avoid-all'] },
+        })
+        .save();
+
+      document.body.removeChild(iframe);
+    } catch (e: any) {
+      console.error('PDF üretim hatası', e);
+      const msg = `PDF oluşturulamadı: ${e?.message ?? 'bilinmeyen hata'}`;
+      if (Platform.OS === 'web') window.alert(msg);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  // Yeni sekmede önizleme (eski davranış — opsiyonel)
+  const handlePreview = () => {
+    const html = buildHtml();
+    const w = window.open('', '_blank');
+    if (w) { w.document.write(html); w.document.close(); }
+  };
+
+  // ─── Renderers ───
+  const sectionBox: any = {
+    padding: 16, borderRadius: 12, borderWidth: 1, borderColor: DS.ink[200],
+    backgroundColor: '#FFFFFF', marginBottom: 12,
+  };
+  const sectionTitle: any = {
+    fontSize: 11, fontWeight: '700', color: DS.ink[500],
+    letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10,
+  };
+  const fieldLabel: any = { fontSize: 11, fontWeight: '600', color: DS.ink[500], marginBottom: 6 };
+  const fieldInput: any = {
+    paddingHorizontal: 12, paddingVertical: 9, borderRadius: 8,
+    borderWidth: 1, borderColor: DS.ink[200], backgroundColor: '#FFFFFF',
+    fontSize: 13, color: DS.ink[900],
+    ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
+  };
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.55)', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+        <View style={{ width: 720, maxWidth: '100%', maxHeight: '92%', backgroundColor: '#FFFFFF', borderRadius: 18, overflow: 'hidden' }}>
+          {/* Header */}
+          <View style={{ paddingHorizontal: 22, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={{ fontSize: 17, fontWeight: '700', color: DS.ink[900] }}>Katalog Oluşturucu</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 9999, backgroundColor: 'rgba(16,185,129,0.10)' }}>
+                  <Check size={9} color="#059669" strokeWidth={3} />
+                  <Text style={{ fontSize: 9.5, fontWeight: '700', color: '#059669', letterSpacing: 0.4 }}>OTOMATİK KAYIT</Text>
+                </View>
+              </View>
+              <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 4 }}>
+                Değişiklikler otomatik kaydedilir — sonraki açışta hazır olur
+              </Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Pressable
+                onPress={runAiFill}
+                disabled={aiBusy}
+                style={({ hovered }: any) => ({
+                  flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999, marginRight: 4,
+                  backgroundColor: hovered ? tint(PRIMARY, 0.18) : tint(PRIMARY, 0.12),
+                  opacity: aiBusy ? 0.6 : 1,
+                  ...(Platform.OS === 'web' ? { cursor: aiBusy ? 'default' : 'pointer' } as any : {}),
+                })}
+              >
+                {aiBusy ? <ActivityIndicator size="small" color={PRIMARY} /> : <Sparkles size={13} color={PRIMARY} strokeWidth={2} />}
+                <Text style={{ fontSize: 11.5, fontWeight: '700', color: PRIMARY }}>{aiBusy ? 'Üretiliyor…' : 'AI ile Doldur'}</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  const ok = Platform.OS === 'web' ? window.confirm('Katalog ayarlarını sıfırla?') : true;
+                  if (!ok) return;
+                  if (typeof window !== 'undefined') {
+                    try { window.localStorage.removeItem(storageKey); } catch {}
+                  }
+                  onClose();
+                }}
+                hitSlop={6}
+                style={({ hovered }: any) => ({
+                  paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9999,
+                  backgroundColor: hovered ? DS.ink[100] : 'transparent',
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                })}
+              >
+                <Text style={{ fontSize: 11, fontWeight: '600', color: DS.ink[500] }}>Sıfırla</Text>
+              </Pressable>
+              <Pressable onPress={onClose} hitSlop={8} style={{ padding: 4 }}>
+                <X size={18} color={DS.ink[500]} strokeWidth={1.6} />
+              </Pressable>
+            </View>
+          </View>
+
+          {loading ? (
+            <View style={{ padding: 40, alignItems: 'center' }}>
+              <CenteredLoader color={DS.ink[400]} inline />
+            </View>
+          ) : (
+            <ScrollView style={{ padding: 18 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}>
+              {/* KAPAK */}
+              <View style={sectionBox}>
+                <Text style={sectionTitle}>Kapak</Text>
+                <Text style={fieldLabel}>Başlık</Text>
+                <TextInput value={coverTitle} onChangeText={setCoverTitle} style={fieldInput} placeholder="Hizmet Kataloğu" />
+                <View style={{ height: 10 }} />
+                <Text style={fieldLabel}>Alt başlık (eyebrow)</Text>
+                <TextInput value={coverSubtitle} onChangeText={setCoverSubtitle} style={fieldInput} placeholder="Dijital Diş Laboratuvarı" />
+                <View style={{ height: 10 }} />
+                <Text style={fieldLabel}>Slogan</Text>
+                <TextInput value={coverTagline} onChangeText={setCoverTagline} style={fieldInput} multiline />
+              </View>
+
+              {/* HAKKIMIZDA */}
+              <View style={sectionBox}>
+                <Text style={sectionTitle}>Hakkımızda</Text>
+                <Text style={fieldLabel}>Bölüm başlığı</Text>
+                <TextInput value={aboutTitle} onChangeText={setAboutTitle} style={fieldInput} placeholder="Tanışalım" />
+                <View style={{ height: 10 }} />
+                <Text style={fieldLabel}>Hakkımızda metni</Text>
+                <TextInput
+                  value={aboutText} onChangeText={setAboutText}
+                  style={[fieldInput, { minHeight: 80, textAlignVertical: 'top' }]}
+                  placeholder="Laboratuvarınızı kısaca tanıtın — kuruluş yılı, uzmanlık, vizyon..."
+                  multiline
+                />
+                <View style={{ height: 14 }} />
+                <Text style={fieldLabel}>Neden biz? (her satır bir madde)</Text>
+                {whyUs.map((w, i) => (
+                  <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <TextInput
+                      value={w} onChangeText={(t) => setWhyUs(prev => prev.map((x, idx) => idx === i ? t : x))}
+                      style={[fieldInput, { flex: 1 }]}
+                      placeholder="Örn: 5 günlük hızlı teslimat"
+                    />
+                    <Pressable onPress={() => setWhyUs(prev => prev.filter((_, idx) => idx !== i))} hitSlop={6} style={{ padding: 6 }}>
+                      <X size={14} color={DS.ink[500]} strokeWidth={1.8} />
+                    </Pressable>
+                  </View>
+                ))}
+                <Pressable
+                  onPress={() => setWhyUs(prev => [...prev, ''])}
+                  style={({ hovered }: any) => ({
+                    flexDirection: 'row', alignItems: 'center', gap: 6,
+                    paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8,
+                    backgroundColor: hovered ? DS.ink[50] : 'transparent',
+                    alignSelf: 'flex-start',
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  })}
+                >
+                  <Plus size={13} color={DS.ink[700]} strokeWidth={1.8} />
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[700] }}>Madde ekle</Text>
+                </Pressable>
+              </View>
+
+              {/* TEKNOLOJİLER */}
+              <View style={sectionBox}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <Text style={sectionTitle}>Teknolojiler / Demirbaşlar ({equipment.filter(eq => techSelected[eq.id]).length}/{equipment.length})</Text>
+                  {equipment.length > 0 && (
+                    <Pressable onPress={() => {
+                      const allChecked = equipment.every(eq => techSelected[eq.id]);
+                      setTechSelected(allChecked ? {} : Object.fromEntries(equipment.map(eq => [eq.id, true])));
+                    }}>
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: DS.ink[700] }}>
+                        {equipment.every(eq => techSelected[eq.id]) ? 'Tümünü Bırak' : 'Tümünü Seç'}
+                      </Text>
+                    </Pressable>
+                  )}
+                </View>
+                <Text style={fieldLabel}>Açıklama metni</Text>
+                <TextInput value={techIntro} onChangeText={setTechIntro} style={fieldInput} placeholder="Yatırım yaptığımız donanımlar:" />
+                <View style={{ height: 14 }} />
+                {equipment.length === 0 ? (
+                  <Text style={{ fontSize: 12, color: DS.ink[500], paddingVertical: 8 }}>
+                    Lab demirbaş listesi boş. Ayarlar → Demirbaşlar bölümünden ekleyebilirsin. Aşağıdan manuel teknoloji de ekleyebilirsin.
+                  </Text>
+                ) : (
+                  <View style={{ gap: 6 }}>
+                    {equipment.map(eq => {
+                      const checked = !!techSelected[eq.id];
+                      return (
+                        <Pressable
+                          key={eq.id}
+                          onPress={() => setTechSelected(prev => ({ ...prev, [eq.id]: !prev[eq.id] }))}
+                          style={({ hovered }: any) => ({
+                            flexDirection: 'row', alignItems: 'center', gap: 10,
+                            padding: 9, borderRadius: 8,
+                            borderWidth: 1, borderColor: checked ? DS.ink[700] : DS.ink[200],
+                            backgroundColor: checked ? DS.ink[50] : (hovered ? DS.ink[50] : '#FFFFFF'),
+                            ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                          })}
+                        >
+                          <View style={{
+                            width: 16, height: 16, borderRadius: 4,
+                            borderWidth: 1.5, borderColor: checked ? DS.ink[900] : DS.ink[300],
+                            backgroundColor: checked ? DS.ink[900] : '#FFFFFF',
+                            alignItems: 'center', justifyContent: 'center',
+                          }}>
+                            {checked && <Check size={11} color="#FFFFFF" strokeWidth={3} />}
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 12.5, fontWeight: '600', color: DS.ink[900] }}>{eq.name}</Text>
+                            <Text style={{ fontSize: 10.5, color: DS.ink[500], marginTop: 1 }}>
+                              {eq.brand ?? '—'} {eq.category ? `· ${eq.category}` : ''}
+                            </Text>
+                          </View>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )}
+
+                {/* Manuel teknoloji eklemek için inline form */}
+                <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: DS.ink[100] }}>
+                  <Text style={fieldLabel}>Manuel teknoloji ekle</Text>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <TextInput value={techDraftName} onChangeText={setTechDraftName} style={[fieldInput, { flex: 1 }]} placeholder="Cihaz adı" />
+                    <TextInput value={techDraftBrand} onChangeText={setTechDraftBrand} style={[fieldInput, { flex: 1 }]} placeholder="Marka" />
+                    <Pressable
+                      onPress={() => {
+                        if (!techDraftName.trim()) return;
+                        setTechCustom(prev => [...prev, { id: `c-${Date.now()}`, name: techDraftName.trim(), brand: techDraftBrand.trim() || undefined }]);
+                        setTechDraftName(''); setTechDraftBrand('');
+                      }}
+                      style={({ hovered }: any) => ({
+                        paddingHorizontal: 14, justifyContent: 'center',
+                        borderRadius: 8, backgroundColor: hovered ? DS.ink[800] : DS.ink[900],
+                        ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                      })}
+                    >
+                      <Plus size={14} color="#FFFFFF" strokeWidth={2} />
+                    </Pressable>
+                  </View>
+                  {techCustom.length > 0 && (
+                    <View style={{ gap: 4, marginTop: 8 }}>
+                      {techCustom.map(t => (
+                        <View key={t.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 8, borderRadius: 6, backgroundColor: DS.ink[50] }}>
+                          <Text style={{ flex: 1, fontSize: 12, fontWeight: '600', color: DS.ink[900] }}>{t.name}</Text>
+                          {t.brand && <Text style={{ fontSize: 10.5, color: DS.ink[500] }}>{t.brand}</Text>}
+                          <Pressable onPress={() => setTechCustom(prev => prev.filter(x => x.id !== t.id))} hitSlop={6}>
+                            <X size={12} color={DS.ink[500]} strokeWidth={1.8} />
+                          </Pressable>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              </View>
+
+              {/* HİZMETLER */}
+              <View style={sectionBox}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <Text style={sectionTitle}>Hizmetler ({services.filter(sv => serviceSelected[sv.id]).length}/{services.length})</Text>
+                  <Pressable onPress={() => {
+                    const allSelected = services.every(sv => serviceSelected[sv.id]);
+                    setServiceSelected(allSelected ? {} : Object.fromEntries(services.map(sv => [sv.id, true])));
+                  }}>
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: DS.ink[700] }}>
+                      {services.every(sv => serviceSelected[sv.id]) ? 'Tümünü Bırak' : 'Tümünü Seç'}
+                    </Text>
+                  </Pressable>
+                </View>
+
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                  <Pressable
+                    onPress={() => setShowPrices(p => !p)}
+                    style={({ hovered }: any) => ({
+                      flexDirection: 'row', alignItems: 'center', gap: 8,
+                      paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9999,
+                      borderWidth: 1, borderColor: showPrices ? DS.ink[900] : DS.ink[200],
+                      backgroundColor: showPrices ? DS.ink[900] : (hovered ? DS.ink[50] : '#FFFFFF'),
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                    })}
+                  >
+                    <View style={{
+                      width: 14, height: 14, borderRadius: 4,
+                      borderWidth: 1.5, borderColor: showPrices ? '#FFFFFF' : DS.ink[400],
+                      backgroundColor: showPrices ? '#FFFFFF' : 'transparent',
+                      alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      {showPrices && <Check size={9} color={DS.ink[900]} strokeWidth={3} />}
+                    </View>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: showPrices ? '#FFFFFF' : DS.ink[900] }}>
+                      Fiyatları göster
+                    </Text>
+                  </Pressable>
+                  <View style={{ width: 110 }}>
+                    <CurrencyDropdown value={pdfCurrency} onChange={setPdfCurrency} />
+                  </View>
+                </View>
+
+                <View style={{ maxHeight: 220, borderRadius: 10, borderWidth: 1, borderColor: DS.ink[200], overflow: 'hidden' }}>
+                  <ScrollView nestedScrollEnabled>
+                    {services.map((sv, i) => {
+                      const checked = !!serviceSelected[sv.id];
+                      return (
+                        <Pressable
+                          key={sv.id}
+                          onPress={() => setServiceSelected(prev => ({ ...prev, [sv.id]: !prev[sv.id] }))}
+                          style={({ hovered }: any) => ({
+                            flexDirection: 'row', alignItems: 'center', gap: 10,
+                            paddingHorizontal: 12, paddingVertical: 8,
+                            borderTopWidth: i === 0 ? 0 : 1, borderTopColor: DS.ink[100],
+                            backgroundColor: checked ? '#FFFFFF' : (hovered ? DS.ink[50] : '#FAFAFA'),
+                            opacity: checked ? 1 : 0.55,
+                            ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                          })}
+                        >
+                          <View style={{
+                            width: 14, height: 14, borderRadius: 4,
+                            borderWidth: 1.5, borderColor: checked ? DS.ink[900] : DS.ink[300],
+                            backgroundColor: checked ? DS.ink[900] : '#FFFFFF',
+                            alignItems: 'center', justifyContent: 'center',
+                          }}>
+                            {checked && <Check size={9} color="#FFFFFF" strokeWidth={3} />}
+                          </View>
+                          <Text style={{ flex: 1, fontSize: 12, fontWeight: '500', color: DS.ink[900] }}>{sv.name}</Text>
+                          <Text style={{ fontSize: 10.5, color: DS.ink[500] }}>{sv.category ?? '—'}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              </View>
+
+              {/* TEMA */}
+              <View style={sectionBox}>
+                <Text style={sectionTitle}>Renk Teması</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {CATALOG_PALETTES.map(p => {
+                    const active = p.id === paletteId;
+                    return (
+                      <Pressable
+                        key={p.id}
+                        onPress={() => setPaletteId(p.id)}
+                        style={({ hovered }: any) => ({
+                          flexDirection: 'row', alignItems: 'center', gap: 8,
+                          paddingHorizontal: 10, paddingVertical: 7,
+                          borderRadius: 9999, borderWidth: 1,
+                          borderColor: active ? DS.ink[900] : DS.ink[200],
+                          backgroundColor: active ? DS.ink[50] : (hovered ? DS.ink[50] : '#FFFFFF'),
+                          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                        })}
+                      >
+                        <View style={{ width: 14, height: 14, borderRadius: 9999, backgroundColor: p.accent }} />
+                        <Text style={{ fontSize: 11.5, fontWeight: '600', color: DS.ink[900] }}>{p.label}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* İLETİŞİM */}
+              <View style={sectionBox}>
+                <Text style={sectionTitle}>İletişim</Text>
+                <Text style={fieldLabel}>Adres</Text>
+                <TextInput value={contactAddress} onChangeText={setContactAddress} style={fieldInput} placeholder="Lab adresi" multiline />
+                <View style={{ height: 10 }} />
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={fieldLabel}>Telefon</Text>
+                    <TextInput value={contactPhone} onChangeText={setContactPhone} style={fieldInput} placeholder="+90 ..." />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={fieldLabel}>E-posta</Text>
+                    <TextInput value={contactEmail} onChangeText={setContactEmail} style={fieldInput} placeholder="info@..." autoCapitalize="none" />
+                  </View>
+                </View>
+                <View style={{ height: 10 }} />
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={fieldLabel}>Web</Text>
+                    <TextInput value={contactWebsite} onChangeText={setContactWebsite} style={fieldInput} placeholder="www..." autoCapitalize="none" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={fieldLabel}>Instagram</Text>
+                    <TextInput value={contactInstagram} onChangeText={setContactInstagram} style={fieldInput} placeholder="@..." autoCapitalize="none" />
+                  </View>
+                </View>
+                <View style={{ height: 10 }} />
+                <Text style={fieldLabel}>Alt not (footer)</Text>
+                <TextInput value={footerNote} onChangeText={setFooterNote} style={fieldInput} placeholder="Fiyatlar KDV hariçtir." />
+              </View>
+              <View style={{ height: 8 }} />
+            </ScrollView>
+          )}
+
+          {/* Footer */}
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, padding: 16, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
+            <Pressable
+              onPress={onClose}
+              style={({ hovered }: any) => ({
+                paddingHorizontal: 16, paddingVertical: 10, borderRadius: 9999,
+                backgroundColor: hovered ? DS.ink[100] : 'transparent',
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              })}
+            >
+              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[500] }}>İptal</Text>
+            </Pressable>
+            <Pressable
+              onPress={handlePreview}
+              disabled={loading || generating}
+              style={({ hovered }: any) => ({
+                flexDirection: 'row', alignItems: 'center', gap: 6,
+                paddingHorizontal: 14, paddingVertical: 10, borderRadius: 9999,
+                borderWidth: 1, borderColor: DS.ink[300],
+                backgroundColor: hovered ? DS.ink[50] : '#FFFFFF',
+                opacity: (loading || generating) ? 0.5 : 1,
+                ...(Platform.OS === 'web' && !loading && !generating ? { cursor: 'pointer' } as any : {}),
+              })}
+            >
+              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>Önizle</Text>
+            </Pressable>
+            <Pressable
+              onPress={handleDownloadPdf}
+              disabled={loading || generating}
+              style={({ hovered }: any) => ({
+                flexDirection: 'row', alignItems: 'center', gap: 8,
+                paddingHorizontal: 20, paddingVertical: 10, borderRadius: 9999,
+                backgroundColor: (loading || generating) ? DS.ink[300] : (hovered ? DS.ink[800] : DS.ink[900]),
+                ...(Platform.OS === 'web' && !loading && !generating ? { cursor: 'pointer' } as any : {}),
+              })}
+            >
+              <FileDown size={14} color="#FFFFFF" strokeWidth={1.8} />
+              <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>
+                {generating ? 'PDF Oluşturuluyor…' : 'PDF İndir'}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Currency dropdown
+// ────────────────────────────────────────────────────────────────────────────
+const CURRENCY_OPTIONS: { code: string; label: string; symbol: string }[] = [
+  { code: 'TRY', label: 'Türk Lirası',   symbol: '₺' },
+  { code: 'EUR', label: 'Euro',          symbol: '€' },
+  { code: 'USD', label: 'ABD Doları',    symbol: '$' },
+  { code: 'GBP', label: 'İngiliz Sterlini', symbol: '£' },
+];
+
+function CurrencyDropdown({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const anchorRef = useRef<View>(null);
+  const current = CURRENCY_OPTIONS.find(o => o.code === value) ?? CURRENCY_OPTIONS[0];
+
+  const openDropdown = () => {
+    anchorRef.current?.measureInWindow((x, y, w, h) => {
+      setAnchor({ x, y, w, h });
+      setOpen(true);
+    });
+  };
+
+  return (
+    <>
+      <Pressable
+        ref={anchorRef as any}
+        onPress={openDropdown}
+        style={({ hovered }: any) => ({
+          flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+          paddingHorizontal: 12, paddingVertical: 10,
+          borderRadius: 10, borderWidth: 1,
+          borderColor: open ? DS.ink[400] : DS.ink[200],
+          backgroundColor: hovered ? DS.ink[50] : '#FFFFFF',
+          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+        })}
+        accessibilityRole="button"
+        accessibilityLabel={`Para birimi: ${current.code}`}
+      >
+        <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[900] }}>
+          {current.symbol} {current.code}
+        </Text>
+        <ChevronDown size={14} color={DS.ink[500]} strokeWidth={1.8} />
+      </Pressable>
+
+      <Modal
+        visible={open}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setOpen(false)}
+      >
+        <Pressable
+          onPress={() => setOpen(false)}
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.001)' }}
+        >
+          {anchor && (
+            <View
+              style={{
+                position: 'absolute',
+                top: anchor.y + anchor.h + 4,
+                left: anchor.x,
+                width: Math.max(anchor.w, 180),
+                backgroundColor: '#FFFFFF',
+                borderRadius: 10, borderWidth: 1, borderColor: DS.ink[200],
+                overflow: 'hidden',
+                ...(Platform.OS === 'web'
+                  ? { boxShadow: '0 8px 24px rgba(0,0,0,0.18)' } as any
+                  : { shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, elevation: 8 }),
+              }}
+            >
+              {CURRENCY_OPTIONS.map(opt => {
+                const active = opt.code === value;
+                return (
+                  <Pressable
+                    key={opt.code}
+                    onPress={() => { onChange(opt.code); setOpen(false); }}
+                    style={({ hovered }: any) => ({
+                      flexDirection: 'row', alignItems: 'center', gap: 8,
+                      paddingHorizontal: 12, paddingVertical: 10,
+                      backgroundColor: active ? DS.ink[50] : (hovered ? DS.ink[50] : 'transparent'),
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                    })}
+                  >
+                    <Text style={{ width: 18, fontSize: 14, fontWeight: '700', color: DS.ink[700] }}>
+                      {opt.symbol}
+                    </Text>
+                    <Text style={{ flex: 1, fontSize: 13, fontWeight: active ? '700' : '500', color: DS.ink[900] }}>
+                      {opt.code}
+                    </Text>
+                    <Text style={{ fontSize: 11, color: DS.ink[500] }}>
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+        </Pressable>
+      </Modal>
+    </>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Shared: Service add/edit modal
 // ────────────────────────────────────────────────────────────────────────────
 function ServiceModal({
-  visible, edit, form, setForm, error, setError, saving, onClose, onSave,
+  visible, edit, form, setForm, error, setError, saving, onClose, onSave, categories,
 }: {
   visible: boolean;
   edit: LabService | null;
@@ -1400,25 +3718,40 @@ function ServiceModal({
   saving: boolean;
   onClose: () => void;
   onSave: () => void;
+  categories: string[];
 }) {
+  const theme = usePanelTheme();
+  const [addingCat, setAddingCat] = useState(false);
+  const [newCat, setNewCat] = useState('');
+  const [extraCats, setExtraCats] = useState<string[]>([]);
+  const allCats = Array.from(new Set([...categories, ...extraCats]));
+
+  const handleAddCategory = () => {
+    const trimmed = newCat.trim();
+    if (!trimmed) { setAddingCat(false); setNewCat(''); return; }
+    if (!allCats.includes(trimmed)) setExtraCats(prev => [...prev, trimmed]);
+    setForm(f => ({ ...f, category: trimmed }));
+    setNewCat('');
+    setAddingCat(false);
+  };
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={m.overlay}>
         <View style={m.sheet}>
           <View style={m.header}>
-            <Text style={m.title}>{edit ? 'Hizmeti Duzenle' : 'Hizmet Ekle'}</Text>
-            <Pressable style={m.closeBtn} onPress={onClose}>
+            <Text style={m.title}>{edit ? 'Hizmeti Düzenle' : 'Hizmet Ekle'}</Text>
+            <Pressable style={[m.closeBtn, Platform.OS === 'web' ? { outlineStyle: 'none' } as any : null]} onPress={onClose}>
               <X size={16} color={DS.ink[500]} strokeWidth={1.6} />
             </Pressable>
           </View>
 
-          <ScrollView style={m.body} keyboardShouldPersistTaps="handled">
+          <ScrollView style={m.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}>
             <View style={m.sectionCard}>
               <Text style={m.sectionTitle}>Hizmet Bilgileri</Text>
               <View style={m.fieldWrap}>
-                <Text style={m.fieldLabel}>Hizmet Adi <Text style={{ color: '#D94B4B' }}>*</Text></Text>
+                <Text style={m.fieldLabel}>Hizmet Adı <Text style={{ color: '#D94B4B' }}>*</Text></Text>
                 <TextInput
-                  style={m.fieldInput}
+                  style={m.fieldInput as any}
                   value={form.name}
                   onChangeText={(v) => { setForm((f) => ({ ...f, name: v })); setError(''); }}
                   placeholder="Orn: Zirkonyum Kron"
@@ -1430,44 +3763,142 @@ function ServiceModal({
             <View style={m.sectionCard}>
               <Text style={m.sectionTitle}>Kategori</Text>
               <View style={s.toggleRow}>
-                {SERVICE_CATEGORIES.map((c) => (
+                {allCats.map((c) => (
                   <Pressable
                     key={c}
                     onPress={() => setForm((f) => ({ ...f, category: c }))}
-                    style={[s.toggleChip, form.category === c && s.toggleChipActive]}
+                    style={[s.toggleChip, form.category === c && { borderColor: theme.primary, backgroundColor: tint(theme.primary, 0.12) }] as any}
                   >
-                    <Text style={[s.toggleChipText, form.category === c && s.toggleChipTextActive]}>{c}</Text>
+                    <Text style={[s.toggleChipText, form.category === c && { color: theme.primary, fontWeight: '700' }]}>{c}</Text>
                   </Pressable>
                 ))}
+                {addingCat ? (
+                  <View style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 6,
+                    paddingHorizontal: 10, paddingVertical: 4,
+                    borderRadius: 9999, borderWidth: 1, borderColor: DS.ink[400],
+                    backgroundColor: '#FFFFFF',
+                  }}>
+                    <TextInput
+                      value={newCat}
+                      onChangeText={setNewCat}
+                      placeholder="Yeni kategori"
+                      placeholderTextColor={DS.ink[300]}
+                      autoFocus
+                      onSubmitEditing={handleAddCategory}
+                      onBlur={handleAddCategory}
+                      style={{
+                        minWidth: 120, fontSize: 12.5,
+                        color: DS.ink[900], paddingVertical: 4,
+                        ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
+                      } as any}
+                    />
+                    <Pressable onPress={() => { setAddingCat(false); setNewCat(''); }} hitSlop={6}>
+                      <X size={12} color={DS.ink[500]} strokeWidth={1.6} />
+                    </Pressable>
+                  </View>
+                ) : (
+                  <Pressable
+                    onPress={() => setAddingCat(true)}
+                    style={({ hovered }: any) => ([
+                      s.toggleChip,
+                      {
+                        borderStyle: 'dashed', borderColor: DS.ink[400],
+                        backgroundColor: hovered ? DS.ink[50] : '#FFFFFF',
+                        flexDirection: 'row', alignItems: 'center', gap: 4,
+                        ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                      },
+                    ])}
+                  >
+                    <Plus size={12} color={DS.ink[500]} strokeWidth={1.8} />
+                    <Text style={[s.toggleChipText, { color: DS.ink[500] }]}>Yeni</Text>
+                  </Pressable>
+                )}
               </View>
             </View>
 
             <View style={m.sectionCard}>
-              <Text style={m.sectionTitle}>Fiyatlandirma</Text>
-              <View style={m.twoCol}>
-                <View style={{ flex: 1 }}>
-                  <Text style={m.fieldLabel}>Fiyat</Text>
-                  <TextInput
-                    style={m.fieldInput}
-                    value={form.price}
-                    onChangeText={(v) => setForm((f) => ({ ...f, price: v }))}
-                    placeholder="0.00"
-                    placeholderTextColor={DS.ink[300]}
-                    keyboardType="decimal-pad"
-                  />
-                </View>
-                <View style={{ width: 100 }}>
-                  <Text style={m.fieldLabel}>Para Birimi</Text>
-                  <TextInput
-                    style={m.fieldInput}
-                    value={form.currency}
-                    onChangeText={(v) => setForm((f) => ({ ...f, currency: v }))}
-                    placeholder="TRY"
-                    placeholderTextColor={DS.ink[300]}
-                    autoCapitalize="characters"
-                  />
-                </View>
+              <Text style={m.sectionTitle}>Fiyatlandırma</Text>
+
+              {/* Fiyat tipi — Tutar / Yüzde / Ücretsiz */}
+              <View style={{ flexDirection: 'row', gap: 6, padding: 4, borderRadius: 10, backgroundColor: '#F5F1EB', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', marginBottom: 12 }}>
+                {([['fixed', `Tutar (${baseSymbol()})`], ['percent', 'Yüzde (%)'], ['free', 'Ücretsiz']] as const).map(([k, label]) => {
+                  const active = form.priceType === k;
+                  return (
+                    <Pressable
+                      key={k}
+                      onPress={() => setForm((f) => ({ ...f, priceType: k }))}
+                      style={{ flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center', backgroundColor: active ? theme.primary : 'transparent', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+                    >
+                      <Text style={{ fontSize: 12.5, fontWeight: '700', color: active ? '#FFFFFF' : DS.ink[500] }}>{label}</Text>
+                    </Pressable>
+                  );
+                })}
               </View>
+
+              {form.priceType === 'free' ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, padding: 12, borderRadius: 10, backgroundColor: tint('#2D9A6B', 0.08), borderWidth: 1, borderColor: tint('#2D9A6B', 0.2) }}>
+                  <Check size={14} color="#1F6B47" strokeWidth={2.2} />
+                  <Text style={{ fontSize: 12.5, color: '#1F6B47', fontWeight: '600' }}>Bu hizmet ücretsiz — listede "Ücretsiz" yazar.</Text>
+                </View>
+              ) : (
+                <>
+                <View style={m.twoCol}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={m.fieldLabel}>{form.priceType === 'percent' ? 'Yüzde (%)' : 'Fiyat'}</Text>
+                    <TextInput
+                      style={m.fieldInput as any}
+                      value={form.price}
+                      onChangeText={(v) => setForm((f) => ({ ...f, price: v }))}
+                      placeholder={form.priceType === 'percent' ? 'Örn: 50' : '0.00'}
+                      placeholderTextColor={DS.ink[300]}
+                      keyboardType="decimal-pad"
+                    />
+                  </View>
+                  {form.priceType !== 'percent' && (
+                    <View style={{ width: 120 }}>
+                      <Text style={m.fieldLabel}>Para Birimi</Text>
+                      <CurrencyDropdown
+                        value={form.currency}
+                        onChange={(v) => setForm((f) => ({ ...f, currency: v }))}
+                      />
+                    </View>
+                  )}
+                </View>
+                {/* Birim — bu fiyat neyin başına? */}
+                <View style={{ marginTop: 10 }}>
+                  <Text style={m.fieldLabel}>Birim (fiyat neyin başına?)</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
+                    {UNIT_OPTIONS.map((u) => {
+                      const active = form.unit === u;
+                      return (
+                        <Pressable key={u} onPress={() => setForm((f) => ({ ...f, unit: active ? '' : u }))}
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: active ? tint(theme.primary, 0.14) : '#FFFFFF', borderWidth: 1, borderColor: active ? theme.primary : 'rgba(0,0,0,0.12)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                          {active && <Check size={12} color={theme.primaryDeep} strokeWidth={3} />}
+                          <Text style={{ fontSize: 12.5, fontWeight: '600', color: active ? theme.primaryDeep : DS.ink[500] }}>{u}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  <Text style={{ fontSize: 10.5, color: DS.ink[400], marginTop: 4 }}>
+                    Listede fiyatın yanında görünür (ör. "120 ₺ / Üye"). Boş bırakılırsa gösterilmez.
+                  </Text>
+                </View>
+                </>
+              )}
+              <View style={{ height: 10 }} />
+              <Text style={m.fieldLabel}>Üretim Süresi (gün)</Text>
+              <TextInput
+                style={m.fieldInput as any}
+                value={form.production_days}
+                onChangeText={(v) => setForm((f) => ({ ...f, production_days: v.replace(/[^0-9]/g, '') }))}
+                placeholder="Örn: 5"
+                placeholderTextColor={DS.ink[300]}
+                keyboardType="number-pad"
+              />
+              <Text style={{ fontSize: 10.5, color: DS.ink[400], marginTop: 4 }}>
+                Tahmini üretim süresi — boş bırakırsan belirsiz gösterilir.
+              </Text>
             </View>
 
             {error ? (
@@ -1480,15 +3911,15 @@ function ServiceModal({
           </ScrollView>
 
           <View style={m.footer}>
-            <Pressable style={m.cancelBtn} onPress={onClose}>
-              <Text style={m.cancelText}>Iptal</Text>
+            <Pressable style={m.cancelBtn as any} onPress={onClose}>
+              <Text style={m.cancelText}>İptal</Text>
             </Pressable>
             <Pressable
-              style={[m.saveBtn, saving && { opacity: 0.6 }]}
+              style={[m.saveBtn, saving && { opacity: 0.6 }] as any}
               onPress={onSave}
               disabled={saving}
             >
-              <Text style={m.saveText}>{saving ? 'Kaydediliyor...' : edit ? 'Guncelle' : 'Ekle'}</Text>
+              <Text style={m.saveText}>{saving ? 'Kaydediliyor...' : edit ? 'Güncelle' : 'Ekle'}</Text>
             </Pressable>
           </View>
         </View>

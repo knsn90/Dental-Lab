@@ -1,5 +1,6 @@
 import React from 'react';
-import { NewOrderScreen } from '../../modules/orders/screens/NewOrderScreen';
+const NewOrderScreen = lazyRoute(() => import('../../modules/orders/screens/NewOrderScreen'), 'NewOrderScreen');
+import { lazyRoute } from '../../core/_lazyRoute';
 
 /**
  * Lab paneli — yeni iş emri oluşturma.

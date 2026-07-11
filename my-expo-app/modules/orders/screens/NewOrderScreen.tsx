@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable,
-  TextInput, ActivityIndicator, Platform, useWindowDimensions,
-  Modal, FlatList, Image,
+  TextInput, Platform, useWindowDimensions,
+  Modal, FlatList, Image, Linking,
 } from 'react-native';
 
 // Web-only portal helper — renders children in document.body, bypassing
@@ -22,20 +22,32 @@ const WebPortal = ({ children }: { children: React.ReactNode }) =>
   _portal ? (_portal(children) as React.ReactElement) : <>{children}</>;
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { MOBILE_PANEL_THEMES, type MobilePanel, useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import * as DocumentPicker from 'expo-document-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Path as SvgPath } from 'react-native-svg';
 import { ClinicIcon } from '../../../core/ui/ClinicIcon';
 import { BrandedQR } from '../../../core/ui/BrandedQR';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const QRCodeSvg = require('react-native-qrcode-svg').default;
 import { useAuthStore } from '../../../core/store/authStore';
+import { usePermissionStore } from '../../../core/store/permissionStore';
 import { createWorkOrder, addOrderItem } from '../api';
 import { sendMessage, uploadChatAttachment, AttachmentType } from '../chatApi';
 import { supabase } from '../../../core/api/supabase';
+import { CURRENCY_META } from '../../../core/money/currency';
+import { DentyFAB } from '../../denty/components/DentyFAB';
 import { fetchClinics, fetchAllDoctors, createClinic, createDoctor } from '../../clinics/api';
+import { titleCaseTR } from '../../../core/utils/textCase';
+import { toast } from '../../../core/ui/Toast';
+import { ClinicModal as CanonicalClinicModal, DoctorModal as CanonicalDoctorModal } from '../../clinics/screens/ClinicsScreen';
 import { fetchLabServices } from '../../services/api';
 import { MachineType, PendingItem } from '../types';
 import { Clinic, Doctor } from '../../clinics/types';
 import { LabService } from '../../services/types';
 import { ToothNumberPicker } from '../components/ToothNumberPicker';
-import { WORK_TYPES, ALL_SHADES, ORDER_TAGS, OP_CATEGORY, IMPLANT_SYSTEMS, ABUTMENT_TYPES, SCREW_TYPES, REMOVABLE_MATS, CROWN_MATERIALS, WORK_TYPE_TREE, WORK_TYPE_MAIN, deriveDepartment } from '../constants';
+import { WORK_TYPES, ALL_SHADES, ORDER_TAGS, OP_CATEGORY, IMPLANT_SYSTEMS, IMPLANT_TYPES, ABUTMENT_TYPES, SCREW_TYPES, REMOVABLE_MATS, CROWN_MATERIALS, WORK_TYPE_TREE, WORK_TYPE_MAIN, deriveDepartment, isImplantWorkType } from '../constants';
 import { TOOTH_PATHS, TOOTH_LABEL_POS } from '../assets/toothPaths';
 import { GEO_COUNTRIES, GEO_BY_LABEL } from '../data/geo';
 import { C } from '../../../core/theme/colors';
@@ -43,15 +55,11 @@ import { F } from '../../../core/theme/typography';
 import { AppSwitch } from '../../../core/ui/AppSwitch';
 import { EkartorluIcon } from '../../../components/icons/EkartorluIcon';
 import { GulushIcon } from '../../../components/icons/GulushIcon';
-import type { OcclusionAnalysisResult } from '../../occlusion/types/occlusion';
 
-const ModelViewer = Platform.OS === 'web'
-  ? React.lazy(() => import('../../../src/components/viewer/ModelViewer').then(m => ({ default: m.ModelViewer })))
-  : () => null;
-
-const OcclusionAnalysisModal = Platform.OS === 'web'
-  ? React.lazy(() => import('../../occlusion/components/OcclusionAnalysisModal').then(m => ({ default: m.OcclusionAnalysisModal })))
-  : () => null;
+// 3D görüntüleyici — lab (StageFileUpload) ile AYNI bileşen: senkron require'lı,
+// Metro DEV async-chunk {} sorununa dayanıklı Viewer3DModalLazy. Tek/çoklu tarama
+// aynı zengin modalda açılır (tutarlılık).
+import { Viewer3DModalLazy } from '../../viewer-3d/Viewer3DLazy';
 
 import { AppIcon } from '../../../core/ui/AppIcon';
 import {
@@ -60,11 +68,16 @@ import {
 } from '../components/FormPrimitives';
 import type { DropdownOption, SearchableDropdownProps } from '../components/FormPrimitives';
 import { DS } from '../../../core/theme/dsTokens';
-import { NO, NOType, NORadius } from '../components/NOTokens';
+import { NO, NOType, NORadius, useNOTokens } from '../components/NOTokens';
 import { NOCard, NOCardHead } from '../components/NOCard';
 import { NOStepHeader, NOEmText, NOLabel, NOEyebrow, NOSegment, NOToggle, NOField as NOFieldPrimitive } from '../components/NOFormPrimitives';
 import { NOPageChrome } from '../components/NOPageChrome';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
+import { TeethLoader } from '../../../core/ui/TeethLoader';
+import { uploadWithProgress } from '../../../core/storage/uploadWithProgress';
+import { FilesUploadModal, type UploadAttachment } from '../components/FilesUploadModal';
+import { createQrShortUrl } from '../../../lib/qrLinks';
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -91,6 +104,11 @@ interface AttachedFile {
   size: number;          // bytes
   scope: 'case' | 'tooth';
   tooth?: number;        // defined only when scope === 'tooth'
+  // Erken upload alanları — pick sonrası drafts/ path'ine yüklenir
+  storage_path?: string;            // drafts/{userId}/{ts}-{name}
+  upload_progress?: number | null;  // 0..100 (null = indeterminate / başlamadı)
+  upload_status?: 'pending' | 'uploading' | 'done' | 'error';
+  upload_error?: string;
 }
 
 interface ToothOp {
@@ -99,7 +117,8 @@ interface ToothOp {
   // crown_bridge / aesthetic
   shade: string;
   // implant
-  implant_system: string;
+  implant_system: string;   // marka (Straumann, Nobel, …)
+  implant_type: string;     // tür (Bone Level / Tissue Level / Mini / Diğer)
   abutment: string;
   screw: string;
   // removable
@@ -107,7 +126,20 @@ interface ToothOp {
   // pricing
   price: number;
   material_price: number;
+  /** Fiyat listesindeki para birimi (lab_services.currency) — gösterimde kullanılır. */
+  currency?: string;
+  /** Aynı diş için birden fazla işlem ayırt etmek için transient uid (DB'ye yazılmaz). */
+  __uid?: string;
 }
+
+// Uid generator — same tooth için ikinci/üçüncü op ayırt etmek için
+const newOpUid = () => `op-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+/** Para birimi sembolü — fiyat listesindeki currency'ye göre (₺ · € · $ · £). */
+const curSym = (c?: string | null): string => {
+  const m = c ? (CURRENCY_META as any)[c] : null;
+  return m?.symbol ?? '₺';
+};
 
 interface FormData {
   clinic_id: string;
@@ -139,11 +171,12 @@ interface FormData {
   chat_messages: ChatMessage[];
   delivery_method: 'kurye' | 'elden' | 'kargo' | '';
   implant_brand: string;
+  scan_bodies_delivered: boolean;
 }
 
 const BLANK_OP: Omit<ToothOp, 'tooth'> = {
   work_type: '', shade: '',
-  implant_system: '', abutment: '', screw: '',
+  implant_system: '', implant_type: '', abutment: '', screw: '',
   material: '', price: 0, material_price: 0,
 };
 
@@ -168,20 +201,29 @@ const INITIAL_FORM: FormData = {
   chat_messages: [],
   delivery_method: '',
   implant_brand: '',
+  scan_bodies_delivered: false,
 };
 
 // ── Auto-save draft (Gmail taslak mantığı) ─────────────────────────────
 const DRAFT_KEY        = 'newOrderDraft:v1';
 const DRAFT_TS_KEY     = 'newOrderDraft:v1:ts';
+const DRAFT_STEP_KEY   = 'newOrderDraft:v1:step';
 const DRAFT_DEBOUNCE_MS = 600;
 
-/** form'un persist edilmeyecek alanları — blob URI'lar reload sonrası geçersiz olur */
-const DRAFT_STRIP_FIELDS = ['attachments', 'voice_notes', 'lab_voice_notes', 'chat_messages'] as const;
+/** form'un persist edilmeyecek alanları — blob URI'lar reload sonrası geçersiz olur.
+ *  NOT: attachments özel olarak işlenir — storage_path'i olanlar persist edilir,
+ *  blob-only olanlar atılır (aşağıda restore/save logic'i). */
+const DRAFT_STRIP_FIELDS = ['voice_notes', 'lab_voice_notes', 'chat_messages'] as const;
 
 const fmtDraftTime = (d: Date) =>
   `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 
 const ALL_IMPLANT_BRANDS = [
+  // ── Yerli markalar (Türkiye) ──
+  'Implance','Bilimplant','NucleOSS','AGS Medikal','Mode Medikal','Mode Implant',
+  'Trinon Q-Implant','Implassis','Tekka','Medentika TR','İmplad',
+  'Surgikor','Dynamic Implant','Maxer Implant','Mr. Curette Tech',
+  // ── Uluslararası markalar ──
   'Straumann','Nobel Biocare','Osstem','Zimmer Biomet','Dentsply Sirona',
   'Megagen','Neodent','BioHorizons','Camlog','Astra Tech (Dentsply)',
   'Ankylos','Bicon','Biomet 3i','Blue Sky Bio','Dentium','DIO Implant',
@@ -189,13 +231,36 @@ const ALL_IMPLANT_BRANDS = [
   'OsteoCare','Phibo','Replace (Nobel)','Seven Implant','SPI Element',
   'Touareg','Xive (Dentsply)','Southern Implants','Bredent','Cortex',
   'Alpha-Bio Tec','Biohorizons','Euroteknika','Implant Direct','Adin',
-  'Thommen Medical','Bionika','T-Plus','Diğer',
+  'Thommen Medical','Bionika','T-Plus',
+  'Hiossen','Anthogyr','Sweden & Martina','Noris Medical','Paltop',
+  'Ditron Dental','TBR','C-Tech','GDT Dental','Cowellmedi','Dentis',
+  'Warantec','Shinhung','Z-Systems','SGS Dental','Global D','Leader Italia',
+  'Neobiotech','Dentegris','BEGO Semados','Carlo de Chiesa','Ace Surgical',
+  'Diğer',
 ];
 
 const MODEL_TYPES = [
   { value: 'dijital', label: '💻 Dijital Tarama' },
   { value: 'fiziksel', label: '📦 Fiziksel Model' },
   { value: 'cad', label: '🖥️ CAD Dosyası' },
+];
+
+// Ölçüm yöntemine göre model tipi seçenekleri
+const MODEL_TYPES_MANUAL = [
+  { value: 'silikon_olcu',            label: 'Silikon Ölçü' },
+  { value: 'aljinat_olcu',            label: 'Aljinat Ölçü' },
+  { value: 'fiziksel_model',          label: 'Fiziksel Model' },
+  { value: 'baski_3d_model',          label: '3D Baskı Model' },
+  { value: 'mevcut_protez_referansi', label: 'Mevcut Protez Referansı' },
+  { value: 'wax_up',                  label: 'Wax-Up' },
+  { value: 'hibrit_olcu_stl',         label: 'Hibrit (Ölçü + STL)' },
+];
+
+const MODEL_TYPES_DIGITAL = [
+  { value: 'dijital_tarama', label: 'Dijital Tarama' },
+  { value: 'stl_dosyasi',    label: 'STL Dosyası' },
+  { value: 'cad_dosyasi',    label: 'CAD Dosyası' },
+  { value: 'baski_3d_model', label: '3D Baskı Model' },
 ];
 
 const GENDERS = [
@@ -213,14 +278,16 @@ const PHOTO_GUIDE_TEXT =
   'Kamera göz hizasında olmalı, hasta başını sabit tutmalı ve yaklaşık 1 metre mesafeden çekim yapılmalıdır.';
 
 const UPLOAD_TIPS: Record<string, string> = {
-  'Alt Çene':         'Alt dişlerin 3D taraması gereklidir.',
-  'Üst Çene':         'Üst dişlerin 3D taraması gereklidir.',
-  'Bite (Kapanış)':   'Bite (kapanış) kaydı, dişlerin doğru temasını belirler.\nEksik olursa oklüzyon hatası riski oluşur.',
-  'Diş Eti Taraması': 'Diş eti dokusunun 3D taraması. İmplant ve gingival kontur planlaması için kullanılır.',
-  'Scan Body STL':    'İmplant pozisyonunu doğru belirlemek için gereklidir.',
-  'Gülüş Videosu':    'Dinamik gülüş ve dudak hareketlerini görmek için önerilir.',
-  'PDF Belgesi':      'Ek talimat, reçete veya detay bilgileri içeren belgeyi yükleyin.',
-  'Referans Fotoğraf':'İstenen estetik ve formu göstermek için örnek görsel yükleyin.',
+  'Ekartörlü Fotoğraf':  'Dudak ekartörü ile çekilmiş ön ve yan diş görüntüsü.',
+  'Gülüş Fotoğrafı':     'Hastanın doğal gülümseme fotoğrafı (estetik analiz için).',
+  'Gülüş Videosu':       'Dinamik gülüş ve dudak hareketlerini görmek için önerilir.',
+  'Alt Çene Taraması':   'Alt dişlerin 3D taraması (STL/PLY).',
+  'Üst Çene Taraması':   'Üst dişlerin 3D taraması (STL/PLY).',
+  'Kapanış Taraması':    'Bite/oklüzyon kaydı — dişlerin doğru temasını belirler.\nEksik olursa oklüzyon hatası riski oluşur.',
+  'Diş Eti Taraması':    'Diş eti dokusunun 3D taraması. İmplant ve gingival kontur planlaması için kullanılır.',
+  'Scan Body Taraması':  'İmplant pozisyonunu doğru belirlemek için scan body taraması.',
+  'PDF Belgesi':         'Reçete, ek talimat veya detaylı bilgileri içeren belgeyi yükleyin.',
+  'Referans Fotoğrafı':  'İstenen estetik ve formu göstermek için örnek görsel yükleyin.',
 };
 
 // ─── Hover tooltip wrapper ────────────────────────────────────────────────────
@@ -325,7 +392,7 @@ function WithTooltip({
 // InfoTooltip artık kullanılmıyor — WithTooltip ile değiştirildi
 function InfoTooltip(_props: { text: string; color?: string }) { return null; }
 
-export type NewOrderPanel = 'lab' | 'doctor' | 'clinic' | 'admin';
+export type NewOrderPanel = 'lab' | 'doctor' | 'clinic' | 'admin' | 'station';
 
 // Panel-specific accent colors + persona-aware texts
 const PANEL_THEMES: Record<NewOrderPanel, {
@@ -335,28 +402,34 @@ const PANEL_THEMES: Record<NewOrderPanel, {
   submitLabel: string;
 }> = {
   lab: {
-    accent:      '#2563EB', // lab blue
+    accent:      '#E0A82E', // lab saffron deep — patterns dili
     title:       'Yeni İş Emri',
     headerStep1: { lead: 'Önce ',  em: 'kim için', tail: ' çalışıyoruz?' },
-    submitLabel: '✓ İş emrini oluştur',
+    submitLabel: 'İş emrini oluştur',
   },
   doctor: {
-    accent:      '#0EA5E9', // doctor sky
+    accent:      '#32BB78', // doctor emerald — patterns dili
     title:       'Yeni Sipariş',
     headerStep1: { lead: 'Hangi ', em: 'hasta',    tail: ' için çalışıyoruz?' },
-    submitLabel: '✓ Laboratuvara gönder',
+    submitLabel: 'Laboratuvara gönder',
   },
   clinic: {
-    accent:      '#0369A1', // clinic deeper sky
+    accent:      '#32BB78', // clinic emerald — patterns dili
     title:       'Yeni Sipariş',
     headerStep1: { lead: 'Hangi ', em: 'hekim',    tail: ' için çalışıyoruz?' },
-    submitLabel: '✓ Laboratuvara gönder',
+    submitLabel: 'Laboratuvara gönder',
   },
   admin: {
-    accent:      '#EA7A4C', // admin coral
+    accent:      '#4771AB', // admin coral
     title:       'Yeni Sipariş',
     headerStep1: { lead: 'Önce ',  em: 'kim için', tail: ' çalışıyoruz?' },
-    submitLabel: '✓ Siparişi oluştur',
+    submitLabel: 'Siparişi oluştur',
+  },
+  station: {
+    accent:      '#3B82F6', // teknisyen / station mavi
+    title:       'Yeni İş Emri',
+    headerStep1: { lead: 'Önce ',  em: 'kim için', tail: ' çalışıyoruz?' },
+    submitLabel: 'İş emrini oluştur',
   },
 };
 
@@ -391,11 +464,28 @@ export function NewOrderScreen({
     ?? (doctorMode ? 'doctor' : clinicMode ? 'clinic' : 'lab');
   const theme = PANEL_THEMES[resolvedPanel];
 
+  // Fiyat görünürlüğü: admin/klinik/hekim panelleri her zaman görür;
+  // lab/istasyon kullanıcıları yalnız view_order_pricing izniyle görür.
+  const canPerm = usePermissionStore(s => s.can);
+  const showPrices = resolvedPanel === 'admin' || resolvedPanel === 'clinic' || resolvedPanel === 'doctor' || canPerm('view_order_pricing');
+
   // accentColor explicit verilmişse onu kullan, yoksa panel teması
   const P     = accentColor ?? theme.accent;
   const PBg   = '#F1F5F9';
   const PLight = '#1E293B';
-  const styles = useMemo(() => makeStyles(P), [P]);
+  // Panel-aware sayfa arka planı — her panelde dashboard/settings ile aynı bgPage.
+  // Dark mode'da panel bgPage yerine T.bg (dark surface) kullanılır.
+  const PANEL_TO_MOBILE: Record<NewOrderPanel, MobilePanel> = { lab: 'lab', doctor: 'doctor', clinic: 'klinik', admin: 'exec', station: 'teknisyen' };
+  // Station panelinde order/orders rotaları yok → submit sonrası güvenli hedef (dashboard)
+  const orderDetailPath = (id: string) =>
+    resolvedPanel === 'station' ? '/(station)' : `/(${resolvedPanel})/order/${id}`;
+  const orderListPath =
+    resolvedPanel === 'station' ? '/(station)' : `/(${resolvedPanel})/orders`;
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const NO = useNOTokens();
+  const pageBg = isDark ? T.bg : MOBILE_PANEL_THEMES[PANEL_TO_MOBILE[resolvedPanel]].bgPage;
+  const styles = useMemo(() => makeStyles(P, T, isDark), [P, T, isDark]);
   const fus    = useMemo(() => makeFusStyles(P), [P]);
   const s2     = useMemo(() => makeS2Styles(P), [P]);
 
@@ -410,16 +500,38 @@ export function NewOrderScreen({
   const [step, setStep] = useState<Step>(() => {
     if (Platform.OS === 'web') {
       try {
-        const s = sessionStorage.getItem('new_order_step');
+        // Önce kalıcı (localStorage) sonra session — re-mount/reload sonrası kaldığı yerden devam
+        const s = localStorage.getItem(DRAFT_STEP_KEY) ?? sessionStorage.getItem('new_order_step');
         if (s === '1' || s === '2' || s === '3' || s === '4') return Number(s) as Step;
       } catch {}
     }
     return 1;
   });
 
+  // Native (iOS/Android) — AsyncStorage'dan step restore et (async, mount sonrası)
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    let active = true;
+    (async () => {
+      try {
+        const s = await AsyncStorage.getItem(DRAFT_STEP_KEY);
+        if (active && (s === '1' || s === '2' || s === '3' || s === '4')) {
+          setStep(Number(s) as Step);
+        }
+      } catch {}
+    })();
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const goToStep = (s: Step) => {
     if (Platform.OS === 'web') {
-      try { sessionStorage.setItem('new_order_step', String(s)); } catch {}
+      try {
+        sessionStorage.setItem('new_order_step', String(s));
+        localStorage.setItem(DRAFT_STEP_KEY, String(s));
+      } catch {}
+    } else {
+      AsyncStorage.setItem(DRAFT_STEP_KEY, String(s)).catch(() => {});
     }
     setStep(s);
   };
@@ -432,10 +544,15 @@ export function NewOrderScreen({
     return () => clearPageTitle();
   }, []);
 
-  // Her step değişiminde sessionStorage'ı güncelle (HMR/reload sonrası kaldığı yerden devam)
+  // Her step değişiminde storage'ı güncelle (HMR/reload + app kapatma sonrası kaldığı yerden devam)
   useEffect(() => {
     if (Platform.OS === 'web') {
-      try { sessionStorage.setItem('new_order_step', String(step)); } catch {}
+      try {
+        sessionStorage.setItem('new_order_step', String(step));
+        localStorage.setItem(DRAFT_STEP_KEY, String(step));
+      } catch {}
+    } else {
+      AsyncStorage.setItem(DRAFT_STEP_KEY, String(step)).catch(() => {});
     }
   }, [step]);
 
@@ -454,8 +571,22 @@ export function NewOrderScreen({
           if (parsed.delivery_date) parsed.delivery_date = new Date(parsed.delivery_date);
           const arrFields = ['tooth_ops','pending_items','attachments','tags','voice_notes','lab_voice_notes','chat_messages'] as const;
           arrFields.forEach(k => { if (!Array.isArray(parsed[k])) parsed[k] = (INITIAL_FORM as any)[k]; });
-          // Blob URI'lar reload'dan sonra ölü — dosya/ses/chat alanlarını sıfırla
+          // Blob URI'lar reload sonrası geçersiz — voice/chat tamamen atılır.
           DRAFT_STRIP_FIELDS.forEach(k => { (parsed as any)[k] = (INITIAL_FORM as any)[k]; });
+          // Attachments: sadece storage_path'i olanları (drafts/ bucket'a yüklenmiş)
+          // koru — bunların uri'sini boşalt ve 'done' state olarak işaretle.
+          if (Array.isArray(parsed.attachments)) {
+            parsed.attachments = parsed.attachments
+              .filter((a: any) => a?.storage_path)
+              .map((a: any) => ({
+                ...a,
+                uri: '',                       // blob URI ölü, gerekirse signedUrl ile yeniden alınır
+                upload_status: 'done',
+                upload_progress: 100,
+              }));
+          } else {
+            parsed.attachments = [];
+          }
           return { ...INITIAL_FORM, ...parsed };
         }
       } catch {}
@@ -463,6 +594,164 @@ export function NewOrderScreen({
     return INITIAL_FORM;
   });
   const [loading, setLoading] = useState(false);
+
+  // ── Submit-time dosya upload progress state ──
+  // Submit sırasında her dosya için ayrı progress bar gösterilir.
+  type SubmitUploadState = {
+    id:       string;
+    name:     string;
+    progress: number | null; // 0..100 veya null (indeterminate)
+    status:   'pending' | 'uploading' | 'done' | 'error';
+    error?:   string;
+  };
+  const [submitUploads, setSubmitUploads] = useState<SubmitUploadState[]>([]);
+  const [submitUploadsVisible, setSubmitUploadsVisible] = useState(false);
+
+  // ── Lab bilgisi (print preview için) ─────────────────────────────────
+  const [labInfo, setLabInfo] = useState<{ name: string; phone: string | null; address: string | null; logo_url: string | null; sidebar_brand_mode?: string | null } | null>(null);
+  useEffect(() => {
+    const labId = (profile as any)?.lab_id;
+    if (!labId) return;
+    let cancel = false;
+    (async () => {
+      const { data } = await supabase.from('labs').select('name, phone, address, logo_url, sidebar_brand_mode').eq('id', labId).maybeSingle();
+      if (!cancel && data) setLabInfo({ name: data.name, phone: data.phone, address: data.address, logo_url: data.logo_url, sidebar_brand_mode: (data as any).sidebar_brand_mode ?? null });
+    })();
+    return () => { cancel = true; };
+  }, [(profile as any)?.lab_id]);
+
+  // ── Acil vaka ek ücret oranı (Mali İşler → Fiyat Listesi'nden) ──────
+  const [urgentSurchargeRate, setUrgentSurchargeRate] = useState<number>(0);
+  useEffect(() => {
+    const labId = (profile as any)?.lab_id;
+    if (!labId) return;
+    let cancel = false;
+    (async () => {
+      const { data } = await supabase
+        .from('lab_settings')
+        .select('urgent_surcharge_rate')
+        .eq('lab_id', labId)
+        .maybeSingle();
+      if (!cancel && data) setUrgentSurchargeRate(Number(data.urgent_surcharge_rate) || 0);
+    })();
+    return () => { cancel = true; };
+  }, [(profile as any)?.lab_id]);
+
+  // ── In-app print preview popup state (yeni tab yerine modal) ─────────
+  const [printPreviewHtml, setPrintPreviewHtml] = useState<string | null>(null);
+
+  // ── QR short URL — submit sonrası create_qr_link RPC ile üretilir ────
+  const [qrShortUrl, setQrShortUrl] = useState<string | null>(null);
+
+  // ── OCR'dan pre-fill (kağıt iş emri tarama akışı, Faz 1+2) ──
+  // ScanWorkOrderModal sessionStorage'a 'ocr_work_order' yazıp NewOrderScreen'e yönlendiriyor.
+  // İlk mount'ta okunur, form'a uygulanır ve key silinir.
+  const [ocrBanner, setOcrBanner] = useState<string | null>(null);
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || !window.sessionStorage) return;
+    let raw: string | null = null;
+    try { raw = window.sessionStorage.getItem('ocr_work_order'); } catch { return; }
+    if (!raw) return;
+    try {
+      const ocr = JSON.parse(raw) as {
+        clinic_id: string | null;
+        doctor_name: string | null;
+        patient_name: string | null;
+        order_date: string | null;
+        delivery_date: string | null;
+        urgency: 'normal' | 'acil' | 'cok_acil' | null;
+        tooth_numbers: number[];
+        work_type: string | null;
+        shade: string | null;
+        impression_type: string | null;
+        notes: string | null;
+      };
+
+      // Hasta adı parse — son kelime soyad, geri kalanı ad
+      let pFirst = '', pLast = '';
+      if (ocr.patient_name) {
+        const parts = ocr.patient_name.trim().split(/\s+/);
+        if (parts.length === 1) { pFirst = parts[0]; }
+        else { pLast = parts.pop()!; pFirst = parts.join(' '); }
+      }
+
+      // Ölçü yöntemi map
+      const measMap: Record<string, 'manual' | 'digital'> = {
+        'Klasik': 'manual', 'Dijital': 'digital', 'Putty': 'manual',
+      };
+      const measurement_type = ocr.impression_type ? (measMap[ocr.impression_type] ?? '' as any) : '' as any;
+
+      // tooth_ops üret — her diş için ayrı op (BLANK_OP üzerine work_type+shade)
+      const tooth_ops: ToothOp[] = (ocr.tooth_numbers ?? []).map(t => ({
+        ...BLANK_OP,
+        tooth: t,
+        __uid: newOpUid(),
+        work_type: ocr.work_type ?? '',
+        shade: ocr.shade ?? '',
+      }));
+
+      setForm(prev => ({
+        ...prev,
+        clinic_id: ocr.clinic_id || prev.clinic_id,
+        patient_first_name: pFirst || prev.patient_first_name,
+        patient_last_name:  pLast  || prev.patient_last_name,
+        is_urgent: ocr.urgency === 'acil' || ocr.urgency === 'cok_acil' ? true : prev.is_urgent,
+        delivery_date: ocr.delivery_date ? new Date(ocr.delivery_date) : prev.delivery_date,
+        tooth_ops: tooth_ops.length > 0 ? tooth_ops : prev.tooth_ops,
+        notes: ocr.notes ? (prev.notes ? prev.notes + '\n' + ocr.notes : ocr.notes) : prev.notes,
+        measurement_type: measurement_type || prev.measurement_type,
+      }));
+
+      // Klinik varsa: ÖNCE doctor_name varsa o hekimi ara (case-insensitive),
+      // bulamazsan kliniğin ilk aktif hekimini auto-set et
+      if (ocr.clinic_id) {
+        (async () => {
+          let resolvedDoctorId: string | null = null;
+          if (ocr.doctor_name) {
+            const { data: byName } = await supabase
+              .from('profiles')
+              .select('id')
+              .eq('clinic_id', ocr.clinic_id)
+              .eq('user_type', 'doctor')
+              .ilike('full_name', `%${ocr.doctor_name.trim()}%`)
+              .limit(1)
+              .maybeSingle();
+            if (byName?.id) resolvedDoctorId = (byName as any).id;
+          }
+          if (!resolvedDoctorId) {
+            const { data: first } = await supabase
+              .from('profiles')
+              .select('id')
+              .eq('clinic_id', ocr.clinic_id)
+              .eq('is_active', true)
+              .eq('user_type', 'doctor')
+              .limit(1)
+              .maybeSingle();
+            if (first?.id) resolvedDoctorId = (first as any).id;
+          }
+          if (resolvedDoctorId) {
+            setForm(prev => ({ ...prev, doctor_id: prev.doctor_id || resolvedDoctorId! }));
+          }
+        })();
+      }
+
+      const filledCount = [
+        ocr.clinic_id ? 'klinik' : null,
+        ocr.doctor_name ? 'hekim' : null,
+        ocr.patient_name ? 'hasta' : null,
+        ocr.tooth_numbers?.length ? `${ocr.tooth_numbers.length} diş` : null,
+        ocr.work_type ? 'işlem tipi' : null,
+        ocr.shade ? 'renk' : null,
+        ocr.delivery_date ? 'tarih' : null,
+        ocr.urgency === 'acil' || ocr.urgency === 'cok_acil' ? 'aciliyet' : null,
+      ].filter(Boolean);
+      setOcrBanner(`Kağıt formdan ${filledCount.join(' · ')} otomatik dolduruldu. Kontrol et ve eksik alanları tamamla.`);
+
+      // Bir kez kullan, sonra temizle
+      try { window.sessionStorage.removeItem('ocr_work_order'); } catch {}
+    } catch { /* JSON parse hatası — sessizce yut */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Draft save timestamp (UI göstergesinde kullanılır) ──
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(() => {
@@ -497,9 +786,8 @@ export function NewOrderScreen({
   // İlk mount'ta otomatik re-save etmeyi engelle (restored form'un timestamp'i korunur)
   const skipFirstDraftSaveRef = useRef(true);
 
-  // Form değiştiğinde debounced olarak localStorage'a kaydet (600ms)
+  // Form değiştiğinde debounced olarak draft persist et (web: localStorage, native: AsyncStorage)
   useEffect(() => {
-    if (Platform.OS !== 'web') return;
     if (skipFirstDraftSaveRef.current) {
       skipFirstDraftSaveRef.current = false;
       return;
@@ -508,7 +796,11 @@ export function NewOrderScreen({
       try {
         const serializable: any = { ...form };
         DRAFT_STRIP_FIELDS.forEach(k => { delete serializable[k]; });
-        // Boş form → taslak gereksiz
+        if (Array.isArray(serializable.attachments)) {
+          serializable.attachments = serializable.attachments
+            .filter((a: any) => a?.storage_path)
+            .map((a: any) => ({ ...a, uri: '' }));
+        }
         const isEmpty =
           !serializable.clinic_id && !serializable.doctor_id &&
           !serializable.patient_first_name && !serializable.patient_last_name &&
@@ -517,19 +809,76 @@ export function NewOrderScreen({
           (serializable.pending_items?.length ?? 0) === 0 &&
           !serializable.notes && !serializable.lab_notes;
         if (isEmpty) {
-          localStorage.removeItem(DRAFT_KEY);
-          localStorage.removeItem(DRAFT_TS_KEY);
+          if (Platform.OS === 'web') {
+            try { localStorage.removeItem(DRAFT_KEY); localStorage.removeItem(DRAFT_TS_KEY); } catch {}
+          } else {
+            void AsyncStorage.removeItem(DRAFT_KEY);
+            void AsyncStorage.removeItem(DRAFT_TS_KEY);
+          }
           setLastSavedAt(null);
           return;
         }
-        localStorage.setItem(DRAFT_KEY, JSON.stringify(serializable));
+        const payload = JSON.stringify(serializable);
         const now = Date.now();
-        localStorage.setItem(DRAFT_TS_KEY, String(now));
+        if (Platform.OS === 'web') {
+          try {
+            localStorage.setItem(DRAFT_KEY, payload);
+            localStorage.setItem(DRAFT_TS_KEY, String(now));
+          } catch {}
+        } else {
+          void AsyncStorage.setItem(DRAFT_KEY, payload);
+          void AsyncStorage.setItem(DRAFT_TS_KEY, String(now));
+        }
         setLastSavedAt(new Date(now));
       } catch {}
     }, DRAFT_DEBOUNCE_MS);
     return () => clearTimeout(handle);
   }, [form]);
+
+  // ── Native: mount sonrası AsyncStorage'dan draft yükle + prompt göster ──
+  // (Web'de form INITIAL'da sync olarak localStorage'dan restore edilir;
+  //  native'de AsyncStorage async olduğu için ayrı bir effect ile yapılır.)
+  const nativeDraftCheckedRef = useRef(false);
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    if (nativeDraftCheckedRef.current) return;
+    nativeDraftCheckedRef.current = true;
+    (async () => {
+      try {
+        const [savedRaw, tsRaw, askedRaw] = await Promise.all([
+          AsyncStorage.getItem(DRAFT_KEY),
+          AsyncStorage.getItem(DRAFT_TS_KEY),
+          AsyncStorage.getItem('new_order_draft_prompted'),
+        ]);
+        if (!savedRaw) return;
+        // Bu oturumda zaten sorulduysa otomatik restore et, prompt'u gösterme
+        const alreadyAsked = askedRaw === '1';
+        try {
+          const parsed = JSON.parse(savedRaw);
+          if (parsed.patient_dob)   parsed.patient_dob   = new Date(parsed.patient_dob);
+          if (parsed.delivery_date) parsed.delivery_date = new Date(parsed.delivery_date);
+          const arrFields = ['tooth_ops','pending_items','attachments','tags','voice_notes','lab_voice_notes','chat_messages'] as const;
+          arrFields.forEach(k => { if (!Array.isArray(parsed[k])) parsed[k] = (INITIAL_FORM as any)[k]; });
+          DRAFT_STRIP_FIELDS.forEach(k => { (parsed as any)[k] = (INITIAL_FORM as any)[k]; });
+          if (Array.isArray(parsed.attachments)) {
+            parsed.attachments = parsed.attachments
+              .filter((a: any) => a?.storage_path)
+              .map((a: any) => ({ ...a, uri: '', upload_status: 'done', upload_progress: 100 }));
+          } else {
+            parsed.attachments = [];
+          }
+          // Form'u restore et (skip auto-save so timestamp doesn't reset)
+          skipFirstDraftSaveRef.current = true;
+          setForm({ ...INITIAL_FORM, ...parsed });
+          if (tsRaw) setLastSavedAt(new Date(parseInt(tsRaw, 10)));
+          if (!alreadyAsked) {
+            if (tsRaw) setDraftSavedAtPrompt(new Date(parseInt(tsRaw, 10)));
+            setDraftPromptOpen(true);
+          }
+        } catch { /* JSON parse fail — sessiz yut */ }
+      } catch { /* AsyncStorage fail */ }
+    })();
+  }, []);
 
   // Taslağı sil ve formu sıfırla
   const discardDraft = useCallback(() => {
@@ -537,11 +886,14 @@ export function NewOrderScreen({
       try {
         localStorage.removeItem(DRAFT_KEY);
         localStorage.removeItem(DRAFT_TS_KEY);
+        localStorage.removeItem(DRAFT_STEP_KEY);
         sessionStorage.removeItem('new_order_form');
         sessionStorage.removeItem('new_order_step');
       } catch {}
+    } else {
+      void AsyncStorage.multiRemove([DRAFT_KEY, DRAFT_TS_KEY, DRAFT_STEP_KEY, 'new_order_draft_prompted']);
     }
-    skipFirstDraftSaveRef.current = true;  // INITIAL_FORM set'i re-save tetiklemesin
+    skipFirstDraftSaveRef.current = true;
     setForm(INITIAL_FORM);
     setConfirmedTeeth([]);
     setLastSavedAt(null);
@@ -552,9 +904,11 @@ export function NewOrderScreen({
   const handleContinueDraft = useCallback(() => {
     if (Platform.OS === 'web') {
       try { sessionStorage.setItem('new_order_draft_prompted', '1'); } catch {}
+    } else {
+      void AsyncStorage.setItem('new_order_draft_prompted', '1');
     }
     setDraftPromptOpen(false);
-    // form zaten init'te restore edildi, bir şey yapmaya gerek yok
+    // form zaten init/effect'te restore edildi, bir şey yapmaya gerek yok
   }, []);
 
   const handleStartNewOrder = useCallback(() => {
@@ -563,9 +917,13 @@ export function NewOrderScreen({
         sessionStorage.setItem('new_order_draft_prompted', '1');
         localStorage.removeItem(DRAFT_KEY);
         localStorage.removeItem(DRAFT_TS_KEY);
+        localStorage.removeItem(DRAFT_STEP_KEY);
         sessionStorage.removeItem('new_order_form');
         sessionStorage.removeItem('new_order_step');
       } catch {}
+    } else {
+      void AsyncStorage.setItem('new_order_draft_prompted', '1');
+      void AsyncStorage.multiRemove([DRAFT_KEY, DRAFT_TS_KEY, DRAFT_STEP_KEY]);
     }
     skipFirstDraftSaveRef.current = true;
     setForm(INITIAL_FORM);
@@ -585,12 +943,39 @@ export function NewOrderScreen({
 
   // Chat modal
   const [chatModalVisible, setChatModalVisible] = useState(false);
+  // Submit sonrası başarı ekranı — { id, orderNumber } | null
+  const [submittedOrder, setSubmittedOrder] = useState<{ id: string; orderNumber: string; patientName: string } | null>(null);
 
 
   // Step 3 — confirmed teeth (shown in bottom list after "Listeye ekle")
-  const [confirmedTeeth, setConfirmedTeeth] = useState<number[]>([]);
+  // Initial state: draft restore'dan gelen form.tooth_ops içinde work_type
+  // dolu olanları confirmed olarak kabul et — aksi halde liste boş kalıyor.
+  const [confirmedTeeth, setConfirmedTeeth] = useState<number[]>(() => {
+    return (form.tooth_ops ?? [])
+      .filter(o => !!o.work_type)
+      .map(o => o.tooth);
+  });
   const lastConfirmedOpRef = useRef<Omit<ToothOp, 'tooth'>>({ ...BLANK_OP });
   const [opResetKey, setOpResetKey] = useState(0);
+
+  // İkinci işlem için aktif op'ların uid listesi — set ise updateToothOp bu uid'leri patch eder
+  // (tek diş için 1 uid, çene shortcut'la N uid).
+  const [secondaryOpUids, setSecondaryOpUids] = useState<string[]>([]);
+  const secondaryOpUid = secondaryOpUids[0] ?? null; // backward-compat readers
+
+  // Form draft restore sonrası confirmedTeeth'i de senkronize et — yeni
+  // mount'ta useState init zaten yapar ama OCR/external setForm
+  // değişikliklerinde de senkron kalsın.
+  useEffect(() => {
+    const filled = form.tooth_ops.filter(o => !!o.work_type).map(o => o.tooth);
+    setConfirmedTeeth(prev => {
+      // sadece eksik olanları ekle, ekstradan kaldırma yok (kullanıcı manuel sildiyse)
+      const missing = filled.filter(t => !prev.includes(t));
+      if (missing.length === 0) return prev;
+      return [...prev, ...missing];
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.tooth_ops.length]);
 
   // Color palette for distinct work-type groups in tooth picker
   const OP_COLOR_PALETTE = ['#2563EB','#059669','#D97706','#7C3AED','#DC2626','#0891B2','#DB2777','#65A30D'];
@@ -612,16 +997,38 @@ export function NewOrderScreen({
     return map;
   }, [confirmedTeeth, form.tooth_ops]);
 
-  const [clinics, setClinics] = useState<Clinic[]>([]);
-  const [allDoctors, setAllDoctors] = useState<Doctor[]>([]);
-  const [services, setServices] = useState<LabService[]>([]);
+  // localStorage cache — yeni sipariş formunun dropdown verileri.
+  // Açılışta cache'den okuyup instant render, arka planda refetch (silent).
+  const NEW_ORDER_CACHE_KEY = 'new_order_dropdowns_v1';
+  const loadCache = (): {
+    clinics: Clinic[]; doctors: Doctor[]; services: LabService[]; materialPrices: Record<string, number>;
+  } | null => {
+    if (typeof window === 'undefined' || !window.localStorage) return null;
+    try {
+      const raw = window.localStorage.getItem(NEW_ORDER_CACHE_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch { return null; }
+  };
+  const saveCache = (data: { clinics: Clinic[]; doctors: Doctor[]; services: LabService[]; materialPrices: Record<string, number> }) => {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    try { window.localStorage.setItem(NEW_ORDER_CACHE_KEY, JSON.stringify(data)); } catch { /* quota */ }
+  };
+  const cached = loadCache();
+
+  const [clinics, setClinics] = useState<Clinic[]>(cached?.clinics ?? []);
+  const [allDoctors, setAllDoctors] = useState<Doctor[]>(cached?.doctors ?? []);
+  const [services, setServices] = useState<LabService[]>(cached?.services ?? []);
   const [serviceSearch, setServiceSearch] = useState('');
-  const [dataLoading, setDataLoading] = useState(true);
-  const [materialPrices, setMaterialPrices] = useState<Record<string, number>>({});
+  // dataLoading: yalnızca cache yoksa true (ilk kez) — sonraki açılışlar instant
+  const [dataLoading, setDataLoading] = useState(cached === null);
+  const [materialPrices, setMaterialPrices] = useState<Record<string, number>>(cached?.materialPrices ?? {});
+  // Klinik-özel fiyat listesi: serviceId → kliniğe özel fiyat (override varsa).
+  // Yoksa genel katalog fiyatı (lab_services.price) kullanılır.
+  const [clinicPriceMap, setClinicPriceMap] = useState<Record<string, number>>({});
 
   useEffect(() => {
     // Doctor mode: clinic/doctor fetch'i atla
-    // Clinic mode: allDoctors yerine my_clinic_doctors view'dan çek
     const clinicsPromise = doctorMode
       ? Promise.resolve({ data: [] })
       : fetchClinics();
@@ -640,29 +1047,77 @@ export function NewOrderScreen({
       console.warn('[new-order] data fetch failed:', err?.message ?? err);
       return [{ data: [] }, { data: [] }, { data: [] }, { data: [] }] as any;
     }).then(([clinicsRes, doctorsRes, servicesRes, matsRes]) => {
-      setClinics((clinicsRes?.data as Clinic[]) ?? []);
-      // clinicMode: view'dan gelen satırları Doctor tipine map et
+      const freshClinics = (clinicsRes?.data as Clinic[]) ?? [];
+      setClinics(freshClinics);
+      let freshDoctors: Doctor[] = [];
       if (clinicMode) {
-        const rows = ((doctorsRes?.data as any[]) ?? []).map(d => ({
+        freshDoctors = ((doctorsRes?.data as any[]) ?? []).map(d => ({
           id: d.id,
           full_name: d.full_name,
           phone: d.phone,
           clinic_id: d.clinic_id,
           clinic: null,
-        }));
-        setAllDoctors(rows as unknown as Doctor[]);
+        })) as unknown as Doctor[];
       } else {
-        setAllDoctors((doctorsRes?.data as Doctor[]) ?? []);
+        freshDoctors = (doctorsRes?.data as Doctor[]) ?? [];
       }
-      setServices((servicesRes?.data as LabService[]) ?? []);
+      setAllDoctors(freshDoctors);
+      const freshServices = (servicesRes?.data as LabService[]) ?? [];
+      setServices(freshServices);
       const priceMap: Record<string, number> = {};
       ((matsRes?.data ?? []) as { name: string; price: number }[]).forEach(m => {
         priceMap[m.name] = m.price;
       });
       setMaterialPrices(priceMap);
       setDataLoading(false);
+      // Cache'i tazele
+      saveCache({ clinics: freshClinics, doctors: freshDoctors, services: freshServices, materialPrices: priceMap });
     });
   }, []);
+
+  // Seçili klinik için klinik-özel fiyat listesini (clinic_price_overrides) çek.
+  // custom_price varsa onu, yoksa discount_percent'i katalog fiyatına uygular.
+  // Klinik seçili değilse / override yoksa → genel katalog fiyatı kullanılır.
+  useEffect(() => {
+    const clinicId = form.clinic_id;
+    if (!clinicId) { setClinicPriceMap({}); return; }
+    const labId = (profile as any)?.lab_id ?? profile?.id ?? null;
+    let cancelled = false;
+    (async () => {
+      try {
+        let q = supabase
+          .from('clinic_price_overrides')
+          .select('service_id, custom_price, discount_percent')
+          .eq('clinic_id', clinicId);
+        if (labId) q = q.eq('lab_id', labId);
+        const { data, error } = await q;
+        if (error || cancelled) return;
+        const base: Record<string, number> = {};
+        services.forEach(s => { base[s.id] = Number(s.price) || 0; });
+        const map: Record<string, number> = {};
+        ((data ?? []) as any[]).forEach(ov => {
+          if (ov.custom_price != null) {
+            map[ov.service_id] = Number(ov.custom_price);
+          } else if (ov.discount_percent != null && Number(ov.discount_percent) > 0) {
+            const catalog = base[ov.service_id] ?? 0;
+            map[ov.service_id] = Math.round(catalog * (100 - Number(ov.discount_percent)) / 100 * 100) / 100;
+          }
+        });
+        if (!cancelled) setClinicPriceMap(map);
+      } catch { if (!cancelled) setClinicPriceMap({}); }
+    })();
+    return () => { cancelled = true; };
+  }, [form.clinic_id, services, profile]);
+
+  // İş türü seçicisine geçilecek servisler — klinik-özel fiyat varsa onunla,
+  // yoksa genel katalog fiyatıyla. Çip görünümü + seçim + kayıt hepsi bunu kullanır.
+  const effectiveServices = useMemo(
+    () => services.map(s => (clinicPriceMap[s.id] != null ? { ...s, price: clinicPriceMap[s.id] } : s)),
+    [services, clinicPriceMap]
+  );
+
+  // Sipariş geneli para birimi — seçili işlemlerin (yoksa fiyat listesinin) currency'si.
+  const orderCur = form.tooth_ops.find(o => o.currency)?.currency ?? services[0]?.currency ?? 'TRY';
 
   const set = <K extends keyof FormData>(key: K) =>
     (val: FormData[K]) => {
@@ -693,7 +1148,24 @@ export function NewOrderScreen({
     if (!form.patient_nationality)              e.patient_nationality = 'Uyruk seçin';
     if (!form.measurement_type)  e.measurement_type  = 'Ölçüm yöntemi seçin';
     if (!form.model_type)        e.model_type        = 'Model tipi seçin';
+    // Dijital ölçüm + dosya gerektiren model tipi → en az 1 dosya yüklenmiş olmalı
+    const DIGITAL_FILE_REQUIRED = ['dijital_tarama', 'stl_dosyasi', 'cad_dosyasi', 'baski_3d_model'];
+    if (form.measurement_type === 'digital' && DIGITAL_FILE_REQUIRED.includes(form.model_type)) {
+      const hasFile = (form.attachments ?? []).some(a => ['stl', 'ply', 'other', 'pdf'].includes(a.kind));
+      if (!hasFile) e.attachments = 'Bu model tipi için dosya yüklemelisiniz (STL / CAD / 3D)';
+    }
     if (!form.delivery_date)     e.delivery_date     = 'Teslim tarihi seçin';
+    else {
+      // Normal vakada 72 saat (3 gün), acil vakada 1 gün (yarından itibaren)
+      const minDays = form.is_urgent ? 1 : 3;
+      const earliest = new Date(); earliest.setHours(0, 0, 0, 0); earliest.setDate(earliest.getDate() + minDays);
+      const sel = new Date(form.delivery_date); sel.setHours(0, 0, 0, 0);
+      if (sel < earliest) {
+        e.delivery_date = form.is_urgent
+          ? 'Acil vakada teslim tarihi en erken yarın olabilir'
+          : 'Teslim tarihi en az 72 saat sonra olmalı';
+      }
+    }
     if (!form.delivery_method)   e.delivery_method   = 'Teslim yöntemi seçin';
     if (form.tooth_ops.length === 0)
       e.tooth_ops = 'En az 1 diş seçin';
@@ -704,8 +1176,8 @@ export function NewOrderScreen({
 
   const STEP_FIELDS: Record<Step, string[]> = {
     1: ['doctor_id', 'patient_first_name', 'patient_last_name', 'patient_gender', 'patient_dob'],
-    2: ['measurement_type', 'model_type', 'delivery_date', 'delivery_method'],
-    3: ['tooth_ops'],
+    2: ['tooth_ops'],
+    3: ['measurement_type', 'model_type', 'delivery_date', 'delivery_method', 'attachments'],
     4: [],
   };
 
@@ -723,7 +1195,7 @@ export function NewOrderScreen({
 
   const itemTotal = form.pending_items.reduce((s, i) => s + i.price * i.quantity, 0);
 
-  const addPendingItem = (service: LabService) => {
+  const addPendingItem = async (service: LabService) => {
     const existing = form.pending_items.find((i) => i.service_id === service.id);
     if (existing) {
       set('pending_items')(
@@ -731,12 +1203,35 @@ export function NewOrderScreen({
           i.service_id === service.id ? { ...i, quantity: i.quantity + 1 } : i
         )
       );
-    } else {
-      set('pending_items')([
-        ...form.pending_items,
-        { service_id: service.id, name: service.name, price: service.price, quantity: 1 },
-      ]);
+      return;
     }
+
+    // Faz 1: 3-kademe fiyat çözümleyicisini çağır (clinic override > promotion > catalog)
+    let resolvedPrice = service.price;
+    let priceSource: string = 'catalog';
+    try {
+      const labId = (profile as any)?.lab_id ?? profile?.id ?? null;
+      if (labId && service.id) {
+        const { data, error } = await supabase.rpc('resolve_item_price', {
+          p_lab_id:     labId,
+          p_service_id: service.id,
+          p_clinic_id:  form.clinic_id || null,
+          p_order_date: new Date().toISOString().slice(0, 10),
+        });
+        if (!error && Array.isArray(data) && data.length > 0) {
+          const row = data[0] as any;
+          if (row.price != null) {
+            resolvedPrice = Number(row.price);
+            priceSource = row.source ?? 'catalog';
+          }
+        }
+      }
+    } catch (_) { /* RPC başarısızsa katalog fiyatı */ }
+
+    set('pending_items')([
+      ...form.pending_items,
+      { service_id: service.id, name: service.name, price: resolvedPrice, quantity: 1, price_source: priceSource } as any,
+    ]);
   };
 
   const removePendingItem = (idx: number) => {
@@ -746,14 +1241,35 @@ export function NewOrderScreen({
   // ── File attachments ──────────────────────────────────────────────────────
   const [fileActiveTooth, setFileActiveTooth] = useState<number | null>(null);
   const [previewFile, setPreviewFile] = useState<AttachedFile | null>(null);
-  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  // 3D taramalar lab ile aynı Viewer3DModal'da açılır (tek veya çoklu).
+  const [viewer3DFiles, setViewer3DFiles] = useState<Array<{ id: string; name: string; url: string; format: 'stl' | 'ply' | 'obj' }> | null>(null);
+  // Önizleme yönlendirici: 3D dosya → Viewer3DModal; diğerleri → normal önizleme.
+  const openFilePreview = (file: AttachedFile) => {
+    if (file.kind === 'stl' || file.kind === 'ply') {
+      setViewer3DFiles([{ id: file.id, name: file.name, url: file.uri, format: file.kind }]);
+    } else {
+      setPreviewFile(file);
+    }
+  };
+  // Upload modalı state'i — sessionStorage'a persist edilir, tab switch / re-mount sonrası
+  // kullanıcı modal'ı tekrar açmak zorunda kalmaz.
+  const [uploadModalOpen, setUploadModalOpenRaw] = useState<boolean>(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return false;
+    try { return window.sessionStorage.getItem('new_order_upload_modal') === '1'; }
+    catch { return false; }
+  });
+  const setUploadModalOpen = (v: boolean) => {
+    setUploadModalOpenRaw(v);
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      try {
+        if (v) window.sessionStorage.setItem('new_order_upload_modal', '1');
+        else   window.sessionStorage.removeItem('new_order_upload_modal');
+      } catch {}
+    }
+  };
   // Track whether preview was opened from inside the upload modal so we can reopen it on close
   const [previewFromUpload, setPreviewFromUpload] = useState(false);
 
-  // ── Oklüzyon analizi modal state ─────────────────────────────────────────
-  const [occlusionModalOpen,   setOcclusionModalOpen]   = useState(false);
-  const [occlusionResult,      setOcclusionResult]      = useState<OcclusionAnalysisResult | null>(null);
-  const [occlusionScreenshot,  setOcclusionScreenshot]  = useState<string | null>(null);
   // İmplant brand search dropdown
   const [implantBrandSearch, setImplantBrandSearch] = useState('');
   const [implantBrandDropOpen, setImplantBrandDropOpen] = useState(false);
@@ -779,7 +1295,7 @@ export function NewOrderScreen({
     setUploadModalOpen(false);
     setPreviewFromUpload(true);
     // Small delay so upload modal finishes closing before preview opens
-    setTimeout(() => setPreviewFile(file), 150);
+    setTimeout(() => openFilePreview(file), 150);
   };
 
   const closePreview = () => {
@@ -790,8 +1306,35 @@ export function NewOrderScreen({
     }
   };
 
-  const openFilePicker = (scope: 'case' | 'tooth', tooth?: number) => {
-    if (Platform.OS !== 'web') return;
+  const openFilePicker = async (scope: 'case' | 'tooth', tooth?: number) => {
+    // ── Native (iOS / Android) — expo-document-picker ──
+    if (Platform.OS !== 'web') {
+      try {
+        const result = await DocumentPicker.getDocumentAsync({
+          multiple: true,
+          copyToCacheDirectory: true,
+          // Geniş tip: STL/PLY/PDF/JPG/PNG/HEIC/WEBP + tarama-kompatible
+          type: ['*/*'],
+        });
+        if (result.canceled || !result.assets || result.assets.length === 0) return;
+        const newFiles: AttachedFile[] = result.assets.map((asset, i) => ({
+          id: `${Date.now()}-${i}-${Math.random().toString(36).slice(2)}`,
+          name: asset.name ?? `file-${i}`,
+          uri: asset.uri,
+          kind: resolveFileKind(asset.name ?? ''),
+          size: asset.size ?? 0,
+          scope,
+          tooth: scope === 'tooth' ? tooth : undefined,
+        }));
+        setForm(f => ({ ...f, attachments: [...f.attachments, ...newFiles] }));
+      } catch (err: any) {
+        console.warn('[file-picker] iOS/Android pick failed:', err?.message ?? err);
+        try { toast.error('Dosya seçimi başarısız oldu'); } catch {}
+      }
+      return;
+    }
+
+    // ── Web — <input type="file"> ──
     // @ts-ignore — document is available on web
     const input = document.createElement('input');
     input.type = 'file';
@@ -819,34 +1362,90 @@ export function NewOrderScreen({
     setTimeout(() => { try { document.body.removeChild(input); } catch {} }, 60_000);
   };
 
+  // ── Picker helper: aynı slota BİRDEN ÇOK dosya eklenebilir (append) ──
+  // İsim `${label} · ${orijinalAd}.${ext}` — slot kimliği label prefix'inde
+  // korunur (startsWith(label) gruplaması her yerde çalışmaya devam eder),
+  // dosya benzersizliği orijinal addan gelir.
+  const slotFileName = (label: string, origName: string, ext: string) => {
+    const base = (origName.replace(/\.[^.]+$/, '') || 'dosya').slice(0, 48);
+    return `${label} · ${base}.${ext}`;
+  };
+  const addAttachmentAndUpload = (label: string, file: File, kind: FileKind) => {
+    const ext = file.name.split('.').pop() ?? 'bin';
+    const newFile: AttachedFile = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name: slotFileName(label, file.name, ext),
+      // @ts-ignore
+      uri: URL.createObjectURL(file),
+      kind,
+      size: file.size,
+      scope: 'case',
+      upload_status: 'pending',
+      upload_progress: 0,
+    };
+    setForm(f => ({ ...f, attachments: [...f.attachments, newFile] }));
+    // Erken upload
+    void uploadAttachmentToDraft(newFile, file);
+  };
+
+  // Native (iOS / Android) — DocumentPicker asset'inden Blob'a çevirip
+  // addAttachmentAndUpload mantığını uygular.
+  const addAttachmentAndUploadFromUri = async (
+    label: string,
+    asset: { uri: string; name: string; size?: number | null; mimeType?: string | null },
+    kind: FileKind
+  ) => {
+    const ext = (asset.name.split('.').pop() ?? 'bin').toLowerCase();
+    const newFile: AttachedFile = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name: slotFileName(label, asset.name, ext),
+      uri: asset.uri,
+      kind,
+      size: asset.size ?? 0,
+      scope: 'case',
+      upload_status: 'pending',
+      upload_progress: 0,
+    };
+    setForm(f => ({ ...f, attachments: [...f.attachments, newFile] }));
+    // uri → Blob, sonra existing uploadAttachmentToDraft
+    try {
+      const res = await fetch(asset.uri);
+      const blob = await res.blob();
+      void uploadAttachmentToDraft(newFile, blob);
+    } catch (err: any) {
+      console.warn('[file-picker] native blob fetch failed:', err?.message ?? err);
+      try { toast.error('Dosya yüklenemedi'); } catch {}
+    }
+  };
+
   // ── Specific photo picker (ekartörlü / gülüş) ─────────────────────────────
-  const openSpecificPhotoPicker = (photoLabel: string) => {
-    if (Platform.OS !== 'web') return;
+  const openSpecificPhotoPicker = async (photoLabel: string) => {
+    if (Platform.OS !== 'web') {
+      console.log('[photo-picker] tapped, label=', photoLabel, 'DocumentPicker=', typeof DocumentPicker, 'getDocumentAsync=', typeof DocumentPicker?.getDocumentAsync);
+      try {
+        const result = await DocumentPicker.getDocumentAsync({
+          type: 'image/*',
+          multiple: true,
+          copyToCacheDirectory: true,
+        });
+        console.log('[photo-picker] result=', JSON.stringify(result).slice(0, 200));
+        if (result.canceled || !result.assets?.length) return;
+        for (const asset of result.assets) await addAttachmentAndUploadFromUri(photoLabel, asset, 'photo');
+      } catch (err: any) {
+        console.warn('[photo-picker] iOS fail:', err?.message ?? err, err);
+        try { toast.error('Foto seçimi başarısız: ' + (err?.message ?? '')); } catch {}
+      }
+      return;
+    }
     // @ts-ignore
     const input = document.createElement('input');
     input.type = 'file';
+    input.multiple = true;
     input.accept = 'image/*,.jpg,.jpeg,.png,.heic,.webp';
     input.onchange = (e: any) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      const ext = file.name.split('.').pop() ?? 'jpg';
-      const newFile: AttachedFile = {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        name: `${photoLabel}.${ext}`,
-        // @ts-ignore
-        uri: URL.createObjectURL(file),
-        kind: 'photo',
-        size: file.size,
-        scope: 'case',
-      };
-      // Replace existing photo with same label if exists
-      setForm(f => ({
-        ...f,
-        attachments: [
-          ...f.attachments.filter(a => !a.name.startsWith(photoLabel)),
-          newFile,
-        ],
-      }));
+      const files: FileList = e.target.files;
+      if (!files || files.length === 0) return;
+      Array.from(files as any).forEach((file: any) => addAttachmentAndUpload(photoLabel, file, 'photo'));
     };
     // @ts-ignore
     document.body.appendChild(input);
@@ -856,33 +1455,39 @@ export function NewOrderScreen({
   };
 
   // ── Specific scan picker (kesim öncesi / alt çene / üst çene / ek tarama) ──
-  const openSpecificScanPicker = (scanLabel: string) => {
-    if (Platform.OS !== 'web') return;
+  const openSpecificScanPicker = async (scanLabel: string) => {
+    if (Platform.OS !== 'web') {
+      try {
+        const result = await DocumentPicker.getDocumentAsync({
+          type: '*/*',
+          multiple: true,
+          copyToCacheDirectory: true,
+        });
+        if (result.canceled || !result.assets?.length) return;
+        for (const asset of result.assets) {
+          const ext = asset.name.split('.').pop()?.toLowerCase() ?? 'stl';
+          const kind: FileKind = ext === 'ply' ? 'ply' : 'stl';
+          await addAttachmentAndUploadFromUri(scanLabel, asset, kind);
+        }
+      } catch (err: any) {
+        console.warn('[scan-picker] iOS fail:', err?.message ?? err);
+        try { toast.error('Tarama seçimi başarısız'); } catch {}
+      }
+      return;
+    }
     // @ts-ignore
     const input = document.createElement('input');
     input.type = 'file';
+    input.multiple = true;
     input.accept = '.stl,.ply,.obj,.dcm,.zip';
     input.onchange = (e: any) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      const ext = file.name.split('.').pop()?.toLowerCase() ?? 'stl';
-      const kind: FileKind = ext === 'ply' ? 'ply' : 'stl';
-      const newFile: AttachedFile = {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        name: `${scanLabel}.${ext}`,
-        // @ts-ignore
-        uri: URL.createObjectURL(file),
-        kind,
-        size: file.size,
-        scope: 'case',
-      };
-      setForm(f => ({
-        ...f,
-        attachments: [
-          ...f.attachments.filter(a => !a.name.startsWith(scanLabel)),
-          newFile,
-        ],
-      }));
+      const files: FileList = e.target.files;
+      if (!files || files.length === 0) return;
+      Array.from(files as any).forEach((file: any) => {
+        const ext = file.name.split('.').pop()?.toLowerCase() ?? 'stl';
+        const kind: FileKind = ext === 'ply' ? 'ply' : 'stl';
+        addAttachmentAndUpload(scanLabel, file, kind);
+      });
     };
     // @ts-ignore
     document.body.appendChild(input);
@@ -892,32 +1497,31 @@ export function NewOrderScreen({
   };
 
   // ── Video picker (gülüş videosu) ──────────────────────────────────────────
-  const openSpecificVideoPicker = (videoLabel: string) => {
-    if (Platform.OS !== 'web') return;
+  const openSpecificVideoPicker = async (videoLabel: string) => {
+    if (Platform.OS !== 'web') {
+      try {
+        const result = await DocumentPicker.getDocumentAsync({
+          type: 'video/*',
+          multiple: true,
+          copyToCacheDirectory: true,
+        });
+        if (result.canceled || !result.assets?.length) return;
+        for (const asset of result.assets) await addAttachmentAndUploadFromUri(videoLabel, asset, 'video');
+      } catch (err: any) {
+        console.warn('[video-picker] iOS fail:', err?.message ?? err);
+        try { toast.error('Video seçimi başarısız'); } catch {}
+      }
+      return;
+    }
     // @ts-ignore
     const input = document.createElement('input');
     input.type = 'file';
+    input.multiple = true;
     input.accept = 'video/*,.mp4,.mov,.avi,.webm';
     input.onchange = (e: any) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      const ext = file.name.split('.').pop()?.toLowerCase() ?? 'mp4';
-      const newFile: AttachedFile = {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        name: `${videoLabel}.${ext}`,
-        // @ts-ignore
-        uri: URL.createObjectURL(file),
-        kind: 'video',
-        size: file.size,
-        scope: 'case',
-      };
-      setForm(f => ({
-        ...f,
-        attachments: [
-          ...f.attachments.filter(a => !a.name.startsWith(videoLabel)),
-          newFile,
-        ],
-      }));
+      const files: FileList = e.target.files;
+      if (!files || files.length === 0) return;
+      Array.from(files as any).forEach((file: any) => addAttachmentAndUpload(videoLabel, file, 'video'));
     };
     // @ts-ignore
     document.body.appendChild(input);
@@ -926,17 +1530,118 @@ export function NewOrderScreen({
     setTimeout(() => { try { document.body.removeChild(input); } catch {} }, 60_000);
   };
 
-  const removeAttachment = (id: string) =>
+  const removeAttachment = (id: string) => {
+    // Drafts'a yüklenmiş dosyayı silmeye çalış (fire & forget)
+    const target = form.attachments.find(a => a.id === id);
+    if (target?.storage_path) {
+      void supabase.storage.from('work-order-photos').remove([target.storage_path]);
+    }
     setForm(f => ({ ...f, attachments: f.attachments.filter(a => a.id !== id) }));
+  };
 
-  // Apply patch to every tooth in the current edit group — confirmed teeth are locked
+  // ── Erken upload: pick sonrası drafts/ path'ine yükler ────────────────
+  // RLS storage policy "authenticated upload" allow ediyor. Submit'te
+  // work_order_photos row insert'i yapılırken bu storage_path kullanılır
+  // (re-upload yok).
+  const uploadAttachmentToDraft = React.useCallback(async (att: AttachedFile, blob: Blob) => {
+    if (!profile?.id) return;
+    const safeName = att.name.replace(/[^\w.-]+/g, '_').slice(0, 80);
+    const path = `drafts/${profile.id}/${Date.now()}-${att.id}-${safeName}`;
+    const contentType = blob.type || 'application/octet-stream';
+
+    // Mark uploading
+    setForm(f => ({
+      ...f,
+      attachments: f.attachments.map(a => a.id === att.id
+        ? { ...a, upload_status: 'uploading', upload_progress: 0 } : a),
+    }));
+
+    let errMsg: string | null = null;
+    if (Platform.OS === 'web' && typeof XMLHttpRequest !== 'undefined') {
+      errMsg = await uploadWithProgress({
+        bucket: 'work-order-photos',
+        file: blob,
+        path,
+        contentType,
+        onProgress: (pct) => setForm(f => ({
+          ...f,
+          attachments: f.attachments.map(a => a.id === att.id
+            ? { ...a, upload_progress: pct } : a),
+        })),
+      });
+    } else {
+      const { error } = await supabase.storage
+        .from('work-order-photos')
+        .upload(path, blob, { contentType, upsert: false });
+      errMsg = error?.message ?? null;
+    }
+
+    if (errMsg) {
+      setForm(f => ({
+        ...f,
+        attachments: f.attachments.map(a => a.id === att.id
+          ? { ...a, upload_status: 'error', upload_error: errMsg ?? 'yükleme hatası' } : a),
+      }));
+    } else {
+      setForm(f => ({
+        ...f,
+        attachments: f.attachments.map(a => a.id === att.id
+          ? { ...a, upload_status: 'done', upload_progress: 100, storage_path: path } : a),
+      }));
+    }
+  }, [profile?.id]);
+
+  // ── PDF picker (Reçete, Referans Fotoğraf vb.) ────────────────────────
+  const openSpecificPdfPicker = async (label: string) => {
+    // Reçete = PDF; Referans Fotoğraf = image; type'ı akıllı seç
+    const isPhoto = /fotoğraf|foto|resim|referans/i.test(label);
+    if (Platform.OS !== 'web') {
+      try {
+        const result = await DocumentPicker.getDocumentAsync({
+          type: isPhoto ? 'image/*' : 'application/pdf',
+          multiple: true,
+          copyToCacheDirectory: true,
+        });
+        if (result.canceled || !result.assets?.length) return;
+        for (const asset of result.assets) await addAttachmentAndUploadFromUri(label, asset, isPhoto ? 'photo' : 'pdf');
+      } catch (err: any) {
+        console.warn('[pdf-picker] iOS fail:', err?.message ?? err);
+        try { toast.error('Dosya seçimi başarısız'); } catch {}
+      }
+      return;
+    }
+    // @ts-ignore
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.accept = isPhoto
+      ? 'image/*,.jpg,.jpeg,.png,.heic,.webp'
+      : 'application/pdf,.pdf';
+    input.onchange = (e: any) => {
+      const files: FileList = e.target.files;
+      if (!files || files.length === 0) return;
+      Array.from(files as any).forEach((file: any) => addAttachmentAndUpload(label, file, isPhoto ? 'photo' : 'pdf'));
+    };
+    // @ts-ignore
+    document.body.appendChild(input);
+    input.click();
+    // @ts-ignore
+    setTimeout(() => { try { document.body.removeChild(input); } catch {} }, 60_000);
+  };
+
+  // Apply patch to current edit target.
+  //   • İkinci işlem modu (secondaryOpUids[] dolu) → sadece o uid'lere patch
+  //   • Normal: seçili + henüz confirmed olmayan tüm dişlere uygula (grup edit)
   const updateToothOp = (patch: Partial<Omit<ToothOp, 'tooth'>>) => {
     setForm(f => ({
       ...f,
-      tooth_ops: f.tooth_ops.map(o =>
-        selectedTeeth.includes(o.tooth) && !confirmedTeeth.includes(o.tooth)
-          ? { ...o, ...patch } : o
-      ),
+      tooth_ops: f.tooth_ops.map(o => {
+        if (secondaryOpUids.length > 0) {
+          return o.__uid && secondaryOpUids.includes(o.__uid) ? { ...o, ...patch } : o;
+        }
+        return selectedTeeth.includes(o.tooth) && !confirmedTeeth.includes(o.tooth)
+          ? { ...o, ...patch } : o;
+      }),
     }));
   };
 
@@ -955,17 +1660,83 @@ export function NewOrderScreen({
     if (!profile) return;
     setLoading(true);
 
-    const toothNumbers = form.tooth_ops.map(o => o.tooth);
+    // tooth_numbers DB'de unique diş listesi — aynı diş için 2 op varsa dedup
+    const toothNumbers = Array.from(new Set(form.tooth_ops.map(o => o.tooth)));
+    // work_type — aynı iş tipi birden çok dişte tekrar etmesin (tekilleştir)
     const workType =
-      form.tooth_ops.map(o => o.work_type).filter(Boolean).join(', ') ||
-      (form.pending_items.length > 0 ? form.pending_items.map(i => i.name).join(', ') : 'Belirtilmedi');
+      Array.from(new Set(form.tooth_ops.map(o => o.work_type).filter(Boolean))).join(', ') ||
+      (form.pending_items.length > 0 ? Array.from(new Set(form.pending_items.map(i => i.name).filter(Boolean))).join(', ') : 'Belirtilmedi');
     const shade = form.tooth_ops.find(o => o.shade)?.shade || undefined;
     // Auto-derive department from the dominant work type (not shown to user)
     const department = deriveDepartment(form.tooth_ops.find(o => o.work_type)?.work_type ?? '');
 
+    // Hasta ad/soyad normalizasyonu — TR locale title case + boşluk temizliği
+    const cleanedFirstName = titleCaseTR(form.patient_first_name);
+    const cleanedLastName  = titleCaseTR(form.patient_last_name);
+    const cleanedFullName  = [cleanedFirstName, cleanedLastName].filter(Boolean).join(' ');
+
+    // ── doctor_id resolution ──
+    // work_orders.doctor_id FK constraint sadece `doctors` tablosunu referans
+    // ediyor. Eğer form.doctor_id bir profiles.id ise (doctor mode veya profile-
+    // source doctor seçimi), doctors tablosundan ilgili row'u bul/oluştur.
+    let resolvedDoctorId: string = form.doctor_id;
+    try {
+      const { data: existing } = await supabase
+        .from('doctors')
+        .select('id')
+        .eq('id', form.doctor_id)
+        .maybeSingle();
+      if (!existing) {
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('id, full_name, phone, specialty, clinic_id')
+          .eq('id', form.doctor_id)
+          .maybeSingle();
+        if (prof) {
+          let match: any = null;
+          if ((prof as any).full_name) {
+            const q = supabase
+              .from('doctors')
+              .select('id')
+              .ilike('full_name', (prof as any).full_name)
+              .limit(1);
+            if ((prof as any).clinic_id) {
+              q.eq('clinic_id', (prof as any).clinic_id);
+            }
+            const { data } = await q.maybeSingle();
+            match = data;
+          }
+          if (match?.id) {
+            resolvedDoctorId = match.id;
+          } else {
+            const { data: created, error: cErr } = await supabase
+              .from('doctors')
+              .insert({
+                clinic_id:  (prof as any).clinic_id ?? null,
+                full_name:  (prof as any).full_name ?? 'Diş Hekimi',
+                phone:      (prof as any).phone ?? null,
+                specialty:  (prof as any).specialty ?? null,
+                is_active:  true,
+              })
+              .select('id')
+              .single();
+            if (!cErr && created?.id) {
+              resolvedDoctorId = (created as any).id;
+            } else if (cErr) {
+              setSubmitError(`Hekim kaydı oluşturulamadı: ${cErr.message}`);
+              setLoading(false);
+              return;
+            }
+          }
+        }
+      }
+    } catch (resolveErr: any) {
+      console.warn('[doctor_id resolve] failed:', resolveErr?.message);
+    }
+
     const { data: order, error } = await createWorkOrder({
-      doctor_id: form.doctor_id,
-      patient_name: [form.patient_first_name, form.patient_last_name].filter(Boolean).join(' ') || undefined,
+      doctor_id: resolvedDoctorId,
+      patient_name: cleanedFullName || undefined,
       patient_id: form.patient_id || undefined,
       patient_gender: form.patient_gender !== 'belirtilmedi' ? form.patient_gender : undefined,
       patient_dob: form.patient_dob ? form.patient_dob.toISOString().split('T')[0] : undefined,
@@ -981,12 +1752,14 @@ export function NewOrderScreen({
       notes: form.notes || undefined,
       lab_notes: form.lab_notes || undefined,
       delivery_date: (form.delivery_date instanceof Date ? form.delivery_date : new Date(form.delivery_date as any)).toISOString().split('T')[0],
+      delivery_method: (form.delivery_method || undefined) as 'kurye' | 'kargo' | 'elden' | undefined,
       measurement_type: form.measurement_type,
       doctor_approval_required: form.doctor_approval_required,
       patient_nationality: form.patient_nationality || undefined,
       patient_country: form.patient_country || undefined,
       patient_city: form.patient_city || undefined,
       lab_notes_visible: form.lab_notes_visible,
+      scan_bodies_delivered: form.scan_bodies_delivered,
     });
 
     if (error || !order) {
@@ -1006,14 +1779,170 @@ export function NewOrderScreen({
       });
     }
 
+    // Tooth-ops'tan da order_item üret — her grup (work_type + detay) için 1 item.
+    // Bu sayede sipariş detayında diş şeması farklı işlemleri farklı renkle gösterir.
+    {
+      const opGroupMap = new Map<string, { ops: ToothOp[]; teeth: number[]; name: string; price: number }>();
+      form.tooth_ops.forEach(o => {
+        if (!o.work_type) return;
+        const k = [o.work_type, o.shade, o.material, o.implant_system, o.implant_type, o.abutment, o.screw].join('||');
+        if (!opGroupMap.has(k)) {
+          opGroupMap.set(k, { ops: [], teeth: [], name: o.work_type, price: o.price || 0 });
+        }
+        const g = opGroupMap.get(k)!;
+        g.ops.push(o);
+        g.teeth.push(o.tooth);
+      });
+      for (const g of opGroupMap.values()) {
+        const teethUnique = Array.from(new Set(g.teeth)).sort((a, b) => a - b);
+        // İş detayı item.notes'a yazılır (implant marka/tür + abutment/vida +
+        // materyal/renk) — lab sipariş detayında görür, DB şema değişikliği yok.
+        const rep = g.ops[0];
+        const noteParts: string[] = [];
+        if (rep.implant_system) noteParts.push(`Marka: ${rep.implant_system}`);
+        if (rep.implant_type)   noteParts.push(`Tür: ${rep.implant_type}`);
+        if (rep.abutment)       noteParts.push(`Abutment: ${rep.abutment}`);
+        if (rep.screw)          noteParts.push(`Vida: ${rep.screw}`);
+        if (rep.material)       noteParts.push(`Materyal: ${rep.material}`);
+        if (rep.shade)          noteParts.push(`Renk: ${rep.shade}`);
+        await addOrderItem({
+          work_order_id: order.id,
+          name: g.name,
+          price: g.price,
+          quantity: g.ops.length,
+          tooth_numbers: teethUnique,
+          notes: noteParts.length ? noteParts.join(' · ') : undefined,
+        });
+      }
+    }
+
+    // ─── Form'daki dosyaları (form.attachments) supabase storage'a yükle ve
+    // work_order_photos tablosuna persist et — labta StageFileUpload bunları
+    // aynı tabloyu okuyarak gösterir.
+    {
+      // RLS: photos.lab_id work_order.lab_id ile eşleşmeli. Doctor'un profile.lab_id'i
+      // null olabildiği için (external hekim) order'dan alıyoruz.
+      const labId = (order as any)?.lab_id ?? (profile as any)?.lab_id ?? null;
+      let attachFailures = 0;
+      let attachSuccess  = 0;
+
+      // Progress overlay'i SADECE pick anında upload edilmemiş dosyalar varsa göster.
+      // Çoğu durumda tüm dosyalar zaten storage_path'a sahip → sadece DB insert
+      // yapılır, modal hiç açılmaz.
+      const pendingReupload = form.attachments.filter(a => !a.storage_path || a.upload_status !== 'done');
+      if (pendingReupload.length > 0) {
+        const initialStates: SubmitUploadState[] = pendingReupload.map(a => ({
+          id: a.id, name: a.name, progress: 0, status: 'pending',
+        }));
+        setSubmitUploads(initialStates);
+        setSubmitUploadsVisible(true);
+      }
+
+      for (const a of form.attachments) {
+        // Mark as uploading
+        setSubmitUploads(prev => prev.map(u => u.id === a.id ? { ...u, status: 'uploading' } : u));
+        try {
+          // Eğer dosya pick sırasında zaten yüklendiyse (storage_path var) →
+          // re-upload yok, sadece work_order_photos row insert.
+          let storagePath: string;
+          if (a.storage_path && a.upload_status === 'done') {
+            storagePath = a.storage_path;
+            setSubmitUploads(prev => prev.map(u => u.id === a.id ? { ...u, progress: 100 } : u));
+          } else {
+            // Fallback: pick sırasında upload edilmemiş veya başarısız olmuş →
+            // şimdi yükle. (örn. native ortamlar, ya da pick'ten önce upload bitmiş olmamış)
+            const resp = await fetch(a.uri);
+            const blob = await resp.blob();
+            const safeName = a.name.replace(/[^\w.-]+/g, '_').slice(0, 80);
+            storagePath = `${order.id}/${Date.now()}-${safeName}`;
+            const contentType = blob.type || 'application/octet-stream';
+
+            let upErrMsg: string | null = null;
+            if (Platform.OS === 'web' && typeof XMLHttpRequest !== 'undefined') {
+              upErrMsg = await uploadWithProgress({
+                bucket:      'work-order-photos',
+                file:        blob,
+                path:        storagePath,
+                contentType,
+                onProgress:  (pct) => setSubmitUploads(prev => prev.map(u =>
+                  u.id === a.id ? { ...u, progress: pct } : u
+                )),
+              });
+            } else {
+              const { error: upErr } = await supabase.storage
+                .from('work-order-photos')
+                .upload(storagePath, blob, { contentType, upsert: false });
+              upErrMsg = upErr?.message ?? null;
+              if (!upErrMsg) {
+                setSubmitUploads(prev => prev.map(u => u.id === a.id ? { ...u, progress: 100 } : u));
+              }
+            }
+
+            if (upErrMsg) {
+              attachFailures++;
+              setSubmitUploads(prev => prev.map(u => u.id === a.id
+                ? { ...u, status: 'error', error: upErrMsg ?? 'yükleme hatası' } : u));
+              console.error('[attachments] storage upload error', a.name, upErrMsg);
+              continue;
+            }
+          }
+
+          const { error: dbErr } = await supabase
+            .from('work_order_photos')
+            .insert({
+              work_order_id: order.id,
+              storage_path:  storagePath,
+              uploaded_by:   profile.id,
+              lab_id:        labId,
+              caption:       a.name,
+            });
+
+          if (dbErr) {
+            attachFailures++;
+            setSubmitUploads(prev => prev.map(u => u.id === a.id
+              ? { ...u, status: 'error', error: `kayıt: ${dbErr.message}` } : u));
+            console.error('[attachments] db insert error', a.name, dbErr.message);
+            // Sadece bu submit'te yüklenmişse temizle (drafts'a dokunma)
+            if (!a.storage_path) {
+              void supabase.storage.from('work-order-photos').remove([storagePath]);
+            }
+            continue;
+          }
+
+          attachSuccess++;
+          setSubmitUploads(prev => prev.map(u => u.id === a.id
+            ? { ...u, status: 'done', progress: 100 } : u));
+        } catch (e: any) {
+          attachFailures++;
+          setSubmitUploads(prev => prev.map(u => u.id === a.id
+            ? { ...u, status: 'error', error: e?.message ?? 'bilinmeyen hata' } : u));
+          console.error('[attachments] unexpected error', a.name, e?.message);
+        }
+      }
+      if (attachFailures > 0) {
+        toast.error(`${attachFailures} dosya yüklenemedi (${attachSuccess} başarılı)`);
+      }
+    }
+
     // ─── Form'da yazılan chat mesajlarını order_messages tablosuna persist et ──
     // Yeni iş emrindeki sohbet, sipariş açıldıktan sonra detay sayfasında
     // ve mesaj kutusunda dahil olan herkesin panelinde görünmeli.
+    console.log('[chat-persist] starting loop, total messages:', form.chat_messages.length, 'order:', order.id);
+    let chatPersistFailures = 0;
+    let chatPersistSuccess = 0;
     for (const m of form.chat_messages) {
       try {
         if (m.type === 'text') {
           if (m.text?.trim()) {
-            await sendMessage(order.id, profile.id, m.text.trim());
+            const res = await sendMessage(order.id, profile.id, m.text.trim());
+            if ((res as any)?.error) {
+              chatPersistFailures++;
+              console.error('[chat-persist] sendMessage TEXT error', { msgId: m.id, error: (res as any).error, hint: (res as any).error?.hint, code: (res as any).error?.code });
+              toast.error(`Mesaj kaydedilemedi: ${(res as any).error?.message ?? 'bilinmeyen hata'}`);
+            } else {
+              chatPersistSuccess++;
+              console.log('[chat-persist] sendMessage TEXT OK', m.id);
+            }
           }
         } else if (m.uri) {
           // Voice / file / image — blob'a çevir, upload et, sonra send
@@ -1023,82 +1952,64 @@ export function NewOrderScreen({
                          : m.type === 'voice' ? 'webm'
                          : 'bin';
           const fileName = m.fileName ?? `${m.type}-${m.id}.${ext}`;
-          const { url }  = await uploadChatAttachment(blob, order.id, fileName);
-          if (url) {
+          const upRes    = await uploadChatAttachment(blob, order.id, fileName);
+          if (upRes.url) {
             const attachmentType: AttachmentType =
               m.type === 'image' ? 'image' :
               m.type === 'voice' ? 'audio' :
                                    'file';
-            await sendMessage(order.id, profile.id, m.text ?? '', {
-              url,
+            const res = await sendMessage(order.id, profile.id, m.text ?? '', {
+              url: upRes.url,
               type: attachmentType,
               name: fileName,
               size: m.fileSize,
             });
+            if ((res as any)?.error) {
+              chatPersistFailures++;
+              console.warn('[chat-persist] sendMessage with attach error', m.id, (res as any).error);
+            }
+          } else {
+            chatPersistFailures++;
+            console.warn('[chat-persist] upload failed', m.id, upRes.error);
           }
         }
       } catch (e) {
-        // Mesaj persist hatası ana siparişi bozmasın
+        chatPersistFailures++;
         console.warn('[chat-persist] failed for message', m.id, e);
       }
     }
-
-    // ─── Kapanış analizi varsa iş emrine bağla ──────────────────────────
-    if (occlusionResult) {
-      try {
-        let screenshotUrl: string | null = null;
-        if (occlusionScreenshot) {
-          const blob = await fetch(occlusionScreenshot).then(r => r.blob());
-          const path = `occlusion/${order.id}/${Date.now()}.png`;
-          const { data: up } = await supabase.storage
-            .from('occlusion-screenshots')
-            .upload(path, blob, { contentType: 'image/png', upsert: true });
-          if (up) {
-            const { data: urlData } = supabase.storage
-              .from('occlusion-screenshots')
-              .getPublicUrl(path);
-            screenshotUrl = urlData.publicUrl;
-          }
-        }
-        await supabase.from('occlusion_analyses').insert({
-          work_order_id: order.id,
-          result_json: {
-            statistics: occlusionResult.statistics,
-            penetrationPoints: occlusionResult.penetrationPoints.map((p) => ({
-              id: p.id, depth: p.depth, area: p.area, severity: p.severity,
-              position: { x: p.position.x, y: p.position.y, z: p.position.z },
-            })),
-          },
-          heatmap_screenshot_url: screenshotUrl,
-          analysis_duration_ms: occlusionResult.durationMs,
-        });
-      } catch (e) {
-        // Analiz kaydı zorunlu değil — order başarılı sayılır
-        console.warn('[occlusion] analiz kaydı başarısız', e);
-      }
+    console.log('[chat-persist] done. success:', chatPersistSuccess, 'failures:', chatPersistFailures);
+    if (chatPersistFailures > 0) {
+      toast.error(`${chatPersistFailures} mesaj kaydedilemedi. Sipariş detayından tekrar yazabilirsiniz.`);
+    } else if (chatPersistSuccess > 0) {
+      toast.success(`${chatPersistSuccess} mesaj kaydedildi`);
     }
 
     setLoading(false);
     skipFirstDraftSaveRef.current = true;  // INITIAL_FORM set'i re-save tetiklemesin
     setForm(INITIAL_FORM);
-    setOcclusionResult(null);
-    setOcclusionScreenshot(null);
     setLastSavedAt(null);
     if (Platform.OS === 'web') {
       try {
         sessionStorage.removeItem('new_order_step');
         sessionStorage.removeItem('new_order_form');
+        sessionStorage.removeItem('new_order_draft_prompted');
         localStorage.removeItem(DRAFT_KEY);
         localStorage.removeItem(DRAFT_TS_KEY);
+        localStorage.removeItem(DRAFT_STEP_KEY);
       } catch {}
+    } else {
+      void AsyncStorage.multiRemove([DRAFT_KEY, DRAFT_TS_KEY, DRAFT_STEP_KEY, 'new_order_draft_prompted']);
     }
     setStep(1);
-    if (onClose) {
-      onClose();
-    } else {
-      const dest = doctorMode ? '/(doctor)' : clinicMode ? '/(clinic)' : '/(lab)';
-      router.push(dest as any);
-    }
+
+    // Başarı ekranını göster — close/navigate kullanıcı seçiminde tetiklenir
+    const orderNumber = (order as any).order_number ?? '';
+    setSubmittedOrder({
+      id: order.id,
+      orderNumber,
+      patientName: cleanedFullName || 'Yeni vaka',
+    });
   };
 
   // Doctor modunda klinik/hekim profile'den gelir
@@ -1110,17 +2021,23 @@ export function NewOrderScreen({
     ? (profile ? { id: profile.id, full_name: profile.full_name, phone: profile.phone ?? null, clinic_id: '', clinic: profile.clinic_name ? { name: profile.clinic_name } : undefined } as any : undefined)
     : allDoctors.find((d) => d.id === form.doctor_id);
 
-  // QR content & print
-  const qrValue = useMemo(() => [
-    'DENTAL LAB VAKA',
-    selectedClinic  ? `Klinik: ${selectedClinic.name}` : '',
-    selectedDoctor  ? `Hekim: ${selectedDoctor.full_name}` : '',
-    (form.patient_first_name || form.patient_last_name) ? `Hasta: ${[form.patient_first_name, form.patient_last_name].filter(Boolean).join(' ')}` : '',
-    form.tooth_ops.length > 0
-      ? `Dişler: ${form.tooth_ops.map(o => o.tooth).sort((a,b)=>a-b).join(', ')}`
-      : '',
-    `Tarih: ${new Date().toLocaleDateString('tr-TR')}`,
-  ].filter(Boolean).join('\n'), [selectedClinic, selectedDoctor, form.patient_first_name, form.patient_last_name, form.tooth_ops]);
+  // QR — submit sonrası create_qr_link RPC ile üretilen kısa URL.
+  // `https://www.nexadent.net/c/X4A92` (6-char Crockford) → server resolve →
+  // gerçek vaka. Önceki uzun /order/{uuid} URL'i değil; tek tip kompakt.
+  const qrValue = qrShortUrl ?? 'https://www.nexadent.net';
+
+  // Submit sonrası kısa kod üret + state'e koy
+  useEffect(() => {
+    if (!submittedOrder?.id) return;
+    let cancel = false;
+    (async () => {
+      const url = await createQrShortUrl('work_order', submittedOrder.id, {
+        fallbackOrderNumber: submittedOrder.orderNumber,
+      });
+      if (!cancel) setQrShortUrl(url);
+    })();
+    return () => { cancel = true; };
+  }, [submittedOrder?.id]);
 
   const printSummary = () => {
     if (Platform.OS !== 'web') return;
@@ -1162,7 +2079,7 @@ export function NewOrderScreen({
 
     // ── Teeth list HTML ───────────────────────────────────────────────────────
     const teethListHtml = ops.length > 0 ? ops.map(op => {
-      const det = [op.work_type, op.shade, op.material, op.implant_system, op.abutment, op.screw].filter(Boolean).join(' · ') || '—';
+      const det = [op.work_type, op.shade, op.material, op.implant_system, op.implant_type, op.abutment, op.screw].filter(Boolean).join(' · ') || '—';
       return `<div class="ti">
         <b class="tn">Diş ${op.tooth}:</b>
         <span class="td">${det}</span>
@@ -1185,76 +2102,403 @@ export function NewOrderScreen({
     const row = (icon: string, label: string, value: string) =>
       `<div class="cr"><div class="ci">${icon}</div><span class="cl">${label}</span><span class="cv">${value}</span></div>`;
 
+    // ── Hekim talepleri (chat'ten + form.notes birleşik) ──────────────
+    const chatTextMsgs = (form.chat_messages || [])
+      .filter(m => m.type === 'text' && m.text && m.text.trim())
+      .map(m => ({ text: m.text!.trim(), ts: m.ts }));
+    const chatAttachMsgs = (form.chat_messages || [])
+      .filter(m => m.type !== 'text')
+      .map(m => ({ type: m.type, fileName: m.fileName, duration: m.duration, ts: m.ts }));
+
+    const escapeHtml = (s: string) => s
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+
+    const messagesHtml = chatTextMsgs.length > 0 || chatAttachMsgs.length > 0
+      ? `<div class="card">
+          <div class="ch">Hekim Talepleri · Mesajlar</div>
+          <div class="msgList">
+            ${chatTextMsgs.map(m => `
+              <div class="msgItem">
+                <span class="msgTs">${new Date(m.ts).toLocaleString('tr-TR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</span>
+                <span class="msgBody">${escapeHtml(m.text).replace(/\n/g, '<br>')}</span>
+              </div>
+            `).join('')}
+            ${chatAttachMsgs.map(m => `
+              <div class="msgItem msgItemAttach">
+                <span class="msgTs">${new Date(m.ts).toLocaleString('tr-TR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</span>
+                <span class="msgBody">
+                  <em>${m.type === 'voice' ? 'Ses kaydı' : m.type === 'image' ? 'Görüntü' : 'Dosya'}</em>
+                  ${m.fileName ? ` — ${escapeHtml(m.fileName)}` : ''}
+                  ${m.duration ? ` (${Math.round(m.duration / 1000)}s)` : ''}
+                </span>
+              </div>
+            `).join('')}
+          </div>
+        </div>`
+      : '';
+
+    // ── Klinik & lab isimleri ───────────────────────────────────────────
+    const clinicName = selectedClinic?.name ?? '—';
+    const labName    = labInfo?.name ?? 'Laboratuvar';
+    const labLogoOnly = labInfo?.sidebar_brand_mode === 'logo' && !!labInfo?.logo_url;
+    const labPhone   = labInfo?.phone ?? '';
+    const labAddress = labInfo?.address ?? '';
+
+    // ── Derived data for sidebar cards ──
+    const orderNoStr = submittedOrder?.orderNumber
+      ?? `NXD-${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}${String(new Date().getDate()).padStart(2,'0')}-${String(Math.floor(Math.random()*9999)).padStart(4,'0')}`;
+    const createdAtStr = new Date().toLocaleString('tr-TR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    const kaynakStr = labName ? labName : 'Nexadent Dijital Laboratuvarı';
+    const tahminiTeslim = form.delivery_date ? form.delivery_date.toLocaleDateString('tr-TR') : '—';
+    const teslimSekli = form.delivery_method === 'kurye' ? 'Kurye'
+                      : form.delivery_method === 'kargo' ? 'Kargo'
+                      : form.delivery_method === 'elden' ? 'Elden Teslim'
+                      : 'Klinik Teslim';
+    const oncelikLabel = form.is_urgent ? 'Acil' : 'Normal';
+
+    // Materyaller (dedupe + adet) — önce o.material'lar, yoksa work_type fallback
+    const matCounts = new Map<string, number>();
+    ops.forEach(o => {
+      const key = (o.material && o.material.trim()) ? o.material.trim() : null;
+      if (key) matCounts.set(key, (matCounts.get(key) ?? 0) + 1);
+    });
+    // Hiç gerçek materyal yoksa work_type'lardan derle (her biri tek kez)
+    if (matCounts.size === 0) {
+      ops.forEach(o => {
+        const wt = (o.work_type && o.work_type.trim()) ? o.work_type.trim() : null;
+        if (wt) matCounts.set(wt, (matCounts.get(wt) ?? 0) + 1);
+      });
+    }
+    const materyalList = Array.from(matCounts.entries()).map(([name, count]) =>
+      count > 1 ? `${name} × ${count}` : name,
+    );
+
+    // Üretim yöntemi — material'a göre tahmin (basit heuristic)
+    const uretimSet = new Set<string>();
+    ops.forEach(o => {
+      const m = (o.material || o.work_type || '').toLowerCase();
+      if (m.includes('zirk') || m.includes('e.max') || m.includes('cad')) {
+        uretimSet.add('CAD/CAM');
+        uretimSet.add('Frezeleme');
+      }
+      if (m.includes('zirk') || m.includes('seramik')) uretimSet.add('Sinterleme');
+      if (m.includes('metal')) { uretimSet.add('Döküm'); }
+      if (m.includes('3d')) uretimSet.add('3D Baskı');
+    });
+    const uretimList = Array.from(uretimSet);
+    if (uretimList.length === 0) uretimList.push('Manuel Üretim');
+
+    // Aynı işlem değerlerine sahip dişleri grupla — A5'e sığsın diye kompakt
+    const groupKeyOf = (o: ToothOp) => [
+      o.work_type, o.shade, o.material, o.implant_system, o.implant_type, o.abutment, o.screw,
+    ].join('||');
+    const opGroupMap = new Map<string, { key: string; ops: ToothOp[]; teeth: number[] }>();
+    ops.forEach(o => {
+      const k = groupKeyOf(o);
+      if (!opGroupMap.has(k)) opGroupMap.set(k, { key: k, ops: [], teeth: [] });
+      const g = opGroupMap.get(k)!;
+      g.ops.push(o);
+      g.teeth.push(o.tooth);
+    });
+    const opGroups = Array.from(opGroupMap.values())
+      .map(g => ({ ...g, teeth: Array.from(new Set(g.teeth)).sort((a, b) => a - b) }))
+      .sort((a, b) => a.teeth[0] - b.teeth[0]);
+
+    const formatTeethRangeHtml = (teeth: number[]): string => {
+      if (teeth.length === 0) return '';
+      if (teeth.length === 1) return String(teeth[0]);
+      const parts: string[] = [];
+      let start = teeth[0], prev = teeth[0];
+      for (let i = 1; i <= teeth.length; i++) {
+        const t = teeth[i];
+        if (t !== prev + 1) {
+          parts.push(start === prev ? String(start) : `${start}–${prev}`);
+          start = t as number; prev = t as number;
+        } else {
+          prev = t as number;
+        }
+      }
+      return parts.join(', ');
+    };
+
+    // İşlem & Açıklama table rows — gruplu
+    const opTableRows = opGroups.length > 0 ? opGroups.map(g => {
+      const op = g.ops[0];
+      const det = [op.work_type, op.shade, op.material, op.implant_system, op.implant_type, op.abutment, op.screw]
+        .filter(Boolean).join(' · ') || '—';
+      const teethLabel = formatTeethRangeHtml(g.teeth);
+      const count = g.ops.length;
+      return `<div class="opRow">
+        <div class="opNum">${escapeHtml(teethLabel)}</div>
+        <div class="opText">
+          ${escapeHtml(det)}
+          ${count > 1 ? `<span class="opCount">${count} adet</span>` : ''}
+        </div>
+      </div>`;
+    }).join('') : '<div class="opEmpty">Henüz işlem eklenmedi</div>';
+
+    // Ek dosyalar
+    const ekDosyalarHtml = form.attachments.length > 0
+      ? form.attachments.map(a => `
+          <div class="fileRow">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span>${escapeHtml(a.name)}</span>
+          </div>`).join('')
+        + `<div class="fileTotal">Toplam ${form.attachments.length} dosya</div>`
+      : '<div class="opEmpty">Dosya yok</div>';
+
+    const toothLogoSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="#0F172A" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5.5c-1.5 0-2.5-1-4-1-2.5 0-4 1.5-4 4 0 4 2 12 4 12 1.5 0 1.5-4 4-4s2.5 4 4 4c2 0 4-8 4-12 0-2.5-1.5-4-4-4-1.5 0-2.5 1-4 1z"/></svg>`;
+
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Dijital Vaka Özeti</title>
 <style>
-@page{size:A5;margin:12mm 13mm}
+@page{size:A5 portrait;margin:7mm 7mm}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;color:#111;background:#fff;font-size:10px;line-height:1.4}
-.hdr{margin-bottom:10px}
-.ttl{font-size:19px;font-weight:900;letter-spacing:1.5px;text-transform:uppercase;color:#0a0a0a}
-.dte{font-size:8px;color:#999;margin-top:2px}
-.urg{background:#111;color:#fff;text-align:center;padding:7px 10px;border-radius:5px;font-size:10px;font-weight:700;letter-spacing:1.5px;margin-bottom:9px}
-.card{border:1px solid #e0e0e0;border-radius:7px;margin-bottom:8px;overflow:hidden}
-.ch{background:#f6f6f6;padding:5px 10px;font-size:8px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;color:#444;border-bottom:1px solid #e5e5e5}
-.cr{display:flex;align-items:center;padding:6px 10px;border-bottom:1px solid #f2f2f2;gap:7px}
+html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;color:#0F172A;background:#fff;font-size:8.5px;line-height:1.35;-webkit-font-smoothing:antialiased}
+.doc{max-width:134mm;margin:0 auto}
+
+/* ── TOP HEADER: brand + QR ── */
+.topbar{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px}
+.brand{display:flex;align-items:center;gap:7px}
+.brand svg{width:24px;height:24px}
+.brand img{width:30px!important;height:30px!important}
+.brandName{font-size:13px;font-weight:800;letter-spacing:0.6px;color:#0F172A;line-height:1}
+.brandSub{font-size:6.5px;font-weight:700;color:#64748B;letter-spacing:2.6px;margin-top:3px}
+.qrBox{text-align:center;flex-shrink:0}
+.qrBox svg{display:block;width:54px;height:54px;border:1px solid #E2E8F0;border-radius:5px;padding:3px;background:#fff;box-sizing:content-box}
+.qrPlaceholder{width:54px;height:54px;background:#F1F5F9;border:1px dashed #CBD5E1;border-radius:5px}
+.qrBox .qrLbl{margin-top:3px;font-size:6.5px;font-weight:800;color:#0F172A;letter-spacing:1px}
+.qrBox .qrCap{display:none}
+
+/* Eyebrow + title under topbar */
+.hdrText{margin-bottom:8px}
+.eb{font-size:7px;font-weight:700;color:#64748B;letter-spacing:1.3px;text-transform:uppercase}
+.ttl{margin-top:2px;font-size:18px;font-weight:400;letter-spacing:-0.4px;color:#0F172A;line-height:1.05}
+
+/* Meta row */
+.metaRow{display:flex;gap:0;border-top:1px solid #E2E8F0;border-bottom:1px solid #E2E8F0;padding:5px 0;margin-bottom:8px}
+.metaCell{flex:1;padding:0 7px;border-right:1px solid #F1F5F9;min-width:0}
+.metaCell:last-child{border-right:none}
+.metaCell:first-child{padding-left:0}
+.ml{font-size:6.5px;font-weight:700;color:#64748B;letter-spacing:0.9px;text-transform:uppercase;margin-bottom:2px}
+.mv{font-size:8.5px;font-weight:700;color:#0F172A;line-height:1.2;word-break:break-word}
+
+/* ── CARDS ── */
+.card{border:1px solid #E2E8F0;border-radius:6px;overflow:hidden;break-inside:avoid;page-break-inside:avoid}
+.row{display:flex;gap:6px;margin-bottom:6px}
+.col{flex:1;min-width:0;display:flex}
+.col > .card{flex:1}
+.ch{padding:6px 8px;font-size:7.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#0F172A;display:flex;align-items:center;gap:5px;border-bottom:1px solid #F1F5F9}
+.ch svg{width:11px;height:11px;flex-shrink:0}
+.chBadge{margin-left:4px;font-weight:600;color:#94A3B8;letter-spacing:0.4px;font-size:7px}
+.cardBody{padding:3px 8px 8px}
+.cr{display:flex;align-items:center;padding:3px 0;border-bottom:1px solid #F1F5F9;gap:6px;font-size:8.5px}
 .cr:last-child{border-bottom:none}
-.ci{width:16px;flex-shrink:0;display:flex;align-items:center}
-.cl{color:#777;flex:1;font-size:9.5px}.cv{font-weight:600;font-size:9.5px;text-align:right}
-.tb{display:flex;flex-direction:column;padding:8px 10px;gap:8px;align-items:flex-start}
-.tl{width:100%}
-.ti{display:flex;align-items:baseline;padding:4px 8px;border-bottom:1px solid #f5f5f5;gap:4px}
-.ti:last-child{border-bottom:none}
-.tn{font-weight:700;font-size:9.5px;white-space:nowrap;min-width:44px}
-.td{font-size:9px;color:#555;flex:1}
-.tq{color:#ccc;font-size:9px;margin-left:auto;flex-shrink:0}
-.qc{border:1px dashed #ccc;border-radius:7px;padding:12px 10px;text-align:center}
-.qt{font-size:8px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:#444;margin-bottom:8px}
-.qt span{color:#aaa;font-weight:400;text-transform:none}
-.qc svg{width:118px;height:118px}
-.qs{font-size:7.5px;color:#bbb;margin-top:5px}
+.ci{width:11px;flex-shrink:0;color:#94A3B8}
+.cl{color:#94A3B8;flex:1;font-size:7.5px}
+.cv{font-weight:700;color:#0F172A;font-size:8.5px}
+
+/* ── TEETH CARD ── */
+.teethCard{margin-bottom:6px}
+.teethBox{display:flex;gap:8px;padding:7px;align-items:flex-start}
+.archCol{flex-shrink:0;width:88px}
+.archCol svg{display:block;width:100%;height:auto}
+.tableCol{flex:1;min-width:0}
+.tHead{display:flex;align-items:center;gap:8px;padding:0 2px 4px;border-bottom:1px solid #E2E8F0;font-size:7px;font-weight:800;color:#64748B;letter-spacing:0.9px;text-transform:uppercase}
+.tHead .h1{width:64px}
+.tHead .h2{flex:1}
+.opRow{display:flex;align-items:center;gap:8px;padding:4px 2px;border-bottom:1px solid #F1F5F9;font-size:8.5px}
+.opRow:last-child{border-bottom:none}
+.opNum{min-width:60px;max-width:90px;padding:3px 5px;border-radius:4px;background:#0F172A;color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:8.5px;line-height:1.15;text-align:center;font-family:'Inter',-apple-system,monospace}
+.opText{flex:1;color:#0F172A;font-weight:600;line-height:1.3}
+.opCount{display:inline-block;margin-left:6px;padding:1px 5px;border-radius:9999px;background:#F1F5F9;color:#64748B;font-size:7px;font-weight:700;letter-spacing:0.3px;vertical-align:middle}
+.opIco{flex-shrink:0}
+.opEmpty{padding:9px;text-align:center;color:#94A3B8;font-size:7.5px;font-style:italic}
+
+/* ── 4-COL INFO STRIP ── */
+.row4{display:flex;gap:6px;margin-bottom:8px}
+.row4 > .card{flex:1;min-width:0}
+.kv{padding:7px}
+.kv h{display:flex;align-items:center;gap:5px;font-size:7.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#0F172A;margin-bottom:6px}
+.kv h svg{width:10px;height:10px}
+/* Inline chip list — A5'te dikey değil, satır içi pill'ler */
+.kvChips{display:flex;flex-wrap:wrap;gap:3px}
+.kvChips .chip{display:inline-block;padding:1.5px 6px;border-radius:9999px;background:#F1F5F9;color:#0F172A;font-size:7.5px;font-weight:600;letter-spacing:0.1px;line-height:1.3;border:1px solid #E2E8F0}
+.kv .deliveryGrid{display:flex;flex-direction:column;gap:4px;font-size:8px}
+.kv .dRow{display:flex;justify-content:space-between;align-items:center;gap:6px}
+.kv .dLbl{color:#94A3B8}
+.kv .dVal{font-weight:700;color:#0F172A;text-align:right}
+.kv .pill{display:inline-block;background:#DCFCE7;color:#166534;padding:1px 6px;border-radius:9999px;font-size:7px;font-weight:700;letter-spacing:0.2px}
+.kv .pillUrgent{background:#FEE2E2;color:#991B1B}
+.fileRow{display:flex;align-items:center;gap:4px;padding:2px 0;font-size:8px;color:#475569}
+.fileRow svg{flex-shrink:0;width:9px;height:9px}
+.fileTotal{margin-top:5px;padding-top:4px;border-top:1px solid #F1F5F9;font-size:7px;color:#94A3B8;font-weight:600}
+
+/* ── NOTES / MESSAGES ── */
+.notesBox{margin:6px 0;padding:6px 8px;background:#F8FAFC;border-radius:5px;font-size:8.5px;color:#0F172A;line-height:1.4}
+.notesBox .nh{font-size:7px;font-weight:800;color:#64748B;letter-spacing:0.9px;text-transform:uppercase;margin-bottom:3px}
+.msgList{margin:6px 0;display:flex;flex-direction:column}
+.msgList .nh{font-size:7px;font-weight:800;color:#64748B;letter-spacing:0.9px;text-transform:uppercase;margin-bottom:4px}
+.msgItem{display:flex;align-items:baseline;gap:6px;padding:3px 0;border-bottom:1px solid #F1F5F9;font-size:8.5px;line-height:1.35}
+.msgItem:last-child{border-bottom:none}
+.msgTs{flex-shrink:0;width:62px;font-size:7px;color:#94A3B8;font-weight:600;letter-spacing:0.2px;font-variant-numeric:tabular-nums}
+.msgBody{flex:1;color:#0F172A}
+.msgItemAttach .msgBody em{font-style:italic;color:#475569;font-weight:600;margin-right:2px}
+
+/* ── SIGNATURE FOOTER ── */
+.sigFooter{display:flex;gap:6px;margin-top:8px}
+.sigItem{flex:1;border:1px solid #E2E8F0;border-radius:5px;padding:7px}
+.sigHead{display:flex;align-items:center;gap:5px;margin-bottom:6px}
+.sigHead svg{width:11px;height:11px;color:#0F172A}
+.sigHead h{font-size:7.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#0F172A}
+.sigLine{height:1px;background:#0F172A;margin:10px 0 4px}
+.sigDateLine{font-size:7.5px;color:#475569;text-align:right;font-weight:600}
+.sigDateLine span{display:inline-block;border-bottom:1px solid #94A3B8;min-width:16px;padding:0 4px;margin:0 1px}
+
+.brandFooter{margin-top:6px;padding-top:5px;border-top:1px solid #E2E8F0;display:flex;align-items:center;justify-content:center;gap:4px;font-size:7px;color:#94A3B8;letter-spacing:0.2px}
+.brandFooter svg{width:9px;height:9px}
+.brandFooter b{color:#0F172A;font-weight:700}
+
 @media print{*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}}
 </style></head><body>
-<div class="hdr">
-  <div class="ttl">Dijital Vaka Özeti</div>
-  <div class="dte">Oluşturma tarihi: ${new Date().toLocaleString('tr-TR')}</div>
-</div>
-${form.is_urgent ? '<div class="urg">&#9888;&nbsp;&nbsp;DURUM: ACİL VAKA</div>' : ''}
-<div class="card">
-  <div class="ch">Klinik &amp; Diş Hekimi</div>
-  ${selectedClinic  ? row(icoClinic, 'Klinik', selectedClinic.name)       : ''}
-  ${selectedDoctor  ? row(icoDoctor, 'Diş Hekimi', selectedDoctor.full_name) : ''}
-</div>
-<div class="card">
-  <div class="ch">Hasta Bilgileri</div>
-  ${(form.patient_first_name || form.patient_last_name) ? row(icoPerson, 'Ad Soyad', [form.patient_first_name, form.patient_last_name].filter(Boolean).join(' ')) : ''}
-  ${form.patient_gender !== 'belirtilmedi' ? row(genderIco, 'Cinsiyet', form.patient_gender === 'erkek' ? 'Erkek' : 'Kadın') : ''}
-  ${form.patient_dob    ? row(icoCal,    'Doğum Tarihi', form.patient_dob.toLocaleDateString('tr-TR')) : ''}
-  ${form.patient_phone  ? row(icoPhone,  'Telefon', form.patient_phone) : ''}
-</div>
-${ops.length > 0 ? `<div class="card">
-  <div class="ch">Dişler ve İşlemler</div>
-  <div class="tb">
-    <div>${archSVG}</div>
-    <div class="tl">${teethListHtml}</div>
+<div class="doc">
+
+  <div class="topbar">
+    <div class="brand">
+      ${labInfo?.logo_url
+        ? `<img src="${escapeHtml(labInfo.logo_url)}" alt="${escapeHtml(labName)}" style="width:48px;height:48px;object-fit:contain;display:block" />`
+        : toothLogoSvg}
+      ${labLogoOnly ? '' : `<div>
+        <div class="brandName">${escapeHtml((labName || 'NEXADENT').toUpperCase())}</div>
+        <div class="brandSub">LABORATORY</div>
+      </div>`}
+    </div>
+    <div class="qrBox">
+      ${qrSvgHtml || '<div class="qrPlaceholder"></div>'}
+      <div class="qrLbl">VAKA QR</div>
+      <div class="qrCap">Tarayın ve vaka detaylarına ulaşın.</div>
+    </div>
   </div>
-</div>` : ''}
-${form.notes ? `<div class="card">
-  <div class="ch">Hekim Talimatları</div>
-  <div style="padding:7px 10px;font-size:9.5px;color:#374151">${form.notes}</div>
-</div>` : ''}
-<div class="qc">
-  <div class="qt">Veri Doğrulama (Digital Verification) <span>— Vaka detayları için tara</span></div>
-  ${qrSvgHtml}
-  <div class="qs">QR kodu okutarak vaka bilgilerine ulaşabilirsiniz</div>
+
+  <div class="hdrText">
+    <div class="eb">Dijital Vaka Özeti · Digital Case Summary</div>
+    <div class="ttl">İş Emri${form.is_urgent ? ' <span style="font-size:11px;background:#DC2626;color:#fff;padding:3px 10px;border-radius:9999px;font-weight:700;letter-spacing:1px;vertical-align:middle;margin-left:8px">ACİL</span>' : ''}</div>
+  </div>
+
+  <div class="metaRow">
+    <div class="metaCell"><div class="ml">İş Emri No</div><div class="mv">${escapeHtml(orderNoStr)}</div></div>
+    <div class="metaCell"><div class="ml">Oluşturulma</div><div class="mv">${createdAtStr}</div></div>
+    <div class="metaCell"><div class="ml">Kaynak</div><div class="mv">${escapeHtml(kaynakStr)}</div></div>
+    <div class="metaCell"><div class="ml">Klinik</div><div class="mv">${escapeHtml(clinicName)}</div></div>
+  </div>
+
+  <div class="row">
+    <div class="col">
+      <div class="card">
+        <div class="ch">${icoClinic} Klinik &amp; Hekim Bilgileri</div>
+        <div class="cardBody">
+          ${selectedClinic ? `<div class="cr">${icoClinic}<div class="cl">Klinik</div><div class="cv">${escapeHtml(selectedClinic.name)}</div></div>` : ''}
+          ${selectedDoctor ? `<div class="cr">${icoDoctor}<div class="cl">Diş Hekimi</div><div class="cv">${escapeHtml(selectedDoctor.full_name)}</div></div>` : ''}
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card">
+        <div class="ch">${icoPerson} Hasta Bilgileri</div>
+        <div class="cardBody">
+          ${(form.patient_first_name || form.patient_last_name) ? `<div class="cr">${icoPerson}<div class="cl">Ad Soyad</div><div class="cv">${escapeHtml([form.patient_first_name, form.patient_last_name].filter(Boolean).join(' '))}</div></div>` : ''}
+          ${form.patient_gender !== 'belirtilmedi' ? `<div class="cr">${genderIco}<div class="cl">Cinsiyet</div><div class="cv">${form.patient_gender === 'erkek' ? 'Erkek' : 'Kadın'}</div></div>` : ''}
+          ${form.patient_dob ? `<div class="cr">${icoCal}<div class="cl">Doğum Tarihi</div><div class="cv">${form.patient_dob.toLocaleDateString('tr-TR')}</div></div>` : ''}
+          ${form.patient_phone ? `<div class="cr">${icoPhone}<div class="cl">Telefon</div><div class="cv">${escapeHtml(form.patient_phone)}</div></div>` : ''}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  ${ops.length > 0 ? `<div class="card teethCard">
+    <div class="ch">${toothLogoSvg.replace('width="24"','width="14"').replace('height="24"','height="14"')} Dişler &amp; İşlemler <span class="chBadge">· ${ops.length} diş</span></div>
+    <div class="teethBox">
+      <div class="archCol">${archSVG}</div>
+      <div class="tableCol">
+        <div class="tHead"><div class="h1">Diş No</div><div class="h2">İşlem &amp; Açıklama</div></div>
+        ${opTableRows}
+      </div>
+    </div>
+  </div>` : ''}
+
+  <div class="row4">
+    <div class="card kv">
+      <h><svg viewBox="0 0 24 24" fill="none" stroke="#0F172A" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg> Materyal</h>
+      ${materyalList.length > 0
+        ? `<div class="kvChips">${materyalList.map(m => `<span class="chip">${escapeHtml(m)}</span>`).join('')}</div>`
+        : '<div class="opEmpty">—</div>'}
+    </div>
+    <div class="card kv">
+      <h><svg viewBox="0 0 24 24" fill="none" stroke="#0F172A" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Üretim Yöntemi</h>
+      <div class="kvChips">${uretimList.map(u => `<span class="chip">${escapeHtml(u)}</span>`).join('')}</div>
+    </div>
+    <div class="card kv">
+      <h><svg viewBox="0 0 24 24" fill="none" stroke="#0F172A" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13" rx="1"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg> Teslimat Bilgisi</h>
+      <div class="deliveryGrid">
+        <div class="dRow"><span class="dLbl">Tahmini Teslim</span><span class="dVal">${tahminiTeslim}</span></div>
+        <div class="dRow"><span class="dLbl">Teslim Şekli</span><span class="dVal">${escapeHtml(teslimSekli)}</span></div>
+        <div class="dRow"><span class="dLbl">Öncelik</span><span class="dVal"><span class="pill ${form.is_urgent ? 'pillUrgent' : ''}">${oncelikLabel}</span></span></div>
+      </div>
+    </div>
+    <div class="card kv">
+      <h><svg viewBox="0 0 24 24" fill="none" stroke="#0F172A" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Ek Dosyalar</h>
+      ${ekDosyalarHtml}
+    </div>
+  </div>
+
+  ${form.notes ? `<div class="notesBox">
+    <div class="nh">Hekim Talimatı</div>
+    ${escapeHtml(form.notes).replace(/\n/g, '<br>')}
+  </div>` : ''}
+
+  ${chatTextMsgs.length > 0 || chatAttachMsgs.length > 0 ? `<div class="msgList">
+    <div class="nh">Hekim Talepleri · Mesajlar</div>
+    ${chatTextMsgs.map(m => `
+      <div class="msgItem">
+        <span class="msgTs">${new Date(m.ts).toLocaleString('tr-TR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</span>
+        <span class="msgBody">${escapeHtml(m.text).replace(/\n/g, '<br>')}</span>
+      </div>`).join('')}
+    ${chatAttachMsgs.map(m => `
+      <div class="msgItem msgItemAttach">
+        <span class="msgTs">${new Date(m.ts).toLocaleString('tr-TR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</span>
+        <span class="msgBody"><em>${m.type === 'voice' ? 'Ses kaydı' : m.type === 'image' ? 'Görüntü' : 'Dosya'}</em>${m.fileName ? ` — ${escapeHtml(m.fileName)}` : ''}${m.duration ? ` (${Math.round(m.duration / 1000)}s)` : ''}</span>
+      </div>`).join('')}
+  </div>` : ''}
+
+  <div class="sigFooter">
+    <div class="sigItem">
+      <div class="sigHead">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#0F172A" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+        <h>Hekim İmza</h>
+      </div>
+      <div class="sigLine"></div>
+      <div class="sigDateLine">Tarih: <span>&nbsp;</span>/<span>&nbsp;</span>/<span>&nbsp;&nbsp;&nbsp;&nbsp;</span></div>
+    </div>
+    <div class="sigItem">
+      <div class="sigHead">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#0F172A" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+        <h>Lab Teslim Alan</h>
+      </div>
+      <div class="sigLine"></div>
+      <div class="sigDateLine">Tarih: <span>&nbsp;</span>/<span>&nbsp;</span>/<span>&nbsp;&nbsp;&nbsp;&nbsp;</span></div>
+    </div>
+  </div>
+
+  <div class="brandFooter">
+    ${toothLogoSvg}
+    <b>Siman</b> · Dijital İş Emri · QR kod ile vaka detaylarına ulaşın.
+  </div>
+
 </div>
 </body></html>`;
 
-    const w = (window as any).open('', '_blank');
-    if (!w) return;
-    w.document.write(html);
-    w.document.close();
-    w.focus();
-    setTimeout(() => { w.print(); }, 400);
+    // Yeni tab yerine in-app modal'a yansıt — iframe srcDoc ile render edilir
+    setPrintPreviewHtml(html);
   };
 
   const filteredServices = services.filter(
@@ -1268,8 +2512,13 @@ ${form.notes ? `<div class="card">
   });
 
   if (dataLoading) return (
-    <SafeAreaView style={styles.safe}>
-      <ActivityIndicator color={P} style={{ flex: 1 }} />
+    <SafeAreaView edges={[]} style={[styles.safe, { backgroundColor: pageBg }]}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 18 }}>
+        <TeethLoader size="lg" accentColor={P} />
+        <Text style={{ fontSize: 13, color: '#6B6B6B', fontWeight: '500', letterSpacing: 0.2 }}>
+          Form hazırlanıyor…
+        </Text>
+      </View>
     </SafeAreaView>
   );
 
@@ -1277,56 +2526,255 @@ ${form.notes ? `<div class="card">
   // existing form below. (B4 simplified flow disabled per user request.)
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView edges={[]} style={[styles.safe, { backgroundColor: pageBg }]}>
+      {/* ── Submit sonrası başarı ekranı ── */}
+      {/* Submit-time upload progress overlay — her dosya için ayrı progress satırı */}
+      <Modal
+        visible={submitUploadsVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => { /* upload sırasında kapatma yok */ }}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(20,15,10,0.55)', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <View style={{
+            width: 520, maxWidth: '100%', maxHeight: '90%',
+            backgroundColor: '#FFFFFF', borderRadius: 18, overflow: 'hidden',
+            ...(Platform.OS === 'web' ? { boxShadow: '0 24px 64px rgba(0,0,0,0.22)' } as any : {}),
+          }}>
+            <View style={{ paddingHorizontal: 22, paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: P, letterSpacing: 1.2, textTransform: 'uppercase' }}>
+                Yükleniyor · {submitUploads.filter(u => u.status === 'done').length}/{submitUploads.length}
+              </Text>
+              <Text style={{ fontSize: 20, fontWeight: '600', color: '#0A0A0A', marginTop: 4 }}>
+                Dosyalar yükleniyor
+              </Text>
+              <Text style={{ fontSize: 12, color: '#6B6B6B', marginTop: 4 }}>
+                Sipariş kaydedildi, dosyalar arka planda yükleniyor — kapatmayın.
+              </Text>
+            </View>
+            <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ padding: 16, gap: 8 }} showsVerticalScrollIndicator={false}>
+              {submitUploads.map(u => {
+                const pct = u.progress ?? 0;
+                const statusColor =
+                  u.status === 'done'      ? '#2D9A6B' :
+                  u.status === 'error'     ? '#9C2E2E' :
+                  u.status === 'uploading' ? P :
+                                             '#9A9A9A';
+                return (
+                  <View key={u.id} style={{
+                    paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12,
+                    backgroundColor: '#FBF9F4',
+                    borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
+                    gap: 8,
+                  }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: statusColor }} />
+                      <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: '#0A0A0A' }} numberOfLines={1}>
+                        {u.name}
+                      </Text>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: statusColor, minWidth: 56, textAlign: 'right' }}>
+                        {u.status === 'done'  ? 'TAMAM' :
+                         u.status === 'error' ? 'HATA'  :
+                         u.status === 'pending' ? 'BEKLER' :
+                         `%${pct}`}
+                      </Text>
+                    </View>
+                    {/* Progress bar */}
+                    <View style={{ height: 4, borderRadius: 2, backgroundColor: 'rgba(0,0,0,0.06)' }}>
+                      <View style={{
+                        height: 4, borderRadius: 2,
+                        width: `${u.status === 'error' ? 100 : pct}%` as any,
+                        backgroundColor: statusColor,
+                      }} />
+                    </View>
+                    {u.error ? (
+                      <Text style={{ fontSize: 11, color: '#9C2E2E' }} numberOfLines={2}>{u.error}</Text>
+                    ) : null}
+                  </View>
+                );
+              })}
+            </ScrollView>
+            {/* Kapat butonu — sadece hepsi bittiyse */}
+            {submitUploads.length > 0 && submitUploads.every(u => u.status === 'done' || u.status === 'error') && (
+              <View style={{ paddingHorizontal: 16, paddingVertical: 14, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)', backgroundColor: '#FBF9F4', alignItems: 'flex-end' }}>
+                <Pressable
+                  onPress={() => { setSubmitUploadsVisible(false); setSubmitUploads([]); }}
+                  style={{
+                    paddingHorizontal: 20, paddingVertical: 10, borderRadius: 9999,
+                    backgroundColor: P,
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFF' }}>Tamam</Text>
+                </Pressable>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Vaka Özeti Önizleme — in-app popup (iframe srcDoc) ── */}
+      {Platform.OS === 'web' && printPreviewHtml && (
+        <Modal
+          visible
+          transparent
+          animationType="fade"
+          onRequestClose={() => setPrintPreviewHtml(null)}
+        >
+          <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.55)', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+            <View style={{
+              width: 920, maxWidth: '100%', height: '90%' as any, maxHeight: '95%' as any,
+              backgroundColor: '#FFFFFF', borderRadius: 14, overflow: 'hidden',
+              flexDirection: 'column',
+              ...(Platform.OS === 'web' ? { boxShadow: '0 24px 64px rgba(0,0,0,0.25)' } as any : {}),
+            }}>
+              {/* Toolbar */}
+              <View style={{
+                flexDirection: 'row', alignItems: 'center', gap: 12,
+                paddingHorizontal: 18, paddingVertical: 12,
+                borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.08)',
+                backgroundColor: '#FAFAFA',
+              }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: P }} />
+                <Text style={{ fontSize: 14, fontWeight: '600', color: '#0F172A' }}>
+                  Vaka Özeti Önizleme
+                </Text>
+                <View style={{ flex: 1 }} />
+                <Pressable
+                  onPress={() => {
+                    if (typeof document === 'undefined') return;
+                    const iframe = document.getElementById('print-preview-iframe') as HTMLIFrameElement | null;
+                    if (iframe?.contentWindow) {
+                      try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch {}
+                    }
+                  }}
+                  style={({ hovered }: any) => ({
+                    flexDirection: 'row', alignItems: 'center', gap: 6,
+                    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 9,
+                    backgroundColor: hovered ? `${P}E6` : P,
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' as any } as any : {}),
+                  })}
+                >
+                  <Text style={{ fontSize: 12.5, fontWeight: '600', color: '#FFFFFF' }}>🖨  Yazdır</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setPrintPreviewHtml(null)}
+                  style={({ hovered }: any) => ({
+                    width: 32, height: 32, borderRadius: 8,
+                    alignItems: 'center', justifyContent: 'center',
+                    backgroundColor: hovered ? '#F1F5F9' : '#FFFFFF',
+                    borderWidth: 1, borderColor: 'rgba(0,0,0,0.10)',
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' as any } as any : {}),
+                  })}
+                >
+                  <Text style={{ fontSize: 16, color: '#475569', fontWeight: '500' }}>×</Text>
+                </Pressable>
+              </View>
+              {/* Iframe içeriği */}
+              <View style={{ flex: 1, backgroundColor: '#F1F5F9' }}>
+                {React.createElement('iframe' as any, {
+                  id: 'print-preview-iframe',
+                  srcDoc: printPreviewHtml,
+                  style: { width: '100%', height: '100%', border: 'none', backgroundColor: '#FFFFFF' },
+                  title: 'Vaka Özeti Önizleme',
+                })}
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {submittedOrder && (
+        <NewOrderSuccess
+          accent={P}
+          orderNumber={submittedOrder.orderNumber}
+          patientName={submittedOrder.patientName}
+          panel={resolvedPanel}
+          onNewOrder={() => {
+            skipFirstDraftSaveRef.current = true;
+            setForm(INITIAL_FORM);
+            setLastSavedAt(null);
+            if (Platform.OS === 'web') {
+              try {
+                sessionStorage.removeItem('new_order_step');
+                sessionStorage.removeItem('new_order_form');
+                localStorage.removeItem(DRAFT_KEY);
+                localStorage.removeItem(DRAFT_TS_KEY);
+                localStorage.removeItem(DRAFT_STEP_KEY);
+              } catch {}
+            } else {
+              void AsyncStorage.multiRemove([DRAFT_KEY, DRAFT_TS_KEY, DRAFT_STEP_KEY]);
+            }
+            setStep(1);
+            setSubmittedOrder(null);
+          }}
+          onViewOrder={() => {
+            if (onClose) onClose();
+            router.push(orderDetailPath(submittedOrder.id) as any);
+          }}
+          onClose={() => {
+            if (onClose) onClose();
+            else router.replace(orderListPath as any);
+          }}
+        />
+      )}
+
       {/* ── Taslak seçim modalı: mevcut taslak varsa ilk açılışta sorar ── */}
-      {Platform.OS === 'web' && draftPromptOpen && (
+      <Modal
+        visible={draftPromptOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={handleContinueDraft}
+      >
         <View style={{
-          // @ts-ignore
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999,
-          backgroundColor: 'rgba(15,23,42,0.45)',
-          alignItems: 'center' as any, justifyContent: 'center' as any,
+          flex: 1,
+          backgroundColor: 'rgba(15,23,42,0.55)',
+          alignItems: 'center', justifyContent: 'center',
           padding: 20,
         }}>
           <View style={{
             width: '100%', maxWidth: 440,
-            backgroundColor: '#FFFFFF', borderRadius: 16,
+            backgroundColor: T.card, borderRadius: 16,
             padding: 24, gap: 16,
-            // @ts-ignore
-            boxShadow: '0 20px 60px rgba(15,23,42,0.25)',
+            borderWidth: 1, borderColor: T.hairline,
+            ...(Platform.OS === 'web'
+              ? ({ boxShadow: isDark ? '0 20px 60px rgba(0,0,0,0.6)' : '0 20px 60px rgba(15,23,42,0.25)' } as any)
+              : { shadowColor: '#000', shadowOpacity: isDark ? 0.5 : 0.18, shadowRadius: 30, shadowOffset: { width: 0, height: 20 }, elevation: 12 }),
           }}>
-            <View style={{ flexDirection: 'row' as any, alignItems: 'center' as any, gap: 10 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <View style={{
                 width: 36, height: 36, borderRadius: 10,
-                backgroundColor: '#EFF6FF',
-                alignItems: 'center' as any, justifyContent: 'center' as any,
+                backgroundColor: P + '14',
+                alignItems: 'center', justifyContent: 'center',
               }}>
                 <AppIcon name={'file-document-edit-outline' as any} size={18} color={P} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 16, fontFamily: F.bold, color: '#0F172A' }}>
+                <Text style={{ fontSize: 16, fontFamily: F.bold, color: T.ink }}>
                   Kaydedilmiş taslak bulundu
                 </Text>
                 {draftSavedAtPrompt && (
-                  <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                  <Text style={{ fontSize: 11, color: T.ink3, marginTop: 2 }}>
                     Son kayıt · {draftSavedAtPrompt.toLocaleString('tr-TR')}
                   </Text>
                 )}
               </View>
             </View>
-            <Text style={{ fontSize: 13, color: '#475569', lineHeight: 19 }}>
+            <Text style={{ fontSize: 13, color: T.ink2, lineHeight: 19 }}>
               Önceki iş emri taslağınızdan kaldığınız yerden devam etmek ister misiniz, yoksa yeni bir iş emri mi başlatmak istersiniz?
             </Text>
-            <View style={{ flexDirection: 'row' as any, gap: 8, marginTop: 4 }}>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
               <TouchableOpacity
                 onPress={handleStartNewOrder}
                 style={{
                   flex: 1, paddingVertical: 12, borderRadius: 10,
-                  backgroundColor: '#F1F5F9',
-                  alignItems: 'center' as any,
+                  backgroundColor: T.cardSoft,
+                  borderWidth: 1, borderColor: T.hairline,
+                  alignItems: 'center',
                 }}
                 activeOpacity={0.8}
               >
-                <Text style={{ fontSize: 13, fontFamily: F.semibold, color: '#475569' }}>
+                <Text style={{ fontSize: 13, fontFamily: F.semibold, color: T.ink2 }}>
                   Yeni iş emri
                 </Text>
               </TouchableOpacity>
@@ -1335,7 +2783,7 @@ ${form.notes ? `<div class="card">
                 style={{
                   flex: 1, paddingVertical: 12, borderRadius: 10,
                   backgroundColor: P,
-                  alignItems: 'center' as any,
+                  alignItems: 'center',
                 }}
                 activeOpacity={0.85}
               >
@@ -1346,7 +2794,7 @@ ${form.notes ? `<div class="card">
             </View>
           </View>
         </View>
-      )}
+      </Modal>
 
       <NOPageChrome
         step={step}
@@ -1354,11 +2802,25 @@ ${form.notes ? `<div class="card">
         hekim={selectedDoctor?.full_name}
         hasta={form.patient_first_name ? `${form.patient_first_name} ${form.patient_last_name}`.trim() : undefined}
         toothCount={form.tooth_ops.length || undefined}
-        onCancel={() => router.back()}
+        onCancel={() => {
+          // Modal olarak açıldıysa onClose'u çağır; route olarak açıldıysa back/replace
+          if (onClose) { onClose(); return; }
+          if (router.canGoBack()) router.back();
+          else router.replace(orderListPath as any);
+        }}
+        // Step 1: yalnızca Mesaj + X. Step 2+: Upload butonu da görünür.
+        onUpload={step >= 2 ? () => setUploadModalOpen(true) : undefined}
+        // Sticky mesaj butonu — upload'ın solunda
+        onChat={() => setChatModalVisible(true)}
+        // Sticky çıktı al butonu — sadece step 4 + web'de (yazdırma yalnız web)
+        onPrint={step === 4 && Platform.OS === 'web' ? printSummary : undefined}
+        uploadCount={form.attachments.length}
+        accent={P}
+        bgColor={pageBg}
         onStepPress={(s) => goToStep(s as Step)}
         onBack={step > 1 ? () => goToStep((step - 1) as Step) : undefined}
         onNext={step < 4 ? handleNext : handleSubmit}
-        nextLabel={step < 4 ? 'İleri' : theme.submitLabel}
+        nextLabel={step < 4 ? 'İleri' : (isDesktop ? theme.submitLabel : 'Gönder')}
         actionPrimary={step === 4 ? 'success' : 'dark'}
         loading={loading}
         savedTime={lastSavedAt ? fmtDraftTime(lastSavedAt) : undefined}
@@ -1367,7 +2829,27 @@ ${form.notes ? `<div class="card">
 
       {/* Step 1 — Clinic & Patient */}
       {step === 1 && (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }} keyboardShouldPersistTaps="handled">
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 96, flexGrow: 1 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}>
+
+          {/* OCR pre-fill banner (kağıt iş emri taraması) */}
+          {ocrBanner && (
+            <View style={{
+              marginHorizontal: 24, marginTop: 16,
+              padding: 14, borderRadius: 12,
+              backgroundColor: 'rgba(37,99,235,0.06)',
+              borderLeftWidth: 3, borderLeftColor: '#2563EB',
+              flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+            }}>
+              <AppIcon name={'camera-outline' as any} size={18} color="#2563EB" />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#2563EB', letterSpacing: 0.4 }}>OCR · Otomatik Doldurma</Text>
+                <Text style={{ fontSize: 12, color: '#1F2937', marginTop: 2, lineHeight: 17 }}>{ocrBanner}</Text>
+              </View>
+              <Pressable onPress={() => setOcrBanner(null)} hitSlop={6}>
+                <Text style={{ fontSize: 11, color: '#6B7280', fontWeight: '600' }}>Kapat</Text>
+              </Pressable>
+            </View>
+          )}
 
           {/* Step header — panel-aware */}
           <NOStepHeader step={1}>
@@ -1375,10 +2857,10 @@ ${form.notes ? `<div class="card">
           </NOStepHeader>
 
           {/* 2 kart: Klinik & hekim (dar) + Hasta bilgileri (geniş) */}
-          <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: 12 }}>
+          <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: isDesktop ? 8 : 10 }}>
 
             {/* ── Kart 1: Klinik & hekim ── */}
-            <View style={{ flex: 1 }}>
+            <View style={isDesktop ? { flex: 1 } : undefined}>
               <NOCard>
                 <NOCardHead num={1} title="Klinik & hekim" sub="Vakanın bağlı olduğu klinik ve hekim" accent={P} />
 
@@ -1463,7 +2945,7 @@ ${form.notes ? `<div class="card">
             </View>
 
             {/* ── Kart 2: Hasta bilgileri ── */}
-            <View style={{ flex: isDesktop ? 1.6 : 1 }}>
+            <View style={isDesktop ? { flex: 1.6 } : undefined}>
               <NOCard>
                 <NOCardHead
                   num={2}
@@ -1496,6 +2978,7 @@ ${form.notes ? `<div class="card">
                     flex
                     required
                     error={fe('patient_dob')}
+                    accentColor={P}
                   />
                 </TwoCol>
 
@@ -1562,24 +3045,13 @@ ${form.notes ? `<div class="card">
       )}
 
       {/* Step 2 — Case Details */}
-      {step === 2 && (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }} keyboardShouldPersistTaps="handled">
+      {step === 3 && (
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 96, flexGrow: 1 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}>
 
           {/* Step header */}
           <NOStepHeader
-            step={2}
-            headerRight={
-              <Pressable onPress={() => setUploadModalOpen(true)} style={{
-                flexDirection: 'row', alignItems: 'center', gap: 6,
-                paddingVertical: 7, paddingHorizontal: 14,
-                borderRadius: NORadius.md,
-                borderWidth: 1, borderColor: NO.borderMedium,
-                backgroundColor: '#FFFFFF',
-              }}>
-                <AppIcon name="paperclip" size={14} color={NO.inkSoft} />
-                <Text style={{ fontSize: 12, color: NO.inkSoft, fontWeight: '500' }}>Dosyalar</Text>
-              </Pressable>
-            }
+            step={3}
+            /* Dosya pill kaldırıldı — sticky upload icon top-right'da (X yanı) */
           >
             <NOEmText>Nasıl</NOEmText> çalışılacak?
           </NOStepHeader>
@@ -1588,7 +3060,7 @@ ${form.notes ? `<div class="card">
           <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: 12, marginBottom: 12 }}>
 
             {/* ── Kart 1: Çalışma yöntemi ── */}
-            <View style={{ flex: 1 }}>
+            <View style={isDesktop ? { flex: 1 } : undefined}>
               <NOCard>
                 <NOCardHead num={1} title="Çalışma yöntemi" sub="Ölçüm ve model tipi" accent={P} />
                 <View style={{ gap: 12 }}>
@@ -1600,7 +3072,15 @@ ${form.notes ? `<div class="card">
                       { value: 'manual',  label: 'Manuel' },
                       { value: 'digital', label: 'Dijital' },
                     ]}
-                    onSelect={(v) => set('measurement_type')(v as 'manual' | 'digital')}
+                    onSelect={(v) => {
+                      const next = v as 'manual' | 'digital';
+                      set('measurement_type')(next);
+                      // Ölçüm yöntemi değişirse mevcut seçim yeni listede yoksa sıfırla
+                      const validList = next === 'manual' ? MODEL_TYPES_MANUAL : MODEL_TYPES_DIGITAL;
+                      if (form.model_type && !validList.some(o => o.value === form.model_type)) {
+                        set('model_type')('');
+                      }
+                    }}
                     error={fe('measurement_type')}
                     accentColor={P}
                   />
@@ -1608,11 +3088,7 @@ ${form.notes ? `<div class="card">
                     label="* Model tipi"
                     icon={'cube-outline' as any}
                     value={form.model_type}
-                    options={[
-                      { value: 'dijital',  label: 'Dijital Tarama' },
-                      { value: 'fiziksel', label: 'Fiziksel Model' },
-                      { value: 'cad',      label: 'CAD Dosyası' },
-                    ]}
+                    options={form.measurement_type === 'manual' ? MODEL_TYPES_MANUAL : MODEL_TYPES_DIGITAL}
                     onSelect={(v) => set('model_type')(form.model_type === v ? '' : v)}
                     error={fe('model_type')}
                     accentColor={P}
@@ -1626,16 +3102,20 @@ ${form.notes ? `<div class="card">
                     <AppIcon name="zap" size={14} color="#94A3B8" />
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 12, fontWeight: '500', color: NO.inkStrong }}>Acil vaka</Text>
-                      <Text style={{ fontSize: 10, color: NO.inkMute }}>+%30 ücret · 5 gün öncelik</Text>
+                      <Text style={{ fontSize: 10, color: NO.inkMute }}>
+                        {urgentSurchargeRate > 0
+                          ? `+%${urgentSurchargeRate.toFixed(urgentSurchargeRate % 1 === 0 ? 0 : 2)} ek ücret · 5 gün öncelik`
+                          : 'Ek ücretsiz · 5 gün öncelik'}
+                      </Text>
                     </View>
-                    <NOToggle on={form.is_urgent} onChange={(v) => set('is_urgent')(v)} />
+                    <NOToggle on={form.is_urgent} onChange={(v) => set('is_urgent')(v)} accentColor={P} />
                   </View>
                 </View>
               </NOCard>
             </View>
 
             {/* ── Kart 2: Teslimat ── */}
-            <View style={{ flex: 1 }}>
+            <View style={isDesktop ? { flex: 1 } : undefined}>
               <NOCard>
                 <NOCardHead num={2} title="Teslimat" sub="En geç teslim tarihi ve yöntemi" accent={P} />
                 <View style={{ gap: 12 }}>
@@ -1643,7 +3123,13 @@ ${form.notes ? `<div class="card">
                     label="* Teslim tarihi"
                     value={form.delivery_date}
                     onChange={set('delivery_date')}
-                    minDate={new Date()}
+                    // Normal vakada en erken 72 saat sonra; acil vakada yarından itibaren
+                    minDate={(() => {
+                      const d = new Date();
+                      d.setHours(0, 0, 0, 0);
+                      d.setDate(d.getDate() + (form.is_urgent ? 1 : 3));
+                      return d;
+                    })()}
                     error={fe('delivery_date')}
                     accentColor={P}
                   />
@@ -1660,18 +3146,22 @@ ${form.notes ? `<div class="card">
                     error={fe('delivery_method')}
                     accentColor={P}
                   />
-                  {/* Onay sonrası üretim toggle */}
+                  {/* Üretim öncesi tasarım onayı toggle */}
                   <View style={{
                     flexDirection: 'row', alignItems: 'center', gap: 12,
                     padding: 10, paddingHorizontal: 12,
                     backgroundColor: NO.bgInput, borderRadius: 10,
                   }}>
-                    <AppIcon name="shield-check" size={14} color="#94A3B8" />
+                    <AppIcon name="shield-check" size={14} color={form.doctor_approval_required ? P : '#94A3B8'} />
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 12, fontWeight: '500', color: NO.inkStrong }}>Onay sonrası üretim</Text>
-                      <Text style={{ fontSize: 10, color: NO.inkMute }}>Hekim onayı bekle</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '500', color: NO.inkStrong }}>
+                        Üretim öncesi tasarım onayı
+                      </Text>
+                      <Text style={{ fontSize: 10, color: NO.inkMute }}>
+                        Tasarım dosyası hekime gönderilir · onaylanmadan üretim başlamaz
+                      </Text>
                     </View>
-                    <NOToggle on={form.doctor_approval_required} onChange={(v) => set('doctor_approval_required')(v)} />
+                    <NOToggle on={form.doctor_approval_required} onChange={(v) => set('doctor_approval_required')(v)} accentColor={P} />
                   </View>
                 </View>
               </NOCard>
@@ -1683,39 +3173,62 @@ ${form.notes ? `<div class="card">
           <NOCard>
             <NOCardHead num={3} title="Dosyalar & ölçüm" sub="STL, PLY, JPG, PDF — maks 200 MB" badge={form.attachments.length > 0 ? `${form.attachments.length} dosya · ${formatBytes(form.attachments.reduce((s, a) => s + (a.size || 0), 0))}` : undefined} accent={P} />
 
-            <View style={[fus.twoCol, !isDesktop && { flexDirection: 'column', gap: 16 }]}>
-
-              {/* ── Sol: Yükleme butonu ── */}
-              <View style={[fus.twoColLeft, !isDesktop && { paddingRight: 0 }]}>
-                <TouchableOpacity
-                  style={fus.uploadTrigger}
-                  onPress={() => setUploadModalOpen(true)}
-                  activeOpacity={0.75}
-                >
-                  <View style={[fus.uploadTriggerIcon, { backgroundColor: P + '14' }]}>
-                    <AppIcon name={'cloud-upload-outline' as any} size={28} color={P} />
-                  </View>
-                  <Text style={[fus.uploadTriggerTitle, { color: P }]}>Dosya Yükleme</Text>
-                  <Text style={[fus.uploadTriggerSub, { textAlign: 'center' }]}>
-                    {form.attachments.length === 0
-                      ? 'Fotoğraf, STL, PLY, PDF eklemek için tıklayın'
-                      : `${form.attachments.length} dosya · ${formatBytes(form.attachments.reduce((s, a) => s + (a.size || 0), 0))}`}
+            {/* Dijital ölçüm + dosya zorunlu model tipi uyarısı */}
+            {form.measurement_type === 'digital'
+              && ['dijital_tarama', 'stl_dosyasi', 'cad_dosyasi', 'baski_3d_model'].includes(form.model_type)
+              && form.attachments.length === 0 && (
+              <View style={{
+                flexDirection: 'row', alignItems: 'center', gap: 10,
+                padding: 12, marginBottom: 12,
+                borderRadius: 12,
+                backgroundColor: fe('attachments') ? 'rgba(220,38,38,0.08)' : 'rgba(245,158,11,0.10)',
+                borderWidth: 1,
+                borderColor: fe('attachments') ? 'rgba(220,38,38,0.25)' : 'rgba(245,158,11,0.25)',
+              }}>
+                <AppIcon name={'alert-circle-outline' as any} size={16} color={fe('attachments') ? '#DC2626' : '#B45309'} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: fe('attachments') ? '#991B1B' : '#92400E' }}>
+                    Bu model tipi için dosya gerekli
                   </Text>
-                  {form.attachments.length > 0 && (
-                    <View style={[fus.uploadTriggerBadge, { backgroundColor: P }]}>
-                      <Text style={fus.uploadTriggerBadgeText}>{form.attachments.length} dosya · {formatBytes(form.attachments.reduce((s, a) => s + (a.size || 0), 0))}</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
+                  <Text style={{ fontSize: 11, color: fe('attachments') ? '#7F1D1D' : '#78350F', marginTop: 1 }}>
+                    Dijital ölçüm seçtiniz — STL / CAD / 3D dosyası yüklemeden bir sonraki adıma geçemezsiniz.
+                  </Text>
+                </View>
               </View>
+            )}
 
-              {/* Dikey ayırıcı (mobilde yatay çizgi) */}
-              <View
-                style={[
-                  fus.twoColDivider,
-                  !isDesktop && { width: '100%', height: 1, alignSelf: 'auto' as any },
-                ]}
-              />
+            <View style={[fus.twoCol, !isDesktop && { flexDirection: 'column', gap: 16, alignItems: 'stretch' }]}>
+
+              {/* ── Sol: Yükleme butonu — mobil'de top-right'a sticky olarak taşındı (X butonunun yanına) ── */}
+              {isDesktop && (
+                <View style={fus.twoColLeft}>
+                  <TouchableOpacity
+                    style={fus.uploadTrigger}
+                    onPress={() => setUploadModalOpen(true)}
+                    activeOpacity={0.75}
+                  >
+                    <View style={[fus.uploadTriggerIcon, { backgroundColor: P + '14' }]}>
+                      <AppIcon name={'cloud-upload-outline' as any} size={28} color={P} />
+                    </View>
+                    <Text style={[fus.uploadTriggerTitle, { color: P }]}>Dosya Yükleme</Text>
+                    <Text style={[fus.uploadTriggerSub, { textAlign: 'center' }]}>
+                      {form.attachments.length === 0
+                        ? 'Fotoğraf, STL, PLY, PDF eklemek için tıklayın'
+                        : `${form.attachments.length} dosya · ${formatBytes(form.attachments.reduce((s, a) => s + (a.size || 0), 0))}`}
+                    </Text>
+                    {form.attachments.length > 0 && (
+                      <View style={[fus.uploadTriggerBadge, { backgroundColor: P }]}>
+                        <Text style={fus.uploadTriggerBadgeText}>{form.attachments.length} dosya · {formatBytes(form.attachments.reduce((s, a) => s + (a.size || 0), 0))}</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Dikey ayırıcı sadece desktop'ta */}
+              {isDesktop && (
+                <View style={fus.twoColDivider} />
+              )}
 
               {/* ── Sağ: Dosya listesi ── */}
               <View style={[fus.twoColRight, !isDesktop && { paddingLeft: 0 }]}>
@@ -1724,18 +3237,32 @@ ${form.notes ? `<div class="card">
                   <Text style={fus.subHint}>Tüm ekler ve ön izleme</Text>
                 </View>
                 {form.attachments.length === 0 ? (
-                  <View style={fus.emptyState}>
-                    <AppIcon name={'tray-outline' as any} size={28} color="#CBD5E1" />
-                    <Text style={fus.emptyStateText}>Henüz dosya eklenmedi</Text>
-                    <Text style={fus.emptyStateHint}>Sol taraftaki butona tıklayarak{'\n'}dosya ve fotoğraf ekleyebilirsiniz</Text>
+                  <View style={{ paddingVertical: 30, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center' }}>
+                    <View style={{
+                      width: 40, height: 40, borderRadius: 12,
+                      backgroundColor: '#F1F5F9',
+                      alignItems: 'center', justifyContent: 'center',
+                      marginBottom: 8,
+                    }}>
+                      <AppIcon name={'document-outline' as any} size={20} color="#94A3B8" />
+                    </View>
+                    <Text style={{ fontSize: 13, fontFamily: F.semibold, color: '#64748B' }}>
+                      Henüz dosya eklenmedi
+                    </Text>
+                    <Text style={{ fontSize: 11.5, color: '#94A3B8', textAlign: 'center', marginTop: 3, lineHeight: 16 }}>
+                      {isDesktop
+                        ? 'Eklediğiniz dosyalar burada listelenecek'
+                        : 'Yukarıdaki "Dosya Yükleme" alanından ekleyin'}
+                    </Text>
                   </View>
                 ) : (
                   <>
                     {([
-                      { label: 'Gülüş Tasarımı', icon: 'image-outline', prefixes: ['Ekartörlü Resim', 'Gülüş Resmi', 'Gülüş Videosu'] },
-                      { label: 'Tarama Verileri', icon: 'tooth-outline', prefixes: ['Alt Çene', 'Üst Çene', 'Bite (Kapanış)', 'Diş Eti Taraması'] },
-                      { label: 'İmplant Bilgileri', icon: 'screw-machine-flat-top', prefixes: ['Scan Body STL'] },
-                      { label: 'Ek Dosyalar', icon: 'paperclip', prefixes: ['PDF Belgesi', 'Referans Fotoğraf'] },
+                      // prefixes: yeni etiketler + legacy isim'ler (eski caption'lı dosyalar da gruba düşsün)
+                      { label: 'Gülüş Tasarımı', icon: 'image-outline', prefixes: ['Ekartörlü Fotoğraf', 'Gülüş Fotoğrafı', 'Gülüş Videosu', 'Ekartörlü Resim', 'Gülüş Resmi'] },
+                      { label: 'Tarama Verileri', icon: 'tooth-outline', prefixes: ['Alt Çene Taraması', 'Üst Çene Taraması', 'Kapanış Taraması', 'Diş Eti Taraması', 'Alt Çene', 'Üst Çene', 'Bite (Kapanış)', 'Bite'] },
+                      { label: 'İmplant Bilgileri', icon: 'screw-machine-flat-top', prefixes: ['Scan Body Taraması', 'Scan Body STL'] },
+                      { label: 'Ek Dosyalar', icon: 'paperclip', prefixes: ['PDF Belgesi', 'Referans Fotoğrafı', 'Referans Fotoğraf'] },
                     ] as const).map(group => {
                       const groupFiles = form.attachments.filter(a =>
                         group.prefixes.some(p => a.name.startsWith(p))
@@ -1748,14 +3275,21 @@ ${form.notes ? `<div class="card">
                             <Text style={fus.fileGroupLabel}>{group.label}</Text>
                           </View>
                           {groupFiles.map(a => (
-                            <FileRow key={a.id} file={a} onRemove={() => removeAttachment(a.id)} onPreview={() => setPreviewFile(a)} />
+                            <FileRow key={a.id} file={a} onRemove={() => removeAttachment(a.id)} onPreview={() => openFilePreview(a)} />
                           ))}
                         </View>
                       );
                     })}
                     {/* Files that don't match any group */}
                     {(() => {
-                      const allGroupPrefixes = ['Ekartörlü Resim', 'Gülüş Resmi', 'Gülüş Videosu', 'Alt Çene', 'Üst Çene', 'Bite (Kapanış)', 'Diş Eti Taraması', 'Scan Body STL', 'PDF Belgesi', 'Referans Fotoğraf'];
+                      const allGroupPrefixes = [
+                        // Yeni etiketler
+                        'Ekartörlü Fotoğraf', 'Gülüş Fotoğrafı', 'Gülüş Videosu',
+                        'Alt Çene Taraması', 'Üst Çene Taraması', 'Kapanış Taraması', 'Diş Eti Taraması',
+                        'Scan Body Taraması', 'PDF Belgesi', 'Referans Fotoğrafı',
+                        // Legacy
+                        'Ekartörlü Resim', 'Gülüş Resmi', 'Alt Çene', 'Üst Çene', 'Bite (Kapanış)', 'Bite', 'Scan Body STL', 'Referans Fotoğraf',
+                      ];
                       const others = form.attachments.filter(a => !allGroupPrefixes.some(p => a.name.startsWith(p)));
                       if (others.length === 0) return null;
                       return (
@@ -1765,7 +3299,7 @@ ${form.notes ? `<div class="card">
                             <Text style={fus.fileGroupLabel}>Diğer Dosyalar</Text>
                           </View>
                           {others.map(a => (
-                            <FileRow key={a.id} file={a} onRemove={() => removeAttachment(a.id)} onPreview={() => setPreviewFile(a)} />
+                            <FileRow key={a.id} file={a} onRemove={() => removeAttachment(a.id)} onPreview={() => openFilePreview(a)} />
                           ))}
                         </View>
                       );
@@ -1804,558 +3338,84 @@ ${form.notes ? `<div class="card">
 
           </NOCard>
 
-          {/* ── Dosya Yükleme Modal ── */}
-          <Modal
+          {/* ── Dosya Yükleme Modal — FilesUploadModal (paralel upload, split view) ── */}
+          <FilesUploadModal
             visible={uploadModalOpen}
-            transparent
-            animationType="fade"
-            onRequestClose={() => setUploadModalOpen(false)}
-          >
-            <View style={[fus.umOverlay, !isDesktop && { padding: 0 }]}>
-              <View style={[
-                fus.umCard,
-                !isDesktop && { borderRadius: 0, maxHeight: '100%' as any, flex: 1 },
-              ]}>
-
-                {/* Header */}
-                <View style={[fus.umHeader, !isDesktop && { paddingHorizontal: 16, paddingVertical: 14 }]}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                    <View style={[fus.umHeaderIcon, { backgroundColor: P + '18' }]}>
-                      <AppIcon name={'cloud-upload-outline' as any} size={20} color={P} />
-                    </View>
-                    <Text style={fus.umHeaderTitle}>Dosya Yükleme</Text>
-                  </View>
-                  <TouchableOpacity onPress={() => setUploadModalOpen(false)} style={fus.umCloseBtn}>
-                    <AppIcon name={'close' as any} size={20} color="#64748B" />
-                  </TouchableOpacity>
-                </View>
-
-                <ScrollView
-                  style={{ flex: 1 }}
-                  contentContainerStyle={{ padding: isDesktop ? 24 : 14 }}
-                  showsVerticalScrollIndicator={false}
-                >
-                  <View style={[fus.umGrid, !isDesktop && { gap: 10 }]}>
-
-                  {/* ── Grup 1: Gülüş Tasarımı ── */}
-                  <View style={[fus.umGroup, !isDesktop && { flexBasis: '100%' as any, padding: 12 }]}>
-                    <View style={fus.umGroupHeader}>
-                      <View style={[fus.umGroupDot, { backgroundColor: P }]} />
-                      <Text style={fus.umGroupTitle}>Gülüş Tasarımı</Text>
-                    </View>
-                    <View style={fus.uploadCardRow}>
-                      {(['Ekartörlü Resim', 'Gülüş Resmi'] as const).map((label) => {
-                        const existing = form.attachments.find(a => a.name.startsWith(label));
-                        const card = (
-                          <TouchableOpacity
-                              style={fus.uploadCard}
-                              onPress={() => existing ? openPreviewFromUpload(existing) : openSpecificPhotoPicker(label)}
-                              activeOpacity={0.8}
-                            >
-                              <View style={[fus.uploadCardTab, { backgroundColor: existing ? '#22C55E' : P }]} />
-                              <View style={fus.uploadCardBody}>
-                                {existing ? (
-                                  <View style={fus.uploadCardThumbWrap}>
-                                    <Image source={{ uri: existing.uri }} style={fus.uploadCardThumbImg} resizeMode="cover" />
-                                    <View style={fus.uploadCardThumbOverlay}>
-                                      <AppIcon name={'eye-outline' as any} size={18} color="#FFFFFF" />
-                                    </View>
-                                  </View>
-                                ) : (
-                                  <View style={fus.uploadCardIcon}>
-                                    <AppIcon
-                                      name={'image-outline' as any}
-                                      size={28} color={P}
-                                    />
-                                  </View>
-                                )}
-                                <Text style={fus.uploadCardLabel} numberOfLines={2}>{label}</Text>
-                                {existing && <Text style={fus.uploadCardFileName} numberOfLines={1}>{existing.name}</Text>}
-                              </View>
-                              <View style={[fus.uploadCardBtn, { backgroundColor: existing ? '#22C55E' : P }]}>
-                                <AppIcon name={existing ? 'check' : 'arrow-up'} size={16} color="#FFFFFF" />
-                              </View>
-                              {existing && (
-                                <TouchableOpacity
-                                  style={fus.uploadCardDel}
-                                  onPress={(e) => { e.stopPropagation?.(); removeAttachment(existing.id); }}
-                                  activeOpacity={0.8}
-                                >
-                                  <AppIcon name={'close' as any} size={12} color="#EF4444" />
-                                </TouchableOpacity>
-                              )}
-                            </TouchableOpacity>
-                        );
-                        return existing ? (
-                          <React.Fragment key={label}>{card}</React.Fragment>
-                        ) : (
-                          <WithTooltip key={label} text={PHOTO_GUIDE_TEXT} image={PHOTO_GUIDE_IMG}>{card}</WithTooltip>
-                        );
-                      })}
-                      {/* Video card */}
-                      {(() => {
-                        const videoLabel = 'Gülüş Videosu';
-                        const existing = form.attachments.find(a => a.name.startsWith(videoLabel));
-                        const card = (
-                          <TouchableOpacity
-                            key={videoLabel}
-                            style={[fus.uploadCard, !existing && fus.uploadCardDashed]}
-                            onPress={() => openSpecificVideoPicker(videoLabel)}
-                            activeOpacity={0.8}
-                          >
-                            <View style={[fus.uploadCardTab, { backgroundColor: existing ? '#22C55E' : P }]} />
-                            <View style={fus.uploadCardBody}>
-                              <View style={fus.uploadCardIcon}>
-                                <AppIcon
-                                  name={'video-outline' as any}
-                                  size={28} color={existing ? '#22C55E' : P}
-                                />
-                              </View>
-                              <Text style={fus.uploadCardLabel} numberOfLines={2}>{videoLabel}</Text>
-                              {existing && (
-                                <Text style={[fus.uploadCardFileName, { color: '#22C55E' }]} numberOfLines={1}>
-                                  {existing.name.split('.').pop()?.toUpperCase()}
-                                </Text>
-                              )}
-                            </View>
-                            <View style={[fus.uploadCardBtn, { backgroundColor: existing ? '#22C55E' : P }]}>
-                              <AppIcon name={existing ? 'check' : 'arrow-up'} size={16} color="#FFFFFF" />
-                            </View>
-                            {existing && (
-                              <TouchableOpacity
-                                style={fus.uploadCardDel}
-                                onPress={(e) => { (e as any).stopPropagation?.(); removeAttachment(existing.id); }}
-                                activeOpacity={0.8}
-                              >
-                                <AppIcon name={'close' as any} size={12} color="#EF4444" />
-                              </TouchableOpacity>
-                            )}
-                          </TouchableOpacity>
-                        );
-                        return existing ? card : <WithTooltip text={UPLOAD_TIPS[videoLabel]}>{card}</WithTooltip>;
-                      })()}
-                    </View>
-                  </View>
-
-                  {/* ── Grup 2: Tarama Verileri ── */}
-                  <View style={[fus.umGroup, !isDesktop && { flexBasis: '100%' as any, padding: 12 }]}>
-                    <View style={fus.umGroupHeader}>
-                      <View style={[fus.umGroupDot, { backgroundColor: '#0EA5E9' }]} />
-                      <Text style={fus.umGroupTitle}>Tarama Verileri</Text>
-                    </View>
-                    <View style={fus.uploadCardRow}>
-                      {(['Alt Çene', 'Üst Çene', 'Bite (Kapanış)', 'Diş Eti Taraması'] as const).map((label) => {
-                        const existing = form.attachments.find(a => a.name.startsWith(label));
-                        const card = (
-                          <TouchableOpacity
-                            key={label}
-                            style={[fus.uploadCard, !existing && fus.uploadCardDashed]}
-                            onPress={() => existing ? openPreviewFromUpload(existing) : openSpecificScanPicker(label)}
-                            activeOpacity={0.8}
-                          >
-                            <View style={[fus.uploadCardTab, { backgroundColor: existing ? '#22C55E' : '#0EA5E9' }]} />
-                            <View style={fus.uploadCardBody}>
-                              <View style={fus.uploadCardIcon}>
-                                <AppIcon
-                                  name={'cube-outline' as any}
-                                  size={28}
-                                  color={existing ? '#22C55E' : '#0EA5E9'}
-                                />
-                              </View>
-                              <Text style={[fus.uploadCardLabel, { color: existing ? '#0F172A' : '#64748B' }]} numberOfLines={2}>
-                                {label}
-                              </Text>
-                              {existing && (
-                                <Text style={[fus.uploadCardFileName, { color: '#22C55E' }]} numberOfLines={1}>
-                                  {existing.name.split('.').pop()?.toUpperCase()}
-                                </Text>
-                              )}
-                            </View>
-                            <View style={[fus.uploadCardBtn, { backgroundColor: existing ? '#22C55E' : '#0EA5E9' }]}>
-                              <AppIcon name={existing ? 'check' : 'arrow-up'} size={16} color="#FFFFFF" />
-                            </View>
-                            {existing && (
-                              <TouchableOpacity
-                                style={fus.uploadCardDel}
-                                onPress={(e) => { (e as any).stopPropagation?.(); removeAttachment(existing.id); }}
-                                activeOpacity={0.8}
-                              >
-                                <AppIcon name={'close' as any} size={12} color="#EF4444" />
-                              </TouchableOpacity>
-                            )}
-                          </TouchableOpacity>
-                        );
-                        return existing ? (
-                          <React.Fragment key={label}>{card}</React.Fragment>
-                        ) : (
-                          <WithTooltip key={label} text={UPLOAD_TIPS[label] ?? ''} image={label === 'Bite (Kapanış)' ? BITE_GUIDE_IMG : undefined}>
-                            {card}
-                          </WithTooltip>
-                        );
-                      })}
-                    </View>
-
-                    {/* ── Kapanış Analizi (Alt + Üst + Bite yüklüyse) ── */}
-                    {(() => {
-                      const lower = form.attachments.find(a => a.name.startsWith('Alt Çene'));
-                      const upper = form.attachments.find(a => a.name.startsWith('Üst Çene'));
-                      const bite  = form.attachments.find(a => a.name.startsWith('Bite (Kapanış)'));
-                      if (!lower || !upper || !bite) return null;
-
-                      return (
-                        <TouchableOpacity
-                          style={fus.occlusionCta}
-                          onPress={() => setOcclusionModalOpen(true)}
-                          activeOpacity={0.85}
-                        >
-                          <View style={fus.occlusionCtaIcon}>
-                            <AppIcon name={'cube-scan' as any} size={18} color="#FFFFFF" />
-                          </View>
-                          <View style={{ flex: 1 }}>
-                            <Text style={fus.occlusionCtaTitle}>
-                              Kapanış Analizi
-                              {occlusionResult && <Text style={fus.occlusionCtaBadge}>  ✓ tamamlandı</Text>}
-                            </Text>
-                            <Text style={fus.occlusionCtaSub}>
-                              {occlusionResult
-                                ? `Temas %${occlusionResult.statistics.contactPercentage} · ${occlusionResult.penetrationPoints.length} penetrasyon noktası`
-                                : '3D ısı haritası, penetrasyon ve mesafe ölçümü'}
-                            </Text>
-                          </View>
-                          <AppIcon
-                            name={(occlusionResult ? 'refresh' : 'arrow-right') as any}
-                            size={18}
-                            color="#FFFFFF"
-                          />
-                        </TouchableOpacity>
-                      );
-                    })()}
-                  </View>
-
-                  {/* ── Grup 3: İmplant Bilgileri ── */}
-                  <View style={[fus.umGroup, !isDesktop && { flexBasis: '100%' as any, padding: 12 }]}>
-                    <View style={fus.umGroupHeader}>
-                      <View style={[fus.umGroupDot, { backgroundColor: '#8B5CF6' }]} />
-                      <Text style={fus.umGroupTitle}>İmplant Bilgileri</Text>
-                    </View>
-                    <View style={fus.uploadCardRow}>
-                      {/* Scan Body STL */}
-                      {(() => {
-                        const scanLabel = 'Scan Body STL';
-                        const existing = form.attachments.find(a => a.name.startsWith(scanLabel));
-                        const card = (
-                          <TouchableOpacity
-                            key={scanLabel}
-                            style={[fus.uploadCard, !existing && fus.uploadCardDashed]}
-                            onPress={() => existing ? openPreviewFromUpload(existing) : openSpecificScanPicker(scanLabel)}
-                            activeOpacity={0.8}
-                          >
-                            <View style={[fus.uploadCardTab, { backgroundColor: existing ? '#22C55E' : '#8B5CF6' }]} />
-                            <View style={fus.uploadCardBody}>
-                              <View style={fus.uploadCardIcon}>
-                                <AppIcon
-                                  name={'tooth-outline' as any}
-                                  size={28}
-                                  color={existing ? '#22C55E' : '#8B5CF6'}
-                                />
-                              </View>
-                              <Text style={[fus.uploadCardLabel, { color: existing ? '#0F172A' : '#64748B' }]} numberOfLines={2}>
-                                Scan Body STL
-                              </Text>
-                              {existing && (
-                                <Text style={[fus.uploadCardFileName, { color: '#22C55E' }]} numberOfLines={1}>
-                                  {existing.name.split('.').pop()?.toUpperCase()}
-                                </Text>
-                              )}
-                            </View>
-                            <View style={[fus.uploadCardBtn, { backgroundColor: existing ? '#22C55E' : '#8B5CF6' }]}>
-                              <AppIcon name={existing ? 'check' : 'arrow-up'} size={16} color="#FFFFFF" />
-                            </View>
-                            {existing && (
-                              <TouchableOpacity
-                                style={fus.uploadCardDel}
-                                onPress={(e) => { (e as any).stopPropagation?.(); removeAttachment(existing.id); }}
-                                activeOpacity={0.8}
-                              >
-                                <AppIcon name={'close' as any} size={12} color="#EF4444" />
-                              </TouchableOpacity>
-                            )}
-                          </TouchableOpacity>
-                        );
-                        return existing ? card : <WithTooltip text={UPLOAD_TIPS[scanLabel]}>{card}</WithTooltip>;
-                      })()}
-                      {/* İmplant Marka search dropdown card */}
-                      {(() => {
-                        const filtered = ALL_IMPLANT_BRANDS.filter(b =>
-                          b.toLowerCase().includes(implantBrandSearch.toLowerCase())
-                        );
-                        return (
-                          <View style={[fus.implantBrandCard, form.implant_brand ? undefined : fus.uploadCardDashed]}>
-                            <View style={[fus.uploadCardTab, { backgroundColor: form.implant_brand ? '#22C55E' : '#8B5CF6', marginBottom: 12 }]} />
-                            <View style={{ paddingHorizontal: 14, paddingBottom: 14 }}>
-                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                                <AppIcon name={'office-building-marker-outline' as any} size={20} color={form.implant_brand ? '#22C55E' : '#8B5CF6'} />
-                                {form.implant_brand ? (
-                                  <Text style={[fus.uploadCardLabel, { color: '#0F172A', flex: 1 }]}>
-                                    <Text>{'İmplant Marka: '}</Text>
-                                    <Text style={{ color: '#8B5CF6' }}>{form.implant_brand}</Text>
-                                  </Text>
-                                ) : (
-                                  <Text style={[fus.uploadCardLabel, { color: '#64748B', flex: 1 }]}>İmplant Marka</Text>
-                                )}
-                                {form.implant_brand ? (
-                                  <TouchableOpacity onPress={() => { setForm(f => ({ ...f, implant_brand: '' })); setImplantBrandSearch(''); setImplantBrandDropOpen(false); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                                    <AppIcon name={'close-circle' as any} size={16} color="#CBD5E1" />
-                                  </TouchableOpacity>
-                                ) : null}
-                              </View>
-                              {/* Search input + dropdown container */}
-                              <View style={{ position: 'relative' as any }}>
-                              <View
-                                ref={implantInputRef}
-                                style={fus.implantSearchRow}
-                              >
-                                <AppIcon name={'magnify' as any} size={16} color="#94A3B8" />
-                                <TextInput
-                                  style={fus.implantSearchInput}
-                                  placeholder="Marka ara..."
-                                  placeholderTextColor="#94A3B8"
-                                  value={implantBrandSearch}
-                                  onChangeText={(t) => { setImplantBrandSearch(t); measureImplantInput(); setImplantBrandDropOpen(true); }}
-                                  onFocus={() => { measureImplantInput(); setImplantBrandDropOpen(true); }}
-                                />
-                              </View>
-                              </View>
-                              {/* end search row */}
-                              {implantBrandDropOpen && implantDropPos && (
-                                <WebPortal>
-                                  {/* Backdrop to close on outside click */}
-                                  <Pressable
-                                    style={{ position: 'fixed' as any, inset: 0, zIndex: 99998 }}
-                                    onPress={() => { setImplantBrandDropOpen(false); setImplantBrandSearch(''); }}
-                                  />
-                                  <View style={[fus.implantDropList, {
-                                    position: 'fixed' as any,
-                                    zIndex: 99999,
-                                    left: implantDropPos.left,
-                                    width: implantDropPos.width,
-                                    ...(implantDropPos.top !== undefined ? { top: implantDropPos.top } : { bottom: implantDropPos.bottom }),
-                                  }]}>
-                                    <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
-                                      {filtered.length === 0 ? (
-                                        <Text style={{ fontSize: 12, color: '#94A3B8', padding: 10, textAlign: 'center' }}>Sonuç bulunamadı</Text>
-                                      ) : filtered.map((brand) => (
-                                        <TouchableOpacity
-                                          key={brand}
-                                          style={[fus.implantDropItem, form.implant_brand === brand && fus.implantDropItemActive]}
-                                          onPress={() => { setForm(f => ({ ...f, implant_brand: brand })); setImplantBrandSearch(''); setImplantBrandDropOpen(false); }}
-                                          activeOpacity={0.75}
-                                        >
-                                          <Text style={[fus.implantDropItemText, form.implant_brand === brand && fus.implantDropItemTextActive]} numberOfLines={1}>
-                                            {brand}
-                                          </Text>
-                                          {form.implant_brand === brand && (
-                                            <AppIcon name={'check' as any} size={14} color="#8B5CF6" />
-                                          )}
-                                        </TouchableOpacity>
-                                      ))}
-                                    </ScrollView>
-                                  </View>
-                                </WebPortal>
-                              )}
-                            </View>
-                          </View>
-                        );
-                      })()}
-                    </View>
-                  </View>
-
-                  {/* ── Grup 4: Ek Dosyalar ── */}
-                  <View style={[fus.umGroup, !isDesktop && { flexBasis: '100%' as any, padding: 12 }]}>
-                    <View style={fus.umGroupHeader}>
-                      <View style={[fus.umGroupDot, { backgroundColor: '#F59E0B' }]} />
-                      <Text style={fus.umGroupTitle}>Ek Dosyalar</Text>
-                    </View>
-                    <View style={fus.uploadCardRow}>
-                      {/* PDF */}
-                      {(() => {
-                        const pdfLabel = 'PDF Belgesi';
-                        const existing = form.attachments.find(a => a.name.startsWith(pdfLabel));
-                        const card = (
-                          <TouchableOpacity
-                            key={pdfLabel}
-                            style={[fus.uploadCard, !existing && fus.uploadCardDashed]}
-                            onPress={() => {
-                              if (existing) { openPreviewFromUpload(existing); return; }
-                              if (Platform.OS !== 'web') return;
-                              // @ts-ignore
-                              const input = document.createElement('input');
-                              input.type = 'file'; input.accept = '.pdf,application/pdf';
-                              input.onchange = (e: any) => {
-                                const file = e.target.files?.[0]; if (!file) return;
-                                const newFile: AttachedFile = {
-                                  id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-                                  name: `${pdfLabel}.pdf`,
-                                  // @ts-ignore
-                                  uri: URL.createObjectURL(file),
-                                  kind: 'pdf', size: file.size, scope: 'case',
-                                };
-                                setForm(f => ({ ...f, attachments: [...f.attachments.filter(a => !a.name.startsWith(pdfLabel)), newFile] }));
-                              };
-                              // @ts-ignore
-                              document.body.appendChild(input); input.click();
-                              // @ts-ignore
-                              setTimeout(() => { try { document.body.removeChild(input); } catch {} }, 60_000);
-                            }}
-                            activeOpacity={0.8}
-                          >
-                            <View style={[fus.uploadCardTab, { backgroundColor: existing ? '#22C55E' : '#F59E0B' }]} />
-                            <View style={fus.uploadCardBody}>
-                              <View style={fus.uploadCardIcon}>
-                                <AppIcon name={'file-pdf-box' as any} size={28} color={existing ? '#22C55E' : '#F59E0B'} />
-                              </View>
-                              <Text style={[fus.uploadCardLabel, { color: existing ? '#0F172A' : '#64748B' }]} numberOfLines={2}>
-                                PDF (Reçete vb.)
-                              </Text>
-                            </View>
-                            <View style={[fus.uploadCardBtn, { backgroundColor: existing ? '#22C55E' : '#F59E0B' }]}>
-                              <AppIcon name={existing ? 'check' : 'arrow-up'} size={16} color="#FFFFFF" />
-                            </View>
-                            {existing && (
-                              <TouchableOpacity
-                                style={fus.uploadCardDel}
-                                onPress={(e) => { (e as any).stopPropagation?.(); removeAttachment(existing.id); }}
-                                activeOpacity={0.8}
-                              >
-                                <AppIcon name={'close' as any} size={12} color="#EF4444" />
-                              </TouchableOpacity>
-                            )}
-                          </TouchableOpacity>
-                        );
-                        return existing ? card : <WithTooltip text={UPLOAD_TIPS[pdfLabel]}>{card}</WithTooltip>;
-                      })()}
-                      {/* Referans Fotoğraf */}
-                      {(() => {
-                        const photoLabel = 'Referans Fotoğraf';
-                        const existing = form.attachments.find(a => a.name.startsWith(photoLabel));
-                        const card = (
-                          <TouchableOpacity
-                            key={photoLabel}
-                            style={[fus.uploadCard, !existing && fus.uploadCardDashed]}
-                            onPress={() => existing ? openPreviewFromUpload(existing) : openSpecificPhotoPicker(photoLabel)}
-                            activeOpacity={0.8}
-                          >
-                            <View style={[fus.uploadCardTab, { backgroundColor: existing ? '#22C55E' : '#F59E0B' }]} />
-                            <View style={fus.uploadCardBody}>
-                              {existing ? (
-                                <View style={fus.uploadCardThumbWrap}>
-                                  <Image source={{ uri: existing.uri }} style={fus.uploadCardThumbImg} resizeMode="cover" />
-                                  <View style={fus.uploadCardThumbOverlay}>
-                                    <AppIcon name={'eye-outline' as any} size={18} color="#FFFFFF" />
-                                  </View>
-                                </View>
-                              ) : (
-                                <View style={fus.uploadCardIcon}>
-                                  <AppIcon name={'image-outline' as any} size={28} color={'#F59E0B'} />
-                                </View>
-                              )}
-                              <Text style={[fus.uploadCardLabel, { color: existing ? '#0F172A' : '#64748B' }]} numberOfLines={2}>
-                                Referans Fotoğraf
-                              </Text>
-                            </View>
-                            <View style={[fus.uploadCardBtn, { backgroundColor: existing ? '#22C55E' : '#F59E0B' }]}>
-                              <AppIcon name={existing ? 'check' : 'arrow-up'} size={16} color="#FFFFFF" />
-                            </View>
-                            {existing && (
-                              <TouchableOpacity
-                                style={fus.uploadCardDel}
-                                onPress={(e) => { (e as any).stopPropagation?.(); removeAttachment(existing.id); }}
-                                activeOpacity={0.8}
-                              >
-                                <AppIcon name={'close' as any} size={12} color="#EF4444" />
-                              </TouchableOpacity>
-                            )}
-                          </TouchableOpacity>
-                        );
-                        return existing ? card : <WithTooltip text={UPLOAD_TIPS[photoLabel]}>{card}</WithTooltip>;
-                      })()}
-                    </View>
-                  </View>
-
-                  </View>{/* end umGrid */}
-
-                </ScrollView>
-
-                {/* Footer — Tamam butonu (mobilde tam genişlik) */}
-                <View style={[fus.umFooter, !isDesktop && { padding: 12, alignItems: 'stretch' as any }]}>
-                  <TouchableOpacity
-                    style={[
-                      fus.umOkBtn,
-                      { backgroundColor: P },
-                      !isDesktop && { justifyContent: 'center' as any },
-                    ]}
-                    onPress={() => setUploadModalOpen(false)}
-                    activeOpacity={0.85}
-                  >
-                    <AppIcon name={'check' as any} size={18} color="#FFFFFF" />
-                    <Text style={fus.umOkBtnText}>Tamam</Text>
-                  </TouchableOpacity>
-                </View>
-
-              </View>
-            </View>
-          </Modal>
-
-          {/* ── Kapanış Analizi Modal ── */}
-          <OcclusionAnalysisModal
-            visible={occlusionModalOpen}
-            upperUri={form.attachments.find(a => a.name.startsWith('Üst Çene'))?.uri ?? null}
-            upperName={form.attachments.find(a => a.name.startsWith('Üst Çene'))?.name}
-            lowerUri={form.attachments.find(a => a.name.startsWith('Alt Çene'))?.uri ?? null}
-            lowerName={form.attachments.find(a => a.name.startsWith('Alt Çene'))?.name}
-            biteUri={form.attachments.find(a => a.name.startsWith('Bite (Kapanış)'))?.uri ?? null}
-            onResult={(res) => setOcclusionResult(res)}
-            onClose={(snap) => {
-              if (snap) setOcclusionScreenshot(snap);
-              setOcclusionModalOpen(false);
+            onClose={() => setUploadModalOpen(false)}
+            accentColor={P}
+            title="Sipariş Dosyaları"
+            splitView
+            showImplant={form.tooth_ops.some(o => {
+                if (isImplantWorkType(o.work_type)) return true;
+                // Servis adı "implant" içermese de KATEGORİSİ implant olabilir
+                // (ör. "İmplant Üstü Hizmetler") — Türkçe "İ" için locale-aware.
+                const svc = services.find(s => s.name === o.work_type);
+                return (svc?.category ?? '').toLocaleLowerCase('tr-TR').includes('implant');
+              })
+              || form.attachments.some(a => (a.name ?? '').toLowerCase().includes('scan body'))}
+            // YÜKLENEN DOSYALAR listesi — sadece upload'ı tamamlanmış dosyalar.
+            // Henüz yüklenmekte olanlar üstteki progress bar'larda görünüyor;
+            // burada da listelenirse duplicate olur.
+            attachments={form.attachments
+              .filter(a => !a.upload_status || a.upload_status === 'done' || a.upload_status === 'error')
+              .map<UploadAttachment>(a => ({
+                id:   a.id,
+                name: a.name,
+                uri:  a.uri,
+                kind: a.kind === 'photo' ? 'image'
+                    : a.kind === 'video' ? 'video'
+                    : a.kind === 'pdf'   ? 'pdf'
+                    : a.kind === 'stl' || a.kind === 'ply' ? 'scan'
+                    : 'image',
+                canRemove: true,
+              }))}
+            uploadingStates={form.attachments
+              .filter(a => a.upload_status === 'uploading' || a.upload_status === 'pending')
+              .map(a => {
+                // Label = a.name'in extension'sız hali (örn "Üst Çene.ply" → "Üst Çene")
+                const label = a.name.replace(/\.[^.]+$/, '');
+                return {
+                  id: a.id,
+                  filename: a.name,
+                  progress: a.upload_progress ?? 0,
+                  label,
+                };
+              })}
+            scanBodiesDelivered={form.scan_bodies_delivered}
+            onToggleScanBodiesDelivered={() => setForm(f => ({ ...f, scan_bodies_delivered: !f.scan_bodies_delivered }))}
+            count3D={form.attachments.filter(a => a.kind === 'stl' || a.kind === 'ply').length}
+            onPreviewAll3D={() => setViewer3DFiles(
+              form.attachments
+                .filter(a => a.kind === 'stl' || a.kind === 'ply')
+                .map(a => ({ id: a.id, name: a.name, url: a.uri, format: a.kind as 'stl' | 'ply' }))
+            )}
+            onPickPhoto={(label) => openSpecificPhotoPicker(label)}
+            onPickVideo={(label) => openSpecificVideoPicker(label)}
+            onPickScan={(label)  => openSpecificScanPicker(label)}
+            onPickPdf={(label)   => openSpecificPdfPicker(label)}
+            onPreview={(att) => {
+              const a = form.attachments.find(x => x.id === att.id);
+              if (a) openFilePreview(a);
             }}
+            onRemove={(id) => removeAttachment(id)}
+            implantBrandSlot={
+              <ImplantBrandPicker
+                value={form.implant_brand}
+                onChange={(v) => setForm(f => ({ ...f, implant_brand: v }))}
+                accent={'#8B5CF6'}
+              />
+            }
           />
 
         </ScrollView>
       )}
 
       {/* Step 3 — Teeth & Dentures */}
-      {step === 3 && (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }} keyboardShouldPersistTaps="handled">
+      {step === 2 && (
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 96, flexGrow: 1 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}>
 
-          {/* Step header */}
-          <NOStepHeader
-            step={3}
-            headerRight={
-              <View style={{ flexDirection: 'row', gap: 6 }}>
-                <Pressable onPress={() => setUploadModalOpen(true)} style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 6,
-                  paddingVertical: 7, paddingHorizontal: 14,
-                  borderRadius: NORadius.md,
-                  borderWidth: 1, borderColor: NO.borderMedium,
-                  backgroundColor: '#FFFFFF',
-                }}>
-                  <AppIcon name="paperclip" size={14} color={NO.inkSoft} />
-                  <Text style={{ fontSize: 12, color: NO.inkSoft, fontWeight: '500' }}>Dosyalar</Text>
-                </Pressable>
-                <Pressable onPress={() => setChatModalVisible(true)} style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 6,
-                  paddingVertical: 7, paddingHorizontal: 14,
-                  borderRadius: NORadius.md,
-                  borderWidth: 1, borderColor: NO.borderMedium,
-                  backgroundColor: '#FFFFFF',
-                }}>
-                  <AppIcon name="message-circle" size={14} color={NO.inkSoft} />
-                  <Text style={{ fontSize: 12, color: NO.inkSoft, fontWeight: '500' }}>Mesaj</Text>
-                </Pressable>
-              </View>
-            }
-          >
+          {/* Step header (sticky upload + chat butonları top-right'da) */}
+          <NOStepHeader step={2}>
             <NOEmText>Hangi diş</NOEmText>, hangi iş?
           </NOStepHeader>
 
@@ -2363,7 +3423,7 @@ ${form.notes ? `<div class="card">
           <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: 12, alignItems: 'stretch' }}>
 
             {/* ── Kart 1: Diş seçimi ── */}
-            <View style={{ flex: isDesktop ? 1.4 : 1 }}>
+            <View style={isDesktop ? { flex: 1.4 } : undefined}>
               <NOCard>
                 <NOCardHead
                   num={1}
@@ -2380,49 +3440,102 @@ ${form.notes ? `<div class="card">
                         <Pressable
                           key={label}
                           onPress={() => {
+                            const existing = form.tooth_ops.map(o => o.tooth);
+                            const toAdd = teeth.filter(t => !existing.includes(t));
+
+                            // Tüm dişler zaten ekli → ikinci işlem prompt
+                            if (toAdd.length === 0) {
+                              const hasWork = form.tooth_ops.some(o => teeth.includes(o.tooth) && !!o.work_type);
+                              if (hasWork) {
+                                const wantSecond = typeof window !== 'undefined' && (window as any).confirm
+                                  ? (window as any).confirm(`${label} için tüm dişlere zaten işlem eklenmiş.\n\nBu çenedeki dişlere ikinci işlem eklemek ister misiniz?`)
+                                  : false;
+                                if (!wantSecond) return;
+                                // Yeni ops oluştur — her diş için ayrı uid
+                                const newEntries = teeth.map(t => ({ tooth: t, ...BLANK_OP, __uid: newOpUid() }));
+                                setForm(f => ({ ...f, tooth_ops: [...f.tooth_ops, ...newEntries] }));
+                                setSelectedTeeth(teeth);
+                                setActiveTooth(teeth[0]);
+                                // Grup edit: yeni op'ların uid'lerini secondary listesine al
+                                setSecondaryOpUids(newEntries.map(e => e.__uid!));
+                                return;
+                              }
+                              // Hiçbir diş work_type'lı değilse normal seç
+                              setSelectedTeeth(teeth);
+                              setActiveTooth(teeth[0]);
+                              return;
+                            }
+
+                            // Normal: eklenmemiş dişleri ekle, çenenin tümünü seçili yap
                             setForm(f => {
-                              const existing = f.tooth_ops.map(o => o.tooth);
-                              const toAdd = teeth.filter(t => !existing.includes(t));
-                              const newOps = [...f.tooth_ops, ...toAdd.map(t => ({ tooth: t, ...BLANK_OP }))];
+                              const newOps = [...f.tooth_ops, ...toAdd.map(t => ({ tooth: t, ...BLANK_OP, __uid: newOpUid() }))];
                               return { ...f, tooth_ops: newOps };
                             });
-                            setSelectedTeeth([teeth[0]]);
+                            setSelectedTeeth(teeth);
                             setActiveTooth(teeth[0]);
+                            setSecondaryOpUids([]);
                           }}
-                          style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: NORadius.pill, backgroundColor: NO.bgInput }}
+                          style={{
+                            paddingHorizontal: 10, paddingVertical: 5,
+                            borderRadius: NORadius.pill,
+                            backgroundColor: 'transparent',
+                            borderWidth: 1, borderColor: NO.borderMedium,
+                          }}
                         >
                           <Text style={{ fontSize: 10, fontWeight: '500', color: NO.inkMedium }}>{label}</Text>
                         </Pressable>
                       ))}
-                      {form.tooth_ops.length > 0 && (
-                        <Pressable
-                          onPress={() => { setForm(f => ({ ...f, tooth_ops: [] })); setSelectedTeeth([]); setActiveTooth(null); setConfirmedTeeth([]); }}
-                          style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: NORadius.pill, backgroundColor: 'rgba(156,46,46,0.06)' }}
-                        >
-                          <Text style={{ fontSize: 10, fontWeight: '500', color: NO.error }}>Temizle</Text>
-                        </Pressable>
-                      )}
+                      {/* "Temizle" butonu kaldırıldı — yanlış tıklama önlenir */}
                     </View>
                   }
                 />
                 <ToothNumberPicker
-                  selected={form.tooth_ops.map(o => o.tooth)}
+                  selected={Array.from(new Set(form.tooth_ops.map(o => o.tooth)))}
                   colorMap={toothColorMap}
                   accentColor={NO.saffron}
                   onChange={(newTeeth) => {
-                    const prevTeeth = form.tooth_ops.map(o => o.tooth);
-                    const added   = newTeeth.filter(t => !prevTeeth.includes(t));
+                    const prevTeethSet = new Set(form.tooth_ops.map(o => o.tooth));
+                    const prevTeeth = Array.from(prevTeethSet);
+                    const added   = newTeeth.filter(t => !prevTeethSet.has(t));
                     const removed = prevTeeth.filter(t => !newTeeth.includes(t));
+
+                    // ── İkinci işlem prompt ─────────────────────────────────
+                    // Eğer kullanıcı tek bir confirmed/dolu dişe tekrar tıkladıysa:
+                    // bunu "ikinci işlem eklemek istiyorum" niyeti olarak yorumla.
+                    if (removed.length === 1 && added.length === 0) {
+                      const t = removed[0];
+                      const hasWork = form.tooth_ops.some(o => o.tooth === t && !!o.work_type);
+                      if (hasWork) {
+                        const wantSecond = typeof window !== 'undefined' && (window as any).confirm
+                          ? (window as any).confirm(`Diş ${t} için zaten bir işlem var.\n\nİkinci bir işlem eklemek ister misiniz?\n\n(Diş seçimini iptal etmek için işlem listesindeki çarpı (×) butonunu kullanın.)`)
+                          : false;
+                        if (wantSecond) {
+                          const uid = newOpUid();
+                          setForm(f => ({ ...f, tooth_ops: [...f.tooth_ops, { tooth: t, ...BLANK_OP, __uid: uid }] }));
+                          setSecondaryOpUids([uid]);
+                          setActiveTooth(t);
+                          setSelectedTeeth([t]);
+                          return; // ToothPicker'a deselect propagasyonu yapma
+                        }
+                        // İptal seçildi — yine de silme, sadece seçili kalsın
+                        return;
+                      }
+                    }
+
                     setForm(f => {
                       let ops = f.tooth_ops.filter(o => !removed.includes(o.tooth));
-                      added.forEach(t => { ops = [...ops, { tooth: t, ...BLANK_OP }]; });
+                      added.forEach(t => { ops = [...ops, { tooth: t, ...BLANK_OP, __uid: newOpUid() }]; });
                       return { ...f, tooth_ops: ops };
                     });
-                    if (removed.length > 0) setConfirmedTeeth(prev => prev.filter(t => !removed.includes(t)));
+                    if (removed.length > 0) {
+                      setConfirmedTeeth(prev => prev.filter(t => !removed.includes(t)));
+                      setSecondaryOpUids([]);
+                    }
                     const nextSelected = selectedTeeth.filter(t => !removed.includes(t));
                     if (added.length > 0) {
                       setSelectedTeeth([...nextSelected, ...added]);
                       setActiveTooth(added[added.length - 1]);
+                      setSecondaryOpUids([]);
                     } else {
                       setSelectedTeeth(nextSelected);
                       if (activeTooth !== null && removed.includes(activeTooth)) {
@@ -2433,45 +3546,30 @@ ${form.notes ? `<div class="card">
                   containerWidth={isDesktop ? (width - 100) / 2 - 64 : width - 80}
                 />
 
-                {/* Renk paleti */}
-                <View style={{ marginTop: 16, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <Text style={{ ...NOType.nano, color: NO.inkMute }}>RENK</Text>
-                  <View style={{ flexDirection: 'row', gap: 4, flexWrap: 'wrap' }}>
-                    {ALL_SHADES.slice(0, 9).map((shade) => {
-                      const activeShade = activeTooth ? (form.tooth_ops.find(o => o.tooth === activeTooth)?.shade ?? '') : '';
-                      const sel = shade === activeShade;
-                      return (
-                        <Pressable
-                          key={shade}
-                          onPress={() => { if (activeTooth) updateToothOp({ shade }); }}
-                          style={{
-                            paddingVertical: 5, paddingHorizontal: 9,
-                            borderRadius: NORadius.sm,
-                            backgroundColor: sel ? NO.saffron : NO.bgInput,
-                          }}
-                        >
-                          <Text style={{
-                            fontSize: 10, fontFamily: 'monospace', fontWeight: '600',
-                            color: sel ? NO.inkStrong : NO.inkSoft,
-                          }}>{shade}</Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
+                {/* Renk paleti kaldırıldı — renk seçimi alttaki "İş detayı" kartında yapılıyor */}
 
                 <FieldError msg={fe('tooth_ops')} />
               </NOCard>
             </View>
 
             {/* ── Sağ kolon: İş detayı + İş listesi ── */}
-            <View style={{ flex: 1, gap: 12 }}>
+            <View style={isDesktop ? { flex: 1, gap: 12 } : { gap: 12 }}>
 
               {/* Kart 2: İş detayı */}
               {(() => {
                 const validTooth = activeTooth !== null && selectedTeeth.includes(activeTooth) ? activeTooth : null;
-                const op = form.tooth_ops.find(o => o.tooth === validTooth) ?? { tooth: 0, ...BLANK_OP };
-                const isAlreadyConfirmed = selectedTeeth.length > 0 && selectedTeeth.every(t => confirmedTeeth.includes(t));
+                // Aktif op:
+                //   • secondaryOpUids dolu → aktif diş için o uid'lerden ilkini al
+                //   • değilse: aktif dişin work_type'sı boş olan op'unu (yeni eklenenler önceliklidir)
+                const op =
+                  (secondaryOpUids.length > 0
+                    ? form.tooth_ops.find(o => o.__uid && secondaryOpUids.includes(o.__uid) && o.tooth === validTooth)
+                    : null)
+                  ?? form.tooth_ops.find(o => o.tooth === validTooth)
+                  ?? { tooth: 0, ...BLANK_OP };
+                const isAlreadyConfirmed = secondaryOpUids.length === 0
+                  && selectedTeeth.length > 0
+                  && selectedTeeth.every(t => confirmedTeeth.includes(t));
                 const hasLastOp = lastConfirmedOpRef.current.work_type !== '';
 
                 return (
@@ -2494,6 +3592,8 @@ ${form.notes ? `<div class="card">
                         <WorkTypeSelector
                           key={opResetKey}
                           op={op}
+                          services={effectiveServices}
+                          showPrices={showPrices}
                           updateToothOp={updateToothOp}
                           selectedTeeth={selectedTeeth}
                           accentColor={P}
@@ -2507,22 +3607,25 @@ ${form.notes ? `<div class="card">
                               const updated = teeth.map(t =>
                                 existing.includes(t)
                                   ? { ...f.tooth_ops.find(o => o.tooth === t)!, work_type: 'Gece Plağı' }
-                                  : { tooth: t, ...BLANK_OP, work_type: 'Gece Plağı' }
+                                  : { tooth: t, ...BLANK_OP, __uid: newOpUid(), work_type: 'Gece Plağı' }
                               );
                               return { ...f, tooth_ops: [...kept, ...updated] };
                             });
                             setSelectedTeeth(teeth);
                             setActiveTooth(teeth[0]);
                           }}
-                          onAutoConfirm={() => {
-                            if (!op.work_type) return;
-                            const { tooth: _t, ...rest } = op as ToothOp;
+                          onAutoConfirm={(opOverride) => {
+                            // opOverride: seçimle aynı anda gelen taze op (stale closure'ı önler).
+                            const effOp = { ...op, ...(opOverride ?? {}) } as ToothOp;
+                            if (!effOp.work_type) return;
+                            const { tooth: _t, ...rest } = effOp;
                             lastConfirmedOpRef.current = rest;
                             selectedTeeth.forEach(t => {
                               setConfirmedTeeth(prev => prev.includes(t) ? prev : [...prev, t]);
                             });
                             setSelectedTeeth([]);
                             setActiveTooth(null);
+                            setSecondaryOpUids([]);
                             setOpResetKey(k => k + 1);
                           }}
                         />
@@ -2542,6 +3645,7 @@ ${form.notes ? `<div class="card">
                                   });
                                   setSelectedTeeth([]);
                                   setActiveTooth(null);
+                                  setSecondaryOpUids([]);
                                   setOpResetKey(k => k + 1);
                                 }, 0);
                               }}
@@ -2558,16 +3662,55 @@ ${form.notes ? `<div class="card">
                 );
               })()}
 
-              {/* Kart 3: İş listesi — kompakt tablo */}
+              {/* Kart 3: İş listesi — aynı işlem değerlerine sahip dişler tek satırda gruplanır */}
               {(() => {
-                const confirmed = [...form.tooth_ops].filter(o => confirmedTeeth.includes(o.tooth)).sort((a, b) => a.tooth - b.tooth);
+                const confirmed = [...form.tooth_ops]
+                  .filter(o => confirmedTeeth.includes(o.tooth))
+                  .sort((a, b) => a.tooth - b.tooth);
                 const totalPrice = confirmed.reduce((s, o) => s + (o.price || 0) + (o.material_price || 0), 0);
+
+                // Aynı işlem değerlerine sahip op'ları grupla
+                const groupKeyOf = (o: ToothOp) => [
+                  o.work_type, o.shade, o.material,
+                  o.implant_system, o.implant_type, o.abutment, o.screw,
+                  o.price, o.material_price,
+                ].join('||');
+                const groupMap = new Map<string, { key: string; ops: ToothOp[]; teeth: number[] }>();
+                confirmed.forEach(o => {
+                  const k = groupKeyOf(o);
+                  if (!groupMap.has(k)) groupMap.set(k, { key: k, ops: [], teeth: [] });
+                  const g = groupMap.get(k)!;
+                  g.ops.push(o);
+                  g.teeth.push(o.tooth);
+                });
+                const groups = Array.from(groupMap.values())
+                  .map(g => ({ ...g, teeth: Array.from(new Set(g.teeth)).sort((a, b) => a - b) }))
+                  .sort((a, b) => a.teeth[0] - b.teeth[0]);
+
+                // 11, 12, 13, 14 → "11-14" range formatı
+                const formatTeethRange = (teeth: number[]): string => {
+                  if (teeth.length === 0) return '';
+                  if (teeth.length === 1) return String(teeth[0]);
+                  const parts: string[] = [];
+                  let start = teeth[0], prev = teeth[0];
+                  for (let i = 1; i <= teeth.length; i++) {
+                    const t = teeth[i];
+                    if (t !== prev + 1) {
+                      parts.push(start === prev ? String(start) : `${start}–${prev}`);
+                      start = t; prev = t;
+                    } else {
+                      prev = t;
+                    }
+                  }
+                  return parts.join(', ');
+                };
+
                 return (
                   <NOCard>
                     <NOCardHead
                       num={3}
                       title="İş listesi"
-                      badge={confirmed.length > 0 ? `${confirmed.length} diş · ₺${totalPrice.toLocaleString('tr-TR')}` : undefined}
+                      badge={confirmed.length > 0 ? (showPrices ? `${confirmed.length} diş · ${curSym(confirmed[0]?.currency ?? orderCur)}${totalPrice.toLocaleString('tr-TR')}` : `${confirmed.length} diş`) : undefined}
                       accent={P}
                     />
                     {confirmed.length === 0 ? (
@@ -2580,19 +3723,104 @@ ${form.notes ? `<div class="card">
                       <View>
                         {/* Başlık satırı */}
                         <View style={{ flexDirection: 'row', alignItems: 'center', paddingBottom: 6, marginBottom: 4, borderBottomWidth: 1, borderBottomColor: NO.borderSoft }}>
-                          <Text style={{ flex: 0.3, fontSize: 10, fontWeight: '600', color: NO.inkMute, letterSpacing: 0.5 }}>DİŞ</Text>
+                          <Text style={{ flex: 0.45, fontSize: 10, fontWeight: '600', color: NO.inkMute, letterSpacing: 0.5 }}>DİŞ</Text>
                           <Text style={{ flex: 1, fontSize: 10, fontWeight: '600', color: NO.inkMute, letterSpacing: 0.5 }}>İŞLEM</Text>
-                          <Text style={{ width: 70, fontSize: 10, fontWeight: '600', color: NO.inkMute, letterSpacing: 0.5, textAlign: 'right' }}>MALİYET</Text>
+                          <Text style={{ width: 80, fontSize: 10, fontWeight: '600', color: NO.inkMute, letterSpacing: 0.5, textAlign: 'right' }}>MALİYET</Text>
                           <View style={{ width: 28 }} />
                         </View>
-                        {/* Satırlar */}
-                        {confirmed.map((op, i) => {
+                        {/* Gruplanmış satırlar */}
+                        {groups.map((g, i) => {
+                          const op = g.ops[0]; // grup üyeleri özdeş özelliklere sahip
+                          const detail = [op.material, op.shade].filter(Boolean).join(' · ');
+                          const unitCost = (op.price || 0) + (op.material_price || 0);
+                          const groupCost = unitCost * g.ops.length;
+                          const isEditing = g.teeth.some(t => selectedTeeth.includes(t));
+                          const teethLabel = formatTeethRange(g.teeth);
+                          return (
+                            <Pressable
+                              key={g.key + '|' + i}
+                              onPress={() => {
+                                setSelectedTeeth(g.teeth);
+                                setActiveTooth(g.teeth[0]);
+                                setOpResetKey(k => k + 1);
+                              }}
+                              style={{
+                                flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 4,
+                                borderBottomWidth: i < groups.length - 1 ? 1 : 0,
+                                borderBottomColor: NO.borderSoft,
+                                backgroundColor: isEditing ? NO.saffronSoft : 'transparent',
+                                borderRadius: isEditing ? 8 : 0,
+                                marginHorizontal: isEditing ? -4 : 0,
+                              }}
+                            >
+                              {/* Diş listesi */}
+                              <View style={{ flex: 0.45, flexDirection: 'row', flexWrap: 'wrap', gap: 3, alignItems: 'center' }}>
+                                <Text style={{
+                                  fontSize: 11, fontWeight: '700',
+                                  color: isEditing ? NO.saffron : NO.inkStrong,
+                                  fontFamily: 'monospace',
+                                }}>
+                                  {teethLabel}
+                                </Text>
+                                {g.ops.length > 1 && (
+                                  <Text style={{ fontSize: 10, color: NO.inkMute }}>· {g.ops.length} adet</Text>
+                                )}
+                              </View>
+                              {/* İşlem detay */}
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 12, fontWeight: '500', color: NO.inkStrong }} numberOfLines={1}>{op.work_type || '—'}</Text>
+                                {detail ? <Text style={{ fontSize: 10, color: NO.inkMute, marginTop: 1 }} numberOfLines={1}>{detail}</Text> : null}
+                              </View>
+                              {/* Düzenle ikonu */}
+                              {isEditing && (
+                                <View style={{ marginRight: 4 }}>
+                                  <AppIcon name="pencil" size={11} color={NO.inkSoft} />
+                                </View>
+                              )}
+                              {/* Maliyet */}
+                              <Text style={{ width: 80, fontSize: 12, fontWeight: '600', color: groupCost > 0 ? NO.inkStrong : NO.inkMute, textAlign: 'right' }}>
+                                {showPrices && groupCost > 0 ? `${curSym(op.currency ?? orderCur)}${groupCost.toLocaleString('tr-TR')}` : '—'}
+                              </Text>
+                              {/* Sil — gruptaki TÜM op'ları kaldırır */}
+                              <TouchableOpacity
+                                onPress={(e) => {
+                                  (e as any).stopPropagation?.();
+                                  const uids = g.ops.map(o => o.__uid).filter(Boolean) as string[];
+                                  setForm(f => {
+                                    const nextOps = uids.length > 0
+                                      ? f.tooth_ops.filter(o => !o.__uid || !uids.includes(o.__uid))
+                                      : f.tooth_ops.filter(o => !g.teeth.includes(o.tooth));
+                                    // Bu dişlerin hiç op'u kalmadıysa confirmedTeeth'ten çıkar
+                                    g.teeth.forEach(t => {
+                                      const stillHas = nextOps.some(o => o.tooth === t);
+                                      if (!stillHas) {
+                                        setConfirmedTeeth(prev => prev.filter(x => x !== t));
+                                      }
+                                    });
+                                    return { ...f, tooth_ops: nextOps };
+                                  });
+                                  if (uids.some(u => secondaryOpUids.includes(u))) {
+                                    setSecondaryOpUids(prev => prev.filter(u => !uids.includes(u)));
+                                  }
+                                  if (isEditing) { setSelectedTeeth([]); setActiveTooth(null); }
+                                  return; // eski tekli satır mantığı atlanır
+                                }}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                style={{ width: 28, alignItems: 'center' }}
+                              >
+                                <AppIcon name="x" size={13} color={NO.inkMute} />
+                              </TouchableOpacity>
+                            </Pressable>
+                          );
+                        })}
+                        {/* Eski tekli satır renderı artık devre dışı — grup satırı kullanılıyor */}
+                        {false && confirmed.map((op, i) => {
                           const detail = [op.material, op.shade].filter(Boolean).join(' · ');
                           const cost = (op.price || 0) + (op.material_price || 0);
                           const isEditing = selectedTeeth.includes(op.tooth);
                           return (
                             <Pressable
-                              key={op.tooth}
+                              key={op.__uid ?? `t-${op.tooth}-${(op as any).work_type ?? ''}`}
                               onPress={() => {
                                 setSelectedTeeth([op.tooth]);
                                 setActiveTooth(op.tooth);
@@ -2630,14 +3858,27 @@ ${form.notes ? `<div class="card">
                               )}
                               {/* Maliyet */}
                               <Text style={{ width: 70, fontSize: 12, fontWeight: '600', color: cost > 0 ? NO.inkStrong : NO.inkMute, textAlign: 'right' }}>
-                                {cost > 0 ? `₺${cost.toLocaleString('tr-TR')}` : '—'}
+                                {showPrices && cost > 0 ? `${curSym(op.currency ?? orderCur)}${cost.toLocaleString('tr-TR')}` : '—'}
                               </Text>
-                              {/* Sil */}
+                              {/* Sil — uid varsa sadece o op'u sil, yoksa o tooth'un tümünü sil */}
                               <TouchableOpacity
                                 onPress={(e) => {
                                   (e as any).stopPropagation?.();
-                                  setConfirmedTeeth(prev => prev.filter(t => t !== op.tooth));
-                                  setForm(f => ({ ...f, tooth_ops: f.tooth_ops.filter(o => o.tooth !== op.tooth) }));
+                                  const targetUid = op.__uid;
+                                  setForm(f => {
+                                    const nextOps = targetUid
+                                      ? f.tooth_ops.filter(o => o.__uid !== targetUid)
+                                      : f.tooth_ops.filter(o => o.tooth !== op.tooth);
+                                    // Eğer bu diş için başka op kalmadıysa confirmedTeeth'ten de çıkar
+                                    const stillHas = nextOps.some(o => o.tooth === op.tooth);
+                                    if (!stillHas) {
+                                      setConfirmedTeeth(prev => prev.filter(t => t !== op.tooth));
+                                    }
+                                    return { ...f, tooth_ops: nextOps };
+                                  });
+                                  if (targetUid && secondaryOpUids.includes(targetUid)) {
+                                    setSecondaryOpUids(prev => prev.filter(u => u !== targetUid));
+                                  }
                                   if (isEditing) { setSelectedTeeth([]); setActiveTooth(null); }
                                 }}
                                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -2656,7 +3897,7 @@ ${form.notes ? `<div class="card">
                         }}>
                           <Text style={{ flex: 1, fontSize: 12, fontWeight: '700', color: NO.inkStrong }}>Toplam</Text>
                           <Text style={{ fontSize: 13, fontWeight: '700', color: NO.inkStrong }}>
-                            ₺{totalPrice.toLocaleString('tr-TR')}
+                            {showPrices ? `${curSym(confirmed[0]?.currency ?? orderCur)}${totalPrice.toLocaleString('tr-TR')}` : '—'}
                           </Text>
                           <View style={{ width: 28 }} />
                         </View>
@@ -2669,8 +3910,8 @@ ${form.notes ? `<div class="card">
               {/* Mesaj kutusu — iş listesinin altında */}
               <ChatBox
                 messages={form.chat_messages}
-                onAdd={(msg) => set('chat_messages')([...form.chat_messages, msg])}
-                onDelete={(id) => set('chat_messages')(form.chat_messages.filter(m => m.id !== id))}
+                onAdd={(msg) => { console.log('[NewOrderScreen.onAdd] received msg', msg.id, 'type:', msg.type); setForm(f => { const next = { ...f, chat_messages: [...f.chat_messages, msg] }; console.log('[NewOrderScreen.onAdd] new chat_messages count:', next.chat_messages.length); return next; }); }}
+                onDelete={(id) => setForm(f => ({ ...f, chat_messages: f.chat_messages.filter(m => m.id !== id) }))}
                 accentColor={P}
               />
 
@@ -2683,48 +3924,10 @@ ${form.notes ? `<div class="card">
 
       {/* Step 4 — Summary & Approval */}
       {step === 4 && (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }} keyboardShouldPersistTaps="handled">
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 96, flexGrow: 1 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}>
 
-          {/* Step header */}
-          <NOStepHeader
-            step={4}
-            headerRight={
-              <View style={{ flexDirection: 'row', gap: 6 }}>
-                <Pressable onPress={() => setUploadModalOpen(true)} style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 6,
-                  paddingVertical: 7, paddingHorizontal: 14,
-                  borderRadius: NORadius.md,
-                  borderWidth: 1, borderColor: NO.borderMedium,
-                  backgroundColor: '#FFFFFF',
-                }}>
-                  <AppIcon name="paperclip" size={14} color={NO.inkSoft} />
-                  <Text style={{ fontSize: 12, color: NO.inkSoft, fontWeight: '500' }}>Dosyalar</Text>
-                </Pressable>
-                <Pressable onPress={() => setChatModalVisible(true)} style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 6,
-                  paddingVertical: 7, paddingHorizontal: 14,
-                  borderRadius: NORadius.md,
-                  borderWidth: 1, borderColor: NO.borderMedium,
-                  backgroundColor: '#FFFFFF',
-                }}>
-                  <AppIcon name="message-circle" size={14} color={NO.inkSoft} />
-                  <Text style={{ fontSize: 12, color: NO.inkSoft, fontWeight: '500' }}>Mesaj</Text>
-                </Pressable>
-                {Platform.OS === 'web' && (
-                  <Pressable onPress={printSummary} style={{
-                    flexDirection: 'row', alignItems: 'center', gap: 6,
-                    paddingVertical: 7, paddingHorizontal: 14,
-                    borderRadius: NORadius.md,
-                    borderWidth: 1, borderColor: NO.borderMedium,
-                    backgroundColor: '#FFFFFF',
-                  }}>
-                    <AppIcon name="printer-outline" size={14} color={NO.inkSoft} />
-                    <Text style={{ fontSize: 12, color: NO.inkSoft, fontWeight: '500' }}>Çıktı Al</Text>
-                  </Pressable>
-                )}
-              </View>
-            }
-          >
+          {/* Step header — tüm sticky butonlar top-right'da */}
+          <NOStepHeader step={4}>
             <NOEmText>Hepsi hazır.</NOEmText> Bir kez daha bakalım.
           </NOStepHeader>
 
@@ -2745,117 +3948,241 @@ ${form.notes ? `<div class="card">
               </View>
             )}
 
-            {/* ── Kart 1: Sipariş özeti ── */}
-            <NOCard>
-              <NOCardHead num={1} title="Sipariş özeti" sub="Tüm adımların kısa görünümü" accent={P} />
+            {/* ── Kart 1: F1 Hero — accent bg + blobs + QR + stat triplet ── */}
+            {(() => {
+              const ops = form.tooth_ops.filter(o => confirmedTeeth.includes(o.tooth));
+              const toothCount = ops.length;
+              const fileCount = form.attachments.length;
+              const grandTotal = ops.reduce((s, o) => s + (o.material_price || 0) + (o.price || 0), 0);
+              const deliveryStr = form.delivery_date ? form.delivery_date.toLocaleDateString('tr-TR') : '—';
+              const patientStr  = form.patient_first_name
+                ? `${form.patient_first_name} ${form.patient_last_name}`.trim()
+                : '—';
+              return (
+                <View style={{
+                  position: 'relative' as any,
+                  borderRadius: NORadius.xl,
+                  backgroundColor: P,
+                  padding: 18,
+                  overflow: 'hidden' as any,
+                  ...(Platform.OS === 'web' ? { boxShadow: `0 16px 40px ${P}33` } as any : {}),
+                }}>
+                  {/* Decorative blobs */}
+                  <View pointerEvents="none" style={{
+                    position: 'absolute' as any, top: -60, right: -40,
+                    width: 200, height: 200, borderRadius: 9999,
+                    backgroundColor: 'rgba(255,255,255,0.10)',
+                  }} />
+                  <View pointerEvents="none" style={{
+                    position: 'absolute' as any, bottom: -80, left: -30,
+                    width: 220, height: 220, borderRadius: 9999,
+                    backgroundColor: 'rgba(255,255,255,0.06)',
+                  }} />
 
-              {/* Klinik & Hasta */}
-              <View style={{ gap: 10 }}>
-                <View style={{ flexDirection: 'row', gap: 12 }}>
-                  <View style={{ flex: 1, padding: 10, backgroundColor: NO.bgInput, borderRadius: NORadius.sm }}>
-                    <Text style={{ fontSize: 10, color: NO.inkMute, marginBottom: 3 }}>KLİNİK</Text>
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: NO.inkStrong }} numberOfLines={1}>
-                      {selectedClinic?.name || '—'}
-                    </Text>
+                  {/* Üst row: eyebrow / title + QR */}
+                  <View style={{ flexDirection: 'row', gap: 14, alignItems: 'flex-start' }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(255,255,255,0.80)', letterSpacing: 1.4, textTransform: 'uppercase' }}>
+                        Adım 4 / 4 · Sipariş Özeti
+                      </Text>
+                      <Text style={{
+                        marginTop: 4,
+                        fontSize: 22, fontWeight: '300',
+                        letterSpacing: -0.4, color: '#FFFFFF',
+                        fontFamily: DISPLAY_FONT.fontFamily,
+                      }}>
+                        İş Emri Hazır
+                      </Text>
+
+                      {/* Compact info satırları */}
+                      <View style={{ marginTop: 12, gap: 5 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+                          <Text style={{ width: 60, fontSize: 9.5, color: 'rgba(255,255,255,0.65)', letterSpacing: 0.6, fontWeight: '700' }}>KLİNİK</Text>
+                          <Text style={{ flex: 1, fontSize: 12.5, fontWeight: '600', color: '#FFFFFF' }} numberOfLines={1}>{selectedClinic?.name || '—'}</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+                          <Text style={{ width: 60, fontSize: 9.5, color: 'rgba(255,255,255,0.65)', letterSpacing: 0.6, fontWeight: '700' }}>HEKİM</Text>
+                          <Text style={{ flex: 1, fontSize: 12.5, fontWeight: '600', color: '#FFFFFF' }} numberOfLines={1}>{selectedDoctor?.full_name || '—'}</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+                          <Text style={{ width: 60, fontSize: 9.5, color: 'rgba(255,255,255,0.65)', letterSpacing: 0.6, fontWeight: '700' }}>HASTA</Text>
+                          <Text style={{ flex: 1, fontSize: 12.5, fontWeight: '600', color: '#FFFFFF' }} numberOfLines={1}>{patientStr}</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+                          <Text style={{ width: 60, fontSize: 9.5, color: 'rgba(255,255,255,0.65)', letterSpacing: 0.6, fontWeight: '700' }}>TESLİM</Text>
+                          <Text style={{ flex: 1, fontSize: 12.5, fontWeight: '600', color: '#FFFFFF' }} numberOfLines={1}>{deliveryStr}</Text>
+                        </View>
+                      </View>
+                    </View>
+
+                    {/* Sağ: QR kart — premium minimal, kısa URL ile minimal matrix */}
+                    {Platform.OS === 'web' && (
+                      <View style={{
+                        width: 120,
+                        paddingVertical: 10, paddingHorizontal: 10,
+                        alignItems: 'center',
+                        backgroundColor: '#FFFFFF',
+                        borderRadius: 12,
+                        ...(Platform.OS === 'web' ? { boxShadow: '0 6px 16px rgba(0,0,0,0.16)' } as any : {}),
+                      }}>
+                        {React.createElement('div' as any, { id: 'dental-qr-container', style: { display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 0 } },
+                          <QRCodeSvg
+                            value={qrValue}
+                            size={100}
+                            color="#0F172A"
+                            backgroundColor="#FFFFFF"
+                            ecl="M"
+                          />
+                        )}
+                        {qrShortUrl && (
+                          <Text style={{
+                            marginTop: 6, fontSize: 9, color: '#0F172A', letterSpacing: 0.6,
+                            fontFamily: Platform.OS === 'web' ? 'ui-monospace, SFMono-Regular, monospace' as any : 'monospace',
+                            fontWeight: '700',
+                          }}>
+                            {qrShortUrl.split('/c/')[1] ?? ''}
+                          </Text>
+                        )}
+                      </View>
+                    )}
                   </View>
-                  <View style={{ flex: 1, padding: 10, backgroundColor: NO.bgInput, borderRadius: NORadius.sm }}>
-                    <Text style={{ fontSize: 10, color: NO.inkMute, marginBottom: 3 }}>HEKİM</Text>
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: NO.inkStrong }} numberOfLines={1}>
-                      {selectedDoctor?.full_name || '—'}
-                    </Text>
+
+                  {/* Stat triplet — 3 mini stat pill */}
+                  <View style={{
+                    marginTop: 14,
+                    flexDirection: 'row', gap: 8,
+                  }}>
+                    {[
+                      { label: 'Diş', value: String(toothCount) },
+                      { label: 'Dosya', value: String(fileCount) },
+                      { label: 'Tutar', value: showPrices && grandTotal > 0 ? `${curSym(orderCur)}${grandTotal.toLocaleString('tr-TR')}` : '—' },
+                    ].map(s => (
+                      <View key={s.label} style={{
+                        flex: 1, paddingHorizontal: 10, paddingVertical: 8,
+                        borderRadius: 10,
+                        backgroundColor: 'rgba(255,255,255,0.14)',
+                        borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
+                      }}>
+                        <Text style={{ fontSize: 9, fontWeight: '700', color: 'rgba(255,255,255,0.70)', letterSpacing: 0.7 }}>
+                          {s.label.toUpperCase()}
+                        </Text>
+                        <Text style={{ marginTop: 2, fontSize: 16, fontWeight: '700', color: '#FFFFFF', fontFamily: DISPLAY_FONT.fontFamily, letterSpacing: -0.2 }}>
+                          {s.value}
+                        </Text>
+                      </View>
+                    ))}
                   </View>
                 </View>
-                <View style={{ flexDirection: 'row', gap: 12 }}>
-                  <View style={{ flex: 1, padding: 10, backgroundColor: NO.bgInput, borderRadius: NORadius.sm }}>
-                    <Text style={{ fontSize: 10, color: NO.inkMute, marginBottom: 3 }}>HASTA</Text>
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: NO.inkStrong }} numberOfLines={1}>
-                      {form.patient_first_name ? `${form.patient_first_name} ${form.patient_last_name}`.trim() : '—'}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1, padding: 10, backgroundColor: NO.bgInput, borderRadius: NORadius.sm }}>
-                    <Text style={{ fontSize: 10, color: NO.inkMute, marginBottom: 3 }}>TESLİM TARİHİ</Text>
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: NO.inkStrong }}>
-                      {form.delivery_date ? form.delivery_date.toLocaleDateString('tr-TR') : '—'}
-                    </Text>
-                  </View>
-                </View>
+              );
+            })()}
 
-                {/* Çalışma yöntemi satırı */}
-                <View style={{ flexDirection: 'row', gap: 12 }}>
-                  <View style={{ flex: 1, padding: 10, backgroundColor: NO.bgInput, borderRadius: NORadius.sm }}>
-                    <Text style={{ fontSize: 10, color: NO.inkMute, marginBottom: 3 }}>ÖLÇÜM</Text>
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: NO.inkStrong }}>
-                      {form.measurement_type === 'digital' ? 'Dijital' : form.measurement_type === 'manual' ? 'Manuel' : '—'}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1, padding: 10, backgroundColor: NO.bgInput, borderRadius: NORadius.sm }}>
-                    <Text style={{ fontSize: 10, color: NO.inkMute, marginBottom: 3 }}>MODEL</Text>
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: NO.inkStrong }}>
-                      {form.model_type || '—'}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            </NOCard>
-
-            {/* ── Kart 2: İş listesi özeti ── */}
+            {/* ── Kart 2: İş listesi özeti — aynı işlemler tek satırda gruplanır ── */}
             {(() => {
               const ops = form.tooth_ops.filter(o => confirmedTeeth.includes(o.tooth)).sort((a, b) => a.tooth - b.tooth);
               const totalMat = ops.reduce((s, o) => s + (o.material_price || 0), 0);
               const totalLabor = ops.reduce((s, o) => s + (o.price || 0), 0);
               const grandTotal = totalMat + totalLabor;
+
+              // Gruplama — aynı op signature → tek satır
+              const groupKeyOf = (o: ToothOp) => [
+                o.work_type, o.shade, o.material,
+                o.implant_system, o.implant_type, o.abutment, o.screw,
+                o.price, o.material_price,
+              ].join('||');
+              const gMap = new Map<string, { key: string; ops: ToothOp[]; teeth: number[] }>();
+              ops.forEach(o => {
+                const k = groupKeyOf(o);
+                if (!gMap.has(k)) gMap.set(k, { key: k, ops: [], teeth: [] });
+                const g = gMap.get(k)!;
+                g.ops.push(o);
+                g.teeth.push(o.tooth);
+              });
+              const groups = Array.from(gMap.values())
+                .map(g => ({ ...g, teeth: Array.from(new Set(g.teeth)).sort((a, b) => a - b) }))
+                .sort((a, b) => a.teeth[0] - b.teeth[0]);
+
+              // Range formatla: [11,12,13,14] → "11–14", [11,13,14] → "11, 13–14"
+              const formatTeethRange = (teeth: number[]): string => {
+                if (teeth.length === 0) return '';
+                if (teeth.length === 1) return String(teeth[0]);
+                const parts: string[] = [];
+                let start = teeth[0], prev = teeth[0];
+                for (let i = 1; i <= teeth.length; i++) {
+                  const t = teeth[i];
+                  if (t !== prev + 1) {
+                    parts.push(start === prev ? String(start) : `${start}–${prev}`);
+                    start = t; prev = t;
+                  } else {
+                    prev = t;
+                  }
+                }
+                return parts.join(', ');
+              };
+
               return (
                 <NOCard>
-                  <NOCardHead num={2} title="İşlemler" sub={`${ops.length} diş`} badge={grandTotal > 0 ? `₺${grandTotal.toLocaleString('tr-TR')}` : undefined} accent={P} />
+                  <NOCardHead num={2} title="İşlemler" sub={`${ops.length} diş · ${groups.length} işlem`} badge={showPrices && grandTotal > 0 ? `${curSym(ops[0]?.currency ?? orderCur)}${grandTotal.toLocaleString('tr-TR')}` : undefined} accent={P} />
                   {ops.length === 0 ? (
                     <View style={{ paddingVertical: 16, alignItems: 'center', opacity: 0.5 }}>
                       <Text style={{ fontSize: 12, color: NO.inkMute }}>Henüz işlem eklenmedi</Text>
                     </View>
                   ) : (
                     <View>
-                      {ops.map((op, i) => {
+                      {groups.map((g, i) => {
+                        const op = g.ops[0];
                         const detail = [op.material, op.shade].filter(Boolean).join(' · ');
-                        const cost = (op.price || 0) + (op.material_price || 0);
+                        const unitCost = (op.price || 0) + (op.material_price || 0);
+                        const groupCost = unitCost * g.ops.length;
+                        const teethLabel = formatTeethRange(g.teeth);
                         return (
-                          <View key={op.tooth} style={{
-                            flexDirection: 'row', alignItems: 'center', paddingVertical: 6,
-                            borderBottomWidth: i < ops.length - 1 ? 1 : 0, borderBottomColor: NO.borderSoft,
+                          <View key={g.key + '|' + i} style={{
+                            flexDirection: 'row', alignItems: 'center', paddingVertical: 7,
+                            borderBottomWidth: i < groups.length - 1 ? 1 : 0, borderBottomColor: NO.borderSoft,
                           }}>
+                            {/* Diş listesi */}
                             <View style={{
-                              width: 26, height: 20, borderRadius: 5,
+                              minWidth: 60, maxWidth: 130,
+                              paddingHorizontal: 6, paddingVertical: 3, borderRadius: 5,
                               backgroundColor: NO.saffronSoft, alignItems: 'center', justifyContent: 'center', marginRight: 10,
                             }}>
-                              <Text style={{ fontSize: 10, fontWeight: '700', color: NO.inkStrong, fontFamily: 'monospace' }}>{op.tooth}</Text>
+                              <Text style={{ fontSize: 10, fontWeight: '700', color: NO.inkStrong, fontFamily: 'monospace' }}>
+                                {teethLabel}
+                              </Text>
+                              {g.ops.length > 1 && (
+                                <Text style={{ fontSize: 8, color: NO.inkMute, marginTop: 1 }}>{g.ops.length} adet</Text>
+                              )}
                             </View>
                             <View style={{ flex: 1 }}>
                               <Text style={{ fontSize: 11, fontWeight: '500', color: NO.inkStrong }} numberOfLines={1}>{op.work_type}</Text>
                               {detail ? <Text style={{ fontSize: 9, color: NO.inkMute }} numberOfLines={1}>{detail}</Text> : null}
                             </View>
-                            <Text style={{ fontSize: 11, fontWeight: '600', color: cost > 0 ? NO.inkStrong : NO.inkMute }}>
-                              {cost > 0 ? `₺${cost.toLocaleString('tr-TR')}` : '—'}
+                            <Text style={{ fontSize: 11, fontWeight: '600', color: groupCost > 0 ? NO.inkStrong : NO.inkMute }}>
+                              {showPrices && groupCost > 0 ? `${curSym(op.currency ?? orderCur)}${groupCost.toLocaleString('tr-TR')}` : '—'}
                             </Text>
                           </View>
                         );
                       })}
-                      {/* Maliyet özeti */}
+                      {/* Maliyet özeti — yalnız fiyat yetkisi olanlara */}
+                      {showPrices && (
                       <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: NO.inkStrong, gap: 4 }}>
                         {totalMat > 0 && (
                           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                             <Text style={{ fontSize: 11, color: NO.inkSoft }}>Materyal</Text>
-                            <Text style={{ fontSize: 11, color: NO.inkSoft }}>₺{totalMat.toLocaleString('tr-TR')}</Text>
+                            <Text style={{ fontSize: 11, color: NO.inkSoft }}>{curSym(ops[0]?.currency ?? orderCur)}{totalMat.toLocaleString('tr-TR')}</Text>
                           </View>
                         )}
                         {totalLabor > 0 && (
                           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                             <Text style={{ fontSize: 11, color: NO.inkSoft }}>İşçilik</Text>
-                            <Text style={{ fontSize: 11, color: NO.inkSoft }}>₺{totalLabor.toLocaleString('tr-TR')}</Text>
+                            <Text style={{ fontSize: 11, color: NO.inkSoft }}>{curSym(ops[0]?.currency ?? orderCur)}{totalLabor.toLocaleString('tr-TR')}</Text>
                           </View>
                         )}
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
                           <Text style={{ fontSize: 13, fontWeight: '700', color: NO.inkStrong }}>Toplam</Text>
-                          <Text style={{ fontSize: 13, fontWeight: '700', color: NO.inkStrong }}>₺{grandTotal.toLocaleString('tr-TR')}</Text>
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: NO.inkStrong }}>{curSym(ops[0]?.currency ?? orderCur)}{grandTotal.toLocaleString('tr-TR')}</Text>
                         </View>
                       </View>
+                      )}
                     </View>
                   )}
                 </NOCard>
@@ -2881,9 +4208,14 @@ ${form.notes ? `<div class="card">
               </NOCard>
             )}
 
-            {/* ── Kart 4: Hekime not ── */}
+            {/* ── Kart 4: Not (hekim → laboratuvara not, diğer → hekime not) ── */}
             <NOCard>
-              <NOCardHead num={form.attachments.length > 0 ? 4 : 3} title="Hekime not" sub="Opsiyonel · vaka kartında gözükür" accent={P} />
+              <NOCardHead
+                num={form.attachments.length > 0 ? 4 : 3}
+                title={resolvedPanel === 'doctor' ? 'Laboratuvara not' : 'Hekime not'}
+                sub="Opsiyonel · vaka kartında gözükür"
+                accent={P}
+              />
               <View style={{
                 padding: 12, paddingHorizontal: 14,
                 backgroundColor: NO.bgInput, borderRadius: 11,
@@ -2897,8 +4229,8 @@ ${form.notes ? `<div class="card">
                   multiline
                   style={{
                     fontSize: 12, color: NO.inkStrong, minHeight: 40,
-                    ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
-                    textAlignVertical: 'top',
+                    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
+                    textAlignVertical: 'top' as const,
                   }}
                 />
               </View>
@@ -2917,47 +4249,39 @@ ${form.notes ? `<div class="card">
 
       </NOPageChrome>{/* NOPageChrome */}
 
-{/* Clinic add modal */}
-      <ClinicAddModal
+      {/* Denty FAB — modal modunda (onClose) root FAB kapalı kaldığı için burada
+          mount edilir; diğer tüm sayfalardaki yüzen "Denty'ye sor" pill'iyle aynı.
+          DentyFAB kendi içinde panel'i (klinik/hekim) zaten kontrol eder. */}
+      {onClose && <DentyFAB />}
+
+{/* Canonical clinic add modal — sağlık kurumları ekranıyla aynı form */}
+      <CanonicalClinicModal
         visible={clinicModal.visible}
-        prefillName={clinicModal.prefill}
-        saving={clinicSaving}
-        onClose={() => setClinicModal({ visible: false, prefill: '' })}
-        onSave={async (data) => {
-          setClinicSaving(true);
-          const { data: created } = await createClinic(data);
-          setClinicSaving(false);
-          if (created) {
-            setClinics(prev => [...prev, created as any]);
-            set('clinic_id')((created as any).id);
-            set('doctor_id')('');
-          }
-          setClinicModal({ visible: false, prefill: '' });
-        }}
+        editingClinic={null}
+        existingClinics={clinics as any}
         accentColor={P}
+        onClose={() => setClinicModal({ visible: false, prefill: '' })}
+        onSuccess={() => setClinicModal({ visible: false, prefill: '' })}
+        onCreated={(clinic) => {
+          setClinics(prev => [...prev, clinic as any]);
+          set('clinic_id')((clinic as any).id);
+          set('doctor_id')('');
+        }}
       />
 
-      <DoctorAddModal
+      {/* Canonical doctor add modal — Hekim formu ile aynı */}
+      <CanonicalDoctorModal
         visible={doctorModal.visible}
-        prefillName={doctorModal.prefill}
-        clinicId={form.clinic_id || null}
-        clinics={clinics}
-        saving={doctorSaving}
-        onClose={() => setDoctorModal({ visible: false, prefill: '' })}
-        onSave={async (data) => {
-          setDoctorSaving(true);
-          const { data: created } = await createDoctor(data);
-          setDoctorSaving(false);
-          if (created) {
-            setAllDoctors(prev => [...prev, created as any]);
-            set('doctor_id')((created as any).id);
-          }
-          setDoctorModal({ visible: false, prefill: '' });
-        }}
-        onClinicAdded={(clinic) => {
-          setClinics(prev => [...prev, clinic]);
-        }}
+        editingDoctor={null}
+        clinics={clinics as any}
+        defaultClinicId={form.clinic_id || ''}
         accentColor={P}
+        onClose={() => setDoctorModal({ visible: false, prefill: '' })}
+        onSuccess={() => setDoctorModal({ visible: false, prefill: '' })}
+        onCreated={(doctor) => {
+          setAllDoctors(prev => [...prev, doctor as any]);
+          set('doctor_id')((doctor as any).id);
+        }}
       />
 
       {/* ── File Preview Modal ── */}
@@ -2999,20 +4323,6 @@ ${form.notes ? `<div class="card">
                 style={fpv.image}
                 resizeMode="contain"
               />
-            ) : (previewFile?.kind === 'stl' || previewFile?.kind === 'ply') ? (
-              <View style={fpv.viewerWrap}>
-                {/* key forces a full remount (new Three.js scene) for each unique file */}
-                <ModelViewer
-                  key={previewFile.id}
-                  initialModels={[{
-                    id: previewFile.id,
-                    label: previewFile.name,
-                    color: previewFile.kind === 'ply' ? '#b0d4e8' : '#e8d5c4',
-                    url: previewFile.uri,
-                    format: previewFile.kind as 'stl' | 'ply',
-                  }]}
-                />
-              </View>
             ) : previewFile?.kind === 'pdf' ? (
               <View style={fpv.fileInfo}>
                 <View style={fpv.fileIconBig}>
@@ -3070,6 +4380,18 @@ ${form.notes ? `<div class="card">
         </Pressable>
       </Modal>
 
+      {/* ── 3D tarama görüntüleyici — lab ile AYNI Viewer3DModal (tek/çoklu) ── */}
+      {viewer3DFiles && Platform.OS === 'web' && (
+        <React.Suspense fallback={null}>
+          <Viewer3DModalLazy
+            visible
+            files={viewer3DFiles}
+            title={viewer3DFiles.length > 1 ? `${viewer3DFiles.length} tarama birlikte` : viewer3DFiles[0]?.name}
+            onClose={() => setViewer3DFiles(null)}
+          />
+        </React.Suspense>
+      )}
+
       {/* ── Chat popup modal ── */}
       <Modal
         visible={chatModalVisible}
@@ -3078,23 +4400,23 @@ ${form.notes ? `<div class="card">
         onRequestClose={() => setChatModalVisible(false)}
       >
         <Pressable style={chatModal.overlay} onPress={() => setChatModalVisible(false)}>
-          <Pressable style={chatModal.sheet} onPress={(e: any) => e.stopPropagation()}>
-            <View style={chatModal.header}>
+          <Pressable style={[chatModal.sheet, { backgroundColor: T.card }]} onPress={(e: any) => e.stopPropagation()}>
+            <View style={[chatModal.header, { backgroundColor: T.card, borderBottomColor: T.hairline }]}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <AppIcon name={'forum' as any} size={18} color={P} />
                 <View>
-                  <Text style={chatModal.headerTitle}>Mesaj kutusu</Text>
-                  <Text style={chatModal.headerSub}>Bu vakaya özel notlar, sesli mesajlar ve dosyalar</Text>
+                  <Text style={[chatModal.headerTitle, { color: T.ink }]}>Mesaj kutusu</Text>
+                  <Text style={[chatModal.headerSub, { color: T.ink3 }]}>Bu vakaya özel notlar, sesli mesajlar ve dosyalar</Text>
                 </View>
               </View>
               <TouchableOpacity onPress={() => setChatModalVisible(false)} style={chatModal.closeBtn}>
-                <AppIcon name={'close' as any} size={20} color="#64748B" />
+                <AppIcon name={'close' as any} size={20} color={T.ink3} />
               </TouchableOpacity>
             </View>
             <ChatBox
               messages={form.chat_messages}
-              onAdd={(msg) => set('chat_messages')([...form.chat_messages, msg])}
-              onDelete={(id) => set('chat_messages')(form.chat_messages.filter(m => m.id !== id))}
+              onAdd={(msg) => { console.log('[NewOrderScreen.onAdd] received msg', msg.id, 'type:', msg.type); setForm(f => { const next = { ...f, chat_messages: [...f.chat_messages, msg] }; console.log('[NewOrderScreen.onAdd] new chat_messages count:', next.chat_messages.length); return next; }); }}
+              onDelete={(id) => setForm(f => ({ ...f, chat_messages: f.chat_messages.filter(m => m.id !== id) }))}
               hideHeader
               accentColor={P}
             />
@@ -3103,6 +4425,850 @@ ${form.notes ? `<div class="card">
       </Modal>
 
     </SafeAreaView>
+  );
+}
+
+// ── Submit sonrası başarı ekranı ──────────────────────────────────────────
+// ── İmplant marka seçici (FilesUploadModal'ın implantBrandSlot'una geçer) ──
+// Liste, arama, seçim + kütüphane indirme linki.
+const IMPLANT_LIBRARY_LINKS: Record<string, string> = {
+  // ── Yerli (Türkiye) ──
+  'Implance':            'https://www.implance.com/digital',
+  'Bilimplant':          'https://bilimplant.com/dijital-cozumler/',
+  'NucleOSS':            'https://nucleoss.com/dijital',
+  'AGS Medikal':         'https://www.agsmedikal.com/dijital',
+  'Mode Medikal':        'https://www.modemedikal.com/dijital',
+  'Mode Implant':        'https://www.modemedikal.com/dijital',
+  'Trinon Q-Implant':    'https://www.trinon.com/digital-services/',
+  'İmplad':              'https://implad.com.tr/',
+  // ── Uluslararası ──
+  'Straumann':           'https://www.straumann.com/en/dental-professionals/services-and-forms/downloads.html',
+  'Nobel Biocare':       'https://www.nobelbiocare.com/en/digital-workflow-and-equipment/dental-cad-cam-software/scan-bodies',
+  'Osstem':              'https://www.hiossen.com/digital-dentistry/scan-bodies',
+  'Zimmer Biomet':       'https://www.zimvie.com/en/dental/digital-dentistry/digital-workflow.html',
+  'Dentsply Sirona':     'https://www.dentsplysirona.com/en/explore/implants/dental-implant-digital-workflows.html',
+  'Megagen':             'https://megagen.com/scan-body-library/',
+  'Neodent':             'https://www.neodent.com/en/digital-solutions',
+  'BioHorizons':         'https://www.biohorizons.com/digital-scanning.aspx',
+  'Camlog':              'https://www.camlog.com/en/products/digital-dentistry/dedicam-scanbody/',
+  'Astra Tech (Dentsply)':'https://www.dentsplysirona.com/en/explore/implants/astra-tech-implant-system.html',
+  'Ankylos':             'https://www.dentsplysirona.com/en/explore/implants/ankylos.html',
+  'Bicon':               'https://www.bicon.com/cad-cam/',
+  'Biomet 3i':           'https://www.zimvie.com/en/dental.html',
+  'Blue Sky Bio':        'https://blueskybio.com/store/downloads.html',
+  'Dentium':             'https://www.dentium.com/en/main/main.php',
+  'DIO Implant':         'https://en.diodent.com/digital_workflow.html',
+  'Keystone Dental':     'https://www.keystonedental.com/digital-dentistry/',
+  'MIS Implants':        'https://www.mis-implants.com/en-int/digital-dentistry',
+  'Phibo':               'https://www.phibo.com/digital-workflow/',
+  'Southern Implants':   'https://southernimplants.com/digital-dentistry/',
+  'Bredent':             'https://www.bredent-medical.com/en/products/digital-implant-prosthetics/',
+  'Cortex':              'https://www.cortex-dental.com/digital/',
+  'Alpha-Bio Tec':       'https://www.alpha-bio.net/en/digital-dentistry/',
+  'Euroteknika':         'https://www.euroteknika.com/en/digital-dentistry',
+  'Implant Direct':      'https://www.implantdirect.com/clinical-resources/cad-cam-libraries',
+  'Adin':                'https://www.adin-implants.com/digital-dentistry/',
+  'Thommen Medical':     'https://www.thommenmedical.com/en/products/digital-dentistry/',
+  'Bionika':             'https://www.bionikadental.com/digital/',
+  'T-Plus':              'https://www.t-plusimplant.com/',
+  'Seven Implant':       'https://www.mis-implants.com/seven',
+};
+function getImplantLibraryLink(brand: string): string {
+  if (!brand) return '';
+  if (IMPLANT_LIBRARY_LINKS[brand]) return IMPLANT_LIBRARY_LINKS[brand];
+  return `https://www.google.com/search?q=${encodeURIComponent(brand + ' scan body library download')}`;
+}
+
+// ── Premium İmplant Bilgileri Section ───────────────────────────────────
+// Sol: Scan Body STL upload zone (empty / uploading / success states)
+// Sağ üst: Combobox (verified library badge)
+// Sağ alt: Library download CTA (Official source + exocad uyumluluk)
+function ImplantInfoSection({
+  brand, onBrandChange,
+  scanFile, onPickScan, onRemoveScan,
+  accent,
+}: {
+  brand: string;
+  onBrandChange: (v: string) => void;
+  scanFile: AttachedFile | null;
+  onPickScan: () => void;
+  onRemoveScan: () => void;
+  accent: string;
+}) {
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const NO = useNOTokens();
+  const hasVerifiedLibrary = !!brand && !!IMPLANT_LIBRARY_LINKS[brand];
+  const libLink = getImplantLibraryLink(brand);
+
+  const fileStatus =
+    !scanFile ? 'empty'
+    : scanFile.upload_status === 'uploading' ? 'uploading'
+    : scanFile.upload_status === 'error' ? 'error'
+    : 'done';
+
+  const fileSizeStr = scanFile ? formatBytes(scanFile.size ?? 0) : '';
+  const fileExt = scanFile?.name.split('.').pop()?.toUpperCase() ?? 'STL';
+
+  const openLib = () => {
+    if (!libLink) return;
+    if (Platform.OS === 'web') { try { window.open(libLink, '_blank'); } catch {} }
+    else Linking.openURL(libLink);
+  };
+
+  return (
+    <View style={{ gap: 10 }}>
+      {/* ── Üst sıra: 2 kart yan yana ── */}
+      <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
+
+        {/* ═════ SOL — Scan Body STL Upload Zone ═════ */}
+        <Pressable
+          onPress={fileStatus === 'empty' ? onPickScan : undefined}
+          style={({ hovered }: any) => ({
+            flex: 1,
+            minWidth: 220,
+            minHeight: 156,
+            borderRadius: 14,
+            borderWidth: 1,
+            borderStyle: (fileStatus === 'empty' ? 'dashed' : 'solid') as any,
+            borderColor: fileStatus === 'done' ? accent + '40'
+                       : fileStatus === 'error' ? '#EF444466'
+                       : hovered && fileStatus === 'empty' ? accent + '80' : '#CBD5E1',
+            backgroundColor: fileStatus === 'done' ? accent + '05'
+                           : fileStatus === 'error' ? '#FEF2F2'
+                           : hovered && fileStatus === 'empty' ? accent + '06' : '#FAFAFA',
+            padding: 14,
+            justifyContent: 'center' as any,
+            ...(Platform.OS === 'web'
+              ? {
+                  cursor: (fileStatus === 'empty' ? 'pointer' : 'default') as any,
+                  transition: 'all 0.18s ease',
+                } as any
+              : {}),
+          })}
+        >
+          {fileStatus === 'empty' && (
+            <View style={{ alignItems: 'center', gap: 8 }}>
+              <View style={{
+                width: 56, height: 56, borderRadius: 16,
+                backgroundColor: accent + '14',
+                borderWidth: 1, borderColor: accent + '20',
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                <AppIcon name={'cube-scan' as any} size={28} color={accent} />
+              </View>
+              <Text style={{ fontSize: 13, fontFamily: F.semibold, color: NO.inkStrong }}>
+                Scan Body STL
+              </Text>
+              <Text style={{ fontSize: 10.5, fontFamily: F.regular, color: NO.inkMute, textAlign: 'center', lineHeight: 14 }}>
+                STL · PLY · OBJ formatında{'\n'}sürükle bırak veya tıkla
+              </Text>
+            </View>
+          )}
+
+          {fileStatus === 'uploading' && (
+            <View style={{ gap: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={{
+                  width: 32, height: 32, borderRadius: 10,
+                  backgroundColor: accent + '14',
+                  alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <AppIcon name={'cube-outline' as any} size={16} color={accent} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ fontSize: 9.5, fontFamily: F.bold, color: accent, letterSpacing: 0.7 }}>
+                    YÜKLENİYOR · %{scanFile?.upload_progress ?? 0}
+                  </Text>
+                  <Text style={{ fontSize: 12, fontFamily: F.semibold, color: NO.inkStrong, marginTop: 2 }} numberOfLines={1}>
+                    {scanFile?.name}
+                  </Text>
+                </View>
+              </View>
+              <View style={{ height: 4, borderRadius: 2, backgroundColor: accent + '14' }}>
+                <View style={{
+                  height: 4, borderRadius: 2,
+                  width: `${scanFile?.upload_progress ?? 0}%` as any,
+                  backgroundColor: accent,
+                }} />
+              </View>
+            </View>
+          )}
+
+          {fileStatus === 'done' && scanFile && (
+            <View style={{ gap: 10 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{
+                  width: 42, height: 42, borderRadius: 12,
+                  backgroundColor: accent + '14',
+                  borderWidth: 1, borderColor: accent + '28',
+                  alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <AppIcon name={'cube-outline' as any} size={20} color={accent} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: NO.success }} />
+                    <Text style={{ fontSize: 9, fontFamily: F.bold, color: NO.success, letterSpacing: 0.6 }}>
+                      YÜKLENDİ
+                    </Text>
+                    <View style={{
+                      paddingHorizontal: 6, paddingVertical: 1, borderRadius: 5,
+                      backgroundColor: accent + '12',
+                    }}>
+                      <Text style={{ fontSize: 9, fontFamily: F.bold, color: accent, letterSpacing: 0.4 }}>
+                        {fileExt}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={{ fontSize: 12.5, fontFamily: F.semibold, color: NO.inkStrong, marginTop: 2 }} numberOfLines={1}>
+                    {scanFile.name}
+                  </Text>
+                  <Text style={{ fontSize: 10.5, fontFamily: F.regular, color: NO.inkMute, marginTop: 1 }}>
+                    {fileSizeStr}
+                  </Text>
+                </View>
+              </View>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                <Pressable
+                  onPress={onPickScan}
+                  style={({ hovered }: any) => ({
+                    flex: 1,
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+                    paddingVertical: 7, paddingHorizontal: 10, borderRadius: 8,
+                    backgroundColor: hovered ? accent + '14' : '#FFFFFF',
+                    borderWidth: 1, borderColor: accent + '30',
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' as any, transition: 'all 0.15s ease' } as any : {}),
+                  })}
+                >
+                  <AppIcon name={'refresh' as any} size={12} color={accent} />
+                  <Text style={{ fontSize: 11, fontFamily: F.semibold, color: accent }}>Değiştir</Text>
+                </Pressable>
+                <Pressable
+                  onPress={onRemoveScan}
+                  style={({ hovered }: any) => ({
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+                    paddingVertical: 7, paddingHorizontal: 10, borderRadius: 8,
+                    backgroundColor: hovered ? '#FEE2E2' : '#FFFFFF',
+                    borderWidth: 1, borderColor: '#FCA5A540',
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' as any, transition: 'all 0.15s ease' } as any : {}),
+                  })}
+                >
+                  <AppIcon name={'close' as any} size={12} color="#DC2626" />
+                </Pressable>
+              </View>
+            </View>
+          )}
+
+          {fileStatus === 'error' && (
+            <View style={{ alignItems: 'center', gap: 6 }}>
+              <View style={{
+                width: 44, height: 44, borderRadius: 12,
+                backgroundColor: '#FEE2E2',
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                <AppIcon name={'alert-circle-outline' as any} size={22} color="#DC2626" />
+              </View>
+              <Text style={{ fontSize: 12, fontFamily: F.semibold, color: '#DC2626' }}>
+                Yükleme hatası
+              </Text>
+              <Pressable onPress={onPickScan} style={{
+                paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8,
+                backgroundColor: '#FFFFFF',
+                borderWidth: 1, borderColor: '#FCA5A5',
+              }}>
+                <Text style={{ fontSize: 11, fontFamily: F.semibold, color: '#DC2626' }}>Tekrar dene</Text>
+              </Pressable>
+            </View>
+          )}
+        </Pressable>
+
+        {/* ═════ SAĞ — İmplant Marka Combobox ═════ */}
+        <View style={{
+          flex: 1, minWidth: 220, minHeight: 156,
+          borderRadius: 14,
+          borderWidth: 1, borderColor: brand ? accent + '40' : (isDark ? 'rgba(255,255,255,0.10)' : '#E2E8F0'),
+          backgroundColor: brand ? accent + (isDark ? '14' : '04') : 'transparent',
+          padding: 14,
+          gap: 10,
+          overflow: 'visible' as any,
+          ...(Platform.OS === 'web' ? { transition: 'all 0.18s ease' } as any : {}),
+        }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{
+              width: 18, height: 18, borderRadius: 6,
+              backgroundColor: accent + '14',
+              borderWidth: 1, borderColor: accent + '24',
+              alignItems: 'center', justifyContent: 'center',
+            }}>
+              <AppIcon name={'screw-machine-flat-top' as any} size={10} color={accent} />
+            </View>
+            <Text style={{ fontSize: 10, fontFamily: F.bold, color: T.ink, letterSpacing: 0.6 }}>
+              İMPLANT MARKA
+            </Text>
+            {hasVerifiedLibrary && (
+              <View style={{
+                marginLeft: 'auto' as any,
+                flexDirection: 'row', alignItems: 'center', gap: 3,
+                paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6,
+                backgroundColor: NO.success + '14',
+                borderWidth: 1, borderColor: NO.success + '28',
+              }}>
+                <AppIcon name={'check-decagram' as any} size={9} color={NO.success} />
+                <Text style={{ fontSize: 8.5, fontFamily: F.bold, color: NO.success, letterSpacing: 0.4 }}>
+                  VERIFIED
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <ImplantBrandCombobox value={brand} onChange={onBrandChange} accent={accent} />
+
+          {/* Brand seçildikten sonra Library Download */}
+          {brand && (
+            <Pressable
+              onPress={openLib}
+              style={({ hovered }: any) => ({
+                flexDirection: 'row', alignItems: 'center', gap: 9,
+                paddingVertical: 9, paddingHorizontal: 11,
+                borderRadius: 10,
+                backgroundColor: hovered ? accent + '1A' : accent + '10',
+                borderWidth: 1, borderColor: accent + '30',
+                ...(Platform.OS === 'web' ? {
+                  cursor: 'pointer' as any,
+                  transition: 'all 0.18s ease',
+                  boxShadow: hovered ? `0 4px 14px ${accent}30` : 'none',
+                } as any : {}),
+              })}
+            >
+              <View style={{
+                width: 28, height: 28, borderRadius: 8,
+                backgroundColor: accent,
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                <AppIcon name={'download' as any} size={14} color="#FFFFFF" />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontSize: 11.5, fontFamily: F.semibold, color: NO.inkStrong }} numberOfLines={1}>
+                  {brand} Scan Body Kütüphanesi
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2, flexWrap: 'wrap' }}>
+                  {hasVerifiedLibrary ? (
+                    <Text style={{ fontSize: 9.5, fontFamily: F.semibold, color: accent }}>
+                      Resmi kaynak
+                    </Text>
+                  ) : (
+                    <Text style={{ fontSize: 9.5, fontFamily: F.regular, color: NO.inkSoft }}>
+                      Topluluk araması
+                    </Text>
+                  )}
+                  <View style={{ width: 2, height: 2, borderRadius: 1, backgroundColor: NO.inkMute }} />
+                  <Text style={{ fontSize: 9.5, fontFamily: F.regular, color: NO.inkSoft }}>
+                    exocad 3.2 uyumlu
+                  </Text>
+                </View>
+              </View>
+              <AppIcon name={'open-in-new' as any} size={12} color={accent} />
+            </Pressable>
+          )}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// Combobox — popover, search, recent, smooth open
+function ImplantBrandCombobox({
+  value, onChange, accent,
+}: { value: string; onChange: (v: string) => void; accent: string }) {
+  const NO = useNOTokens();
+  const T = useMobileTokens();
+  const [open, setOpen]     = useState(false);
+  const [search, setSearch] = useState('');
+  const RECENT_KEY = 'implant_brand_recents';
+  const [recents, setRecents] = useState<string[]>([]);
+
+  React.useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    try { const r = window.localStorage.getItem(RECENT_KEY); if (r) setRecents(JSON.parse(r)); } catch {}
+  }, []);
+
+  const pushRecent = (b: string) => {
+    const next = [b, ...recents.filter(x => x !== b)].slice(0, 5);
+    setRecents(next);
+    if (Platform.OS === 'web') { try { window.localStorage.setItem(RECENT_KEY, JSON.stringify(next)); } catch {} }
+  };
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return ALL_IMPLANT_BRANDS;
+    return ALL_IMPLANT_BRANDS.filter(b => b.toLowerCase().includes(q));
+  }, [search]);
+
+  return (
+    <View style={{ overflow: 'visible' as any }}>
+      <Pressable
+        onPress={() => setOpen(o => !o)}
+        style={({ hovered }: any) => ({
+          flexDirection: 'row', alignItems: 'center', gap: 7,
+          paddingHorizontal: 10, paddingVertical: 9,
+          borderRadius: 10,
+          backgroundColor: T.cardSoft,
+          borderWidth: 1, borderColor: open ? accent : hovered ? accent + '40' : NO.borderSoft,
+          ...(Platform.OS === 'web' ? { cursor: 'pointer' as any, transition: 'all 0.15s ease' } as any : {}),
+        })}
+      >
+        <AppIcon name={'magnify' as any} size={13} color={NO.inkSoft} />
+        <Text style={{ flex: 1, fontSize: 13, fontFamily: value ? F.semibold : F.regular, color: value ? NO.inkStrong : NO.inkMute }} numberOfLines={1}>
+          {value || 'Marka ara veya seç…'}
+        </Text>
+        {!!value && !!IMPLANT_LIBRARY_LINKS[value] && (
+          <AppIcon name={'shield-check-outline' as any} size={12} color={NO.success} />
+        )}
+        <AppIcon name={(open ? 'chevron-up' : 'chevron-down') as any} size={13} color={NO.inkSoft} />
+      </Pressable>
+
+      {open && (
+        <View style={{
+          position: 'absolute' as any,
+          top: '100%',
+          left: 0, right: 0,
+          marginTop: 6,
+          maxHeight: 280,
+          borderRadius: 12,
+          borderWidth: 1, borderColor: NO.borderSoft,
+          backgroundColor: T.card,
+          overflow: 'hidden' as any,
+          zIndex: 200,
+          ...(Platform.OS === 'web'
+            ? { boxShadow: '0 16px 40px rgba(0,0,0,0.16)' } as any
+            : { elevation: 10, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 16, shadowOffset: { width: 0, height: 10 } }),
+        }}>
+          <View style={{ paddingHorizontal: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: NO.borderSoft, backgroundColor: T.cardSoft }}>
+            <TextInput
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Marka filtrele…"
+              placeholderTextColor={NO.inkMute}
+              autoFocus
+              style={{
+                fontSize: 12.5, color: NO.inkStrong,
+                ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
+              }}
+            />
+          </View>
+
+          {/* Recent selections */}
+          {!search && recents.length > 0 && (
+            <View style={{ paddingTop: 6 }}>
+              <Text style={{ fontSize: 9, fontFamily: F.bold, color: NO.inkMute, letterSpacing: 0.6, paddingHorizontal: 12, paddingVertical: 4 }}>
+                SON KULLANILANLAR
+              </Text>
+              {recents.map(r => (
+                <Pressable
+                  key={'recent-' + r}
+                  onPress={() => { onChange(r); pushRecent(r); setOpen(false); setSearch(''); }}
+                  style={({ hovered }: any) => ({
+                    flexDirection: 'row', alignItems: 'center',
+                    paddingHorizontal: 12, paddingVertical: 7,
+                    backgroundColor: hovered ? '#F8FAFC' : 'transparent',
+                  })}
+                >
+                  <AppIcon name={'history' as any} size={12} color={NO.inkMute} />
+                  <Text style={{ marginLeft: 8, flex: 1, fontSize: 12.5, color: NO.inkStrong }}>{r}</Text>
+                  {IMPLANT_LIBRARY_LINKS[r] && (
+                    <AppIcon name={'check-decagram' as any} size={11} color={NO.success} />
+                  )}
+                </Pressable>
+              ))}
+              <View style={{ height: 1, backgroundColor: NO.borderSoft, marginTop: 4 }} />
+            </View>
+          )}
+
+          <ScrollView style={{ maxHeight: 200 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}>
+            {filtered.map(b => {
+              const active = b === value;
+              const verified = !!IMPLANT_LIBRARY_LINKS[b];
+              return (
+                <Pressable
+                  key={b}
+                  onPress={() => { onChange(b); pushRecent(b); setOpen(false); setSearch(''); }}
+                  style={({ hovered }: any) => ({
+                    flexDirection: 'row', alignItems: 'center',
+                    paddingHorizontal: 12, paddingVertical: 8.5,
+                    backgroundColor: active ? accent + '14' : hovered ? '#F8FAFC' : 'transparent',
+                  })}
+                >
+                  <Text style={{
+                    flex: 1, fontSize: 12.5,
+                    color: active ? accent : NO.inkStrong,
+                    fontFamily: active ? F.semibold : F.regular,
+                  }}>
+                    {b}
+                  </Text>
+                  {verified && (
+                    <AppIcon name={'check-decagram' as any} size={12} color={active ? accent : NO.success} />
+                  )}
+                  {active && (
+                    <AppIcon name={'check' as any} size={13} color={accent} style={{ marginLeft: 6 }} />
+                  )}
+                </Pressable>
+              );
+            })}
+            {filtered.length === 0 && (
+              <View style={{ padding: 18, alignItems: 'center' }}>
+                <Text style={{ fontSize: 11.5, color: NO.inkMute }}>Sonuç yok</Text>
+              </View>
+            )}
+          </ScrollView>
+        </View>
+      )}
+    </View>
+  );
+}
+
+function ImplantBrandPicker({
+  value, onChange, accent,
+}: { value: string; onChange: (v: string) => void; accent: string }) {
+  const [open, setOpen]     = useState(false);
+  const [search, setSearch] = useState('');
+  // Viewport-fixed dropdown konumu — trigger'ın getBoundingClientRect'ından
+  // hesaplanır. Portal ile document.body'ye render edildiğinden hiçbir parent
+  // overflow/transform clip'leyemez.
+  const triggerRef = useRef<any>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return ALL_IMPLANT_BRANDS;
+    return ALL_IMPLANT_BRANDS.filter(b => b.toLowerCase().includes(q));
+  }, [search]);
+
+  const openDropdown = () => {
+    if (Platform.OS === 'web' && triggerRef.current && triggerRef.current.getBoundingClientRect) {
+      const r = triggerRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 6, left: r.left, width: r.width });
+    }
+    setOpen(true);
+  };
+  const closeDropdown = () => { setOpen(false); setPos(null); };
+
+  return (
+    <View style={{
+      flex: 1,
+      // Scan Body STL kartı ile aynı yükseklik ve görsel stil
+      minHeight: 118,
+      borderRadius: 12,
+      backgroundColor: '#FFFFFF',
+      borderWidth: 1,
+      borderStyle: (value ? 'solid' : 'dashed') as any,
+      borderColor: value ? accent + '40' : '#CBD5E1',
+      padding: 10,
+      gap: 8,
+      overflow: 'visible' as any,
+    }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: accent }} />
+        <Text style={{ fontSize: 10, fontFamily: F.bold, color: NO.inkStrong, letterSpacing: 0.5 }}>
+          İMPLANT MARKA
+        </Text>
+      </View>
+
+      {/* Combobox trigger — direkt yazılabilir (searchable). Tıklayınca veya yazınca dropdown açılır. */}
+      <View
+        ref={triggerRef}
+        style={{
+          flexDirection: 'row', alignItems: 'center', gap: 6,
+          backgroundColor: NO.bgInput,
+          borderRadius: 8,
+          borderWidth: 1, borderColor: open ? accent : NO.borderSoft,
+          paddingHorizontal: 8, paddingVertical: 7,
+        }}
+      >
+        <AppIcon name={'magnify' as any} size={13} color={NO.inkSoft} />
+        <TextInput
+          value={open ? search : value}
+          onChangeText={(t) => {
+            setSearch(t);
+            if (!open) openDropdown();
+          }}
+          onFocus={() => { if (!open) openDropdown(); }}
+          placeholder={value || 'Marka ara…'}
+          placeholderTextColor={value ? NO.inkStrong : NO.inkMute}
+          style={{
+            flex: 1, fontSize: 12, color: NO.inkStrong,
+            padding: 0,
+            ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
+          }}
+        />
+        {!!value && !open && (
+          <Pressable onPress={() => onChange('')} hitSlop={6}>
+            <AppIcon name={'close' as any} size={12} color={NO.inkMute} />
+          </Pressable>
+        )}
+        <Pressable onPress={() => (open ? closeDropdown() : openDropdown())} hitSlop={6}>
+          <AppIcon name={(open ? 'chevron-up' : 'chevron-down') as any} size={13} color={NO.inkSoft} />
+        </Pressable>
+      </View>
+
+      {/* Dropdown — web'de body portalına, native'de absolute. Hiçbir parent overflow'una takılmaz. */}
+      {open && Platform.OS === 'web' && pos && (
+        <WebPortal>
+          <View
+            style={{
+              position: 'fixed' as any,
+              top: pos.top,
+              left: pos.left,
+              width: pos.width,
+              maxHeight: 280,
+              borderRadius: 10,
+              borderWidth: 1, borderColor: NO.borderSoft,
+              backgroundColor: '#FFFFFF',
+              overflow: 'hidden' as any,
+              zIndex: 10000,
+              ...(Platform.OS === 'web' ? { boxShadow: '0 16px 40px rgba(0,0,0,0.18)' } as any : {}),
+            }}
+          >
+            <ScrollView style={{ maxHeight: 280 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={(Platform.OS as string) === 'ios'}>
+              {filtered.map(brand => {
+                const active = brand === value;
+                return (
+                  <Pressable
+                    key={brand}
+                    onPress={() => { onChange(brand); closeDropdown(); setSearch(''); }}
+                    style={({ hovered }: any) => ({
+                      flexDirection: 'row', alignItems: 'center',
+                      paddingHorizontal: 12, paddingVertical: 9,
+                      backgroundColor: active ? accent + '14' : hovered ? '#F8FAFC' : 'transparent',
+                    })}
+                  >
+                    <Text style={{
+                      flex: 1, fontSize: 13,
+                      color: active ? accent : NO.inkStrong,
+                      fontFamily: active ? F.semibold : F.regular,
+                    }}>
+                      {brand}
+                    </Text>
+                    {active && <AppIcon name={'check' as any} size={14} color={accent} />}
+                  </Pressable>
+                );
+              })}
+              {filtered.length === 0 && (
+                <View style={{ padding: 16, alignItems: 'center' }}>
+                  <Text style={{ fontSize: 12, color: NO.inkMute }}>Sonuç yok</Text>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </WebPortal>
+      )}
+
+      {/* Native fallback */}
+      {open && Platform.OS !== 'web' && (
+        <View style={{
+          position: 'absolute' as any,
+          top: '100%' as any,
+          left: 0, right: 0,
+          marginTop: 6,
+          maxHeight: 260,
+          borderRadius: 10,
+          borderWidth: 1, borderColor: NO.borderSoft,
+          backgroundColor: '#FFFFFF',
+          overflow: 'hidden' as any,
+          zIndex: 200,
+          elevation: 8, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 12, shadowOffset: { width: 0, height: 8 },
+        }}>
+          {/* İçeride mini search input */}
+          <View style={{ paddingHorizontal: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: NO.borderSoft }}>
+            <TextInput
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Marka filtrele…"
+              placeholderTextColor={NO.inkMute}
+              autoFocus
+              style={{
+                fontSize: 13, color: NO.inkStrong,
+                ...((Platform.OS as string) === 'web' ? { outlineStyle: 'none' } as any : {}),
+              }}
+            />
+          </View>
+          <ScrollView style={{ maxHeight: 200 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}>
+            {filtered.map(brand => {
+              const active = brand === value;
+              return (
+                <Pressable
+                  key={brand}
+                  onPress={() => { onChange(brand); setOpen(false); setSearch(''); }}
+                  style={({ hovered }: any) => ({
+                    flexDirection: 'row', alignItems: 'center',
+                    paddingHorizontal: 12, paddingVertical: 9,
+                    backgroundColor: active ? accent + '14' : hovered ? '#F8FAFC' : 'transparent',
+                  })}
+                >
+                  <Text style={{
+                    flex: 1, fontSize: 13,
+                    color: active ? accent : NO.inkStrong,
+                    fontFamily: active ? F.semibold : F.regular,
+                  }}>
+                    {brand}
+                  </Text>
+                  {active && <AppIcon name={'check' as any} size={14} color={accent} />}
+                </Pressable>
+              );
+            })}
+            {filtered.length === 0 && (
+              <View style={{ padding: 16, alignItems: 'center' }}>
+                <Text style={{ fontSize: 12, color: NO.inkMute }}>Sonuç yok</Text>
+              </View>
+            )}
+          </ScrollView>
+        </View>
+      )}
+
+    </View>
+  );
+}
+
+function NewOrderSuccess({
+  accent, orderNumber, patientName, panel,
+  onNewOrder, onViewOrder, onClose,
+}: {
+  accent: string;
+  orderNumber: string;
+  patientName: string;
+  panel: 'doctor' | 'clinic' | 'lab' | 'admin' | 'station';
+  onNewOrder: () => void;
+  onViewOrder: () => void;
+  onClose: () => void;
+}) {
+  void accent; // panel accent yerine başarı durumu için sabit yeşil kullanılıyor
+  const SUCCESS_GREEN = '#2D9A6B';
+  const handleShare = async () => {
+    if (Platform.OS !== 'web') return;
+    try {
+      const text = `Sipariş #${orderNumber} · ${patientName}`;
+      // @ts-ignore web navigator
+      if (typeof navigator !== 'undefined' && navigator.share) {
+        // @ts-ignore
+        await navigator.share({ title: 'Sipariş', text, url: typeof window !== 'undefined' ? window.location.href : undefined });
+      } else if (typeof navigator !== 'undefined' && (navigator as any).clipboard?.writeText) {
+        await (navigator as any).clipboard.writeText(text);
+        toast.success('Sipariş bilgisi kopyalandı');
+      }
+    } catch { /* user cancelled */ }
+  };
+
+  // Panel'e göre primary metin label (hekim → klinik akışı vb. değişebilir)
+  const primaryLabel = panel === 'doctor' || panel === 'clinic' ? 'Vakayı gör' : 'Detayı aç';
+
+  return (
+    <View
+      style={{
+        position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+        zIndex: 200,
+        backgroundColor: 'rgba(15,23,42,0.55)',
+        alignItems: 'center', justifyContent: 'center',
+        paddingHorizontal: 24,
+        ...(Platform.OS === 'web' ? { backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' } as any : {}),
+      } as any}
+    >
+      {/* Backdrop click closes */}
+      <Pressable
+        onPress={onClose}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 } as any}
+      />
+
+      {/* Centered popup card */}
+      <View style={{
+        width: '100%', maxWidth: 460, borderRadius: 24,
+        backgroundColor: SUCCESS_GREEN,
+        paddingVertical: 40, paddingHorizontal: 32,
+        alignItems: 'center',
+        ...(Platform.OS === 'web' ? { boxShadow: '0 24px 64px rgba(15,23,42,0.35)' } as any : {}),
+      } as any}>
+        {/* Close (X) top-right of card */}
+        <Pressable
+          onPress={onClose}
+          accessibilityLabel="Kapat"
+          style={{
+            position: 'absolute', top: 16, right: 16, zIndex: 10,
+            width: 34, height: 34, borderRadius: 17,
+            backgroundColor: 'rgba(255,255,255,0.18)',
+            alignItems: 'center', justifyContent: 'center',
+          } as any}
+        >
+          <AppIcon name={'close' as any} size={16} color="#FFFFFF" />
+        </Pressable>
+
+        {/* Büyük check yuvarlağı */}
+        <View style={{
+          width: 96, height: 96, borderRadius: 48,
+          backgroundColor: '#FFFFFF',
+          alignItems: 'center', justifyContent: 'center',
+          marginBottom: 22,
+        }}>
+          <AppIcon name={'check' as any} size={48} color={SUCCESS_GREEN} />
+        </View>
+
+        {/* Başlık */}
+        <Text style={{
+          fontSize: 22, fontWeight: '600', color: '#FFFFFF',
+          textAlign: 'center', letterSpacing: -0.3,
+          ...(Platform.OS === 'web' ? { fontFamily: 'Inter Tight, Inter, system-ui, sans-serif' } : {}),
+        }}>
+          Sipariş gönderildi
+        </Text>
+
+        {/* Açıklama */}
+        <Text style={{
+          fontSize: 13, color: 'rgba(255,255,255,0.9)',
+          textAlign: 'center', marginTop: 10, lineHeight: 19,
+        }}>
+          {patientName ? `${patientName} için ` : ''}sipariş başarıyla kaydedildi.
+          {orderNumber ? '\n' : ''}
+          {orderNumber ? (
+            <Text style={{ fontWeight: '600' }}>Sipariş no #{orderNumber}</Text>
+          ) : null}
+        </Text>
+
+        <Text style={{
+          fontSize: 12, color: 'rgba(255,255,255,0.75)',
+          textAlign: 'center', marginTop: 10, lineHeight: 17,
+        }}>
+          Vakanızın durumunu <Text style={{ fontWeight: '600', color: '#FFFFFF' }}>Vakalar</Text> sayfasından takip edebilirsiniz.
+        </Text>
+
+        {/* CTA butonları */}
+        <View style={{ width: '100%', maxWidth: 340, marginTop: 26, gap: 10 }}>
+        <Pressable
+          onPress={onViewOrder}
+          style={({ pressed }: any) => ({
+            paddingVertical: 16, borderRadius: 999,
+            backgroundColor: '#FFFFFF',
+            alignItems: 'center', justifyContent: 'center',
+            opacity: pressed ? 0.92 : 1,
+          })}
+        >
+          <Text style={{ fontSize: 15, fontWeight: '700', color: SUCCESS_GREEN }}>
+            {primaryLabel}
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={onNewOrder}
+          style={({ pressed }: any) => ({
+            paddingVertical: 16, borderRadius: 999,
+            backgroundColor: 'transparent',
+            borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.85)',
+            alignItems: 'center', justifyContent: 'center',
+            opacity: pressed ? 0.85 : 1,
+          })}
+        >
+          <Text style={{ fontSize: 15, fontWeight: '600', color: '#FFFFFF' }}>
+            Yeni sipariş oluştur
+          </Text>
+        </Pressable>
+        </View>
+      </View>
+    </View>
   );
 }
 
@@ -3132,16 +5298,26 @@ function kindLabel(kind: FileKind): string {
 /** İstenilen dosya türünün başlığını döndürür (asıl filename yerine). */
 function fileDisplayTitle(file: AttachedFile): string {
   const n = file.name;
-  if (n.startsWith('Ekartörlü Resim')) return 'Ekartörlü Resim';
-  if (n.startsWith('Gülüş Resmi'))     return 'Gülüş Resmi';
-  if (n.startsWith('Gülüş Videosu'))   return 'Gülüş Videosu';
-  if (n.startsWith('Alt Çene'))        return 'Alt Çene Taraması';
-  if (n.startsWith('Üst Çene'))        return 'Üst Çene Taraması';
-  if (n.startsWith('Bite (Kapanış)'))  return 'Bite (Kapanış) Taraması';
-  if (n.startsWith('Diş Eti Taraması')) return 'Diş Eti Taraması';
-  if (n.startsWith('Scan Body STL'))   return 'Scan Body STL';
-  if (n.startsWith('PDF Belgesi'))     return 'PDF Belgesi';
-  if (n.startsWith('Referans Fotoğraf')) return 'Referans Fotoğraf';
+  // Yeni etiketler (yeni yüklemeler)
+  if (n.startsWith('Ekartörlü Fotoğraf')) return 'Ekartörlü Fotoğraf';
+  if (n.startsWith('Gülüş Fotoğrafı'))    return 'Gülüş Fotoğrafı';
+  if (n.startsWith('Gülüş Videosu'))      return 'Gülüş Videosu';
+  if (n.startsWith('Alt Çene Taraması'))  return 'Alt Çene Taraması';
+  if (n.startsWith('Üst Çene Taraması'))  return 'Üst Çene Taraması';
+  if (n.startsWith('Kapanış Taraması'))   return 'Kapanış Taraması';
+  if (n.startsWith('Diş Eti Taraması'))   return 'Diş Eti Taraması';
+  if (n.startsWith('Scan Body Taraması')) return 'Scan Body Taraması';
+  if (n.startsWith('PDF Belgesi'))        return 'PDF Belgesi';
+  if (n.startsWith('Referans Fotoğrafı')) return 'Referans Fotoğrafı';
+  // Legacy fallback
+  if (n.startsWith('Ekartörlü Resim'))    return 'Ekartörlü Fotoğraf';
+  if (n.startsWith('Gülüş Resmi'))        return 'Gülüş Fotoğrafı';
+  if (n.startsWith('Alt Çene'))           return 'Alt Çene Taraması';
+  if (n.startsWith('Üst Çene'))           return 'Üst Çene Taraması';
+  if (n.startsWith('Bite (Kapanış)'))     return 'Kapanış Taraması';
+  if (n.startsWith('Bite'))               return 'Kapanış Taraması';
+  if (n.startsWith('Scan Body STL'))      return 'Scan Body Taraması';
+  if (n.startsWith('Referans Fotoğraf'))  return 'Referans Fotoğrafı';
   switch (file.kind) {
     case 'photo': return 'Hasta Fotoğrafı';
     case 'stl':   return 'STL Tarama Dosyası';
@@ -3165,7 +5341,7 @@ function kindIcon(kind: FileKind): string {
 function kindColor(kind: FileKind): string {
   switch (kind) {
     case 'photo': return '#8B5CF6';
-    case 'stl':   return '#0EA5E9';
+    case 'stl':   return '#32BB78';
     case 'ply':   return '#06B6D4';
     case 'pdf':   return '#EF4444';
     default:      return '#64748B';
@@ -3182,6 +5358,26 @@ function formatBytes(bytes: number): string {
 
 function FileRow({ file, onRemove, onPreview }: { file: AttachedFile; onRemove: () => void; onPreview?: () => void }) {
   const color = kindColor(file.kind);
+  // Dosyayı orijinal adıyla indir (kontrol/hata ayıklama için). fetch→blob→objectURL
+  // → yerel blob URL de uzak URL de çalışır.
+  const downloadFile = async () => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined' || !file.uri) return;
+    try {
+      const res = await fetch(file.uri);
+      const blob = await res.blob();
+      const objUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objUrl;
+      a.download = file.name || 'dosya';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(objUrl), 5000);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[new-order] download failed', file.name, e);
+    }
+  };
   return (
     <View style={_fusStatic.fileRow}>
       {/* Thumbnail for photos, icon for others */}
@@ -3207,6 +5403,11 @@ function FileRow({ file, onRemove, onPreview }: { file: AttachedFile; onRemove: 
       {onPreview && (
         <TouchableOpacity onPress={onPreview} style={_fusStatic.filePreviewBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <AppIcon name={'eye-outline' as any} size={16} color="#64748B" />
+        </TouchableOpacity>
+      )}
+      {!!file.uri && (
+        <TouchableOpacity onPress={downloadFile} style={_fusStatic.filePreviewBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityLabel="Dosyayı indir">
+          <AppIcon name={'download' as any} size={16} color="#64748B" />
         </TouchableOpacity>
       )}
       <TouchableOpacity onPress={onRemove} style={_fusStatic.fileRemove} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -3337,27 +5538,6 @@ const makeFusStyles = (P: string) => StyleSheet.create({
     fontSize: 13, fontFamily: F.bold, color: NO.inkStrong,
   },
 
-  /* ── Kapanış Analizi CTA (3 scan yüklüyse görünür) ── */
-  occlusionCta: {
-    flexDirection: 'row' as any, alignItems: 'center' as any,
-    gap: 12, marginTop: 10, paddingVertical: 10, paddingHorizontal: 14,
-    borderRadius: NORadius.md, backgroundColor: NO.inkStrong,
-  },
-  occlusionCtaIcon: {
-    width: 32, height: 32, borderRadius: NORadius.sm,
-    alignItems: 'center' as any, justifyContent: 'center' as any,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-  },
-  occlusionCtaTitle: {
-    fontSize: 12, fontFamily: F.bold, color: '#FFFFFF',
-  },
-  occlusionCtaBadge: {
-    fontSize: 11, fontFamily: F.semibold, color: NO.saffron,
-  },
-  occlusionCtaSub: {
-    fontSize: 11, color: 'rgba(255,255,255,0.7)', marginTop: 2,
-  },
-
   /* ── Kare yükleme kartları ── */
   uploadCardRow: {
     flexDirection: 'row' as any, flexWrap: 'wrap' as any, gap: 8,
@@ -3436,7 +5616,7 @@ const makeFusStyles = (P: string) => StyleSheet.create({
   implantSearchInput: {
     flex: 1, fontSize: 13, fontFamily: F.regular, color: NO.inkStrong,
     // @ts-ignore
-    outlineStyle: 'none',
+    outlineStyle: 'none' as any,
   },
   implantDropList: {
     borderRadius: NORadius.md,
@@ -3655,8 +5835,8 @@ function LiveSummaryPanel({ form, selectedDoctor, selectedClinic, currentStep, o
                     </View>
                   );
                 }
-                return group.ops.map(op => (
-                  <View key={op.tooth} style={[lsp.toothPill, op.work_type ? lsp.toothPillFilled : lsp.toothPillEmpty]}>
+                return group.ops.map((op, i) => (
+                  <View key={op.__uid ?? `t-${op.tooth}-${i}`} style={[lsp.toothPill, op.work_type ? lsp.toothPillFilled : lsp.toothPillEmpty]}>
                     <Text style={[lsp.toothPillText, op.work_type && lsp.toothPillTextFilled]}>{op.tooth}</Text>
                   </View>
                 ));
@@ -4148,25 +6328,20 @@ function DoctorAddModal({
         </View>
       </Modal>
 
-      {/* Nested clinic add modal — opens on top of doctor modal */}
-      <ClinicAddModal
+      {/* Nested clinic add modal — canonical, opens on top of doctor modal */}
+      <CanonicalClinicModal
         visible={nestedClinicModal.visible}
-        prefillName={nestedClinicModal.prefill}
-        saving={nestedClinicSaving}
-        onClose={() => setNestedClinicModal({ visible: false, prefill: '' })}
-        onSave={async (data) => {
-          setNestedClinicSaving(true);
-          const { data: created } = await createClinic(data);
-          setNestedClinicSaving(false);
-          if (created) {
-            const newClinic = created as Clinic;
-            setLocalClinics(prev => [...prev, newClinic]);
-            setSelectedClinicId(newClinic.id);
-            onClinicAdded?.(newClinic);
-          }
-          setNestedClinicModal({ visible: false, prefill: '' });
-        }}
+        editingClinic={null}
+        existingClinics={localClinics as any}
         accentColor={P}
+        onClose={() => setNestedClinicModal({ visible: false, prefill: '' })}
+        onSuccess={() => setNestedClinicModal({ visible: false, prefill: '' })}
+        onCreated={(clinic) => {
+          const newClinic = clinic as Clinic;
+          setLocalClinics(prev => [...prev, newClinic]);
+          setSelectedClinicId(newClinic.id);
+          onClinicAdded?.(newClinic);
+        }}
       />
     </>
   );
@@ -4217,20 +6392,52 @@ function InlinePicker({
   accentColor?: string;
 }) {
   const P = accentColor ?? C.primary;
-  const ip = useMemo(() => makeIpStyles(P), [P]);
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const ip = useMemo(() => makeIpStyles(P, T, isDark), [P, T, isDark]);
   const [open, setOpen] = useState(false);
   const [dropRect, setDropRect] = useState<{ top: number; left: number; width: number } | null>(null);
   const btnRef = useRef<any>(null);
   const sel = options.find(o => o.value === value);
 
   const openDrop = () => {
-    if (disabled || !btnRef.current) return;
-    if (Platform.OS === 'web') {
+    if (disabled) return;
+    if (Platform.OS === 'web' && btnRef.current) {
       const r = (btnRef.current as any).getBoundingClientRect?.();
       if (r) setDropRect({ top: r.bottom + 2, left: r.left, width: Math.max(r.width, 160) });
     }
     setOpen(true);
   };
+
+  // Ortak option satırları (web portal + native modal aynı görünüm)
+  const OptionRows = () => (
+    <>
+      {value !== '' && (
+        <TouchableOpacity onPress={() => { onSelect(''); setOpen(false); }} style={ip.optClear}>
+          <Text style={ip.optClearText}>Temizle</Text>
+        </TouchableOpacity>
+      )}
+      {options.map(opt => {
+        const active = opt.value === value;
+        return (
+          <TouchableOpacity
+            key={opt.value}
+            onPress={() => { onSelect(opt.value); setOpen(false); }}
+            style={[ip.opt, active && ip.optActive]}
+          >
+            <Text style={[ip.optText, active && ip.optTextActive]} numberOfLines={1}>
+              {opt.label}
+            </Text>
+            {active && (
+              <View style={ip.optCheck}>
+                <AppIcon name={'check' as any} size={12} color="#FFFFFF" />
+              </View>
+            )}
+          </TouchableOpacity>
+        );
+      })}
+    </>
+  );
 
   return (
     <>
@@ -4238,58 +6445,83 @@ function InlinePicker({
         <Text style={[ip.val, !sel && ip.placeholder]} numberOfLines={1}>
           {sel?.label ?? placeholder}
         </Text>
-        <AppIcon name={'chevron-down' as any} size={11} color={disabled ? '#CBD5E1' : '#64748B'} />
+        <AppIcon name={'chevron-down' as any} size={11} color={disabled ? T.ink3 : T.ink2} />
       </TouchableOpacity>
 
-      {open && dropRect && (
+      {/* Web: input altına çapalı portal */}
+      {Platform.OS === 'web' && open && dropRect && (
         <WebPortal>
           <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={() => setOpen(false)} activeOpacity={1}>
             <View style={[ip.drop, { top: dropRect.top, left: dropRect.left, minWidth: dropRect.width }]}>
-              {value !== '' && (
-                <TouchableOpacity onPress={() => { onSelect(''); setOpen(false); }} style={ip.optClear}>
-                  <Text style={ip.optClearText}>Temizle</Text>
-                </TouchableOpacity>
-              )}
-              {options.map(opt => (
-                <TouchableOpacity
-                  key={opt.value}
-                  onPress={() => { onSelect(opt.value); setOpen(false); }}
-                  style={[ip.opt, opt.value === value && ip.optActive]}
-                >
-                  <Text style={[ip.optText, opt.value === value && ip.optTextActive]} numberOfLines={1}>
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+              <OptionRows />
             </View>
           </TouchableOpacity>
         </WebPortal>
+      )}
+
+      {/* Native: alttan açılan bottom-sheet modal */}
+      {Platform.OS !== 'web' && (
+        <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+          <Pressable style={ip.backdrop} onPress={() => setOpen(false)}>
+            <Pressable style={ip.sheet} onPress={(e: any) => e.stopPropagation?.()}>
+              <View style={ip.sheetHandle} />
+              {placeholder && placeholder !== '—' && (
+                <Text style={ip.sheetTitle}>{placeholder}</Text>
+              )}
+              <ScrollView style={{ maxHeight: 360 }} showsVerticalScrollIndicator={false}>
+                <OptionRows />
+              </ScrollView>
+            </Pressable>
+          </Pressable>
+        </Modal>
       )}
     </>
   );
 }
 
-const makeIpStyles = (P: string) => StyleSheet.create({
+const makeIpStyles = (P: string, T: any, isDark: boolean) => StyleSheet.create({
   btn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', gap: 3,
-    backgroundColor: '#F8FAFC', borderRadius: 7, borderWidth: 1, borderColor: '#F1F5F9',
-    paddingHorizontal: 7, paddingVertical: 5, minWidth: 70,
+    backgroundColor: T.cardSoft, borderRadius: 8, borderWidth: 1, borderColor: T.hairline,
+    paddingHorizontal: 8, paddingVertical: 6, minWidth: 70,
   },
   btnDisabled: { opacity: 0.35 },
-  val: { flex: 1, fontSize: 11, fontFamily: F.medium, color: '#1E293B' },
-  placeholder: { color: '#CBD5E1' },
+  val: { flex: 1, fontSize: 11, fontFamily: F.medium, color: T.ink },
+  placeholder: { color: T.ink3 },
+  // Web anchored dropdown
   drop: {
-    position: 'fixed' as any, backgroundColor: '#fff', borderRadius: 10,
-    borderWidth: 1, borderColor: '#F1F5F9',
-    shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 4 },
-    zIndex: 9999, maxHeight: 260, overflow: 'scroll' as any,
+    position: 'fixed' as any, backgroundColor: T.card, borderRadius: 14,
+    borderWidth: 1, borderColor: T.hairline,
+    shadowColor: '#000', shadowOpacity: isDark ? 0.45 : 0.12, shadowRadius: 16, shadowOffset: { width: 0, height: 4 },
+    zIndex: 9999, maxHeight: 280, overflow: 'scroll' as any,
   },
-  opt: { paddingHorizontal: 12, paddingVertical: 8 },
-  optActive: { backgroundColor: '#F1F5F9' },
-  optText: { fontSize: 12, fontFamily: F.regular, color: '#334155' },
+  // Native bottom-sheet
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: T.card, borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingTop: 10, paddingBottom: 28, paddingHorizontal: 8,
+  },
+  sheetHandle: {
+    width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 8,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(15,23,42,0.18)',
+  },
+  sheetTitle: {
+    fontSize: 11, fontFamily: F.semibold, color: T.ink3, letterSpacing: 0.8, textTransform: 'uppercase',
+    paddingHorizontal: 12, paddingBottom: 8,
+  },
+  opt: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 14, paddingVertical: 13, borderRadius: 12,
+  },
+  optActive: { backgroundColor: `${P}14` },
+  optText: { flex: 1, fontSize: 14, fontFamily: F.regular, color: T.ink },
   optTextActive: { fontFamily: F.semibold, color: P },
-  optClear: { paddingHorizontal: 12, paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  optClearText: { fontSize: 11, fontFamily: F.regular, color: '#94A3B8' },
+  optCheck: {
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: P, alignItems: 'center', justifyContent: 'center',
+  },
+  optClear: { paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: T.hairline2, marginBottom: 4 },
+  optClearText: { fontSize: 12, fontFamily: F.regular, color: T.ink3 },
 });
 
 // ── ToothOpRow ─────────────────────────────────────────────────
@@ -4343,7 +6575,7 @@ function ToothOpRow({ op, onChange, materialPrices = {}, accentColor }: { op: To
       <InlinePicker
         value={activeCat}
         options={mainOpts}
-        onSelect={(v) => { setLocalMainCat(v); onChange({ work_type: '', shade: '', material: '', implant_system: '', abutment: '', screw: '', material_price: 0 }); }}
+        onSelect={(v) => { setLocalMainCat(v); onChange({ work_type: '', shade: '', material: '', implant_system: '', implant_type: '', abutment: '', screw: '', material_price: 0 }); }}
         placeholder="İş türü"
         accentColor={P}
       />
@@ -4354,7 +6586,7 @@ function ToothOpRow({ op, onChange, materialPrices = {}, accentColor }: { op: To
         options={subtypes}
         onSelect={(v) => {
           const autoPrice = materialPrices[v] ?? 0;
-          onChange({ work_type: v, shade: '', material: '', implant_system: '', abutment: '', screw: '', material_price: autoPrice });
+          onChange({ work_type: v, shade: '', material: '', implant_system: '', implant_type: '', abutment: '', screw: '', material_price: autoPrice });
         }}
         placeholder={activeCat ? subLabel : '—'}
         disabled={!activeCat}
@@ -4462,25 +6694,68 @@ function WorkTypeSelector({
   onNightGuard,
   accentColor,
   onAutoConfirm,
+  services = [],
+  showPrices = true,
 }: {
   op: ToothOp;
   updateToothOp: (patch: Partial<Omit<ToothOp, 'tooth'>>) => void;
   selectedTeeth: number[];
   onNightGuard: (jaw: 'upper' | 'lower' | 'both') => void;
   accentColor?: string;
-  /** Called when the last detail field is filled — auto-adds to list */
-  onAutoConfirm?: () => void;
+  /** Called when the last detail field is filled — auto-adds to list.
+   *  opOverride: seçimle aynı anda geçilen taze op (stale closure'ı önler). */
+  onAutoConfirm?: (opOverride?: Partial<ToothOp>) => void;
+  /** Fiyat listesindeki servisler — İş Türü seçeneklerini bu liste oluşturur */
+  services?: LabService[];
+  /** Fiyat görme yetkisi — false ise servis fiyatı gizlenir */
+  showPrices?: boolean;
 }) {
   const P = accentColor ?? C.primary;
-  const wts = useMemo(() => makeWtsStyles(P), [P]);
-  const styles = useMemo(() => makeStyles(P), [P]);
-  const derivedMain = op.work_type ? (WORK_TYPE_MAIN[op.work_type] ?? null) : null;
+  const _T_wts = useMobileTokens();
+  const _isDark_wts = useThemeModeStore(s => s.resolvedDark);
+  const wts = useMemo(() => makeWtsStyles(P, _T_wts, _isDark_wts), [P, _T_wts, _isDark_wts]);
+  const styles = useMemo(() => makeStyles(P, _T_wts, _isDark_wts), [P, _T_wts, _isDark_wts]);
+  // Fiyat listesini kategoriye göre grupla (Active + sort_order)
+  const servicesByCategory = useMemo(() => {
+    const active = (services ?? []).filter(s => s.is_active !== false);
+    const grouped = new Map<string, LabService[]>();
+    active.forEach(s => {
+      const cat = (s.category ?? 'Diğer').trim() || 'Diğer';
+      if (!grouped.has(cat)) grouped.set(cat, []);
+      grouped.get(cat)!.push(s);
+    });
+    return Array.from(grouped.entries())
+      .map(([label, items]) => ({
+        label,
+        items: items.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name, 'tr')),
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'tr'));
+  }, [services]);
+
+  // Seçili op'un kategorisini servis listesinden çıkar (kategoriye göre filtre breadcrumb için)
+  const selectedService = useMemo(
+    () => (services ?? []).find(s => s.name === op.work_type) ?? null,
+    [services, op.work_type],
+  );
+  const derivedMain = op.work_type
+    ? (selectedService?.category ?? WORK_TYPE_MAIN[op.work_type] ?? null)
+    : null;
   const [pendingMain, setPendingMain]         = React.useState<string | null>(null);
   const [showNightGuard, setShowNightGuard]   = React.useState(false);
 
   const activeMain = derivedMain ?? pendingMain;
+  const activeCategoryServices = servicesByCategory.find(g => g.label === activeMain)?.items ?? [];
   const activeNode = WORK_TYPE_TREE.find(n => n.label === activeMain) ?? null;
   const cat = op.work_type ? (OP_CATEGORY[op.work_type] ?? null) : null;
+  // İmplant alanları yalnız OP_CATEGORY değil, fiyat-listesi servisleri için de
+  // çıksın — ad, kategori ya da üst kategori "implant" içeriyorsa implant kabul et.
+  // Türkçe "İ" (U+0130) için locale-aware küçültme şart (ASCII /i/ yakalamaz).
+  const implantHay = `${op.work_type} ${selectedService?.category ?? ''} ${derivedMain ?? ''}`
+    .toLocaleLowerCase('tr-TR');
+  const isImplantOp = !!op.work_type && (
+    cat === 'implant' || isImplantWorkType(op.work_type) || implantHay.includes('implant')
+  );
+  const useServiceCatalog = servicesByCategory.length > 0;
 
   // Seçili dişlerden çene tespiti
   const hasUpper = selectedTeeth.some(t => (t >= 11 && t <= 18) || (t >= 21 && t <= 28));
@@ -4492,19 +6767,25 @@ function WorkTypeSelector({
     setShowNightGuard(false);
     if (label === activeMain) {
       setPendingMain(null);
-      updateToothOp({ work_type: '', shade: '', implant_system: '', abutment: '', screw: '', material: '' });
-    } else {
-      setPendingMain(label);
-      if (op.work_type) {
-        updateToothOp({ work_type: '', shade: '', implant_system: '', abutment: '', screw: '', material: '' });
-      }
+      updateToothOp({ work_type: '', shade: '', implant_system: '', implant_type: '', abutment: '', screw: '', material: '' });
+      return;
+    }
+    setPendingMain(label);
+    if (op.work_type) {
+      updateToothOp({ work_type: '', shade: '', implant_system: '', implant_type: '', abutment: '', screw: '', material: '' });
+    }
+    // Tek subtype'lı ana (Cerrahi Şablon, Diğer) — alt seçim sormadan otomatik seç
+    const node = WORK_TYPE_TREE.find(n => n.label === label);
+    if (node && node.subtypes.length === 1) {
+      const only = node.subtypes[0];
+      setTimeout(() => selectSub(only.value), 0);
     }
   };
 
   const selectSub = (value: string) => {
     const next = op.work_type === value ? '' : value;
     setPendingMain(null);
-    updateToothOp({ work_type: next, shade: '', implant_system: '', abutment: '', screw: '', material: '' });
+    updateToothOp({ work_type: next, shade: '', implant_system: '', implant_type: '', abutment: '', screw: '', material: '' });
     // Auto-confirm for surgical/other — no detail fields needed
     if (next) {
       const subCat = OP_CATEGORY[next] ?? null;
@@ -4512,6 +6793,52 @@ function WorkTypeSelector({
         setTimeout(() => onAutoConfirm?.(), 0);
       }
     }
+  };
+
+  // Diş rengi gerekmeyen servisler için heuristic (ad ve kategori bazlı)
+  // Bu listeye uymayan, OP_CATEGORY'de de olmayan tüm servisler için renk picker'ı çıkar.
+  const NO_SHADE_KEYWORDS = [
+    'gece pla', 'gece plağı', 'gece plagi', 'splint', 'snore', 'koruyucu pla', 'retainer',
+    'cerrahi şablon', 'cerrahi sablon', 'surgical guide', 'guide', 'rehber', 'cerrahi',
+    'scan body', 'scanbody',
+    'model', 'baskı', 'baski', 'print', 'arch baski', 'arch baskı', 'arch print', 'tarayıcı', 'tarayici',
+    'try-in plak', 'try in plak', 'wax-up', 'wax up', 'mock-up', 'mock up',
+    'çalışma modeli', 'calisma modeli', 'sx plak', 'baz plak', 'esnek alt yapı',
+  ];
+  const serviceNeedsShade = (name: string): boolean => {
+    const n = (name || '').toLowerCase();
+    return !NO_SHADE_KEYWORDS.some(kw => n.includes(kw));
+  };
+
+  // Servis kataloğundan seçim — fiyat listesindeki bir servisi tıklayınca
+  // Diş rengi (shade) sadece kuron/veneer/protez gibi renge bağlı servisler için
+  // sorulur. Gece plağı, model, baskı vs. için otomatik liste'ye ekler.
+  const selectService = (svc: LabService) => {
+    const isSame = op.work_type === svc.name;
+    setPendingMain(null);
+    if (isSame) {
+      updateToothOp({ work_type: '', shade: '', implant_system: '', implant_type: '', abutment: '', screw: '', material: '', price: 0 });
+      return;
+    }
+    const fresh: Partial<ToothOp> = {
+      work_type: svc.name,
+      shade: '', implant_system: '', implant_type: '', abutment: '', screw: '', material: '',
+      price: Number(svc.price) || 0,
+      currency: svc.currency,
+    };
+    updateToothOp(fresh);
+    // OP_CATEGORY'de surgical/other ise (yerleşik harita) auto-confirm
+    const subCat = OP_CATEGORY[svc.name] ?? null;
+    if (subCat === 'surgical' || subCat === 'other') {
+      setTimeout(() => onAutoConfirm?.(fresh), 0);
+      return;
+    }
+    // Katalogdan gelen ve renk gerektirmeyen servis (gece plağı, model, baskı, vs.)
+    if (subCat === null && !serviceNeedsShade(svc.name)) {
+      setTimeout(() => onAutoConfirm?.(fresh), 0);
+      return;
+    }
+    // cat === null + renk gerekiyor (kuron/veneer/protez) → shade picker görünür
   };
 
   const FAVORITES: { label: string; value: string; nightGuard?: true }[] = [
@@ -4528,11 +6855,12 @@ function WorkTypeSelector({
     }
     setShowNightGuard(false);
     setPendingMain(null);
-    updateToothOp({ work_type: f.value, shade: '', implant_system: '', abutment: '', screw: '', material: '' });
+    const fresh: Partial<ToothOp> = { work_type: f.value, shade: '', implant_system: '', implant_type: '', abutment: '', screw: '', material: '' };
+    updateToothOp(fresh);
     // Auto-confirm for surgical/other favorites
     const favCat = OP_CATEGORY[f.value] ?? null;
     if (favCat === 'surgical' || favCat === 'other') {
-      setTimeout(() => onAutoConfirm?.(), 0);
+      setTimeout(() => onAutoConfirm?.(fresh), 0);
     }
   };
 
@@ -4575,7 +6903,7 @@ function WorkTypeSelector({
             style={[wts.crumbChip, !op.work_type && wts.crumbChipActive]}
             onPress={() => {
               setPendingMain(null);
-              updateToothOp({ work_type: '', shade: '', implant_system: '', abutment: '', screw: '', material: '' });
+              updateToothOp({ work_type: '', shade: '', implant_system: '', implant_type: '', abutment: '', screw: '', material: '' });
             }}
             activeOpacity={0.75}
           >
@@ -4584,12 +6912,12 @@ function WorkTypeSelector({
           </TouchableOpacity>
 
           {/* Sub tip chip — sadece seçildiyse göster, tıklayınca sub seçime döner */}
-          {op.work_type && (
+          {!!op.work_type && (
             <>
               <Text style={wts.crumbSep}>›</Text>
               <TouchableOpacity
                 style={[wts.crumbChip, wts.crumbChipActive]}
-                onPress={() => updateToothOp({ work_type: '', shade: '', implant_system: '', abutment: '', screw: '', material: '' })}
+                onPress={() => updateToothOp({ work_type: '', shade: '', implant_system: '', implant_type: '', abutment: '', screw: '', material: '' })}
                 activeOpacity={0.75}
               >
                 <Text style={[wts.crumbChipText, wts.crumbChipTextActive]}>
@@ -4602,46 +6930,80 @@ function WorkTypeSelector({
         </View>
       )}
 
-      {/* ── ADIM 1: Ana Tip ── */}
+      {/* ── ADIM 1: Ana Tip (Kategori) ── */}
       {!activeMain && (
         <>
           <Text style={[styles.fieldLabel, { marginBottom: 8 }]}>İş Türü</Text>
-          <View style={wts.mainRow}>
-            {WORK_TYPE_TREE.map(node => (
-              <TouchableOpacity
-                key={node.label}
-                style={wts.mainBtn}
-                onPress={() => selectMain(node.label)}
-                activeOpacity={0.75}
-              >
-                <Text style={wts.mainBtnLabel}>{node.label === 'Diğer' ? 'Devamı...' : node.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          {useServiceCatalog ? (
+            <View style={wts.mainRow}>
+              {servicesByCategory.map(g => (
+                <TouchableOpacity
+                  key={g.label}
+                  style={wts.mainBtn}
+                  onPress={() => setPendingMain(g.label)}
+                  activeOpacity={0.75}
+                >
+                  <Text style={wts.mainBtnLabel}>{g.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : (
+            <View style={wts.mainRow}>
+              {WORK_TYPE_TREE.map(node => (
+                <TouchableOpacity
+                  key={node.label}
+                  style={wts.mainBtn}
+                  onPress={() => selectMain(node.label)}
+                  activeOpacity={0.75}
+                >
+                  <Text style={wts.mainBtnLabel}>{node.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+          {useServiceCatalog && servicesByCategory.length === 0 && (
+            <Text style={{ fontSize: 11, color: '#94A3B8', marginTop: 8 }}>
+              Fiyat listesinde aktif hizmet yok — Mali İşler → Fiyat Listesi'nden ekleyin.
+            </Text>
+          )}
         </>
       )}
 
-      {/* ── ADIM 2: Alt Tip ── */}
-      {activeMain && !op.work_type && activeNode && (
+      {/* ── ADIM 2: Alt Tip (Servis) ── */}
+      {activeMain && !op.work_type && (useServiceCatalog ? activeCategoryServices.length > 0 : activeNode) && (
         <>
-          <Text style={[styles.fieldLabel, { marginBottom: 8 }]}>{activeMain} — Tür Seç</Text>
+          <Text style={[styles.fieldLabel, { marginBottom: 8 }]}>{activeMain} — Hizmet Seç</Text>
           <View style={wts.subRow}>
-            {activeNode.subtypes.map(sub => (
-              <TouchableOpacity
-                key={sub.value}
-                style={wts.subBtn}
-                onPress={() => selectSub(sub.value)}
-                activeOpacity={0.75}
-              >
-                <Text style={wts.subBtnLabel}>{sub.label}</Text>
-              </TouchableOpacity>
-            ))}
+            {useServiceCatalog
+              ? activeCategoryServices.map(svc => (
+                  <TouchableOpacity
+                    key={svc.id}
+                    style={wts.subBtn}
+                    onPress={() => selectService(svc)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={wts.subBtnLabel}>
+                      {svc.name}
+                      {showPrices && svc.price > 0 ? `  ·  ${curSym(svc.currency)}${Number(svc.price).toLocaleString('tr-TR')}` : ''}
+                    </Text>
+                  </TouchableOpacity>
+                ))
+              : (activeNode?.subtypes ?? []).map(sub => (
+                  <TouchableOpacity
+                    key={sub.value}
+                    style={wts.subBtn}
+                    onPress={() => selectSub(sub.value)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={wts.subBtnLabel}>{sub.label}</Text>
+                  </TouchableOpacity>
+                ))}
           </View>
         </>
       )}
 
       {/* ── ADIM 3: Detay Alanları ── */}
-      {op.work_type && (
+      {!!op.work_type && (
         <View style={wts.detailBox}>
 
           {/* CROWN / BRIDGE / AESTHETIC → materyal + shade */}
@@ -4677,16 +7039,25 @@ function WorkTypeSelector({
             </>
           )}
 
-          {/* IMPLANT → system + abutment + screw + shade */}
-          {cat === 'implant' && (
+          {/* IMPLANT → marka + tür + abutment + screw + shade */}
+          {isImplantOp && (
             <>
-              <Text style={styles.fieldLabel}>İmplant Sistemi</Text>
+              <Text style={styles.fieldLabel}>İmplant Markası</Text>
+              <View style={{ marginBottom: 12, zIndex: 50 }}>
+                <ImplantBrandCombobox
+                  value={op.implant_system}
+                  onChange={(v) => updateToothOp({ implant_system: v })}
+                  accent={P}
+                />
+              </View>
+
+              <Text style={styles.fieldLabel}>İmplant Türü</Text>
               <View style={[styles.chipRow, { marginBottom: 12 }]}>
-                {IMPLANT_SYSTEMS.map(s => (
-                  <TouchableOpacity key={s}
-                    onPress={() => updateToothOp({ implant_system: op.implant_system === s ? '' : s })}
-                    style={[styles.chip, op.implant_system === s && styles.chipActive]}>
-                    <Text style={[styles.chipText, op.implant_system === s && styles.chipTextActive]}>{s}</Text>
+                {IMPLANT_TYPES.map(t => (
+                  <TouchableOpacity key={t}
+                    onPress={() => updateToothOp({ implant_type: op.implant_type === t ? '' : t })}
+                    style={[styles.chip, op.implant_type === t && styles.chipActive]}>
+                    <Text style={[styles.chipText, op.implant_type === t && styles.chipTextActive]}>{t}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -4760,13 +7131,39 @@ function WorkTypeSelector({
               </Text>
             </View>
           )}
+
+          {/* Fiyat listesinden gelen ama OP_CATEGORY'de olmayan servisler için:
+              Son adım olarak diş rengi (shade) sor — sadece renk gerektiren servisler */}
+          {cat === null && !isImplantOp && useServiceCatalog && serviceNeedsShade(op.work_type) && (
+            <>
+              <Text style={styles.fieldLabel}>Diş Rengi (Shade)</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={{ flexDirection: 'row', gap: 6, paddingBottom: 4 }}>
+                  {ALL_SHADES.map(s => (
+                    <TouchableOpacity key={s}
+                      onPress={() => {
+                        const next = op.shade === s ? '' : s;
+                        updateToothOp({ shade: next });
+                        if (next) setTimeout(() => onAutoConfirm?.(), 0);
+                      }}
+                      style={[styles.shadeChip, op.shade === s && styles.shadeChipActive]}>
+                      <Text style={[styles.shadeText, op.shade === s && styles.shadeTextActive]}>{s}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+              <Text style={{ fontSize: 10.5, color: '#94A3B8', marginTop: 6 }}>
+                Renk seçtikten sonra iş otomatik listeye eklenir. Renk gerekmiyorsa direkt "Listeye ekle" butonuyla devam edin.
+              </Text>
+            </>
+          )}
         </View>
       )}
     </>
   );
 }
 
-const makeWtsStyles = (P: string) => StyleSheet.create({
+const makeWtsStyles = (P: string, T: any, isDark: boolean) => StyleSheet.create({
   favRow: {
     flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap',
     gap: 6, marginBottom: 12,
@@ -4802,36 +7199,43 @@ const makeWtsStyles = (P: string) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 3,
     paddingHorizontal: 14, paddingVertical: 8,
     borderRadius: 20, borderWidth: 1.5,
-    borderColor: '#DDE3ED', backgroundColor: '#FAFBFC',
+    borderColor: isDark ? 'rgba(255,255,255,0.14)' : '#DDE3ED',
+    backgroundColor: 'transparent',
   },
+  // Active = sadece accent stroke (renkli border), transparent fill kalır
   crumbChipActive: {
-    borderColor: P, backgroundColor: '#F1F5F9',
+    borderColor: P,
+    backgroundColor: 'transparent',
   },
-  crumbChipText: { fontSize: 12, fontWeight: '400' as any, fontFamily: F.regular, color: '#64748B' },
-  crumbChipTextActive: { color: P, fontWeight: '500' as any, fontFamily: F.medium },
-  crumbSep: { fontSize: 13, color: '#CBD5E1', marginHorizontal: 1 },
+  crumbChipText: { fontSize: 12, fontWeight: '500' as any, fontFamily: F.regular, color: T.ink2 },
+  crumbChipTextActive: { color: P, fontWeight: '600' as any, fontFamily: F.medium },
+  crumbSep: { fontSize: 13, color: T.ink3, marginHorizontal: 1 },
 
   mainRow: {
     flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4,
   },
   mainBtn: {
     paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
-    borderWidth: 1.5, borderColor: '#DDE3ED', backgroundColor: '#FAFBFC',
+    borderWidth: 1.5,
+    borderColor: isDark ? 'rgba(255,255,255,0.14)' : '#DDE3ED',
+    backgroundColor: 'transparent',
   },
-  mainBtnLabel: { fontSize: 12, fontWeight: '400', fontFamily: F.regular, color: '#64748B' },
+  mainBtnLabel: { fontSize: 12, fontWeight: '500', fontFamily: F.regular, color: T.ink2 },
 
   subRow: {
     flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4,
   },
   subBtn: {
     paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
-    borderWidth: 1.5, borderColor: '#DDE3ED', backgroundColor: '#FAFBFC',
+    borderWidth: 1.5,
+    borderColor: isDark ? 'rgba(255,255,255,0.14)' : '#DDE3ED',
+    backgroundColor: 'transparent',
   },
-  subBtnLabel: { fontSize: 12, fontWeight: '400', fontFamily: F.regular, color: '#64748B' },
+  subBtnLabel: { fontSize: 12, fontWeight: '500', fontFamily: F.regular, color: T.ink2 },
 
   detailBox: {
     marginTop: 4, paddingTop: 12,
-    borderTopWidth: 1, borderTopColor: '#F1F5F9',
+    borderTopWidth: 1, borderTopColor: T.hairline,
   },
 });
 
@@ -4841,7 +7245,9 @@ const makeWtsStyles = (P: string) => StyleSheet.create({
 
 function VoicePlayer({ uri, duration, accentColor }: { uri: string; duration: number; accentColor?: string }) {
   const P  = accentColor ?? C.primary;
-  const cb = useMemo(() => makeCbStyles(P), [P]);
+  const _T_cb = useMobileTokens();
+  const _isDark_cb = useThemeModeStore(s => s.resolvedDark);
+  const cb = useMemo(() => makeCbStyles(P, _T_cb, _isDark_cb), [P, _T_cb, _isDark_cb]);
   const [playing, setPlaying]     = React.useState(false);
   const [pos, setPos]             = React.useState(0);
   const [elapsed, setElapsed]     = React.useState(0);
@@ -4883,7 +7289,9 @@ const fmtSize = (b: number) => b < 1024 * 1024 ? `${(b / 1024).toFixed(0)} KB` :
 
 function MessageBubble({ msg, onDelete, accentColor }: { msg: ChatMessage; onDelete: () => void; accentColor?: string }) {
   const P  = accentColor ?? C.primary;
-  const cb = useMemo(() => makeCbStyles(P), [P]);
+  const _T_cb = useMobileTokens();
+  const _isDark_cb = useThemeModeStore(s => s.resolvedDark);
+  const cb = useMemo(() => makeCbStyles(P, _T_cb, _isDark_cb), [P, _T_cb, _isDark_cb]);
   const isSelf = true; // new order form — always self (right side, blue)
   const fmt = (s: number) =>
     `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
@@ -4932,7 +7340,9 @@ function ChatBox({ messages, onAdd, onDelete, hideHeader, accentColor }: {
   accentColor?: string;
 }) {
   const P = accentColor ?? C.primary;
-  const cb = useMemo(() => makeCbStyles(P), [P]);
+  const _T_cb = useMobileTokens();
+  const _isDark_cb = useThemeModeStore(s => s.resolvedDark);
+  const cb = useMemo(() => makeCbStyles(P, _T_cb, _isDark_cb), [P, _T_cb, _isDark_cb]);
   const [text, setText]               = React.useState('');
   const [recording, setRec]           = React.useState(false);
   const [elapsed, setElapsed]         = React.useState(0);
@@ -4954,11 +7364,24 @@ function ChatBox({ messages, onAdd, onDelete, hideHeader, accentColor }: {
     scrollRef.current?.scrollToEnd?.({ animated: true });
   }, [messages.length]);
 
+  // Gün ayracı etiketi — Bugün / Dün / "12 Haziran"
+  const dayLabel = (ts: string) => {
+    const d = new Date(ts);
+    const now = new Date();
+    if (d.toDateString() === now.toDateString()) return 'Bugün';
+    const y = new Date(now); y.setDate(now.getDate() - 1);
+    if (d.toDateString() === y.toDateString()) return 'Dün';
+    return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' });
+  };
+
   const newId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
   const sendText = () => {
-    if (!text.trim()) return;
-    onAdd({ id: newId(), type: 'text', text: text.trim(), ts: new Date().toISOString() });
+    const trimmed = text.trim();
+    if (!trimmed) { console.log('[ChatBox.sendText] empty, skip'); return; }
+    const newMsg: ChatMessage = { id: newId(), type: 'text', text: trimmed, ts: new Date().toISOString() };
+    console.log('[ChatBox.sendText] adding message', newMsg, 'prev messages count:', messages.length);
+    onAdd(newMsg);
     setText('');
   };
 
@@ -5025,7 +7448,11 @@ function ChatBox({ messages, onAdd, onDelete, hideHeader, accentColor }: {
             Bu vakaya özel notlar, sesli mesajlar ve dosyalar
           </Text>
         </View>
-        <View style={cb.headerDot} />
+        {messages.length > 0 && (
+          <View style={cb.headerCount}>
+            <Text style={cb.headerCountTxt}>{messages.length}</Text>
+          </View>
+        )}
       </View>
       )}
 
@@ -5036,15 +7463,50 @@ function ChatBox({ messages, onAdd, onDelete, hideHeader, accentColor }: {
         contentContainerStyle={cb.msgContent}
         keyboardShouldPersistTaps="handled"
       >
-        {messages.length === 0 && (
+        {messages.length === 0 ? (
           <View style={cb.emptyWrap}>
-            <AppIcon name={'message-outline' as any} size={28} color="#CBD5E1" />
-            <Text style={cb.emptyTxt}>Henüz mesaj yok</Text>
+            <View style={cb.emptyIcon}>
+              <AppIcon name={'message-outline' as any} size={26} color={P} />
+            </View>
+            <View style={{ alignItems: 'center', gap: 4 }}>
+              <Text style={cb.emptyTitle}>Henüz mesaj yok</Text>
+              <Text style={cb.emptySub}>İlk notu yaz, sesli mesaj bırak ya da dosya ekle — bu vakaya özel kalır.</Text>
+            </View>
+            <View style={cb.emptyChips}>
+              {Platform.OS === 'web' && (
+                <TouchableOpacity style={cb.emptyChip} activeOpacity={0.8} onPress={() => startRec()}>
+                  <AppIcon name={'microphone' as any} size={14} color={P} />
+                  <Text style={cb.emptyChipTxt}>Sesli not</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={cb.emptyChip}
+                activeOpacity={0.8}
+                onPress={() => { if (Platform.OS === 'web') docInputRef.current?.click(); else setAttachMenuOpen(true); }}
+              >
+                <AppIcon name={'paperclip' as any} size={14} color={P} />
+                <Text style={cb.emptyChipTxt}>Dosya ekle</Text>
+              </TouchableOpacity>
+            </View>
           </View>
+        ) : (
+          messages.map((msg, i) => {
+            const prev = messages[i - 1];
+            const showSep = !prev || new Date(prev.ts).toDateString() !== new Date(msg.ts).toDateString();
+            return (
+              <React.Fragment key={msg.id}>
+                {showSep && (
+                  <View style={cb.daySep}>
+                    <View style={cb.daySepLine} />
+                    <Text style={cb.daySepTxt}>{dayLabel(msg.ts)}</Text>
+                    <View style={cb.daySepLine} />
+                  </View>
+                )}
+                <MessageBubble msg={msg} onDelete={() => onDelete(msg.id)} accentColor={accentColor} />
+              </React.Fragment>
+            );
+          })
         )}
-        {messages.map(msg => (
-          <MessageBubble key={msg.id} msg={msg} onDelete={() => onDelete(msg.id)} accentColor={accentColor} />
-        ))}
       </ScrollView>
 
       {/* ── Recording indicator ── */}
@@ -5134,137 +7596,159 @@ function ChatBox({ messages, onAdd, onDelete, hideHeader, accentColor }: {
         </Modal>
       ) : null}
 
-      {/* ── Input bar ── */}
+      {/* ── Input bar — pill (input + ataç + mic) + yanında gönder ── */}
       <View style={cb.inputBar}>
-        {/* Attach menu — web only */}
-        {Platform.OS === 'web' && (
-          <View style={{ position: 'relative' }}>
-            {attachMenuOpen && (
-              <>
-                {/* Backdrop */}
-                <Pressable style={cb.attachBackdrop} onPress={() => setAttachMenuOpen(false)} />
-                {/* Menu */}
-                <View style={cb.attachMenu}>
-                  <TouchableOpacity
-                    style={cb.attachItem}
-                    onPress={() => { setAttachMenuOpen(false); imageInputRef.current?.click(); }}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={cb.attachItemLabel}>Fotoğraf</Text>
-                    <View style={[cb.attachIconCircle, { backgroundColor: '#0F172A' }]}>
-                      <AppIcon name={'image-outline' as any} size={22} color="#FFFFFF" />
-                    </View>
-                  </TouchableOpacity>
+        <View style={cb.inputPill}>
+          {/* Text input — Enter sends, Shift+Enter newline */}
+          <TextInput
+            style={cb.textInput}
+            value={text}
+            onChangeText={setText}
+            placeholder="Mesajınızı yazın..."
+            placeholderTextColor={_T_cb.ink3}
+            multiline
+            // @ts-ignore web only
+            onKeyDown={Platform.OS === 'web' ? (e: any) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                e.stopPropagation();
+                sendText();
+              }
+            } : undefined}
+            // @ts-ignore
+            outlineStyle="none"
+          />
 
-                  <TouchableOpacity
-                    style={cb.attachItem}
-                    onPress={() => { setAttachMenuOpen(false); scanInputRef.current?.click(); }}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={cb.attachItemLabel}>Dijital Tarama</Text>
-                    <View style={[cb.attachIconCircle, { backgroundColor: '#0891B2' }]}>
-                      <AppIcon name={'cube-scan' as any} size={22} color="#FFFFFF" />
-                    </View>
-                  </TouchableOpacity>
+          {/* Ataç — menü aç/kapa (pill içinde) */}
+          {Platform.OS === 'web' && (
+            <View style={{ position: 'relative' }}>
+              {attachMenuOpen && (
+                <>
+                  <Pressable style={cb.attachBackdrop} onPress={() => setAttachMenuOpen(false)} />
+                  <View style={cb.attachMenu}>
+                    <TouchableOpacity
+                      style={cb.attachItem}
+                      onPress={() => { setAttachMenuOpen(false); imageInputRef.current?.click(); }}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={cb.attachItemLabel}>Fotoğraf</Text>
+                      <View style={[cb.attachIconCircle, { backgroundColor: '#0F172A' }]}>
+                        <AppIcon name={'image-outline' as any} size={22} color="#FFFFFF" />
+                      </View>
+                    </TouchableOpacity>
 
-                  <TouchableOpacity
-                    style={cb.attachItem}
-                    onPress={() => { setAttachMenuOpen(false); docInputRef.current?.click(); }}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={cb.attachItemLabel}>Dosya</Text>
-                    <View style={[cb.attachIconCircle, { backgroundColor: '#7C3AED' }]}>
-                      <AppIcon name={'file-document-outline' as any} size={22} color="#FFFFFF" />
-                    </View>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
+                    <TouchableOpacity
+                      style={cb.attachItem}
+                      onPress={() => { setAttachMenuOpen(false); scanInputRef.current?.click(); }}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={cb.attachItemLabel}>Dijital Tarama</Text>
+                      <View style={[cb.attachIconCircle, { backgroundColor: '#0891B2' }]}>
+                        <AppIcon name={'cube-scan' as any} size={22} color="#FFFFFF" />
+                      </View>
+                    </TouchableOpacity>
 
-            {/* Paperclip / close toggle */}
-            <TouchableOpacity
-              style={[cb.flatBtn, attachMenuOpen && cb.flatBtnActive]}
-              onPress={() => setAttachMenuOpen(v => !v)}
-              activeOpacity={0.7}
-            >
-              <AppIcon
-                name={attachMenuOpen ? ('close' as any) : ('paperclip' as any)}
-                size={20}
-                color={attachMenuOpen ? '#0F172A' : '#94A3B8'}
-              />
-            </TouchableOpacity>
-          </View>
-        )}
+                    <TouchableOpacity
+                      style={cb.attachItem}
+                      onPress={() => { setAttachMenuOpen(false); docInputRef.current?.click(); }}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={cb.attachItemLabel}>Dosya</Text>
+                      <View style={[cb.attachIconCircle, { backgroundColor: '#7C3AED' }]}>
+                        <AppIcon name={'file-document-outline' as any} size={22} color="#FFFFFF" />
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+              <TouchableOpacity style={cb.pillIconBtn} onPress={() => setAttachMenuOpen(v => !v)} activeOpacity={0.7}>
+                <AppIcon
+                  name={attachMenuOpen ? ('close' as any) : ('paperclip' as any)}
+                  size={19}
+                  color={attachMenuOpen ? _T_cb.ink : _T_cb.ink3}
+                />
+              </TouchableOpacity>
+            </View>
+          )}
 
-        {/* Text input — Enter sends, Shift+Enter newline */}
-        <TextInput
-          style={cb.textInput}
-          value={text}
-          onChangeText={setText}
-          placeholder="Mesajınızı yazın..."
-          placeholderTextColor="#B0BAC9"
-          multiline
-          // @ts-ignore
-          outlineStyle="none"
-          onKeyPress={(e: any) => {
-            if (Platform.OS === 'web' && e.nativeEvent.key === 'Enter' && !e.nativeEvent.shiftKey) {
-              e.preventDefault?.();
-              sendText();
-            }
-          }}
-        />
+          {/* Sesli mesaj — pill içinde */}
+          <TouchableOpacity style={cb.pillIconBtn} onPress={recording ? stopRec : startRec} activeOpacity={0.7}>
+            <AppIcon
+              name={recording ? ('stop' as any) : ('microphone' as any)}
+              size={19}
+              color={recording ? '#EF4444' : _T_cb.ink3}
+            />
+          </TouchableOpacity>
+        </View>
 
-        {/* Mic — large blue circle (primary action) */}
+        {/* Gönder — pill'in yanındaki yuvarlak buton */}
         <TouchableOpacity
-          style={[cb.micBtn, recording && cb.micBtnRec]}
-          onPress={recording ? stopRec : startRec}
+          style={[cb.sendCircle, !text.trim() && cb.sendCircleOff]}
+          onPress={sendText}
+          disabled={!text.trim()}
           activeOpacity={0.85}
         >
-          <AppIcon
-            name={recording ? ('stop' as any) : ('microphone' as any)}
-            size={20} color="#fff"
-          />
+          <AppIcon name={'send' as any} size={18} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
     </View>
   );
 }
 
-const makeCbStyles = (P: string) => StyleSheet.create({
+const makeCbStyles = (P: string, T: any, isDark: boolean) => StyleSheet.create({
   // Container
-  wrap: { borderRadius: NORadius.xl, overflow: 'hidden', backgroundColor: '#FFFFFF', flex: 1 },
+  wrap: { borderRadius: NORadius.xl, overflow: 'hidden', backgroundColor: T.card, flex: 1 },
 
-  // Header — white, clean
+  // Header
   header:      { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16,
-                  paddingVertical: 12, backgroundColor: '#fff',
-                  borderBottomWidth: 1, borderBottomColor: NO.borderSoft },
-  headerIcon:  { width: 32, height: 32, borderRadius: NORadius.sm, backgroundColor: NO.bgInput,
+                  paddingVertical: 12, backgroundColor: T.card,
+                  borderBottomWidth: 1, borderBottomColor: T.hairline },
+  headerIcon:  { width: 32, height: 32, borderRadius: NORadius.sm, backgroundColor: P + '16',
                   alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 13, fontWeight: '700' as any, color: NO.inkStrong, marginBottom: 1 },
-  headerSub:   { fontSize: 10, color: NO.inkMute, lineHeight: 14 },
-  headerDot:   { width: 8, height: 8, borderRadius: 4, backgroundColor: NO.success,
-                  borderWidth: 1.5, borderColor: '#fff' },
+  headerTitle: { fontSize: 13, fontWeight: '700' as any, color: T.ink, marginBottom: 1 },
+  headerSub:   { fontSize: 10, color: T.ink3, lineHeight: 14 },
+  // Mesaj sayacı rozeti (mesaj varken) — eski anlamsız yeşil nokta yerine
+  headerCount:    { minWidth: 22, paddingHorizontal: 7, height: 20, borderRadius: 999,
+                     backgroundColor: P + '16', alignItems: 'center', justifyContent: 'center' },
+  headerCountTxt: { fontSize: 11, fontWeight: '700' as any, color: P },
 
   // Messages
-  msgList:    { flex: 1, minHeight: 200, backgroundColor: NO.bgInput },
-  msgContent: { paddingHorizontal: 14, paddingVertical: 12, gap: 6 },
-  emptyWrap:  { alignItems: 'center', justifyContent: 'center', paddingTop: 50, gap: 8 },
-  emptyTxt:   { fontSize: 12, color: '#CBD5E1' },
+  msgList:    { flex: 1, minHeight: 200, backgroundColor: T.card },
+  msgContent: { paddingHorizontal: 14, paddingVertical: 12, gap: 6, flexGrow: 1 },
 
-  // Bubble — right side blue (sent), left side white (received)
+  // Empty state — panel-aware, yönlendirici
+  emptyWrap:   { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 36, gap: 12 },
+  emptyIcon:   { width: 60, height: 60, borderRadius: 20, backgroundColor: P + '14',
+                  alignItems: 'center', justifyContent: 'center' },
+  emptyTitle:  { fontSize: 14, fontWeight: '600' as any, color: T.ink },
+  emptySub:    { fontSize: 12, color: T.ink3, textAlign: 'center', lineHeight: 17, maxWidth: 280 },
+  emptyChips:  { flexDirection: 'row', gap: 8, marginTop: 4, flexWrap: 'wrap', justifyContent: 'center' },
+  emptyChip:   { flexDirection: 'row', alignItems: 'center', gap: 6,
+                  paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
+                  borderWidth: 1, borderColor: T.hairline, backgroundColor: T.card },
+  emptyChipTxt:{ fontSize: 12, fontWeight: '600' as any, color: T.ink2 },
+
+  // Gün ayracı
+  daySep:    { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 8, paddingHorizontal: 4 },
+  daySepLine:{ flex: 1, height: 1, backgroundColor: T.hairline },
+  daySepTxt: { fontSize: 10, fontWeight: '600' as any, color: T.ink3, letterSpacing: 0.4,
+                textTransform: 'uppercase' as any },
+  emptyTxt:   { fontSize: 12, color: T.ink3 },
+
+  // Bubble — sent right (accent), received left (cardSoft)
   msgRow:      { alignItems: 'flex-end', marginBottom: 4 },
   msgRowLeft:  { alignItems: 'flex-start', marginBottom: 4 },
   bubble:      { maxWidth: '78%', backgroundColor: P,
                   borderRadius: 20, borderBottomRightRadius: 4,
                   paddingVertical: 10, paddingHorizontal: 14,
                   shadowColor: P, shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } },
-  bubbleLeft:  { backgroundColor: '#fff', borderBottomRightRadius: 20, borderBottomLeftRadius: 4,
-                  shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
+  bubbleLeft:  { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#fff', borderBottomRightRadius: 20, borderBottomLeftRadius: 4,
+                  shadowColor: '#000', shadowOpacity: isDark ? 0.25 : 0.06, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
   bubbleTxt:     { fontSize: 13, color: '#fff', lineHeight: 20 },
-  bubbleTxtLeft: { color: '#1E293B' },
+  bubbleTxtLeft: { color: T.ink },
   bubbleMeta:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 5, marginTop: 3 },
   bubbleTime:    { fontSize: 10, color: 'rgba(255,255,255,0.6)' },
-  bubbleTimeLeft:{ color: '#94A3B8' },
+  bubbleTimeLeft:{ color: T.ink3 },
 
   // File
   fileRow:  { flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 160 },
@@ -5283,23 +7767,32 @@ const makeCbStyles = (P: string) => StyleSheet.create({
 
   // Recording bar
   recBar:     { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14,
-                 paddingVertical: 8, backgroundColor: '#FFF5F5',
-                 borderTopWidth: 1, borderTopColor: '#FCA5A5' },
+                 paddingVertical: 8, backgroundColor: isDark ? 'rgba(239,68,68,0.10)' : '#FFF5F5',
+                 borderTopWidth: 1, borderTopColor: isDark ? 'rgba(239,68,68,0.30)' : '#FCA5A5' },
   recDot:     { width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444' },
   recTxt:     { fontSize: 12, color: '#EF4444', flex: 1 },
   recStop:    { flexDirection: 'row', alignItems: 'center', gap: 4 },
   recStopTxt: { fontSize: 12, color: '#EF4444' },
 
-  // Input bar — flat, clean like reference
-  inputBar: { flexDirection: 'row', alignItems: 'center', gap: 4,
+  // Input bar — flat, theme-aware
+  inputBar: { flexDirection: 'row', alignItems: 'center', gap: 8,
                paddingHorizontal: 12, paddingVertical: 10,
-               borderTopWidth: 1, borderTopColor: '#F0F4F8', backgroundColor: '#fff' },
-  flatBtn:     { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  flatBtnActive: { backgroundColor: '#F1F5F9', borderRadius: 18 },
-  textInput:   { flex: 1, fontSize: 13, color: '#1E293B', maxHeight: 90,
-                  paddingHorizontal: 4, paddingVertical: 6,
+               borderTopWidth: 1, borderTopColor: T.hairline, backgroundColor: T.card },
+  flatBtn:     { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  flatBtnActive: { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#F1F5F9', borderRadius: 22 },
+  // Pill input — input + ataç + mic hepsi içinde (referans WhatsApp tarzı)
+  inputPill:   { flex: 1, flexDirection: 'row', alignItems: 'center', minHeight: 44,
+                  paddingLeft: 16, paddingRight: 4, borderRadius: 22,
+                  backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline },
+  textInput:   { flex: 1, fontSize: 13, color: T.ink, minHeight: 44, maxHeight: 110,
+                  paddingHorizontal: 0, paddingVertical: 11, backgroundColor: 'transparent',
                   // @ts-ignore
-                  outlineStyle: 'none' },
+                  outlineStyle: 'none' as any },
+  pillIconBtn: { width: 34, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  // Gönder — pill'in yanındaki yuvarlak buton
+  sendCircle:    { width: 44, height: 44, borderRadius: 22, backgroundColor: P,
+                    alignItems: 'center', justifyContent: 'center' },
+  sendCircleOff: { opacity: 0.4 },
   micBtn:    { width: 44, height: 44, borderRadius: 22, backgroundColor: P,
                 alignItems: 'center', justifyContent: 'center',
                 shadowColor: P, shadowOpacity: 0.35, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } },
@@ -5351,7 +7844,7 @@ const makeCbStyles = (P: string) => StyleSheet.create({
   previewCaption: { fontSize: 14, color: '#0F172A', paddingVertical: 8, paddingHorizontal: 12,
                     backgroundColor: '#F8FAFC', borderRadius: 10, borderWidth: 1, borderColor: '#F1F5F9',
                     // @ts-ignore
-                    outlineStyle: 'none' },
+                    outlineStyle: 'none' as any },
   previewActions: { flexDirection: 'row', gap: 10, padding: 16, justifyContent: 'flex-end' },
   previewCancelBtn: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10, backgroundColor: '#F1F5F9' },
   previewCancelTxt: { fontSize: 14, fontWeight: '600' as any, color: '#64748B' },
@@ -5748,6 +8241,8 @@ function WheelPickerColumn({
 
 const TR_MONTHS = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
 
+// Modern calendar date picker — matches shared core/ui/DatePicker design
+// (month + year dropdowns, accent-aware, Patterns §13)
 function DateWheelPickerModal({
   visible, value, onChange, onClose, minDate, maxDate, title, anchorPos, accentColor,
 }: {
@@ -5761,102 +8256,324 @@ function DateWheelPickerModal({
   anchorPos?: { x: number; y: number; w: number; h: number };
   accentColor?: string;
 }) {
-  const P = accentColor ?? C.primary;
-  const dp = useMemo(() => makeDpStyles(P), [P]);
+  const accent = accentColor ?? C.primary;
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const { width: SW, height: SH } = useWindowDimensions();
   const now = new Date();
-  const minY = minDate ? minDate.getFullYear() : 1930;
-  const maxY = maxDate ? maxDate.getFullYear() : now.getFullYear();
 
-  const [selYear,  setSelYear]  = useState(value ? value.getFullYear() : now.getFullYear());
-  const [selMonth, setSelMonth] = useState(value ? value.getMonth()    : now.getMonth());
-  const [selDay,   setSelDay]   = useState(value ? value.getDate()     : now.getDate());
+  const initial = value ?? now;
+  const [viewYear,  setViewYear]  = useState(initial.getFullYear());
+  const [viewMonth, setViewMonth] = useState(initial.getMonth());
+  const [monthDropOpen, setMonthDropOpen] = useState(false);
+  const [yearDropOpen,  setYearDropOpen]  = useState(false);
 
   useEffect(() => {
     if (visible) {
       const d = value ?? now;
-      setSelYear(d.getFullYear());
-      setSelMonth(d.getMonth());
-      setSelDay(d.getDate());
+      setViewYear(d.getFullYear());
+      setViewMonth(d.getMonth());
+      setMonthDropOpen(false);
+      setYearDropOpen(false);
     }
   }, [visible]);
 
-  const years = Array.from({ length: maxY - minY + 1 }, (_, i) => String(minY + i));
-  const daysInMonth = new Date(selYear, selMonth + 1, 0).getDate();
-  const days = Array.from({ length: daysInMonth }, (_, i) => String(i + 1).padStart(2, '0'));
-  const clampedDay = Math.min(selDay, daysInMonth);
+  const MONTHS_TR   = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+  const WEEKDAYS_TR = ['Pzt','Sal','Çar','Per','Cum','Cmt','Paz'];
 
-  const handleSubmit = () => {
-    onChange(new Date(selYear, selMonth, clampedDay, 12, 0, 0));
-    onClose();
+  const minY = minDate ? minDate.getFullYear() : new Date().getFullYear() - 60;
+  const maxY = maxDate ? maxDate.getFullYear() : new Date().getFullYear() + 10;
+  const yearList: number[] = [];
+  for (let y = maxY; y >= minY; y--) yearList.push(y);
+
+  // Calendar grid (Mon-start)
+  const firstOfMonth = new Date(viewYear, viewMonth, 1);
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const startWeekday = (firstOfMonth.getDay() + 6) % 7;
+
+  const cells: Array<{ day: number; date: Date } | null> = [];
+  for (let i = 0; i < startWeekday; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) {
+    cells.push({ day: d, date: new Date(viewYear, viewMonth, d, 12, 0, 0) });
+  }
+  while (cells.length < 42) cells.push(null);
+
+  const isSameDay = (a: Date | null, b: Date | null) =>
+    !!a && !!b
+    && a.getFullYear() === b.getFullYear()
+    && a.getMonth()    === b.getMonth()
+    && a.getDate()     === b.getDate();
+
+  const isDisabled = (d: Date) => {
+    if (minDate && d < new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate())) return true;
+    if (maxDate && d > new Date(maxDate.getFullYear(), maxDate.getMonth(), maxDate.getDate(), 23, 59)) return true;
+    return false;
   };
 
-  const yearIdx  = Math.max(0, years.indexOf(String(selYear)));
-  const dayIdx   = Math.max(0, clampedDay - 1);
+  const goPrev = () => {
+    if (viewMonth === 0) { setViewMonth(11); setViewYear(viewYear - 1); }
+    else setViewMonth(viewMonth - 1);
+  };
+  const goNext = () => {
+    if (viewMonth === 11) { setViewMonth(0); setViewYear(viewYear + 1); }
+    else setViewMonth(viewMonth + 1);
+  };
 
-  // Card dimensions (approximate)
-  const CARD_W = 230;
-  const CARD_H = 290;
+  const pickDay = (d: Date) => { onChange(d); onClose(); };
 
-  // Positioned below the anchor; flip above if too close to bottom
+  // Hex color → soft tint (e.g. accent + '14' is too web-only). Use rgba.
+  const tintBg = (() => {
+    // Accept hex like #RRGGBB
+    const m = accent.match(/^#([0-9a-f]{6})$/i);
+    if (!m) return 'rgba(0,0,0,0.06)';
+    const r = parseInt(m[1].slice(0,2), 16);
+    const g = parseInt(m[1].slice(2,4), 16);
+    const b = parseInt(m[1].slice(4,6), 16);
+    return `rgba(${r},${g},${b},0.10)`;
+  })();
+
+  const POPOVER_W = 300;
+  const POPOVER_H = 360;
   const cardTop = anchorPos
-    ? (anchorPos.y + anchorPos.h + 6 + CARD_H > SH
-        ? anchorPos.y - CARD_H - 6
+    ? (anchorPos.y + anchorPos.h + 6 + POPOVER_H > SH
+        ? Math.max(8, anchorPos.y - POPOVER_H - 6)
         : anchorPos.y + anchorPos.h + 6)
     : undefined;
   const cardLeft = anchorPos
-    ? Math.max(8, Math.min(anchorPos.x, SW - CARD_W - 8))
+    ? Math.max(8, Math.min(anchorPos.x, SW - POPOVER_W - 8))
     : undefined;
 
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
-      <Pressable style={dp.overlay} onPress={onClose}>
-        <TouchableOpacity
-          activeOpacity={1}
-          style={[dp.card, anchorPos && { position: 'absolute', top: cardTop, left: cardLeft }]}
+      <Pressable
+        style={{ flex: 1, backgroundColor: Platform.OS === 'web' ? 'transparent' : 'rgba(0,0,0,0.20)' }}
+        onPress={onClose}
+      >
+        <View
+          onStartShouldSetResponder={() => true}
+          style={[
+            {
+              width: POPOVER_W,
+              backgroundColor: T.card,
+              borderRadius: 18,
+              padding: 14,
+              borderWidth: 1,
+              borderColor: T.hairline,
+              ...Platform.select({
+                web:     { boxShadow: isDark ? '0 16px 40px rgba(0,0,0,0.6)' : '0 16px 40px rgba(0,0,0,0.15)' } as any,
+                default: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: isDark ? 0.5 : 0.14, shadowRadius: 24, elevation: 8 },
+              }),
+            },
+            anchorPos
+              ? { position: 'absolute', top: cardTop, left: cardLeft }
+              : { alignSelf: 'center', marginTop: 80 },
+          ]}
         >
-          {/* Header */}
-          <View style={dp.header}>
-            <Text style={dp.headerTitle}>{(title ?? 'Tarih Seç').toUpperCase()}</Text>
-            <TouchableOpacity style={dp.closeBtn} onPress={onClose}>
-              <Text style={dp.closeX}>✕</Text>
-            </TouchableOpacity>
+          {/* Header — prev / month-trigger / year-trigger / next */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+            <Pressable
+              onPress={goPrev}
+              style={{ width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: T.cardSoft }}
+            >
+              <AppIcon name={'chevron-left' as any} size={15} color={T.ink2} />
+            </Pressable>
+
+            <Pressable
+              onPress={() => { setMonthDropOpen(v => !v); setYearDropOpen(false); }}
+              style={{
+                flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+                paddingHorizontal: 8, paddingVertical: 6, borderRadius: 8,
+                backgroundColor: monthDropOpen ? T.cardSoft : 'transparent',
+              }}
+            >
+              <Text style={{ fontSize: 15, fontWeight: '600', fontFamily: F.semibold, color: T.ink, letterSpacing: -0.2 }}>
+                {MONTHS_TR[viewMonth]}
+              </Text>
+              <AppIcon name={'chevron-down' as any} size={12} color={T.ink3} />
+            </Pressable>
+
+            <Pressable
+              onPress={() => { setYearDropOpen(v => !v); setMonthDropOpen(false); }}
+              style={{
+                width: 80,
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+                paddingHorizontal: 8, paddingVertical: 6, borderRadius: 8,
+                backgroundColor: yearDropOpen ? T.cardSoft : 'transparent',
+              }}
+            >
+              <Text style={{ fontSize: 15, fontWeight: '600', fontFamily: F.semibold, color: T.ink, letterSpacing: -0.2 }}>
+                {viewYear}
+              </Text>
+              <AppIcon name={'chevron-down' as any} size={12} color={T.ink3} />
+            </Pressable>
+
+            <Pressable
+              onPress={goNext}
+              style={{ width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: T.cardSoft }}
+            >
+              <AppIcon name={'chevron-right' as any} size={15} color={T.ink2} />
+            </Pressable>
           </View>
 
-          {/* Column labels */}
-          <View style={dp.colLabels}>
-            <Text style={[dp.colLabel, { width: 76 }]}>YIL</Text>
-            <Text style={[dp.colLabel, { width: 64 }]}>AY</Text>
-            <Text style={[dp.colLabel, { width: 54 }]}>GÜN</Text>
+          {/* Weekday header */}
+          <View style={{ flexDirection: 'row', marginBottom: 4 }}>
+            {WEEKDAYS_TR.map(w => (
+              <Text
+                key={w}
+                style={{
+                  flex: 1, textAlign: 'center', fontSize: 10, fontWeight: '600',
+                  letterSpacing: 0.7, textTransform: 'uppercase', color: T.ink3,
+                }}
+              >
+                {w}
+              </Text>
+            ))}
           </View>
 
-          {/* Three scroll columns */}
-          <View style={dp.columns}>
-            <WheelPickerColumn
-              items={years}
-              selectedIndex={yearIdx}
-              onChange={(i) => setSelYear(parseInt(years[i]))}
-              width={76}
-            />
-            <WheelPickerColumn
-              items={TR_MONTHS}
-              selectedIndex={selMonth}
-              onChange={setSelMonth}
-              width={64}
-            />
-            <WheelPickerColumn
-              items={days}
-              selectedIndex={dayIdx}
-              onChange={(i) => setSelDay(i + 1)}
-              width={54}
-            />
+          {/* Day grid */}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+            {cells.map((c, i) => {
+              if (!c) return <View key={i} style={{ width: '14.2857%', aspectRatio: 1 }} />;
+              const selected = isSameDay(c.date, value);
+              const today    = isSameDay(c.date, now);
+              const dis      = isDisabled(c.date);
+              return (
+                <View key={i} style={{ width: '14.2857%', aspectRatio: 1, padding: 2 }}>
+                  <Pressable
+                    onPress={() => !dis && pickDay(c.date)}
+                    disabled={dis}
+                    style={{
+                      flex: 1,
+                      borderRadius: 10,
+                      alignItems: 'center', justifyContent: 'center',
+                      backgroundColor: selected ? accent : 'transparent',
+                      borderWidth: today && !selected ? 1 : 0,
+                      borderColor: today && !selected ? accent : 'transparent',
+                      opacity: dis ? 0.3 : 1,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        fontWeight: selected ? '700' : today ? '600' : '500',
+                        fontFamily: selected || today ? F.semibold : F.medium,
+                        color: selected ? '#FFFFFF' : today ? accent : T.ink,
+                      }}
+                    >
+                      {c.day}
+                    </Text>
+                  </Pressable>
+                </View>
+              );
+            })}
           </View>
 
-          {/* Submit */}
-          <TouchableOpacity style={dp.submitBtn} onPress={handleSubmit}>
-            <Text style={dp.submitText}>KAYDET</Text>
-          </TouchableOpacity>
-        </TouchableOpacity>
+          {/* Footer — Bugün + Kapat */}
+          <View style={{
+            flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+            marginTop: 10, paddingTop: 10,
+            borderTopWidth: 1, borderTopColor: T.hairline,
+          }}>
+            <Pressable
+              onPress={() => {
+                const t = new Date();
+                if (!isDisabled(t)) pickDay(t);
+                else { setViewYear(t.getFullYear()); setViewMonth(t.getMonth()); }
+              }}
+              style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: T.cardSoft }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '600', fontFamily: F.semibold, color: accent }}>Bugün</Text>
+            </Pressable>
+            <Pressable onPress={onClose} style={{ paddingHorizontal: 12, paddingVertical: 6 }}>
+              <Text style={{ fontSize: 12, fontWeight: '500', fontFamily: F.medium, color: T.ink2 }}>Kapat</Text>
+            </Pressable>
+          </View>
+
+          {/* Month dropdown — overlay */}
+          {monthDropOpen && (
+            <Pressable
+              onPress={() => setMonthDropOpen(false)}
+              style={{
+                position: 'absolute', top: 56, left: 50, width: 140, maxHeight: 240,
+                backgroundColor: T.card, borderRadius: 12,
+                borderWidth: 1, borderColor: T.hairline,
+                paddingVertical: 4, overflow: 'hidden',
+                ...Platform.select({
+                  web:     { boxShadow: '0 8px 24px rgba(0,0,0,0.15)' } as any,
+                  default: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.14, shadowRadius: 12, elevation: 10 },
+                }),
+              }}
+            >
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {MONTHS_TR.map((m, idx) => {
+                  const active = idx === viewMonth;
+                  return (
+                    <Pressable
+                      key={m}
+                      onPress={() => { setViewMonth(idx); setMonthDropOpen(false); }}
+                      style={{
+                        paddingHorizontal: 14, paddingVertical: 9,
+                        backgroundColor: active ? tintBg : T.card,
+                      }}
+                    >
+                      <Text style={{
+                        fontSize: 13,
+                        fontWeight: active ? '700' : '500',
+                        fontFamily: active ? F.semibold : F.medium,
+                        color: active ? accent : T.ink,
+                      }}>
+                        {m}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </Pressable>
+          )}
+
+          {/* Year dropdown — overlay */}
+          {yearDropOpen && (
+            <Pressable
+              onPress={() => setYearDropOpen(false)}
+              style={{
+                position: 'absolute', top: 56, right: 50, width: 100, maxHeight: 240,
+                backgroundColor: T.card, borderRadius: 12,
+                borderWidth: 1, borderColor: T.hairline,
+                paddingVertical: 4, overflow: 'hidden',
+                ...Platform.select({
+                  web:     { boxShadow: '0 8px 24px rgba(0,0,0,0.15)' } as any,
+                  default: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.14, shadowRadius: 12, elevation: 10 },
+                }),
+              }}
+            >
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {yearList.map(y => {
+                  const active = y === viewYear;
+                  return (
+                    <Pressable
+                      key={y}
+                      onPress={() => { setViewYear(y); setYearDropOpen(false); }}
+                      style={{
+                        paddingHorizontal: 14, paddingVertical: 9,
+                        alignItems: 'center',
+                        backgroundColor: active ? tintBg : T.card,
+                      }}
+                    >
+                      <Text style={{
+                        fontSize: 13,
+                        fontWeight: active ? '700' : '500',
+                        fontFamily: active ? F.semibold : F.medium,
+                        color: active ? accent : T.ink,
+                      }}>
+                        {y}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </Pressable>
+          )}
+        </View>
       </Pressable>
     </Modal>
   );
@@ -5869,60 +8586,118 @@ const makeDpStyles = (P: string) => StyleSheet.create({
   },
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    width: 230,
+    borderRadius: 16,
+    width: 280,
     overflow: 'hidden',
     shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 12,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.14,
+    shadowRadius: 22,
+    elevation: 14,
     borderWidth: 1,
-    borderColor: '#F1F5F9',
+    borderColor: '#EEF2F7',
+    paddingBottom: 8,
   },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 14, paddingTop: 14, paddingBottom: 6,
+    paddingHorizontal: 10, paddingTop: 10, paddingBottom: 8,
   },
-  headerTitle: {
-    fontSize: 10, fontWeight: '500', fontFamily: F.medium,
-    color: '#94A3B8', letterSpacing: 0.3,
+  navBtn: {
+    width: 30, height: 30, borderRadius: 8,
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center', justifyContent: 'center',
   },
-  closeBtn: {
-    width: 22, height: 22, borderRadius: 11,
-    backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center',
+  monthLabel: {
+    flex: 1,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 6, borderRadius: 8,
   },
-  closeX: { fontSize: 10, color: '#64748B', fontWeight: '600' },
-  colLabels: {
-    flexDirection: 'row', paddingHorizontal: 12, paddingBottom: 3, gap: 0,
+  monthText: {
+    fontSize: 14, fontWeight: '600', fontFamily: F.semibold,
+    color: '#0F172A',
   },
-  colLabel: {
-    fontSize: 9, fontWeight: '500', fontFamily: F.medium,
-    color: '#CBD5E1', letterSpacing: 0.2, textAlign: 'center', textTransform: 'none',
-  },
-  columns: {
+  weekRow: {
     flexDirection: 'row',
-    paddingHorizontal: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
+    paddingHorizontal: 8,
+    paddingBottom: 4,
   },
-  submitBtn: {
-    margin: 10,
+  weekLabel: {
+    flex: 1, textAlign: 'center',
+    fontSize: 10, fontWeight: '600', fontFamily: F.semibold,
+    color: '#94A3B8', letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  grid: {
+    flexDirection: 'row', flexWrap: 'wrap',
+    paddingHorizontal: 6,
+  },
+  cell: {
+    width: `${100/7}%`,
+    aspectRatio: 1,
+    padding: 2,
+  },
+  cellInner: {
+    alignItems: 'center', justifyContent: 'center',
+  },
+  dayPill: {
+    width: 32, height: 32, borderRadius: 16,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  dayPillToday: {
+    borderWidth: 1.2,
+    borderColor: P,
+  },
+  dayPillSelected: {
     backgroundColor: P,
-    borderRadius: 10,
-    paddingVertical: 11,
+  },
+  dayText: {
+    fontSize: 13, fontWeight: '500', fontFamily: F.medium,
+    color: '#1E293B',
+  },
+  dayTextDisabled: {
+    color: '#CBD5E1',
+  },
+  dayTextToday: {
+    color: P, fontWeight: '700', fontFamily: F.semibold,
+  },
+  dayTextSelected: {
+    color: '#FFFFFF', fontWeight: '700', fontFamily: F.semibold,
+  },
+  footer: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end',
+    paddingHorizontal: 10, paddingTop: 6, paddingBottom: 4,
+  },
+  todayBtn: {
+    paddingHorizontal: 12, paddingVertical: 7,
+    borderRadius: 8, backgroundColor: '#F1F5F9',
+  },
+  todayText: {
+    fontSize: 11, fontWeight: '600', fontFamily: F.semibold,
+    color: P, letterSpacing: 0.2,
+  },
+  yearList: {
+    maxHeight: 240,
+    paddingHorizontal: 10,
+  },
+  yearItem: {
+    paddingVertical: 9, paddingHorizontal: 12, borderRadius: 8,
     alignItems: 'center',
   },
-  submitText: {
-    color: '#FFFFFF', fontSize: 11,
-    fontWeight: '600', fontFamily: F.semibold,
-    letterSpacing: 0.3,
+  yearItemActive: {
+    backgroundColor: P,
+  },
+  yearText: {
+    fontSize: 13, fontWeight: '500', fontFamily: F.medium,
+    color: '#1E293B',
+  },
+  yearTextActive: {
+    color: '#FFFFFF', fontWeight: '700', fontFamily: F.semibold,
   },
 });
 
 // ── DateField ────────────────────────────────────────────────────
 
-function DateField({ label, value, onChange, minDate, maxDate, placeholder, flex, required, error }: {
+function DateField({ label, value, onChange, minDate, maxDate, placeholder, flex, required, error, accentColor }: {
   label?: string;
   value: Date | null;
   onChange: (d: Date) => void;
@@ -5932,8 +8707,12 @@ function DateField({ label, value, onChange, minDate, maxDate, placeholder, flex
   flex?: boolean;
   required?: boolean;
   error?: string;
+  accentColor?: string;
 }) {
+  const accent = accentColor ?? C.primary;
+  const NO = useNOTokens();
   const [showPicker, setShowPicker] = useState(false);
+  const [focused,    setFocused]    = useState(false);
   const [textValue,  setTextValue]  = useState('');
   const [pos,        setPos]        = useState({ x: 0, y: 0, w: 0, h: 0 });
   const fieldRef = useRef<any>(null);
@@ -5984,18 +8763,28 @@ function DateField({ label, value, onChange, minDate, maxDate, placeholder, flex
           <Text style={[_staticStyles.fieldLabel, { marginBottom: 0 }, error && { color: '#EF4444' }]}>{label}</Text>
         </View>
       )}
-      <View ref={fieldRef} style={[_staticStyles.dateInputRow, error && { borderColor: 'rgba(239,68,68,0.5)', backgroundColor: 'rgba(239,68,68,0.05)' }]}>
+      <View
+        ref={fieldRef}
+        style={[
+          _staticStyles.dateInputRow,
+          { backgroundColor: NO.bgInput, borderColor: NO.borderSoft },
+          (focused || showPicker) && { borderColor: accent, backgroundColor: NO.bgInput },
+          error && { borderColor: 'rgba(239,68,68,0.5)', backgroundColor: 'rgba(239,68,68,0.05)' },
+        ]}
+      >
         <TextInput
-          style={_staticStyles.dateTextInput}
+          style={[_staticStyles.dateTextInput, { color: NO.inkStrong }]}
           value={textValue}
           onChangeText={handleTextChange}
           placeholder={placeholder ?? 'GG.AA.YYYY'}
-          placeholderTextColor="#94A3B8"
+          placeholderTextColor={NO.inkMute}
           keyboardType="numeric"
           maxLength={10}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
         />
-        <TouchableOpacity onPress={handleOpenPicker} style={_staticStyles.calIconBtn} activeOpacity={0.7}>
-          <AppIcon name="calendar-outline" size={16} color="#64748B" />
+        <TouchableOpacity onPress={handleOpenPicker} style={[_staticStyles.calIconBtn, { backgroundColor: 'transparent', borderLeftColor: NO.borderSoft }]} activeOpacity={0.7}>
+          <AppIcon name="calendar-outline" size={16} color={value || focused || showPicker ? accent : NO.inkMute} />
         </TouchableOpacity>
       </View>
       <DateWheelPickerModal
@@ -6007,6 +8796,7 @@ function DateField({ label, value, onChange, minDate, maxDate, placeholder, flex
         maxDate={maxDate}
         title={label}
         anchorPos={pos}
+        accentColor={accent}
       />
     </View>
   );
@@ -6042,7 +8832,9 @@ function InlineSelect({ label, icon, value, options, onSelect, error, accentColo
   accentColor?: string;
 }) {
   const P = accentColor ?? C.primary;
-  const isel = useMemo(() => makeIselStyles(P), [P]);
+  const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const isel = useMemo(() => makeIselStyles(P, T, isDark), [P, T, isDark]);
   const [open, setOpen] = useState(false);
   const [pos,  setPos]  = useState({ x: 0, y: 0, w: 0, h: 0 });
   const triggerRef = useRef<any>(null);
@@ -6108,49 +8900,54 @@ function InlineSelect({ label, icon, value, options, onSelect, error, accentColo
   );
 }
 
-const makeIselStyles = (P: string) => StyleSheet.create({
-  /* Wrapper: flex:1 + overflow visible — sadece kendi kolonunu büyütür */
-  wrap: { flex: 1 },
+const makeIselStyles = (P: string, T: ReturnType<typeof useMobileTokens>, isDark: boolean) => {
+  const bgCard    = isDark ? T.cardSoft : '#FFFFFF';
+  const borderCol = isDark ? 'rgba(255,255,255,0.10)' : '#F1F5F9';
+  const listBg    = isDark ? T.card : '#FFFFFF';
+  const optActive = isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9';
+  const optText   = isDark ? T.ink2 : '#334155';
+  const valueText = isDark ? T.ink : '#0F172A';
+  const placeholder = isDark ? T.ink3 : '#CBD5E1';
+  return StyleSheet.create({
+    wrap: { flex: 1 },
+    card: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      padding: 10, borderRadius: 10,
+      borderWidth: 1, borderColor: borderCol, backgroundColor: bgCard,
+    },
+    cardActive: { borderColor: borderCol, backgroundColor: bgCard },
+    cardOpen:   { borderColor: borderCol, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
+    cardError:  { borderColor: '#FCA5A5', backgroundColor: isDark ? 'rgba(239,68,68,0.10)' : '#FFF5F5' },
 
-  /* Trigger kartı */
-  card: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    padding: 10, borderRadius: 10,
-    borderWidth: 1, borderColor: '#F1F5F9', backgroundColor: '#FFFFFF',
-  },
-  cardActive: { borderColor: '#F1F5F9', backgroundColor: '#FFFFFF' },
-  cardOpen:   { borderColor: '#F1F5F9', borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
-  cardError:  { borderColor: '#FCA5A5', backgroundColor: '#FFF5F5' },
+    cardLabel:        { fontSize: 10, fontFamily: F.medium, color: '#94A3B8', letterSpacing: 0.3 },
+    cardLabelError:   { color: '#EF4444' },
+    cardLabelActive:  { color: P },
+    cardValue:        { fontSize: 13, fontFamily: F.medium, fontWeight: '500', color: valueText, marginTop: 2 },
+    cardValueActive:  { color: P },
+    cardPlaceholder:  { color: placeholder, fontFamily: F.regular, fontWeight: '400' },
 
-  cardLabel:        { fontSize: 10, fontFamily: F.medium, color: '#94A3B8', letterSpacing: 0.3 },
-  cardLabelError:   { color: '#EF4444' },
-  cardLabelActive:  { color: P },
-  cardValue:        { fontSize: 13, fontFamily: F.medium, fontWeight: '500', color: '#0F172A', marginTop: 2 },
-  cardValueActive:  { color: P },
-  cardPlaceholder:  { color: '#CBD5E1', fontFamily: F.regular, fontWeight: '400' },
-
-  /* Seçenek listesi — trigger'a yapışık görünür */
-  list: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1, borderTopWidth: 0,
-    borderColor: '#F1F5F9',
-    borderBottomLeftRadius: 10, borderBottomRightRadius: 10,
-    overflow: 'hidden',
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.10,
-    shadowRadius: 12,
-    elevation: 12,
-  },
-  option: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 12, paddingVertical: 11,
-  },
-  optionBorder:     { borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  optionActive:     { backgroundColor: '#F1F5F9' },
-  optionText:       { fontSize: 13, fontFamily: F.regular, color: '#334155' },
-  optionTextActive: { color: P, fontFamily: F.medium },
-});
+    list: {
+      backgroundColor: listBg,
+      borderWidth: 1, borderTopWidth: 0,
+      borderColor: borderCol,
+      borderBottomLeftRadius: 10, borderBottomRightRadius: 10,
+      overflow: 'hidden',
+      shadowColor: '#0F172A',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.10,
+      shadowRadius: 12,
+      elevation: 12,
+    },
+    option: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      paddingHorizontal: 12, paddingVertical: 11,
+    },
+    optionBorder:     { borderBottomWidth: 1, borderBottomColor: borderCol },
+    optionActive:     { backgroundColor: optActive },
+    optionText:       { fontSize: 13, fontFamily: F.regular, color: optText },
+    optionTextActive: { color: P, fontFamily: F.medium },
+  });
+};
 
 // ── InlineDateSelect — same look as InlineSelect, opens date wheel ────────────
 function InlineDateSelect({ label, value, onChange, minDate, error, accentColor }: {
@@ -6162,7 +8959,9 @@ function InlineDateSelect({ label, value, onChange, minDate, error, accentColor 
   accentColor?: string;
 }) {
   const P    = accentColor ?? C.primary;
-  const isel = useMemo(() => makeIselStyles(P), [P]);
+  const T    = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
+  const isel = useMemo(() => makeIselStyles(P, T, isDark), [P, T, isDark]);
   const [open, setOpen] = useState(false);
   const [pos,  setPos]  = useState({ x: 0, y: 0, w: 0, h: 0 });
   const triggerRef = useRef<any>(null);
@@ -6186,14 +8985,14 @@ function InlineDateSelect({ label, value, onChange, minDate, error, accentColor 
         onPress={open ? () => setOpen(false) : handleOpen}
         activeOpacity={0.75}
       >
-        <AppIcon name={'calendar-outline' as any} size={14} color="#94A3B8" />
+        <AppIcon name={'calendar-outline' as any} size={14} color={(formatted || open) ? P : '#94A3B8'} />
         <View style={{ flex: 1 }}>
           <Text style={[isel.cardLabel, !!error && isel.cardLabelError]}>{label}</Text>
           <Text style={[isel.cardValue, !formatted && isel.cardPlaceholder]}>
             {formatted ?? 'Tarih seçin'}
           </Text>
         </View>
-        <AppIcon name={open ? 'chevron-up' : 'chevron-down'} size={15} color="#94A3B8" />
+        <AppIcon name={open ? 'chevron-up' : 'chevron-down'} size={15} color={open ? P : '#94A3B8'} />
       </TouchableOpacity>
       <DateWheelPickerModal
         visible={open}
@@ -6215,8 +9014,8 @@ function InlineDateSelect({ label, value, onChange, minDate, error, accentColor 
 
 const STEP_DEFS = [
   { num: 1 as Step, label: 'Klinik & hasta',    sub: 'Klinik, hekim, hasta bilgileri', icon: 'account-multiple-outline'  as any },
-  { num: 2 as Step, label: 'Vaka detayları',    sub: 'Ölçüm, teslim tarihi, notlar',  icon: 'clipboard-text-outline'    as any },
-  { num: 3 as Step, label: 'Diş & protez',      sub: 'Diş seçimi, iş detayları',      icon: 'tooth-outline'             as any },
+  { num: 2 as Step, label: 'Diş & protez',      sub: 'Diş seçimi, iş detayları',      icon: 'tooth-outline'             as any },
+  { num: 3 as Step, label: 'Vaka detayları',    sub: 'Ölçüm, teslim tarihi, notlar',  icon: 'clipboard-text-outline'    as any },
   { num: 4 as Step, label: 'Özet & gönder',     sub: 'Kontrol et ve kaydet',           icon: 'send-check-outline'        as any },
 ];
 
@@ -6335,7 +9134,7 @@ const makeSbStyles = (P: string) => StyleSheet.create({
 
 // ── Styles ──────────────────────────────────────────────────────
 
-const makeStyles = (P: string) => StyleSheet.create({
+const makeStyles = (P: string, T: any, isDark: boolean) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F5F2EA' },
 
   /* Outer layout */
@@ -6447,7 +9246,7 @@ const makeStyles = (P: string) => StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 11,
     fontSize: 15, fontWeight: '400', fontFamily: F.regular, color: '#0F172A', backgroundColor: '#FFFFFF',
     // @ts-ignore
-    outlineStyle: 'none',
+    outlineStyle: 'none' as any,
   },
   fieldInputMulti: { minHeight: 88, textAlignVertical: 'top' },
 
@@ -6467,10 +9266,12 @@ const makeStyles = (P: string) => StyleSheet.create({
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, paddingTop: 2 },
   chip: {
     paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
-    borderWidth: 1.5, borderColor: '#DDE3ED', backgroundColor: '#FAFBFC',
+    borderWidth: 1.5,
+    borderColor: isDark ? 'rgba(255,255,255,0.14)' : '#DDE3ED',
+    backgroundColor: 'transparent',
   },
-  chipActive:     { borderColor: P, backgroundColor: '#F1F5F9' },
-  chipText:       { fontSize: 13, fontWeight: '400', fontFamily: F.regular, color: '#64748B' },
+  chipActive:     { borderColor: P, backgroundColor: 'transparent' },
+  chipText:       { fontSize: 13, fontWeight: '500', fontFamily: F.regular, color: T.ink2 },
   chipTextActive: { color: P, fontWeight: '600', fontFamily: F.semibold },
   tagChipActive:     { borderColor: C.warning, backgroundColor: C.warningBg },
   tagChipTextActive: { color: C.warning, fontWeight: '500', fontFamily: F.medium },
@@ -6503,9 +9304,9 @@ const makeStyles = (P: string) => StyleSheet.create({
   },
 
   /* Shade + machine chips */
-  shadeChip:       { borderWidth: 1, borderColor: '#DDE3ED', borderRadius: 8, paddingVertical: 7, paddingHorizontal: 11, backgroundColor: '#FAFBFC' },
-  shadeChipActive: { borderColor: P, backgroundColor: '#F1F5F9' },
-  shadeText:       { fontSize: 12, fontWeight: '400', fontFamily: F.regular, color: C.textSecondary },
+  shadeChip:       { borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.14)' : '#DDE3ED', borderRadius: 8, paddingVertical: 7, paddingHorizontal: 11, backgroundColor: 'transparent' },
+  shadeChipActive: { borderColor: P, backgroundColor: 'transparent' },
+  shadeText:       { fontSize: 12, fontWeight: '500', fontFamily: F.regular, color: T.ink2 },
   shadeTextActive: { color: P, fontFamily: F.medium },
   machineRow: { flexDirection: 'row', gap: 10, paddingBottom: 14 },
   machineCard: {
@@ -6548,7 +9349,7 @@ const makeStyles = (P: string) => StyleSheet.create({
     fontSize: 13, fontWeight: '400', fontFamily: F.regular, color: '#0F172A',
     borderWidth: 1, borderColor: '#DDE3ED',
     // @ts-ignore
-    outlineStyle: 'none',
+    outlineStyle: 'none' as any,
   },
   catalogScroll:    { flex: 1 },
   catalogEmpty:     { padding: 28, alignItems: 'center' },
@@ -6722,7 +9523,13 @@ const makeS2Styles = (P: string) => StyleSheet.create({
   },
 });
 // Static instance for helper components that don't receive accentColor (Field, DateField, etc.)
-const _staticStyles = makeStyles(C.primary);
+// Uses light-mode fallback tokens — components that need theme-aware styling use the hook-driven `styles`.
+const _STATIC_T_FALLBACK = {
+  ink: '#0E0E0E', ink2: 'rgba(20,16,12,0.78)', ink3: 'rgba(20,16,12,0.5)',
+  card: '#FFFFFF', cardSoft: '#FAF6EE', bg: '#F2EDE3',
+  hairline: 'rgba(20,16,12,0.08)', hairline2: 'rgba(20,16,12,0.04)',
+};
+const _staticStyles = makeStyles(C.primary, _STATIC_T_FALLBACK, false);
 
 // ── File Preview Modal styles ─────────────────────────────────────────────────
 const fpv = StyleSheet.create({
@@ -6783,8 +9590,8 @@ const fpv = StyleSheet.create({
   openBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingVertical: 9, paddingHorizontal: 18,
-    borderRadius: 10, borderWidth: 1.5, borderColor: '#0EA5E9',
+    borderRadius: 10, borderWidth: 1.5, borderColor: '#32BB78',
     marginTop: 6,
   },
-  openBtnText: { fontSize: 13, fontWeight: '600', fontFamily: F.semibold, color: '#0EA5E9' },
+  openBtnText: { fontSize: 13, fontWeight: '600', fontFamily: F.semibold, color: '#32BB78' },
 });

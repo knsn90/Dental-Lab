@@ -11,6 +11,7 @@
  * Root layout'ta <ToastContainer /> ekle.
  */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Animated,
   Pressable,
@@ -34,6 +35,14 @@ export interface ToastMessage {
   title?: string;
   message: string;
   duration?: number; // ms — varsayılan 3500
+  /** Toast'a basınca çalışır (örn. ilgili siparişe git). Verilirse toast tıklanabilir. */
+  onPress?: () => void;
+}
+
+/** Opsiyonel davranış — toast.info('...', 'Başlık', { onPress }) */
+export interface ToastOpts {
+  duration?: number;
+  onPress?: () => void;
 }
 
 type Listener = (msg: ToastMessage) => void;
@@ -47,10 +56,10 @@ function emit(msg: Omit<ToastMessage, 'id'>) {
 }
 
 export const toast = {
-  success: (message: string, title?: string) => emit({ type: 'success', message, title }),
-  error:   (message: string, title?: string) => emit({ type: 'error',   message, title }),
-  warning: (message: string, title?: string) => emit({ type: 'warning', message, title }),
-  info:    (message: string, title?: string) => emit({ type: 'info',    message, title }),
+  success: (message: string, title?: string, opts?: ToastOpts) => emit({ type: 'success', message, title, ...opts }),
+  error:   (message: string, title?: string, opts?: ToastOpts) => emit({ type: 'error',   message, title, ...opts }),
+  warning: (message: string, title?: string, opts?: ToastOpts) => emit({ type: 'warning', message, title, ...opts }),
+  info:    (message: string, title?: string, opts?: ToastOpts) => emit({ type: 'info',    message, title, ...opts }),
 };
 
 function subscribe(fn: Listener) {
@@ -99,6 +108,7 @@ function ToastItem({ msg, onDismiss }: { msg: ToastMessage; onDismiss: (id: stri
   const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [-24, 0] });
 
   const Icon = cfg.Icon;
+  const tappable = typeof msg.onPress === 'function';
 
   return (
     <Animated.View
@@ -107,17 +117,26 @@ function ToastItem({ msg, onDismiss }: { msg: ToastMessage; onDismiss: (id: stri
         { opacity: opac, transform: [{ translateY }] },
       ]}
     >
-      {/* Icon circle — soft tinted (Patterns §08) */}
-      <View style={[styles.iconCircle, { backgroundColor: cfg.bg }]}>
-        <Icon size={18} color={cfg.fg} strokeWidth={2} />
-      </View>
+      {/* İçerik — onPress verilmişse tıklanınca aksiyonu çalıştır + kapat */}
+      <Pressable
+        onPress={tappable ? () => { msg.onPress?.(); dismiss(); } : undefined}
+        disabled={!tappable}
+        style={styles.tapZone}
+        // @ts-ignore web cursor
+        {...(Platform.OS === 'web' && tappable ? { dataSet: { cursor: 'pointer' } } : {})}
+      >
+        {/* Icon circle — soft tinted (Patterns §08) */}
+        <View style={[styles.iconCircle, { backgroundColor: cfg.bg }]}>
+          <Icon size={18} color={cfg.fg} strokeWidth={2} />
+        </View>
 
-      <View style={styles.textBlock}>
-        <Text style={styles.title}>{msg.title ?? cfg.titleDefault}</Text>
-        {!!msg.message && (
-          <Text style={styles.message} numberOfLines={3}>{msg.message}</Text>
-        )}
-      </View>
+        <View style={styles.textBlock}>
+          <Text style={styles.title}>{msg.title ?? cfg.titleDefault}</Text>
+          {!!msg.message && (
+            <Text style={styles.message} numberOfLines={3}>{msg.message}</Text>
+          )}
+        </View>
+      </Pressable>
 
       <Pressable onPress={dismiss} hitSlop={10} style={styles.close}>
         <XIcon size={14} color="#9A9A9A" strokeWidth={2} />
@@ -129,6 +148,7 @@ function ToastItem({ msg, onDismiss }: { msg: ToastMessage; onDismiss: (id: stri
 // ─── Container (render once in root layout) ───────────────────────────────────
 export function ToastContainer() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const insets = useSafeAreaInsets();
 
   const onDismiss = useCallback((id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id));
@@ -147,13 +167,32 @@ export function ToastContainer() {
 
   if (toasts.length === 0) return null;
 
-  return (
-    <View style={styles.container} pointerEvents="box-none">
+  const content = (
+    <View
+      style={[
+        styles.container,
+        { top: (insets.top || 0) + (Platform.OS === 'web' ? 12 : 8) },
+        // Web: modallar document.body'ye portal'landığından toast'ı da
+        // body'ye max z-index + fixed ile taşı ki açık modalın ÜSTÜNDE görünsün.
+        Platform.OS === 'web' ? ({ position: 'fixed', zIndex: 2147483647 } as any) : null,
+      ]}
+      pointerEvents="box-none"
+    >
       {toasts.map(t => (
         <ToastItem key={t.id} msg={t} onDismiss={onDismiss} />
       ))}
     </View>
   );
+
+  if (Platform.OS === 'web' && typeof document !== 'undefined') {
+    try {
+      const { createPortal } = require('react-dom');
+      return createPortal(content, document.body);
+    } catch {
+      return content;
+    }
+  }
+  return content;
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
@@ -163,6 +202,7 @@ const MAX_W = Math.min(width - 32, 400);
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
+    // top runtime'da insets.top + offset ile override edilir
     top: Platform.OS === 'web' ? 20 : 56,
     left: 0,
     right: 0,
@@ -197,6 +237,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     flexShrink: 0,
   },
+  tapZone: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   textBlock: { flex: 1, paddingTop: 1 },
   title: { ...DISPLAY, fontSize: 16, lineHeight: 20, letterSpacing: -0.3, color: '#0A0A0A' },
   message: { fontSize: 13, fontWeight: '400', color: '#6B6B6B', lineHeight: 18, marginTop: 3 },

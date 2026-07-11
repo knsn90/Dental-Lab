@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   fetchInvoices, fetchInvoiceById, fetchClinicBalances, fetchInvoiceStats,
-  fetchUnbilledWorkOrders,
+  fetchUnbilledWorkOrders, fetchClinicBalancesByCurrency,
+  type InvoiceStats,
 } from '../api';
 import type {
-  Invoice, InvoiceListFilters, ClinicBalance, UnbilledWorkOrder,
+  Invoice, InvoiceListFilters, ClinicBalance, ClinicBalanceCcy, UnbilledWorkOrder,
 } from '../types';
 
 // ─── Liste hook'u ─────────────────────────────────────────────────────────
@@ -70,6 +71,23 @@ export function useClinicBalances() {
 }
 
 // ─── Toplu fatura: faturalanmamış siparişler hook'u ──────────────────────
+// Katı per-currency cari bakiyeler — her (klinik, para birimi) için ayrı satır.
+export function useClinicBalancesByCurrency() {
+  const [rows, setRows]     = useState<ClinicBalanceCcy[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { data } = await fetchClinicBalancesByCurrency();
+    setRows((data ?? []) as ClinicBalanceCcy[]);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  return { rows, loading, refetch: load };
+}
+
 export function useUnbilledWorkOrders(clinicId?: string) {
   const [orders, setOrders] = useState<UnbilledWorkOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,10 +109,7 @@ export function useUnbilledWorkOrders(clinicId?: string) {
 
 // ─── İstatistik hook'u (KPI strip için) ───────────────────────────────────
 export function useInvoiceStats() {
-  const [stats, setStats] = useState<{
-    totalBilled: number; totalPaid: number; outstandingBalance: number;
-    thisMonthBilled: number; overdueAmount: number; invoiceCount: number;
-  } | null>(null);
+  const [stats, setStats] = useState<InvoiceStats | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {

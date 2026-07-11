@@ -1,1 +1,2 @@
-export { ServicesScreen as default } from '../../modules/services/screens/ServicesScreen';
+import { lazyRoute } from '../../core/_lazyRoute';
+export default lazyRoute(() => import('../../modules/services/screens/ServicesScreen'), 'ServicesScreen');

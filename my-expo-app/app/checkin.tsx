@@ -1,7 +1,7 @@
 /**
  * /checkin?token=XXXX
  *
- * Çalışan QR kodu okutunca buraya gelir.
+ * Personel QR kodu okutunca buraya gelir.
  * GPS izni alınır → qr_checkin() RPC'si çağrılır → sonuç gösterilir.
  *
  * Bu sayfa herkesin erişebileceği public bir route değil;
@@ -9,8 +9,7 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, ActivityIndicator,
-  TouchableOpacity, Platform, ScrollView,
+  View, Text, StyleSheet, TouchableOpacity, Platform, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -20,6 +19,7 @@ import { qrCheckin, type QrCheckinResult } from '../modules/hr/api';
 import { useAuthStore } from '../core/store/authStore';
 
 import { AppIcon } from '../core/ui/AppIcon';
+import { ActivityIndicator } from '../core/ui/teethCompat';
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
 const PRIMARY = '#2563EB';
@@ -104,8 +104,10 @@ export default function CheckinPage() {
       const msgs: Record<string, string> = {
         invalid_token:    'Geçersiz QR kodu. Lab yöneticinize bildirin.',
         out_of_range:     `Lab'a çok uzaktasınız (${res.distance_m ?? '?'}m uzak, izin: ${res.allowed_m ?? 150}m).`,
-        employee_not_found: "Bu lab'da kayıtlı çalışan bulunamadı.",
+        employee_not_found: "Bu lab'da kayıtlı personel bulunamadı.",
         already_complete: 'Bugünkü giriş/çıkışınız zaten tamamlandı.',
+        lab_location_not_set: 'Laboratuvar konumu tanımlı değil. Lab yöneticisi Check-in Ayarları’ndan konumu girmeli.',
+        no_session: 'Oturum bulunamadı. Lütfen tekrar giriş yapın.',
       };
       setErrorMsg(msgs[res.error ?? ''] ?? 'Bilinmeyen hata.');
       setPhase('error');
@@ -126,13 +128,13 @@ export default function CheckinPage() {
   // ─── Render ──────────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={s.safe}>
-      <ScrollView contentContainerStyle={s.center} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={s.center} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}>
         {/* Logo area */}
         <View style={s.logoBox}>
           <View style={[s.logoCircle, { backgroundColor: PRIMARY }]}>
             <AppIcon name="clock" size={36} color="#fff" />
           </View>
-          <Text style={s.logoTitle}>Dental Lab</Text>
+          <Text style={s.logoTitle}>Laboratuvar</Text>
           <Text style={s.logoSub}>Giriş / Çıkış Sistemi</Text>
         </View>
 

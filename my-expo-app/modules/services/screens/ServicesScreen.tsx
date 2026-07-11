@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Modal, ActivityIndicator,
-} from 'react-native';
+  TextInput, Modal, Platform, } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { fetchAllLabServices, createLabService, updateLabService } from '../api';
 import { LabService } from '../types';
@@ -10,8 +9,10 @@ import { C } from '../../../core/theme/colors';
 import { AppSwitch } from '../../../core/ui/AppSwitch';
 import { SlideTabBar } from '../../../core/ui/SlideTabBar';
 import { IconBtn } from '../../../core/ui/IconBtn';
+import { MobilePageTitle } from '../../../core/ui/mobile/MobilePageTitle';
 
 import { AppIcon } from '../../../core/ui/AppIcon';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
 
 const CATEGORIES = ['Sabit Protez', 'Hareketli Protez', 'İmplant', 'Ortodonti', 'CAD/CAM', 'Seramik', 'Diğer'];
 
@@ -77,6 +78,7 @@ export function ServicesScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
+      <MobilePageTitle title="Hizmetler" subtitle="Lab hizmet kataloğu ve fiyatları" topInset={false} />
       {/* Tabs + search + action — single row */}
       <View style={styles.subToolbar}>
         <SlideTabBar
@@ -172,7 +174,7 @@ export function ServicesScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={m.body} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <ScrollView style={m.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'} showsVerticalScrollIndicator={false}>
 
               {/* Hizmet Bilgileri */}
               <View style={m.sectionCard}>
@@ -307,7 +309,7 @@ const styles = StyleSheet.create({
   },
   searchWrapFocused: { borderColor: C.primary },
   searchInput: { flex: 1, fontSize: 14, color: '#0F172A', height: 42, outlineStyle: 'none' } as any,
-  list: { padding: 16, paddingBottom: 40 },
+  list: { padding: 16, paddingBottom: 120 },
   catHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: C.border, marginBottom: 4 },
   catTitle: { fontSize: 13, fontWeight: '800', color: C.textPrimary, letterSpacing: 0.3 },
   catCount: { fontSize: 12, color: C.textMuted },
@@ -367,7 +369,7 @@ const m = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 11,
     fontSize: 14, color: '#0F172A', backgroundColor: '#FFFFFF',
     // @ts-ignore
-    outlineStyle: 'none',
+    outlineStyle: 'none' as any,
   },
   catGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   catChip: {

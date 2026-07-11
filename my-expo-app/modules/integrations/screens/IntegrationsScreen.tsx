@@ -15,7 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ReceiptText, CreditCard, ShieldAlert, Plus,
-  Zap, Check, Trash2, X,
+  Zap, Check, Trash2, X, Truck,
 } from 'lucide-react-native';
 
 import { HubContext } from '../../../core/ui/HubContext';
@@ -24,7 +24,7 @@ import { ConfirmDialog, type ConfirmState } from '../../../core/ui/ConfirmDialog
 import { DS } from '../../../core/theme/dsTokens';
 import {
   fetchCredentials, upsertCredential, deleteCredential, activateCredential, testCredential,
-  EFATURA_PROVIDERS, PAYMENT_PROVIDERS,
+  EFATURA_PROVIDERS, PAYMENT_PROVIDERS, COURIER_PROVIDERS,
   type IntegrationType, type ProviderCredential, type ProviderDefinition,
 } from '../api';
 
@@ -37,7 +37,7 @@ interface Props {
   accentColor?: string;
 }
 
-export function IntegrationsScreen({ accentColor = '#EA7A4C' }: Props) {
+export function IntegrationsScreen({ accentColor = '#4771AB' }: Props) {
   const isEmbedded = useContext(HubContext);
   const safeEdges  = isEmbedded ? ([] as any) : (['top'] as any);
 
@@ -59,6 +59,7 @@ export function IntegrationsScreen({ accentColor = '#EA7A4C' }: Props) {
 
   const efatura = items.filter(i => i.type === 'efatura');
   const payment = items.filter(i => i.type === 'payment');
+  const courier = items.filter(i => i.type === 'courier');
 
   const handleDelete = (r: ProviderCredential) => {
     setConfirm({
@@ -79,7 +80,10 @@ export function IntegrationsScreen({ accentColor = '#EA7A4C' }: Props) {
   const handleTest = async (r: ProviderCredential) => {
     const result = await testCredential(r.id, r.type, r.provider, r.credentials);
     if (result.ok) toast.success(result.message);
-    else            toast.error(result.message);
+    else {
+      const netErr = /failed to fetch|network|load failed|send a request/i.test(result.message ?? '');
+      toast.error(netErr ? 'Bağlantı kurulamadı — sağlayıcıya/servise ulaşılamadı' : result.message);
+    }
     load();
   };
 
@@ -141,6 +145,20 @@ export function IntegrationsScreen({ accentColor = '#EA7A4C' }: Props) {
           providers={PAYMENT_PROVIDERS}
           onAdd={() => setEditor({ open: true, type: 'payment', record: null })}
           onEdit={(r) => setEditor({ open: true, type: 'payment', record: r })}
+          onActivate={handleActivate}
+          onDelete={handleDelete}
+          onTest={handleTest}
+        />
+
+        {/* Kurye — her lab kendi BanaBiKurye üyeliğiyle bağlanır (lab-bazlı) */}
+        <Section
+          title="Kurye · Teslimat"
+          IconCmp={Truck}
+          accentColor={accentColor}
+          credentials={courier}
+          providers={COURIER_PROVIDERS}
+          onAdd={() => setEditor({ open: true, type: 'courier', record: null })}
+          onEdit={(r) => setEditor({ open: true, type: 'courier', record: r })}
           onActivate={handleActivate}
           onDelete={handleDelete}
           onTest={handleTest}
@@ -321,7 +339,9 @@ function CredentialEditor({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const providers = type === 'efatura' ? EFATURA_PROVIDERS : PAYMENT_PROVIDERS;
+  const providers = type === 'efatura' ? EFATURA_PROVIDERS
+    : type === 'courier' ? COURIER_PROVIDERS
+    : PAYMENT_PROVIDERS;
   const [providerKey, setProviderKey] = useState<string>('demo');
   const [environment, setEnvironment] = useState<'sandbox' | 'production'>('sandbox');
   const [credentials, setCredentials] = useState<Record<string, any>>({});
@@ -352,8 +372,7 @@ function CredentialEditor({
         return;
       }
     }
-    setSaving(true);
-    const { error } = await upsertCredential({
+    const payload = {
       id:           record?.id,
       type,
       provider:     providerKey,
@@ -361,9 +380,21 @@ function CredentialEditor({
       environment,
       credentials,
       notes:        notes.trim() || undefined,
-    });
+    };
+    const isNetErr = (m?: string) => !!m && /failed to fetch|network|load failed|send a request/i.test(m);
+    setSaving(true);
+    let res = await upsertCredential(payload);
+    // Geçici ağ kopmasında (ör. hot-reload sırasında uçuştaki istek iptali) 1 kez daha dene
+    if (res.error && isNetErr((res.error as any).message)) {
+      await new Promise((r) => setTimeout(r, 800));
+      res = await upsertCredential(payload);
+    }
     setSaving(false);
-    if (error) { toast.error((error as any).message ?? 'Kayıt başarısız'); return; }
+    if (res.error) {
+      const m = (res.error as any).message;
+      toast.error(isNetErr(m) ? 'Bağlantı kurulamadı — internet bağlantını kontrol edip tekrar dene' : (m ?? 'Kayıt başarısız'));
+      return;
+    }
     toast.success(record ? 'Güncellendi' : 'Eklendi');
     onSaved();
   };
@@ -394,7 +425,7 @@ function CredentialEditor({
             borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
           }}>
             <Text style={{ ...DISPLAY, flex: 1, fontSize: 26, lineHeight: 30, letterSpacing: -0.6, color: DS.ink[900] }}>
-              {record ? 'Sağlayıcıyı Düzenle' : `Yeni ${type === 'efatura' ? 'e-Fatura' : 'POS'} Sağlayıcı`}
+              {record ? 'Sağlayıcıyı Düzenle' : `Yeni ${type === 'efatura' ? 'e-Fatura' : type === 'courier' ? 'Kurye' : 'POS'} Sağlayıcı`}
             </Text>
             <Pressable
               onPress={onClose}

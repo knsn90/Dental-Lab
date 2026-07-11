@@ -4,14 +4,18 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, Pressable, StyleSheet, Animated, Easing, Platform, ActivityIndicator,
-} from 'react-native';
-import { X, Check, ChevronRight } from 'lucide-react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { CameraView, useCameraPermissions } from 'expo-camera';
+  View, Text, Pressable, StyleSheet, Animated, Easing, Platform, Linking, } from 'react-native';
+import { X, Check, ChevronRight, Camera as CameraIcon, AlertCircle } from 'lucide-react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+// expo-camera sadece native'de import edilsin (web bundle'a girmesin / hatasız patlasın)
+const isWeb = Platform.OS === 'web';
+const _cam: any = isWeb ? { CameraView: () => null, useCameraPermissions: () => [null, () => {}] } : require('expo-camera');
+const CameraView = _cam.CameraView;
+const useCameraPermissions = _cam.useCameraPermissions as () => [null | { granted: boolean; canAskAgain: boolean }, () => Promise<any>];
 import { supabase } from '../../../core/api/supabase';
 import { DS } from '../../../core/theme/dsTokens';
 import { MFONT, useMobileTheme } from '../../../core/theme/mobileTheme';
+import { ActivityIndicator } from '../../../core/ui/teethCompat';
 
 interface ScanResult {
   workOrderId: string;
@@ -26,7 +30,123 @@ interface Props {
   onUpdateStatus?: (workOrderId: string) => void;
 }
 
+// ─── Web kamera scanner — Safari/Chrome PWA için getUserMedia + jsQR ────────
+function WebQrScanner({ onScan, paused }: { onScan: (code: string) => void; paused: boolean }) {
+  const videoRef = useRef<any>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const pausedRef = useRef(paused);
+  useEffect(() => { pausedRef.current = paused; }, [paused]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let detector: any = null;
+    let jsQR: any = null;
+
+    (async () => {
+      try {
+        if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+          setError('Bu tarayıcı kamera desteklemiyor');
+          return;
+        }
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        });
+        if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.setAttribute('playsinline', 'true');
+          videoRef.current.setAttribute('autoplay', 'true');
+          videoRef.current.setAttribute('muted', 'true');
+          await videoRef.current.play().catch(() => {});
+        }
+
+        // BarcodeDetector varsa onu kullan (Chrome/Edge), yoksa jsQR
+        if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+          // @ts-ignore
+          detector = new (window as any).BarcodeDetector({ formats: ['qr_code'] });
+        } else {
+          jsQR = (await import('jsqr')).default;
+        }
+
+        const tick = async () => {
+          if (cancelled) return;
+          const v = videoRef.current;
+          if (v && v.readyState === 4 && !pausedRef.current) {
+            try {
+              if (detector) {
+                const codes = await detector.detect(v);
+                if (codes && codes[0]?.rawValue) {
+                  onScan(String(codes[0].rawValue));
+                  return;
+                }
+              } else if (jsQR) {
+                const w = v.videoWidth, h = v.videoHeight;
+                if (w && h) {
+                  if (!canvasRef.current) canvasRef.current = document.createElement('canvas');
+                  const cnv = canvasRef.current;
+                  cnv.width = w; cnv.height = h;
+                  const ctx = cnv.getContext('2d', { willReadFrequently: true });
+                  if (ctx) {
+                    ctx.drawImage(v, 0, 0, w, h);
+                    const imgData = ctx.getImageData(0, 0, w, h);
+                    const result = jsQR(imgData.data, w, h, { inversionAttempts: 'dontInvert' });
+                    if (result?.data) {
+                      onScan(result.data);
+                      return;
+                    }
+                  }
+                }
+              }
+            } catch {}
+          }
+          rafRef.current = requestAnimationFrame(tick);
+        };
+        tick();
+      } catch (e: any) {
+        const msg = (e?.name === 'NotAllowedError')
+          ? 'Kamera izni reddedildi'
+          : (e?.message ?? 'Kamera açılamadı');
+        setError(msg);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+      if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+    };
+  }, [onScan]);
+
+  if (error) {
+    return (
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: '#0A0A0A', alignItems: 'center', justifyContent: 'center', padding: 32 }]}>
+        <View style={{ width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(245,158,11,0.18)', marginBottom: 14 }}>
+          <AlertCircle size={28} color="#F59E0B" strokeWidth={1.6} />
+        </View>
+        <Text style={{ fontSize: 16, fontWeight: '700', color: '#FAFAFA', textAlign: 'center', marginBottom: 6 }}>Kamera açılamadı</Text>
+        <Text style={{ fontSize: 13, color: '#9A9A9A', textAlign: 'center', lineHeight: 19, maxWidth: 320 }}>{error}</Text>
+        <Text style={{ fontSize: 12, color: '#9A9A9A', textAlign: 'center', marginTop: 12, lineHeight: 18 }}>
+          Safari ayarlarından kamera erişimine izin verdiğine emin ol — Ayarlar → Safari → Kamera.
+        </Text>
+      </View>
+    );
+  }
+
+  return React.createElement('video', {
+    ref: videoRef,
+    autoPlay: true,
+    playsInline: true,
+    muted: true,
+    style: { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', backgroundColor: '#000' },
+  } as any);
+}
+
 export function ScanB6Mobile({ onClose, onOpenOrder, onUpdateStatus }: Props) {
+  const insets = useSafeAreaInsets();
   const theme = useMobileTheme();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState<ScanResult | null>(null);
@@ -57,10 +177,12 @@ export function ScanB6Mobile({ onClose, onOpenOrder, onUpdateStatus }: Props) {
     }).start();
   }, [scanned, sheetY]);
 
-  // ── Permission flow ───────────────────────────────────────────────
+  // ── Permission flow — sadece bir kez iste ────────────────────────
+  const askedRef = useRef(false);
   useEffect(() => {
-    if (!permission) return;
+    if (!permission || askedRef.current) return;
     if (!permission.granted && permission.canAskAgain) {
+      askedRef.current = true;
       requestPermission();
     }
   }, [permission, requestPermission]);
@@ -71,6 +193,17 @@ export function ScanB6Mobile({ onClose, onOpenOrder, onUpdateStatus }: Props) {
     setScanning(true);
     setError(null);
     try {
+      // Detect check-in QR (workforce time tracking) — route to /checkin
+      const checkinMatch = raw.match(/checkin\?token=([A-Za-z0-9_-]+)/i);
+      if (checkinMatch) {
+        const token = checkinMatch[1];
+        onClose();
+        // Imperatively navigate via router module (avoids useRouter inside callback)
+        const { router } = require('expo-router');
+        router.push({ pathname: '/checkin', params: { token } } as any);
+        return;
+      }
+
       // Accept either a full URL ending in /order/<id> or a bare UUID/order number
       let workOrderId = raw.trim();
       const m = raw.match(/order\/([a-f0-9-]{6,})/i);
@@ -79,14 +212,14 @@ export function ScanB6Mobile({ onClose, onOpenOrder, onUpdateStatus }: Props) {
       // Look up by id, fallback to order_number
       let { data, error } = await supabase
         .from('work_orders')
-        .select('id, order_number, work_type, doctor:doctor_id(full_name, clinic_name)')
+        .select('id, order_number, work_type, doctor:doctors(full_name, clinic:clinics(name))')
         .eq('id', workOrderId)
         .maybeSingle();
 
       if ((!data || error) && /^[A-Z0-9-]+$/i.test(raw)) {
         const r2 = await supabase
           .from('work_orders')
-          .select('id, order_number, work_type, doctor:doctor_id(full_name, clinic_name)')
+          .select('id, order_number, work_type, doctor:doctors(full_name, clinic:clinics(name))')
           .eq('order_number', raw)
           .maybeSingle();
         data = r2.data; error = r2.error;
@@ -105,7 +238,7 @@ export function ScanB6Mobile({ onClose, onOpenOrder, onUpdateStatus }: Props) {
         workOrderId: data.id,
         orderNumber: data.order_number,
         workType: (data as any).work_type ?? 'Vaka',
-        clinic: doc.clinic_name ?? doc.full_name ?? '—',
+        clinic: doc.clinic?.name ?? doc.full_name ?? '—',
       });
       setScanning(false);
     } catch (e: any) {
@@ -117,16 +250,58 @@ export function ScanB6Mobile({ onClose, onOpenOrder, onUpdateStatus }: Props) {
 
   return (
     <View style={styles.root}>
-      {/* Camera or fallback */}
-      {permission?.granted ? (
+      {/* Camera or permission UI */}
+      {isWeb ? (
+        <WebQrScanner onScan={handleQr} paused={!!scanned || scanning} />
+      ) : permission?.granted ? (
         <CameraView
           style={StyleSheet.absoluteFill}
           facing="back"
-          onBarcodeScanned={scanned ? undefined : ({ data }) => handleQr(data)}
+          onBarcodeScanned={scanned ? undefined : ({ data }: { data: string }) => handleQr(data)}
           barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
         />
       ) : (
-        <View style={[StyleSheet.absoluteFill, styles.fallbackBg]} />
+        <View style={[StyleSheet.absoluteFill, styles.fallbackBg]}>
+          {permission == null ? (
+            <View style={styles.permWrap}>
+              <ActivityIndicator color={theme.primary} />
+              <Text style={styles.permSub}>Kamera hazırlanıyor…</Text>
+            </View>
+          ) : (
+            <View style={styles.permWrap}>
+              <View style={[styles.permIconBox, { backgroundColor: theme.primary + '22' }]}>
+                {permission.canAskAgain
+                  ? <CameraIcon size={28} color={theme.primary} strokeWidth={1.6} />
+                  : <AlertCircle size={28} color="#F59E0B" strokeWidth={1.6} />}
+              </View>
+              <Text style={styles.permTitle}>
+                {permission.canAskAgain ? 'Kamera izni gerekli' : 'Kamera izni reddedildi'}
+              </Text>
+              <Text style={styles.permBody}>
+                {permission.canAskAgain
+                  ? 'QR kod okutabilmek için kameraya erişim izni vermen gerekiyor.'
+                  : 'Telefon ayarlarından Siman uygulamasına kamera izni vermelisin.'}
+              </Text>
+              <Pressable
+                onPress={() => {
+                  if (permission.canAskAgain) {
+                    requestPermission();
+                  } else {
+                    Linking.openSettings().catch(() => {});
+                  }
+                }}
+                style={[styles.permBtn, { backgroundColor: theme.primary }]}
+              >
+                <Text style={styles.permBtnText}>
+                  {permission.canAskAgain ? 'İzin Ver' : 'Ayarları Aç'}
+                </Text>
+              </Pressable>
+              {error && (
+                <Text style={{ marginTop: 12, color: '#F87171', fontSize: 13 }}>{error}</Text>
+              )}
+            </View>
+          )}
+        </View>
       )}
 
       {/* Vignette overlays */}
@@ -134,10 +309,11 @@ export function ScanB6Mobile({ onClose, onOpenOrder, onUpdateStatus }: Props) {
       <View style={styles.vignetteBottom} pointerEvents="none" />
 
       <SafeAreaView edges={['top']} style={{ flex: 1 }}>
-        {/* Top header */}
-        <View style={styles.topRow}>
-          <Pressable onPress={onClose} style={styles.ghostCircle} hitSlop={8}>
-            <X size={20} color="#FFF" strokeWidth={2} />
+        {/* Top header — explicit insets.top so dynamic island / status bar
+            don't overlap with X button even in fullScreen modal presentation. */}
+        <View style={[styles.topRow, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
+          <Pressable onPress={onClose} style={styles.ghostCircle} hitSlop={16}>
+            <X size={22} color="#FFF" strokeWidth={2.2} />
           </Pressable>
           <View style={styles.modePill}>
             <View style={[styles.modePillDot, { backgroundColor: theme.primary }]} />
@@ -251,7 +427,6 @@ export function ScanB6Mobile({ onClose, onOpenOrder, onUpdateStatus }: Props) {
             <View style={styles.sheetHandle} />
             <Text style={styles.sheetEyebrow}>HAZIR</Text>
             <Text style={styles.sheetHint}>QR kodu çerçeveye tutun…</Text>
-            {scanning && <ActivityIndicator color={theme.primary} style={{ marginTop: 12 }} />}
           </>
         )}
       </Animated.View>
@@ -285,6 +460,24 @@ const styles = StyleSheet.create({
   },
   fallbackBg: {
     backgroundColor: '#0A0A0A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  permWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    maxWidth: 400,
+    gap: 14,
+  },
+  permIconBox: {
+    width: 72, height: 72, borderRadius: 36,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 4,
+  },
+  permBody: {
+    fontSize: 13, color: '#9A9A9A', lineHeight: 19,
+    textAlign: 'center' as const,
   },
 
   vignetteTop: {
@@ -309,13 +502,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 18,
-    paddingTop: 6,
+    // Dynamic island bölgesinden uzaklaştır — X butonu rahat tıklanabilsin.
+    paddingTop: 16,
+    paddingBottom: 4,
   },
   ghostCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.10)',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
   },

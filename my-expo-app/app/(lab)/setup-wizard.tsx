@@ -2,9 +2,10 @@ import React from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LogOut } from 'lucide-react-native';
-import { SetupWizardScreen } from '../../modules/onboarding/screens/SetupWizardScreen';
+const SetupWizardScreen = lazyRoute(() => import('../../modules/onboarding/screens/SetupWizardScreen'), 'SetupWizardScreen');
 import { useAuthStore } from '../../core/store/authStore';
 import { supabase } from '../../core/api/supabase';
+import { lazyRoute } from '../../core/_lazyRoute';
 
 export default function LabSetupWizardRoute() {
   const router = useRouter();

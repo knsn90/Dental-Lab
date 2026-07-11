@@ -56,9 +56,14 @@ export interface SupplierTransaction {
   invoice_no: string | null;
   payment_method: PaymentMethod | null;
   description: string | null;
+  bank_name: string | null;
+  reference_no: string | null;
+  iban: string | null;
   transaction_date: string;
   due_date: string | null;
   created_at: string;
+  // Satın alma faturasıyla bağlantı — PURCHASE tipinde dolu olur
+  purchase_invoice_id?: string | null;
 }
 
 export interface SupplierBalance {
@@ -67,6 +72,7 @@ export interface SupplierBalance {
   name: string;
   default_currency: Currency;
   balance_base: number;          // pozitif = borcumuz, negatif = alacağımız
+  balance_original: number;      // tedarikçinin kendi para birimindeki net bakiye (EUR/USD…)
   total_purchases: number;
   total_payments: number;
   total_returns: number;
@@ -100,6 +106,15 @@ export async function updateSupplier(id: string, params: Partial<Supplier>): Pro
 
 export async function deactivateSupplier(id: string) {
   return supabase.from('suppliers').update({ is_active: false }).eq('id', id);
+}
+
+/**
+ * Tedarikçiyi kalıcı sil. İlişkili satın alma faturaları veya
+ * supplier_transactions varsa FK constraint hatası verir; bu durumda
+ * deactivateSupplier kullanılmalı.
+ */
+export async function deleteSupplier(id: string) {
+  return supabase.from('suppliers').delete().eq('id', id);
 }
 
 // ─── Balances ────────────────────────────────────────────────────────────────
@@ -146,6 +161,9 @@ export async function recordTransaction(input: {
   description?: string;
   transactionDate?: string;     // YYYY-MM-DD, default today
   dueDate?: string | null;
+  bankName?: string | null;
+  referenceNo?: string | null;
+  iban?: string | null;
 }): Promise<{ ok: boolean; id?: string; error?: string }> {
   const { data, error } = await supabase.rpc('record_supplier_transaction', {
     p_lab_id: input.labId,
@@ -158,6 +176,9 @@ export async function recordTransaction(input: {
     p_description: input.description ?? null,
     p_transaction_date: input.transactionDate ?? new Date().toISOString().slice(0, 10),
     p_due_date: input.dueDate ?? null,
+    p_bank_name: input.bankName ?? null,
+    p_reference_no: input.referenceNo ?? null,
+    p_iban: input.iban ?? null,
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true, id: data as string };
@@ -165,6 +186,51 @@ export async function recordTransaction(input: {
 
 export async function deleteTransaction(id: string) {
   return supabase.from('supplier_transactions').delete().eq('id', id);
+}
+
+/**
+ * Cari işlemi güncelle. Amount değişirse amount_base = amount * rate_at_time olarak yeniden hesaplanır
+ * (orijinal kur snapshot'ı korunur). Tarih veya currency değişirse rate snapshot dokunulmaz —
+ * audit için orijinal kuru muhafaza ediyoruz.
+ */
+export async function updateTransaction(
+  id: string,
+  patch: {
+    amount?: number;
+    paymentMethod?: PaymentMethod | null;
+    invoiceNo?: string | null;
+    description?: string | null;
+    transactionDate?: string;
+    dueDate?: string | null;
+    bankName?: string | null;
+    referenceNo?: string | null;
+    iban?: string | null;
+  },
+): Promise<{ ok: boolean; error?: string }> {
+  // amount değiştiyse mevcut rate_at_time'ı çekip amount_base'i yenile
+  const updates: any = {};
+  if (patch.amount != null) {
+    const { data: cur } = await supabase
+      .from('supplier_transactions')
+      .select('rate_at_time')
+      .eq('id', id)
+      .single();
+    const rate = Number((cur as any)?.rate_at_time ?? 1);
+    updates.amount = patch.amount;
+    updates.amount_base = patch.amount * rate;
+  }
+  if (patch.paymentMethod !== undefined)    updates.payment_method = patch.paymentMethod;
+  if (patch.invoiceNo !== undefined)        updates.invoice_no = patch.invoiceNo;
+  if (patch.description !== undefined)      updates.description = patch.description;
+  if (patch.transactionDate !== undefined)  updates.transaction_date = patch.transactionDate;
+  if (patch.dueDate !== undefined)          updates.due_date = patch.dueDate;
+  if (patch.bankName !== undefined)         updates.bank_name = patch.bankName;
+  if (patch.referenceNo !== undefined)      updates.reference_no = patch.referenceNo;
+  if (patch.iban !== undefined)             updates.iban = patch.iban;
+
+  const { error } = await supabase.from('supplier_transactions').update(updates).eq('id', id);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
