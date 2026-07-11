@@ -3,12 +3,12 @@
     "cancel": "Abbrechen",
     "save": "Speichern",
     "signOut": "Abmelden",
-    "notSet": "Nicht festgelegt",
+    "notSet": "Nicht hinterlegt",
     "notDefined": "Noch nicht definiert",
     "soon": "Demnächst verfügbar.",
     "language": "Sprache",
     "loading": "Wird geladen…",
-    "accessDenied": "Sie haben keinen Zugriff",
+    "accessDenied": "Kein Zugriff",
     "accessDeniedDesc": "Bitten Sie Ihren Administrator um Zugriff auf diese Seite.",
     "days": "Sonntag Montag Dienstag Mittwoch Donnerstag Freitag Samstag",
     "months": "Januar Februar März April Mai Juni Juli August September Oktober November Dezember",
@@ -46,7 +46,7 @@
       "stock": "Bestand & Lager",
       "production": "Produktionstafel",
       "workflows": "Arbeitsabläufe",
-      "courier": "Kurier-Verfolgung",
+      "courier": "Kurier-Tracking",
       "finance": "Finanzen",
       "priceList": "Preisliste",
       "support": "Support",
@@ -89,7 +89,7 @@
   },
   "roles": {
     "doctor": "Zahnarzt",
-    "clinicManager": "Klinikleiter",
+    "clinicManager": "Klinikleitung",
     "exec": "Verwaltung",
     "technician": "Techniker",
     "labUser": "Laborbenutzer",
@@ -109,7 +109,7 @@
     "newOrderKicker": "NEUER ARBEITSAUFTRAG",
     "activeProduction": "Aktive Produktion",
     "stages": {
-      "received": "Empfangen",
+      "received": "Eingegangen",
       "production": "Produktion",
       "qc": "QK",
       "ready": "Bereit"
@@ -121,7 +121,7 @@
     "thisWeekCount": "{{count}} diese Woche",
     "weekDash": "Woche —",
     "thisWeek": "Diese Woche",
-    "received": "Empfangen",
+    "received": "Eingegangen",
     "completed": "Abgeschlossen",
     "overdueCases": "Überfällige Fälle",
     "noOverdueCases": "Keine überfälligen Fälle",
@@ -152,25 +152,25 @@
       "active": "AKTIV",
       "pending": "AUSSTEHEND",
       "today": "HEUTE",
-      "startNavigation": "Navigation starten",
+      "startNavigation": "Losfahren → Navigation",
       "nextDeliveries": "Nächste Lieferungen",
-      "viewAll": "Alle anzeigen",
+      "viewAll": "Alle →",
       "noPendingDeliveries": "Keine ausstehenden Lieferungen",
       "completedToday": "Heute abgeschlossen",
       "statisticsThisWeek": "STATISTIK · DIESE WOCHE",
       "myPerformance": "Meine Leistung",
-      "details": "Details",
+      "details": "Details →",
       "last7Days": "LETZTE 7 TAGE",
       "dailyTrend": "Täglicher Trend",
       "deliveredMetric": "geliefert",
       "noTasksYet": "Noch keine Aufgaben",
-      "notifyOnNewDelivery": "Sie werden benachrichtigt, wenn eine neue Lieferung zugewiesen wird.",
+      "notifyOnNewDelivery": "Sie werden benachrichtigt, sobald eine neue Lieferung zugewiesen wird.",
       "todayProgress": "FORTSCHRITT HEUTE",
-      "onTheWayNow": "Jetzt unterwegs",
+      "onTheWayNow": "Gerade unterwegs",
       "deliveredToday": "Heute geliefert",
       "upcomingTasks": "Anstehende Aufgaben",
-      "deliveryAverage": "Lieferdurchschnitt",
-      "startDetails": "Start → Details",
+      "deliveryAverage": "Ø Lieferzeit",
+      "startDetails": "Losfahren → Details",
       "todaySummary": "ÜBERSICHT HEUTE",
       "completedCount": "Sie haben heute {{count}} Lieferungen abgeschlossen.",
       "pickTaskStart": "Wählen Sie eine Aufgabe und legen Sie los.",
@@ -194,7 +194,7 @@
       "gpsStatus": "GPS · {{status}}",
       "noPhone": "Keine Telefonnummer",
       "call": "Anrufen",
-      "openOnMap": "Auf Karte öffnen",
+      "openOnMap": "Auf Karte öffnen →",
       "contents": "Inhalt",
       "noteLabel": "Notiz",
       "progress": "Fortschritt",
@@ -205,8 +205,8 @@
     },
     "map": {
       "liveLocationActive": "Live-Standort · GPS aktiv",
-      "noActiveTask": "Karte erscheint, wenn eine Aufgabe aktiv ist",
-      "fullScreen": "Vollbildkarte",
+      "noActiveTask": "Die Karte erscheint, sobald eine Aufgabe aktiv ist",
+      "fullScreen": "Vollbildkarte →",
       "liveMap": "Live-Karte",
       "liveMapDesktop": "Live-Karte",
       "gpsStatusLabel": "Standort · GPS {{status}}",
@@ -222,9 +222,9 @@
     "stats": {
       "courierPerformance": "KURIER-LEISTUNG",
       "rangeWeek": "Diese Woche",
-      "rangeMonth": "Diesen Monat",
+      "rangeMonth": "Dieser Monat",
       "rangeAllTime": "Gesamter Zeitraum",
-      "successSummary": "{{count}} erfolgreiche Lieferungen · {{avgMin}} Min. Durchschnitt",
+      "successSummary": "{{count}} erfolgreiche Lieferungen · Ø {{avgMin}} Min.",
       "noPeriodDeliveries": "Keine Lieferungen in diesem Zeitraum",
       "total": "Gesamt",
       "success": "Erfolg",
@@ -241,12 +241,12 @@
       "myPerformance": "Meine Leistung",
       "description": "Analyse vergangener Lieferungen und Leistungsübersichten",
       "summaryWeek": "ÜBERSICHT · DIESE WOCHE",
-      "summaryMonth": "ÜBERSICHT · DIESEN MONAT",
+      "summaryMonth": "ÜBERSICHT · DIESER MONAT",
       "summaryAllTime": "ÜBERSICHT · GESAMTER ZEITRAUM",
       "deliveriesCount": "{{count}} Lieferungen",
-      "heroDescription": "{{pct}} % Erfolgsquote · {{avgMin}} Min. durchschnittliche Lieferzeit",
+      "heroDescription": "{{pct}} % Erfolgsquote · Ø {{avgMin}} Min. Lieferzeit",
       "heroFastest": "Schnellste {{count}} Min.",
-      "detailedReport": "Detaillierter Bericht",
+      "detailedReport": "Detaillierter Bericht →",
       "kpiTotalDeliveries": "Lieferungen gesamt",
       "kpiAvgTime": "Ø Zeit",
       "kpiSuccess": "Erfolg",
@@ -258,8 +258,8 @@
       "efficiency": "EFFIZIENZ",
       "timeDistribution": "Zeitverteilung",
       "duration15": "< 15 Min.",
-      "duration30": "15-30 Min.",
-      "duration60": "30-60 Min.",
+      "duration30": "15–30 Min.",
+      "duration60": "30–60 Min.",
       "durationOver60": "> 60 Min.",
       "allDeliveries": "Alle Lieferungen",
       "emptyPeriod": "Keine Lieferungen in diesem Zeitraum"
@@ -299,14 +299,14 @@
     }
   },
   "profile": {
-    "approved": "{{role}} freigegeben",
+    "approved": "{{role}} · freigegeben",
     "pendingApproval": "Freigabe ausstehend",
     "member": "Mitglied · {{date}}",
     "sections": {
       "account": "Konto",
       "workplaceClinic": "Meine Klinik",
       "workplaceOrg": "Meine Organisation",
-      "hr": "HR-Anfragen",
+      "hr": "Personalanträge",
       "appearance": "Darstellung",
       "notifications": "Benachrichtigungen",
       "management": "Verwaltung",
@@ -331,7 +331,7 @@
       "expenses": "Ausgaben",
       "staff": "Personal",
       "users": "Benutzer",
-      "staffValue": "Team · Lohn · Leistung",
+      "staffValue": "Team · Gehalt · Leistung",
       "usersValue": "Personal & Berechtigungen",
       "allSettings": "Alle Einstellungen",
       "changePassword": "Passwort ändern",
@@ -346,22 +346,22 @@
       "finance": "Kasse · Scheck · Gewinn · Budget",
       "stock": "Inventar · Bewegungen · Warnungen",
       "invoices": "Liste · Excel · Massenaktionen",
-      "expenses": "Datensätze & Export",
-      "staff": "Team · Lohn · Leistung",
+      "expenses": "Erfassung & Export",
+      "staff": "Team · Gehalt · Leistung",
       "users": "Personal & Berechtigungen",
       "allSettings": "Allgemein · Benachrichtigungen · Integrationen"
     },
     "subs": {
-      "push": "Sofortige Warnungen bei Auftragsänderungen",
+      "push": "Sofortige Hinweise bei Auftragsänderungen",
       "email": "Für wichtige Aktualisierungen"
     },
     "theme": {
-      "title": "Thema",
+      "title": "Design",
       "light": "Hell",
       "dark": "Dunkel",
       "system": "System"
     },
-    "signOutConfirm": "Möchten Sie sich wirklich von Ihrem Konto abmelden?"
+    "signOutConfirm": "Möchten Sie sich wirklich abmelden?"
   },
   "settings": {
     "title": "Einstellungen",
@@ -373,7 +373,7 @@
       },
       "notifications": {
         "label": "Benachrichtigungen",
-        "sub": "Warn- und Benachrichtigungseinstellungen"
+        "sub": "Hinweise und Benachrichtigungen"
       },
       "general": {
         "label": "Allgemein",
@@ -389,7 +389,7 @@
       },
       "checkin": {
         "label": "QR-Check-in",
-        "sub": "Einstellungen zur Anwesenheitserfassung"
+        "sub": "Anwesenheitserfassung"
       },
       "stations": {
         "label": "Stationen",
@@ -405,11 +405,11 @@
       },
       "integrations": {
         "label": "Integrationen",
-        "sub": "E-Rechnung & POS-Einstellungen"
+        "sub": "E-Rechnung & POS"
       },
       "logs": {
         "label": "Protokolle",
-        "sub": "Systemaktivitätsaufzeichnungen"
+        "sub": "Systemaktivität"
       }
     }
   },
@@ -428,15 +428,15 @@
         "sub": "Personal · Gehalt · Leistung"
       },
       "stock": {
-        "sub": "Inventar · Warnung"
+        "sub": "Inventar · Warnungen"
       },
       "settings": {
-        "sub": "Allgemein · Benachrichtigung · Integration"
+        "sub": "Allgemein · Benachrichtigungen · Integrationen"
       }
     },
     "moreSheet": {
       "title": "Vollständiges Menü",
-      "subtitle": "Selten genutzte Bildschirme"
+      "subtitle": "Selten genutzte Ansichten"
     },
     "tabs": {
       "newOrder": "Neuer Auftrag",
@@ -457,7 +457,7 @@
       "setupWizard": "Einrichtung"
     },
     "status": {
-      "received": "Empfangen",
+      "received": "Eingegangen",
       "production": "In Produktion",
       "qualityControl": "Qualitätskontrolle",
       "readyForDelivery": "An Kurier übergeben",
@@ -479,8 +479,8 @@
     },
     "dashboard": {
       "thisWeek": "Diese Woche",
-      "receivedMembers": "Empfangen",
-      "deliveredMembers": "Geliefert",
+      "receivedMembers": "Eingegangene Einheiten",
+      "deliveredMembers": "Gelieferte Einheiten",
       "quickAction": "Schnellaktion",
       "newOrder": "Neuen Auftrag erstellen",
       "noTasks": "Keine ausstehenden Aufgaben",
@@ -491,9 +491,9 @@
       "totalOrders": "Aufträge gesamt",
       "doctor": "Zahnarzt",
       "labUser": "Laborbenutzer",
-      "memberTrend": "Mitglieder-Trend",
-      "membersThisMonth": "Mitglieder diesen Monat",
-      "toothMemberNote": "1 Zahn = 1 Mitglied · Trend der letzten 6 Monate",
+      "memberTrend": "Einheiten-Trend",
+      "membersThisMonth": "Einheiten diesen Monat",
+      "toothMemberNote": "1 Zahn = 1 Einheit · Trend der letzten 6 Monate",
       "deliveryRate": "Lieferquote",
       "delivered": "Geliefert",
       "inProduction": "in Produktion",
@@ -502,13 +502,13 @@
       "viewAll": "Alle anzeigen →",
       "noOrders": "Noch keine Aufträge",
       "unbilledDeliveries": "Nicht abgerechnete Lieferungen vorhanden",
-      "orders": "Auftrag · ",
+      "orders": "Aufträge · ",
       "clinicEstimated": "Klinik · geschätzt ",
-      "invoice": "Rechnung →",
+      "invoice": "Abrechnen →",
       "financialSummary": "Finanzübersicht",
       "monthlyCollection": "Eingang diesen Monat",
-      "pendingInvoice": "Ausstehende Rechnung",
-      "paidInvoiceCount": "Anzahl bezahlter Rechnungen",
+      "pendingInvoice": "Offene Rechnungen",
+      "paidInvoiceCount": "Bezahlte Rechnungen",
       "statusDistribution": "Statusverteilung",
       "workTypeDistribution": "Verteilung nach Arbeitsart",
       "totalMembers": "Einheiten",
@@ -528,7 +528,7 @@
       "start": "Start"
     },
     "table": {
-      "no": "Nein",
+      "no": "Nr.",
       "doctor": "Zahnarzt",
       "workType": "Arbeitsart",
       "status": "Status",
@@ -550,27 +550,27 @@
         "users": "Benutzer",
         "doctors": "Zahnärzte"
       },
-      "searchPlaceholder": "Nach Name, Aktion oder Datensatz suchen...",
+      "searchPlaceholder": "Nach Name, Aktion oder Eintrag suchen...",
       "loading": "Protokolle werden geladen…",
       "empty": {
         "title": "Noch keine Protokolle",
-        "noMatch": "Keine Datensätze für \"{{query}}\"",
-        "noActions": "Aktionen erscheinen hier, sobald sie auftreten"
+        "noMatch": "Keine Einträge für „{{query}}“",
+        "noActions": "Aktionen erscheinen hier, sobald sie erfolgen"
       },
       "table": {
         "user": "BENUTZER",
-        "recordsRealtime": "{{count}} Datensätze · Echtzeit"
+        "recordsRealtime": "{{count}} Einträge · Echtzeit"
       },
       "time": {
         "justNow": "Gerade eben",
-        "minutesAgo": "vor {{minutes}} Minuten",
-        "hoursAgo": "vor {{hours}} Stunden",
+        "minutesAgo": "vor {{minutes}} Min.",
+        "hoursAgo": "vor {{hours}} Std.",
         "yesterday": "Gestern {{time}}",
         "daysAgo": "vor {{days}} Tagen"
       }
     },
     "cta": {
-      "ordersToday": "{{total}} AUFTRÄGE HEUTE",
+      "ordersToday": "HEUTE {{total}} AUFTRÄGE",
       "newOrder": "NEUER AUFTRAG",
       "createNewOrder": "Neuen Arbeitsauftrag erstellen"
     },
@@ -591,7 +591,7 @@
     },
     "moreMenu": {
       "courierSub": "Lieferablauf",
-      "settingsSub": "Profil · Benachrichtigungen · Thema",
+      "settingsSub": "Profil · Benachrichtigungen · Design",
       "title": "Vollständiges Menü"
     },
     "screens": {
@@ -600,18 +600,18 @@
     },
     "noPermission": {
       "title": "Keine Berechtigung",
-      "orderCreate": "Bitten Sie Ihren Administrator um die Berechtigung zum Erstellen neuer Aufträge.",
-      "ordersView": "Bitten Sie Ihren Administrator um die Berechtigung zum Anzeigen von Aufträgen.",
-      "usersManage": "Die Benutzerverwaltung steht nur Klinikadministratoren zur Verfügung.",
-      "settingsManage": "Bitten Sie Ihren Administrator um die Berechtigung für den Zugriff auf die Klinikeinstellungen."
+      "orderCreate": "Bitten Sie Ihren Administrator um die Berechtigung, neue Aufträge zu erstellen.",
+      "ordersView": "Bitten Sie Ihren Administrator um die Berechtigung, Aufträge anzuzeigen.",
+      "usersManage": "Die Benutzerverwaltung steht nur der Klinikleitung zur Verfügung.",
+      "settingsManage": "Bitten Sie Ihren Administrator um Zugriff auf die Klinikeinstellungen."
     },
     "roles": {
       "doctor": "Zahnarzt",
-      "doctorSub": "Erstellt/verfolgt Aufträge",
+      "doctorSub": "Erstellt und verfolgt Aufträge",
       "secretary": "Sekretariat",
-      "secretarySub": "Termine · Kommunikation · Auftragsunterstützung",
+      "secretarySub": "Termine · Kommunikation · Auftragshilfe",
       "admin": "Administrator",
-      "adminSub": "Klinikadministrator mit Vollzugriff"
+      "adminSub": "Klinikleitung mit Vollzugriff"
     },
     "permissions": {
       "ordersView": "Aufträge anzeigen",
@@ -619,36 +619,36 @@
       "ordersCreate": "Auftrag erstellen",
       "ordersCreateSub": "Neue Aufträge anlegen",
       "ordersEdit": "Auftrag bearbeiten",
-      "ordersEditSub": "Bestehende Aufträge bearbeiten/stornieren",
+      "ordersEditSub": "Bestehende Aufträge bearbeiten oder stornieren",
       "doctorsManage": "Zahnärzte verwalten",
-      "doctorsManageSub": "Zahnärzte hinzufügen/bearbeiten",
+      "doctorsManageSub": "Zahnärzte hinzufügen und bearbeiten",
       "usersManage": "Benutzer verwalten",
-      "usersManageSub": "Benutzer hinzufügen / Berechtigungen verwalten",
-      "settingsManage": "Klinik-Einstellungen",
-      "settingsManageSub": "Firmendaten / Logo / Design",
+      "usersManageSub": "Benutzer hinzufügen und Berechtigungen vergeben",
+      "settingsManage": "Klinikeinstellungen",
+      "settingsManageSub": "Firmendaten · Logo · Design",
       "billingView": "Finanzdaten anzeigen",
-      "billingViewSub": "Rechnungen / Konten / Zahlungen"
+      "billingViewSub": "Rechnung · Konto · Zahlung"
     },
     "users": {
       "teamSummary": "Team-Übersicht",
-      "summaryDesc": "aktive Benutzer · Zahnärzte · Sekretär:innen · Administratoren",
+      "summaryDesc": "aktive Benutzer · Zahnärzte · Sekretariat · Administratoren",
       "statDoctor": "Zahnärzte",
-      "statSecretary": "Sekretär:innen",
+      "statSecretary": "Sekretariat",
       "statAdmin": "Administratoren",
       "filterAll": "Alle",
       "filterDoctor": "Zahnärzte",
-      "filterSecretary": "Sekretär:innen",
+      "filterSecretary": "Sekretariat",
       "filterAdmin": "Administratoren",
-      "recordCount": "Eintrag",
+      "recordCount": "Einträge",
       "emptyAll": "Noch keine Benutzer",
       "emptyFiltered": "noch nicht hinzugefügt",
-      "emptyDesc": "Erweitern Sie Ihre Klinik, indem Sie Zahnärzte, Sekretär:innen oder Backup-Administratoren hinzufügen — jede Rolle hat ihre eigene Berechtigungsvorlage.",
+      "emptyDesc": "Erweitern Sie Ihre Klinik um Zahnärzte, Sekretariat oder Backup-Administratoren — für jede Rolle liegt eine eigene Berechtigungsvorlage bereit.",
       "addFirst": "Ersten Benutzer hinzufügen",
       "modal": {
         "titleEdit": "Benutzer bearbeiten",
         "titleNew": "Neuen Benutzer hinzufügen",
         "subtitleEdit": "Rolle, Berechtigungen und Kontaktdaten",
-        "subtitleNew": "Zahnarzt, Sekretär:in oder Backup-Administrator hinzufügen",
+        "subtitleNew": "Zahnarzt, Sekretariat oder Backup-Administrator hinzufügen",
         "role": "Rolle",
         "title": "Titel",
         "fullName": "Vollständiger Name",
@@ -658,24 +658,24 @@
         "editBtn": "BEARBEITEN",
         "cancelBtn": "ABBRECHEN",
         "password": "Passwort",
-        "autoGenerate": "AUTOMATISCH GENERIEREN",
+        "autoGenerate": "AUTOMATISCH ERZEUGEN",
         "passwordPlaceholderEdit": "Neues Passwort (mind. 6 Zeichen)",
         "passwordPlaceholderNew": "Mind. 6 Zeichen",
         "hideBtn": "VERBERGEN",
         "showBtn": "ANZEIGEN",
-        "passwordHintEdit": "Das neue Passwort wird beim Speichern übernommen. Vergessen Sie nicht, den Benutzer zu informieren.",
-        "passwordHintNew": "Der Benutzer meldet sich mit dieser E-Mail und diesem Passwort an. Sicher weitergeben.",
+        "passwordHintEdit": "Das neue Passwort gilt ab dem Speichern. Denken Sie daran, den Benutzer zu informieren.",
+        "passwordHintNew": "Der Benutzer meldet sich mit dieser E-Mail und diesem Passwort an. Geben Sie die Daten über einen sicheren Kanal weiter.",
         "phone": "Telefon (optional)",
         "phonePlaceholder": "0532 ...",
         "specialty": "Fachgebiet (optional)",
         "specialtyPlaceholder": "z. B. Ästhetische Zahnheilkunde",
         "permissions": "Berechtigungen",
         "permissionsHintDoctor": "Auftragsberechtigungen für Zahnärzte",
-        "permissionsHintSecretary": "Operative Berechtigungen für Sekretär:innen",
+        "permissionsHintSecretary": "Operative Berechtigungen für das Sekretariat",
         "permissionsHintAdmin": "Alle Klinikberechtigungen für Administratoren",
         "accountStatus": "Kontostatus",
         "deleteConfirm": "Möchten Sie diesen Benutzer wirklich löschen?",
-        "deleteWarning": "Diese Aktion ist unwiderruflich. Das Konto, Profil und die Klinikverbindung des Benutzers werden dauerhaft gelöscht.",
+        "deleteWarning": "Diese Aktion ist unwiderruflich. Konto, Profil und Klinikverknüpfung des Benutzers werden dauerhaft gelöscht.",
         "deletingBtn": "Wird gelöscht…",
         "deleteBtn": "Ja, löschen",
         "savingBtn": "Wird gespeichert…",
@@ -687,7 +687,7 @@
         "emailRequired": "E-Mail ist erforderlich",
         "passwordRequired": "Passwort ist erforderlich",
         "passwordLength": "Das Passwort muss mindestens 6 Zeichen lang sein",
-        "clinicMissing": "Klinikinformationen fehlen"
+        "clinicMissing": "Klinikdaten fehlen"
       },
       "toast": {
         "updated": "Benutzer aktualisiert",
@@ -706,7 +706,7 @@
       "statInactive": "Inaktiv",
       "inviteBtn": "Zahnarzt einladen",
       "emptyTitle": "Noch keine Zahnärzte",
-      "emptyDesc": "Fügen Sie neue Zahnärzte über „Zahnarzt einladen“ hinzu. Erstellen Sie ihr Konto durch Festlegen von E-Mail und Passwort.",
+      "emptyDesc": "Fügen Sie über „Zahnarzt einladen“ neue Zahnärzte hinzu. Legen Sie das Konto mit E-Mail und Passwort an.",
       "subtitle": "In Ihrer Klinik registrierte Zahnärzte",
       "pageTitle": "Zahnärzte",
       "modal": {
@@ -719,8 +719,8 @@
         "cancelBtn": "Abbrechen",
         "savingBtn": "Wird gespeichert…",
         "saveBtn": "Speichern",
-        "successTitle": "Zahnarzt zum System hinzugefügt",
-        "successDesc": "Teilen Sie diese Anmeldedaten über einen sicheren Kanal (WhatsApp / SMS / persönlich) mit dem Zahnarzt. Dieses Passwort wird nur hier einmalig angezeigt.",
+        "successTitle": "Zahnarzt wurde angelegt",
+        "successDesc": "Geben Sie diese Anmeldedaten über einen sicheren Kanal (WhatsApp / SMS / persönlich) an den Zahnarzt weiter. Das Passwort wird nur hier und nur einmal angezeigt.",
         "copyBtn": "Kopieren",
         "copyBothBtn": "Beides + Link kopieren",
         "createdTitle": "Konto erstellt",
@@ -736,33 +736,33 @@
         "passwordPlaceholder": "Mindestens 8 Zeichen",
         "hideBtn": "Verbergen",
         "showBtn": "Anzeigen",
-        "refreshBtn": "Aktualisieren",
-        "createHint": "Für den Zahnarzt wird direkt ein Systemkonto erstellt. E-Mail + Passwort sicher weitergeben.",
+        "refreshBtn": "Neu erzeugen",
+        "createHint": "Für den Zahnarzt wird direkt ein Konto angelegt. Geben Sie E-Mail und Passwort über einen sicheren Kanal weiter.",
         "creatingBtn": "Wird erstellt…",
         "createBtn": "Konto erstellen",
-        "editNameHint": "Für Namensänderungen das Labor kontaktieren",
-        "loginSection": "System-Anmeldung (optional)",
-        "loginHint": "Wenn Sie E-Mail + Passwort angeben, kann sich der Zahnarzt anmelden. Bleibt es leer, wird er nur ins Register aufgenommen.",
+        "editNameHint": "Für Namensänderungen wenden Sie sich an das Labor",
+        "loginSection": "Anmeldung (optional)",
+        "loginHint": "Mit E-Mail und Passwort kann sich der Zahnarzt anmelden. Ohne diese Angaben wird er nur in die Liste aufgenommen.",
         "addBtn": "Zahnarzt hinzufügen",
         "kicker": "Zahnarzt",
         "addTitle": "Neuen Zahnarzt hinzufügen",
-        "successMsg": "Zahnarzt zum System hinzugefügt",
+        "successMsg": "Zahnarzt wurde angelegt",
         "okBtn": "OK"
       },
       "toast": {
         "updateError": "Aktualisierung fehlgeschlagen",
         "updated": "Zahnarzt aktualisiert",
-        "createError": "Zahnarzt-Konto konnte nicht erstellt werden",
+        "createError": "Zahnarzt-Konto konnte nicht angelegt werden",
         "created": "Konto erstellt",
         "copied": "In die Zwischenablage kopiert",
         "fullSuccess": "Zahnarzt und Anmeldekonto erstellt",
         "added": "Zahnarzt hinzugefügt"
       },
       "validation": {
-        "clinicLoadError": "Klinikinformationen konnten nicht geladen werden",
+        "clinicLoadError": "Klinikdaten konnten nicht geladen werden",
         "nameEmailRequired": "Name und E-Mail sind erforderlich",
         "passwordLength": "Das Passwort muss mindestens 8 Zeichen lang sein",
-        "emailInvalid": "Geben Sie eine gültige E-Mail ein",
+        "emailInvalid": "Geben Sie eine gültige E-Mail-Adresse ein",
         "nameRequired": "Vollständiger Name ist erforderlich",
         "tcknLength": "Die Steuernummer muss 11 Ziffern haben"
       },
@@ -770,27 +770,27 @@
         "createError": "Konto konnte nicht erstellt werden",
         "unexpectedResponse": "Unerwartete Antwort vom Server. Bitte erneut versuchen.",
         "unexpectedError": "Ein unerwarteter Fehler ist aufgetreten",
-        "partialSuccess": "Zahnarzt hinzugefügt, aber Anmeldekonto konnte nicht erstellt werden",
-        "saveFailed": "Registrierung fehlgeschlagen"
+        "partialSuccess": "Zahnarzt hinzugefügt, aber das Anmeldekonto konnte nicht erstellt werden",
+        "saveFailed": "Speichern fehlgeschlagen"
       }
     },
     "finance": {
       "tabs": {
-        "overview": "Überblick",
+        "overview": "Übersicht",
         "overviewHint": "Finanzstatus in Echtzeit",
         "statement": "Kontoauszug",
-        "statementHint": "Alle Transaktionen",
+        "statementHint": "Alle Bewegungen",
         "open": "Offen",
         "openHint": "Unbezahlte Rechnungen",
         "overdue": "Überfällig",
         "overdueHint": "Dringende Forderungen",
         "pos": "Online-POS",
-        "posHint": "Kartenzahlungen",
+        "posHint": "Kartenzahlung",
         "payments": "Zahlungen",
         "paymentsHint": "Zahlungsverlauf"
       },
       "error": {
-        "clinicNotFound": "Klinikinformationen nicht gefunden. Überprüfen Sie Ihre Profileinstellungen."
+        "clinicNotFound": "Klinikdaten nicht gefunden. Überprüfen Sie Ihre Profileinstellungen."
       }
     }
   },
@@ -819,13 +819,13 @@
       "critical": "KRITISCH"
     },
     "dashboard": {
-      "workingOn": "Derzeit in Bearbeitung",
+      "workingOn": "Aktuell in Bearbeitung",
       "noActiveJob": "Kein aktiver Auftrag",
       "waitingForAssignment": "Warten auf neue Zuweisung",
       "activeCount": "aktiv",
       "jobsAppearWhenAssigned": "Aufträge erscheinen hier, sobald sie zugewiesen werden",
       "quickAction": "Schnellaktion",
-      "createNewOrder": "Neuen Auftrag erstellen",
+      "createNewOrder": "Neuen Auftrag\nerstellen",
       "start": "Start",
       "performance": "Leistung",
       "completedStages": "Abgeschlossene Phasen",
@@ -836,7 +836,7 @@
       "firstTimeSuccess": "Erfolg beim ersten Mal",
       "totalWaste": "Gesamtausschuss:",
       "recentActivity": "Letzte Aktivität",
-      "last5CompletedJobs": "Letzte 5 abgeschlossene Aufträge",
+      "last5CompletedJobs": "Ihre letzten 5 abgeschlossenen Aufträge",
       "noCompletedJobsYet": "Noch keine abgeschlossenen Aufträge"
     },
     "history": {
@@ -846,21 +846,21 @@
       "pageSubtitle": "Ihre abgeschlossenen Phasen und gelieferten Aufträge",
       "myStages": "Meine Phasen",
       "delivered": "Geliefert",
-      "filter": "Filter",
+      "filter": "Filtern",
       "searchPlaceholderStages": "Phase / Auftrag / Patient suchen…",
       "searchPlaceholderOrders": "Auftrag / Patient / Zahnarzt / Klinik suchen…",
       "stageDetail": "Phasendetail",
       "orderNo": "Auftragsnr.",
-      "workType": "Arbeitstyp",
+      "workType": "Arbeitsart",
       "clinicDoctor": "Klinik & Zahnarzt",
-      "doctorNotes": "Notizen des Zahnarztes",
+      "doctorNotes": "Notiz des Zahnarztes",
       "timeline": "Zeitleiste",
       "assigned": "Zugewiesen",
       "started": "Gestartet",
       "durations": "Dauer",
-      "waitingDuration": "Wartend",
+      "waitingDuration": "Wartezeit",
       "betweenAssignmentAndStart": "Zwischen Zuweisung und Start",
-      "workingDuration": "In Bearbeitung",
+      "workingDuration": "Bearbeitungszeit",
       "betweenStartAndCompletion": "Zwischen Start und Abschluss",
       "stageId": "Phasen-ID",
       "workOrderId": "Auftrags-ID",
@@ -869,18 +869,18 @@
       "noAssignedStagesYet": "Noch keine zugewiesenen Phasen",
       "finished": "Abgeschlossen",
       "orderPatient": "Auftrag · Patient",
-      "noDeliveredOrdersYet": "Noch keine von Ihnen bearbeiteten Aufträge wurden geliefert",
+      "noDeliveredOrdersYet": "Noch wurde kein Auftrag geliefert, an dem Sie beteiligt waren",
       "last30DeliveredOrders": "Letzte 30 an die Klinik gesendete Aufträge"
     },
     "mobile": {
-      "noActiveJobWaiting": "Sie haben keinen aktiven Auftrag. Warten auf eine neue Zuweisung.",
+      "noActiveJobWaiting": "Sie haben gerade keinen aktiven Auftrag. Warten auf eine neue Zuweisung.",
       "activeJobsWaiting": "aktive Aufträge warten auf Sie, heute abgeschlossen.",
-      "checkIn": "CHECK-IN",
+      "checkIn": "ARBEITSZEIT",
       "checkInWithQr": "Mit QR einchecken",
-      "scanQrInstructions": "QR-Code im Posteingang scannen · ein-/auschecken",
+      "scanQrInstructions": "QR-Code an der Poststelle scannen · ein-/auschecken",
       "yourQueue": "Ihre Warteschlange",
       "myActiveJobs": "Meine aktiven Aufträge",
-      "noActiveJobNow": "Derzeit kein aktiver Auftrag",
+      "noActiveJobNow": "Gerade kein aktiver Auftrag",
       "newJobWillAppear": "Ein neuer Auftrag erscheint hier, sobald er zugewiesen wird.",
       "yourEfficiency": "Ihre Effizienz",
       "activeCount": "aktiv",
@@ -891,7 +891,7 @@
       "critical": "kritisch",
       "completedToday": "Heute abgeschlossen",
       "thisWeek": "diese Woche",
-      "working": "In Bearbeitung",
+      "working": "Arbeiten",
       "paused": "Pausiert",
       "urgent": "Dringend",
       "inQueue": "In Warteschlange"

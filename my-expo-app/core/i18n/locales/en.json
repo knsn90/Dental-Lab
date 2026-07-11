@@ -4,7 +4,7 @@
     "save": "Save",
     "signOut": "Sign out",
     "notSet": "Not set",
-    "notDefined": "Not defined yet",
+    "notDefined": "Not set yet",
     "soon": "Coming soon.",
     "language": "Language",
     "loading": "Loading…",
@@ -22,7 +22,7 @@
     "reset": "Reset",
     "all": "All",
     "completed": "Completed",
-    "inProgress": "In Progress",
+    "inProgress": "In progress",
     "waiting": "Waiting",
     "rejected": "Rejected",
     "order": "Order",
@@ -39,16 +39,16 @@
     "items": {
       "today": "Today",
       "orders": "Orders",
-      "paperOrders": "Paper Orders",
+      "paperOrders": "Paper orders",
       "approvals": "Approvals",
       "clinics": "Clinics",
       "team": "Team",
-      "stock": "Stock & Warehouse",
-      "production": "Production Board",
+      "stock": "Inventory",
+      "production": "Production board",
       "workflows": "Workflows",
-      "courier": "Courier Tracking",
+      "courier": "Courier tracking",
       "finance": "Finance",
-      "priceList": "Price List",
+      "priceList": "Price list",
       "support": "Support",
       "messages": "Messages",
       "settings": "Settings",
@@ -57,23 +57,23 @@
       "search": "Search",
       "more": "More",
       "new": "New",
-      "paperInbox": "Paper Inbox",
+      "paperInbox": "Paper inbox",
       "deliveries": "Deliveries",
       "map": "Map",
-      "stats": "Statistics",
+      "stats": "Stats",
       "scan": "Scan",
       "list": "List",
       "profile": "Profile",
       "users": "Users",
       "home": "Home",
-      "myOrders": "My Orders",
+      "myOrders": "My orders",
       "panel": "Dashboard",
-      "myJobs": "My Jobs",
+      "myJobs": "My jobs",
       "history": "History",
       "requests": "Requests"
     },
     "sections": {
-      "work": "Work Management",
+      "work": "Work management",
       "customers": "Customers",
       "team": "Team",
       "warehouse": "Warehouse",
@@ -83,16 +83,16 @@
       "help": "Help",
       "performance": "Performance",
       "system": "System",
-      "workArea": "Work Area",
+      "workArea": "Workspace",
       "account": "Account"
     }
   },
   "roles": {
     "doctor": "Doctor",
-    "clinicManager": "Clinic Manager",
+    "clinicManager": "Clinic manager",
     "exec": "Management",
     "technician": "Technician",
-    "labUser": "Lab User",
+    "labUser": "Lab user",
     "user": "User"
   },
   "dashboard": {
@@ -116,7 +116,7 @@
     },
     "activeOrders": "Active orders",
     "overdueCount": "{{count}} overdue",
-    "noOverdue": "no overdue",
+    "noOverdue": "None overdue",
     "doneToday": "Done today",
     "thisWeekCount": "{{count}} this week",
     "weekDash": "week —",
@@ -152,19 +152,19 @@
       "active": "ACTIVE",
       "pending": "PENDING",
       "today": "TODAY",
-      "startNavigation": "Start Navigation",
-      "nextDeliveries": "Next Deliveries",
-      "viewAll": "View All",
+      "startNavigation": "Start navigation →",
+      "nextDeliveries": "Next deliveries",
+      "viewAll": "View all →",
       "noPendingDeliveries": "No pending deliveries",
-      "completedToday": "Completed Today",
-      "statisticsThisWeek": "STATISTICS · THIS WEEK",
-      "myPerformance": "My Performance",
-      "details": "Details",
+      "completedToday": "Completed today",
+      "statisticsThisWeek": "STATS · THIS WEEK",
+      "myPerformance": "My performance",
+      "details": "Details →",
       "last7Days": "LAST 7 DAYS",
-      "dailyTrend": "Daily Trend",
+      "dailyTrend": "Daily trend",
       "deliveredMetric": "delivered",
       "noTasksYet": "No tasks yet",
-      "notifyOnNewDelivery": "You will be notified when a new delivery is assigned.",
+      "notifyOnNewDelivery": "You'll be notified when a new delivery is assigned.",
       "todayProgress": "TODAY'S PROGRESS",
       "onTheWayNow": "On the way now",
       "deliveredToday": "Delivered today",
@@ -173,18 +173,18 @@
       "startDetails": "Start → Details",
       "todaySummary": "TODAY'S SUMMARY",
       "completedCount": "You completed {{count}} deliveries today.",
-      "pickTaskStart": "Pick a task and get started.",
+      "pickTaskStart": "Pick a task to get started.",
       "todayDate": "TODAY · {{date}}",
-      "completedTodayTitle": "Completed Today"
+      "completedTodayTitle": "Completed today"
     },
     "kpi": {
       "delivered": "Delivered",
-      "averageTime": "Avg. Time",
+      "averageTime": "Avg. time",
       "active": "Active",
       "waiting": "Waiting",
-      "totalDeliveries": "Total Deliveries",
-      "avgTime": "Avg. Time",
-      "successRate": "Success Rate"
+      "totalDeliveries": "Total deliveries",
+      "avgTime": "Avg. time",
+      "successRate": "Success rate"
     },
     "delivery": {
       "noPending": "No pending deliveries 🎉",
@@ -194,7 +194,7 @@
       "gpsStatus": "GPS · {{status}}",
       "noPhone": "No phone",
       "call": "Call",
-      "openOnMap": "Open on Map",
+      "openOnMap": "Open in Maps →",
       "contents": "Contents",
       "noteLabel": "Note",
       "progress": "Progress",
@@ -204,14 +204,14 @@
       "noteLabelDesktop": "Note"
     },
     "map": {
-      "liveLocationActive": "Live Location · GPS active",
-      "noActiveTask": "Map appears when there's an active task",
-      "fullScreen": "Full Screen Map",
-      "liveMap": "Live Map",
-      "liveMapDesktop": "Live Map",
+      "liveLocationActive": "Live location · GPS active",
+      "noActiveTask": "The map appears here when you have an active task",
+      "fullScreen": "Full-screen map →",
+      "liveMap": "Live map",
+      "liveMapDesktop": "Live map",
       "gpsStatusLabel": "Location · GPS {{status}}",
-      "gpsInactive": "GPS inactive",
-      "fullScreen2": "Full Screen"
+      "gpsInactive": "GPS off",
+      "fullScreen2": "Full screen"
     },
     "section": {
       "list": "List",
@@ -221,9 +221,9 @@
     },
     "stats": {
       "courierPerformance": "COURIER PERFORMANCE",
-      "rangeWeek": "This Week",
-      "rangeMonth": "This Month",
-      "rangeAllTime": "All Time",
+      "rangeWeek": "This week",
+      "rangeMonth": "This month",
+      "rangeAllTime": "All time",
       "successSummary": "{{count}} successful deliveries · {{avgMin}} min average",
       "noPeriodDeliveries": "No deliveries this period",
       "total": "Total",
@@ -233,35 +233,35 @@
       "thisPeriod": "This period",
       "activeTask": "Active task",
       "last7Days": "LAST 7 DAYS",
-      "dailyTrend": "Daily Trend",
+      "dailyTrend": "Daily trend",
       "totalMetric": "total",
-      "recentDeliveries": "Recent Deliveries",
-      "noPeriodDeliveries2": "No deliveries in this period",
+      "recentDeliveries": "Recent deliveries",
+      "noPeriodDeliveries2": "No deliveries this period",
       "greetingEvening": "Good evening",
-      "myPerformance": "My Performance",
-      "description": "Past delivery analysis and performance summaries",
+      "myPerformance": "My performance",
+      "description": "Delivery history and performance insights",
       "summaryWeek": "SUMMARY · THIS WEEK",
       "summaryMonth": "SUMMARY · THIS MONTH",
       "summaryAllTime": "SUMMARY · ALL TIME",
       "deliveriesCount": "{{count}} deliveries",
       "heroDescription": "{{pct}}% success rate · {{avgMin}} min average delivery time",
       "heroFastest": "Fastest {{count}} min",
-      "detailedReport": "Detailed Report",
-      "kpiTotalDeliveries": "Total Deliveries",
-      "kpiAvgTime": "Avg. Time",
+      "detailedReport": "Detailed report →",
+      "kpiTotalDeliveries": "Total deliveries",
+      "kpiAvgTime": "Avg. time",
       "kpiSuccess": "Success",
       "trendExcellent": "Excellent",
       "trendMiddle": "Average",
       "trendLow": "Low",
       "chart1Last7Days": "LAST 7 DAYS",
-      "dailyDeliveries": "Daily Deliveries",
+      "dailyDeliveries": "Daily deliveries",
       "efficiency": "EFFICIENCY",
-      "timeDistribution": "Time Distribution",
+      "timeDistribution": "Time distribution",
       "duration15": "< 15 min",
-      "duration30": "15-30 min",
-      "duration60": "30-60 min",
+      "duration30": "15–30 min",
+      "duration60": "30–60 min",
       "durationOver60": "> 60 min",
-      "allDeliveries": "All Deliveries",
+      "allDeliveries": "All deliveries",
       "emptyPeriod": "No deliveries this period"
     },
     "trend": {
@@ -270,31 +270,31 @@
       "low": "↓ Low"
     },
     "range": {
-      "week": "This Week",
-      "month": "This Month",
+      "week": "This week",
+      "month": "This month",
       "all": "All"
     },
     "modal": {
       "directions": "DIRECTIONS",
-      "chooseMapApp": "Choose Map App",
-      "openInBrowser": "Open in Browser"
+      "chooseMapApp": "Choose map app",
+      "openInBrowser": "Open in browser"
     },
     "timeline": {
       "assigned": "Assigned",
-      "pickedUp": "Picked Up",
-      "inTransit": "In Transit",
+      "pickedUp": "Picked up",
+      "inTransit": "In transit",
       "delivered": "Delivered"
     },
     "detail": {
       "breadcrumb": "DELIVERY · #{{id}}",
-      "pageTitle": "Directions & Delivery",
+      "pageTitle": "Directions & delivery",
       "customer": "Customer"
     },
     "action": {
-      "packagePickedUp": "Package Picked Up",
-      "onTheWay": "On the Way",
-      "takePhoto": "Take Photo",
-      "getSignature": "Get Signature",
+      "packagePickedUp": "Package picked up",
+      "onTheWay": "On the way",
+      "takePhoto": "Take photo",
+      "getSignature": "Get signature",
       "deliver": "Deliver"
     }
   },
@@ -306,12 +306,12 @@
       "account": "Account",
       "workplaceClinic": "My clinic",
       "workplaceOrg": "My organization",
-      "hr": "HR Requests",
+      "hr": "HR requests",
       "appearance": "Appearance",
       "notifications": "Notifications",
       "management": "Management",
       "security": "Security",
-      "about": "About & Help",
+      "about": "About & help",
       "language": "Language"
     },
     "rows": {
@@ -321,12 +321,12 @@
       "clinic": "Clinic",
       "org": "Organization",
       "address": "Address",
-      "advanceRequest": "Advance Request",
-      "leaveRequest": "Leave Request",
+      "advanceRequest": "Advance request",
+      "leaveRequest": "Leave request",
       "pushNotif": "Push notifications",
       "emailNotif": "Email notifications",
       "finance": "Finance",
-      "stock": "Stock & Warehouse",
+      "stock": "Inventory",
       "invoices": "Invoices",
       "expenses": "Expenses",
       "staff": "Staff",
@@ -361,7 +361,7 @@
       "dark": "Dark",
       "system": "System"
     },
-    "signOutConfirm": "Are you sure you want to sign out of your account?"
+    "signOutConfirm": "Are you sure you want to sign out?"
   },
   "settings": {
     "title": "Settings",
@@ -377,7 +377,7 @@
       },
       "general": {
         "label": "General",
-        "sub": "Language, timezone, format"
+        "sub": "Language, time zone, format"
       },
       "users": {
         "label": "Users",
@@ -385,10 +385,10 @@
       },
       "permissions": {
         "label": "Permissions",
-        "sub": "Role-based access management"
+        "sub": "Role-based access control"
       },
       "checkin": {
-        "label": "QR Check-in",
+        "label": "QR check-in",
         "sub": "Attendance tracking settings"
       },
       "stations": {
@@ -396,12 +396,12 @@
         "sub": "Production stages"
       },
       "workhours": {
-        "label": "Working Hours",
-        "sub": "Shift, lunch, concurrent work"
+        "label": "Working hours",
+        "sub": "Shifts, breaks, concurrent work"
       },
       "currency": {
-        "label": "Exchange Rates",
-        "sub": "EUR/USD/GBP rate management"
+        "label": "Exchange rates",
+        "sub": "EUR / USD / GBP rate management"
       },
       "integrations": {
         "label": "Integrations",
@@ -422,45 +422,45 @@
         "sub": "Delivery flow"
       },
       "finance": {
-        "sub": "Cash · Invoice · Expense · Check"
+        "sub": "Cash · Invoice · Expense · Cheque"
       },
       "team": {
-        "sub": "Staff · Salary · Performance"
+        "sub": "Staff · salary · performance"
       },
       "stock": {
-        "sub": "Inventory · Alert"
+        "sub": "Inventory · alerts"
       },
       "settings": {
-        "sub": "General · Notification · Integration"
+        "sub": "General · Notifications · Integrations"
       }
     },
     "moreSheet": {
-      "title": "Full Menu",
-      "subtitle": "Infrequently used screens"
+      "title": "Full menu",
+      "subtitle": "Less-used screens"
     },
     "tabs": {
-      "newOrder": "New Order",
+      "newOrder": "New order",
       "users": "Users",
       "doctors": "Doctors",
-      "stock": "Stock",
+      "stock": "Inventory",
       "suppliers": "Suppliers",
       "expenses": "Expenses",
-      "checks": "Check/Note",
+      "checks": "Cheques",
       "cash": "Cash/Bank",
       "financeReport": "Income/Expense",
-      "advanceRequests": "Advance Requests",
+      "advanceRequests": "Advance requests",
       "performance": "Performance",
       "documents": "Documents",
-      "checkinSettings": "QR Check-in",
+      "checkinSettings": "QR check-in",
       "logs": "Logs",
       "permissions": "Permissions",
       "setupWizard": "Setup"
     },
     "status": {
       "received": "Received",
-      "production": "In Production",
-      "qualityControl": "Quality Control",
-      "readyForDelivery": "Handed to Courier",
+      "production": "In production",
+      "qualityControl": "Quality control",
+      "readyForDelivery": "Handed to courier",
       "delivered": "Delivered",
       "qcShort": "QC",
       "ready": "Ready",
@@ -491,26 +491,26 @@
       "totalOrders": "Total orders",
       "doctor": "Doctor",
       "labUser": "Lab user",
-      "memberTrend": "Member Trend",
-      "membersThisMonth": "members this month",
-      "toothMemberNote": "1 tooth = 1 member · last 6 months trend",
-      "deliveryRate": "Delivery Rate",
+      "memberTrend": "Unit trend",
+      "membersThisMonth": "units this month",
+      "toothMemberNote": "1 tooth = 1 unit · last 6 months",
+      "deliveryRate": "Delivery rate",
       "delivered": "Delivered",
       "inProduction": "in production",
       "todaysTasks": "Today's tasks",
-      "recentOrders": "Recent Orders",
-      "viewAll": "View All →",
+      "recentOrders": "Recent orders",
+      "viewAll": "View all →",
       "noOrders": "No orders yet",
-      "unbilledDeliveries": "Unbilled deliveries exist",
-      "orders": "order · ",
-      "clinicEstimated": "clinic · estimated ",
+      "unbilledDeliveries": "You have unbilled deliveries",
+      "orders": "orders · ",
+      "clinicEstimated": "clinics · est. ",
       "invoice": "Invoice →",
-      "financialSummary": "Financial Summary",
-      "monthlyCollection": "This Month Collection",
-      "pendingInvoice": "Pending Invoice",
-      "paidInvoiceCount": "Paid Invoice Count",
-      "statusDistribution": "Status Distribution",
-      "workTypeDistribution": "Work Type Distribution",
+      "financialSummary": "Financial summary",
+      "monthlyCollection": "Collected this month",
+      "pendingInvoice": "Pending invoices",
+      "paidInvoiceCount": "Paid invoices",
+      "statusDistribution": "Status breakdown",
+      "workTypeDistribution": "Work type breakdown",
       "totalMembers": "Units",
       "noOrdersToday": "No orders yet today.",
       "ordersSummary": "{{total}} orders, {{active}} active{{overdue}}.",
@@ -522,15 +522,15 @@
       "total": "Total {{total}}",
       "delayedCases": "Delayed cases",
       "noDelayedCases": "No delayed cases",
-      "productionOnTrack": "All production is progressing as planned."
+      "productionOnTrack": "All production is on track."
     },
     "buttons": {
       "start": "Start"
     },
     "table": {
-      "no": "No",
+      "no": "No.",
       "doctor": "Doctor",
-      "workType": "Work Type",
+      "workType": "Work type",
       "status": "Status",
       "delivery": "Delivery"
     },
@@ -550,12 +550,12 @@
         "users": "Users",
         "doctors": "Doctors"
       },
-      "searchPlaceholder": "Search by name, action or record...",
+      "searchPlaceholder": "Search by name, action, or record…",
       "loading": "Loading logs…",
       "empty": {
         "title": "No logs yet",
-        "noMatch": "No records matching \"{{query}}\"",
-        "noActions": "Actions will appear here as they occur"
+        "noMatch": "No records match \"{{query}}\"",
+        "noActions": "Actions will appear here as they happen"
       },
       "table": {
         "user": "USER",
@@ -563,8 +563,8 @@
       },
       "time": {
         "justNow": "Just now",
-        "minutesAgo": "{{minutes}} minutes ago",
-        "hoursAgo": "{{hours}} hours ago",
+        "minutesAgo": "{{minutes}} min ago",
+        "hoursAgo": "{{hours}} hr ago",
         "yesterday": "Yesterday {{time}}",
         "daysAgo": "{{days}} days ago"
       }
@@ -592,45 +592,45 @@
     "moreMenu": {
       "courierSub": "Delivery flow",
       "settingsSub": "Profile · Notifications · Theme",
-      "title": "Full Menu"
+      "title": "Full menu"
     },
     "screens": {
       "home": "Home",
-      "newOrder": "New Order"
+      "newOrder": "New order"
     },
     "noPermission": {
-      "title": "No permission",
-      "orderCreate": "Ask your administrator for permission to create new orders.",
+      "title": "No access",
+      "orderCreate": "Ask your administrator for permission to create orders.",
       "ordersView": "Ask your administrator for permission to view orders.",
-      "usersManage": "User management is only available to clinic administrators.",
+      "usersManage": "User management is available to clinic administrators only.",
       "settingsManage": "Ask your administrator for permission to access clinic settings."
     },
     "roles": {
       "doctor": "Doctor",
-      "doctorSub": "Creates/tracks orders",
+      "doctorSub": "Creates and tracks orders",
       "secretary": "Secretary",
-      "secretarySub": "Appointments · Communication · Order support",
+      "secretarySub": "Appointments · Contact · Order support",
       "admin": "Administrator",
       "adminSub": "Full-access clinic administrator"
     },
     "permissions": {
-      "ordersView": "View Orders",
+      "ordersView": "View orders",
       "ordersViewSub": "View all clinic orders",
-      "ordersCreate": "Create Order",
-      "ordersCreateSub": "Create new work orders",
-      "ordersEdit": "Edit Order",
-      "ordersEditSub": "Edit/cancel existing orders",
-      "doctorsManage": "Manage Doctors",
-      "doctorsManageSub": "Add/edit doctors",
-      "usersManage": "Manage Users",
-      "usersManageSub": "Add users / manage permissions",
-      "settingsManage": "Clinic Settings",
-      "settingsManageSub": "Institution info / logo / theme",
-      "billingView": "View Financial Records",
-      "billingViewSub": "Invoices / accounts / payments"
+      "ordersCreate": "Create orders",
+      "ordersCreateSub": "Open new work orders",
+      "ordersEdit": "Edit orders",
+      "ordersEditSub": "Edit or cancel existing orders",
+      "doctorsManage": "Manage doctors",
+      "doctorsManageSub": "Add and edit doctors",
+      "usersManage": "Manage users",
+      "usersManageSub": "Add users and set permissions",
+      "settingsManage": "Clinic settings",
+      "settingsManageSub": "Organization info / logo / theme",
+      "billingView": "View financial records",
+      "billingViewSub": "Invoices / balances / payments"
     },
     "users": {
-      "teamSummary": "Team Summary",
+      "teamSummary": "Team summary",
       "summaryDesc": "active users · doctors · secretaries · administrators",
       "statDoctor": "Doctors",
       "statSecretary": "Secretaries",
@@ -639,55 +639,55 @@
       "filterDoctor": "Doctors",
       "filterSecretary": "Secretaries",
       "filterAdmin": "Admins",
-      "recordCount": "record",
+      "recordCount": "records",
       "emptyAll": "No users yet",
-      "emptyFiltered": "not added yet",
-      "emptyDesc": "Grow your clinic by adding doctors, secretaries, or backup administrators — each role has its own permission template.",
-      "addFirst": "Add first user",
+      "emptyFiltered": "none added yet",
+      "emptyDesc": "Grow your clinic by adding doctors, secretaries, or backup administrators — each role comes with its own permission template.",
+      "addFirst": "Add your first user",
       "modal": {
-        "titleEdit": "Edit User",
-        "titleNew": "Add New User",
-        "subtitleEdit": "Role, permissions and contact information",
-        "subtitleNew": "Add doctor, secretary or backup administrator",
+        "titleEdit": "Edit user",
+        "titleNew": "Add user",
+        "subtitleEdit": "Role, permissions, and contact info",
+        "subtitleNew": "Add a doctor, secretary, or backup administrator",
         "role": "Role",
         "title": "Title",
-        "fullName": "Full Name",
+        "fullName": "Full name",
         "fullNamePlaceholder": "e.g. Jane Smith",
         "email": "Email",
         "emailPlaceholder": "example@email.com",
         "editBtn": "EDIT",
         "cancelBtn": "CANCEL",
         "password": "Password",
-        "autoGenerate": "AUTO GENERATE",
-        "passwordPlaceholderEdit": "New password (min 6 chars)",
-        "passwordPlaceholderNew": "Min 6 characters",
+        "autoGenerate": "AUTO-GENERATE",
+        "passwordPlaceholderEdit": "New password (min. 6 characters)",
+        "passwordPlaceholderNew": "Min. 6 characters",
         "hideBtn": "HIDE",
         "showBtn": "SHOW",
-        "passwordHintEdit": "New password will be applied when you save. Don't forget to inform the user.",
-        "passwordHintNew": "User will log in with this email and password. Share securely.",
+        "passwordHintEdit": "The new password takes effect when you save. Don't forget to share it with the user.",
+        "passwordHintNew": "The user will sign in with this email and password. Share them through a secure channel.",
         "phone": "Phone (optional)",
-        "phonePlaceholder": "0532 ...",
+        "phonePlaceholder": "+90 532 …",
         "specialty": "Specialty (optional)",
-        "specialtyPlaceholder": "e.g. Cosmetic Dentistry",
+        "specialtyPlaceholder": "e.g. Cosmetic dentistry",
         "permissions": "Permissions",
         "permissionsHintDoctor": "Order permissions for doctors",
         "permissionsHintSecretary": "Operational permissions for secretaries",
-        "permissionsHintAdmin": "All clinic permissions for admins",
-        "accountStatus": "Account Status",
+        "permissionsHintAdmin": "Full clinic permissions for admins",
+        "accountStatus": "Account status",
         "deleteConfirm": "Are you sure you want to delete this user?",
-        "deleteWarning": "This action is irreversible. The user's account, profile and clinic connection will be permanently deleted.",
+        "deleteWarning": "This can't be undone. The user's account, profile, and clinic link will be permanently deleted.",
         "deletingBtn": "Deleting…",
-        "deleteBtn": "Yes, Delete",
+        "deleteBtn": "Yes, delete",
         "savingBtn": "Saving…",
-        "saveBtn": "Save Changes",
-        "createBtn": "Create User"
+        "saveBtn": "Save changes",
+        "createBtn": "Create user"
       },
       "validation": {
         "nameRequired": "Full name is required",
         "emailRequired": "Email is required",
         "passwordRequired": "Password is required",
         "passwordLength": "Password must be at least 6 characters",
-        "clinicMissing": "Clinic information missing"
+        "clinicMissing": "Clinic information is missing"
       },
       "toast": {
         "updated": "User updated",
@@ -695,7 +695,7 @@
         "deleted": "User deleted"
       },
       "alert": {
-        "deleteError": "User could not be deleted"
+        "deleteError": "Couldn't delete user"
       },
       "pageKicker": "Clinic · Team",
       "pageTitle": "Users"
@@ -704,29 +704,29 @@
       "statTotal": "Total",
       "statActive": "Active",
       "statInactive": "Inactive",
-      "inviteBtn": "Invite Doctor",
+      "inviteBtn": "Invite doctor",
       "emptyTitle": "No doctors yet",
-      "emptyDesc": "Add new doctors with \"Invite Doctor\". Create their account by setting email and password.",
+      "emptyDesc": "Add doctors with \"Invite doctor.\" Set an email and password to create their account.",
       "subtitle": "Doctors registered to your clinic",
       "pageTitle": "Doctors",
       "modal": {
-        "editTitle": "Edit Doctor",
+        "editTitle": "Edit doctor",
         "phone": "Phone",
         "phonePlaceholder": "+90 555 000 00 00",
         "active": "Active",
-        "activeHint": "Inactive doctors cannot receive new orders",
+        "activeHint": "Inactive doctors can't receive new orders",
         "reactivateWarning": "This doctor will be reactivated",
         "cancelBtn": "Cancel",
         "savingBtn": "Saving…",
         "saveBtn": "Save",
-        "successTitle": "Doctor added to system",
-        "successDesc": "Share these login credentials with the doctor via a secure channel (WhatsApp / SMS / in-person). This password appears only once here.",
+        "successTitle": "Doctor added",
+        "successDesc": "Share these credentials with the doctor through a secure channel (WhatsApp / SMS / in person). This password is shown only once.",
         "copyBtn": "Copy",
         "copyBothBtn": "Copy both + link",
-        "createdTitle": "Account Created",
-        "createTitle": "Create Doctor Account",
+        "createdTitle": "Account created",
+        "createTitle": "Create doctor account",
         "titleLabel": "Title",
-        "nameLabel": "Full Name *",
+        "nameLabel": "Full name *",
         "namePlaceholder": "Jane Smith",
         "willAppear": "Will appear as:",
         "emailLabel": "Email *",
@@ -737,48 +737,48 @@
         "hideBtn": "Hide",
         "showBtn": "Show",
         "refreshBtn": "Refresh",
-        "createHint": "A system account is created directly for the doctor. Share email + password securely.",
+        "createHint": "A system account is created directly for the doctor. Share the email and password through a secure channel.",
         "creatingBtn": "Creating…",
-        "createBtn": "Create Account",
-        "editNameHint": "Contact the lab for name changes",
-        "loginSection": "System Login (Optional)",
-        "loginHint": "If you provide email + password, the doctor can log in. If left blank, they'll only be added to the registry.",
-        "addBtn": "Add Doctor",
+        "createBtn": "Create account",
+        "editNameHint": "Contact the lab to change the name",
+        "loginSection": "System login (optional)",
+        "loginHint": "Provide an email and password to let the doctor sign in. Leave blank to add them to the registry only.",
+        "addBtn": "Add doctor",
         "kicker": "Doctor",
-        "addTitle": "Add New Doctor",
-        "successMsg": "Doctor added to system",
-        "okBtn": "OK"
+        "addTitle": "Add doctor",
+        "successMsg": "Doctor added",
+        "okBtn": "Done"
       },
       "toast": {
         "updateError": "Update failed",
         "updated": "Doctor updated",
-        "createError": "Doctor account could not be created",
+        "createError": "Couldn't create doctor account",
         "created": "Account created",
         "copied": "Copied to clipboard",
-        "fullSuccess": "Doctor and login account created",
+        "fullSuccess": "Doctor and sign-in account created",
         "added": "Doctor added"
       },
       "validation": {
-        "clinicLoadError": "Failed to load clinic information",
+        "clinicLoadError": "Couldn't load clinic information",
         "nameEmailRequired": "Name and email are required",
         "passwordLength": "Password must be at least 8 characters",
         "emailInvalid": "Enter a valid email",
         "nameRequired": "Full name is required",
-        "tcknLength": "TCKN must be 11 digits"
+        "tcknLength": "National ID must be 11 digits"
       },
       "alert": {
-        "createError": "Account could not be created",
-        "unexpectedResponse": "Unexpected response from server. Please try again.",
-        "unexpectedError": "An unexpected error occurred",
-        "partialSuccess": "Doctor added, but login account could not be created",
-        "saveFailed": "Registration failed"
+        "createError": "Couldn't create account",
+        "unexpectedResponse": "Unexpected response from the server. Please try again.",
+        "unexpectedError": "Something went wrong",
+        "partialSuccess": "Doctor added, but the sign-in account couldn't be created",
+        "saveFailed": "Save failed"
       }
     },
     "finance": {
       "tabs": {
         "overview": "Overview",
         "overviewHint": "Real-time financial status",
-        "statement": "Account Statement",
+        "statement": "Account statement",
         "statementHint": "All transactions",
         "open": "Outstanding",
         "openHint": "Unpaid invoices",
@@ -787,7 +787,7 @@
         "pos": "Online POS",
         "posHint": "Card payments",
         "payments": "Payments",
-        "paymentsHint": "Collection history"
+        "paymentsHint": "Payment history"
       },
       "error": {
         "clinicNotFound": "Clinic information not found. Check your profile settings."
@@ -797,22 +797,22 @@
   "doctor": {
     "nav": {
       "courierShort": "Courier",
-      "newOrder": "New Order",
-      "allMenu": "All Menu"
+      "newOrder": "New order",
+      "allMenu": "Full menu"
     }
   },
   "station": {
     "requests": {
-      "materialRequest": "Material Request",
-      "advanceRequest": "Advance Request",
-      "leaveRequest": "Leave Request"
+      "materialRequest": "Material request",
+      "advanceRequest": "Advance request",
+      "leaveRequest": "Leave request"
     },
     "actions": {
       "scan": "Scan",
-      "newOrder": "New Order"
+      "newOrder": "New order"
     },
     "screens": {
-      "jobDetail": "Job Detail"
+      "jobDetail": "Job detail"
     },
     "badges": {
       "active": "ACTIVE",
@@ -821,56 +821,56 @@
     "dashboard": {
       "workingOn": "Currently working on",
       "noActiveJob": "No active job",
-      "waitingForAssignment": "Waiting for new assignment",
+      "waitingForAssignment": "Waiting for a new assignment",
       "activeCount": "active",
       "jobsAppearWhenAssigned": "Jobs appear here when assigned",
-      "quickAction": "Quick Action",
+      "quickAction": "Quick action",
       "createNewOrder": "Create new\norder",
       "start": "Start",
       "performance": "Performance",
-      "completedStages": "Completed Stages",
+      "completedStages": "Completed stages",
       "stagesCompleted": "stages completed",
-      "averageDuration": "Avg duration",
+      "averageDuration": "Avg. duration",
       "perStage": "Per stage",
       "efficiency": "Efficiency",
       "firstTimeSuccess": "First-time success",
       "totalWaste": "Total waste:",
-      "recentActivity": "Recent Activity",
-      "last5CompletedJobs": "Last 5 jobs completed",
+      "recentActivity": "Recent activity",
+      "last5CompletedJobs": "Your last 5 completed jobs",
       "noCompletedJobsYet": "No completed jobs yet"
     },
     "history": {
       "subtitle": "My completed stages & delivered orders",
       "breadcrumb": "Work · History",
-      "pageTitle": "My History",
+      "pageTitle": "My history",
       "pageSubtitle": "Your completed stages and delivered orders",
-      "myStages": "My Stages",
+      "myStages": "My stages",
       "delivered": "Delivered",
       "filter": "Filter",
       "searchPlaceholderStages": "Search stage / order / patient…",
       "searchPlaceholderOrders": "Search order / patient / doctor / clinic…",
-      "stageDetail": "Stage Detail",
-      "orderNo": "Order No",
-      "workType": "Work Type",
-      "clinicDoctor": "Clinic & Doctor",
-      "doctorNotes": "Doctor Notes",
+      "stageDetail": "Stage detail",
+      "orderNo": "Order no.",
+      "workType": "Work type",
+      "clinicDoctor": "Clinic & doctor",
+      "doctorNotes": "Doctor notes",
       "timeline": "Timeline",
       "assigned": "Assigned",
       "started": "Started",
       "durations": "Durations",
       "waitingDuration": "Waiting",
-      "betweenAssignmentAndStart": "Between assignment and start",
+      "betweenAssignmentAndStart": "From assignment to start",
       "workingDuration": "Working",
-      "betweenStartAndCompletion": "Between start and completion",
+      "betweenStartAndCompletion": "From start to completion",
       "stageId": "Stage ID",
-      "workOrderId": "Work Order ID",
+      "workOrderId": "Work order ID",
       "rawStatus": "Status (raw)",
-      "goToOrder": "Go to Order",
-      "noAssignedStagesYet": "No assigned stages yet",
+      "goToOrder": "Go to order",
+      "noAssignedStagesYet": "No stages assigned yet",
       "finished": "Finished",
       "orderPatient": "Order · Patient",
-      "noDeliveredOrdersYet": "No orders you worked on have been delivered yet",
-      "last30DeliveredOrders": "Last 30 orders sent to clinic"
+      "noDeliveredOrdersYet": "None of your orders have been delivered yet",
+      "last30DeliveredOrders": "Last 30 orders sent to clinics"
     },
     "mobile": {
       "noActiveJobWaiting": "You have no active job. Waiting for a new assignment.",
@@ -878,23 +878,23 @@
       "checkIn": "CHECK-IN",
       "checkInWithQr": "Check in with QR",
       "scanQrInstructions": "Scan the QR code at the mailroom · check in/out",
-      "yourQueue": "Your Queue",
-      "myActiveJobs": "My Active Jobs",
+      "yourQueue": "Your queue",
+      "myActiveJobs": "My active jobs",
       "noActiveJobNow": "No active job right now",
       "newJobWillAppear": "A new job will appear here when assigned.",
-      "yourEfficiency": "Your Efficiency",
+      "yourEfficiency": "Your efficiency",
       "activeCount": "active",
-      "avgHours": "Avg.hr",
-      "activeJob": "Active Job",
+      "avgHours": "Avg. hr",
+      "activeJob": "Active job",
       "inProgress": "In progress",
       "empty": "Empty",
       "critical": "critical",
-      "completedToday": "Completed Today",
+      "completedToday": "Completed today",
       "thisWeek": "this week",
       "working": "Working",
       "paused": "Paused",
       "urgent": "Urgent",
-      "inQueue": "In Queue"
+      "inQueue": "In queue"
     }
   }
 }
