@@ -91,7 +91,19 @@ function useWebStyles() {
 
     const style = document.createElement('style');
     style.id = id;
+    // Peyda (Farsça) — metin aileleri (Outfit + inline Inter Tight/Inter) için
+    // unicode-range ile: yalnız Arapça/Farsça glifler Peyda'dan gelir, Latin metin
+    // ve ağırlıklar (400/500/600/700) korunur. Dosyalar /fonts/ (public) altında.
+    const peydaRange = 'U+0600-06FF,U+0750-077F,U+08A0-08FF,U+FB50-FDFF,U+FE70-FEFF,U+200C-200D';
+    const peydaFaces = ['Outfit', 'Inter Tight', 'Inter'].map((fam) => (
+      [[400, 'regular'], [500, 'medium'], [600, 'semibold'], [700, 'bold']].map(([w, f]) =>
+        `@font-face{font-family:'${fam}';font-style:normal;font-weight:${w};font-display:swap;`
+        + `src:url('/fonts/peyda-${f}.woff2') format('woff2');unicode-range:${peydaRange};}`
+      ).join('\n      ')
+    )).join('\n      ');
     style.textContent = `
+      ${peydaFaces}
+
       :root { --app-bg: #F2EDE3; }
       *, *::before, *::after { box-sizing: border-box; }
 
