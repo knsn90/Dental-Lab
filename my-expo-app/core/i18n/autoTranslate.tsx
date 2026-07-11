@@ -7,10 +7,23 @@
 
 import React from 'react';
 import { Text as RNText, TextInput as RNTextInput } from 'react-native';
-import i18n from './index';
+import i18n, { isRTL } from './index';
 import enDict from './locales/auto.en.json';
 import deDict from './locales/auto.de.json';
 import faDict from './locales/auto.fa.json';
+
+// Arapça/Farsça betik aralığı — metin gerçekten RTL karakter içeriyor mu?
+// (Para "₺125", ID, tarih gibi salt-LTR içerik yön almaz → düzen bozulmaz.)
+const RTL_CHARS = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/;
+function hasRTL(s: any): boolean {
+  return typeof s === 'string' && RTL_CHARS.test(s);
+}
+// Yalnız metin DÜĞÜMÜNE eklenir (View container'a DEĞİL) → flex satırları LTR kalır,
+// yalnız o Text'in kendi içeriği RTL akar + sağa hizalanır. Explicit style kazanır.
+const RTL_TEXT_STYLE = { writingDirection: 'rtl' as const };
+function withRTLStyle(existing: any): any {
+  return existing != null ? [RTL_TEXT_STYLE, existing] : RTL_TEXT_STYLE;
+}
 
 const DICTS: Record<string, Record<string, string>> = {
   en: enDict as Record<string, string>,
@@ -47,15 +60,32 @@ function tChild(c: any): any {
   return c;
 }
 
-// Bir props nesnesini (gerekirse) çevrilmiş kopyasıyla döndür
+// Bir props nesnesini (gerekirse) çevrilmiş kopyası + RTL yön stiliyle döndür
 function patchProps(type: any, props: any): any {
   if (!props || i18n.language === 'tr') return props;
+  const rtl = isRTL(i18n.language);
+
   if (isText(type) && props.children != null) {
     const tc = tChild(props.children);
-    if (tc !== props.children) return { ...props, children: tc };
+    // RTL: çevrilmiş içerik gerçekten RTL karakter içeriyorsa yön stili ekle.
+    const content = typeof tc === 'string' ? tc : Array.isArray(tc) ? tc.filter((x) => typeof x === 'string').join('') : '';
+    const needDir = rtl && hasRTL(content);
+    if (tc !== props.children || needDir) {
+      const next: any = { ...props };
+      if (tc !== props.children) next.children = tc;
+      if (needDir) next.style = withRTLStyle(props.style);
+      return next;
+    }
   } else if (isTextInput(type) && typeof props.placeholder === 'string') {
     const tp = autoT(props.placeholder);
-    if (tp !== props.placeholder) return { ...props, placeholder: tp };
+    // RTL dilde Farsça placeholder → input yön stili (explicit style yine kazanır).
+    const needDir = rtl && hasRTL(tp);
+    if (tp !== props.placeholder || needDir) {
+      const next: any = { ...props };
+      if (tp !== props.placeholder) next.placeholder = tp;
+      if (needDir) next.style = withRTLStyle(props.style);
+      return next;
+    }
   }
   return props;
 }
