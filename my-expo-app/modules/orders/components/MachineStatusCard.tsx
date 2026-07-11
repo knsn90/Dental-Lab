@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 // modules/orders/components/MachineStatusCard.tsx
 // Workstation içinde — istasyona bağlı makine varsa canlı durumu gösterir.
 // machine_live_status view'inden okur, realtime bağlanır.
@@ -303,7 +304,7 @@ export function MachineStatusCard({
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingTop: 4 }}>
             <Activity size={9} color={P.ink400} strokeWidth={1.8} />
             <Text style={{ fontSize: 10, color: P.ink400 }}>
-              Son sinyal: {new Date(machine.last_heartbeat_at).toLocaleTimeString('tr-TR')}
+              Son sinyal: {new Date(machine.last_heartbeat_at).toLocaleTimeString(localeTag())}
             </Text>
           </View>
         )}

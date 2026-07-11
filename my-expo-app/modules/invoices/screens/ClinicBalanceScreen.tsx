@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * ClinicBalanceScreen — Cari Hesap (Patterns Design Language)
  *
@@ -70,7 +71,7 @@ function fmtCur(n: number | string | null | undefined, currency?: string | null)
 }
 function fmtDateShort(d: string | null | undefined): string {
   if (!d) return '—';
-  return new Date(d + 'T00:00:00').toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' });
+  return new Date(d + 'T00:00:00').toLocaleDateString(localeTag(), { day: '2-digit', month: 'short' });
 }
 
 // ═════════════════════════════════════════════════════════════════════

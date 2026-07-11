@@ -105,6 +105,17 @@ function useWebStyles() {
     style.textContent = `
       ${peydaFaces}
 
+      /* RTL (Farsça/Arapça): inline fontFamily'si OLMAYAN metin düğümleri
+         react-native-web'in "System" default'una düşüyor → Peyda'ya bağlı
+         DEĞİL, bu yüzden sidebar menü vb. eski/sistem fontuyla çıkıyordu.
+         Burada YALNIZ dir="rtl" iken, ikon dışı tüm metni Peyda'ya bağlı
+         ailelere zorluyoruz. !important YOK → gerçek inline fontFamily
+         (Inter Tight/Outfit — zaten Peyda-bağlı) kazanır; specificity
+         (html[dir=rtl] + attr) RNW atomic class'ını geçer. */
+      html[dir="rtl"] [dir="auto"]:not([aria-hidden="true"]):not([role="img"]) {
+        font-family: 'Inter Tight', 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
+      }
+
       :root { --app-bg: #F2EDE3; }
       *, *::before, *::after { box-sizing: border-box; }
 

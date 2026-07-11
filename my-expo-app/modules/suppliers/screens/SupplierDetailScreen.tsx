@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * SupplierDetailScreen — Tedarikçi detayı + cari hesap ekstresi.
  *
@@ -161,7 +162,7 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
     const rows = ledgerRows.rows.map(({ t, debit, credit, running }) => {
       const meta = [t.bank_name, t.iban, t.description].filter(Boolean).join(' · ');
       return [
-        new Date(t.transaction_date).toLocaleDateString('tr-TR'),
+        new Date(t.transaction_date).toLocaleDateString(localeTag()),
         t.invoice_no ?? t.reference_no ?? '',
         `${TX_TYPE_LABELS[t.type]}${meta ? ' — ' + meta : ''}`,
         fmtNum(debit),
@@ -174,7 +175,7 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
         t.bank_name ?? '',
         t.reference_no ?? '',
         t.iban ?? '',
-        t.due_date ? new Date(t.due_date).toLocaleDateString('tr-TR') : '',
+        t.due_date ? new Date(t.due_date).toLocaleDateString(localeTag()) : '',
       ];
     });
 
@@ -187,8 +188,8 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
       [`Firma: ${supplier.name}`],
       [supplier.tax_no ? `VKN: ${supplier.tax_no}` : ''],
       [supplier.tax_office ? `Vergi Dairesi: ${supplier.tax_office}` : ''],
-      [periodFrom && periodTo ? `Dönem: ${new Date(periodFrom).toLocaleDateString('tr-TR')} – ${new Date(periodTo).toLocaleDateString('tr-TR')}` : ''],
-      [`Düzenlenme: ${new Date().toLocaleDateString('tr-TR')}`],
+      [periodFrom && periodTo ? `Dönem: ${new Date(periodFrom).toLocaleDateString(localeTag())} – ${new Date(periodTo).toLocaleDateString(localeTag())}` : ''],
+      [`Düzenlenme: ${new Date().toLocaleDateString(localeTag())}`],
       [`Para Birimi: ${baseCurrency} (bakiyeler TL karşılığı)`],
       [''],
     ];
@@ -310,7 +311,7 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
             </Text>
             {balance && balance.purchase_count > 0 ? (
               <Text style={{ fontSize: 11, color: '#9A9A9A' }}>
-                {balance.purchase_count} alış · {balance.last_transaction_date ? new Date(balance.last_transaction_date).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' }) : '—'}
+                {balance.purchase_count} alış · {balance.last_transaction_date ? new Date(balance.last_transaction_date).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short' }) : '—'}
               </Text>
             ) : null}
           </View>
@@ -465,8 +466,8 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
                   <Text style={{ fontSize: 11, color: '#6B6B6B', marginTop: 1 }} numberOfLines={1}>{t.description}</Text>
                 ) : null}
                 <Text style={{ fontSize: 10, color: '#9A9A9A', marginTop: 1 }}>
-                  {new Date(t.transaction_date).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' })}
-                  {t.due_date ? ` · vade: ${new Date(t.due_date).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })}` : ''}
+                  {new Date(t.transaction_date).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short', year: 'numeric' })}
+                  {t.due_date ? ` · vade: ${new Date(t.due_date).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short' })}` : ''}
                 </Text>
               </View>
               <View style={{ alignItems: 'flex-end' }}>

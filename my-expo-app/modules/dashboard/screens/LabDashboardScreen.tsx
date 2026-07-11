@@ -11,7 +11,7 @@
  */
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { localeTag } from '../../../core/i18n';
+import { localeTag, isRTL } from '../../../core/i18n';
 import {
   View, Text, ScrollView, Pressable,
   useWindowDimensions, RefreshControl,
@@ -1483,7 +1483,8 @@ export function LabDashboardScreen() {
             <Text style={{
               ...SERIF, fontSize: isDesktop ? 56 : 40,
               letterSpacing: -0.025 * (isDesktop ? 56 : 40),
-              lineHeight: isDesktop ? 56 : 42,
+              // Farsça glifler daha uzun → satır kutusunu gevşet (aksi halde üst/alt kırpılır)
+              lineHeight: isRTL(i18n.language) ? (isDesktop ? 82 : 60) : (isDesktop ? 56 : 42),
               color: INK,
             }}>
               {t('dashboard.greetingWord')}{' '}

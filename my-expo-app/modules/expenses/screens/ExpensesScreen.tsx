@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * ExpensesScreen — Giderler (Patterns Design Language)
  *
@@ -112,7 +113,7 @@ function fmtMoney(n: number | string | null | undefined, currency: string = 'TRY
 }
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—';
-  return new Date(iso + 'T00:00:00').toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' });
+  return new Date(iso + 'T00:00:00').toLocaleDateString(localeTag(), { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 // ═════════════════════════════════════════════════════════════════════

@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * SectionHeader — Liste içinde tarih grubu başlığı (sticky görünüm)
  *
@@ -72,7 +73,7 @@ export function dateBucket(iso: string): string {
   if (monthDiff === 1)  return 'Geçen Ay';
 
   // Daha eski → "Mar 2026"
-  return d.toLocaleDateString('tr-TR', { month: 'short', year: sameYear ? undefined : 'numeric' });
+  return d.toLocaleDateString(localeTag(), { month: 'short', year: sameYear ? undefined : 'numeric' });
 }
 
 /**

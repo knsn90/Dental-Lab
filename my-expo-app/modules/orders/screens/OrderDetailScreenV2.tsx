@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * OrderDetailScreenV2 — Patterns dili (NativeWind), gerçek WorkOrder verisi
  *
@@ -797,7 +798,7 @@ export function OrderDetailScreenV2() {
     // Kalan gün
     const deliveryDateStr = (order as any).delivery_date as string | undefined;
     const remainingDays = deliveryDateStr ? Math.max(0, Math.ceil((new Date(deliveryDateStr).getTime() - Date.now()) / 86400000)) : 0;
-    const fmtTr = (s?: string | null) => s ? new Date(s).toLocaleDateString('tr-TR') : '—';
+    const fmtTr = (s?: string | null) => s ? new Date(s).toLocaleDateString(localeTag()) : '—';
 
     // Aktif istasyon — stageName/techName desktop branch'inde de kullanılıyor, dış scope'a alındı
     const techName = activeStage?.technician?.full_name ?? null;
@@ -807,7 +808,7 @@ export function OrderDetailScreenV2() {
     const activities = (order.status_history ?? []).slice(0, 3).map((h: any) => ({
       title: `${STATUS_CONFIG[h.status as WorkOrderStatus]?.label ?? h.status}${h.note ? ' · ' + h.note : ''}`,
       user: h.actor?.full_name ?? 'Sistem',
-      time: h.created_at ? new Date(h.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '',
+      time: h.created_at ? new Date(h.created_at).toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' }) : '',
       kind: h.status === order.status ? 'prod' : 'done',
     }));
 
@@ -3397,7 +3398,7 @@ function timeAgo(iso: string): string {
   if (diff < 3600)      return `${Math.floor(diff / 60)} dk önce`;
   if (diff < 86400)     return `${Math.floor(diff / 3600)} sa önce`;
   if (diff < 86400 * 7) return `${Math.floor(diff / 86400)} g önce`;
-  return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' });
+  return d.toLocaleDateString(localeTag(), { day: '2-digit', month: 'short' });
 }
 
 // ═══════════════ ORDER CHAT POPUP — ana ChatDetail bu işe sabitlenmiş ═══════════════

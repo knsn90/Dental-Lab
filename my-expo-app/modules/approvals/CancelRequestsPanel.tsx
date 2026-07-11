@@ -1,3 +1,4 @@
+import { localeTag } from '../../core/i18n';
 /**
  * CancelRequestsPanel — admin + mesul müdür için bekleyen sipariş iptal talepleri.
  * Onayla → yumuşak iptal (work_orders.status='iptal'); Reddet → talep reddedilir.
@@ -78,7 +79,7 @@ export function CancelRequestsPanel() {
                   Sipariş #{ono ?? '—'} · İptal talebi
                 </Text>
                 <Text style={{ fontSize: 12, color: hexA(theme.accent, 0.55), flexDirection: 'row' }}>
-                  {req.requester_name ?? 'Klinik/Hekim'} · {new Date(req.created_at).toLocaleDateString('tr-TR')}
+                  {req.requester_name ?? 'Klinik/Hekim'} · {new Date(req.created_at).toLocaleDateString(localeTag())}
                 </Text>
               </View>
             </View>

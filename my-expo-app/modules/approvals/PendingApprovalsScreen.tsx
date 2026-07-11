@@ -1,3 +1,4 @@
+import { localeTag } from '../../core/i18n';
 /**
  * PendingApprovalsScreen — Patterns design language
  *
@@ -294,7 +295,7 @@ function DoctorCard({
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const CARD = makeCard(isDark, T);
 
-  const dateStr = new Date(doctor.created_at).toLocaleDateString('tr-TR', {
+  const dateStr = new Date(doctor.created_at).toLocaleDateString(localeTag(), {
     day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
   });
   return (

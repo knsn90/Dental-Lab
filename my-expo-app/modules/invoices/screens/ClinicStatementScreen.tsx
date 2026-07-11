@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * ClinicStatementScreen — Klinik Hesap Ekstresi (Patterns Design Language)
  *
@@ -101,7 +102,7 @@ function origSuffix(cur?: string, amt?: number): string {
 }
 function fmtDateShort(d: string | null | undefined): string {
   if (!d) return '—';
-  return new Date(d + 'T00:00:00').toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' });
+  return new Date(d + 'T00:00:00').toLocaleDateString(localeTag(), { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 // ── Lab fetch (cached) ───────────────────────────────────────────────
@@ -142,8 +143,8 @@ function exportExcel(clinicName: string, lines: StatementLine[], periodFrom?: st
   const titleRows: string[][] = [
     ['CARİ HESAP EKSTRESİ'],
     [`Sağlık Kurumu: ${clinicName}`],
-    [periodFrom && periodTo ? `Dönem: ${new Date(periodFrom).toLocaleDateString('tr-TR')} – ${new Date(periodTo).toLocaleDateString('tr-TR')}` : 'Dönem: Tüm hareketler'],
-    [`Düzenlenme: ${new Date().toLocaleDateString('tr-TR')}`],
+    [periodFrom && periodTo ? `Dönem: ${new Date(periodFrom).toLocaleDateString(localeTag())} – ${new Date(periodTo).toLocaleDateString(localeTag())}` : 'Dönem: Tüm hareketler'],
+    [`Düzenlenme: ${new Date().toLocaleDateString(localeTag())}`],
     [`Para Birimi: ${currency}`],
     [''],
   ];
@@ -156,7 +157,7 @@ function exportExcel(clinicName: string, lines: StatementLine[], periodFrom?: st
     const method = l.type === 'payment' && l.method
       ? (PAYMENT_METHOD_LABELS[l.method as PaymentMethod] ?? l.method) : '';
     return [
-      new Date(l.date + 'T00:00:00').toLocaleDateString('tr-TR'),
+      new Date(l.date + 'T00:00:00').toLocaleDateString(localeTag()),
       l.invoiceNo ?? '',
       `${l.type === 'invoice' ? 'Fatura' : 'Tahsilat'} — ${l.description}`,
       fmtNum(l.debit),

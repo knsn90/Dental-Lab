@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 // UsedMaterialsSection — sipariş materyal hareketleri (OUT + reversed IN'ler).
 // list_order_materials RPC'si üzerinden çekilir; her stage geçişinde audit kaydı birikir.
 
@@ -152,7 +153,7 @@ export function UsedMaterialsSection({ workOrderId }: Props) {
                   )}
                 </View>
                 <Text style={s.rowMeta} numberOfLines={1}>
-                  {date.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  {date.toLocaleDateString(localeTag(), { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                   {isReturn ? ' · Stoğa iade' : isOut ? ' · Tüketim' : ''}
                   {row.source && row.source !== 'production' && row.source !== 'rework_return' ? ` · ${row.source}` : ''}
                 </Text>

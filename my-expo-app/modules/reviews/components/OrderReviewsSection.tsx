@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 // OrderReviewsSection — lab/admin tarafı: bir işe gelen değerlendirmeleri salt-okunur gösterir (Faz 4).
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, Pressable, ActivityIndicator, Image } from 'react-native';
@@ -19,7 +20,7 @@ function Stars({ value, color, size = 14 }: { value: number; color: string; size
 }
 
 function fmtWhen(d: string): string {
-  try { return new Date(d).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' }); }
+  try { return new Date(d).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short', year: 'numeric' }); }
   catch { return ''; }
 }
 

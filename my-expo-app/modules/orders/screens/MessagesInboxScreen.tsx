@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 import React, { useMemo, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TextInput,
@@ -62,13 +63,13 @@ function formatTime(ts?: string | null): string {
   const date  = new Date(d); date.setHours(0, 0, 0, 0);
   const diff = (today.getTime() - date.getTime()) / 86_400_000;
   if (diff === 0) {
-    return d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' });
   }
   if (diff === 1) return 'Dün';
   if (diff <= 6) {
     return ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt'][d.getDay()];
   }
-  return d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' });
+  return d.toLocaleDateString(localeTag(), { day: '2-digit', month: '2-digit' });
 }
 
 // Color seed based on order_id for avatar tint consistency

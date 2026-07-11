@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * SalariesScreen — Maaş ödemeleri (tüm ekip için)
  *
@@ -263,7 +264,7 @@ export function SalariesScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink }}>{emp?.full_name ?? '—'}</Text>
                   <Text style={{ fontSize: 11, color: T.ink3, marginTop: 2 }}>
-                    {MONTH_NAMES[p.month - 1]} {p.year} · {p.method} · {new Date(p.paid_at).toLocaleDateString('tr-TR')}
+                    {MONTH_NAMES[p.month - 1]} {p.year} · {p.method} · {new Date(p.paid_at).toLocaleDateString(localeTag())}
                   </Text>
                 </View>
                 <Text style={{ fontSize: 13, fontWeight: '700', color: '#059669' }}>{fmtMoney(p.net, p.currency ?? 'TRY')}</Text>

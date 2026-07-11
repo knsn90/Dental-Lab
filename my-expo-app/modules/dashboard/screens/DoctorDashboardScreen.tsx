@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * DoctorDashboardScreen — Patterns design language (matching Lab/Admin layout)
  *
@@ -889,7 +890,7 @@ export function DoctorDashboardScreen() {
       if (days <= 0) return 'Bugün';
       if (days === 1) return 'Yarın';
       if (days <= 7) return `${days}g sonra`;
-      return new Date(due).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' });
+      return new Date(due).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short' });
     };
     const notifApprovals = pendingApprovals.map(a => ({
       id: String(a.order_number ?? a.id),

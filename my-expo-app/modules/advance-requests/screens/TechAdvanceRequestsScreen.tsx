@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 // modules/advance-requests/screens/TechAdvanceRequestsScreen.tsx
 // Teknisyen — kendi avans taleplerini görür ve yeni talep oluşturur.
 // employee_id, profile.employee_id'den çözülür. Bağ yoksa nazik boş durum.
@@ -20,7 +21,7 @@ import {
 
 const fmtTL = (n: number) => `₺${(n ?? 0).toLocaleString('tr-TR')}`;
 const fmtDate = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+  iso ? new Date(iso).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
 const STATUS_ICON: Record<AdvanceStatus, any> = {
   bekliyor: Clock, onaylandi: CheckCircle2, reddedildi: XCircle, iptal: Ban,

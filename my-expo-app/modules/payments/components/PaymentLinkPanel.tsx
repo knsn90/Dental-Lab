@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * PaymentLinkPanel — InvoiceDetail içinde "Ödeme Linki" yönetimi
  *
@@ -105,7 +106,7 @@ export function PaymentLinkPanel({ invoiceId, balance, onChanged }: Props) {
               {buildPaymentUrl(activeIntent.public_token)}
             </Text>
             <Text style={s.activeMeta}>
-              {fmtMoney(Number(activeIntent.amount))} · son: {new Date(activeIntent.expires_at).toLocaleDateString('tr-TR')}
+              {fmtMoney(Number(activeIntent.amount))} · son: {new Date(activeIntent.expires_at).toLocaleDateString(localeTag())}
             </Text>
           </View>
           <TouchableOpacity
@@ -137,7 +138,7 @@ export function PaymentLinkPanel({ invoiceId, balance, onChanged }: Props) {
                 <View style={{ flex: 1 }}>
                   <Text style={s.historyAmount}>{fmtMoney(Number(it.amount))}</Text>
                   <Text style={s.historyMeta}>
-                    {new Date(it.created_at).toLocaleDateString('tr-TR')}
+                    {new Date(it.created_at).toLocaleDateString(localeTag())}
                     {it.installments > 1 ? ` · ${it.installments} taksit` : ''}
                   </Text>
                 </View>

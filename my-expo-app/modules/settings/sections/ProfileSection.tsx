@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * ProfileSection — Patterns Design Language (NativeWind)
  * ──────────────────────────────────────────────────────
@@ -43,7 +44,7 @@ function getRoleLabel(p: any): string {
 }
 function joinedDate(p: any): string {
   if (!p?.created_at) return '';
-  return new Date(p.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' });
+  return new Date(p.created_at).toLocaleDateString(localeTag(), { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 // cardSolid shadow (patterns)
@@ -481,7 +482,7 @@ export function ProfileSection({ accentColor }: Props) {
             {/* Kişisel Bilgiler */}
             <View className="rounded-[24px] p-[22px]" style={[CARD_SHADOW, { backgroundColor: T.card, flex: isNarrow ? undefined : 1, width: isNarrow ? "100%" : undefined } as any]}>
               <Text className="text-[10px] font-semibold tracking-wider uppercase mb-3" style={{ color: T.ink3 }}>Kişisel Bilgiler</Text>
-              <CardRow icon={UserIcon} iconColor={accentColor} iconBg={`${accentColor}14`} label="Doğum Tarihi" value={profile?.birth_date ? new Date(profile.birth_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) : null} />
+              <CardRow icon={UserIcon} iconColor={accentColor} iconBg={`${accentColor}14`} label="Doğum Tarihi" value={profile?.birth_date ? new Date(profile.birth_date).toLocaleDateString(localeTag(), { day: 'numeric', month: 'long', year: 'numeric' }) : null} />
               <View className="h-px my-2" style={{ backgroundColor: T.hairline2 }} />
               <CardRow icon={UserIcon} iconColor={accentColor} iconBg={`${accentColor}14`} label="Cinsiyet" value={profile?.gender === 'erkek' ? 'Erkek' : profile?.gender === 'kadın' ? 'Kadın' : profile?.gender === 'belirtilmedi' ? 'Belirtilmedi' : null} />
               <View className="h-px my-2" style={{ backgroundColor: T.hairline2 }} />

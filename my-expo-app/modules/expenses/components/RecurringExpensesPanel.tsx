@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * RecurringExpensesPanel — Tekrarlayan gider şablonları yönetim paneli
  *
@@ -134,7 +135,7 @@ export function RecurringExpensesPanel({ visible, onClose, onAfterGenerate }: Pr
                 <View style={{ flex: 1 }}>
                   <Text style={s.rowName}>{r.name}</Text>
                   <Text style={s.rowMeta}>
-                    {EXPENSE_CATEGORY_LABELS[r.category]} · {FREQUENCY_LABEL[r.frequency]} · sonraki: {new Date(r.next_due_date + 'T00:00:00').toLocaleDateString('tr-TR')}
+                    {EXPENSE_CATEGORY_LABELS[r.category]} · {FREQUENCY_LABEL[r.frequency]} · sonraki: {new Date(r.next_due_date + 'T00:00:00').toLocaleDateString(localeTag())}
                   </Text>
                 </View>
                 <Text style={s.rowAmount}>{fmtMoney(Number(r.amount))}</Text>

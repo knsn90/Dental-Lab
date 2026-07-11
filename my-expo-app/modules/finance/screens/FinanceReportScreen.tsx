@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * FinanceReportScreen — Gelir / Gider Raporu (Patterns Design Language)
  *
@@ -77,7 +78,7 @@ function fmtMoney(n: number | null | undefined): string {
 }
 function fmtMonth(iso: string): string {
   const d = new Date(iso + 'T00:00:00');
-  return d.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' });
+  return d.toLocaleDateString(localeTag(), { month: 'long', year: 'numeric' });
 }
 
 // ── Period pills ────────────────────────────────────────────────────
@@ -727,7 +728,7 @@ function ReminderCard({ inv }: { inv: UpcomingDue }) {
           </View>
         )}
         <Text style={{ fontSize: 11, color: T.ink3, marginTop: 3 }}>
-          {new Date(inv.due_date + 'T00:00:00').toLocaleDateString('tr-TR', {
+          {new Date(inv.due_date + 'T00:00:00').toLocaleDateString(localeTag(), {
             day: '2-digit', month: 'long', year: 'numeric',
           })}
         </Text>

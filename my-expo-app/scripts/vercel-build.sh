@@ -15,4 +15,8 @@ export EXPO_UNSTABLE_METRO_OPTIMIZE_GRAPH=1
 export EXPO_UNSTABLE_TREE_SHAKING=1
 export EXPO_USE_METRO_REQUIRE=1
 
+# Metro web export bellek yoğun — heap limitini yükselt (yoksa OOM/SIGABRT 134).
+# Mevcut NODE_OPTIONS'ı koru, üstüne ekle.
+export NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=8192"
+
 npm run build:web

@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View, Text, ScrollView, Pressable,
@@ -2969,7 +2970,7 @@ function ForecastTab({ items, accentColor }: { items: StockItem[]; accentColor: 
                       </Text>
                       {f.depletionDate && (
                         <Text style={{ fontSize: 10, color: riskColor, opacity: 0.7, marginTop: 2 }}>
-                          {f.depletionDate.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })}
+                          {f.depletionDate.toLocaleDateString(localeTag(), { day: '2-digit', month: 'short' })}
                         </Text>
                       )}
                     </View>
@@ -3234,7 +3235,7 @@ function CostTab({ items, accentColor }: CostTabProps) {
                       minWidth: 6,
                     }} />
                     <Text style={{ fontSize: 8, color: DS.ink[400], marginTop: 3 }} numberOfLines={1}>
-                      {new Date(h.created_at).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' })}
+                      {new Date(h.created_at).toLocaleDateString(localeTag(), { day: '2-digit', month: '2-digit' })}
                     </Text>
                   </View>
                 );
@@ -3256,7 +3257,7 @@ function CostTab({ items, accentColor }: CostTabProps) {
                 borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)',
               }}>
                 <Text style={{ flex: 1, fontSize: 12, color: DS.ink[700] }}>
-                  {new Date(h.created_at).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                  {new Date(h.created_at).toLocaleDateString(localeTag(), { day: '2-digit', month: '2-digit', year: 'numeric' })}
                 </Text>
                 <Text style={{ width: 80, textAlign: 'right', fontSize: 12, color: DS.ink[700] }}>{h.quantity}</Text>
                 <Text style={{ width: 100, textAlign: 'right', fontSize: 12, fontWeight: '600', color: DS.ink[900] }}>{fmt(h.unit_cost)} TL</Text>

@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * InvoiceDetailScreen — Fatura Detayı (Patterns Design Language)
  *
@@ -101,7 +102,7 @@ function fmtMoneyCur(n: number | string | null | undefined, currency = 'TRY'): s
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—';
   const d = iso.includes('T') ? new Date(iso) : new Date(iso + 'T00:00:00');
-  return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' });
+  return d.toLocaleDateString(localeTag(), { day: '2-digit', month: 'long', year: 'numeric' });
 }
 // Adres JSON ({il,ilce,mahalle,sokak,bina_no,posta_kodu}) ise okunaklı metne çevir;
 // düz metinse aynen döndür.

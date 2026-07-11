@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 // modules/orders/components/OrderTicketCard.tsx
 // "Cards" design system — frosted glass + pastel mesh + beyaz neon.
 // Detaylı tanım: core/layout/DesktopShell.tsx üst yorumu.
@@ -106,11 +107,11 @@ export function OrderTicketCard({
     return map;
   }, [order.tooth_numbers, order.work_type]);
 
-  const createdDate = new Date(order.created_at).toLocaleDateString('tr-TR', {
+  const createdDate = new Date(order.created_at).toLocaleDateString(localeTag(), {
     day: '2-digit', month: '2-digit', year: 'numeric',
   });
   const deliveryDate = order.delivery_date
-    ? new Date(order.delivery_date + 'T00:00:00').toLocaleDateString('tr-TR', {
+    ? new Date(order.delivery_date + 'T00:00:00').toLocaleDateString(localeTag(), {
         day: '2-digit', month: '2-digit', year: 'numeric',
       })
     : '—';

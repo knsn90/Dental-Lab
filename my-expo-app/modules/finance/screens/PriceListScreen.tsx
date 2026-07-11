@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * PriceListScreen — Mali İşlemler > Fiyat Listesi
  *
@@ -895,7 +896,7 @@ html, body { font-family: 'Inter','Helvetica Neue',Arial,sans-serif; color: #0F1
     </div>
     <div class="headerRight">
       <div class="docEyebrow">${clinicName ? 'KLİNİK ÖZEL LİSTE' : 'GÜNCEL FİYAT LİSTESİ'}</div>
-      <div class="docTitle">${escape(currency)} · ${new Date().toLocaleDateString('tr-TR', { year: 'numeric', month: 'long' })}</div>
+      <div class="docTitle">${escape(currency)} · ${new Date().toLocaleDateString(localeTag(), { year: 'numeric', month: 'long' })}</div>
       <div class="docMeta">Ref: FL-${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}</div>
     </div>
   </div>
@@ -914,7 +915,7 @@ html, body { font-family: 'Inter','Helvetica Neue',Arial,sans-serif; color: #0F1
   ${sections}
 
   <div class="footer">
-    ${escape(labName.toLocaleUpperCase('tr-TR'))} · Gelişmiş CAD/CAM İş Akışı · ${new Date().toLocaleDateString('tr-TR')}
+    ${escape(labName.toLocaleUpperCase('tr-TR'))} · Gelişmiş CAD/CAM İş Akışı · ${new Date().toLocaleDateString(localeTag())}
   </div>
 
 </div>
@@ -2401,7 +2402,7 @@ function PromotionsTab() {
 
   const formatDate = (iso: string | null) => {
     if (!iso) return '—';
-    return new Date(iso).toLocaleDateString('tr-TR');
+    return new Date(iso).toLocaleDateString(localeTag());
   };
 
   if (loading) return <CenteredLoader color={PRIMARY} inline />;

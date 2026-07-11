@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * PaymentReminderModal — Vade geçen fatura için hatırlatma gönderme modalı
  *
@@ -72,7 +73,7 @@ export function PaymentReminderModal({ visible, invoice, clinicName, onClose, on
       amount:         fmtMoney(balance),
       days_overdue:   daysOverdue,
       due_date:       invoice.due_date
-        ? new Date(invoice.due_date + 'T00:00:00').toLocaleDateString('tr-TR')
+        ? new Date(invoice.due_date + 'T00:00:00').toLocaleDateString(localeTag())
         : '—',
     });
   }, [selectedTemplate, invoice, clinicName, balance, daysOverdue]);
@@ -189,7 +190,7 @@ export function PaymentReminderModal({ visible, invoice, clinicName, onClose, on
                       invoice_number: invoice.invoice_number,
                       amount: fmtMoney(balance),
                       days_overdue: daysOverdue,
-                      due_date: invoice.due_date ? new Date(invoice.due_date + 'T00:00:00').toLocaleDateString('tr-TR') : '—',
+                      due_date: invoice.due_date ? new Date(invoice.due_date + 'T00:00:00').toLocaleDateString(localeTag()) : '—',
                     })}
                   </Text>
                 )}
@@ -211,7 +212,7 @@ export function PaymentReminderModal({ visible, invoice, clinicName, onClose, on
                         {TONE_LABELS[h.tone].label} · {CHANNEL_LABELS[h.channel].label}
                       </Text>
                       <Text style={s.historyDate}>
-                        {new Date(h.sent_at).toLocaleDateString('tr-TR')}
+                        {new Date(h.sent_at).toLocaleDateString(localeTag())}
                       </Text>
                     </View>
                   ))}

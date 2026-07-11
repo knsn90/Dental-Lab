@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * LogsSection — Ayarlar > Loglar sekmesi (admin/lab only)
  * ────────────────────────────────────────────────────────
@@ -42,9 +43,9 @@ function timeAgo(dateStr: string): string {
   if (diff < 60)     return 'Az önce';
   if (diff < 3600)   return `${Math.floor(diff / 60)} dk önce`;
   if (diff < 86400)  return `${Math.floor(diff / 3600)} saat önce`;
-  if (diff < 172800) return 'Dün ' + date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  if (diff < 172800) return 'Dün ' + date.toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' });
   if (diff < 604800) return `${Math.floor(diff / 86400)} gün önce`;
-  return date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' });
+  return date.toLocaleDateString(localeTag(), { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 function actionIcon(action: string): { Icon: any; color: string; bg: string } {

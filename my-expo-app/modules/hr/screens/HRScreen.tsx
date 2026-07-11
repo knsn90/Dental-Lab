@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 import React, { useState, useMemo, useContext } from 'react';
 import { HubContext } from '../../../core/ui/HubContext';
 import {
@@ -976,7 +977,7 @@ function RightPanel({
     : 0;
   const startYear = summary.employment_start ? new Date(summary.employment_start).getFullYear() : null;
   const startDate = summary.employment_start
-    ? new Date(summary.employment_start).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })
+    ? new Date(summary.employment_start).toLocaleDateString(localeTag(), { day: 'numeric', month: 'long', year: 'numeric' })
     : '—';
   const tenureYears = summary.employment_start
     ? Math.floor((Date.now() - new Date(summary.employment_start).getTime()) / (365.25 * 86400_000))

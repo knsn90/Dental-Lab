@@ -71,6 +71,7 @@ import { useNotifications } from '../store/notificationsStore';
 import { openSupport } from '../store/supportStore';
 import { MOBILE_PANEL_THEMES, type MobilePanel } from '../theme/mobileDesignTokens';
 import { useThemeModeStore } from '../store/themeModeStore';
+import { isRTL } from '../i18n';
 
 // ── Types (compatible with DesktopShell's NavItem) ────────────────────
 export interface PatternsNavItem {
@@ -205,6 +206,7 @@ export function PatternsShell({
     });
   }, [navItems, permStore.loaded, permStore.permissions]);
   const [collapsed, setCollapsed] = useState(false);
+  const rtl = isRTL();
   const [searchQ, setSearchQ] = useState('');
   const pageTitle = usePageTitleStore(s => s.title);
   const pageSubtitle = usePageTitleStore(s => s.subtitle);
@@ -356,7 +358,7 @@ export function PatternsShell({
   return (
     <View className="flex-1 flex-row" style={{ backgroundColor: palette.pageBg, padding: 0, gap: 0 }}>
       {/* ═════════════ SIDEBAR (card) + edge toggle ═════════════ */}
-      <View style={{ position: 'relative', alignSelf: 'stretch', overflow: 'visible', marginTop: 16, marginBottom: 16, marginLeft: 16 }}>
+      <View style={{ position: 'relative', alignSelf: 'stretch', overflow: 'visible', marginTop: 16, marginBottom: 16, ...(rtl ? { marginRight: 16 } : { marginLeft: 16 }) }}>
         {collapsed ? (
           <CollapsedSidebar
             navItems={filteredNavItems}
@@ -393,7 +395,7 @@ export function PatternsShell({
           onPress={() => setCollapsed(c => !c)}
           style={{
             position: 'absolute',
-            right: 12,
+            ...(rtl ? { left: 12 } : { right: 12 }),
             bottom: 12,
             width: 38,
             height: 38,
@@ -407,7 +409,7 @@ export function PatternsShell({
             cursor: 'pointer',
           }}
         >
-          {collapsed
+          {(collapsed !== rtl)
             ? <ChevronRight size={18} color="#FFFFFF" strokeWidth={2.2} />
             : <ChevronLeft size={18} color="#FFFFFF" strokeWidth={2.2} />
           }
@@ -426,7 +428,7 @@ export function PatternsShell({
            Dikey olarak da sağ-üstteki arama/profil pill'i ile aynı hizada (top: 14). */}
         <View className="flex-row items-center" style={{ zIndex: 1, paddingTop: effectiveTitle ? 16 : 0, paddingBottom: 0, paddingHorizontal: 16, backgroundColor: 'transparent', minHeight: effectiveTitle ? 60 : 0 }}>
           {/* Page title */}
-          <View className="flex-1" style={{ paddingRight: 280 }}>
+          <View className="flex-1" style={{ ...(rtl ? { paddingLeft: 280 } : { paddingRight: 280 }) }}>
             {effectiveTitle ? (
               <View className="gap-0.5">
                 <Text
@@ -437,7 +439,9 @@ export function PatternsShell({
                     fontWeight: '300',
                     fontSize: 34,
                     letterSpacing: -1.36,
-                    lineHeight: 38,
+                    // Farsça glifler (üst nokta + iner kuyruk) Latin'e göre daha uzun;
+                    // 38px satır kutusu üst/alttan kırpıyordu → RTL'de gevşet.
+                    lineHeight: rtl ? 50 : 38,
                   }}
                 >
                   {effectiveTitle}
@@ -478,7 +482,7 @@ export function PatternsShell({
          style={{
            position: 'absolute' as any,
            top: 16,
-           right: 16,
+           ...(rtl ? { left: 16 } : { right: 16 }),
            zIndex: 200,
            backgroundColor: '#FFFFFF',
            // @ts-ignore web shadow
@@ -585,7 +589,7 @@ export function PatternsShell({
                 <View
                   className="absolute bg-white rounded-2xl border border-black/[0.06] overflow-hidden"
                   style={{
-                    top: 40, right: 0, width: 220, zIndex: 100,
+                    top: 40, ...(rtl ? { left: 0 } : { right: 0 }), width: 220, zIndex: 100,
                     // @ts-ignore web shadow
                     boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
                   }}
@@ -744,6 +748,7 @@ function AnimatedNewOrderCTA({ onPress, accentColor, expanded }: {
 
 // ─── Expanded sidebar — tek satır (opsiyonel açılır alt menü) ─────────
 function ExpandedNavRow({ item, isActive, accentColor, activeRowBg, router }: any) {
+  const rtl = isRTL();
   const hasChildren = Array.isArray(item.children) && item.children.length > 0;
   const childActive = hasChildren && item.children.some((c: PatternsNavItem) => isActive(c));
   const [open, setOpen] = useState<boolean>(!!childActive);
@@ -757,7 +762,7 @@ function ExpandedNavRow({ item, isActive, accentColor, activeRowBg, router }: an
         className="px-3 py-2.5 rounded-[10px] flex-row items-center gap-2.5 relative"
         style={active ? { backgroundColor: activeRowBg } : undefined}
       >
-        {active && <View className="absolute left-0 rounded" style={{ top: 8, bottom: 8, width: 2.5, backgroundColor: accentColor }} />}
+        {active && <View className="absolute rounded" style={{ ...(rtl ? { right: 0 } : { left: 0 }), top: 8, bottom: 8, width: 2.5, backgroundColor: accentColor }} />}
         <IconCmp size={15} color={active ? '#0A0A0A' : '#2C2C2C'} strokeWidth={1.8} />
         <Text className={`flex-1 text-[13px] ${active ? 'font-medium text-ink-900' : 'text-ink-700'}`}>{item.label}</Text>
         {item.badgeCount != null && item.badgeCount > 0 && (
@@ -777,7 +782,7 @@ function ExpandedNavRow({ item, isActive, accentColor, activeRowBg, router }: an
         className="px-3 py-2.5 rounded-[10px] flex-row items-center gap-2.5 relative"
         style={childActive ? { backgroundColor: activeRowBg } : undefined}
       >
-        {childActive && <View className="absolute left-0 rounded" style={{ top: 8, bottom: 8, width: 2.5, backgroundColor: accentColor }} />}
+        {childActive && <View className="absolute rounded" style={{ ...(rtl ? { right: 0 } : { left: 0 }), top: 8, bottom: 8, width: 2.5, backgroundColor: accentColor }} />}
         <IconCmp size={15} color={childActive ? '#0A0A0A' : '#2C2C2C'} strokeWidth={1.8} />
         <Text className={`flex-1 text-[13px] ${childActive ? 'font-medium text-ink-900' : 'text-ink-700'}`}>{item.label}</Text>
         <View style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }}>
@@ -792,9 +797,9 @@ function ExpandedNavRow({ item, isActive, accentColor, activeRowBg, router }: an
             key={j}
             onPress={() => c.onPress ? c.onPress() : router.push(c.href)}
             className="py-2 rounded-[10px] flex-row items-center gap-2.5 relative"
-            style={[{ paddingLeft: 34, paddingRight: 12 }, a ? { backgroundColor: activeRowBg } : undefined]}
+            style={[(rtl ? { paddingRight: 34, paddingLeft: 12 } : { paddingLeft: 34, paddingRight: 12 }), a ? { backgroundColor: activeRowBg } : undefined]}
           >
-            {a && <View className="absolute rounded" style={{ left: 14, top: 7, bottom: 7, width: 2.5, backgroundColor: accentColor }} />}
+            {a && <View className="absolute rounded" style={{ ...(rtl ? { right: 14 } : { left: 14 }), top: 7, bottom: 7, width: 2.5, backgroundColor: accentColor }} />}
             <CIcon size={14} color={a ? '#0A0A0A' : '#6B6B6B'} strokeWidth={1.8} />
             <Text className={`flex-1 text-[12.5px] ${a ? 'font-medium text-ink-900' : 'text-ink-500'}`}>{c.label}</Text>
             {c.badgeCount != null && c.badgeCount > 0 && (
@@ -814,6 +819,7 @@ function ExpandedSidebar({
   navItems, isActive, accentColor, brand, panelType, palette,
   onCollapse, onPressMessages, messagesUnreadCount, hideSidebarMessages, newOrderHref, router,
 }: any) {
+  const rtl = isRTL();
   // Panel-aware sidebar tonları
   const isStation = panelType === 'station';
   const logoSquareBg = isStation ? '#0F2840' : '#0A0A0A'; // station: koyu denim
@@ -910,7 +916,7 @@ function ExpandedSidebar({
       </ScrollView>
 
       {/* Powered by Siman — platform kimliği (white-label). Sola hizalı: sağ-alttaki FAB ile çakışmaz. */}
-      <View className="flex-row items-center gap-1.5 pt-3 mt-1 pl-2.5" style={{ paddingRight: 56 }}>
+      <View className="flex-row items-center gap-1.5 pt-3 mt-1" style={rtl ? { paddingRight: 10, paddingLeft: 56 } : { paddingLeft: 10, paddingRight: 56 }}>
         <Text className="text-[9.5px] text-ink-400">Powered by</Text>
         <SimanWordmark height={9} color="#9A9A9A" />
       </View>

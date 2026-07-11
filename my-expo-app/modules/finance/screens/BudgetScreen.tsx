@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * BudgetScreen — Bütçe vs. Gerçekleşen
  *
@@ -91,7 +92,7 @@ function fmtMoney(n: number): string {
 function periodLabel(period: BudgetPeriod, start: string): string {
   const d = new Date(start + 'T00:00:00');
   if (period === 'yearly') return d.getFullYear().toString();
-  return d.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' });
+  return d.toLocaleDateString(localeTag(), { month: 'long', year: 'numeric' });
 }
 
 function currentPeriodStart(period: BudgetPeriod): string {

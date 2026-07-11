@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * SupportScreen — Dental Production Support OS
  *
@@ -288,7 +289,7 @@ function timeAgo(iso: string): string {
   if (h < 24) return `${h} sa önce`;
   const d = Math.floor(h / 24);
   if (d < 7) return `${d} gün önce`;
-  return new Date(iso).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+  return new Date(iso).toLocaleDateString(localeTag(), { day: 'numeric', month: 'short' });
 }
 
 function slaInfo(t: SupportTicket): { label: string; tone: 'safe'|'soon'|'breached' } {

@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 // modules/delivery/screens/CourierDeliveryScreen.tsx
 // Kurye ana ekranı — aktif teslimat + GPS başlat/durdur + durum güncelleme
 
@@ -46,7 +47,7 @@ function GpsBadge({ tracking, lastPingAt, error }: {
         {error
           ? 'Konum alınamadı'
           : tracking
-          ? `GPS Aktif${lastPingAt ? ` · ${lastPingAt.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}` : ''}`
+          ? `GPS Aktif${lastPingAt ? ` · ${lastPingAt.toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' })}` : ''}`
           : 'GPS Durduruldu'}
       </Text>
     </View>
@@ -212,7 +213,7 @@ export function CourierDeliveryScreen() {
             <InfoRow
               label="Teslim Tarihi"
               value={wo?.delivery_date
-                ? new Date(wo.delivery_date + 'T00:00:00').toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })
+                ? new Date(wo.delivery_date + 'T00:00:00').toLocaleDateString(localeTag(), { day: '2-digit', month: 'long', year: 'numeric' })
                 : '—'}
               highlight
             />

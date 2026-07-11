@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable,
@@ -2150,7 +2151,7 @@ export function NewOrderScreen({
       ?? `NXD-${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}${String(new Date().getDate()).padStart(2,'0')}-${String(Math.floor(Math.random()*9999)).padStart(4,'0')}`;
     const createdAtStr = new Date().toLocaleString('tr-TR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
     const kaynakStr = labName ? labName : 'Nexadent Dijital Laboratuvarı';
-    const tahminiTeslim = form.delivery_date ? form.delivery_date.toLocaleDateString('tr-TR') : '—';
+    const tahminiTeslim = form.delivery_date ? form.delivery_date.toLocaleDateString(localeTag()) : '—';
     const teslimSekli = form.delivery_method === 'kurye' ? 'Kurye'
                       : form.delivery_method === 'kargo' ? 'Kargo'
                       : form.delivery_method === 'elden' ? 'Elden Teslim'
@@ -2408,7 +2409,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
         <div class="cardBody">
           ${(form.patient_first_name || form.patient_last_name) ? `<div class="cr">${icoPerson}<div class="cl">Ad Soyad</div><div class="cv">${escapeHtml([form.patient_first_name, form.patient_last_name].filter(Boolean).join(' '))}</div></div>` : ''}
           ${form.patient_gender !== 'belirtilmedi' ? `<div class="cr">${genderIco}<div class="cl">Cinsiyet</div><div class="cv">${form.patient_gender === 'erkek' ? 'Erkek' : 'Kadın'}</div></div>` : ''}
-          ${form.patient_dob ? `<div class="cr">${icoCal}<div class="cl">Doğum Tarihi</div><div class="cv">${form.patient_dob.toLocaleDateString('tr-TR')}</div></div>` : ''}
+          ${form.patient_dob ? `<div class="cr">${icoCal}<div class="cl">Doğum Tarihi</div><div class="cv">${form.patient_dob.toLocaleDateString(localeTag())}</div></div>` : ''}
           ${form.patient_phone ? `<div class="cr">${icoPhone}<div class="cl">Telefon</div><div class="cv">${escapeHtml(form.patient_phone)}</div></div>` : ''}
         </div>
       </div>
@@ -3954,7 +3955,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
               const toothCount = ops.length;
               const fileCount = form.attachments.length;
               const grandTotal = ops.reduce((s, o) => s + (o.material_price || 0) + (o.price || 0), 0);
-              const deliveryStr = form.delivery_date ? form.delivery_date.toLocaleDateString('tr-TR') : '—';
+              const deliveryStr = form.delivery_date ? form.delivery_date.toLocaleDateString(localeTag()) : '—';
               const patientStr  = form.patient_first_name
                 ? `${form.patient_first_name} ${form.patient_last_name}`.trim()
                 : '—';
@@ -7295,7 +7296,7 @@ function MessageBubble({ msg, onDelete, accentColor }: { msg: ChatMessage; onDel
   const isSelf = true; // new order form — always self (right side, blue)
   const fmt = (s: number) =>
     `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
-  const time = new Date(msg.ts).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  const time = new Date(msg.ts).toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' });
 
   return (
     <View style={isSelf ? cb.msgRow : cb.msgRowLeft}>
@@ -7371,7 +7372,7 @@ function ChatBox({ messages, onAdd, onDelete, hideHeader, accentColor }: {
     if (d.toDateString() === now.toDateString()) return 'Bugün';
     const y = new Date(now); y.setDate(now.getDate() - 1);
     if (d.toDateString() === y.toDateString()) return 'Dün';
-    return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' });
+    return d.toLocaleDateString(localeTag(), { day: 'numeric', month: 'long' });
   };
 
   const newId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;

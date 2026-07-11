@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * ChecksScreen — Çek / Senet (Patterns Design Language)
  *
@@ -79,7 +80,7 @@ function fmtMoney(n: number, currency: string = 'TRY'): string {
 }
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—';
-  return new Date(iso + 'T00:00:00').toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' });
+  return new Date(iso + 'T00:00:00').toLocaleDateString(localeTag(), { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 // Hero quick-stat — per-currency, beyaz metin (renkli hero üstünde okunaklı).

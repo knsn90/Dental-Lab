@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TextInput,
@@ -105,21 +106,21 @@ function formatTime(ts?: string | null): string {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const date  = new Date(d); date.setHours(0, 0, 0, 0);
   const diff  = (today.getTime() - date.getTime()) / 86_400_000;
-  if (diff === 0) return d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  if (diff === 0) return d.toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' });
   if (diff === 1) return 'Dün';
   if (diff <= 6) return ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt'][d.getDay()];
-  return d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' });
+  return d.toLocaleDateString(localeTag(), { day: '2-digit', month: '2-digit' });
 }
 
 function formatTimeFull(ts: string): string {
   const d = new Date(ts);
-  return d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' });
 }
 
 function formatDateShort(ts?: string | null): string {
   if (!ts) return '';
   const d = new Date(ts);
-  return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' });
+  return d.toLocaleDateString(localeTag(), { day: '2-digit', month: 'short' });
 }
 
 function lastPreview(item: any, currentUserId: string | null): string {

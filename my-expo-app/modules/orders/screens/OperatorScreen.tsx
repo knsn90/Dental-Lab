@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * OperatorScreen — Teknisyen istasyon paneli
  *
@@ -937,7 +938,7 @@ function SelectedJobDetail({
     const due = new Date(job.delivery_date + 'T00:00:00');
     const diff = Math.ceil((due.getTime() - today.getTime()) / 86_400_000);
     return {
-      formatted: due.toLocaleDateString('tr-TR'),
+      formatted: due.toLocaleDateString(localeTag()),
       days: diff,
       late: diff < 0,
     };
@@ -1368,7 +1369,7 @@ function JobDetailsPanel({
           <DetailCell label="Teslim" value={dueText} tone={dueTone} />
         )}
         {job.started_at && (
-          <DetailCell label="Başladı" value={new Date(job.started_at).toLocaleDateString('tr-TR')} />
+          <DetailCell label="Başladı" value={new Date(job.started_at).toLocaleDateString(localeTag())} />
         )}
       </View>
 

@@ -1,3 +1,4 @@
+import { localeTag } from '../../../../core/i18n';
 /**
  * BonusRunsScreen — design language reset.
  * Hero kicker + Chip filtreler + Liste + Detail modal.
@@ -181,7 +182,7 @@ export default function BonusRunsScreen({ onOpenTechnician }: Props = {}) {
                   </View>
                   <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 4 }}>
                     {r.total_units === 1 ? `1 işlem` : `${r.total_units} üye`} · {rows.length} kişi ·{' '}
-                    {new Date(r.calculated_at).toLocaleDateString('tr-TR')}
+                    {new Date(r.calculated_at).toLocaleDateString(localeTag())}
                   </Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
@@ -258,8 +259,8 @@ function BonusRunDetailModal({ run, policy, onClose, onChanged, onOpenTechnician
               </View>
               <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 4 }}>
                 Hesaplandı: {new Date(run.calculated_at).toLocaleString('tr-TR')}
-                {run.approved_at ? ` · Onaylandı: ${new Date(run.approved_at).toLocaleDateString('tr-TR')}` : ''}
-                {run.posted_at ? ` · Yansıtıldı: ${new Date(run.posted_at).toLocaleDateString('tr-TR')}` : ''}
+                {run.approved_at ? ` · Onaylandı: ${new Date(run.approved_at).toLocaleDateString(localeTag())}` : ''}
+                {run.posted_at ? ` · Yansıtıldı: ${new Date(run.posted_at).toLocaleDateString(localeTag())}` : ''}
               </Text>
             </View>
             <Pressable onPress={onClose} style={({ pressed }) => ({

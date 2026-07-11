@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * OrdersKanbanB2Mobile — Mobile orders view.
  * Görünüm modu: List (default) veya Kanban swimlanes.
@@ -355,7 +356,7 @@ function ListView({
                 const due = (o as any).delivery_date ? formatDue((o as any).delivery_date) : '—';
                 // Sipariş oluşturma saati (created_at → HH:MM)
                 const createdTime = (o as any).created_at
-                  ? new Date((o as any).created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+                  ? new Date((o as any).created_at).toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' })
                   : null;
                 const initials = String(patient).trim().split(/\s+/).slice(0, 2)
                   .map((p: string) => p[0]?.toUpperCase() ?? '').join('') || '?';

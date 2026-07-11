@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 // modules/station/screens/ProductionKanbanScreen.tsx
 // Üretim Panosu — Apple Reminders tarzı liste/sütun.
 //
@@ -70,7 +71,7 @@ function deliveryText(d: string): string {
   if (diff === 0) return 'Bugün';
   if (diff === 1) return 'Yarın';
   if (diff <= 6)  return `${diff} gün`;
-  return due.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+  return due.toLocaleDateString(localeTag(), { day: 'numeric', month: 'short' });
 }
 
 // ─── Item Row (Reminders task row) ───────────────────────────────────────────
@@ -515,7 +516,7 @@ export function ProductionKanbanScreen() {
             {totalCards} iş · {activeCount} aktif
             {lastSync && (
               <Text style={s.syncTime}>
-                {'  ·  '}{lastSync.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                {'  ·  '}{lastSync.toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' })}
               </Text>
             )}
           </Text>

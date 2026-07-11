@@ -1,6 +1,7 @@
+import { localeTag } from '../i18n';
 export function formatDate(date: string | Date): string {
   const d = typeof date === 'string' ? new Date(date) : date;
-  return d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return d.toLocaleDateString(localeTag(), { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 export function isOverdue(deliveryDate: string, status: string): boolean {
   if (status === 'teslim_edildi') return false;

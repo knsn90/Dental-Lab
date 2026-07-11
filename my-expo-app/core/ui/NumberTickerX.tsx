@@ -4,6 +4,12 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { Text, type TextStyle } from 'react-native';
+import i18n from '../i18n';
+
+const _FA = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+function faDigitsIfFa(s: string): string {
+  return i18n.language === 'fa' ? s.replace(/[0-9]/g, (d) => _FA[+d]) : s;
+}
 
 export function NumberTickerX({
   value, duration = 800, decimals = 0, style, prefix, suffix,
@@ -35,9 +41,9 @@ export function NumberTickerX({
     return () => { if (raf) cancelAnimationFrame(raf); };
   }, [value, duration]);
 
-  const formatted = decimals > 0
+  const formatted = faDigitsIfFa(decimals > 0
     ? display.toFixed(decimals)
-    : Math.round(display).toString();
+    : Math.round(display).toString());
 
   return (
     <Text style={style}>

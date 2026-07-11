@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * EmployeesScreen — Ekip (Patterns Design Language)
  *
@@ -92,7 +93,7 @@ function fmtMoney(n: number | null | undefined) {
 function fmtDate(iso: string) {
   try {
     const d = iso.includes('T') ? new Date(iso) : new Date(iso + 'T00:00:00');
-    return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' });
+    return d.toLocaleDateString(localeTag(), { day: '2-digit', month: 'short', year: 'numeric' });
   } catch { return '—'; }
 }
 

@@ -1,3 +1,4 @@
+import { localeTag } from '../../core/i18n';
 // modules/courier/CourierLiveMap.tsx
 // Aktif teslimat için canlı harita — Leaflet via CDN (web).
 // Native: koordinat/zaman gösteren özet kart (Faz 3 v1 web öncelikli).
@@ -577,7 +578,7 @@ export function CourierLiveMap({
                     {tripInfo.status === 'teslim_edildi'
                       ? 'Teslim edildi'
                       : routeEtaSec != null
-                        ? `${formatDuration(routeEtaSec)} (${new Date(Date.now() + routeEtaSec * 1000).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })})`
+                        ? `${formatDuration(routeEtaSec)} (${new Date(Date.now() + routeEtaSec * 1000).toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' })})`
                         : '—'}
                   </Text>
                 </View>

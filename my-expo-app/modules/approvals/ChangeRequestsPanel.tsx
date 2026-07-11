@@ -1,3 +1,4 @@
+import { localeTag } from '../../core/i18n';
 /**
  * ChangeRequestsPanel — admin + mesul müdür için bekleyen sipariş DEĞİŞİKLİK talepleri.
  * Onayla → önerilen değişiklikler siparişe uygulanır; Reddet → talep reddedilir.
@@ -77,7 +78,7 @@ export function ChangeRequestsPanel() {
                   Sipariş #{ono ?? '—'} · Değişiklik talebi
                 </Text>
                 <Text style={{ fontSize: 12, color: hexA(theme.accent, 0.55) }}>
-                  {req.requester_name ?? 'Klinik/Hekim'} · {new Date(req.created_at).toLocaleDateString('tr-TR')}
+                  {req.requester_name ?? 'Klinik/Hekim'} · {new Date(req.created_at).toLocaleDateString(localeTag())}
                 </Text>
               </View>
             </View>

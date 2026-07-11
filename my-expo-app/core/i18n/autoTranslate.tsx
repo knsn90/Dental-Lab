@@ -31,6 +31,32 @@ const DICTS: Record<string, Record<string, string>> = {
   fa: faDict as Record<string, string>,
 };
 
+// ── Farsça rakamlar (۰–۹) ────────────────────────────────────────────────
+// Yalnız Farsça (fa) modda, RENDER edilen metindeki Batı rakamlarını (0-9)
+// Farsça rakama çevir. ÖNEMLİ: sözlük eşleşmesinden (autoT) SONRA uygulanır —
+// çünkü auto.*.json anahtarları Batı rakamlı Türkçe stringlerdir; önce çevirsek
+// eşleşme kaçardı. Yalnız <Text> içeriği + placeholder'a; TextInput value'suna
+// DOKUNULMAZ (patchProps zaten value'ya dokunmuyor) → parse/düzenleme bozulmaz.
+const FA_DIGITS = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+function toFaDigits(s: string): string {
+  return s.replace(/[0-9]/g, (d) => FA_DIGITS[+d]);
+}
+function faNumChild(c: any): any {
+  // ÖNEMLİ: sayısal <Text>{86}</Text> çocuğu string DEĞİL number'dır → onu da çevir.
+  if (typeof c === 'string') return /[0-9]/.test(c) ? toFaDigits(c) : c;
+  if (typeof c === 'number' && Number.isFinite(c)) return toFaDigits(String(c));
+  if (Array.isArray(c)) {
+    let ch = false;
+    const m = c.map((x) => {
+      if (typeof x === 'string' && /[0-9]/.test(x)) { ch = true; return toFaDigits(x); }
+      if (typeof x === 'number' && Number.isFinite(x)) { ch = true; return toFaDigits(String(x)); }
+      return x;
+    });
+    return ch ? m : c;
+  }
+  return c;
+}
+
 export function autoT(s: string): string {
   const lng = i18n.language;
   if (!lng || lng === 'tr' || typeof s !== 'string') return s;
@@ -65,8 +91,12 @@ function patchProps(type: any, props: any): any {
   if (!props || i18n.language === 'tr') return props;
   const rtl = isRTL(i18n.language);
 
+  const fa = i18n.language === 'fa';
+
   if (isText(type) && props.children != null) {
-    const tc = tChild(props.children);
+    let tc = tChild(props.children);
+    // Farsça: çeviriden SONRA Batı rakamlarını Farsça rakama çevir.
+    if (fa) tc = faNumChild(tc);
     // RTL: çevrilmiş içerik gerçekten RTL karakter içeriyorsa yön stili ekle.
     const content = typeof tc === 'string' ? tc : Array.isArray(tc) ? tc.filter((x) => typeof x === 'string').join('') : '';
     const needDir = rtl && hasRTL(content);
@@ -77,7 +107,8 @@ function patchProps(type: any, props: any): any {
       return next;
     }
   } else if (isTextInput(type) && typeof props.placeholder === 'string') {
-    const tp = autoT(props.placeholder);
+    let tp = autoT(props.placeholder);
+    if (fa && /[0-9]/.test(tp)) tp = toFaDigits(tp);
     // RTL dilde Farsça placeholder → input yön stili (explicit style yine kazanır).
     const needDir = rtl && hasRTL(tp);
     if (tp !== props.placeholder || needDir) {
@@ -127,7 +158,12 @@ export function installAutoTranslate(): void {
       if (i18n.language !== 'tr' && (isText(type) || isTextInput(type))) {
         let p = patchProps(type, props);
         if (isText(type) && children && children.length) {
-          const tc = children.map((c) => (typeof c === 'string' ? autoT(c) : c));
+          const fa = i18n.language === 'fa';
+          const tc = children.map((c) => {
+            if (typeof c !== 'string') return c;
+            const t = autoT(c);
+            return fa && /[0-9]/.test(t) ? toFaDigits(t) : t;
+          });
           return oce.call(this, type, p, ...tc);
         }
         return oce.call(this, type, p, ...children);

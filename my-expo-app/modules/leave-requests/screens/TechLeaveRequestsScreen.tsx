@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 // modules/leave-requests/screens/TechLeaveRequestsScreen.tsx
 // Teknisyen — kendi izin taleplerini görür ve yeni talep oluşturur.
 // Mevcut employee_leaves tablosu + hr/api (fetchLeaves/createLeave/cancelLeave) yeniden kullanılır.
@@ -22,7 +23,7 @@ import {
 } from '../../hr/api';
 
 const fmtDate = (iso: string | null) =>
-  iso ? new Date(iso + 'T00:00:00').toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+  iso ? new Date(iso + 'T00:00:00').toLocaleDateString(localeTag(), { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
 const STATUS_ICON: Record<LeaveStatus, any> = {
   bekliyor: Clock, onaylandi: CheckCircle2, reddedildi: XCircle, iptal: Ban,

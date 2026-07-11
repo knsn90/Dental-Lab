@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 // modules/orders/components/StageCompletionPopup.tsx
 // Aşama tamamlama popup — DeltaBiome tarzı hero + bilgi kartı + CTA.
 // Patterns sayfasındaki dil: PillButton, Chip, SecHeader stilleri + tech-blue accent.
@@ -32,10 +33,10 @@ export function StageCompletionPopup({
   const P = useStationTheme();
   if (!info) return null;
 
-  const dateStr = info.completedAt.toLocaleDateString('tr-TR', {
+  const dateStr = info.completedAt.toLocaleDateString(localeTag(), {
     day: '2-digit', month: 'long', year: 'numeric',
   });
-  const timeStr = info.completedAt.toLocaleTimeString('tr-TR', {
+  const timeStr = info.completedAt.toLocaleTimeString(localeTag(), {
     hour: '2-digit', minute: '2-digit',
   });
 

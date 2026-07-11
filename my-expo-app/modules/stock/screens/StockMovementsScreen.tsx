@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * StockMovementsScreen — Hareketler (Patterns Design Language)
  *
@@ -66,10 +67,10 @@ function fmtDateTime(iso: string) {
   return d.toLocaleString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 function fmtTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  return new Date(iso).toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' });
 }
 function fmtDateShort(iso: string) {
-  return new Date(iso).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' });
+  return new Date(iso).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short' });
 }
 
 const DAY_MS = 86400000;

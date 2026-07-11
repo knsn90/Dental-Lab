@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * AdvancesScreen — Avanslar (tüm ekip için)
  *
@@ -280,7 +281,7 @@ export function AdvancesScreen() {
                     )}
                   </View>
                   <Text style={{ fontSize: 11, color: T.ink3, marginTop: 2 }}>
-                    {new Date(a.advance_date).toLocaleDateString('tr-TR')}{a.description ? ` · ${a.description}` : ''}
+                    {new Date(a.advance_date).toLocaleDateString(localeTag())}{a.description ? ` · ${a.description}` : ''}
                   </Text>
                 </View>
                 <Text style={{ fontSize: 13, fontWeight: '700', color: P }}>{fmtMoney(a.amount, (a as any).currency ?? 'TRY')}</Text>

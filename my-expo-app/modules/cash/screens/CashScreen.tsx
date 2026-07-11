@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * CashScreen — Kasa / Banka (Patterns Design Language)
  *
@@ -104,7 +105,7 @@ function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—';
   try {
     const d = iso.includes('T') ? new Date(iso) : new Date(iso + 'T00:00:00');
-    return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' });
+    return d.toLocaleDateString(localeTag(), { day: '2-digit', month: 'short', year: 'numeric' });
   } catch { return '—'; }
 }
 

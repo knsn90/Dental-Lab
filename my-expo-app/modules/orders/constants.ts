@@ -1,3 +1,4 @@
+import { localeTag } from '../../core/i18n';
 import { WorkOrderStatus } from './types';
 
 // ─── Work Types ──────────────────────────────────────────────────────────────
@@ -140,7 +141,7 @@ export function isOrderOverdue(deliveryDate: string, status: WorkOrderStatus): b
 
 export function formatDeliveryDate(dateStr: string): string {
   const date = new Date(dateStr);
-  return date.toLocaleDateString('tr-TR', {
+  return date.toLocaleDateString(localeTag(), {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',

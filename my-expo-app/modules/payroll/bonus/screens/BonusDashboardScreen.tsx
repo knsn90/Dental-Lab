@@ -1,3 +1,4 @@
+import { localeTag } from '../../../../core/i18n';
 /**
  * BonusDashboardScreen — F1 hero + KPI shelf + iki sütun (politikalar/runs + ranking).
  * Tasarım dili: docs/DESIGN_LANGUAGE.md
@@ -393,7 +394,7 @@ export default function BonusDashboardScreen({
                             <StatusChip status={r.status} />
                           </View>
                           <Text style={{ fontSize: 10, color: DS.ink[500], marginTop: 2 }}>
-                            {new Date(r.calculated_at).toLocaleDateString('tr-TR')} · {breakdownLen} kişi
+                            {new Date(r.calculated_at).toLocaleDateString(localeTag())} · {breakdownLen} kişi
                           </Text>
                         </View>
 

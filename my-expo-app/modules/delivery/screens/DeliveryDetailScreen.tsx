@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 // modules/delivery/screens/DeliveryDetailScreen.tsx
 // Teslimat detayı — GPS geçmişi, durum timeline, kurye bilgisi
 
@@ -226,7 +227,7 @@ export function DeliveryDetailScreen() {
         <View style={s.card}>
           <Text style={s.cardTitle}>İş Emri</Text>
           <Row label="İş Türü"  value={wo?.work_type ?? '—'} />
-          <Row label="Teslim"   value={wo?.delivery_date ? new Date(wo.delivery_date + 'T00:00:00').toLocaleDateString('tr-TR', { day: '2-digit', month: 'long' }) : '—'} />
+          <Row label="Teslim"   value={wo?.delivery_date ? new Date(wo.delivery_date + 'T00:00:00').toLocaleDateString(localeTag(), { day: '2-digit', month: 'long' }) : '—'} />
           {wo?.doctor?.full_name  && <Row label="Hekim"   value={wo.doctor.full_name} />}
           {wo?.doctor?.clinic?.name && <Row label="Klinik" value={wo.doctor.clinic.name} />}
         </View>

@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * PendingPaperOrdersScreen — Klinikten WhatsApp/webhook ile gelmiş kağıt iş emrilerinin inbox'u.
  * Lab kullanıcısı görür, OCR sonuçlarını kontrol eder, "Onayla" ile NewOrder'a geçer,
@@ -134,7 +135,7 @@ export function PendingPaperOrdersScreen() {
     if (diff < 60_000) return 'az önce';
     if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} dk önce`;
     if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} sa önce`;
-    return new Date(iso).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' });
+    return new Date(iso).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short' });
   };
 
   if (loading) {

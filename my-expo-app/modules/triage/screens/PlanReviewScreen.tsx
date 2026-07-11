@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 // modules/triage/screens/PlanReviewScreen.tsx
 // Plan Önizleme & Onay — planlama bekleyen sipariş açılınca ilk bu ekran gelir.
 // Gerçek veriyle çalışır; onayda mevcut triage_order RPC'sini çağırır.
@@ -412,8 +413,8 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
               ...(o?.model_type ? [{ label: 'Model', value: o.model_type }] : []),
               ...(o?.machine_type ? [{ label: 'Makine', value: o.machine_type }] : []),
               ...(o?.patient_gender ? [{ label: 'Cinsiyet', value: o.patient_gender }] : []),
-              ...(o?.delivery_date ? [{ label: 'Teslim', value: new Date(o.delivery_date).toLocaleDateString('tr-TR') }] : []),
-              ...(o?.created_at ? [{ label: 'Oluşturma', value: new Date(o.created_at).toLocaleDateString('tr-TR') }] : []),
+              ...(o?.delivery_date ? [{ label: 'Teslim', value: new Date(o.delivery_date).toLocaleDateString(localeTag()) }] : []),
+              ...(o?.created_at ? [{ label: 'Oluşturma', value: new Date(o.created_at).toLocaleDateString(localeTag()) }] : []),
             ];
             if (meta.length === 0) return null;
             return (
@@ -757,7 +758,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
             <FooterStat
               icon={<Clock size={12} color={o?.is_urgent ? '#FBBF77' : A} strokeWidth={2} />}
               label="Teslim"
-              value={o?.delivery_date ? new Date(o.delivery_date).toLocaleDateString('tr-TR') : '—'}
+              value={o?.delivery_date ? new Date(o.delivery_date).toLocaleDateString(localeTag()) : '—'}
               warn={o?.is_urgent}
             />
 

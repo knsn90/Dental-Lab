@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * OrdersListScreenV2 — Patterns design language (NativeWind)
  *
@@ -120,7 +121,7 @@ function deliveryText(d: string, status: WorkOrderStatus): string {
   if (diff === 0) return 'Bugün';
   if (diff === 1) return 'Yarın';
   if (diff <= 6)  return `${diff} gün`;
-  return due.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+  return due.toLocaleDateString(localeTag(), { day: 'numeric', month: 'short' });
 }
 
 function fmtDate(s?: string | null) {
@@ -1424,11 +1425,11 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
       {/* Oluşturma tarihi + saati */}
       <View style={{ flex: 1.2 }}>
         <Text style={{ fontSize: 13, color: T.ink2 }} numberOfLines={1}>
-          {order.created_at ? new Date(order.created_at).toLocaleDateString('tr-TR') : '—'}
+          {order.created_at ? new Date(order.created_at).toLocaleDateString(localeTag()) : '—'}
         </Text>
         {order.created_at && (
           <Text style={{ fontSize: 11, color: T.ink3 }} numberOfLines={1}>
-            {new Date(order.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+            {new Date(order.created_at).toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' })}
           </Text>
         )}
       </View>

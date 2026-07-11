@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * ProfileScreen — Patterns Design Language
  * ─────────────────────────────────────────
@@ -67,7 +68,7 @@ function getRoleLabel(profile: any): string {
 }
 function joinedDate(profile: any): string {
   if (!profile?.created_at) return '';
-  return new Date(profile.created_at).toLocaleDateString('tr-TR', {
+  return new Date(profile.created_at).toLocaleDateString(localeTag(), {
     day: 'numeric', month: 'short', year: 'numeric',
   });
 }

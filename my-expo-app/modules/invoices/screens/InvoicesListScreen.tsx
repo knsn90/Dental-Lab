@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * InvoicesListScreen — Fatura Yönetimi (Patterns Design Language)
  *
@@ -93,7 +94,7 @@ function fmtShort(n: number, currency = 'TRY'): string {
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—';
   const d = iso.includes('T') ? new Date(iso) : new Date(iso + 'T00:00:00');
-  return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' });
+  return d.toLocaleDateString(localeTag(), { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 // ═════════════════════════════════════════════════════════════════════
@@ -1043,7 +1044,7 @@ function BulkOrderRow({ order, selected, onToggle }: {
         </Text>
         <Text style={{ fontSize: 10, color: DS.ink[400], marginTop: 2 }}>
           Teslim: {order.delivered_at
-            ? new Date(order.delivered_at).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })
+            ? new Date(order.delivered_at).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short' })
             : '—'}
         </Text>
       </View>

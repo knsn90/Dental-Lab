@@ -24,7 +24,10 @@ export function isRTL(l: string = i18n.language): boolean {
 const STORAGE_KEY = 'app_lang_v1';
 
 // Intl formatlayıcıları için BCP-47 etiketi
-const TAGS: Record<Lang, string> = { tr: 'tr-TR', en: 'en-US', de: 'de-DE', fa: 'fa-IR' };
+// fa → Şemsi (Jalali) takvim: `-u-ca-persian` ile toLocaleDateString/Intl tarihleri
+// otomatik Şemsi + Farsça ay adları (تیر…) verir. YALNIZ görüntüleme (Intl); saklanan
+// ISO/parse edilen tarihler Miladi kalır → veri/mantık bozulmaz.
+const TAGS: Record<Lang, string> = { tr: 'tr-TR', en: 'en-US', de: 'de-DE', fa: 'fa-IR-u-ca-persian' };
 export function localeTag(l: string = i18n.language): string {
   return TAGS[(l as Lang)] ?? 'tr-TR';
 }

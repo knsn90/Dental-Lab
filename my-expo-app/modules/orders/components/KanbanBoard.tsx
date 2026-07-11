@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * KanbanBoard — Patterns design language (NativeWind)
  *
@@ -48,7 +49,7 @@ function deliveryText(d: string, status: WorkOrderStatus): { text: string; color
   if (diff === 1) return { text: 'Yarın',       color: '#D97706' };
   if (diff <= 3)  return { text: `${diff} gün`,  color: '#D97706' };
   if (diff <= 7)  return { text: `${diff} gün`,  color: '#1A1A1A' };
-  return { text: due.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }), color: '#6B6B6B' };
+  return { text: due.toLocaleDateString(localeTag(), { day: 'numeric', month: 'short' }), color: '#6B6B6B' };
 }
 
 function getInitials(name: string) {

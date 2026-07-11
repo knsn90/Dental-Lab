@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * PurchaseInvoicePreviewModal — Resmi GİB e-Fatura görünümlü önizleme popup.
  *
@@ -96,10 +97,10 @@ export function PurchaseInvoicePreviewModal({
   const isForeignCurrency = currency !== baseCurrency && exchangeRate > 0 && exchangeRate !== 1;
   const created   = header?.created_at ? new Date(header.created_at) : null;
   const invoiceDate = header?.invoice_date
-    ? new Date(header.invoice_date).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    ? new Date(header.invoice_date).toLocaleDateString(localeTag(), { day: '2-digit', month: '2-digit', year: 'numeric' })
     : '—';
   const invoiceTime = created
-    ? created.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    ? created.toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     : '—';
   // ETTN — purchase_invoice id'sinden 8-4-4-4-12 UUID formatı
   const ettn = (header?.id ?? '').toLowerCase();

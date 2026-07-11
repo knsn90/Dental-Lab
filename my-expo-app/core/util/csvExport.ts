@@ -1,3 +1,4 @@
+import { localeTag } from '../i18n';
 /**
  * csvExport — Cross-platform CSV indirme
  *
@@ -85,5 +86,5 @@ export function csvDate(iso: string | null | undefined): string {
   if (!iso) return '';
   const d = iso.includes('T') ? new Date(iso) : new Date(iso + 'T00:00:00');
   if (isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('tr-TR');
+  return d.toLocaleDateString(localeTag());
 }

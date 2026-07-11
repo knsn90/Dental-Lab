@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { WorkOrder } from '../types';
@@ -109,7 +110,7 @@ export function OrdersTable({ orders, onPress, onStatusAdvance, showDoctor = tru
                 {/* Delivery date */}
                 <View style={[styles.cell, { width: COLS[5].width }]}>
                   <Text style={[styles.cellText, overdue && { color: C.danger }]}>
-                    {new Date(order.delivery_date + 'T00:00:00').toLocaleDateString('tr-TR', {
+                    {new Date(order.delivery_date + 'T00:00:00').toLocaleDateString(localeTag(), {
                       day: 'numeric',
                       month: 'short',
                     })}

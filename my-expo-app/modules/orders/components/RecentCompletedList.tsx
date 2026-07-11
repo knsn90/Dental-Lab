@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 // modules/orders/components/RecentCompletedList.tsx
 // Teknisyenin son tamamladığı işlerin read-only önizlemesi.
 // Kuyruk listesinin altında durur. Müdahele yok — sadece bilgi.
@@ -27,7 +28,7 @@ function formatRel(iso: string): string {
   if (diff < 3_600_000)     return `${Math.floor(diff / 60_000)} dk önce`;
   if (diff < 86_400_000)    return `${Math.floor(diff / 3_600_000)} sa önce`;
   if (diff < 86_400_000 * 7) return `${Math.floor(diff / 86_400_000)} gün önce`;
-  return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' });
+  return d.toLocaleDateString(localeTag(), { day: '2-digit', month: 'short' });
 }
 
 export function RecentCompletedList({

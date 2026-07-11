@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * ApprovalCard — Patterns design language
  *
@@ -110,7 +111,7 @@ export function ApprovalCard({ approval, onResolved, canApprove = false }: Props
             Talep: {approval.requester?.full_name ?? '—'}
           </Text>
           <Text style={{ fontSize: 11, color: T.ink3 }}>
-            {new Date(approval.requested_at).toLocaleDateString('tr-TR', {
+            {new Date(approval.requested_at).toLocaleDateString(localeTag(), {
               day: 'numeric', month: 'short', year: 'numeric',
             })}
           </Text>

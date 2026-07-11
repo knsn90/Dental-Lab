@@ -44,7 +44,7 @@
       "clinics": "کلینیک‌ها",
       "team": "تیم",
       "stock": "موجودی و انبار",
-      "production": "تابلوی تولید",
+      "production": "تابلوی ساخت",
       "workflows": "گردش‌کارها",
       "courier": "پیگیری پیک",
       "finance": "مالی",
@@ -53,7 +53,7 @@
       "messages": "پیام‌ها",
       "settings": "تنظیمات",
       "summary": "خلاصه",
-      "cases": "پرونده‌ها",
+      "cases": "کیس‌ها",
       "search": "جستجو",
       "more": "بیشتر",
       "new": "جدید",
@@ -77,7 +77,7 @@
       "customers": "مشتریان",
       "team": "تیم",
       "warehouse": "انبار",
-      "production": "تولید",
+      "production": "ساخت",
       "delivery": "تحویل",
       "finance": "مالی",
       "help": "راهنما",
@@ -102,15 +102,15 @@
     "delivered": "تحویل شد",
     "overdueLabel": "عقب‌افتاده",
     "tryin": "پروو",
-    "totalCases": "کل پرونده‌ها",
-    "todayLine": "{{total}} سفارش امروز در تولید، {{active}} فعال",
+    "totalCases": "کل کیس‌ها",
+    "todayLine": "{{total}} سفارش امروز در ساخت، {{active}} فعال",
     "todayOverdue": "، {{overdue}} عقب‌افتاده",
     "weekDoneKicker": "{{count}} تکمیل‌شده این هفته",
     "newOrderKicker": "سفارش کاری جدید",
-    "activeProduction": "تولید فعال",
+    "activeProduction": "ساخت فعال",
     "stages": {
       "received": "دریافت شد",
-      "production": "تولید",
+      "production": "ساخت",
       "qc": "کنترل کیفیت",
       "ready": "آماده"
     },
@@ -123,8 +123,8 @@
     "thisWeek": "این هفته",
     "received": "دریافت شد",
     "completed": "تکمیل شد",
-    "overdueCases": "پرونده‌های عقب‌افتاده",
-    "noOverdueCases": "پرونده عقب‌افتاده‌ای نیست",
+    "overdueCases": "کیس‌های عقب‌افتاده",
+    "noOverdueCases": "کیس عقب‌افتاده‌ای نیست",
     "qc": "کنترل کیفیت",
     "delay": "تأخیر"
   },
@@ -393,7 +393,7 @@
       },
       "stations": {
         "label": "ایستگاه‌ها",
-        "sub": "مراحل تولید"
+        "sub": "مراحل ساخت"
       },
       "workhours": {
         "label": "ساعات کاری",
@@ -458,7 +458,7 @@
     },
     "status": {
       "received": "دریافت‌شده",
-      "production": "در حال تولید",
+      "production": "در حال ساخت",
       "qualityControl": "کنترل کیفیت",
       "readyForDelivery": "تحویل به پیک",
       "delivered": "تحویل داده شد",
@@ -484,7 +484,7 @@
       "quickAction": "اقدام سریع",
       "newOrder": "ساخت سفارش جدید",
       "noTasks": "وظیفه‌ای در انتظار نیست",
-      "production": "تولید",
+      "production": "ساخت",
       "active": "فعال",
       "overdue": "عقب‌افتاده",
       "today": "امروز",
@@ -496,7 +496,7 @@
       "toothMemberNote": "۱ دندان = ۱ عضو · روند ۶ ماه اخیر",
       "deliveryRate": "نرخ تحویل",
       "delivered": "تحویل داده شد",
-      "inProduction": "در حال تولید",
+      "inProduction": "در حال ساخت",
       "todaysTasks": "وظایف امروز",
       "recentOrders": "سفارش‌های اخیر",
       "viewAll": "مشاهده همه ←",
@@ -514,15 +514,15 @@
       "totalMembers": "واحد",
       "noOrdersToday": "امروز هنوز سفارشی نیست.",
       "ordersSummary": "{{total}} سفارش، {{active}} فعال{{overdue}}.",
-      "liveProduction": "تولید زنده",
+      "liveProduction": "ساخت زنده",
       "monthlyRevenue": "درآمد ماهانه",
       "revenueTarget": "هدف ₺60K",
       "activeOrders": "سفارش‌های فعال",
       "overdueCount": "{{count}} عقب‌افتاده",
       "total": "کل {{total}}",
-      "delayedCases": "پرونده‌های معوق",
-      "noDelayedCases": "پرونده معوقی نیست",
-      "productionOnTrack": "تمام تولید طبق برنامه پیش می‌رود."
+      "delayedCases": "کیس‌های معوق",
+      "noDelayedCases": "کیس معوقی نیست",
+      "productionOnTrack": "همه‌ی کارها طبق برنامه پیش می‌رود."
     },
     "buttons": {
       "start": "شروع"
@@ -581,7 +581,7 @@
   },
   "clinic": {
     "tabs": {
-      "cases": "پرونده‌ها",
+      "cases": "کیس‌ها",
       "team": "تیم",
       "search": "جستجو",
       "more": "بیشتر"
@@ -658,7 +658,7 @@
         "editBtn": "ویرایش",
         "cancelBtn": "لغو",
         "password": "گذرواژه",
-        "autoGenerate": "تولید خودکار",
+        "autoGenerate": "ساخت خودکار",
         "passwordPlaceholderEdit": "گذرواژه جدید (حداقل ۶ کاراکتر)",
         "passwordPlaceholderNew": "حداقل 6 کاراکتر",
         "hideBtn": "پنهان کردن",

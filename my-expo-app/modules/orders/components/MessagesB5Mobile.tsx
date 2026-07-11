@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * MessagesB5Mobile — Variant B B5 inbox + B5b thread.
  * Self-contained: manages list ↔ thread navigation internally.
@@ -428,7 +429,7 @@ function formatTimeShort(iso: string): string {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const dayStart = new Date(d); dayStart.setHours(0, 0, 0, 0);
   if (+dayStart === +today) {
-    return d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' });
   }
   return `${d.getDate().toString().padStart(2, '0')}.${(d.getMonth() + 1).toString().padStart(2, '0')}`;
 }

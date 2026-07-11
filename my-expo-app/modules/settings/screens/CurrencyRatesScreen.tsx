@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * Kur Yönetim Ekranı (Phase 1).
  *
@@ -218,7 +219,7 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A' }: Props) {
                       </View>
                       {rate ? (
                         <Text style={{ fontSize: 11, color: '#6B6B6B', marginTop: 2 }} numberOfLines={1}>
-                          {new Date(rate.effectiveDate).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })} · {rate.source.toUpperCase()}
+                          {new Date(rate.effectiveDate).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short' })} · {rate.source.toUpperCase()}
                         </Text>
                       ) : (
                         <Text style={{ fontSize: 11, color: '#D97706', marginTop: 2 }}>Tanımlı değil</Text>
@@ -266,7 +267,7 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A' }: Props) {
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 }}>
                         <Calendar size={10} color="#9A9A9A" strokeWidth={1.6} />
                         <Text style={{ fontSize: 10, color: '#9A9A9A' }}>
-                          {new Date(rate.effectiveDate).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          {new Date(rate.effectiveDate).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short', year: 'numeric' })}
                         </Text>
                         <View style={{ width: 1, height: 10, backgroundColor: 'rgba(0,0,0,0.1)' }} />
                         <Text style={{ fontSize: 10, color: '#9A9A9A', textTransform: 'uppercase', letterSpacing: 0.4 }}>
@@ -344,7 +345,7 @@ export function CurrencyRatesScreen({ accentColor = '#0A0A0A' }: Props) {
                 {isNarrow ? r.rate.toFixed(2) : `${r.rate.toFixed(4)} ${r.baseCurrency}`}
               </Text>
               <Text style={{ fontSize: 11, color: '#9A9A9A' }} numberOfLines={1}>
-                {new Date(r.effectiveDate).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: isNarrow ? '2-digit' : 'numeric' })}
+                {new Date(r.effectiveDate).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short', year: isNarrow ? '2-digit' : 'numeric' })}
               </Text>
               {!isNarrow && (
                 <View style={{

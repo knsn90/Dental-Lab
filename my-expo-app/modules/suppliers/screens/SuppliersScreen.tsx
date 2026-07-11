@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 /**
  * SuppliersScreen — Tedarikçiler & Cari Hesap ana ekranı.
  *
@@ -297,7 +298,7 @@ export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
               const balanceText = bal ? formatMoney(Math.abs(balCur !== baseCurrency ? bal.balance_original : bal.balance_base), balCur as Currency, { fractionDigits: 0 }) : '—';
               const origText: string | null = null;
               const lastDate = bal?.last_transaction_date
-                ? new Date(bal.last_transaction_date).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' })
+                ? new Date(bal.last_transaction_date).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short', year: 'numeric' })
                 : null;
               const toneColor = tone === 'debt' ? '#9C2E2E' : tone === 'credit' ? '#1F6B47' : '#9A9A9A';
               const toneLabel = tone === 'debt' ? 'Borç' : tone === 'credit' ? 'Alacak' : 'Eşit';
@@ -406,7 +407,7 @@ export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
               const balanceText = bal ? formatMoney(Math.abs(balCur !== baseCurrency ? bal.balance_original : bal.balance_base), balCur as Currency, { fractionDigits: 0 }) : '—';
               const origText: string | null = null;
               const lastDate = bal?.last_transaction_date
-                ? new Date(bal.last_transaction_date).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' })
+                ? new Date(bal.last_transaction_date).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short', year: 'numeric' })
                 : null;
               const toneColor = tone === 'debt' ? '#9C2E2E' : tone === 'credit' ? '#1F6B47' : '#9A9A9A';
               const toneLabel = tone === 'debt' ? 'Borç' : tone === 'credit' ? 'Alacak' : 'Eşit';

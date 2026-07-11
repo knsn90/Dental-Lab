@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 // modules/orders/screens/OrdersListScreen.tsx
 // Apple Reminders tarzı sade liste + opsiyonel Kanban modu.
 //
@@ -79,7 +80,7 @@ function deliveryText(d: string, status: WorkOrderStatus): string {
   if (diff === 0) return 'Bugün';
   if (diff === 1) return 'Yarın';
   if (diff <= 6)  return `${diff} gün`;
-  return due.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+  return due.toLocaleDateString(localeTag(), { day: 'numeric', month: 'short' });
 }
 
 function stageOf(o: WorkOrder): Stage {

@@ -1,3 +1,4 @@
+import { localeTag } from '../../../core/i18n';
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -27,7 +28,7 @@ const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> =
 
 function formatDate(d: string | null) {
   if (!d) return '—';
-  return new Date(d + 'T00:00:00').toLocaleDateString('tr-TR', {
+  return new Date(d + 'T00:00:00').toLocaleDateString(localeTag(), {
     day: '2-digit', month: 'short', year: 'numeric',
   });
 }
