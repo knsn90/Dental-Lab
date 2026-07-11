@@ -94,6 +94,26 @@
       }
     </style>
 
+    <!-- ── Peyda (Farsça) ─────────────────────────────────────────────
+         Mevcut aile adlarına (Outfit + inline'da geçen Inter Tight/Inter)
+         unicode-range ile bağlanır: yalnız Arapça/Farsça glifler Peyda'dan
+         gelir; Latin metin (Outfit) ve ağırlıklar (400/500/600/700) korunur.
+         RN <Text> zaten [dir="auto"] → 'Outfit' aldığı için TÜM Farsça metin
+         otomatik Peyda kullanır (inline fontFamily gerekmez). -->
+    <style>
+      @font-face { font-family: 'Outfit';      font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/peyda-regular.woff2')  format('woff2'); unicode-range: U+0600-06FF,U+0750-077F,U+08A0-08FF,U+FB50-FDFF,U+FE70-FEFF,U+200C-200D; }
+      @font-face { font-family: 'Outfit';      font-style: normal; font-weight: 500; font-display: swap; src: url('/fonts/peyda-medium.woff2')   format('woff2'); unicode-range: U+0600-06FF,U+0750-077F,U+08A0-08FF,U+FB50-FDFF,U+FE70-FEFF,U+200C-200D; }
+      @font-face { font-family: 'Outfit';      font-style: normal; font-weight: 600; font-display: swap; src: url('/fonts/peyda-semibold.woff2') format('woff2'); unicode-range: U+0600-06FF,U+0750-077F,U+08A0-08FF,U+FB50-FDFF,U+FE70-FEFF,U+200C-200D; }
+      @font-face { font-family: 'Outfit';      font-style: normal; font-weight: 700; font-display: swap; src: url('/fonts/peyda-bold.woff2')     format('woff2'); unicode-range: U+0600-06FF,U+0750-077F,U+08A0-08FF,U+FB50-FDFF,U+FE70-FEFF,U+200C-200D; }
+      @font-face { font-family: 'Inter Tight'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/peyda-regular.woff2')  format('woff2'); unicode-range: U+0600-06FF,U+0750-077F,U+08A0-08FF,U+FB50-FDFF,U+FE70-FEFF,U+200C-200D; }
+      @font-face { font-family: 'Inter Tight'; font-style: normal; font-weight: 500; font-display: swap; src: url('/fonts/peyda-medium.woff2')   format('woff2'); unicode-range: U+0600-06FF,U+0750-077F,U+08A0-08FF,U+FB50-FDFF,U+FE70-FEFF,U+200C-200D; }
+      @font-face { font-family: 'Inter Tight'; font-style: normal; font-weight: 600; font-display: swap; src: url('/fonts/peyda-semibold.woff2') format('woff2'); unicode-range: U+0600-06FF,U+0750-077F,U+08A0-08FF,U+FB50-FDFF,U+FE70-FEFF,U+200C-200D; }
+      @font-face { font-family: 'Inter Tight'; font-style: normal; font-weight: 700; font-display: swap; src: url('/fonts/peyda-bold.woff2')     format('woff2'); unicode-range: U+0600-06FF,U+0750-077F,U+08A0-08FF,U+FB50-FDFF,U+FE70-FEFF,U+200C-200D; }
+      @font-face { font-family: 'Inter';       font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/peyda-regular.woff2')  format('woff2'); unicode-range: U+0600-06FF,U+0750-077F,U+08A0-08FF,U+FB50-FDFF,U+FE70-FEFF,U+200C-200D; }
+      @font-face { font-family: 'Inter';       font-style: normal; font-weight: 600; font-display: swap; src: url('/fonts/peyda-semibold.woff2') format('woff2'); unicode-range: U+0600-06FF,U+0750-077F,U+08A0-08FF,U+FB50-FDFF,U+FE70-FEFF,U+200C-200D; }
+      @font-face { font-family: 'Inter';       font-style: normal; font-weight: 700; font-display: swap; src: url('/fonts/peyda-bold.woff2')     format('woff2'); unicode-range: U+0600-06FF,U+0750-077F,U+08A0-08FF,U+FB50-FDFF,U+FE70-FEFF,U+200C-200D; }
+    </style>
+
     %%EXPO_HEAD%%
   </head>
   <body>
