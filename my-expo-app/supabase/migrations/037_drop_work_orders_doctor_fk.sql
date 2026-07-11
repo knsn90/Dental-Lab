@@ -44,10 +44,7 @@ BEGIN
 END$$;
 
 -- doctor_id NOT NULL kalır, sadece FK düşer
-COMMENT ON COLUMN work_orders.doctor_id IS
-  'UUID — polymorphic referans (profiles.id VEYA doctors.id). FK kasıtlı olarak yok; ' ||
-  'lab/admin sipariş açarken external doctors.id, hekim kendi açarken profiles.id kullanılır. ' ||
-  '010_fix_activity_log_fk.sql trigger''ı her iki durumu da güvenle handle eder.';
+COMMENT ON COLUMN work_orders.doctor_id IS 'UUID — polymorphic referans (profiles.id VEYA doctors.id). FK kasıtlı olarak yok; lab/admin sipariş açarken external doctors.id, hekim kendi açarken profiles.id kullanılır. 010_fix_activity_log_fk.sql triggerı her iki durumu da güvenle handle eder.';
 
 -- ============================================================
 -- END OF 037

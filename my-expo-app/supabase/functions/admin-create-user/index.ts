@@ -29,30 +29,80 @@ Deno.serve(async (req: Request) => {
 
     const { data: callerProfile } = await adminClient
       .from('profiles')
-      .select('user_type, lab_id')
+      .select('user_type, role, lab_id, clinic_id, clinic_name')
       .eq('id', userData.user.id)
       .single();
 
-    // Admin veya lab manager kullanıcı ekleyebilir
-    if (!callerProfile || (callerProfile.user_type !== 'admin' && callerProfile.user_type !== 'lab')) {
+    // Admin / lab MÜDÜRÜ / clinic_admin (kendi hekimini ekleyebilir)
+    const callerIsClinicAdmin = callerProfile?.role === 'clinic_admin' || callerProfile?.user_type === 'clinic_admin';
+    const callerIsAdmin = callerProfile?.user_type === 'admin';
+    const callerIsLabManager = callerProfile?.user_type === 'lab' && callerProfile?.role === 'manager';
+    if (!callerProfile || !(callerIsAdmin || callerIsLabManager || callerIsClinicAdmin)) {
       throw new Error('Yetkiniz yok');
     }
 
     // Yeni lab kullanıcısı caller'ın lab_id'sini miras alır
     const inheritedLabId = callerProfile.lab_id ?? null;
 
-    const { email, password, full_name, user_type, role, clinic_name, phone, address, clinic_type, specialty, department, level, monthly_salary } = await req.json();
+    const body = await req.json();
+    const { email, password, full_name, user_type, role, phone, address, clinic_type, specialty, department, level, monthly_salary, clinic_permissions } = body;
+    let { clinic_name, clinic_id } = body;
+
+    // Lab müdürü admin (exec) hesabı AÇAMAZ; yalnız kendi ekibi + klinik hesapları
+    const LAB_MANAGER_TYPES_ALLOWED = ['lab', 'doctor', 'clinic_admin', 'clinic_secretary'];
+    if (callerIsLabManager && !callerIsAdmin && !LAB_MANAGER_TYPES_ALLOWED.includes(user_type)) {
+      throw new Error('Bu kullanıcı tipini oluşturma yetkiniz yok');
+    }
+
+    // Clinic_admin caller ise clinic_id'yi caller'ın profili üzerinden zorla
+    if (callerIsClinicAdmin) {
+      const CLINIC_ROLES_ALLOWED = ['doctor', 'clinic_admin', 'clinic_secretary'];
+      if (!CLINIC_ROLES_ALLOWED.includes(user_type)) {
+        throw new Error('Klinik yöneticisi yalnızca hekim, sekreter veya klinik yöneticisi ekleyebilir');
+      }
+      clinic_id = callerProfile.clinic_id ?? clinic_id;
+      if (!clinic_id) {
+        throw new Error('Hesabınıza bağlı klinik bulunamadı — destekle iletişime geçin');
+      }
+    }
+
+    // clinic_name verilmediyse ve clinic_id varsa otomatik lookup (klinik adı zorunlu hatasını önler)
+    if (!clinic_name && clinic_id) {
+      const { data: clinicRow } = await adminClient.from('clinics').select('name').eq('id', clinic_id).maybeSingle();
+      if (clinicRow?.name) clinic_name = clinicRow.name;
+    }
 
     if (!email || !password || !full_name || !user_type) {
-      throw new Error('Zorunlu alanlar eksik');
+      throw new Error('Zorunlu alanlar eksik (e-posta / şifre / ad / kullanıcı tipi)');
     }
 
-    // Hekim/klinik ekliyorsa klinik adı zorunlu
-    if ((user_type === 'doctor' || user_type === 'clinic_admin') && !clinic_name) {
-      throw new Error('Klinik adı zorunludur');
+    // Hekim/klinik/sekreter ekliyorsa klinik adı zorunlu (artık otomatik lookup sonrası boş olmamalı)
+    if (['doctor', 'clinic_admin', 'clinic_secretary'].includes(user_type) && !clinic_name) {
+      throw new Error('Klinik adı bulunamadı — clinic_id geçersiz olabilir');
     }
 
-    const effectiveUserType = user_type === 'clinic_admin' ? 'doctor' : user_type;
+    // Varsayılan klinik yetki şablonları
+    const DEFAULT_PERMS_BY_ROLE: Record<string, Record<string, boolean>> = {
+      doctor: {
+        orders_view: true, orders_create: true, orders_edit: true,
+      },
+      clinic_secretary: {
+        orders_view: true, orders_create: true, orders_edit: true,
+        doctors_manage: false, users_manage: false, settings_manage: false, billing_view: true,
+      },
+      clinic_admin: {
+        orders_view: true, orders_create: true, orders_edit: true,
+        doctors_manage: true, users_manage: true, settings_manage: true, billing_view: true,
+      },
+    };
+    const effectivePermissions = ['doctor', 'clinic_admin', 'clinic_secretary'].includes(user_type)
+      ? { ...(DEFAULT_PERMS_BY_ROLE[user_type] ?? {}), ...(clinic_permissions ?? {}) }
+      : null;
+
+    // Migration 033 sonrası 'clinic_admin' geçerli bir user_type — coerce etmeye gerek yok.
+    // Eskiden 'doctor' + role='clinic_admin' olarak yazılıyordu; bu kullanıcı listesinde
+    // klinik admin olarak görünmesini engelliyordu.
+    const effectiveUserType = user_type;
     const effectiveRole = user_type === 'clinic_admin' ? 'clinic_admin' : (role ?? null);
 
     const { data: created, error: createError } = await adminClient.auth.admin.createUser({
@@ -92,6 +142,11 @@ Deno.serve(async (req: Request) => {
         is_active: true,
         // Lab kullanıcısı caller'ın lab_id'sini alır — wizard'a düşmez
         lab_id: isLabUser ? inheritedLabId : null,
+        // Clinic_admin tarafından eklenen hekim/sekreter/yedek-admin caller'ın clinic_id'sini alır
+        clinic_id: callerIsClinicAdmin && ['doctor', 'clinic_admin', 'clinic_secretary'].includes(effectiveUserType)
+          ? (callerProfile.clinic_id ?? null)
+          : (clinic_id ?? null),
+        clinic_permissions: effectivePermissions,
         // Lab/admin'den eklendiğinde otomatik onaylı (manuel kayıt değil)
         approval_status: 'approved',
         phone_verified: true,
@@ -99,23 +154,34 @@ Deno.serve(async (req: Request) => {
 
     // Hekim veya klinik admin ise clinic + doctor kaydı oluştur
     if (user_type === 'doctor' || user_type === 'clinic_admin') {
-      const { data: clinic } = await adminClient
-        .from('clinics')
-        .insert({
-          name: clinic_name,
-          phone: phone ?? null,
-          address: address ?? null,
-          contact_person: full_name,
-          ...(clinic_type ? { clinic_type } : {}),
-        })
-        .select()
-        .single();
+      // Clinic_admin caller ise: kendi kliniğini kullan, yeni klinik açma
+      let targetClinicId: string | null = null;
+      if (callerIsClinicAdmin && callerProfile.clinic_id) {
+        targetClinicId = callerProfile.clinic_id;
+      } else if (clinic_id) {
+        targetClinicId = clinic_id;
+      } else {
+        // Yeni klinik oluştur (admin/lab tarafından kayıt akışı)
+        const { data: newClinic } = await adminClient
+          .from('clinics')
+          .insert({
+            name: clinic_name,
+            phone: phone ?? null,
+            address: address ?? null,
+            contact_person: full_name,
+            ...(clinic_type ? { clinic_type } : {}),
+          })
+          .select()
+          .single();
+        if (newClinic) targetClinicId = newClinic.id;
+      }
 
-      if (clinic) {
+      // doctors tablosuna sadece gerçek hekim ekle — clinic_admin yönetici, hekim değil
+      if (targetClinicId && user_type === 'doctor') {
         await adminClient.from('doctors').insert({
           full_name,
           phone: phone ?? null,
-          clinic_id: clinic.id,
+          clinic_id: targetClinicId,
         });
       }
     }

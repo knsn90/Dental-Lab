@@ -1,16 +1,13 @@
 /**
- * TCMB-rates edge function — Türkiye Cumhuriyet Merkez Bankası
- * günlük döviz kurlarını çeker.
+ * TCMB-rates edge function — TCMB günlük döviz kurlarını çeker VE global
+ * currency_rates satırlarını (lab_id NULL, source='tcmb') günceller.
  *
- * Endpoint: https://www.tcmb.gov.tr/kurlar/today.xml
- *  - 15:30 sonrası güncel rate yayınlanır
- *  - Hafta sonu son iş gününün kuru kullanılır
+ * Endpoint: https://www.tcmb.gov.tr/kurlar/today.xml (15:30 sonrası güncel).
+ * Persist: bugünün global satırlarını sil + ekle (lab_id NULL → unique index
+ * NULL'ları ayrı saydığı için upsert yerine delete+insert ile tek satır garanti).
+ * Böylece get_currency_rate(bugün) manuel kur yoksa güncel TCMB'yi döner.
  *
- * Response shape:
- *   { ok: true, rates: [{ currency, rate }] }
- *   { ok: false, error }
- *
- * Frontend: core/money/currency.ts → fetchRatesFromTCMB()
+ * Çağrı: app (fetchRatesFromTCMB) + günlük pg_cron (tcmb-daily-rates).
  */
 
 // @ts-ignore  Deno runtime
@@ -24,7 +21,41 @@ const CORS_HEADERS = {
 };
 
 const TARGET_CURRENCIES = ['EUR', 'USD', 'GBP'];
-// "ForexSelling" tag'i en üst düzey güncel satış kuru (TCMB'nin standart bankalar arası satış kuru)
+
+async function persistRates(rates: { currency: string; rate: number }[]): Promise<number> {
+  // @ts-ignore Deno
+  const url = Deno.env.get('SUPABASE_URL');
+  // @ts-ignore Deno
+  const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!url || !key || rates.length === 0) return 0;
+  const today = new Date().toISOString().slice(0, 10);
+  const h = { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
+  try {
+    // Bugünün global (lab_id NULL) TRY kurlarını sil
+    const curList = rates.map((r) => r.currency).join(',');
+    await fetch(
+      `${url}/rest/v1/currency_rates?lab_id=is.null&base_currency=eq.TRY&effective_date=eq.${today}&currency=in.(${curList})`,
+      { method: 'DELETE', headers: h },
+    );
+    // Yeni satırları ekle
+    const rows = rates.map((r) => ({
+      lab_id: null,
+      currency: r.currency,
+      base_currency: 'TRY',
+      rate: r.rate,
+      effective_date: today,
+      source: 'tcmb',
+    }));
+    const res = await fetch(`${url}/rest/v1/currency_rates`, {
+      method: 'POST',
+      headers: { ...h, Prefer: 'return=minimal' },
+      body: JSON.stringify(rows),
+    });
+    return res.ok ? rows.length : 0;
+  } catch (_e) {
+    return 0;
+  }
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -32,7 +63,6 @@ serve(async (req) => {
   }
 
   try {
-    // TCMB güncel kur XML'i
     const tcmbRes = await fetch('https://www.tcmb.gov.tr/kurlar/today.xml', {
       headers: { 'User-Agent': 'Mozilla/5.0 dental-lab-app' },
     });
@@ -45,18 +75,9 @@ serve(async (req) => {
     }
 
     const xml = await tcmbRes.text();
-
-    // ── Parse XML ──
-    // Format:
-    //   <Currency Kod="EUR" CurrencyCode="EUR">
-    //     <Unit>1</Unit>
-    //     <ForexSelling>38.1234</ForexSelling>
-    //     ...
-    //   </Currency>
     const rates: { currency: string; rate: number }[] = [];
 
     for (const code of TARGET_CURRENCIES) {
-      // Bul: <Currency ... CurrencyCode="EUR"> ... </Currency>
       const blockRegex = new RegExp(
         `<Currency[^>]*CurrencyCode="${code}"[^>]*>([\\s\\S]*?)</Currency>`,
         'i',
@@ -70,8 +91,6 @@ serve(async (req) => {
       );
 
       if (!isNaN(forexSelling) && forexSelling > 0) {
-        // Rate: 1 unit foreign = X TRY
-        // TCMB'de unit genelde 1, JPY gibi exotic'lerde 100 olabilir
         const ratePerUnit = forexSelling / unit;
         rates.push({ currency: code, rate: Number(ratePerUnit.toFixed(4)) });
       }
@@ -84,8 +103,10 @@ serve(async (req) => {
       );
     }
 
+    const persisted = await persistRates(rates);
+
     return new Response(
-      JSON.stringify({ ok: true, rates, fetchedAt: new Date().toISOString() }),
+      JSON.stringify({ ok: true, rates, persisted, fetchedAt: new Date().toISOString() }),
       { headers: CORS_HEADERS, status: 200 },
     );
   } catch (err: any) {

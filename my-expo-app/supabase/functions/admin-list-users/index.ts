@@ -37,16 +37,17 @@ Deno.serve(async (req: Request) => {
       throw new Error('Sadece adminler kullanıcı listesini görebilir');
     }
 
-    // auth.users + profiles birleştir
-    const { data: authUsers, error: listError } = await adminClient.auth.admin.listUsers({
-      perPage: 1000,
-    });
-    if (listError) throw new Error(listError.message);
-
-    const { data: profiles } = await adminClient
-      .from('profiles')
-      .select('*')
-      .order('created_at', { ascending: false });
+    // auth.users + profiles paralel — eskiden seri idi (~2× round-trip)
+    const [authRes, profRes] = await Promise.all([
+      adminClient.auth.admin.listUsers({ perPage: 1000 }),
+      adminClient
+        .from('profiles')
+        .select('id, full_name, email, phone, user_type, role, is_active, approval_status, clinic_name, clinic_id, lab_id, avatar_url, skill_level, monthly_salary, bonus_threshold_orders, bonus_per_extra_order, created_at, updated_at')
+        .order('created_at', { ascending: false }),
+    ]);
+    if (authRes.error) throw new Error(authRes.error.message);
+    const authUsers = authRes.data;
+    const profiles = profRes.data;
 
     const profileMap: Record<string, any> = {};
     (profiles ?? []).forEach((p: any) => { profileMap[p.id] = p; });

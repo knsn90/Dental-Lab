@@ -1,1 +1,5 @@
 .vercel
+supabase/.env
+.env*.local
+.DS_Store
+my-expo-app/supabase/.temp/
