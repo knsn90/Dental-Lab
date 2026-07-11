@@ -2412,7 +2412,6 @@
  "İnebolu": "İnebolu",
  "İnegöl": "İnegöl",
  "İngiliz Sterlini": "پوند انگلیس",
- "İngilizce": "انگلیسی",
  "İngiltere": "انگلستان",
  "İnhisar": "İnhisar",
  "İnley / Onley": "اینله / آنله",
@@ -4944,7 +4943,6 @@
  "Tür": "نوع",
  "TÜR": "نوع",
  "Türk Lirası": "لیر ترکیه",
- "Türkçe": "ترکی",
  "Türkeli": "Türkeli",
  "Türkiye": "ترکیه",
  "Türkiye'de en yaygın SMS gateway. SOAP/REST.": "رایج‌ترین درگاه پیامک در ترکیه. SOAP/REST.",
@@ -5647,5 +5645,10 @@
  "Klinik bildirimleri": "اعلان‌های کلینیک",
  "Personel avans talepleri": "درخواست‌های مساعده پرسنل",
  "Hesap hareketleri": "گردش حساب",
- "Hizmet katalog": "کاتالوگ خدمات"
+ "Hizmet katalog": "کاتالوگ خدمات",
+ "Pazartesi": "دوشنبه",
+ "Cuma": "جمعه",
+ "Cumartesi": "شنبه",
+ "Pazar": "یکشنبه",
+ "Vardiya pencerelerini gün gün tanımla. Öğle arası = iki pencere arasındaki boşluk. Bu saatler işin aktif çalışma süresinden mesai dışı + öğle molasını otomatik düşmek için kullanılır.": "پنجره‌های شیفت را روزبه‌روز تعریف کنید. فاصله ناهار = فاصله میان دو پنجره. این ساعت‌ها برای کسر خودکار زمان خارج از شیفت و استراحت ناهار از مدت کار فعال استفاده می‌شوند."
 }

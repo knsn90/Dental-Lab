@@ -19,6 +19,87 @@ import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LabFlowLogo } from '../../../core/ui/LabFlowLogo';
 import { SimanWordmark } from '../../../core/ui/SimanWordmark';
+import { useTranslation } from 'react-i18next';
+import { Globe, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react-native';
+import { SUPPORTED, setLanguage, type Lang } from '../../../core/i18n';
+
+// ── Auth ekranları için dil seçici (dropdown) — login/register/forgot ─────
+// Kapalı: globe + mevcut dil (native ad) + chevron. Açık: native adlı liste,
+// seçili olanda check. Dil adları HER ZAMAN native (autoTranslate'e takılmaz).
+const LANG_LABELS: Record<string, string> = { tr: 'Türkçe', en: 'English', de: 'Deutsch', fa: 'فارسی' };
+const LANG_HAIR = 'rgba(0,0,0,0.06)';
+function AuthLangPicker({ compact = false, dropUp = false }: { compact?: boolean; dropUp?: boolean } = {}) {
+  const { i18n } = useTranslation();
+  const cur = i18n.language;
+  const [open, setOpen] = React.useState(false);
+  const curLabel = LANG_LABELS[cur] ?? cur;
+
+  const W = compact ? 148 : 264;
+  const icon = compact ? 14 : 18;
+  const font = compact ? 12 : 14;
+  const padH = compact ? 11 : 16;
+  const padV = compact ? 7 : 12;
+  const radius = compact ? 11 : 14;
+
+  const list = open ? (
+    <View style={{
+      backgroundColor: '#FFFFFF', borderRadius: radius, overflow: 'hidden',
+      borderWidth: 1, borderColor: LANG_HAIR,
+      ...(dropUp
+        ? { position: 'absolute', bottom: '100%', left: 0, right: 0, marginBottom: 6, zIndex: 100 }
+        : { marginTop: 8 }),
+      ...(Platform.OS === 'web' ? { boxShadow: '0 12px 32px rgba(0,0,0,0.12)' } as any : { elevation: 8 }),
+    }}>
+      {(SUPPORTED as readonly Lang[]).map((lng, i) => {
+        const active = cur === lng;
+        return (
+          <Pressable
+            key={lng}
+            onPress={() => { setOpen(false); if (!active) setLanguage(lng); }}
+            style={{
+              flexDirection: 'row', alignItems: 'center',
+              paddingHorizontal: padH, paddingVertical: compact ? 10 : 13,
+              backgroundColor: active ? 'rgba(0,0,0,0.03)' : 'transparent',
+              borderTopWidth: i === 0 ? 0 : 1, borderTopColor: 'rgba(0,0,0,0.05)',
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+            }}
+          >
+            <Text style={{ flex: 1, fontFamily: AUTH_FONT.sans, fontSize: font, fontWeight: active ? '600' : '500', color: AUTH.ink }}>
+              {LANG_LABELS[lng] ?? lng}
+            </Text>
+            {active && <CheckCircle2 size={icon} color={AUTH.inkSoft} strokeWidth={1.6} />}
+          </Pressable>
+        );
+      })}
+    </View>
+  ) : null;
+
+  return (
+    <View style={{ width: W, position: 'relative' }}>
+      {dropUp && list}
+      {/* Kapalı buton */}
+      <Pressable
+        onPress={() => setOpen((o) => !o)}
+        style={{
+          flexDirection: 'row', alignItems: 'center', gap: compact ? 7 : 10,
+          backgroundColor: '#FFFFFF', borderRadius: radius,
+          paddingHorizontal: padH, paddingVertical: padV,
+          borderWidth: 1, borderColor: LANG_HAIR,
+          ...(Platform.OS === 'web' ? { cursor: 'pointer', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' } as any : {}),
+        }}
+      >
+        <Globe size={icon} color={AUTH.inkSoft} strokeWidth={1.8} />
+        <Text style={{ flex: 1, fontFamily: AUTH_FONT.sans, fontSize: font, fontWeight: '600', color: AUTH.ink }}>
+          {curLabel}
+        </Text>
+        {open
+          ? <ChevronUp size={icon} color={AUTH.inkSoft} strokeWidth={1.8} />
+          : <ChevronDown size={icon} color={AUTH.inkSoft} strokeWidth={1.8} />}
+      </Pressable>
+      {!dropUp && list}
+    </View>
+  );
+}
 
 // ── ToothIcon — projedeki assets/icons/tooth.svg path'i ──
 export function ToothIcon({ size = 20, color = '#000' }: { size?: number; color?: string }) {
@@ -228,13 +309,13 @@ export function AuthShell({ eyebrow, heading, subtitle, illustrationCaption, chi
       {/* Mobile için esnek spacer — footer'ı en alta itsin */}
       {!isDesktop && <View style={{ flex: 1, minHeight: 24 }} />}
 
-      {/* Bottom: footer link */}
-      <View style={{ alignItems: isDesktop ? 'flex-start' : 'center', marginTop: isDesktop ? 0 : 16 }}>
+      {/* Bottom: footer link (sol) + dil seçici (sağ, aynı satır) */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: isDesktop ? 0 : 16 }}>
         {footerLink ? (
           <Text style={{
+            flexShrink: 1,
             fontFamily: AUTH_FONT.sans,
             fontSize: 13, color: AUTH.inkSoft,
-            textAlign: isDesktop ? 'left' : 'center',
           }}>
             {footerLink.text}{' '}
             <Text
@@ -247,7 +328,8 @@ export function AuthShell({ eyebrow, heading, subtitle, illustrationCaption, chi
               {footerLink.linkText}
             </Text>
           </Text>
-        ) : <View style={{ height: 8 }} />}
+        ) : <View style={{ flexShrink: 1 }} />}
+        <AuthLangPicker compact dropUp />
       </View>
     </View>
   );
@@ -437,10 +519,11 @@ export function AuthShell({ eyebrow, heading, subtitle, illustrationCaption, chi
             {/* Form (children) */}
             <View>{children}</View>
 
-            {/* Footer link */}
-            {footerLink ? (
-              <View style={{ alignItems: 'center', marginTop: 22 }}>
+            {/* Footer link (sol) + dil seçici (sağ, aynı satır) */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 22 }}>
+              {footerLink ? (
                 <Text style={{
+                  flexShrink: 1,
                   fontFamily: AUTH_FONT.sans,
                   fontSize: 13, color: AUTH.inkSoft,
                 }}>
@@ -455,8 +538,9 @@ export function AuthShell({ eyebrow, heading, subtitle, illustrationCaption, chi
                     {footerLink.linkText}
                   </Text>
                 </Text>
-              </View>
-            ) : null}
+              ) : <View style={{ flexShrink: 1 }} />}
+              <AuthLangPicker compact dropUp />
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

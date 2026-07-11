@@ -2504,7 +2504,6 @@
  "İnebolu": "İnebolu",
  "İnegöl": "İnegöl",
  "İngiliz Sterlini": "British Pound",
- "İngilizce": "English",
  "İngiltere": "United Kingdom",
  "İnhisar": "İnhisar",
  "İnley / Onley": "Inlay / Onlay",
@@ -5089,7 +5088,6 @@
  "Tür": "Type",
  "TÜR": "TYPE",
  "Türk Lirası": "Turkish Lira",
- "Türkçe": "Turkish",
  "Türkeli": "Türkeli",
  "Türkiye": "Turkey",
  "Türkiye'de en yaygın SMS gateway. SOAP/REST.": "Most widely used SMS gateway in Turkey. SOAP/REST.",
@@ -5659,5 +5657,10 @@
  "Klinik bildirimleri": "Clinic notifications",
  "Personel avans talepleri": "Staff advance requests",
  "Hesap hareketleri": "Account movements",
- "Hizmet katalog": "Service catalog"
+ "Hizmet katalog": "Service catalog",
+ "Pazartesi": "Monday",
+ "Cuma": "Friday",
+ "Cumartesi": "Saturday",
+ "Pazar": "Sunday",
+ "Vardiya pencerelerini gün gün tanımla. Öğle arası = iki pencere arasındaki boşluk. Bu saatler işin aktif çalışma süresinden mesai dışı + öğle molasını otomatik düşmek için kullanılır.": "Define shift windows day by day. Lunch break = the gap between two windows. These hours are used to automatically deduct off-shift time + lunch break from the active working time."
 }

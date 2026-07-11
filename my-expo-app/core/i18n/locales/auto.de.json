@@ -2412,7 +2412,6 @@
  "İnebolu": "İnebolu",
  "İnegöl": "İnegöl",
  "İngiliz Sterlini": "Britisches Pfund",
- "İngilizce": "Englisch",
  "İngiltere": "England",
  "İnhisar": "İnhisar",
  "İnley / Onley": "Inlay / Onlay",
@@ -4944,7 +4943,6 @@
  "Tür": "Art",
  "TÜR": "ART",
  "Türk Lirası": "Türkische Lira",
- "Türkçe": "Türkisch",
  "Türkeli": "Türkeli",
  "Türkiye": "Türkei",
  "Türkiye'de en yaygın SMS gateway. SOAP/REST.": "Häufigstes SMS-Gateway in der Türkei. SOAP/REST.",
@@ -5647,5 +5645,10 @@
  "Klinik bildirimleri": "Klinik-Benachrichtigungen",
  "Personel avans talepleri": "Personal-Vorschussanträge",
  "Hesap hareketleri": "Kontobewegungen",
- "Hizmet katalog": "Servicekatalog"
+ "Hizmet katalog": "Servicekatalog",
+ "Pazartesi": "Montag",
+ "Cuma": "Freitag",
+ "Cumartesi": "Samstag",
+ "Pazar": "Sonntag",
+ "Vardiya pencerelerini gün gün tanımla. Öğle arası = iki pencere arasındaki boşluk. Bu saatler işin aktif çalışma süresinden mesai dışı + öğle molasını otomatik düşmek için kullanılır.": "Schichtfenster tageweise definieren. Mittagspause = Lücke zwischen zwei Fenstern. Diese Zeiten dienen dazu, Nicht-Schichtzeit + Mittagspause automatisch von der aktiven Arbeitszeit abzuziehen."
 }
