@@ -9,6 +9,7 @@ if (typeof globalThis.WeakRef === 'undefined') {
 
 import '../global.css'; // NativeWind global stylesheet
 import '../core/i18n'; // i18n çatısı — uygulama başında bir kez init
+import { isRTL } from '../core/i18n';
 import { installAutoTranslate } from '../core/i18n/autoTranslate';
 installAutoTranslate(); // global Text/TextInput runtime sözlük çevirisi (kaynak değişmeden)
 import { useTranslation } from 'react-i18next';
@@ -206,6 +207,17 @@ export default function RootLayout() {
   usePWA();
   // Dil değişince tüm ağacı remount et → runtime sözlük çevirisi anında uygulanır
   const { i18n: _i18nLang } = useTranslation();
+
+  // ── Tam RTL düzen (web): dil RTL ise kök <html dir="rtl"> ────────────────
+  // Bu, CSS seviyesinde TÜM flex-row'ları, metin hizasını ve akışı aynalar
+  // (yapısal ayna). Farsça/Arapça vb. için tasarım sağdan-sola olur.
+  const _isRtlLang = isRTL(_i18nLang.language);
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const el = document.documentElement;
+    el.setAttribute('dir', _isRtlLang ? 'rtl' : 'ltr');
+    el.setAttribute('lang', _i18nLang.language || 'tr');
+  }, [_isRtlLang, _i18nLang.language]);
 
   // Web: Outfit Google Fonts CDN ile geliyor.
   // Native: 5 ağırlığı .ttf olarak yüklüyoruz + Material icons.
