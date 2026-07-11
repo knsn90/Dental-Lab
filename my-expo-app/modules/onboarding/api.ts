@@ -118,36 +118,17 @@ export async function saveWizardData(payload: WizardPayload) {
       .eq('id', labId);
     if (error) throw error;
   } else {
-    // Yeni lab oluştur
-    const slug = payload.lab.name
-      .toLowerCase()
-      .replace(/[^a-z0-9ığüşöç]/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '')
-      .slice(0, 40) || 'lab';
-
-    const { data: lab, error } = await supabase
-      .from('labs')
-      .insert({
-        name: payload.lab.name,
-        slug: `${slug}-${Date.now().toString(36)}`,
-        owner_id: user.id,
-        phone: payload.lab.phone || null,
-        email: payload.lab.email || null,
-        address: payload.lab.address || null,
-        plan: 'trial',
-      })
-      .select()
-      .single();
+    // Yeni lab — sunucu-tarafı ATOMİK RPC: labs INSERT + profiles.lab_id UPDATE
+    // tek transaction'da; owner_id/lab_id'yi sunucu atar (client spoof edemez),
+    // slug + benzersizlik sunucuda üretilir. (bkz. migration create_lab_tenant)
+    const { data: newLabId, error } = await supabase.rpc('create_lab_tenant', {
+      p_name: payload.lab.name,
+      p_phone: payload.lab.phone || null,
+      p_email: payload.lab.email || null,
+      p_address: payload.lab.address || null,
+    });
     if (error) throw error;
-
-    labId = lab.id;
-
-    // Profil'e lab_id bağla
-    await supabase
-      .from('profiles')
-      .update({ lab_id: labId })
-      .eq('id', user.id);
+    labId = newLabId as string;
   }
 
   // 2) Klinik (atlanmadıysa)
