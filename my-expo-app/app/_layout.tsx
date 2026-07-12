@@ -10,10 +10,11 @@ if (typeof globalThis.WeakRef === 'undefined') {
 import '../global.css'; // NativeWind global stylesheet
 import '../core/i18n'; // i18n çatısı — uygulama başında bir kez init
 import { isRTL } from '../core/i18n';
+import { amIPlatformAdmin } from '../modules/platform/api';
 import { installAutoTranslate } from '../core/i18n/autoTranslate';
 installAutoTranslate(); // global Text/TextInput runtime sözlük çevirisi (kaynak değişmeden)
 import { useTranslation } from 'react-i18next';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Stack, useRouter, useSegments, useNavigationContainerRef } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Platform, View } from 'react-native';
@@ -255,6 +256,16 @@ export default function RootLayout() {
   const router = useRouter();
   const navRef = useNavigationContainerRef();
 
+  // Platform (super-admin) durumu — yönlendirme kararında kullanılır.
+  // null = henüz bilinmiyor (bu sırada setup-wizard'a erken atmayız).
+  const [platformAdmin, setPlatformAdmin] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!profile?.id) { setPlatformAdmin(null); return; }
+    let alive = true;
+    amIPlatformAdmin().then((v) => { if (alive) setPlatformAdmin(v); }).catch(() => { if (alive) setPlatformAdmin(false); });
+    return () => { alive = false; };
+  }, [profile?.id]);
+
   // Hydrate persisted theme mode (light/dark/system)
   useEffect(() => { useThemeModeStore.getState().hydrate(); }, []);
   useEffect(() => {
@@ -447,6 +458,13 @@ export default function RootLayout() {
     // Hiç lab yoksa setup-wizard'a yönlendir (ilk kurulum).
     // Multi-lab tenancy ileride başka bir yöntemle ayrılacak.
     if ((userType === 'lab' || userType === 'admin') && profile && !profile.lab_id) {
+      // Platform admin durumu netleşene kadar bekle → erken setup-wizard'ı önle
+      if (platformAdmin === null) return;
+      // Saf platform operatörü (lab'ı yok, platform_admins'te) → doğrudan konsol
+      if (platformAdmin) {
+        if (currentGroup !== '(platform)') router.replace('/(platform)' as any);
+        return;
+      }
       (async () => {
         const { data: labs } = await supabase.from('labs').select('id').limit(1);
         if (labs && labs.length > 0) {
@@ -522,7 +540,7 @@ export default function RootLayout() {
         }
       }
     }
-  }, [session, profile, loading]);
+  }, [session, profile, loading, platformAdmin]);
 
   // On native, wait for fonts before rendering
   if (!fontsLoaded && Platform.OS !== 'web') {
