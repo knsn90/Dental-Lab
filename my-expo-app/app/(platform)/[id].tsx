@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ChevronRight, Users, Building2, FileText, ClipboardList, CalendarClock, Save, LogOut, Eye } from 'lucide-react-native';
-import { labDetail, setLabStatus, setLabPlan, extendTrial, updateLabMeta, offboardLab, PLANS, type PlatformLabDetail, type Plan } from '../../modules/platform/api';
+import { ChevronRight, Users, Building2, FileText, ClipboardList, CalendarClock, Save, LogOut, Eye, ToggleLeft, ToggleRight } from 'lucide-react-native';
+import { labDetail, setLabStatus, setLabPlan, extendTrial, updateLabMeta, offboardLab, labFlags, setLabFlag, PLANS, type PlatformLabDetail, type Plan, type LabFlag } from '../../modules/platform/api';
 import { C, FONT, planTone } from '../../modules/platform/ui';
 
 export default function PlatformLabDetail() {
@@ -12,10 +12,14 @@ export default function PlatformLabDetail() {
   const [busy, setBusy] = useState(false);
   const [edit, setEdit] = useState<{ name: string; phone: string; email: string; address: string } | null>(null);
   const [confirmOff, setConfirmOff] = useState(false);
+  const [flags, setFlags] = useState<LabFlag[]>([]);
 
   const load = useCallback(async () => {
     if (!id) return;
-    try { const r = await labDetail(String(id)); setD(r); setEdit(null); } catch { setD(null); }
+    try {
+      const [r, f] = await Promise.all([labDetail(String(id)), labFlags(String(id)).catch(() => [])]);
+      setD(r); setFlags(f); setEdit(null);
+    } catch { setD(null); }
   }, [id]);
   useEffect(() => { load(); }, [load]);
 
@@ -127,6 +131,27 @@ export default function PlatformLabDetail() {
             </View>
           )}
         </Card>
+
+        {/* Özellik bayrakları */}
+        {flags.length > 0 && (
+          <Card title="Özellik bayrakları">
+            <View style={{ gap: 4 }}>
+              {flags.map((f) => (
+                <Pressable key={f.key} disabled={busy} onPress={() => run(() => setLabFlag(String(id), f.key, !f.effective))}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                  {f.effective ? <ToggleRight size={26} color={C.green} strokeWidth={1.8} /> : <ToggleLeft size={26} color={C.ink3} strokeWidth={1.8} />}
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ color: C.ink, fontSize: 14, fontWeight: '500' }}>{f.label || f.key}</Text>
+                    {f.description ? <Text style={{ color: C.ink3, fontSize: 12 }}>{f.description}</Text> : null}
+                  </View>
+                  {f.override == null
+                    ? <Text style={{ color: C.ink3, fontSize: 11 }}>varsayılan{f.default_on ? ' · açık' : ' · kapalı'}</Text>
+                    : <Text style={{ color: C.accent, fontSize: 11 }}>özel</Text>}
+                </Pressable>
+              ))}
+            </View>
+          </Card>
+        )}
 
         {/* Users */}
         <Text style={{ color: C.ink2, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10, marginTop: 4 }}>Kullanıcılar ({d.users.length})</Text>

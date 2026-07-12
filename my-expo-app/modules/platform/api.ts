@@ -153,3 +153,34 @@ export async function systemHealth(): Promise<SystemHealth> {
   if (error) throw error;
   return data as SystemHealth;
 }
+
+// ── F2b: announcements + feature flags ──
+export type Announcement = { id: number; title: string; body: string | null; level: 'info' | 'warning' | 'critical'; audience_lab: string | null; audience_name: string | null; active: boolean; starts_at: string; ends_at: string | null; created_at: string };
+export type LabFlag = { key: string; label: string | null; description: string | null; default_on: boolean; override: boolean | null; effective: boolean };
+
+export async function listAnnouncements(): Promise<Announcement[]> {
+  const { data, error } = await supabase.rpc('admin_list_announcements');
+  if (error) throw error;
+  return (data ?? []) as Announcement[];
+}
+export async function createAnnouncement(a: { title: string; body?: string; level?: string; audience_lab?: string | null }): Promise<void> {
+  const { error } = await supabase.rpc('admin_create_announcement', { p_title: a.title, p_body: a.body ?? null, p_level: a.level ?? 'info', p_audience_lab: a.audience_lab ?? null });
+  if (error) throw error;
+}
+export async function setAnnouncementActive(id: number, active: boolean): Promise<void> {
+  const { error } = await supabase.rpc('admin_set_announcement_active', { p_id: id, p_active: active });
+  if (error) throw error;
+}
+export async function deleteAnnouncement(id: number): Promise<void> {
+  const { error } = await supabase.rpc('admin_delete_announcement', { p_id: id });
+  if (error) throw error;
+}
+export async function labFlags(labId: string): Promise<LabFlag[]> {
+  const { data, error } = await supabase.rpc('admin_lab_flags', { p_lab: labId });
+  if (error) throw error;
+  return (data ?? []) as LabFlag[];
+}
+export async function setLabFlag(labId: string, key: string, enabled: boolean): Promise<void> {
+  const { error } = await supabase.rpc('admin_set_lab_flag', { p_lab: labId, p_key: key, p_enabled: enabled });
+  if (error) throw error;
+}

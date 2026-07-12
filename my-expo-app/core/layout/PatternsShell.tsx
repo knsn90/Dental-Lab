@@ -210,6 +210,10 @@ export function PatternsShell({
   const rtl = isRTL();
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   useEffect(() => { amIPlatformAdmin().then(setIsPlatformAdmin).catch(() => {}); }, []);
+  // Platform duyuruları — aktif olanlar üstte banner
+  const [announcements, setAnnouncements] = useState<Array<{ id: number; title: string; body: string | null; level: string }>>([]);
+  const [dismissedAnn, setDismissedAnn] = useState<number[]>([]);
+  useEffect(() => { (async () => { try { const { data } = await supabase.rpc('active_announcements'); setAnnouncements((data as any) ?? []); } catch { /* yoksay */ } })(); }, []);
   const [searchQ, setSearchQ] = useState('');
   const pageTitle = usePageTitleStore(s => s.title);
   const pageSubtitle = usePageTitleStore(s => s.subtitle);
@@ -426,6 +430,23 @@ export function PatternsShell({
          contentContainerStyle={{ flexGrow: 1 }}
          showsVerticalScrollIndicator={false}
        >
+        {/* Platform duyuru banner'ları */}
+        {announcements.filter((a) => !dismissedAnn.includes(a.id)).map((a) => {
+          const tone = a.level === 'critical' ? '#DC2626' : a.level === 'warning' ? '#D97706' : '#2563EB';
+          return (
+            <View key={a.id} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginHorizontal: 16, marginTop: 12, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12, backgroundColor: `${tone}14`, borderWidth: 1, borderColor: `${tone}33` }}>
+              <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: tone, marginTop: 6 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13.5, fontWeight: '700', color: '#1A1A1A' }}>{a.title}</Text>
+                {a.body ? <Text style={{ fontSize: 12.5, color: '#4B5563', marginTop: 2 }}>{a.body}</Text> : null}
+              </View>
+              <Pressable onPress={() => setDismissedAnn((p) => [...p, a.id])} style={{ padding: 2 }}>
+                <Text style={{ fontSize: 16, color: '#9A9A9A', lineHeight: 16 }}>×</Text>
+              </Pressable>
+            </View>
+          );
+        })}
+
         {/* TOP BAR — page title (left) only; toolbar absolute-pinned outside ScrollView */}
         {/* Sayfa başlığının sol kenarı, içerik kartlarının sol kenarıyla aynı hizada olmalı.
            Dikey olarak da sağ-üstteki arama/profil pill'i ile aynı hizada (top: 14). */}
