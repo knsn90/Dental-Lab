@@ -108,3 +108,24 @@ export async function removePlatformAdmin(userId: string): Promise<void> {
   const { error } = await supabase.rpc('admin_remove_platform_admin', { p_user: userId });
   if (error) throw error;
 }
+
+// ── F2: impersonation (read-only snapshot) + support queue ──
+export type LabSnapshot = {
+  lab: Record<string, any>;
+  counts: { users: number; orders: number; clinics: number; open_tickets: number };
+  users: PlatformLabDetail['users'];
+  recent_orders: Array<{ id: string; order_number: string | null; patient_name: string | null; work_type: string | null; status: string | null; is_urgent: boolean | null; created_at: string; delivery_date: string | null }>;
+  open_tickets: Array<{ id: string; subject: string | null; status: string | null; priority: string | null; created_at: string }>;
+};
+export type SupportTicket = { id: string; lab_name: string | null; user_name: string | null; user_email: string | null; subject: string | null; category: string | null; priority: string | null; status: string | null; created_at: string; last_message_at: string | null };
+
+export async function labSnapshot(id: string): Promise<LabSnapshot> {
+  const { data, error } = await supabase.rpc('admin_lab_snapshot', { p_lab: id });
+  if (error) throw error;
+  return data as LabSnapshot;
+}
+export async function supportTickets(status?: string | null, limit = 150): Promise<SupportTicket[]> {
+  const { data, error } = await supabase.rpc('admin_support_tickets', { p_status: status ?? null, p_limit: limit });
+  if (error) throw error;
+  return (data ?? []) as SupportTicket[];
+}

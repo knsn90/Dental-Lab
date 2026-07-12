@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
-import { LayoutGrid, Building2, ScrollText, ShieldCheck, LogOut } from 'lucide-react-native';
+import { LayoutGrid, Building2, ScrollText, ShieldCheck, LogOut, LifeBuoy } from 'lucide-react-native';
 import { supabase } from '../../core/api/supabase';
 
 export const C = {
@@ -17,6 +17,7 @@ export const planTone = (p: string) =>
 const NAV = [
   { key: '', label: 'Genel Bakış', icon: LayoutGrid, href: '/(platform)' },
   { key: 'labs', label: "Lab'lar", icon: Building2, href: '/(platform)/labs' },
+  { key: 'support', label: 'Destek', icon: LifeBuoy, href: '/(platform)/support' },
   { key: 'audit', label: 'Denetim', icon: ScrollText, href: '/(platform)/audit' },
   { key: 'admins', label: 'Yöneticiler', icon: ShieldCheck, href: '/(platform)/admins' },
 ];
@@ -65,6 +66,7 @@ export function Kpi({ label, value, tone }: { label: string; value: string | num
 export const usePlatformActive = () => {
   const p = usePathname();
   if (p?.includes('/labs')) return 'labs';
+  if (p?.includes('/support')) return 'support';
   if (p?.includes('/audit')) return 'audit';
   if (p?.includes('/admins')) return 'admins';
   return '';

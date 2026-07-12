@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ChevronRight, Users, Building2, FileText, ClipboardList, CalendarClock, Save, LogOut } from 'lucide-react-native';
+import { ChevronRight, Users, Building2, FileText, ClipboardList, CalendarClock, Save, LogOut, Eye } from 'lucide-react-native';
 import { labDetail, setLabStatus, setLabPlan, extendTrial, updateLabMeta, offboardLab, PLANS, type PlatformLabDetail, type Plan } from '../../modules/platform/api';
 import { C, FONT, planTone } from '../../modules/platform/ui';
 
@@ -39,6 +39,12 @@ export default function PlatformLabDetail() {
         <Text style={{ color: C.ink3, fontSize: 13, marginBottom: 20 }}>
           {lab.slug} · kayıt {new Date(lab.created_at).toLocaleDateString()} · deneme bitiş {lab.trial_ends_at ? new Date(lab.trial_ends_at).toLocaleDateString() : '—'}
         </Text>
+
+        <Pressable onPress={() => router.push(`/(platform)/view/${id}` as any)}
+          style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 22, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10, backgroundColor: 'rgba(79,141,247,0.14)', borderWidth: 1, borderColor: 'rgba(79,141,247,0.35)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+          <Eye size={15} color={C.accent} strokeWidth={1.9} />
+          <Text style={{ color: C.ink, fontSize: 13, fontWeight: '600' }}>Lab olarak görüntüle (salt-okunur)</Text>
+        </Pressable>
 
         {/* Counts */}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 24 }}>
