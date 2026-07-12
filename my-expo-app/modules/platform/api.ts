@@ -129,3 +129,27 @@ export async function supportTickets(status?: string | null, limit = 150): Promi
   if (error) throw error;
   return (data ?? []) as SupportTicket[];
 }
+
+// ── F3: metrics + system health ──
+export type PlatformMetrics = {
+  funnel: { labs: number; with_users: number; with_orders: number; active_30d: number };
+  retention: { new_30d: number; activated_30d: number; active_7d: number; churned: number };
+  orders_30d: number;
+};
+export type SystemHealth = {
+  rls: { tables: number; enabled: number; disabled: number; disabled_list: string[] };
+  definer_functions: number;
+  extensions: Record<string, boolean>;
+  cron_jobs: Array<{ job: string; schedule: string; active: boolean }>;
+  rows: Record<string, number>;
+};
+export async function platformMetrics(): Promise<PlatformMetrics> {
+  const { data, error } = await supabase.rpc('admin_platform_metrics');
+  if (error) throw error;
+  return data as PlatformMetrics;
+}
+export async function systemHealth(): Promise<SystemHealth> {
+  const { data, error } = await supabase.rpc('admin_system_health');
+  if (error) throw error;
+  return data as SystemHealth;
+}
