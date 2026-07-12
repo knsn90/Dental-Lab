@@ -72,6 +72,7 @@ import { openSupport } from '../store/supportStore';
 import { MOBILE_PANEL_THEMES, type MobilePanel } from '../theme/mobileDesignTokens';
 import { useThemeModeStore } from '../store/themeModeStore';
 import { isRTL } from '../i18n';
+import { amIPlatformAdmin } from '../../modules/platform/api';
 
 // ── Types (compatible with DesktopShell's NavItem) ────────────────────
 export interface PatternsNavItem {
@@ -207,6 +208,8 @@ export function PatternsShell({
   }, [navItems, permStore.loaded, permStore.permissions]);
   const [collapsed, setCollapsed] = useState(false);
   const rtl = isRTL();
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
+  useEffect(() => { amIPlatformAdmin().then(setIsPlatformAdmin).catch(() => {}); }, []);
   const [searchQ, setSearchQ] = useState('');
   const pageTitle = usePageTitleStore(s => s.title);
   const pageSubtitle = usePageTitleStore(s => s.subtitle);
@@ -621,6 +624,15 @@ export function PatternsShell({
                     <UserCog size={14} color="#2C2C2C" strokeWidth={1.8} />
                     <Text className="text-[13px] text-ink-700">Profil</Text>
                   </Pressable>
+                  {isPlatformAdmin && (
+                    <Pressable
+                      onPress={() => { setProfileMenuOpen(false); router.push('/(platform)' as any); }}
+                      className="px-4 py-2.5 flex-row items-center gap-2.5"
+                    >
+                      <ShieldCheck size={14} color="#4F8DF7" strokeWidth={1.8} />
+                      <Text className="text-[13px] text-ink-700">Platform</Text>
+                    </Pressable>
+                  )}
                   <View className="h-px bg-black/[0.06]" />
                   <Pressable
                     onPress={handleLogout}

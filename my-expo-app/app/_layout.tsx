@@ -479,6 +479,9 @@ export default function RootLayout() {
       else                                        router.replace('/(lab)');
     } else {
       if (currentGroup !== expectedGroup) {
+        // Platform (super-admin) paneli — grup içinde kalmasına izin ver;
+        // asıl yetki kontrolü (platform)/_layout'ta is_platform_admin() ile yapılır.
+        if (currentGroup === '(platform)') return;
         // Admin kullanıcılar lab panelini de görüntüleyebilir (çoklu sekme desteği)
         if (userType === 'admin' && currentGroup === '(lab)') return;
         // Teknisyenler istasyon panelinde kalabilir
