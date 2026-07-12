@@ -55,3 +55,56 @@ export async function setLabPlan(id: string, plan: Plan): Promise<void> {
   const { error } = await supabase.rpc('admin_set_lab_plan', { p_lab: id, p_plan: plan });
   if (error) throw error;
 }
+
+// ── F1: stats / growth / management ──
+export type PlatformStats = {
+  totals: { labs: number; active: number; suspended: number; trial: number; users: number; orders: number; clinics: number };
+  plans: Record<string, number>;
+  attention: { trial_ending_7d: number; no_orders: number; silent_30d: number };
+};
+export type GrowthPoint = { week: string; new_labs: number; orders: number };
+export type AuditRow = { id: number; actor: string | null; action: string; lab_name: string | null; detail: any; created_at: string };
+export type PlatformAdmin = { user_id: string; name: string | null; email: string | null; note: string | null; created_at: string };
+
+const num = (o: any, keys: string[]) => { for (const k of keys) if (o && o[k] != null) o[k] = Number(o[k]) || 0; return o; };
+
+export async function platformStats(): Promise<PlatformStats> {
+  const { data, error } = await supabase.rpc('admin_platform_stats');
+  if (error) throw error;
+  return data as PlatformStats;
+}
+export async function growthSeries(): Promise<GrowthPoint[]> {
+  const { data, error } = await supabase.rpc('admin_growth_series');
+  if (error) throw error;
+  return ((data ?? []) as any[]).map((p) => num({ ...p }, ['new_labs', 'orders'])) as GrowthPoint[];
+}
+export async function extendTrial(id: string, days: number): Promise<void> {
+  const { error } = await supabase.rpc('admin_extend_trial', { p_lab: id, p_days: days });
+  if (error) throw error;
+}
+export async function offboardLab(id: string): Promise<void> {
+  const { error } = await supabase.rpc('admin_offboard_lab', { p_lab: id });
+  if (error) throw error;
+}
+export async function updateLabMeta(id: string, m: { name: string; phone?: string | null; email?: string | null; address?: string | null }): Promise<void> {
+  const { error } = await supabase.rpc('admin_update_lab_meta', { p_lab: id, p_name: m.name, p_phone: m.phone ?? null, p_email: m.email ?? null, p_address: m.address ?? null });
+  if (error) throw error;
+}
+export async function auditLog(limit = 100): Promise<AuditRow[]> {
+  const { data, error } = await supabase.rpc('admin_audit_log', { p_limit: limit });
+  if (error) throw error;
+  return (data ?? []) as AuditRow[];
+}
+export async function listPlatformAdmins(): Promise<PlatformAdmin[]> {
+  const { data, error } = await supabase.rpc('admin_list_platform_admins');
+  if (error) throw error;
+  return (data ?? []) as PlatformAdmin[];
+}
+export async function addPlatformAdmin(email: string, note?: string): Promise<void> {
+  const { error } = await supabase.rpc('admin_add_platform_admin', { p_email: email, p_note: note ?? null });
+  if (error) throw error;
+}
+export async function removePlatformAdmin(userId: string): Promise<void> {
+  const { error } = await supabase.rpc('admin_remove_platform_admin', { p_user: userId });
+  if (error) throw error;
+}
