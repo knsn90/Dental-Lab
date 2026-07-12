@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
-import { LayoutGrid, Building2, ScrollText, ShieldCheck, LogOut, LifeBuoy, Activity, Megaphone } from 'lucide-react-native';
+import { LayoutGrid, Building2, ScrollText, ShieldCheck, LogOut, LifeBuoy, Activity, Megaphone, CreditCard } from 'lucide-react-native';
 import { supabase } from '../../core/api/supabase';
 
 export const C = {
@@ -17,6 +17,7 @@ export const planTone = (p: string) =>
 const NAV = [
   { key: '', label: 'Genel Bakış', icon: LayoutGrid, href: '/(platform)' },
   { key: 'labs', label: "Lab'lar", icon: Building2, href: '/(platform)/labs' },
+  { key: 'billing', label: 'Faturalama', icon: CreditCard, href: '/(platform)/billing' },
   { key: 'support', label: 'Destek', icon: LifeBuoy, href: '/(platform)/support' },
   { key: 'announcements', label: 'Duyuru', icon: Megaphone, href: '/(platform)/announcements' },
   { key: 'health', label: 'Sağlık', icon: Activity, href: '/(platform)/health' },
@@ -68,6 +69,7 @@ export function Kpi({ label, value, tone }: { label: string; value: string | num
 export const usePlatformActive = () => {
   const p = usePathname();
   if (p?.includes('/labs')) return 'labs';
+  if (p?.includes('/billing')) return 'billing';
   if (p?.includes('/support')) return 'support';
   if (p?.includes('/announcements')) return 'announcements';
   if (p?.includes('/health')) return 'health';
@@ -75,6 +77,13 @@ export const usePlatformActive = () => {
   if (p?.includes('/admins')) return 'admins';
   return '';
 };
+
+/** Para: kuruş (minor units) → biçimli metin */
+export function fmtMoney(cents: number, currency = 'TRY') {
+  const sym: Record<string, string> = { TRY: '₺', USD: '$', EUR: '€', GBP: '£' };
+  const v = (Number(cents) || 0) / 100;
+  return `${sym[currency] ?? ''}${v.toLocaleString('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+}
 
 /** Web CSV indirme */
 export function downloadCsv(filename: string, rows: (string | number)[][]) {

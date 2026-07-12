@@ -184,3 +184,31 @@ export async function setLabFlag(labId: string, key: string, enabled: boolean): 
   const { error } = await supabase.rpc('admin_set_lab_flag', { p_lab: labId, p_key: key, p_enabled: enabled });
   if (error) throw error;
 }
+
+// ── F4: billing ──
+export type BillingOverview = { mrr_cents: number; arr_cents: number; currency: string; paying_labs: number; outstanding_cents: number; open_invoices: number; paid_30d_cents: number };
+export type PlanDef = { key: string; name: string; price_cents: number; currency: string; billing_interval: string; sort: number };
+export type PlatformInvoice = { id: number; lab_id: string; lab_name?: string | null; plan_key: string | null; amount_cents: number; currency: string; status: 'open' | 'paid' | 'void'; period_start: string | null; period_end: string | null; issued_at: string; due_at: string | null; paid_at: string | null };
+export type LabBilling = { plan: string; is_active: boolean; trial_ends_at: string | null; plan_def: PlanDef | null; invoices: PlatformInvoice[] };
+
+export async function billingOverview(): Promise<BillingOverview> {
+  const { data, error } = await supabase.rpc('admin_billing_overview'); if (error) throw error; return data as BillingOverview;
+}
+export async function listPlans(): Promise<PlanDef[]> {
+  const { data, error } = await supabase.rpc('admin_list_plans'); if (error) throw error; return (data ?? []) as PlanDef[];
+}
+export async function setPlanPrice(key: string, priceCents: number, currency = 'TRY'): Promise<void> {
+  const { error } = await supabase.rpc('admin_set_plan_price', { p_key: key, p_price_cents: priceCents, p_currency: currency }); if (error) throw error;
+}
+export async function listInvoices(status?: string | null, limit = 100): Promise<PlatformInvoice[]> {
+  const { data, error } = await supabase.rpc('admin_list_invoices', { p_status: status ?? null, p_limit: limit }); if (error) throw error; return (data ?? []) as PlatformInvoice[];
+}
+export async function labBilling(labId: string): Promise<LabBilling> {
+  const { data, error } = await supabase.rpc('admin_lab_billing', { p_lab: labId }); if (error) throw error; return data as LabBilling;
+}
+export async function createInvoice(labId: string, amountCents: number, opts?: { currency?: string; planKey?: string | null; dueAt?: string | null; note?: string | null }): Promise<void> {
+  const { error } = await supabase.rpc('admin_create_invoice', { p_lab: labId, p_amount_cents: amountCents, p_currency: opts?.currency ?? 'TRY', p_plan_key: opts?.planKey ?? null, p_period_start: null, p_period_end: null, p_due_at: opts?.dueAt ?? null, p_note: opts?.note ?? null }); if (error) throw error;
+}
+export async function setInvoiceStatus(id: number, status: 'open' | 'paid' | 'void'): Promise<void> {
+  const { error } = await supabase.rpc('admin_set_invoice_status', { p_id: id, p_status: status }); if (error) throw error;
+}

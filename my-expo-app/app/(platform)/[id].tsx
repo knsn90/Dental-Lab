@@ -2,8 +2,9 @@ import { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ChevronRight, Users, Building2, FileText, ClipboardList, CalendarClock, Save, LogOut, Eye, ToggleLeft, ToggleRight } from 'lucide-react-native';
-import { labDetail, setLabStatus, setLabPlan, extendTrial, updateLabMeta, offboardLab, labFlags, setLabFlag, PLANS, type PlatformLabDetail, type Plan, type LabFlag } from '../../modules/platform/api';
-import { C, FONT, planTone } from '../../modules/platform/ui';
+import { labDetail, setLabStatus, setLabPlan, extendTrial, updateLabMeta, offboardLab, labFlags, setLabFlag, labBilling, createInvoice, setInvoiceStatus, PLANS, type PlatformLabDetail, type Plan, type LabFlag, type LabBilling } from '../../modules/platform/api';
+import { C, FONT, planTone, fmtMoney } from '../../modules/platform/ui';
+import { Check } from 'lucide-react-native';
 
 export default function PlatformLabDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -13,12 +14,13 @@ export default function PlatformLabDetail() {
   const [edit, setEdit] = useState<{ name: string; phone: string; email: string; address: string } | null>(null);
   const [confirmOff, setConfirmOff] = useState(false);
   const [flags, setFlags] = useState<LabFlag[]>([]);
+  const [billing, setBilling] = useState<LabBilling | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
     try {
-      const [r, f] = await Promise.all([labDetail(String(id)), labFlags(String(id)).catch(() => [])]);
-      setD(r); setFlags(f); setEdit(null);
+      const [r, f, b] = await Promise.all([labDetail(String(id)), labFlags(String(id)).catch(() => []), labBilling(String(id)).catch(() => null)]);
+      setD(r); setFlags(f); setBilling(b); setEdit(null);
     } catch { setD(null); }
   }, [id]);
   useEffect(() => { load(); }, [load]);
@@ -131,6 +133,42 @@ export default function PlatformLabDetail() {
             </View>
           )}
         </Card>
+
+        {/* Abonelik & Faturalar */}
+        {billing && (
+          <Card title="Abonelik & faturalar">
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <Text style={{ color: C.ink2, fontSize: 13 }}>Plan:</Text>
+              <Text style={{ color: C.ink, fontSize: 14, fontWeight: '600' }}>{billing.plan_def?.name ?? billing.plan}</Text>
+              <Text style={{ color: C.ink3, fontSize: 13 }}>{billing.plan_def ? fmtMoney(billing.plan_def.price_cents, billing.plan_def.currency) + ' / ' + billing.plan_def.billing_interval : ''}</Text>
+              <View style={{ flex: 1 }} />
+              {billing.plan_def && billing.plan_def.price_cents > 0 && (
+                <Pressable disabled={busy} onPress={() => run(() => createInvoice(String(id), billing.plan_def!.price_cents, { currency: billing.plan_def!.currency, planKey: billing.plan }))}
+                  style={{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10, backgroundColor: C.accent, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                  <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>Fatura kes</Text>
+                </Pressable>
+              )}
+            </View>
+            {billing.invoices.length === 0 ? (
+              <Text style={{ color: C.ink3, fontSize: 13 }}>Fatura yok.</Text>
+            ) : (
+              <View style={{ gap: 2 }}>
+                {billing.invoices.map((inv) => (
+                  <View key={inv.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 }}>
+                    <Text style={{ color: C.ink3, fontSize: 12, width: 90 }}>#{inv.id} · {new Date(inv.issued_at).toLocaleDateString()}</Text>
+                    <Text style={{ flex: 1, color: C.ink, fontSize: 13, fontWeight: '600', fontFamily: FONT }}>{fmtMoney(inv.amount_cents, inv.currency)}</Text>
+                    <Text style={{ color: inv.status === 'paid' ? C.green : inv.status === 'void' ? C.ink3 : C.amber, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', width: 56 }}>{inv.status}</Text>
+                    {inv.status === 'open' && (
+                      <Pressable disabled={busy} onPress={() => run(() => setInvoiceStatus(inv.id, 'paid'))} style={{ padding: 6, borderRadius: 8, backgroundColor: 'rgba(55,194,133,0.12)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                        <Check size={14} color={C.green} strokeWidth={2} />
+                      </Pressable>
+                    )}
+                  </View>
+                ))}
+              </View>
+            )}
+          </Card>
+        )}
 
         {/* Özellik bayrakları */}
         {flags.length > 0 && (
