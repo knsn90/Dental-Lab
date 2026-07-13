@@ -107,6 +107,7 @@ export function PlatformTopBar() {
   const [q, setQ] = useState('');
   const [labs, setLabs] = useState<{ id: string; name: string; slug: string }[]>([]);
   const [me, setMe] = useState<{ name: string; email: string }>({ name: '', email: '' });
+  const [homeBase, setHomeBase] = useState('/(lab)');
   const [menu, setMenu] = useState(false);
   const [focus, setFocus] = useState(false);
 
@@ -116,10 +117,25 @@ export function PlatformTopBar() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       let name = user.email ?? '';
-      try { const { data } = await supabase.from('profiles').select('full_name').eq('id', user.id).maybeSingle(); if ((data as any)?.full_name) name = (data as any).full_name; } catch {}
+      try {
+        const { data } = await supabase.from('profiles').select('full_name, user_type, role').eq('id', user.id).maybeSingle();
+        const p = data as any;
+        if (p?.full_name) name = p.full_name;
+        const ut = p?.user_type, role = p?.role;
+        setHomeBase(
+          ut === 'admin' ? '/(admin)'
+          : ut === 'clinic_admin' || ut === 'clinic_secretary' ? '/(clinic)'
+          : ut === 'doctor' ? '/(doctor)'
+          : (ut === 'lab' && role === 'courier') ? '/(courier)'
+          : (ut === 'lab' && role === 'technician') ? '/(station)'
+          : '/(lab)'
+        );
+      } catch {}
       setMe({ name, email: user.email ?? '' });
     })();
   }, []);
+
+  const goHome = () => { try { if (typeof window !== 'undefined') window.localStorage?.removeItem('nx_panel'); } catch {} setMenu(false); router.replace(homeBase as any); };
 
   const s = q.trim().toLowerCase();
   const results = s ? labs.filter((l) => `${l.name} ${l.slug}`.toLowerCase().includes(s)).slice(0, 6) : [];
@@ -168,7 +184,7 @@ export function PlatformTopBar() {
               <Text numberOfLines={1} style={{ color: C.ink3, fontSize: 12, marginTop: 2 }}>{me.email}</Text>
               <View style={{ flexDirection: 'row', marginTop: 8 }}><Chip tone={C.accent}>PLATFORM ADMIN</Chip></View>
             </View>
-            <Pressable onPress={() => { try { if (typeof window !== 'undefined') window.localStorage?.removeItem('nx_panel'); } catch {} setMenu(false); router.replace('/' as any); }}
+            <Pressable onPress={goHome}
               style={({ hovered }: any) => [{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: C.line, backgroundColor: hovered ? C.cardHover : 'transparent', ...(web ? { cursor: 'pointer' } : {}) }]}>
               <LayoutGrid size={15} color={C.ink2} strokeWidth={1.9} />
               <Text style={{ color: C.ink, fontSize: 13, fontWeight: '600' }}>Uygulama paneline dön</Text>
