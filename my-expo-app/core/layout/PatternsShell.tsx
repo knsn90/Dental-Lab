@@ -193,6 +193,12 @@ export function PatternsShell({
   const { profile } = useAuthStore();
   const permStore = usePermissionStore();
 
+  // Platform konsolu dışındaki bir panel aktif → platform bağlam bayrağını temizle
+  // (aksi halde çift-rol admin lab paneline geçse bile refresh onu platforma geri atardı).
+  useEffect(() => {
+    try { if (typeof window !== 'undefined') window.localStorage?.removeItem('nx_panel'); } catch {}
+  }, []);
+
   // Filter nav items by RBAC permissions
   const filteredNavItems = useMemo(() => {
     if (!permStore.loaded) return navItems; // show all while loading

@@ -449,6 +449,17 @@ export default function RootLayout() {
                         : '(lab)';
     const currentGroup  = segments[0];
 
+    // ── Platform konsolu bağlamı (grup URL'de gizli) ──
+    // Kullanıcı platform konsolundayken sekme yenilerse expo-router grubu koruyamayıp
+    // '/'ya (kök index) düşebiliyor; oradan da user_type'a göre lab paneline atılıyordu.
+    // localStorage bayrağı set'liyse ve kullanıcı platform admin ise platformda tut.
+    const wantsPlatform = (typeof window !== 'undefined' && (() => { try { return window.localStorage?.getItem('nx_panel') === 'platform'; } catch { return false; } })());
+    if (wantsPlatform) {
+      if (platformAdmin === null) return;               // yetki netleşene kadar bekle
+      if (platformAdmin) { if (currentGroup !== '(platform)') router.replace('/(platform)' as any); return; }
+      try { window.localStorage?.removeItem('nx_panel'); } catch {} // bayat bayrak → temizle, normal akış
+    }
+
     // Onaylanmamış hekim / klinik yöneticisi / sekreter — giriş engelle
     const needsApproval = ['doctor', 'clinic_admin', 'clinic_secretary'].includes(userType as string);
     if (needsApproval && profile?.approval_status && profile.approval_status !== 'approved') {

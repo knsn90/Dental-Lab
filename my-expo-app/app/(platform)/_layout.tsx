@@ -35,8 +35,14 @@ export default function PlatformLayout() {
       }
       const allowed = await amIPlatformAdmin();
       if (!alive) return;
-      if (allowed) { setOk(true); return; }
+      if (allowed) {
+        // Platform bağlamını kalıcı kıl — grup URL'de gizli olduğundan refresh'te
+        // kök index/layout bunu okuyup platforma geri döner (lab paneline atmaz).
+        try { if (typeof window !== 'undefined') window.localStorage?.setItem('nx_panel', 'platform'); } catch {}
+        setOk(true); return;
+      }
       if (tries < 3) { setTimeout(() => alive && decide(tries + 1), 400); return; }
+      try { if (typeof window !== 'undefined') window.localStorage?.removeItem('nx_panel'); } catch {}
       setOk(false); router.replace('/' as any); // kesin yetkisiz
     };
     decide(0);

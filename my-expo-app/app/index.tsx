@@ -59,6 +59,18 @@ export default function Index() {
   // Profile geldi → splash'ı kapat, panel'e yönlendir
   signalAppReady();
 
+  // Platform konsolu bağlamı korunsun. (platform) bir route grubu olduğundan
+  // URL'de gizli (Genel Bakış = "/") → refresh'te bu index'e düşülüp kullanıcı
+  // lab paneline atılıyordu. Bayrak set'liyse platforma geri dön (yetki kontrolü
+  // (platform)/_layout'ta; yetkisizse orası bayrağı temizleyip '/'ya atar → döngü yok).
+  const lastPanel = (typeof window !== 'undefined' && window.localStorage) ? window.localStorage.getItem('nx_panel') : null;
+  if (lastPanel === 'platform') {
+    const wp = (typeof window !== 'undefined' && window.location?.pathname) ? window.location.pathname : '/';
+    const wq = (typeof window !== 'undefined' && window.location?.search) ? window.location.search : '';
+    const sub = wp && wp !== '/' && !wp.startsWith('/(') && !wp.startsWith('/index');
+    return <Redirect href={(sub ? `/(platform)${wp}${wq}` : '/(platform)') as any} />;
+  }
+
   const userType = profile.user_type;
   const userRole = profile.role;
 
