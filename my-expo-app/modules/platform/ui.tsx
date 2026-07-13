@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
-import { LayoutGrid, Building2, ScrollText, ShieldCheck, LogOut, LifeBuoy, Activity, Megaphone, CreditCard, Users } from 'lucide-react-native';
+import { LayoutGrid, Building2, ScrollText, ShieldCheck, LogOut, LifeBuoy, Activity, Megaphone, CreditCard, Users, Settings } from 'lucide-react-native';
 import { supabase } from '../../core/api/supabase';
 
 export const C = {
@@ -23,6 +23,7 @@ const NAV = [
   { key: 'announcements', label: 'Duyuru', icon: Megaphone, href: '/(platform)/announcements' },
   { key: 'health', label: 'Sağlık', icon: Activity, href: '/(platform)/health' },
   { key: 'audit', label: 'Denetim', icon: ScrollText, href: '/(platform)/audit' },
+  { key: 'settings', label: 'Ayarlar', icon: Settings, href: '/(platform)/settings' },
   { key: 'admins', label: 'Yöneticiler', icon: ShieldCheck, href: '/(platform)/admins' },
 ];
 
@@ -75,6 +76,7 @@ export const usePlatformActive = () => {
   if (p?.includes('/support')) return 'support';
   if (p?.includes('/announcements')) return 'announcements';
   if (p?.includes('/health')) return 'health';
+  if (p?.includes('/settings')) return 'settings';
   if (p?.includes('/audit')) return 'audit';
   if (p?.includes('/admins')) return 'admins';
   return '';

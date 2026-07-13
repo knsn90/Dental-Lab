@@ -247,3 +247,15 @@ export async function sendPasswordReset(email: string): Promise<void> {
   const { error } = await supabase.auth.resetPasswordForEmail(email, redirectTo ? { redirectTo } : undefined);
   if (error) throw error;
 }
+
+// ── F7: system settings ──
+export type PlatformSettings = Record<string, any>;
+export async function getSettings(): Promise<PlatformSettings> {
+  const { data, error } = await supabase.rpc('admin_get_settings'); if (error) throw error; return (data ?? {}) as PlatformSettings;
+}
+export async function setSetting(key: string, value: any): Promise<void> {
+  const { error } = await supabase.rpc('admin_set_setting', { p_key: key, p_value: value }); if (error) throw error;
+}
+export async function publicPlatformStatus(): Promise<{ maintenance_mode: boolean; maintenance_message: string; registration_open: boolean; app_name: string }> {
+  const { data, error } = await supabase.rpc('public_platform_status'); if (error) throw error; return data as any;
+}

@@ -10,14 +10,14 @@ if (typeof globalThis.WeakRef === 'undefined') {
 import '../global.css'; // NativeWind global stylesheet
 import '../core/i18n'; // i18n çatısı — uygulama başında bir kez init
 import { isRTL } from '../core/i18n';
-import { amIPlatformAdmin } from '../modules/platform/api';
+import { amIPlatformAdmin, publicPlatformStatus } from '../modules/platform/api';
 import { installAutoTranslate } from '../core/i18n/autoTranslate';
 installAutoTranslate(); // global Text/TextInput runtime sözlük çevirisi (kaynak değişmeden)
 import { useTranslation } from 'react-i18next';
 import { useEffect, useState } from 'react';
 import { Stack, useRouter, useSegments, useNavigationContainerRef } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { Platform, View } from 'react-native';
+import { Platform, View, Text, Pressable } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ToastContainer } from '../core/ui/Toast';
 import { RootErrorBoundary, installGlobalErrorHandler } from '../core/ui/RootErrorBoundary';
@@ -265,6 +265,12 @@ export default function RootLayout() {
     amIPlatformAdmin().then((v) => { if (alive) setPlatformAdmin(v); }).catch(() => { if (alive) setPlatformAdmin(false); });
     return () => { alive = false; };
   }, [profile?.id]);
+
+  // Bakım modu — fail-open (okuma başarısızsa engelleme yok)
+  const [maintenance, setMaintenance] = useState<{ on: boolean; msg: string } | null>(null);
+  useEffect(() => {
+    (async () => { try { const st = await publicPlatformStatus(); setMaintenance({ on: !!st.maintenance_mode, msg: String(st.maintenance_message || '') }); } catch { /* fail-open */ } })();
+  }, [session?.user?.id]);
 
   // Hydrate persisted theme mode (light/dark/system)
   useEffect(() => { useThemeModeStore.getState().hydrate(); }, []);
@@ -545,6 +551,23 @@ export default function RootLayout() {
   // On native, wait for fonts before rendering
   if (!fontsLoaded && Platform.OS !== 'web') {
     return <View style={{ flex: 1, backgroundColor: '#FFFFFF' }} />;
+  }
+
+  // Bakım modu — giriş yapmış, platform-admin OLMAYAN kullanıcıları engelle.
+  // Auth ekranları (session yok) etkilenmez → platform admin giriş yapıp kapatabilir.
+  if (maintenance?.on && session && platformAdmin === false) {
+    return (
+      <SafeAreaProvider>
+        <View style={{ flex: 1, backgroundColor: '#0E0E0E', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+          <Text style={{ fontSize: 48, marginBottom: 16 }}>🛠️</Text>
+          <Text style={{ color: '#FFFFFF', fontSize: 22, fontWeight: '700', textAlign: 'center', marginBottom: 10 }}>Bakım çalışması</Text>
+          <Text style={{ color: '#9A9A9A', fontSize: 15, textAlign: 'center', maxWidth: 420, lineHeight: 22 }}>{maintenance.msg || 'Kısa süre sonra döneceğiz.'}</Text>
+          <Pressable onPress={() => supabase.auth.signOut()} style={{ marginTop: 28, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' }}>
+            <Text style={{ color: '#EAEAEA', fontSize: 14, fontWeight: '600' }}>Çıkış yap</Text>
+          </Pressable>
+        </View>
+      </SafeAreaProvider>
+    );
   }
 
   return (
