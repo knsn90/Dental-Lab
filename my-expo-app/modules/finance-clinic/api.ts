@@ -11,7 +11,16 @@
  */
 
 import { supabase } from '../../core/api/supabase';
+import { getActiveLabId } from '../../core/store/activeLabStore';
 import { getBaseCurrency } from '../../core/money/baseCurrency';
+
+// Çoklu-lab: aktif lab seçiliyse sorguyu o lab'a daralt (UX bölmesi; RLS klinik
+// verisini sahiplikle sınırlar). Aktif lab yoksa (tek-lab/lab-admin) NO-OP.
+// invoices tablosu için col='lab_id'; payments (join) için col='invoices.lab_id'.
+function labEq<T>(q: T, col: string = 'lab_id'): T {
+  const al = getActiveLabId();
+  return (al ? (q as any).eq(col, al) : q) as T;
+}
 import { rateToBase, useRateStore } from '../../core/money/rateCache';
 import { groupByCurrency, type CurrencyTotal } from '../../core/money/aggregations';
 import type { Currency } from '../../core/money/currency';
@@ -226,16 +235,16 @@ export async function fetchOverview(clinicId: string): Promise<FinanceOverview> 
   const in7str = ymdLocal(in7days);
 
   const [invRes, payRes] = await Promise.all([
-    supabase
+    labEq(supabase
       .from('invoices')
       .select('id, status, total_amount:total, paid_amount, due_date, issue_date, currency')
       .eq('clinic_id', clinicId)
-      .neq('status', 'iptal'),
-    supabase
+      .neq('status', 'iptal')),
+    labEq(supabase
       .from('payments')
       .select('amount, payment_date, invoices!inner(clinic_id, currency)')
       .eq('invoices.clinic_id', clinicId)
-      .gte('payment_date', monthBegStr),
+      .gte('payment_date', monthBegStr), 'invoices.lab_id'),
   ]);
   // NOT: work_orders şu an clinic_id/invoice_id sütunlarını taşımıyor —
   // "faturalanmamış teslim edilen iş emirleri" hesabı geçici olarak 0.
@@ -297,11 +306,11 @@ export async function fetchOverview(clinicId: string): Promise<FinanceOverview> 
 /* ────────────────────────────────────────────────────────────────────── */
 
 export async function fetchOpenInvoices(clinicId: string): Promise<ClinicInvoiceRow[]> {
-  const { data, error } = await supabase
+  const { data, error } = await labEq(supabase
     .from('invoices')
     .select('id, invoice_no:invoice_number, issue_date, due_date, total_amount:total, paid_amount, status, notes, currency')
     .eq('clinic_id', clinicId)
-    .in('status', ['kesildi', 'kismi_odendi'])
+    .in('status', ['kesildi', 'kismi_odendi']))
     .order('due_date', { ascending: true, nullsFirst: false });
   if (error) throw error;
   const base = getBaseCurrency();
@@ -349,22 +358,22 @@ export async function fetchOverviewCharts(clinicId: string): Promise<OverviewCha
   const base = getBaseCurrency();
 
   const [invRes, payRes, methodRes] = await Promise.all([
-    supabase
+    labEq(supabase
       .from('invoices')
       .select('issue_date, total_amount:total, paid_amount, due_date, status, currency')
       .eq('clinic_id', clinicId)
       .neq('status', 'iptal')
-      .gte('issue_date', sixStr),
-    supabase
+      .gte('issue_date', sixStr)),
+    labEq(supabase
       .from('payments')
       .select('amount, payment_date, invoices!inner(clinic_id, currency)')
       .eq('invoices.clinic_id', clinicId)
-      .gte('payment_date', sixStr),
-    supabase
+      .gte('payment_date', sixStr), 'invoices.lab_id'),
+    labEq(supabase
       .from('payments')
       .select('amount, payment_method, invoices!inner(clinic_id, currency)')
       .eq('invoices.clinic_id', clinicId)
-      .gte('payment_date', d90Str),
+      .gte('payment_date', d90Str), 'invoices.lab_id'),
   ]);
 
   if (invRes.error)    throw invRes.error;
@@ -694,16 +703,16 @@ export async function fetchStatement(
   const base = getBaseCurrency();
 
   const [invRes, payRes] = await Promise.all([
-    supabase
+    labEq(supabase
       .from('invoices')
       .select('id, invoice_no:invoice_number, issue_date, total_amount:total, status, currency, doctor_id, doctors(id, full_name)')
       .eq('clinic_id', clinicId)
-      .neq('status', 'iptal')
+      .neq('status', 'iptal'))
       .order('issue_date', { ascending: true }),
-    supabase
+    labEq(supabase
       .from('payments')
       .select('id, amount, payment_date, payment_method, reference_no, invoice_id, invoices!inner(clinic_id, currency, invoice_no:invoice_number, doctor_id, doctors(id, full_name))')
-      .eq('invoices.clinic_id', clinicId)
+      .eq('invoices.clinic_id', clinicId), 'invoices.lab_id')
       .order('payment_date', { ascending: true }),
   ]);
 
@@ -799,10 +808,10 @@ export async function fetchStatement(
 /* ────────────────────────────────────────────────────────────────────── */
 
 export async function fetchPayments(clinicId: string): Promise<PaymentRow[]> {
-  const { data, error } = await supabase
+  const { data, error } = await labEq(supabase
     .from('payments')
     .select('id, invoice_id, amount, payment_date, payment_method, reference_no, invoices!inner(clinic_id, currency, invoice_no:invoice_number)')
-    .eq('invoices.clinic_id', clinicId)
+    .eq('invoices.clinic_id', clinicId), 'invoices.lab_id')
     .order('payment_date', { ascending: false });
   if (error) throw error;
   const base = getBaseCurrency();
@@ -823,10 +832,10 @@ export async function fetchPayments(clinicId: string): Promise<PaymentRow[]> {
 /* ────────────────────────────────────────────────────────────────────── */
 
 export async function fetchPaymentLinks(clinicId: string): Promise<PaymentLinkRow[]> {
-  const { data, error } = await supabase
+  const { data, error } = await labEq(supabase
     .from('payment_intents')
     .select('id, invoice_id, token:public_token, amount, status, created_at, paid_at, invoices!inner(clinic_id, currency, invoice_no:invoice_number)')
-    .eq('invoices.clinic_id', clinicId)
+    .eq('invoices.clinic_id', clinicId), 'invoices.lab_id')
     .order('created_at', { ascending: false });
   if (error) throw error;
   const base = getBaseCurrency();
