@@ -187,7 +187,7 @@ export async function setLabFlag(labId: string, key: string, enabled: boolean): 
 
 // ── F4: billing ──
 export type BillingOverview = { mrr_cents: number; arr_cents: number; currency: string; paying_labs: number; outstanding_cents: number; open_invoices: number; paid_30d_cents: number };
-export type PlanDef = { key: string; name: string; price_cents: number; currency: string; billing_interval: string; sort: number };
+export type PlanDef = { key: string; name: string; price_cents: number; currency: string; billing_interval: string; sort: number; limits?: Record<string, number> };
 export type PlatformInvoice = { id: number; lab_id: string; lab_name?: string | null; plan_key: string | null; amount_cents: number; currency: string; status: 'open' | 'paid' | 'void'; period_start: string | null; period_end: string | null; issued_at: string; due_at: string | null; paid_at: string | null };
 export type LabBilling = { plan: string; is_active: boolean; trial_ends_at: string | null; plan_def: PlanDef | null; invoices: PlatformInvoice[] };
 
@@ -258,4 +258,20 @@ export async function setSetting(key: string, value: any): Promise<void> {
 }
 export async function publicPlatformStatus(): Promise<{ maintenance_mode: boolean; maintenance_message: string; registration_open: boolean; app_name: string }> {
   const { data, error } = await supabase.rpc('public_platform_status'); if (error) throw error; return data as any;
+}
+
+// ── F8: usage & limits ──
+export type LabUsage = { plan_limits: Record<string, number>; overrides: Record<string, number>; limits: Record<string, number>; usage: Record<string, number> };
+export const LIMIT_METRICS: { key: string; label: string }[] = [
+  { key: 'users', label: 'Kullanıcı' },
+  { key: 'orders_month', label: 'Aylık sipariş' },
+];
+export async function labUsage(labId: string): Promise<LabUsage> {
+  const { data, error } = await supabase.rpc('admin_lab_usage', { p_lab: labId }); if (error) throw error; return data as LabUsage;
+}
+export async function setLabLimits(labId: string, limits: Record<string, number>): Promise<void> {
+  const { error } = await supabase.rpc('admin_set_lab_limits', { p_lab: labId, p_limits: limits }); if (error) throw error;
+}
+export async function setPlanLimits(key: string, limits: Record<string, number>): Promise<void> {
+  const { error } = await supabase.rpc('admin_set_plan_limits', { p_key: key, p_limits: limits }); if (error) throw error;
 }

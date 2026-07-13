@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ChevronRight, Users, Building2, FileText, ClipboardList, CalendarClock, Save, LogOut, Eye, ToggleLeft, ToggleRight } from 'lucide-react-native';
-import { labDetail, setLabStatus, setLabPlan, extendTrial, updateLabMeta, offboardLab, labFlags, setLabFlag, labBilling, createInvoice, setInvoiceStatus, exportLabData, purgeLabPii, PLANS, type PlatformLabDetail, type Plan, type LabFlag, type LabBilling } from '../../modules/platform/api';
+import { labDetail, setLabStatus, setLabPlan, extendTrial, updateLabMeta, offboardLab, labFlags, setLabFlag, labBilling, createInvoice, setInvoiceStatus, exportLabData, purgeLabPii, labUsage, setLabLimits, LIMIT_METRICS, PLANS, type PlatformLabDetail, type Plan, type LabFlag, type LabBilling, type LabUsage } from '../../modules/platform/api';
 import { C, FONT, planTone, fmtMoney, downloadJson } from '../../modules/platform/ui';
 import { Check, Download } from 'lucide-react-native';
 
@@ -17,12 +17,14 @@ export default function PlatformLabDetail() {
   const [purgeMsg, setPurgeMsg] = useState<string | null>(null);
   const [flags, setFlags] = useState<LabFlag[]>([]);
   const [billing, setBilling] = useState<LabBilling | null>(null);
+  const [usage, setUsage] = useState<LabUsage | null>(null);
+  const [limitDraft, setLimitDraft] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     if (!id) return;
     try {
-      const [r, f, b] = await Promise.all([labDetail(String(id)), labFlags(String(id)).catch(() => []), labBilling(String(id)).catch(() => null)]);
-      setD(r); setFlags(f); setBilling(b); setEdit(null);
+      const [r, f, b, u] = await Promise.all([labDetail(String(id)), labFlags(String(id)).catch(() => []), labBilling(String(id)).catch(() => null), labUsage(String(id)).catch(() => null)]);
+      setD(r); setFlags(f); setBilling(b); setUsage(u); setEdit(null); setLimitDraft({});
     } catch { setD(null); }
   }, [id]);
   useEffect(() => { load(); }, [load]);
@@ -169,6 +171,45 @@ export default function PlatformLabDetail() {
                 ))}
               </View>
             )}
+          </Card>
+        )}
+
+        {/* Kullanım & limitler */}
+        {usage && (
+          <Card title="Kullanım & limitler">
+            <View style={{ gap: 16 }}>
+              {LIMIT_METRICS.map((m) => {
+                const used = Number(usage.usage[m.key] || 0);
+                const limit = Number(usage.limits[m.key] || 0); // 0 = sınırsız
+                const pctUsed = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+                const over = limit > 0 && used > limit;
+                const isOverride = usage.overrides[m.key] != null;
+                return (
+                  <View key={m.key} style={{ gap: 6 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Text style={{ color: C.ink2, fontSize: 13 }}>{m.label} {isOverride ? <Text style={{ color: C.accent, fontSize: 11 }}>· özel</Text> : null}</Text>
+                      <Text style={{ color: over ? C.red : C.ink, fontSize: 13, fontWeight: '600' }}>{used} / {limit > 0 ? limit : '∞'}</Text>
+                    </View>
+                    {limit > 0 && (
+                      <View style={{ height: 7, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+                        <View style={{ width: `${pctUsed}%`, height: 7, backgroundColor: over ? C.red : pctUsed > 80 ? C.amber : C.green, borderRadius: 4 }} />
+                      </View>
+                    )}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Text style={{ color: C.ink3, fontSize: 11.5 }}>Limit (0=sınırsız):</Text>
+                      <TextInput value={limitDraft[m.key] ?? String(limit)} onChangeText={(t) => setLimitDraft((d) => ({ ...d, [m.key]: t }))} keyboardType="numeric"
+                        style={{ width: 80, height: 32, paddingHorizontal: 10, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: limitDraft[m.key] != null ? C.accent : C.line, color: C.ink, fontSize: 13, textAlign: 'right', ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
+                      {limitDraft[m.key] != null && (
+                        <Pressable disabled={busy} onPress={() => run(() => setLabLimits(String(id), { ...usage.overrides, [m.key]: parseInt(limitDraft[m.key], 10) || 0 }))}
+                          style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: C.accent, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                          <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>Kaydet</Text>
+                        </Pressable>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
           </Card>
         )}
 

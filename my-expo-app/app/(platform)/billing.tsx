@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator, Platform } from 'react-native';
 import { CreditCard, Check, Ban, RotateCcw } from 'lucide-react-native';
-import { billingOverview, listPlans, setPlanPrice, listInvoices, setInvoiceStatus, type BillingOverview, type PlanDef, type PlatformInvoice } from '../../modules/platform/api';
+import { billingOverview, listPlans, setPlanPrice, setPlanLimits, listInvoices, setInvoiceStatus, LIMIT_METRICS, type BillingOverview, type PlanDef, type PlatformInvoice } from '../../modules/platform/api';
 import { C, FONT, PlatformNav, Kpi, fmtMoney } from '../../modules/platform/ui';
 
 const stTone = (s: string) => (s === 'paid' ? C.green : s === 'void' ? C.ink3 : C.amber);
@@ -11,6 +11,7 @@ export default function PlatformBilling() {
   const [plans, setPlans] = useState<PlanDef[]>([]);
   const [invoices, setInvoices] = useState<PlatformInvoice[]>([]);
   const [edit, setEdit] = useState<Record<string, string>>({});
+  const [lim, setLim] = useState<Record<string, string>>({}); // `${plan}:${metric}` → değer
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -61,22 +62,48 @@ export default function PlatformBilling() {
             <Text style={{ color: C.ink2, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Plan fiyatları</Text>
             <View style={{ backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.line, overflow: 'hidden', marginBottom: 24 }}>
               {plans.map((p, i) => (
-                <View key={p.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 16, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: C.line }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: C.ink, fontSize: 14, fontWeight: '600' }}>{p.name}</Text>
-                    <Text style={{ color: C.ink3, fontSize: 12 }}>{p.key} · {p.billing_interval}</Text>
+                <View key={p.key} style={{ paddingVertical: 12, paddingHorizontal: 16, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: C.line, gap: 10 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: C.ink, fontSize: 14, fontWeight: '600' }}>{p.name}</Text>
+                      <Text style={{ color: C.ink3, fontSize: 12 }}>{p.key} · {p.billing_interval}</Text>
+                    </View>
+                    <TextInput
+                      value={edit[p.key] ?? String(p.price_cents / 100)}
+                      onChangeText={(t) => setEdit((e) => ({ ...e, [p.key]: t }))}
+                      keyboardType="numeric"
+                      style={{ width: 110, height: 38, paddingHorizontal: 12, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: edit[p.key] != null ? C.accent : C.line, color: C.ink, fontSize: 14, textAlign: 'right', ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
+                    <Text style={{ color: C.ink3, fontSize: 13, width: 34 }}>{p.currency}</Text>
+                    {edit[p.key] != null ? (
+                      <Pressable disabled={busy} onPress={() => savePrice(p.key)} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: C.accent, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                        <Text style={{ color: '#fff', fontSize: 12.5, fontWeight: '700' }}>Kaydet</Text>
+                      </Pressable>
+                    ) : <View style={{ width: 66 }} />}
                   </View>
-                  <TextInput
-                    value={edit[p.key] ?? String(p.price_cents / 100)}
-                    onChangeText={(t) => setEdit((e) => ({ ...e, [p.key]: t }))}
-                    keyboardType="numeric"
-                    style={{ width: 110, height: 38, paddingHorizontal: 12, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: edit[p.key] != null ? C.accent : C.line, color: C.ink, fontSize: 14, textAlign: 'right', ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
-                  <Text style={{ color: C.ink3, fontSize: 13, width: 34 }}>{p.currency}</Text>
-                  {edit[p.key] != null ? (
-                    <Pressable disabled={busy} onPress={() => savePrice(p.key)} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: C.accent, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-                      <Text style={{ color: '#fff', fontSize: 12.5, fontWeight: '700' }}>Kaydet</Text>
-                    </Pressable>
-                  ) : <View style={{ width: 66 }} />}
+                  {/* limitler */}
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+                    <Text style={{ color: C.ink3, fontSize: 11.5 }}>Limit (0=∞):</Text>
+                    {LIMIT_METRICS.map((m) => {
+                      const dk = `${p.key}:${m.key}`;
+                      const cur = Number(p.limits?.[m.key] ?? 0);
+                      return (
+                        <View key={m.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                          <Text style={{ color: C.ink3, fontSize: 11.5 }}>{m.label}</Text>
+                          <TextInput value={lim[dk] ?? String(cur)} onChangeText={(t) => setLim((l) => ({ ...l, [dk]: t }))} keyboardType="numeric"
+                            style={{ width: 62, height: 30, paddingHorizontal: 8, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: lim[dk] != null ? C.accent : C.line, color: C.ink, fontSize: 12.5, textAlign: 'right', ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
+                        </View>
+                      );
+                    })}
+                    {LIMIT_METRICS.some((m) => lim[`${p.key}:${m.key}`] != null) && (
+                      <Pressable disabled={busy} onPress={async () => {
+                        const next: Record<string, number> = { ...(p.limits ?? {}) };
+                        LIMIT_METRICS.forEach((m) => { const dk = `${p.key}:${m.key}`; if (lim[dk] != null) next[m.key] = parseInt(lim[dk], 10) || 0; });
+                        setBusy(true); try { await setPlanLimits(p.key, next); Object.keys(lim).filter((k) => k.startsWith(p.key + ':')).forEach((k) => delete lim[k]); await load(); } finally { setBusy(false); }
+                      }} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: C.accent, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                        <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>Limit kaydet</Text>
+                      </Pressable>
+                    )}
+                  </View>
                 </View>
               ))}
             </View>
