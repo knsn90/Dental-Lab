@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { amIPlatformAdmin } from '../../modules/platform/api';
 import { PlatformSidebar, C } from '../../modules/platform/ui';
+import { supabase } from '../../core/api/supabase';
 
 // Platform (super-admin) paneli — yalnız is_platform_admin() true olan
 // hesaplar girebilir. Ana _layout route guard'ı (platform) grubunu geçirir;
@@ -13,11 +14,18 @@ export default function PlatformLayout() {
 
   useEffect(() => {
     let alive = true;
-    amIPlatformAdmin().then((allowed) => {
+    (async () => {
+      // Hard refresh'te Supabase session storage'dan ASENKRON restore olur.
+      // is_platform_admin RPC'sini session hazır olmadan çağırırsak false döner
+      // ve kullanıcı sepetsizce lab paneline atılır. Önce session'ı bekle.
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!alive) return;
+      if (!session) return; // oturum yok → root _layout /(auth)/login'e yönlendirir
+      const allowed = await amIPlatformAdmin();
       if (!alive) return;
       setOk(allowed);
-      if (!allowed) router.replace('/' as any); // yetkisiz → kök yönlendirme
-    });
+      if (!allowed) router.replace('/' as any); // gerçekten yetkisiz → kök yönlendirme
+    })();
     return () => { alive = false; };
   }, []);
 

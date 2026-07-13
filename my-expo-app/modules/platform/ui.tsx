@@ -3,6 +3,7 @@ import { View, Text, Pressable, Platform } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { LayoutGrid, Building2, ScrollText, ShieldCheck, LogOut, LifeBuoy, Activity, Megaphone, CreditCard, Users, Settings, ShieldAlert, Plug } from 'lucide-react-native';
 import { supabase } from '../../core/api/supabase';
+import { SimanWordmark } from '../../core/ui/SimanWordmark';
 
 // Platform konsolu — Siman ışık teması, "exec/admin" (Kobalt) kimliği.
 export const C = {
@@ -57,10 +58,11 @@ export function PlatformSidebar() {
   const router = useRouter();
   const active = usePlatformActive();
   return (
-    <View style={{ width: 216, backgroundColor: C.card, borderRightWidth: 1, borderRightColor: C.line, paddingVertical: 18, paddingHorizontal: 12, ...(Platform.OS === 'web' ? { height: '100vh' as any, position: 'sticky' as any, top: 0 } : {}) }}>
-      <Text style={{ fontFamily: FONT, fontSize: 16, fontWeight: '700', color: C.ink, marginBottom: 20, marginLeft: 8, letterSpacing: -0.3 }}>
-        Siman <Text style={{ color: C.accent }}>Platform</Text>
-      </Text>
+    <View style={{ width: 220, backgroundColor: C.card, borderRightWidth: 1, borderRightColor: C.line, paddingVertical: 20, paddingHorizontal: 12, ...(Platform.OS === 'web' ? { height: '100vh' as any, position: 'sticky' as any, top: 0 } : {}) }}>
+      <View style={{ marginBottom: 24, marginLeft: 8, gap: 7 }}>
+        <SimanWordmark height={17} color={C.ink} />
+        <Text style={{ color: C.accent, fontSize: 10, fontWeight: '700', letterSpacing: 1.6, textTransform: 'uppercase' }}>Platform Konsolu</Text>
+      </View>
       {SIDEBAR.map((sec, si) => (
         <View key={si} style={{ marginBottom: 14 }}>
           {sec.group ? <Text style={{ color: C.ink3, fontSize: 10.5, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.7, marginLeft: 8, marginBottom: 6 }}>{sec.group}</Text> : null}
