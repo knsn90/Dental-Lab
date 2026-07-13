@@ -2,6 +2,7 @@ import { Stack, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { amIPlatformAdmin } from '../../modules/platform/api';
+import { PlatformSidebar } from '../../modules/platform/ui';
 
 // Platform (super-admin) paneli — yalnız is_platform_admin() true olan
 // hesaplar girebilir. Ana _layout route guard'ı (platform) grubunu geçirir;
@@ -28,5 +29,12 @@ export default function PlatformLayout() {
     );
   }
 
-  return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0B1220' } }} />;
+  return (
+    <View style={{ flex: 1, flexDirection: 'row', backgroundColor: '#0B1220' }}>
+      <PlatformSidebar />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0B1220' } }} />
+      </View>
+    </View>
+  );
 }

@@ -27,33 +27,48 @@ const NAV = [
   { key: 'admins', label: 'Yöneticiler', icon: ShieldCheck, href: '/(platform)/admins' },
 ];
 
-/** Platform konsolu üst çubuğu — her üst-seviye ekranda kullanılır. */
-export function PlatformNav({ active }: { active: string }) {
+// Gruplu sol menü yapısı
+const SIDEBAR: { group: string | null; items: typeof NAV }[] = [
+  { group: null, items: NAV.filter((n) => n.key === '') },
+  { group: 'Yönetim', items: NAV.filter((n) => ['labs', 'users', 'billing'].includes(n.key)) },
+  { group: 'Operasyon', items: NAV.filter((n) => ['support', 'announcements'].includes(n.key)) },
+  { group: 'Sistem', items: NAV.filter((n) => ['health', 'settings', 'audit', 'admins'].includes(n.key)) },
+];
+
+/** Eski üst-çubuk artık no-op — navigasyon PlatformSidebar'a taşındı. */
+export function PlatformNav(_: { active: string }) { return null; }
+
+/** Platform konsolu sol menüsü — (platform)/_layout içinde kalıcı. */
+export function PlatformSidebar() {
   const router = useRouter();
+  const active = usePlatformActive();
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 22 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-        <Text style={{ fontFamily: FONT, fontSize: 17, fontWeight: '700', color: C.ink, marginRight: 12, letterSpacing: -0.3 }}>
-          Siman <Text style={{ color: C.accent }}>Platform</Text>
-        </Text>
-        {NAV.map((n) => {
-          const on = n.key === active;
-          const Icon = n.icon;
-          return (
-            <Pressable key={n.key} onPress={() => router.replace(n.href as any)}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10,
-                backgroundColor: on ? 'rgba(79,141,247,0.14)' : 'transparent', borderWidth: 1, borderColor: on ? 'rgba(79,141,247,0.35)' : 'transparent',
-                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-              <Icon size={15} color={on ? C.accent : C.ink3} strokeWidth={1.9} />
-              <Text style={{ color: on ? C.ink : C.ink2, fontSize: 13, fontWeight: on ? '600' : '500' }}>{n.label}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
+    <View style={{ width: 216, backgroundColor: '#0A101C', borderRightWidth: 1, borderRightColor: C.line, paddingVertical: 18, paddingHorizontal: 12, ...(Platform.OS === 'web' ? { height: '100vh' as any, position: 'sticky' as any, top: 0 } : {}) }}>
+      <Text style={{ fontFamily: FONT, fontSize: 16, fontWeight: '700', color: C.ink, marginBottom: 20, marginLeft: 8, letterSpacing: -0.3 }}>
+        Siman <Text style={{ color: C.accent }}>Platform</Text>
+      </Text>
+      {SIDEBAR.map((sec, si) => (
+        <View key={si} style={{ marginBottom: 14 }}>
+          {sec.group ? <Text style={{ color: C.ink3, fontSize: 10.5, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.7, marginLeft: 8, marginBottom: 6 }}>{sec.group}</Text> : null}
+          {sec.items.map((n) => {
+            const on = n.key === active;
+            const Icon = n.icon;
+            return (
+              <Pressable key={n.key} onPress={() => router.replace(n.href as any)}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 9, borderRadius: 9, marginBottom: 2,
+                  backgroundColor: on ? 'rgba(79,141,247,0.14)' : 'transparent',
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                <Icon size={16} color={on ? C.accent : C.ink3} strokeWidth={1.9} />
+                <Text style={{ color: on ? C.ink : C.ink2, fontSize: 13.5, fontWeight: on ? '600' : '500' }}>{n.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ))}
       <Pressable onPress={() => supabase.auth.signOut()}
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 6, height: 38, paddingHorizontal: 12, borderRadius: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.line, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-        <LogOut size={15} color={C.ink3} strokeWidth={1.8} />
-        <Text style={{ color: C.ink2, fontSize: 13, fontWeight: '600' }}>Çıkış</Text>
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 9, borderRadius: 9, marginTop: 8, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+        <LogOut size={16} color={C.ink3} strokeWidth={1.8} />
+        <Text style={{ color: C.ink2, fontSize: 13.5, fontWeight: '500' }}>Çıkış</Text>
       </Pressable>
     </View>
   );

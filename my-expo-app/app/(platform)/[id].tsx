@@ -2,9 +2,9 @@ import { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ChevronRight, Users, Building2, FileText, ClipboardList, CalendarClock, Save, LogOut, Eye, ToggleLeft, ToggleRight } from 'lucide-react-native';
-import { labDetail, setLabStatus, setLabPlan, extendTrial, updateLabMeta, offboardLab, labFlags, setLabFlag, labBilling, createInvoice, setInvoiceStatus, exportLabData, purgeLabPii, labUsage, setLabLimits, LIMIT_METRICS, PLANS, type PlatformLabDetail, type Plan, type LabFlag, type LabBilling, type LabUsage } from '../../modules/platform/api';
+import { labDetail, setLabStatus, setLabPlan, extendTrial, updateLabMeta, offboardLab, labFlags, setLabFlag, labBilling, createInvoice, setInvoiceStatus, exportLabData, purgeLabPii, labUsage, setLabLimits, LIMIT_METRICS, labNotes, addLabNote, deleteLabNote, PLANS, type PlatformLabDetail, type Plan, type LabFlag, type LabBilling, type LabUsage, type LabNote } from '../../modules/platform/api';
 import { C, FONT, planTone, fmtMoney, downloadJson } from '../../modules/platform/ui';
-import { Check, Download } from 'lucide-react-native';
+import { Check, Download, Send, Trash2 } from 'lucide-react-native';
 
 export default function PlatformLabDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -19,12 +19,14 @@ export default function PlatformLabDetail() {
   const [billing, setBilling] = useState<LabBilling | null>(null);
   const [usage, setUsage] = useState<LabUsage | null>(null);
   const [limitDraft, setLimitDraft] = useState<Record<string, string>>({});
+  const [notes, setNotes] = useState<LabNote[]>([]);
+  const [noteDraft, setNoteDraft] = useState('');
 
   const load = useCallback(async () => {
     if (!id) return;
     try {
-      const [r, f, b, u] = await Promise.all([labDetail(String(id)), labFlags(String(id)).catch(() => []), labBilling(String(id)).catch(() => null), labUsage(String(id)).catch(() => null)]);
-      setD(r); setFlags(f); setBilling(b); setUsage(u); setEdit(null); setLimitDraft({});
+      const [r, f, b, u, n] = await Promise.all([labDetail(String(id)), labFlags(String(id)).catch(() => []), labBilling(String(id)).catch(() => null), labUsage(String(id)).catch(() => null), labNotes(String(id)).catch(() => [])]);
+      setD(r); setFlags(f); setBilling(b); setUsage(u); setNotes(n); setEdit(null); setLimitDraft({}); setNoteDraft('');
     } catch { setD(null); }
   }, [id]);
   useEffect(() => { load(); }, [load]);
@@ -136,6 +138,31 @@ export default function PlatformLabDetail() {
               </Pressable>
             </View>
           )}
+        </Card>
+
+        {/* Notlar */}
+        <Card title="Notlar">
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: notes.length ? 14 : 0 }}>
+            <TextInput value={noteDraft} onChangeText={setNoteDraft} placeholder="Bu lab hakkında iç not…" placeholderTextColor={C.ink3}
+              style={{ flex: 1, height: 40, paddingHorizontal: 12, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: C.line, color: C.ink, fontSize: 14, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
+            <Pressable disabled={busy || !noteDraft.trim()} onPress={() => run(() => addLabNote(String(id), noteDraft.trim()))}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, borderRadius: 10, backgroundColor: C.accent, opacity: !noteDraft.trim() ? 0.5 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+              <Send size={15} color="#fff" strokeWidth={2} /><Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>Ekle</Text>
+            </Pressable>
+          </View>
+          <View style={{ gap: 8 }}>
+            {notes.map((n) => (
+              <View key={n.id} style={{ flexDirection: 'row', gap: 10, paddingVertical: 8, borderTopWidth: 1, borderTopColor: C.line }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: C.ink, fontSize: 13.5 }}>{n.note}</Text>
+                  <Text style={{ color: C.ink3, fontSize: 11.5, marginTop: 3 }}>{n.author || '—'} · {new Date(n.created_at).toLocaleString()}</Text>
+                </View>
+                <Pressable disabled={busy} onPress={() => run(() => deleteLabNote(n.id))} style={{ padding: 6, borderRadius: 8, backgroundColor: 'rgba(229,100,91,0.10)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                  <Trash2 size={14} color={C.red} strokeWidth={1.8} />
+                </Pressable>
+              </View>
+            ))}
+          </View>
         </Card>
 
         {/* Abonelik & Faturalar */}

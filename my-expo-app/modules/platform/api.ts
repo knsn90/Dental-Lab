@@ -275,3 +275,15 @@ export async function setLabLimits(labId: string, limits: Record<string, number>
 export async function setPlanLimits(key: string, limits: Record<string, number>): Promise<void> {
   const { error } = await supabase.rpc('admin_set_plan_limits', { p_key: key, p_limits: limits }); if (error) throw error;
 }
+
+// ── F9: tenant notes ──
+export type LabNote = { id: number; note: string; author: string | null; created_at: string };
+export async function labNotes(labId: string): Promise<LabNote[]> {
+  const { data, error } = await supabase.rpc('admin_lab_notes', { p_lab: labId }); if (error) throw error; return (data ?? []) as LabNote[];
+}
+export async function addLabNote(labId: string, note: string): Promise<void> {
+  const { error } = await supabase.rpc('admin_add_lab_note', { p_lab: labId, p_note: note }); if (error) throw error;
+}
+export async function deleteLabNote(id: number): Promise<void> {
+  const { error } = await supabase.rpc('admin_delete_lab_note', { p_id: id }); if (error) throw error;
+}
