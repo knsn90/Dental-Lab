@@ -58,34 +58,44 @@ export function PlatformSidebar() {
   const router = useRouter();
   const active = usePlatformActive();
   return (
-    <View style={{ width: 220, backgroundColor: C.card, borderRightWidth: 1, borderRightColor: C.line, paddingVertical: 20, paddingHorizontal: 12, ...(Platform.OS === 'web' ? { height: '100vh' as any, position: 'sticky' as any, top: 0 } : {}) }}>
-      <View style={{ marginBottom: 24, marginLeft: 8, gap: 7 }}>
+    <View style={{ width: 224, backgroundColor: C.card, borderRightWidth: 1, borderRightColor: C.line, paddingVertical: 22, paddingHorizontal: 14, flexDirection: 'column', ...(Platform.OS === 'web' ? { height: '100vh' as any, position: 'sticky' as any, top: 0 } : {}) }}>
+      {/* Marka */}
+      <View style={{ marginBottom: 26, marginLeft: 6, gap: 8 }}>
         <SimanWordmark height={17} color={C.ink} />
         <Text style={{ color: C.accent, fontSize: 10, fontWeight: '700', letterSpacing: 1.6, textTransform: 'uppercase' }}>Platform Konsolu</Text>
       </View>
-      {SIDEBAR.map((sec, si) => (
-        <View key={si} style={{ marginBottom: 14 }}>
-          {sec.group ? <Text style={{ color: C.ink3, fontSize: 10.5, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.7, marginLeft: 8, marginBottom: 6 }}>{sec.group}</Text> : null}
-          {sec.items.map((n) => {
-            const on = n.key === active;
-            const Icon = n.icon;
-            return (
-              <Pressable key={n.key} onPress={() => router.replace(n.href as any)}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 9, borderRadius: 9, marginBottom: 2,
-                  backgroundColor: on ? C.soft : 'transparent',
-                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-                <Icon size={16} color={on ? C.accent : C.ink3} strokeWidth={1.9} />
-                <Text style={{ color: on ? C.accentDeep : C.ink2, fontSize: 13.5, fontWeight: on ? '600' : '500' }}>{n.label}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      ))}
-      <Pressable onPress={() => supabase.auth.signOut()}
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 9, borderRadius: 9, marginTop: 8, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-        <LogOut size={16} color={C.ink3} strokeWidth={1.8} />
-        <Text style={{ color: C.ink2, fontSize: 13.5, fontWeight: '500' }}>Çıkış</Text>
-      </Pressable>
+
+      {/* Navigasyon */}
+      <View style={{ flex: 1 }}>
+        {SIDEBAR.map((sec, si) => (
+          <View key={si} style={{ marginBottom: 16 }}>
+            {sec.group ? <Text style={{ color: C.ink3, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginLeft: 12, marginBottom: 7 }}>{sec.group}</Text> : null}
+            {sec.items.map((n) => {
+              const on = n.key === active;
+              const Icon = n.icon;
+              return (
+                <Pressable key={n.key} onPress={() => router.replace(n.href as any)}
+                  style={{ position: 'relative', flexDirection: 'row', alignItems: 'center', gap: 11, paddingLeft: 12, paddingRight: 10, paddingVertical: 9, borderRadius: 10, marginBottom: 2,
+                    backgroundColor: on ? C.soft : 'transparent',
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                  {on ? <View style={{ position: 'absolute', left: 0, top: 8, bottom: 8, width: 2.5, borderRadius: 2, backgroundColor: C.accent }} /> : null}
+                  <Icon size={16} color={on ? C.ink : C.ink3} strokeWidth={1.9} />
+                  <Text style={{ color: on ? C.ink : C.ink2, fontSize: 13.5, fontWeight: on ? '600' : '500' }}>{n.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ))}
+      </View>
+
+      {/* Alt: çıkış */}
+      <View style={{ borderTopWidth: 1, borderTopColor: C.line, paddingTop: 10, marginTop: 8 }}>
+        <Pressable onPress={() => supabase.auth.signOut()}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+          <LogOut size={16} color={C.ink3} strokeWidth={1.8} />
+          <Text style={{ color: C.ink2, fontSize: 13.5, fontWeight: '500' }}>Çıkış</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
