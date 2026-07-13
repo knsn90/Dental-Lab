@@ -287,3 +287,47 @@ export async function addLabNote(labId: string, note: string): Promise<void> {
 export async function deleteLabNote(id: number): Promise<void> {
   const { error } = await supabase.rpc('admin_delete_lab_note', { p_id: id }); if (error) throw error;
 }
+
+// ── F10: security ──
+export type SecurityOverview = { users_total: number; mfa_enabled: number; unconfirmed: number; banned: number; stale_30d: number; never_signed_in: number; active_sessions: number };
+export async function securityOverview(): Promise<SecurityOverview> {
+  const { data, error } = await supabase.rpc('admin_security_overview'); if (error) throw error; return data as SecurityOverview;
+}
+export async function signoutUser(id: string): Promise<void> {
+  const { error } = await supabase.rpc('admin_signout_user', { p_user: id }); if (error) throw error;
+}
+
+// ── F10: tenant API keys ──
+export type ApiKey = { id: number; name: string | null; key_prefix: string; created_at: string; revoked_at: string | null; last_used_at: string | null };
+export async function listLabApiKeys(labId: string): Promise<ApiKey[]> {
+  const { data, error } = await supabase.rpc('admin_list_lab_api_keys', { p_lab: labId }); if (error) throw error; return (data ?? []) as ApiKey[];
+}
+export async function createLabApiKey(labId: string, name: string): Promise<string> {
+  const { data, error } = await supabase.rpc('admin_create_lab_api_key', { p_lab: labId, p_name: name }); if (error) throw error; return data as string;
+}
+export async function revokeApiKey(id: number): Promise<void> {
+  const { error } = await supabase.rpc('admin_revoke_api_key', { p_id: id }); if (error) throw error;
+}
+
+// ── F10: integrations ──
+export type Integration = { key: string; name: string; category: string | null; enabled: boolean; status: string; note: string | null; updated_at: string };
+export async function listIntegrations(): Promise<Integration[]> {
+  const { data, error } = await supabase.rpc('admin_list_integrations'); if (error) throw error; return (data ?? []) as Integration[];
+}
+export async function setIntegration(key: string, enabled: boolean, status: string, note?: string | null): Promise<void> {
+  const { error } = await supabase.rpc('admin_set_integration', { p_key: key, p_enabled: enabled, p_status: status, p_note: note ?? null }); if (error) throw error;
+}
+
+// ── App-side config (flag/limit enforcement) ──
+export async function myFeatureFlags(): Promise<Record<string, boolean>> {
+  const { data, error } = await supabase.rpc('my_feature_flags');
+  if (error) return {};
+  const out: Record<string, boolean> = {};
+  (data ?? []).forEach((r: any) => { out[r.key] = r.enabled === true; });
+  return out;
+}
+export async function myLimits(): Promise<{ limits: Record<string, number>; usage: Record<string, number> }> {
+  const { data, error } = await supabase.rpc('my_limits');
+  if (error) return { limits: {}, usage: {} };
+  return (data ?? { limits: {}, usage: {} }) as any;
+}

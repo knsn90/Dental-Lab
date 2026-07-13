@@ -2,9 +2,9 @@ import { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ChevronRight, Users, Building2, FileText, ClipboardList, CalendarClock, Save, LogOut, Eye, ToggleLeft, ToggleRight } from 'lucide-react-native';
-import { labDetail, setLabStatus, setLabPlan, extendTrial, updateLabMeta, offboardLab, labFlags, setLabFlag, labBilling, createInvoice, setInvoiceStatus, exportLabData, purgeLabPii, labUsage, setLabLimits, LIMIT_METRICS, labNotes, addLabNote, deleteLabNote, PLANS, type PlatformLabDetail, type Plan, type LabFlag, type LabBilling, type LabUsage, type LabNote } from '../../modules/platform/api';
+import { labDetail, setLabStatus, setLabPlan, extendTrial, updateLabMeta, offboardLab, labFlags, setLabFlag, labBilling, createInvoice, setInvoiceStatus, exportLabData, purgeLabPii, labUsage, setLabLimits, LIMIT_METRICS, labNotes, addLabNote, deleteLabNote, listLabApiKeys, createLabApiKey, revokeApiKey, PLANS, type PlatformLabDetail, type Plan, type LabFlag, type LabBilling, type LabUsage, type LabNote, type ApiKey } from '../../modules/platform/api';
 import { C, FONT, planTone, fmtMoney, downloadJson } from '../../modules/platform/ui';
-import { Check, Download, Send, Trash2 } from 'lucide-react-native';
+import { Check, Download, Send, Trash2, KeyRound, Copy } from 'lucide-react-native';
 
 export default function PlatformLabDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -21,12 +21,14 @@ export default function PlatformLabDetail() {
   const [limitDraft, setLimitDraft] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState<LabNote[]>([]);
   const [noteDraft, setNoteDraft] = useState('');
+  const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
+  const [newKey, setNewKey] = useState<string | null>(null); // yeni üretilen anahtar (bir kez)
 
   const load = useCallback(async () => {
     if (!id) return;
     try {
-      const [r, f, b, u, n] = await Promise.all([labDetail(String(id)), labFlags(String(id)).catch(() => []), labBilling(String(id)).catch(() => null), labUsage(String(id)).catch(() => null), labNotes(String(id)).catch(() => [])]);
-      setD(r); setFlags(f); setBilling(b); setUsage(u); setNotes(n); setEdit(null); setLimitDraft({}); setNoteDraft('');
+      const [r, f, b, u, n, k] = await Promise.all([labDetail(String(id)), labFlags(String(id)).catch(() => []), labBilling(String(id)).catch(() => null), labUsage(String(id)).catch(() => null), labNotes(String(id)).catch(() => []), listLabApiKeys(String(id)).catch(() => [])]);
+      setD(r); setFlags(f); setBilling(b); setUsage(u); setNotes(n); setApiKeys(k); setEdit(null); setLimitDraft({}); setNoteDraft('');
     } catch { setD(null); }
   }, [id]);
   useEffect(() => { load(); }, [load]);
@@ -239,6 +241,40 @@ export default function PlatformLabDetail() {
             </View>
           </Card>
         )}
+
+        {/* API anahtarları */}
+        <Card title="API anahtarları">
+          {newKey && (
+            <View style={{ backgroundColor: 'rgba(55,194,133,0.10)', borderWidth: 1, borderColor: 'rgba(55,194,133,0.35)', borderRadius: 10, padding: 12, marginBottom: 12 }}>
+              <Text style={{ color: C.green, fontSize: 12, fontWeight: '700', marginBottom: 6 }}>Yeni anahtar — yalnız ŞİMDİ görünür, kaydet!</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text selectable style={{ flex: 1, color: C.ink, fontSize: 12.5, fontFamily: FONT }}>{newKey}</Text>
+                <Pressable onPress={() => { if (Platform.OS === 'web' && (navigator as any)?.clipboard) (navigator as any).clipboard.writeText(newKey); }} style={{ padding: 6, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.06)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                  <Copy size={15} color={C.ink2} strokeWidth={1.8} />
+                </Pressable>
+                <Pressable onPress={() => setNewKey(null)} style={{ padding: 6 }}><Text style={{ color: C.ink3, fontSize: 16 }}>×</Text></Pressable>
+              </View>
+            </View>
+          )}
+          <Pressable disabled={busy} onPress={() => run(async () => { const k = await createLabApiKey(String(id), 'API key'); setNewKey(k); })}
+            style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10, backgroundColor: C.accent, marginBottom: apiKeys.length ? 12 : 0, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+            <KeyRound size={15} color="#fff" strokeWidth={2} /><Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>Yeni anahtar üret</Text>
+          </Pressable>
+          {apiKeys.map((k) => (
+            <View key={k.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, borderTopWidth: 1, borderTopColor: C.line, opacity: k.revoked_at ? 0.5 : 1 }}>
+              <Text style={{ color: C.ink, fontSize: 13, fontFamily: FONT }}>{k.key_prefix}••••••</Text>
+              <Text style={{ flex: 1, color: C.ink3, fontSize: 12 }}>{k.name || '—'} · {new Date(k.created_at).toLocaleDateString()}</Text>
+              {k.revoked_at ? (
+                <Text style={{ color: C.ink3, fontSize: 11.5 }}>iptal</Text>
+              ) : (
+                <Pressable disabled={busy} onPress={() => run(() => revokeApiKey(k.id))} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: 'rgba(229,100,91,0.10)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                  <Text style={{ color: C.red, fontSize: 12, fontWeight: '600' }}>İptal et</Text>
+                </Pressable>
+              )}
+            </View>
+          ))}
+          <Text style={{ color: C.ink3, fontSize: 11.5, marginTop: 10 }}>Not: Anahtarlar hash'lenerek saklanır. Tenant API uç noktaları ayrı bir adımda etkinleştirilir.</Text>
+        </Card>
 
         {/* Özellik bayrakları */}
         {flags.length > 0 && (

@@ -72,7 +72,7 @@ import { openSupport } from '../store/supportStore';
 import { MOBILE_PANEL_THEMES, type MobilePanel } from '../theme/mobileDesignTokens';
 import { useThemeModeStore } from '../store/themeModeStore';
 import { isRTL } from '../i18n';
-import { amIPlatformAdmin } from '../../modules/platform/api';
+import { amIPlatformAdmin, myLimits } from '../../modules/platform/api';
 
 // ── Types (compatible with DesktopShell's NavItem) ────────────────────
 export interface PatternsNavItem {
@@ -214,6 +214,14 @@ export function PatternsShell({
   const [announcements, setAnnouncements] = useState<Array<{ id: number; title: string; body: string | null; level: string }>>([]);
   const [dismissedAnn, setDismissedAnn] = useState<number[]>([]);
   useEffect(() => { (async () => { try { const { data } = await supabase.rpc('active_announcements'); setAnnouncements((data as any) ?? []); } catch { /* yoksay */ } })(); }, []);
+  // Limit aşım uyarısı (bloklamaz — enforcement altyapısı)
+  const [overLimits, setOverLimits] = useState<string[]>([]);
+  useEffect(() => { (async () => { try {
+    const { limits, usage } = await myLimits();
+    const labels: Record<string, string> = { users: 'kullanıcı', orders_month: 'aylık sipariş' };
+    const over = Object.keys(limits || {}).filter((k) => Number(limits[k]) > 0 && Number(usage?.[k] || 0) > Number(limits[k])).map((k) => labels[k] || k);
+    setOverLimits(over);
+  } catch { /* yoksay */ } })(); }, []);
   const [searchQ, setSearchQ] = useState('');
   const pageTitle = usePageTitleStore(s => s.title);
   const pageSubtitle = usePageTitleStore(s => s.subtitle);
@@ -446,6 +454,16 @@ export function PatternsShell({
             </View>
           );
         })}
+
+        {/* Limit aşım uyarısı */}
+        {overLimits.length > 0 && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16, marginTop: 12, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12, backgroundColor: 'rgba(217,119,6,0.10)', borderWidth: 1, borderColor: 'rgba(217,119,6,0.3)' }}>
+            <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#D97706' }} />
+            <Text style={{ flex: 1, fontSize: 13, color: '#92400E' }}>
+              Plan limiti aşıldı: {overLimits.join(', ')}. Yükseltmek için laboratuvar yöneticinizle veya destek ile iletişime geçin.
+            </Text>
+          </View>
+        )}
 
         {/* TOP BAR — page title (left) only; toolbar absolute-pinned outside ScrollView */}
         {/* Sayfa başlığının sol kenarı, içerik kartlarının sol kenarıyla aynı hizada olmalı.

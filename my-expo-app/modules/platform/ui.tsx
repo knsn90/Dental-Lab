@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
-import { LayoutGrid, Building2, ScrollText, ShieldCheck, LogOut, LifeBuoy, Activity, Megaphone, CreditCard, Users, Settings } from 'lucide-react-native';
+import { LayoutGrid, Building2, ScrollText, ShieldCheck, LogOut, LifeBuoy, Activity, Megaphone, CreditCard, Users, Settings, ShieldAlert, Plug } from 'lucide-react-native';
 import { supabase } from '../../core/api/supabase';
 
 export const C = {
@@ -21,7 +21,9 @@ const NAV = [
   { key: 'billing', label: 'Faturalama', icon: CreditCard, href: '/(platform)/billing' },
   { key: 'support', label: 'Destek', icon: LifeBuoy, href: '/(platform)/support' },
   { key: 'announcements', label: 'Duyuru', icon: Megaphone, href: '/(platform)/announcements' },
+  { key: 'security', label: 'Güvenlik', icon: ShieldAlert, href: '/(platform)/security' },
   { key: 'health', label: 'Sağlık', icon: Activity, href: '/(platform)/health' },
+  { key: 'integrations', label: 'Entegrasyonlar', icon: Plug, href: '/(platform)/integrations' },
   { key: 'audit', label: 'Denetim', icon: ScrollText, href: '/(platform)/audit' },
   { key: 'settings', label: 'Ayarlar', icon: Settings, href: '/(platform)/settings' },
   { key: 'admins', label: 'Yöneticiler', icon: ShieldCheck, href: '/(platform)/admins' },
@@ -32,7 +34,7 @@ const SIDEBAR: { group: string | null; items: typeof NAV }[] = [
   { group: null, items: NAV.filter((n) => n.key === '') },
   { group: 'Yönetim', items: NAV.filter((n) => ['labs', 'users', 'billing'].includes(n.key)) },
   { group: 'Operasyon', items: NAV.filter((n) => ['support', 'announcements'].includes(n.key)) },
-  { group: 'Sistem', items: NAV.filter((n) => ['health', 'settings', 'audit', 'admins'].includes(n.key)) },
+  { group: 'Sistem', items: NAV.filter((n) => ['security', 'health', 'integrations', 'settings', 'audit', 'admins'].includes(n.key)) },
 ];
 
 /** Eski üst-çubuk artık no-op — navigasyon PlatformSidebar'a taşındı. */
@@ -90,6 +92,8 @@ export const usePlatformActive = () => {
   if (p?.includes('/billing')) return 'billing';
   if (p?.includes('/support')) return 'support';
   if (p?.includes('/announcements')) return 'announcements';
+  if (p?.includes('/security')) return 'security';
+  if (p?.includes('/integrations')) return 'integrations';
   if (p?.includes('/health')) return 'health';
   if (p?.includes('/settings')) return 'settings';
   if (p?.includes('/audit')) return 'audit';

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator, Platform } from 'react-native';
-import { Search, Users as UsersIcon, Mail, ChevronDown, UserX, ArrowRightLeft, Power, Check } from 'lucide-react-native';
-import { listUsers, setUserActive, setUserRole, moveUserLab, anonymizeUser, sendPasswordReset, listLabs, USER_ROLES, type PlatformUser, type PlatformLab } from '../../modules/platform/api';
+import { Search, Users as UsersIcon, Mail, ChevronDown, UserX, ArrowRightLeft, Power, Check, LogOut } from 'lucide-react-native';
+import { listUsers, setUserActive, setUserRole, moveUserLab, anonymizeUser, sendPasswordReset, signoutUser, listLabs, USER_ROLES, type PlatformUser, type PlatformLab } from '../../modules/platform/api';
 import { C, FONT, PlatformNav } from '../../modules/platform/ui';
 
 export default function PlatformUsers() {
@@ -119,6 +119,11 @@ export default function PlatformUsers() {
                           ))}
                         </View>
                       </View>
+                      {/* Oturumları kapat */}
+                      <Pressable disabled={busy === u.id} onPress={() => act(u.id, () => signoutUser(u.id), 'Tüm oturumlar sonlandırıldı.')}
+                        style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: C.line, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                        <LogOut size={14} color={C.ink2} strokeWidth={1.9} /><Text style={{ color: C.ink2, fontSize: 12.5, fontWeight: '600' }}>Tüm oturumları kapat</Text>
+                      </Pressable>
                       {/* Anonymize */}
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                         {confirmAnon === u.id ? (
