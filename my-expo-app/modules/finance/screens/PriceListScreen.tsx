@@ -739,14 +739,49 @@ function buildPriceListPdfHtml(opts: {
   clinicName?: string;
   /** Override map: service_id → effective price (varsa fiyat olarak göster) */
   overrides?: Record<string, { customPrice: number | null; discountPercent: number | null }>;
+  /** ── Tasarım/İçerik özelleştirme (opsiyonel — verilmezse mevcut varsayılan) ── */
+  accent?: string;
+  accentSoft?: string;
+  /** Ana başlık (H1). \n → satır sonu. Verilmezse varsayılan iki satırlık başlık. */
+  title?: string;
+  /** Başlık altı açıklama satırı. */
+  subtitle?: string;
+  /** Sağ üst eyebrow etiketi. */
+  eyebrow?: string;
+  /** Alt bilgi (footer) metni. */
+  footerText?: string;
+  /** Fiyat gizliyken gösterilen not (boş string → not gösterilmez). */
+  blankNote?: string;
+  /** Yalnızca bu kategoriler dahil edilsin (verilmezse tümü). */
+  includeCategories?: string[];
+  /** Birim ekini ("/ Üye" vb.) gizle. */
+  hideUnit?: boolean;
 }): string {
-  const { labName, labLogoUrl, services, showPrices, currency, clinicName, overrides } = opts;
+  const {
+    labName, labLogoUrl, services, showPrices, currency, clinicName, overrides,
+    accent = '#1E3A8A',
+    title: customTitle,
+    subtitle: customSubtitle,
+    eyebrow: customEyebrow,
+    footerText: customFooter,
+    blankNote,
+    includeCategories,
+    hideUnit,
+  } = opts;
+  // accentSoft yoksa accent'ten yumuşak ton türet
+  const hexToRgba = (hex: string, a: number) => {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+    if (!m) return `rgba(30,58,138,${a})`;
+    const n = parseInt(m[1], 16);
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+  };
+  const accentSoft = opts.accentSoft ?? hexToRgba(accent, 0.08);
   const escape = (s: string) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const fmtPrice = (sv: LabService) => {
     const placeholder = '<span style="color:#94A3B8;letter-spacing:2px">_____________</span>';
     if (!showPrices) return placeholder;
     // Birim eki — "/ Üye" gibi (ücretsiz hariç)
-    const u = sv.unit ? ` <span style="font-size:9px;color:#94A3B8">/ ${escape(sv.unit)}</span>` : '';
+    const u = (!hideUnit && sv.unit) ? ` <span style="font-size:9px;color:#94A3B8">/ ${escape(sv.unit)}</span>` : '';
     // Tipe göre özel gösterim — ücretsiz / yüzde (override hesabı uygulanmaz)
     if (sv.price_type === 'free') return 'Ücretsiz';
     if (sv.price_type === 'percent') return `%${(Number(sv.price) || 0).toLocaleString('tr-TR')}${u}`;
@@ -763,13 +798,14 @@ function buildPriceListPdfHtml(opts: {
     const priceStr = `${sym}${effective.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}`;
     if (isCustom && ov?.discountPercent != null) {
       const baseStr = `${sym}${(Number(sv.price) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 })}`;
-      return `${priceStr}${u} <span style="font-size:9px;color:#94A3B8;text-decoration:line-through;margin-left:6px">${baseStr}</span> <span style="font-size:9px;color:#1E3A8A;font-weight:700;margin-left:4px">-%${ov.discountPercent}</span>`;
+      return `${priceStr}${u} <span style="font-size:9px;color:#94A3B8;text-decoration:line-through;margin-left:6px">${baseStr}</span> <span style="font-size:9px;color:${accent};font-weight:700;margin-left:4px">-%${ov.discountPercent}</span>`;
     }
     return priceStr + u;
   };
 
-  // Kategori bazlı grupla (sadece aktif)
-  const active = services.filter(s => s.is_active);
+  // Kategori bazlı grupla (sadece aktif) — istenirse kategori filtresi uygula
+  const catSet = includeCategories && includeCategories.length ? new Set(includeCategories) : null;
+  const active = services.filter(s => s.is_active && (!catSet || catSet.has(s.category || 'Diğer')));
   const grouped: Record<string, LabService[]> = {};
   active.forEach(sv => {
     const cat = sv.category || 'Diğer';
@@ -850,19 +886,19 @@ html, body { font-family: 'Inter','Helvetica Neue',Arial,sans-serif; color: #0F1
 
 .titleBlock { padding: 4px 0 14px; }
 .title { font-size: 22px; font-weight: 300; letter-spacing: -0.5px; color: #0F172A; line-height: 1.15; }
-.titleAccent { color: #1E3A8A; font-weight: 600; }
+.titleAccent { color: ${accent}; font-weight: 600; }
 .subtitle { font-size: 11px; color: #475569; margin-top: 8px; line-height: 1.55; }
-.clinicTag { display: inline-block; padding: 3px 10px; border-radius: 9999px; background: rgba(30,58,138,0.08); color: #1E3A8A; font-size: 10.5px; font-weight: 700; letter-spacing: 0.4px; margin-top: 6px; }
+.clinicTag { display: inline-block; padding: 3px 10px; border-radius: 9999px; background: ${accentSoft}; color: ${accent}; font-size: 10.5px; font-weight: 700; letter-spacing: 0.4px; margin-top: 6px; }
 .subNote { font-size: 10px; color: #475569; margin-top: 8px; padding: 8px 12px; background: #F8FAFC; border-radius: 8px; border-left: 3px solid #CBD5E1; }
 .divider { display: none; }
 
 /* ── SECTIONS ── */
 .section { margin-bottom: 22px; break-inside: avoid; page-break-inside: avoid; }
-.secTitle { font-size: 14px; font-weight: 600; color: #1E3A8A; letter-spacing: 0.3px; margin-bottom: 10px; }
+.secTitle { font-size: 14px; font-weight: 600; color: ${accent}; letter-spacing: 0.3px; margin-bottom: 10px; }
 
 /* ── PRICE TABLE ── */
 .priceTable { width: 100%; border-collapse: collapse; border: 1px solid #CBD5E1; }
-.priceTable thead { background: #1E3A8A; }
+.priceTable thead { background: ${accent}; }
 .priceTable th { padding: 9px 14px; font-size: 10px; font-weight: 700; color: #FFFFFF; letter-spacing: 1.3px; text-transform: uppercase; text-align: left; border-right: 1px solid rgba(255,255,255,0.18); }
 .priceTable th:last-child { border-right: none; }
 .priceTable th.thName { width: 70%; }
@@ -895,7 +931,7 @@ html, body { font-family: 'Inter','Helvetica Neue',Arial,sans-serif; color: #0F1
       })()}
     </div>
     <div class="headerRight">
-      <div class="docEyebrow">${clinicName ? 'KLİNİK ÖZEL LİSTE' : 'GÜNCEL FİYAT LİSTESİ'}</div>
+      <div class="docEyebrow">${escape(customEyebrow ?? (clinicName ? 'KLİNİK ÖZEL LİSTE' : 'GÜNCEL FİYAT LİSTESİ'))}</div>
       <div class="docTitle">${escape(currency)} · ${new Date().toLocaleDateString(localeTag(), { year: 'numeric', month: 'long' })}</div>
       <div class="docMeta">Ref: FL-${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}</div>
     </div>
@@ -903,11 +939,17 @@ html, body { font-family: 'Inter','Helvetica Neue',Arial,sans-serif; color: #0F1
 
   <div class="titleBlock">
     <h1 class="title">
-      ${clinicName ? 'Klinik özel<br/><span class="titleAccent">fiyat teklifi</span>' : 'Güncel hizmet<br/><span class="titleAccent">fiyat listesi</span>'}
+      ${customTitle != null
+        ? escape(customTitle).replace(/\n/g, '<br/>')
+        : (clinicName ? 'Klinik özel<br/><span class="titleAccent">fiyat teklifi</span>' : 'Güncel hizmet<br/><span class="titleAccent">fiyat listesi</span>')}
     </h1>
     ${clinicName ? `<div class="clinicTag">${escape(clinicName)}</div>` : ''}
-    <p class="subtitle">Gelişmiş CAD/CAM · Dijital Sabit Protez · 3D Baskı Çözümleri</p>
-    ${!showPrices ? '<p class="subNote">Tüm fiyat alanları klinik bazlı özel fiyatlandırma için boş bırakılmıştır.</p>' : ''}
+    <p class="subtitle">${escape(customSubtitle ?? 'Gelişmiş CAD/CAM · Dijital Sabit Protez · 3D Baskı Çözümleri')}</p>
+    ${(() => {
+      if (showPrices) return '';
+      const note = blankNote ?? 'Tüm fiyat alanları klinik bazlı özel fiyatlandırma için boş bırakılmıştır.';
+      return note.trim() ? `<p class="subNote">${escape(note)}</p>` : '';
+    })()}
   </div>
 
   <div class="divider"></div>
@@ -915,7 +957,9 @@ html, body { font-family: 'Inter','Helvetica Neue',Arial,sans-serif; color: #0F1
   ${sections}
 
   <div class="footer">
-    ${escape(labName.toLocaleUpperCase('tr-TR'))} · Gelişmiş CAD/CAM İş Akışı · ${new Date().toLocaleDateString(localeTag())}
+    ${customFooter != null
+      ? escape(customFooter)
+      : `${escape(labName.toLocaleUpperCase('tr-TR'))} · Gelişmiş CAD/CAM İş Akışı · ${new Date().toLocaleDateString(localeTag())}`}
   </div>
 
 </div>
@@ -930,6 +974,9 @@ function StandardTab() {
   const { profile } = useAuthStore();
   const [pdfModalOpen, setPdfModalOpen] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
+  // Fiyat listesi oluşturucu — boş / fiyatlı mod ile açılır
+  const [priceBuilderOpen, setPriceBuilderOpen] = useState(false);
+  const [priceBuilderPriced, setPriceBuilderPriced] = useState(true);
   const catScrollRef = useRef<ScrollView>(null);
   // Bir kerelik scroll-hint — sayfa açıldıktan ~800ms sonra ufak bir
   // ileri-geri kayma ile "kaydırılabilir" olduğunu göster
@@ -1390,17 +1437,7 @@ function StandardTab() {
             </View>
             <View style={{ padding: 18, gap: 12 }}>
               <Pressable
-                onPress={async () => {
-                  setPdfModalOpen(false);
-                  let labName = 'Nexadent Dijital Laboratuvar', labLogoUrl: string | null = null;
-                  if ((profile as any)?.lab_id) {
-                    const { data } = await supabase.from('labs').select('name, logo_url').eq('id', (profile as any).lab_id).maybeSingle();
-                    if (data) { labName = data.name || labName; labLogoUrl = data.logo_url || null; }
-                  }
-                  const html = buildPriceListPdfHtml({ labName, labLogoUrl, services, showPrices: false, currency: 'EUR' });
-                  const w = window.open('', '_blank');
-                  if (w) { w.document.write(html); w.document.close(); }
-                }}
+                onPress={() => { setPdfModalOpen(false); setPriceBuilderPriced(false); setPriceBuilderOpen(true); }}
                 style={({ hovered }: any) => ({
                   padding: 14, borderRadius: 12,
                   backgroundColor: hovered ? '#F8FAFC' : '#FFFFFF',
@@ -1410,21 +1447,11 @@ function StandardTab() {
               >
                 <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900], marginBottom: 3 }}>Boş Fiyat Listesi</Text>
                 <Text style={{ fontSize: 11, color: DS.ink[500] }}>
-                  Klinik için boş — fiyat alanları el ile yazılır. Klinik bazlı pazarlık için ideal.
+                  Klinik için boş — fiyat alanları el ile yazılır. Renk, başlık ve içerik düzenlenebilir.
                 </Text>
               </Pressable>
               <Pressable
-                onPress={async () => {
-                  setPdfModalOpen(false);
-                  let labName = 'Nexadent Dijital Laboratuvar', labLogoUrl: string | null = null;
-                  if ((profile as any)?.lab_id) {
-                    const { data } = await supabase.from('labs').select('name, logo_url').eq('id', (profile as any).lab_id).maybeSingle();
-                    if (data) { labName = data.name || labName; labLogoUrl = data.logo_url || null; }
-                  }
-                  const html = buildPriceListPdfHtml({ labName, labLogoUrl, services, showPrices: true, currency: 'EUR' });
-                  const w = window.open('', '_blank');
-                  if (w) { w.document.write(html); w.document.close(); }
-                }}
+                onPress={() => { setPdfModalOpen(false); setPriceBuilderPriced(true); setPriceBuilderOpen(true); }}
                 style={({ hovered }: any) => ({
                   padding: 14, borderRadius: 12,
                   backgroundColor: hovered ? '#F8FAFC' : '#FFFFFF',
@@ -1434,7 +1461,7 @@ function StandardTab() {
               >
                 <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900], marginBottom: 3 }}>Fiyatlı Liste</Text>
                 <Text style={{ fontSize: 11, color: DS.ink[500] }}>
-                  Mevcut fiyatlar ile — referans/online katalog amaçlı.
+                  Mevcut fiyatlar ile — renk, başlık, kategori ve içerik düzenlenebilir.
                 </Text>
               </Pressable>
               <Pressable
@@ -1632,6 +1659,15 @@ function StandardTab() {
         services={services}
         dynamicCategories={dynamicCategories}
         currency="EUR"
+        labId={(profile as any)?.lab_id ?? null}
+      />
+
+      <PriceListBuilderModal
+        visible={priceBuilderOpen}
+        pricedMode={priceBuilderPriced}
+        onClose={() => setPriceBuilderOpen(false)}
+        services={services}
+        dynamicCategories={visibleFilterCats}
         labId={(profile as any)?.lab_id ?? null}
       />
     </View>
@@ -1886,34 +1922,25 @@ function CustomTab() {
   const [saving, setSaving]           = useState(false);
   const [pdfBusy, setPdfBusy]         = useState(false);
   const [importing, setImporting]     = useState(false);
+  const [builderOpen, setBuilderOpen] = useState(false);
 
-  const exportClinicPdf = async () => {
+  // Klinik özel liste override map'i (builder'a geçilir)
+  const overrideMap = React.useMemo(() => {
+    const m: Record<string, { customPrice: number | null; discountPercent: number | null }> = {};
+    overrides.forEach(o => { m[o.service_id] = { customPrice: o.custom_price, discountPercent: o.discount_percent }; });
+    return m;
+  }, [overrides]);
+
+  // Klinik listesinde görünen kategoriler (en az 1 hizmeti olan)
+  const clinicCategories = React.useMemo(() => {
+    const used = new Set<string>();
+    services.filter(s => s.is_active).forEach(s => used.add(s.category || 'Diğer'));
+    return Array.from(used);
+  }, [services]);
+
+  const exportClinicPdf = () => {
     if (!selectedClinic) return;
-    setPdfBusy(true);
-    try {
-      let labName = 'Nexadent Dijital Laboratuvar', labLogoUrl: string | null = null;
-      if ((profile as any)?.lab_id) {
-        const { data } = await supabase.from('labs').select('name, logo_url').eq('id', (profile as any).lab_id).maybeSingle();
-        if (data) { labName = data.name || labName; labLogoUrl = data.logo_url || null; }
-      }
-      // Override map'i oluştur
-      const overrideMap: Record<string, { customPrice: number | null; discountPercent: number | null }> = {};
-      overrides.forEach(o => {
-        overrideMap[o.service_id] = { customPrice: o.custom_price, discountPercent: o.discount_percent };
-      });
-      const html = buildPriceListPdfHtml({
-        labName, labLogoUrl,
-        services,
-        showPrices: true,
-        currency: 'TRY',
-        clinicName: selectedClinic.name,
-        overrides: overrideMap,
-      });
-      const w = window.open('', '_blank');
-      if (w) { w.document.write(html); w.document.close(); }
-    } finally {
-      setPdfBusy(false);
-    }
+    setBuilderOpen(true);
   };
 
   const load = useCallback(async () => {
@@ -2318,6 +2345,18 @@ function CustomTab() {
           </View>
         </View>
       </Modal>
+
+      <PriceListBuilderModal
+        visible={builderOpen}
+        pricedMode
+        onClose={() => setBuilderOpen(false)}
+        services={services}
+        dynamicCategories={clinicCategories}
+        labId={(profile as any)?.lab_id ?? null}
+        clinicName={selectedClinic?.name}
+        overrides={overrideMap}
+        defaultCurrency="TRY"
+      />
     </View>
   );
 }
@@ -2927,6 +2966,372 @@ function CategoryManageModal({
               <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>
                 {mode === 'merge' ? 'Birleştir' : 'Böl'}
               </Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Price List Builder Modal — basit fiyat listesi PDF'i için renk/başlık/içerik
+// düzenleme. "Boş Fiyat Listesi" ve "Fiyatlı Liste" seçenekleri buradan geçer.
+// ────────────────────────────────────────────────────────────────────────────
+const PRICE_LIST_SUBTITLE_DEFAULT = 'Gelişmiş CAD/CAM · Dijital Sabit Protez · 3D Baskı Çözümleri';
+const PRICE_LIST_BLANKNOTE_DEFAULT = 'Tüm fiyat alanları klinik bazlı özel fiyatlandırma için boş bırakılmıştır.';
+
+function PriceListBuilderModal({
+  visible, pricedMode, onClose, services, dynamicCategories, labId,
+  clinicName, overrides, defaultCurrency,
+}: {
+  visible: boolean;
+  pricedMode: boolean;
+  onClose: () => void;
+  services: LabService[];
+  dynamicCategories: string[];
+  labId: string | null;
+  /** Klinik özel liste modu — verilirse başlık klinik teklifi olur. */
+  clinicName?: string;
+  /** service_id → effective price override (klinik özel fiyatlar). */
+  overrides?: Record<string, { customPrice: number | null; discountPercent: number | null }>;
+  /** Para birimi varsayılanı (klinik listeleri için TRY). */
+  defaultCurrency?: string;
+}) {
+  // Klinik listeleri ayrı config anahtarında saklanır (genel listeyle karışmasın)
+  const storageKey = `priceListConfig:${clinicName ? 'clinic:' : ''}${labId ?? 'default'}`;
+  const loadStored = (): any => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  };
+  const stored = loadStored();
+
+  const [loading, setLoading] = useState(true);
+  const [lab, setLab] = useState<{ name?: string | null; logo_url?: string | null }>({});
+
+  const [accentId, setAccentId]     = useState<string>(stored?.accentId ?? 'lacivert');
+  const [title, setTitle]           = useState<string>(stored?.title ?? '');
+  const [subtitle, setSubtitle]     = useState<string>(stored?.subtitle ?? PRICE_LIST_SUBTITLE_DEFAULT);
+  const [eyebrow, setEyebrow]       = useState<string>(stored?.eyebrow ?? '');
+  const [footerText, setFooterText] = useState<string>(stored?.footerText ?? '');
+  const [blankNote, setBlankNote]   = useState<string>(stored?.blankNote ?? PRICE_LIST_BLANKNOTE_DEFAULT);
+  const [currency, setCurrency]     = useState<string>(stored?.currency ?? defaultCurrency ?? 'EUR');
+  const [hideUnit, setHideUnit]     = useState<boolean>(stored?.hideUnit ?? false);
+  const [excludedCats, setExcludedCats] = useState<Record<string, boolean>>(stored?.excludedCats ?? {});
+  const [showPrices, setShowPrices] = useState<boolean>(pricedMode);
+  const [generating, setGenerating] = useState(false);
+
+  // Giriş seçeneğine göre fiyat modunu senkronla (her açılışta)
+  useEffect(() => { if (visible) setShowPrices(pricedMode); }, [visible, pricedMode]);
+
+  // Form değiştikçe localStorage'a yaz
+  useEffect(() => {
+    if (typeof window === 'undefined' || loading) return;
+    const payload = { accentId, title, subtitle, eyebrow, footerText, blankNote, currency, hideUnit, excludedCats };
+    try { window.localStorage.setItem(storageKey, JSON.stringify(payload)); } catch {}
+  }, [loading, storageKey, accentId, title, subtitle, eyebrow, footerText, blankNote, currency, hideUnit, excludedCats]);
+
+  // Lab bilgisini aç­ılışta yükle
+  const loadedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!visible) { loadedFor.current = null; return; }
+    if (loadedFor.current === labId) return;
+    loadedFor.current = labId;
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      if (labId) {
+        const { data } = await supabase.from('labs').select('name, logo_url').eq('id', labId).maybeSingle();
+        if (!cancelled && data) setLab(data as any);
+      }
+      if (!cancelled) setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [visible, labId]);
+
+  if (!visible) return null;
+
+  const palette = CATALOG_PALETTES.find(p => p.id === accentId) ?? CATALOG_PALETTES[0];
+
+  const buildHtml = () => {
+    const includeCategories = dynamicCategories.filter(c => !excludedCats[c]);
+    return buildPriceListPdfHtml({
+      labName: lab.name || 'Nexadent Dijital Laboratuvar',
+      labLogoUrl: lab.logo_url || null,
+      services,
+      showPrices,
+      currency,
+      clinicName,
+      overrides,
+      accent: palette.accent,
+      accentSoft: palette.accentSoft,
+      title: title.trim() || undefined,
+      subtitle,
+      eyebrow: eyebrow.trim() || undefined,
+      footerText: footerText.trim() || undefined,
+      blankNote,
+      includeCategories: includeCategories.length ? includeCategories : undefined,
+      hideUnit,
+    });
+  };
+
+  const handlePreview = () => {
+    if (typeof window === 'undefined') return;
+    const html = buildHtml();
+    const w = window.open('', '_blank');
+    if (w) { w.document.write(html); w.document.close(); }
+  };
+
+  const handleDownloadPdf = async () => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    setGenerating(true);
+    try {
+      const html = buildHtml();
+      const iframe = document.createElement('iframe');
+      iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:820px;height:auto;border:none;';
+      document.body.appendChild(iframe);
+      const doc = iframe.contentDocument!;
+      doc.open(); doc.write(html); doc.close();
+
+      await new Promise<void>((resolve) => {
+        const imgs = Array.from(doc.images);
+        if (imgs.length === 0) return resolve();
+        let loaded = 0;
+        const tick = () => { if (++loaded >= imgs.length) resolve(); };
+        imgs.forEach(img => { if (img.complete) tick(); else { img.onload = tick; img.onerror = tick; } });
+        setTimeout(resolve, 5000);
+      });
+      await new Promise(r => setTimeout(r, 300));
+
+      const target = (doc.querySelector('.doc') as HTMLElement | null) ?? doc.body;
+      const html2pdfMod: any = await import('html2pdf.js');
+      const html2pdf = html2pdfMod.default ?? html2pdfMod;
+      const baseName = clinicName ? `${lab.name || 'Lab'}_${clinicName}` : (lab.name || 'Lab');
+      const safeName = baseName.replace(/[^\wÀ-ſĞğŞşİıÇçÜüÖö -]/g, '').trim() || 'FiyatListesi';
+      const fileName = `${safeName}_FiyatListesi_${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}.pdf`;
+
+      await html2pdf()
+        .from(target)
+        .set({
+          margin: [12, 10, 12, 10],
+          filename: fileName,
+          image: { type: 'jpeg', quality: 0.95 },
+          html2canvas: { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#FFFFFF', logging: false },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+          pagebreak: { mode: ['css', 'avoid-all'] },
+        })
+        .save();
+
+      document.body.removeChild(iframe);
+    } catch (e: any) {
+      console.error('PDF üretim hatası', e);
+      if (Platform.OS === 'web') window.alert(`PDF oluşturulamadı: ${e?.message ?? 'bilinmeyen hata'}`);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const sectionTitle: any = { fontSize: 11, fontWeight: '700', color: DS.ink[500], letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 10 };
+  const fieldLabel: any = { fontSize: 11, fontWeight: '600', color: DS.ink[500], marginBottom: 6 };
+  const fieldInput: any = {
+    paddingHorizontal: 12, paddingVertical: 9, borderRadius: 8,
+    borderWidth: 1, borderColor: DS.ink[200], backgroundColor: '#FFFFFF',
+    fontSize: 13, color: DS.ink[900],
+    ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
+  };
+  const sectionBox: any = { padding: 16, borderRadius: 12, borderWidth: 1, borderColor: DS.ink[200], backgroundColor: '#FFFFFF', marginBottom: 12 };
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.55)', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+        <View style={{ width: 640, maxWidth: '100%', maxHeight: '92%', backgroundColor: '#F8FAFC', borderRadius: 18, overflow: 'hidden' }}>
+          {/* Header */}
+          <View style={{ paddingHorizontal: 22, paddingVertical: 16, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={{ fontSize: 17, fontWeight: '700', color: DS.ink[900] }}>{clinicName ? `${clinicName} — Özel Liste` : 'Fiyat Listesi Oluşturucu'}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 9999, backgroundColor: 'rgba(16,185,129,0.10)' }}>
+                  <Check size={9} color="#059669" strokeWidth={3} />
+                  <Text style={{ fontSize: 9.5, fontWeight: '700', color: '#059669', letterSpacing: 0.4 }}>OTOMATİK KAYIT</Text>
+                </View>
+              </View>
+              <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 4 }}>
+                Renk, başlık, kategori ve içeriği düzenle — sonra önizle veya PDF indir.
+              </Text>
+            </View>
+            <Pressable onPress={onClose} hitSlop={8} style={({ hovered }: any) => ({ padding: 6, borderRadius: 8, backgroundColor: hovered ? DS.ink[100] : 'transparent', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) })}>
+              <X size={18} color={DS.ink[500]} />
+            </Pressable>
+          </View>
+
+          <ScrollView style={{ flexGrow: 0 }} contentContainerStyle={{ padding: 16 }}>
+            {/* Fiyat modu */}
+            <View style={sectionBox}>
+              <Text style={sectionTitle}>Fiyat Gösterimi</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View style={{ flex: 1, paddingRight: 12 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>{showPrices ? 'Fiyatlı liste' : 'Boş liste'}</Text>
+                  <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 2 }}>
+                    {showPrices ? 'Mevcut fiyatlar tabloda gösterilir.' : 'Fiyat alanları boş — el ile doldurulur (klinik pazarlığı için).'}
+                  </Text>
+                </View>
+                <AppSwitch value={showPrices} onValueChange={setShowPrices} />
+              </View>
+            </View>
+
+            {/* Tema rengi */}
+            <View style={sectionBox}>
+              <Text style={sectionTitle}>Tema Rengi</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {CATALOG_PALETTES.map(p => {
+                  const active = p.id === accentId;
+                  return (
+                    <Pressable
+                      key={p.id}
+                      onPress={() => setAccentId(p.id)}
+                      style={({ hovered }: any) => ({
+                        flexDirection: 'row', alignItems: 'center', gap: 7,
+                        paddingHorizontal: 10, paddingVertical: 7, borderRadius: 9999,
+                        borderWidth: active ? 2 : 1, borderColor: active ? p.accent : DS.ink[200],
+                        backgroundColor: active ? p.accentSoft : (hovered ? DS.ink[50] : '#FFFFFF'),
+                        ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                      })}
+                    >
+                      <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: p.accent }} />
+                      <Text style={{ fontSize: 12, fontWeight: active ? '700' : '500', color: active ? p.accent : DS.ink[700] }}>{p.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* Metinler */}
+            <View style={sectionBox}>
+              <Text style={sectionTitle}>Başlık & Metinler</Text>
+
+              <Text style={fieldLabel}>Ana Başlık <Text style={{ color: DS.ink[400], fontWeight: '400' }}>(boş = varsayılan)</Text></Text>
+              <TextInput
+                value={title} onChangeText={setTitle}
+                placeholder={showPrices ? 'Güncel hizmet fiyat listesi' : 'Klinik özel fiyat teklifi'}
+                placeholderTextColor={DS.ink[400]}
+                style={[fieldInput, { marginBottom: 12 }]}
+              />
+
+              <Text style={fieldLabel}>Alt Başlık</Text>
+              <TextInput
+                value={subtitle} onChangeText={setSubtitle}
+                placeholder={PRICE_LIST_SUBTITLE_DEFAULT}
+                placeholderTextColor={DS.ink[400]}
+                style={[fieldInput, { marginBottom: 12 }]}
+              />
+
+              <Text style={fieldLabel}>Sağ Üst Etiket <Text style={{ color: DS.ink[400], fontWeight: '400' }}>(boş = varsayılan)</Text></Text>
+              <TextInput
+                value={eyebrow} onChangeText={setEyebrow}
+                placeholder="GÜNCEL FİYAT LİSTESİ"
+                placeholderTextColor={DS.ink[400]}
+                style={[fieldInput, { marginBottom: 12 }]}
+              />
+
+              {!showPrices && (
+                <>
+                  <Text style={fieldLabel}>Boş Liste Notu <Text style={{ color: DS.ink[400], fontWeight: '400' }}>(boş = gösterilmez)</Text></Text>
+                  <TextInput
+                    value={blankNote} onChangeText={setBlankNote}
+                    placeholder={PRICE_LIST_BLANKNOTE_DEFAULT}
+                    placeholderTextColor={DS.ink[400]}
+                    multiline
+                    style={[fieldInput, { marginBottom: 12, minHeight: 56, textAlignVertical: 'top' }]}
+                  />
+                </>
+              )}
+
+              <Text style={fieldLabel}>Alt Bilgi (Footer) <Text style={{ color: DS.ink[400], fontWeight: '400' }}>(boş = varsayılan)</Text></Text>
+              <TextInput
+                value={footerText} onChangeText={setFooterText}
+                placeholder={`${(lab.name || 'Laboratuvar').toLocaleUpperCase('tr-TR')} · Gelişmiş CAD/CAM İş Akışı`}
+                placeholderTextColor={DS.ink[400]}
+                style={fieldInput}
+              />
+            </View>
+
+            {/* Para birimi + birim eki */}
+            <View style={sectionBox}>
+              <Text style={sectionTitle}>Para Birimi & Görünüm</Text>
+              <Text style={fieldLabel}>Para Birimi (başlık etiketi)</Text>
+              <View style={{ marginBottom: 12 }}>
+                <CurrencyDropdown value={currency} onChange={setCurrency} />
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View style={{ flex: 1, paddingRight: 12 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>Birim ekini gizle</Text>
+                  <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 2 }}>"/ Üye", "/ Adet" gibi birim etiketlerini gizler.</Text>
+                </View>
+                <AppSwitch value={hideUnit} onValueChange={setHideUnit} />
+              </View>
+            </View>
+
+            {/* Kategoriler */}
+            {dynamicCategories.length > 0 && (
+              <View style={sectionBox}>
+                <Text style={sectionTitle}>Dahil Edilecek Kategoriler</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {dynamicCategories.map(c => {
+                    const included = !excludedCats[c];
+                    return (
+                      <Pressable
+                        key={c}
+                        onPress={() => setExcludedCats(prev => ({ ...prev, [c]: !prev[c] }))}
+                        style={({ hovered }: any) => ({
+                          flexDirection: 'row', alignItems: 'center', gap: 6,
+                          paddingHorizontal: 11, paddingVertical: 7, borderRadius: 9999,
+                          borderWidth: 1, borderColor: included ? palette.accent : DS.ink[200],
+                          backgroundColor: included ? palette.accentSoft : (hovered ? DS.ink[50] : '#FFFFFF'),
+                          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                        })}
+                      >
+                        {included
+                          ? <Check size={12} color={palette.accent} strokeWidth={2.6} />
+                          : <Plus size={12} color={DS.ink[400]} strokeWidth={2.2} />}
+                        <Text style={{ fontSize: 12, fontWeight: included ? '600' : '500', color: included ? palette.accent : DS.ink[500] }}>{c}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+          </ScrollView>
+
+          {/* Footer actions */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 18, paddingVertical: 14, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
+            <Pressable
+              onPress={handlePreview}
+              style={({ hovered }: any) => ({
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+                flex: 1, paddingVertical: 12, borderRadius: 10,
+                borderWidth: 1, borderColor: DS.ink[300], backgroundColor: hovered ? DS.ink[50] : '#FFFFFF',
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              })}
+            >
+              <Search size={15} color={DS.ink[700]} strokeWidth={1.8} />
+              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[700] }}>Önizle (yeni sekme)</Text>
+            </Pressable>
+            <Pressable
+              onPress={handleDownloadPdf}
+              disabled={generating}
+              style={({ hovered }: any) => ({
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+                flex: 1, paddingVertical: 12, borderRadius: 10,
+                backgroundColor: generating ? DS.ink[400] : (hovered ? palette.accent : DS.ink[900]),
+                opacity: generating ? 0.8 : 1,
+                ...(Platform.OS === 'web' ? { cursor: generating ? 'wait' : 'pointer' } as any : {}),
+              })}
+            >
+              <FileDown size={15} color="#FFFFFF" strokeWidth={1.8} />
+              <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>{generating ? 'Oluşturuluyor…' : 'PDF İndir'}</Text>
             </Pressable>
           </View>
         </View>

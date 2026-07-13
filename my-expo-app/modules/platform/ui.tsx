@@ -11,8 +11,17 @@ export const C = {
   soft: '#EAF2FB', green: '#2D9A6B', amber: '#E89B2A', red: '#D94B4B', violet: '#8B5CB8',
 };
 export const FONT = Platform.OS === 'web' ? ('Inter Tight, Inter, system-ui, sans-serif' as any) : undefined;
-// Kart gölgesi (design system cardLite) — web'de yumuşak derinlik
-export const CARD_SHADOW = Platform.OS === 'web' ? ({ boxShadow: '0 1px 3px rgba(15,23,42,0.06), 0 6px 16px rgba(15,23,42,0.05)' } as any) : {};
+// İnce (300) display — tasarım dilinin imzası: büyük başlık/metrikler
+export const SERIF = { fontFamily: FONT, fontWeight: '300' as const };
+// Kart gölgesi (design system) — web'de yumuşak ambient derinlik
+export const CARD_SHADOW = Platform.OS === 'web' ? ({ boxShadow: '0 1px 3px rgba(15,23,42,0.05), 0 8px 24px rgba(15,23,42,0.06)' } as any) : {};
+
+/** Hex → rgba (accent yumuşak tonları için) */
+export function hexA(hex: string, a: number) {
+  const h = hex.replace('#', '');
+  const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
 
 export const planTone = (p: string) =>
   p === 'active' || p === 'pro' || p === 'enterprise' ? C.green : p === 'suspended' ? C.red : C.amber;
@@ -79,11 +88,95 @@ export function PlatformSidebar() {
   );
 }
 
-export function Kpi({ label, value, tone }: { label: string; value: string | number; tone?: string }) {
+/** Dairesel accent-tintli ikon çipi (tasarım dili imzası) */
+export function IconChip({ icon: Icon, tone = C.accent, size = 34 }: { icon: any; tone?: string; size?: number }) {
   return (
-    <View style={{ flex: 1, minWidth: 150, backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.line, padding: 16, ...CARD_SHADOW }}>
-      <Text style={{ fontFamily: FONT, fontSize: 30, fontWeight: '300', letterSpacing: -1, color: tone ?? C.ink }}>{value}</Text>
-      <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.4, textTransform: 'uppercase', color: C.ink3, marginTop: 4 }}>{label}</Text>
+    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: hexA(tone, 0.12), alignItems: 'center', justifyContent: 'center' }}>
+      <Icon size={Math.round(size * 0.46)} color={tone} strokeWidth={1.9} />
+    </View>
+  );
+}
+
+/** Yumuşak accent tonlu chip (opsiyonel dot) */
+export function Chip({ tone = C.ink2, dot, children }: { tone?: string; dot?: boolean; children: React.ReactNode }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: hexA(tone, 0.12), borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+      {dot ? <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: tone }} /> : null}
+      <Text style={{ color: tone, fontSize: 11.5, fontWeight: '700' }}>{children}</Text>
+    </View>
+  );
+}
+
+/** Beyaz kart yüzeyi — radius + hairline + yumuşak gölge */
+export function Panel({ children, style, padding = 20 }: { children: React.ReactNode; style?: any; padding?: number }) {
+  return <View style={[{ backgroundColor: C.card, borderRadius: 18, borderWidth: 1, borderColor: C.line, padding, ...CARD_SHADOW }, style]}>{children}</View>;
+}
+
+/** Bölüm başlığı — 11px/700 UPPERCASE ink-400 + opsiyonel ikon/aksiyon */
+export function SectionLabel({ icon: Icon, tone, children, action }: { icon?: any; tone?: string; children: React.ReactNode; action?: { label: string; onPress: () => void } }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12, marginTop: 4 }}>
+      {Icon ? <Icon size={14} color={tone ?? C.ink3} strokeWidth={2} /> : null}
+      <Text style={{ color: C.ink3, fontSize: 11, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase' }}>{children}</Text>
+      <View style={{ flex: 1 }} />
+      {action ? (
+        <Pressable onPress={action.onPress} style={Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : undefined}>
+          <Text style={{ color: C.accent, fontSize: 12, fontWeight: '700' }}>{action.label}</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+/** Sayfa başlığı (hero) — eyebrow + ince display başlık + açıklama + alt divider */
+export function PageHeader({ eyebrow, title, accent: accentWord, description, actions }: {
+  eyebrow?: string; title: string; accent?: string; description?: string; actions?: React.ReactNode;
+}) {
+  return (
+    <View style={{ paddingBottom: 22, marginBottom: 26, borderBottomWidth: 1, borderBottomColor: C.line }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 24, flexWrap: 'wrap' }}>
+        <View style={{ flex: 1, minWidth: 240 }}>
+          {eyebrow ? <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 1.3, textTransform: 'uppercase', color: C.ink3, marginBottom: 12 }}>{eyebrow}</Text> : null}
+          <Text style={{ ...SERIF, fontSize: 40, letterSpacing: -1.0, lineHeight: 44, color: C.ink }}>
+            {title}
+            {accentWord ? <Text style={{ ...SERIF, color: C.accent }}>{' ' + accentWord}</Text> : null}
+          </Text>
+          {description ? <Text style={{ color: C.ink3, fontSize: 14, marginTop: 12, maxWidth: 620, lineHeight: 20 }}>{description}</Text> : null}
+        </View>
+        {actions ? <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>{actions}</View> : null}
+      </View>
+    </View>
+  );
+}
+
+/** Pill buton — primary(Kobalt) / danger / outline / ghost */
+export function Btn({ children, onPress, variant = 'primary', icon: Icon, disabled, size = 'md' }: {
+  children: React.ReactNode; onPress?: () => void; variant?: 'primary' | 'danger' | 'outline' | 'ghost'; icon?: any; disabled?: boolean; size?: 'sm' | 'md';
+}) {
+  const ph = size === 'sm' ? 14 : 18, pv = size === 'sm' ? 8 : 10, fs = size === 'sm' ? 13 : 14;
+  const s = variant === 'primary' ? { bg: C.accent, fg: '#FFFFFF', bd: C.accent }
+    : variant === 'danger' ? { bg: C.red, fg: '#FFFFFF', bd: C.red }
+    : variant === 'outline' ? { bg: 'transparent', fg: C.ink, bd: C.line }
+    : { bg: C.cardHover, fg: C.ink2, bd: 'transparent' };
+  return (
+    <Pressable onPress={onPress} disabled={disabled}
+      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingHorizontal: ph, paddingVertical: pv, borderRadius: 999, backgroundColor: s.bg, borderWidth: 1, borderColor: s.bd, opacity: disabled ? 0.5 : 1, ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}) }}>
+      {Icon ? <Icon size={size === 'sm' ? 14 : 16} color={s.fg} strokeWidth={2} /> : null}
+      <Text style={{ color: s.fg, fontSize: fs, fontWeight: '700' }}>{children}</Text>
+    </Pressable>
+  );
+}
+
+/** KPI kartı — büyük ince display metrik + muted etiket + opsiyonel ikon çipi/alt metin */
+export function Kpi({ label, value, tone, icon: Icon, sub }: { label: string; value: string | number; tone?: string; icon?: any; sub?: string }) {
+  return (
+    <View style={{ flex: 1, minWidth: 156, backgroundColor: C.card, borderRadius: 18, borderWidth: 1, borderColor: C.line, padding: 18, ...CARD_SHADOW }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <Text style={{ ...SERIF, fontSize: 34, letterSpacing: -1.2, color: tone ?? C.ink, lineHeight: 38 }}>{value}</Text>
+        {Icon ? <IconChip icon={Icon} tone={tone ?? C.accent} size={30} /> : null}
+      </View>
+      <Text style={{ fontSize: 12.5, fontWeight: '500', color: C.ink3, marginTop: 6 }}>{label}</Text>
+      {sub ? <Text style={{ fontSize: 11.5, color: C.ink3, marginTop: 2 }}>{sub}</Text> : null}
     </View>
   );
 }
