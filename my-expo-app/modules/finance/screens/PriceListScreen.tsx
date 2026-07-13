@@ -1882,6 +1882,7 @@ function CustomTab() {
   const [editModal, setEditModal]     = useState(false);
   const [editSvc, setEditSvc]         = useState<LabService | null>(null);
   const [oForm, setOForm]             = useState({ custom_price: '', discount_percent: '', notes: '', currency: 'TRY' });
+  const [oErr, setOErr]               = useState<string | null>(null);
   const [saving, setSaving]           = useState(false);
   const [pdfBusy, setPdfBusy]         = useState(false);
   const [importing, setImporting]     = useState(false);
@@ -1950,6 +1951,7 @@ function CustomTab() {
 
   const openEditOverride = (sv: LabService) => {
     const existing = overrides.find((o) => o.service_id === sv.id);
+    setOErr(null);
     setEditSvc(sv);
     setOForm({
       custom_price:     existing?.custom_price != null ? String(existing.custom_price) : '',
@@ -1962,6 +1964,7 @@ function CustomTab() {
 
   const handleSaveOverride = async () => {
     if (!selectedClinic || !editSvc) return;
+    setOErr(null);
     setSaving(true);
     const existing = overrides.find((o) => o.service_id === editSvc.id);
     const payload = {
@@ -1972,16 +1975,18 @@ function CustomTab() {
       currency:         oForm.currency || 'TRY',
       notes:            oForm.notes || null,
     };
-    let isNew = false;
-    if (existing) {
-      await supabase.from('clinic_price_overrides').update(payload).eq('id', existing.id);
-    } else {
-      await supabase.from('clinic_price_overrides').insert(payload);
-      isNew = true;
-    }
+    const isNew = !existing;
+    const { error } = existing
+      ? await supabase.from('clinic_price_overrides').update(payload).eq('id', existing.id)
+      : await supabase.from('clinic_price_overrides').insert(payload);
     setSaving(false);
+    if (error) {
+      // Hata artık yutulmuyor — popup açık kalır, kullanıcı görür
+      setOErr(error.message || 'Kaydedilemedi. Lütfen tekrar deneyin.');
+      return;
+    }
     setEditModal(false);
-    loadOverrides(selectedClinic.id);
+    await loadOverrides(selectedClinic.id);
     if (isNew) {
       setOverrideCounts(prev => ({ ...prev, [selectedClinic.id]: (prev[selectedClinic.id] ?? 0) + 1 }));
     }
@@ -1991,7 +1996,8 @@ function CustomTab() {
     if (!selectedClinic || !editSvc) return;
     const existing = overrides.find((o) => o.service_id === editSvc.id);
     if (!existing) { setEditModal(false); return; }
-    await supabase.from('clinic_price_overrides').delete().eq('id', existing.id);
+    const { error } = await supabase.from('clinic_price_overrides').delete().eq('id', existing.id);
+    if (error) { setOErr(error.message || 'Silinemedi. Lütfen tekrar deneyin.'); return; }
     setEditModal(false);
     loadOverrides(selectedClinic.id);
     setOverrideCounts(prev => ({ ...prev, [selectedClinic.id]: Math.max(0, (prev[selectedClinic.id] ?? 1) - 1) }));
@@ -2285,6 +2291,11 @@ function CustomTab() {
               <View style={{ height: 8 }} />
             </ScrollView>
 
+            {oErr && (
+              <View style={{ paddingHorizontal: 20, paddingBottom: 4 }}>
+                <Text style={{ color: '#D94B4B', fontSize: 12.5, fontWeight: '600' }}>{oErr}</Text>
+              </View>
+            )}
             <View style={m.footer}>
               {overrides.find((o) => o.service_id === editSvc?.id) && (
                 <Pressable style={m.deleteBtn as any} onPress={handleDeleteOverride}>
