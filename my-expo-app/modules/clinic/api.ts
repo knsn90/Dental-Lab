@@ -4,6 +4,7 @@
 // ============================================================
 
 import { supabase } from '../../core/api/supabase';
+import { getActiveLabId } from '../../core/store/activeLabStore';
 
 /** Klinik müdürünün kendi kliniğindeki tüm hekimler (RLS otomatik filtreler). */
 export async function fetchMyClinicDoctors() {
@@ -89,10 +90,12 @@ export async function inviteClinicUser(input: {
  * doctor bilgisi için profiles'e join yapılır (profile-based doctor_id).
  */
 export async function fetchClinicOrders() {
-  return supabase
-    .from('work_orders')
-    .select('*')
-    .order('delivery_date', { ascending: true });
+  // Çoklu-lab: aktif lab seçiliyse yalnız o lab'ın siparişleri (UX bölmesi; RLS zaten
+  // klinik verisini sahiplik ile sınırlar). Aktif lab yoksa (tek-lab) tümü — bugünkü davranış.
+  const activeLab = getActiveLabId();
+  let q = supabase.from('work_orders').select('*').order('delivery_date', { ascending: true });
+  if (activeLab) q = q.eq('lab_id', activeLab);
+  return q;
 }
 
 /** Belirli bir hekimin klinikte siparişleri. */

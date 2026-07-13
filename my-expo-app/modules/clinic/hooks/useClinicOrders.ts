@@ -3,15 +3,17 @@ import { Platform } from 'react-native';
 import { supabase } from '../../../core/api/supabase';
 import { WorkOrder } from '../../../lib/types';
 import { fetchClinicOrders, fetchMyClinicDoctors } from '../api';
+import { getActiveLabId } from '../../../core/store/activeLabStore';
 
-const LS_KEY = 'clinic_orders_cache_v2';  // v2: hekim adı resolve_doctor_names RPC ile
+// v3: aktif lab'a göre ayrık cache — çoklu-lab'da switch sonrası bayat çapraz-lab veriyi önler.
+function lsKey() { return `clinic_orders_cache_v3_${getActiveLabId() ?? 'all'}`; }
 function loadCached(): any[] | null {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
-  try { const r = window.localStorage.getItem(LS_KEY); return r ? JSON.parse(r) : null; } catch { return null; }
+  try { const r = window.localStorage.getItem(lsKey()); return r ? JSON.parse(r) : null; } catch { return null; }
 }
 function saveCached(rows: any[]) {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return;
-  try { window.localStorage.setItem(LS_KEY, JSON.stringify(rows)); } catch { /* quota */ }
+  try { window.localStorage.setItem(lsKey(), JSON.stringify(rows)); } catch { /* quota */ }
 }
 
 interface ClinicWorkOrder extends WorkOrder {

@@ -612,7 +612,7 @@ export function NewOrderScreen({
   // ── Lab bilgisi (print preview için) ─────────────────────────────────
   const [labInfo, setLabInfo] = useState<{ name: string; phone: string | null; address: string | null; logo_url: string | null; sidebar_brand_mode?: string | null } | null>(null);
   useEffect(() => {
-    const labId = (profile as any)?.lab_id;
+    const labId = getActiveLabId() ?? (profile as any)?.lab_id;
     if (!labId) return;
     let cancel = false;
     (async () => {
@@ -625,7 +625,7 @@ export function NewOrderScreen({
   // ── Acil vaka ek ücret oranı (Mali İşler → Fiyat Listesi'nden) ──────
   const [urgentSurchargeRate, setUrgentSurchargeRate] = useState<number>(0);
   useEffect(() => {
-    const labId = (profile as any)?.lab_id;
+    const labId = getActiveLabId() ?? (profile as any)?.lab_id;
     if (!labId) return;
     let cancel = false;
     (async () => {
@@ -1212,7 +1212,7 @@ export function NewOrderScreen({
     let resolvedPrice = service.price;
     let priceSource: string = 'catalog';
     try {
-      const labId = (profile as any)?.lab_id ?? profile?.id ?? null;
+      const labId = getActiveLabId() ?? (profile as any)?.lab_id ?? profile?.id ?? null;
       if (labId && service.id) {
         const { data, error } = await supabase.rpc('resolve_item_price', {
           p_lab_id:     labId,

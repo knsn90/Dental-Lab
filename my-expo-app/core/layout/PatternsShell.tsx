@@ -265,6 +265,7 @@ export function PatternsShell({
   // Klinik/hekim panelinde klinik logosu + bağlı olunan lab (white-label rozeti)
   const [clinicLogo, setClinicLogo] = useState<string | null>(null);
   const [connectedLab, setConnectedLab] = useState<{ name: string; logo: string | null } | null>(null);
+  const activeLabMembership = useActiveLabStore((s) => s.active); // çoklu-lab: marka aktif lab'a göre
   useEffect(() => {
     if (panelType !== 'clinic_admin' && panelType !== 'doctor') { setClinicLogo(null); setConnectedLab(null); return; }
     let alive = true;
@@ -272,14 +273,15 @@ export function PatternsShell({
       const { data } = await supabase.from('clinics').select('logo_url, lab_id').limit(1).maybeSingle();
       if (!alive) return;
       setClinicLogo((data as any)?.logo_url ?? null);
-      const labId = (data as any)?.lab_id;
+      // Aktif lab (çoklu-lab) varsa markayı ondan çöz; yoksa klinik satırının lab_id'si (tek-lab).
+      const labId = activeLabMembership?.lab_id ?? (data as any)?.lab_id;
       if (labId) {
         const { data: lab } = await supabase.from('labs').select('name, logo_url, sidebar_brand_mode, sidebar_logo_scale').eq('id', labId).maybeSingle();
         if (alive && lab) { setConnectedLab({ name: (lab as any).name, logo: (lab as any).logo_url ?? null }); setBrandMode(((lab as any).sidebar_brand_mode === 'logo' ? 'logo' : 'logo_text')); setBrandScale(Number((lab as any).sidebar_logo_scale) || 1); }
       } else setConnectedLab(null);
     })();
     return () => { alive = false; };
-  }, [panelType, (profile as any)?.id, labBrandVersion]);
+  }, [panelType, (profile as any)?.id, labBrandVersion, activeLabMembership?.lab_id]);
 
   // Tarayıcı sekme başlığı: "Siman | {Laboratuvar adı}"
   useEffect(() => {
