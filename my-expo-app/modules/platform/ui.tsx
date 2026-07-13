@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable, Platform } from 'react-native';
+import { View, Text, Pressable, Platform, ScrollView } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { LayoutGrid, Building2, ScrollText, ShieldCheck, LogOut, LifeBuoy, Activity, Megaphone, CreditCard, Users, Settings, ShieldAlert, Plug } from 'lucide-react-native';
 import { supabase } from '../../core/api/supabase';
@@ -58,7 +58,7 @@ export function PlatformSidebar() {
   const router = useRouter();
   const active = usePlatformActive();
   return (
-    <View style={{ width: 224, backgroundColor: C.card, borderRightWidth: 1, borderRightColor: C.line, paddingVertical: 22, paddingHorizontal: 14, flexDirection: 'column', ...(Platform.OS === 'web' ? { height: '100vh' as any, position: 'sticky' as any, top: 0 } : {}) }}>
+    <View style={{ width: 232, backgroundColor: C.card, borderRadius: 22, borderWidth: 1, borderColor: C.line, margin: 14, paddingVertical: 22, paddingHorizontal: 14, flexDirection: 'column', ...CARD_SHADOW, ...(Platform.OS === 'web' ? { height: 'calc(100vh - 28px)' as any, position: 'sticky' as any, top: 14 } : {}) }}>
       {/* Marka */}
       <View style={{ marginBottom: 26, marginLeft: 6, gap: 8 }}>
         <SimanWordmark height={17} color={C.ink} />
@@ -66,7 +66,7 @@ export function PlatformSidebar() {
       </View>
 
       {/* Navigasyon */}
-      <View style={{ flex: 1 }}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 4 }} showsVerticalScrollIndicator={false}>
         {SIDEBAR.map((sec, si) => (
           <View key={si} style={{ marginBottom: 16 }}>
             {sec.group ? <Text style={{ color: C.ink3, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginLeft: 12, marginBottom: 7 }}>{sec.group}</Text> : null}
@@ -86,7 +86,7 @@ export function PlatformSidebar() {
             })}
           </View>
         ))}
-      </View>
+      </ScrollView>
 
       {/* Alt: çıkış */}
       <View style={{ borderTopWidth: 1, borderTopColor: C.line, paddingTop: 10, marginTop: 8 }}>
