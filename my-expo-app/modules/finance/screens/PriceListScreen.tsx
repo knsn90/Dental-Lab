@@ -2054,7 +2054,7 @@ function CustomTab() {
           <View style={s.infoCard}>
             <Info size={15} color="#2563EB" strokeWidth={1.6} />
             <Text style={s.infoText}>
-              Klinik secin ve o klinige ozel fiyatlari duzenleyin. Belirlenmemis hizmetler standart fiyatla uygulanir.
+              Klinik seçin ve o kliniğe özel fiyatları düzenleyin. Belirlenmemiş hizmetler standart fiyatla uygulanır.
             </Text>
           </View>
 
