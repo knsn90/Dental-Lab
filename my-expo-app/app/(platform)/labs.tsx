@@ -55,7 +55,7 @@ export default function PlatformLabs() {
           </View>
           {FILTERS.map(([k, label]) => (
             <Pressable key={k} onPress={() => setFilter(k)}
-              style={{ paddingHorizontal: 14, height: 42, justifyContent: 'center', borderRadius: 12, backgroundColor: filter === k ? 'rgba(79,141,247,0.16)' : C.card, borderWidth: 1, borderColor: filter === k ? 'rgba(79,141,247,0.4)' : C.line, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+              style={{ paddingHorizontal: 14, height: 42, justifyContent: 'center', borderRadius: 12, backgroundColor: filter === k ? '#EAF2FB' : C.card, borderWidth: 1, borderColor: filter === k ? '#4771AB' : C.line, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
               <Text style={{ color: filter === k ? C.ink : C.ink2, fontSize: 13, fontWeight: '600' }}>{label}</Text>
             </Pressable>
           ))}
@@ -96,7 +96,7 @@ export default function PlatformLabs() {
                   <Text style={{ color: planTone(l.plan), fontSize: 11, fontWeight: '700', textTransform: 'uppercase' }}>{l.plan}</Text>
                 </View>
                 <Pressable onPress={(e: any) => { e.stopPropagation?.(); toggle(l); }} disabled={busy === l.id}
-                  style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.05)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}>
+                  style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: '#F1F5F9', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}>
                   {busy === l.id ? <ActivityIndicator size="small" color={C.ink2} />
                     : l.is_active ? <PauseCircle size={18} color={C.amber} strokeWidth={1.8} />
                     : <CheckCircle2 size={18} color={C.green} strokeWidth={1.8} />}

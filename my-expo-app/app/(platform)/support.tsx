@@ -27,7 +27,7 @@ export default function PlatformSupport() {
           <Text style={{ color: C.ink3, fontSize: 13, flex: 1 }}>Tüm laboratuvarların destek talepleri (en yeni önce).</Text>
           {([[true, 'Açık'], [false, 'Tümü']] as const).map(([v, label]) => (
             <Pressable key={label} onPress={() => setOpenOnly(v)}
-              style={{ paddingHorizontal: 14, height: 38, justifyContent: 'center', borderRadius: 10, backgroundColor: openOnly === v ? 'rgba(79,141,247,0.16)' : C.card, borderWidth: 1, borderColor: openOnly === v ? 'rgba(79,141,247,0.4)' : C.line, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+              style={{ paddingHorizontal: 14, height: 38, justifyContent: 'center', borderRadius: 10, backgroundColor: openOnly === v ? '#EAF2FB' : C.card, borderWidth: 1, borderColor: openOnly === v ? '#4771AB' : C.line, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
               <Text style={{ color: openOnly === v ? C.ink : C.ink2, fontSize: 13, fontWeight: '600' }}>{label}</Text>
             </Pressable>
           ))}

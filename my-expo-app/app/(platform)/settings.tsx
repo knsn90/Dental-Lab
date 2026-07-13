@@ -70,7 +70,7 @@ export default function PlatformSettings() {
                             value={draft[f.key] ?? String(val ?? '')}
                             onChangeText={(t) => setDraft((d) => ({ ...d, [f.key]: t }))}
                             keyboardType={f.type === 'number' ? 'numeric' : 'default'}
-                            style={{ width: f.type === 'number' ? 90 : 220, height: 38, paddingHorizontal: 12, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: draft[f.key] != null ? C.accent : C.line, color: C.ink, fontSize: 14, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
+                            style={{ width: f.type === 'number' ? 90 : 220, height: 38, paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: draft[f.key] != null ? C.accent : C.line, color: C.ink, fontSize: 14, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
                           {draft[f.key] != null && (
                             <Pressable disabled={busy === f.key} onPress={() => saveText(f)} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: C.accent, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
                               <Text style={{ color: '#fff', fontSize: 12.5, fontWeight: '700' }}>Kaydet</Text>

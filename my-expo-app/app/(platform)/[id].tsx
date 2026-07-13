@@ -55,7 +55,7 @@ export default function PlatformLabDetail() {
         </Text>
 
         <Pressable onPress={() => router.push(`/(platform)/view/${id}` as any)}
-          style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 22, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10, backgroundColor: 'rgba(79,141,247,0.14)', borderWidth: 1, borderColor: 'rgba(79,141,247,0.35)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+          style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 22, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10, backgroundColor: '#EAF2FB', borderWidth: 1, borderColor: '#4771AB', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
           <Eye size={15} color={C.accent} strokeWidth={1.9} />
           <Text style={{ color: C.ink, fontSize: 13, fontWeight: '600' }}>Lab olarak görüntüle (salt-okunur)</Text>
         </Pressable>
@@ -78,8 +78,8 @@ export default function PlatformLabDetail() {
               const on = lab.plan === p;
               return (
                 <Pressable key={p} disabled={busy} onPress={() => run(() => setLabPlan(String(id), p))}
-                  style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: on ? planTone(p) : 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: on ? planTone(p) : C.line, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-                  <Text style={{ color: on ? '#0B1220' : C.ink2, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' }}>{p}</Text>
+                  style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: on ? planTone(p) : '#F1F5F9', borderWidth: 1, borderColor: on ? planTone(p) : C.line, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                  <Text style={{ color: on ? '#FFFFFF' : C.ink2, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' }}>{p}</Text>
                 </Pressable>
               );
             })}
@@ -90,7 +90,7 @@ export default function PlatformLabDetail() {
             <Text style={{ color: C.ink3, fontSize: 13, marginRight: 4 }}>Deneme uzat:</Text>
             {[7, 14, 30].map((days) => (
               <Pressable key={days} disabled={busy} onPress={() => run(() => extendTrial(String(id), days))}
-                style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: C.line, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: C.line, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
                 <Text style={{ color: C.ink2, fontSize: 12.5, fontWeight: '600' }}>+{days}g</Text>
               </Pressable>
             ))}
@@ -98,11 +98,11 @@ export default function PlatformLabDetail() {
           {/* durum */}
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
             <Pressable disabled={busy || lab.is_active} onPress={() => run(() => setLabStatus(String(id), true))}
-              style={{ flex: 1, alignItems: 'center', paddingVertical: 11, borderRadius: 12, backgroundColor: lab.is_active ? 'rgba(255,255,255,0.04)' : C.green, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+              style={{ flex: 1, alignItems: 'center', paddingVertical: 11, borderRadius: 12, backgroundColor: lab.is_active ? '#F1F5F9' : C.green, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
               <Text style={{ color: lab.is_active ? C.ink3 : '#062017', fontWeight: '700', fontSize: 13 }}>Aktifleştir</Text>
             </Pressable>
             <Pressable disabled={busy || !lab.is_active} onPress={() => run(() => setLabStatus(String(id), false))}
-              style={{ flex: 1, alignItems: 'center', paddingVertical: 11, borderRadius: 12, backgroundColor: !lab.is_active ? 'rgba(255,255,255,0.04)' : C.amber, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+              style={{ flex: 1, alignItems: 'center', paddingVertical: 11, borderRadius: 12, backgroundColor: !lab.is_active ? '#F1F5F9' : C.amber, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
               <Text style={{ color: !lab.is_active ? C.ink3 : '#2a1a04', fontWeight: '700', fontSize: 13 }}>Askıya al</Text>
             </Pressable>
           </View>
@@ -116,7 +116,7 @@ export default function PlatformLabDetail() {
                 <View key={k}>
                   <Text style={{ color: C.ink3, fontSize: 12, marginBottom: 4 }}>{label}</Text>
                   <TextInput value={(edit as any)[k]} onChangeText={(t) => setEdit({ ...edit, [k]: t })} placeholderTextColor={C.ink3}
-                    style={{ height: 42, paddingHorizontal: 12, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: C.line, color: C.ink, fontSize: 14, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
+                    style={{ height: 42, paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: C.line, color: C.ink, fontSize: 14, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
                 </View>
               ))}
               <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
@@ -124,7 +124,7 @@ export default function PlatformLabDetail() {
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: C.accent, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
                   <Save size={15} color="#fff" strokeWidth={2} /><Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>Kaydet</Text>
                 </Pressable>
-                <Pressable onPress={() => setEdit(null)} style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.05)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                <Pressable onPress={() => setEdit(null)} style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: '#F1F5F9', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
                   <Text style={{ color: C.ink2, fontWeight: '600', fontSize: 13 }}>İptal</Text>
                 </Pressable>
               </View>
@@ -135,7 +135,7 @@ export default function PlatformLabDetail() {
               <Row label="E-posta" value={lab.email} />
               <Row label="Adres" value={lab.address} />
               <Pressable onPress={() => setEdit({ name: lab.name ?? '', phone: lab.phone ?? '', email: lab.email ?? '', address: lab.address ?? '' })}
-                style={{ alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: C.line, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                style={{ alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: C.line, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
                 <Text style={{ color: C.ink2, fontSize: 13, fontWeight: '600' }}>Düzenle</Text>
               </Pressable>
             </View>
@@ -146,7 +146,7 @@ export default function PlatformLabDetail() {
         <Card title="Notlar">
           <View style={{ flexDirection: 'row', gap: 8, marginBottom: notes.length ? 14 : 0 }}>
             <TextInput value={noteDraft} onChangeText={setNoteDraft} placeholder="Bu lab hakkında iç not…" placeholderTextColor={C.ink3}
-              style={{ flex: 1, height: 40, paddingHorizontal: 12, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: C.line, color: C.ink, fontSize: 14, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
+              style={{ flex: 1, height: 40, paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: C.line, color: C.ink, fontSize: 14, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
             <Pressable disabled={busy || !noteDraft.trim()} onPress={() => run(() => addLabNote(String(id), noteDraft.trim()))}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, borderRadius: 10, backgroundColor: C.accent, opacity: !noteDraft.trim() ? 0.5 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
               <Send size={15} color="#fff" strokeWidth={2} /><Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>Ekle</Text>
@@ -220,14 +220,14 @@ export default function PlatformLabDetail() {
                       <Text style={{ color: over ? C.red : C.ink, fontSize: 13, fontWeight: '600' }}>{used} / {limit > 0 ? limit : '∞'}</Text>
                     </View>
                     {limit > 0 && (
-                      <View style={{ height: 7, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+                      <View style={{ height: 7, borderRadius: 4, backgroundColor: '#E7EEF8', overflow: 'hidden' }}>
                         <View style={{ width: `${pctUsed}%`, height: 7, backgroundColor: over ? C.red : pctUsed > 80 ? C.amber : C.green, borderRadius: 4 }} />
                       </View>
                     )}
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                       <Text style={{ color: C.ink3, fontSize: 11.5 }}>Limit (0=sınırsız):</Text>
                       <TextInput value={limitDraft[m.key] ?? String(limit)} onChangeText={(t) => setLimitDraft((d) => ({ ...d, [m.key]: t }))} keyboardType="numeric"
-                        style={{ width: 80, height: 32, paddingHorizontal: 10, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: limitDraft[m.key] != null ? C.accent : C.line, color: C.ink, fontSize: 13, textAlign: 'right', ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
+                        style={{ width: 80, height: 32, paddingHorizontal: 10, borderRadius: 8, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: limitDraft[m.key] != null ? C.accent : C.line, color: C.ink, fontSize: 13, textAlign: 'right', ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
                       {limitDraft[m.key] != null && (
                         <Pressable disabled={busy} onPress={() => run(() => setLabLimits(String(id), { ...usage.overrides, [m.key]: parseInt(limitDraft[m.key], 10) || 0 }))}
                           style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: C.accent, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
@@ -249,7 +249,7 @@ export default function PlatformLabDetail() {
               <Text style={{ color: C.green, fontSize: 12, fontWeight: '700', marginBottom: 6 }}>Yeni anahtar — yalnız ŞİMDİ görünür, kaydet!</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <Text selectable style={{ flex: 1, color: C.ink, fontSize: 12.5, fontFamily: FONT }}>{newKey}</Text>
-                <Pressable onPress={() => { if (Platform.OS === 'web' && (navigator as any)?.clipboard) (navigator as any).clipboard.writeText(newKey); }} style={{ padding: 6, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.06)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                <Pressable onPress={() => { if (Platform.OS === 'web' && (navigator as any)?.clipboard) (navigator as any).clipboard.writeText(newKey); }} style={{ padding: 6, borderRadius: 8, backgroundColor: '#E7EEF8', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
                   <Copy size={15} color={C.ink2} strokeWidth={1.8} />
                 </Pressable>
                 <Pressable onPress={() => setNewKey(null)} style={{ padding: 6 }}><Text style={{ color: C.ink3, fontSize: 16 }}>×</Text></Pressable>
@@ -316,7 +316,7 @@ export default function PlatformLabDetail() {
           <Text style={{ color: C.ink3, fontSize: 13, marginBottom: 12 }}>Veri taşınabilirliği ve kişisel veri silme (unutulma hakkı).</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
             <Pressable disabled={busy} onPress={() => run(async () => { const data = await exportLabData(String(id)); downloadJson(`${lab.slug || 'lab'}-export.json`, data); })}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: C.line, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: C.line, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
               <Download size={15} color={C.ink2} strokeWidth={1.8} />
               <Text style={{ color: C.ink2, fontSize: 13, fontWeight: '600' }}>Verileri dışa aktar (JSON)</Text>
             </Pressable>
@@ -334,14 +334,14 @@ export default function PlatformLabDetail() {
                 <Text style={{ color: C.ink, fontWeight: '700' }}>  {lab.name}</Text>
               </Text>
               <TextInput value={purgeName} onChangeText={setPurgeName} placeholder="Lab adı" placeholderTextColor={C.ink3}
-                style={{ height: 42, paddingHorizontal: 12, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: C.line, color: C.ink, fontSize: 14, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
+                style={{ height: 42, paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: C.line, color: C.ink, fontSize: 14, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
               {purgeMsg ? <Text style={{ color: C.green, fontSize: 12.5 }}>{purgeMsg}</Text> : null}
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 <Pressable disabled={busy || purgeName !== lab.name} onPress={() => run(async () => { const r = await purgeLabPii(String(id), purgeName); setPurgeMsg(`Anonimleştirildi: ${r.profiles} kullanıcı, ${r.work_orders} sipariş, ${r.clinics} klinik, ${r.doctors} hekim.`); setPurgeName(null); })}
                   style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: purgeName === lab.name ? C.red : 'rgba(229,100,91,0.3)', opacity: purgeName === lab.name ? 1 : 0.6, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
                   <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>Onayla ve sil</Text>
                 </Pressable>
-                <Pressable onPress={() => setPurgeName(null)} style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.05)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                <Pressable onPress={() => setPurgeName(null)} style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: '#F1F5F9', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
                   <Text style={{ color: C.ink2, fontWeight: '600', fontSize: 13 }}>Vazgeç</Text>
                 </Pressable>
               </View>
@@ -359,7 +359,7 @@ export default function PlatformLabDetail() {
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: C.red, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
                 <LogOut size={15} color="#fff" strokeWidth={2} /><Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>Evet, offboard et</Text>
               </Pressable>
-              <Pressable onPress={() => setConfirmOff(false)} style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.05)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+              <Pressable onPress={() => setConfirmOff(false)} style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: '#F1F5F9', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
                 <Text style={{ color: C.ink2, fontWeight: '600', fontSize: 13 }}>Vazgeç</Text>
               </Pressable>
             </View>

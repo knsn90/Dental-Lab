@@ -35,14 +35,14 @@ export default function PlatformAnnouncements() {
         <View style={{ backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.line, padding: 18, marginBottom: 24 }}>
           <Text style={{ color: C.ink2, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>Yeni duyuru · tüm lablar</Text>
           <TextInput value={title} onChangeText={setTitle} placeholder="Başlık" placeholderTextColor={C.ink3}
-            style={{ height: 44, paddingHorizontal: 14, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: C.line, color: C.ink, fontSize: 14, marginBottom: 10, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
+            style={{ height: 44, paddingHorizontal: 14, borderRadius: 12, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: C.line, color: C.ink, fontSize: 14, marginBottom: 10, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
           <TextInput value={body} onChangeText={setBody} placeholder="Mesaj (opsiyonel)" placeholderTextColor={C.ink3} multiline
-            style={{ minHeight: 70, paddingHorizontal: 14, paddingTop: 12, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: C.line, color: C.ink, fontSize: 14, marginBottom: 12, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
+            style={{ minHeight: 70, paddingHorizontal: 14, paddingTop: 12, borderRadius: 12, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: C.line, color: C.ink, fontSize: 14, marginBottom: 12, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             {LEVELS.map(([k, label, tone]) => (
               <Pressable key={k} onPress={() => setLevel(k)}
-                style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: level === k ? tone : 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: level === k ? tone : C.line, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-                <Text style={{ color: level === k ? '#0B1220' : C.ink2, fontSize: 12.5, fontWeight: '700' }}>{label}</Text>
+                style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: level === k ? tone : '#F1F5F9', borderWidth: 1, borderColor: level === k ? tone : C.line, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                <Text style={{ color: level === k ? '#FFFFFF' : C.ink2, fontSize: 12.5, fontWeight: '700' }}>{label}</Text>
               </Pressable>
             ))}
             <View style={{ flex: 1 }} />
@@ -72,7 +72,7 @@ export default function PlatformAnnouncements() {
                   </View>
                   <Text style={{ flex: 1, color: C.ink, fontSize: 15, fontWeight: '600' }} numberOfLines={1}>{a.title}</Text>
                   <Pressable onPress={() => act(() => setAnnouncementActive(a.id, !a.active))} disabled={busy}
-                    style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.05)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                    style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: '#F1F5F9', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
                     <Text style={{ color: a.active ? C.amber : C.green, fontSize: 12, fontWeight: '600' }}>{a.active ? 'Durdur' : 'Yayınla'}</Text>
                   </Pressable>
                   <Pressable onPress={() => act(() => deleteAnnouncement(a.id))} disabled={busy}

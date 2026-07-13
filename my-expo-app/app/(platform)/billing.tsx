@@ -54,7 +54,7 @@ export default function PlatformBilling() {
             </View>
 
             {/* Not: ödeme sağlayıcı */}
-            <View style={{ backgroundColor: 'rgba(79,141,247,0.08)', borderWidth: 1, borderColor: 'rgba(79,141,247,0.25)', borderRadius: 12, padding: 12, marginBottom: 24 }}>
+            <View style={{ backgroundColor: '#EAF2FB', borderWidth: 1, borderColor: 'rgba(71,113,171,0.30)', borderRadius: 12, padding: 12, marginBottom: 24 }}>
               <Text style={{ color: C.ink2, fontSize: 12.5 }}>Manuel faturalama aktif. Otomatik tahsilat için Stripe/iyzico entegrasyonu (webhook fatura durumunu günceller) sonraki adımda eklenir.</Text>
             </View>
 
@@ -72,7 +72,7 @@ export default function PlatformBilling() {
                       value={edit[p.key] ?? String(p.price_cents / 100)}
                       onChangeText={(t) => setEdit((e) => ({ ...e, [p.key]: t }))}
                       keyboardType="numeric"
-                      style={{ width: 110, height: 38, paddingHorizontal: 12, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: edit[p.key] != null ? C.accent : C.line, color: C.ink, fontSize: 14, textAlign: 'right', ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
+                      style={{ width: 110, height: 38, paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: edit[p.key] != null ? C.accent : C.line, color: C.ink, fontSize: 14, textAlign: 'right', ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
                     <Text style={{ color: C.ink3, fontSize: 13, width: 34 }}>{p.currency}</Text>
                     {edit[p.key] != null ? (
                       <Pressable disabled={busy} onPress={() => savePrice(p.key)} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: C.accent, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
@@ -90,7 +90,7 @@ export default function PlatformBilling() {
                         <View key={m.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                           <Text style={{ color: C.ink3, fontSize: 11.5 }}>{m.label}</Text>
                           <TextInput value={lim[dk] ?? String(cur)} onChangeText={(t) => setLim((l) => ({ ...l, [dk]: t }))} keyboardType="numeric"
-                            style={{ width: 62, height: 30, paddingHorizontal: 8, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: lim[dk] != null ? C.accent : C.line, color: C.ink, fontSize: 12.5, textAlign: 'right', ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
+                            style={{ width: 62, height: 30, paddingHorizontal: 8, borderRadius: 8, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: lim[dk] != null ? C.accent : C.line, color: C.ink, fontSize: 12.5, textAlign: 'right', ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
                         </View>
                       );
                     })}
@@ -132,12 +132,12 @@ export default function PlatformBilling() {
                         <Pressable disabled={busy} onPress={() => invAct(() => setInvoiceStatus(inv.id, 'paid'))} style={{ padding: 7, borderRadius: 9, backgroundColor: 'rgba(55,194,133,0.12)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
                           <Check size={15} color={C.green} strokeWidth={2} />
                         </Pressable>
-                        <Pressable disabled={busy} onPress={() => invAct(() => setInvoiceStatus(inv.id, 'void'))} style={{ padding: 7, borderRadius: 9, backgroundColor: 'rgba(255,255,255,0.05)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                        <Pressable disabled={busy} onPress={() => invAct(() => setInvoiceStatus(inv.id, 'void'))} style={{ padding: 7, borderRadius: 9, backgroundColor: '#F1F5F9', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
                           <Ban size={15} color={C.ink3} strokeWidth={2} />
                         </Pressable>
                       </>
                     ) : (
-                      <Pressable disabled={busy} onPress={() => invAct(() => setInvoiceStatus(inv.id, 'open'))} style={{ padding: 7, borderRadius: 9, backgroundColor: 'rgba(255,255,255,0.05)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                      <Pressable disabled={busy} onPress={() => invAct(() => setInvoiceStatus(inv.id, 'open'))} style={{ padding: 7, borderRadius: 9, backgroundColor: '#F1F5F9', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
                         <RotateCcw size={15} color={C.ink3} strokeWidth={2} />
                       </Pressable>
                     )}

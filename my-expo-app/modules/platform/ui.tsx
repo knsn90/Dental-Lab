@@ -4,12 +4,15 @@ import { useRouter, usePathname } from 'expo-router';
 import { LayoutGrid, Building2, ScrollText, ShieldCheck, LogOut, LifeBuoy, Activity, Megaphone, CreditCard, Users, Settings, ShieldAlert, Plug } from 'lucide-react-native';
 import { supabase } from '../../core/api/supabase';
 
+// Platform konsolu — Siman ışık teması, "exec/admin" (Kobalt) kimliği.
 export const C = {
-  bg: '#0B1220', card: '#131C2E', cardHover: '#18233A', line: 'rgba(255,255,255,0.07)',
-  ink: '#EAF0FB', ink2: '#9FB0CC', ink3: '#63758F', accent: '#4F8DF7',
-  green: '#37C285', amber: '#E6A23C', red: '#E5645B', violet: '#9B7BE6',
+  bg: '#F7F9FC', card: '#FFFFFF', cardHover: '#F1F5F9', line: 'rgba(15,23,42,0.08)',
+  ink: '#172235', ink2: '#4C5A70', ink3: '#8494AD', accent: '#4771AB', accentDeep: '#314F7E',
+  soft: '#EAF2FB', green: '#2D9A6B', amber: '#E89B2A', red: '#D94B4B', violet: '#8B5CB8',
 };
 export const FONT = Platform.OS === 'web' ? ('Inter Tight, Inter, system-ui, sans-serif' as any) : undefined;
+// Kart gölgesi (design system cardLite) — web'de yumuşak derinlik
+export const CARD_SHADOW = Platform.OS === 'web' ? ({ boxShadow: '0 1px 3px rgba(15,23,42,0.06), 0 6px 16px rgba(15,23,42,0.05)' } as any) : {};
 
 export const planTone = (p: string) =>
   p === 'active' || p === 'pro' || p === 'enterprise' ? C.green : p === 'suspended' ? C.red : C.amber;
@@ -45,7 +48,7 @@ export function PlatformSidebar() {
   const router = useRouter();
   const active = usePlatformActive();
   return (
-    <View style={{ width: 216, backgroundColor: '#0A101C', borderRightWidth: 1, borderRightColor: C.line, paddingVertical: 18, paddingHorizontal: 12, ...(Platform.OS === 'web' ? { height: '100vh' as any, position: 'sticky' as any, top: 0 } : {}) }}>
+    <View style={{ width: 216, backgroundColor: C.card, borderRightWidth: 1, borderRightColor: C.line, paddingVertical: 18, paddingHorizontal: 12, ...(Platform.OS === 'web' ? { height: '100vh' as any, position: 'sticky' as any, top: 0 } : {}) }}>
       <Text style={{ fontFamily: FONT, fontSize: 16, fontWeight: '700', color: C.ink, marginBottom: 20, marginLeft: 8, letterSpacing: -0.3 }}>
         Siman <Text style={{ color: C.accent }}>Platform</Text>
       </Text>
@@ -58,10 +61,10 @@ export function PlatformSidebar() {
             return (
               <Pressable key={n.key} onPress={() => router.replace(n.href as any)}
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 9, borderRadius: 9, marginBottom: 2,
-                  backgroundColor: on ? 'rgba(79,141,247,0.14)' : 'transparent',
+                  backgroundColor: on ? C.soft : 'transparent',
                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
                 <Icon size={16} color={on ? C.accent : C.ink3} strokeWidth={1.9} />
-                <Text style={{ color: on ? C.ink : C.ink2, fontSize: 13.5, fontWeight: on ? '600' : '500' }}>{n.label}</Text>
+                <Text style={{ color: on ? C.accentDeep : C.ink2, fontSize: 13.5, fontWeight: on ? '600' : '500' }}>{n.label}</Text>
               </Pressable>
             );
           })}
@@ -78,7 +81,7 @@ export function PlatformSidebar() {
 
 export function Kpi({ label, value, tone }: { label: string; value: string | number; tone?: string }) {
   return (
-    <View style={{ flex: 1, minWidth: 150, backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.line, padding: 16 }}>
+    <View style={{ flex: 1, minWidth: 150, backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.line, padding: 16, ...CARD_SHADOW }}>
       <Text style={{ fontFamily: FONT, fontSize: 30, fontWeight: '300', letterSpacing: -1, color: tone ?? C.ink }}>{value}</Text>
       <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.4, textTransform: 'uppercase', color: C.ink3, marginTop: 4 }}>{label}</Text>
     </View>

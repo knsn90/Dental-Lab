@@ -55,7 +55,7 @@ export default function PlatformUsers() {
           ))}
         </View>
 
-        {toast ? <View style={{ backgroundColor: 'rgba(79,141,247,0.14)', borderWidth: 1, borderColor: 'rgba(79,141,247,0.3)', borderRadius: 10, padding: 10, marginBottom: 12 }}><Text style={{ color: C.ink, fontSize: 13 }}>{toast}</Text></View> : null}
+        {toast ? <View style={{ backgroundColor: '#EAF2FB', borderWidth: 1, borderColor: 'rgba(71,113,171,0.35)', borderRadius: 10, padding: 10, marginBottom: 12 }}><Text style={{ color: C.ink, fontSize: 13 }}>{toast}</Text></View> : null}
 
         {users === null ? (
           <View style={{ paddingVertical: 48, alignItems: 'center' }}><ActivityIndicator color={C.accent} /></View>
@@ -79,7 +79,7 @@ export default function PlatformUsers() {
                       </Text>
                       <Text numberOfLines={1} style={{ color: C.ink3, fontSize: 12 }}>{u.email || '—'}</Text>
                     </View>
-                    {u.lab_name ? <View style={{ paddingHorizontal: 9, paddingVertical: 3, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.05)' }}><Text numberOfLines={1} style={{ color: C.ink2, fontSize: 11, maxWidth: 120 }}>{u.lab_name}</Text></View> : null}
+                    {u.lab_name ? <View style={{ paddingHorizontal: 9, paddingVertical: 3, borderRadius: 999, backgroundColor: '#F1F5F9' }}><Text numberOfLines={1} style={{ color: C.ink2, fontSize: 11, maxWidth: 120 }}>{u.lab_name}</Text></View> : null}
                     <Text style={{ color: C.ink3, fontSize: 12, width: 96 }}>{u.role || u.user_type}</Text>
                     <Text style={{ color: C.ink3, fontSize: 11.5, width: 90, textAlign: 'right' }}>{u.last_sign_in_at ? new Date(u.last_sign_in_at).toLocaleDateString() : '—'}</Text>
                     {/* quick actions */}
@@ -121,7 +121,7 @@ export default function PlatformUsers() {
                       </View>
                       {/* Oturumları kapat */}
                       <Pressable disabled={busy === u.id} onPress={() => act(u.id, () => signoutUser(u.id), 'Tüm oturumlar sonlandırıldı.')}
-                        style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: C.line, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                        style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: C.line, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
                         <LogOut size={14} color={C.ink2} strokeWidth={1.9} /><Text style={{ color: C.ink2, fontSize: 12.5, fontWeight: '600' }}>Tüm oturumları kapat</Text>
                       </Pressable>
                       {/* Anonymize */}
@@ -152,6 +152,6 @@ export default function PlatformUsers() {
   );
 }
 
-const iconBtn: any = { padding: 8, borderRadius: 9, backgroundColor: 'rgba(255,255,255,0.05)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) };
-const chip = (on: boolean): any => ({ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: on ? 'rgba(79,141,247,0.16)' : 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: on ? 'rgba(79,141,247,0.4)' : C.line, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) });
+const iconBtn: any = { padding: 8, borderRadius: 9, backgroundColor: '#F1F5F9', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) };
+const chip = (on: boolean): any => ({ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: on ? '#EAF2FB' : '#F1F5F9', borderWidth: 1, borderColor: on ? '#4771AB' : C.line, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) });
 const chipT = (on: boolean): any => ({ color: on ? C.ink : C.ink2, fontSize: 12.5, fontWeight: '600', maxWidth: 130 });

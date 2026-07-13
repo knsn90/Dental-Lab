@@ -110,7 +110,7 @@ export default function PlatformOverview() {
                         <Text style={{ color: C.ink2, fontSize: 13 }}>{label as string}</Text>
                         <Text style={{ color: C.ink, fontSize: 13, fontWeight: '600' }}>{val as number} <Text style={{ color: C.ink3 }}>· %{pct(val as number, base as number)}</Text></Text>
                       </View>
-                      <View style={{ height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+                      <View style={{ height: 8, borderRadius: 4, backgroundColor: '#E7EEF8', overflow: 'hidden' }}>
                         <View style={{ width: `${pct(val as number, base as number)}%`, height: 8, backgroundColor: C.violet, borderRadius: 4 }} />
                       </View>
                     </View>

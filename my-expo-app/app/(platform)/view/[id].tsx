@@ -31,7 +31,7 @@ export default function PlatformViewLab() {
           SALT-OKUNUR · «{lab.name}» olarak görüntülüyorsun (platform admin)
         </Text>
         <Pressable onPress={() => router.replace(`/(platform)/${id}` as any)}
-          style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.08)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+          style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: 'rgba(15,23,42,0.06)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
           <Text style={{ color: C.ink, fontSize: 12, fontWeight: '600' }}>Çık</Text>
         </Pressable>
       </View>
