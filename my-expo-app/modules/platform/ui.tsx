@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
-import { LayoutGrid, Building2, ScrollText, ShieldCheck, LogOut, LifeBuoy, Activity, Megaphone, CreditCard } from 'lucide-react-native';
+import { LayoutGrid, Building2, ScrollText, ShieldCheck, LogOut, LifeBuoy, Activity, Megaphone, CreditCard, Users } from 'lucide-react-native';
 import { supabase } from '../../core/api/supabase';
 
 export const C = {
@@ -17,6 +17,7 @@ export const planTone = (p: string) =>
 const NAV = [
   { key: '', label: 'Genel Bakış', icon: LayoutGrid, href: '/(platform)' },
   { key: 'labs', label: "Lab'lar", icon: Building2, href: '/(platform)/labs' },
+  { key: 'users', label: 'Kullanıcılar', icon: Users, href: '/(platform)/users' },
   { key: 'billing', label: 'Faturalama', icon: CreditCard, href: '/(platform)/billing' },
   { key: 'support', label: 'Destek', icon: LifeBuoy, href: '/(platform)/support' },
   { key: 'announcements', label: 'Duyuru', icon: Megaphone, href: '/(platform)/announcements' },
@@ -68,6 +69,7 @@ export function Kpi({ label, value, tone }: { label: string; value: string | num
 
 export const usePlatformActive = () => {
   const p = usePathname();
+  if (p?.includes('/users')) return 'users';
   if (p?.includes('/labs')) return 'labs';
   if (p?.includes('/billing')) return 'billing';
   if (p?.includes('/support')) return 'support';

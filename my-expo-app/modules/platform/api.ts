@@ -220,3 +220,30 @@ export async function exportLabData(id: string): Promise<any> {
 export async function purgeLabPii(id: string, confirmName: string): Promise<any> {
   const { data, error } = await supabase.rpc('admin_purge_lab_pii', { p_lab: id, p_confirm_name: confirmName }); if (error) throw error; return data;
 }
+
+// ── F6: cross-tenant user management ──
+export type PlatformUser = { id: string; name: string | null; email: string | null; lab_id: string | null; lab_name: string | null; user_type: string; role: string | null; is_active: boolean; created_at: string; last_sign_in_at: string | null; email_confirmed: boolean };
+export const USER_ROLES = ['manager', 'technician', 'courier', 'accounting', 'service', 'receptionist', 'intern'] as const;
+
+export async function listUsers(search?: string | null, labId?: string | null, limit = 300): Promise<PlatformUser[]> {
+  const { data, error } = await supabase.rpc('admin_list_users', { p_search: search ?? null, p_lab: labId ?? null, p_limit: limit });
+  if (error) throw error; return (data ?? []) as PlatformUser[];
+}
+export async function setUserActive(id: string, active: boolean): Promise<void> {
+  const { error } = await supabase.rpc('admin_set_user_active', { p_user: id, p_active: active }); if (error) throw error;
+}
+export async function setUserRole(id: string, role: string | null): Promise<void> {
+  const { error } = await supabase.rpc('admin_set_user_role', { p_user: id, p_role: role }); if (error) throw error;
+}
+export async function moveUserLab(id: string, labId: string): Promise<void> {
+  const { error } = await supabase.rpc('admin_move_user_lab', { p_user: id, p_lab: labId }); if (error) throw error;
+}
+export async function anonymizeUser(id: string): Promise<void> {
+  const { error } = await supabase.rpc('admin_anonymize_user', { p_user: id }); if (error) throw error;
+}
+/** Kullanıcıya standart şifre-sıfırlama e-postası gönderir (client akışı). */
+export async function sendPasswordReset(email: string): Promise<void> {
+  const redirectTo = typeof window !== 'undefined' ? `${window.location.origin}/(auth)/login` : undefined;
+  const { error } = await supabase.auth.resetPasswordForEmail(email, redirectTo ? { redirectTo } : undefined);
+  if (error) throw error;
+}
