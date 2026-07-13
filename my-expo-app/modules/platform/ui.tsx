@@ -1,9 +1,10 @@
-import React from 'react';
-import { View, Text, Pressable, Platform, ScrollView } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, Pressable, Platform, ScrollView, TextInput } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
-import { LayoutGrid, Building2, ScrollText, ShieldCheck, LogOut, LifeBuoy, Activity, Megaphone, CreditCard, Users, Settings, ShieldAlert, Plug } from 'lucide-react-native';
+import { LayoutGrid, Building2, ScrollText, ShieldCheck, LogOut, LifeBuoy, Activity, Megaphone, CreditCard, Users, Settings, ShieldAlert, Plug, Search, ChevronDown } from 'lucide-react-native';
 import { supabase } from '../../core/api/supabase';
 import { SimanWordmark } from '../../core/ui/SimanWordmark';
+import { listLabs } from './api';
 
 // Platform konsolu — Siman ışık teması, "exec/admin" (Kobalt) kimliği.
 export const C = {
@@ -95,6 +96,85 @@ export function PlatformSidebar() {
           <LogOut size={16} color={C.ink3} strokeWidth={1.8} />
           <Text style={{ color: C.ink2, fontSize: 13.5, fontWeight: '500' }}>Çıkış</Text>
         </Pressable>
+      </View>
+    </View>
+  );
+}
+
+/** Üst-bar — sağ üstte lab arama + profil kartı (siman shell deseni). */
+export function PlatformTopBar() {
+  const router = useRouter();
+  const [q, setQ] = useState('');
+  const [labs, setLabs] = useState<{ id: string; name: string; slug: string }[]>([]);
+  const [me, setMe] = useState<{ name: string; email: string }>({ name: '', email: '' });
+  const [menu, setMenu] = useState(false);
+  const [focus, setFocus] = useState(false);
+
+  useEffect(() => {
+    listLabs().then((l) => setLabs(l.map((x) => ({ id: x.id, name: x.name, slug: x.slug })))).catch(() => {});
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      let name = user.email ?? '';
+      try { const { data } = await supabase.from('profiles').select('full_name').eq('id', user.id).maybeSingle(); if ((data as any)?.full_name) name = (data as any).full_name; } catch {}
+      setMe({ name, email: user.email ?? '' });
+    })();
+  }, []);
+
+  const s = q.trim().toLowerCase();
+  const results = s ? labs.filter((l) => `${l.name} ${l.slug}`.toLowerCase().includes(s)).slice(0, 6) : [];
+  const initials = (me.name || me.email || '?').trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+  const go = (id: string) => { setQ(''); setFocus(false); router.push(`/(platform)/${id}` as any); };
+  const web = Platform.OS === 'web';
+
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 12, paddingHorizontal: 28, paddingTop: 16, paddingBottom: 4, position: 'relative', zIndex: 50 }}>
+      {/* Arama */}
+      <View style={{ position: 'relative', width: 300, maxWidth: '48%' as any }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: C.card, borderRadius: 999, borderWidth: 1, borderColor: focus ? C.accent : C.line, paddingHorizontal: 14, height: 40, ...CARD_SHADOW }}>
+          <Search size={16} color={C.ink3} strokeWidth={1.9} />
+          <TextInput value={q} onChangeText={setQ} onFocus={() => setFocus(true)} onBlur={() => setTimeout(() => setFocus(false), 160)}
+            placeholder="Lab ara…" placeholderTextColor={C.ink3}
+            style={{ flex: 1, color: C.ink, fontSize: 14, ...(web ? { outlineStyle: 'none' } as any : {}) }} />
+        </View>
+        {focus && results.length > 0 && (
+          <View style={{ position: 'absolute', top: 46, left: 0, right: 0, backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.line, overflow: 'hidden', ...CARD_SHADOW, zIndex: 60 }}>
+            {results.map((r, i) => (
+              <Pressable key={r.id} onPress={() => go(r.id)}
+                style={({ hovered }: any) => [{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 10, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: C.line, backgroundColor: hovered ? C.cardHover : 'transparent', ...(web ? { cursor: 'pointer' } : {}) }]}>
+                <Building2 size={15} color={C.ink3} strokeWidth={1.8} />
+                <Text numberOfLines={1} style={{ flex: 1, color: C.ink, fontSize: 13.5, fontWeight: '600' }}>{r.name}</Text>
+                <Text style={{ color: C.ink3, fontSize: 12, fontFamily: FONT }}>{r.slug}</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+      </View>
+
+      {/* Profil kartı */}
+      <View style={{ position: 'relative', zIndex: 55 }}>
+        <Pressable onPress={() => setMenu((m) => !m)}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: C.card, borderRadius: 999, borderWidth: 1, borderColor: C.line, paddingLeft: 6, paddingRight: 12, height: 40, ...CARD_SHADOW, ...(web ? { cursor: 'pointer' } as any : {}) }}>
+          <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>{initials}</Text>
+          </View>
+          <Text numberOfLines={1} style={{ color: C.ink, fontSize: 13.5, fontWeight: '600', maxWidth: 130 }}>{me.name || 'Hesap'}</Text>
+          <ChevronDown size={15} color={C.ink3} strokeWidth={2} style={{ transform: [{ rotate: menu ? '180deg' : '0deg' }] }} />
+        </Pressable>
+        {menu && (
+          <View style={{ position: 'absolute', top: 46, right: 0, minWidth: 210, backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.line, overflow: 'hidden', ...CARD_SHADOW, zIndex: 70 }}>
+            <View style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.line }}>
+              <Text numberOfLines={1} style={{ color: C.ink, fontSize: 13, fontWeight: '700' }}>{me.name || '—'}</Text>
+              <Text numberOfLines={1} style={{ color: C.ink3, fontSize: 12, marginTop: 2 }}>{me.email}</Text>
+              <View style={{ flexDirection: 'row', marginTop: 8 }}><Chip tone={C.accent}>PLATFORM ADMIN</Chip></View>
+            </View>
+            <Pressable onPress={() => supabase.auth.signOut()}
+              style={({ hovered }: any) => [{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 11, backgroundColor: hovered ? C.cardHover : 'transparent', ...(web ? { cursor: 'pointer' } : {}) }]}>
+              <LogOut size={15} color={C.red} strokeWidth={1.9} />
+              <Text style={{ color: C.red, fontSize: 13, fontWeight: '600' }}>Çıkış yap</Text>
+            </Pressable>
+          </View>
+        )}
       </View>
     </View>
   );
