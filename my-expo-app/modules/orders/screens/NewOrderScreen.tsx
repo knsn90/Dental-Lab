@@ -37,6 +37,7 @@ import { usePermissionStore } from '../../../core/store/permissionStore';
 import { createWorkOrder, addOrderItem } from '../api';
 import { sendMessage, uploadChatAttachment, AttachmentType } from '../chatApi';
 import { supabase } from '../../../core/api/supabase';
+import { getActiveLabId, getActiveLabClinicId } from '../../../core/store/activeLabStore';
 import { CURRENCY_META } from '../../../core/money/currency';
 import { DentyFAB } from '../../denty/components/DentyFAB';
 import { fetchClinics, fetchAllDoctors, createClinic, createDoctor } from '../../clinics/api';
@@ -1735,7 +1736,17 @@ export function NewOrderScreen({
       console.warn('[doctor_id resolve] failed:', resolveErr?.message);
     }
 
+    // Çoklu-lab klinik: sipariş AKTİF lab'a gitsin. activeLab null ise (lab/admin
+    // kullanıcısı veya tek-lab klinik) alanları göndermeyiz → auto_set_lab_id trigger'ı
+    // bugünkü gibi get_my_lab_id() ile doldurur (davranış değişmez).
+    const _labExtra: any = {};
+    const _al = getActiveLabId();
+    const _alc = getActiveLabClinicId();
+    if (_al) _labExtra.lab_id = _al;
+    if (_alc) _labExtra.clinic_id = _alc;
+
     const { data: order, error } = await createWorkOrder({
+      ..._labExtra,
       doctor_id: resolvedDoctorId,
       patient_name: cleanedFullName || undefined,
       patient_id: form.patient_id || undefined,

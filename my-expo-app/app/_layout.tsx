@@ -11,6 +11,7 @@ import '../global.css'; // NativeWind global stylesheet
 import '../core/i18n'; // i18n çatısı — uygulama başında bir kez init
 import { isRTL } from '../core/i18n';
 import { amIPlatformAdmin, publicPlatformStatus } from '../modules/platform/api';
+import { useActiveLabStore } from '../core/store/activeLabStore';
 import { installAutoTranslate } from '../core/i18n/autoTranslate';
 installAutoTranslate(); // global Text/TextInput runtime sözlük çevirisi (kaynak değişmeden)
 import { useTranslation } from 'react-i18next';
@@ -266,6 +267,19 @@ export default function RootLayout() {
     return () => { alive = false; };
   }, [profile?.id]);
 
+  // Çoklu-lab klinik: aktif lab bağlamı (giriş sonrası lab seçimi + switcher).
+  // Fail-open: RPC yoksa/hata verirse loaded=true & memberships boş → tek-lab davranışı.
+  const alLoaded = useActiveLabStore((s) => s.loaded);
+  const alActive = useActiveLabStore((s) => s.active);
+  const alMemberships = useActiveLabStore((s) => s.memberships);
+  const alLoad = useActiveLabStore((s) => s.load);
+  useEffect(() => {
+    const ut = profile?.user_type as string | undefined;
+    if (profile?.id && (ut === 'doctor' || ut === 'clinic_admin' || ut === 'clinic_secretary')) {
+      alLoad(profile.id);
+    }
+  }, [profile?.id, (profile as any)?.user_type]);
+
   // Bakım modu — fail-open (okuma başarısızsa engelleme yok)
   const [maintenance, setMaintenance] = useState<{ on: boolean; msg: string } | null>(null);
   useEffect(() => {
@@ -470,6 +484,26 @@ export default function RootLayout() {
       return;
     }
 
+    // ── Çoklu-lab klinik: giriş sonrası lab seçimi (fail-open; tek-aktifte NO-OP) ──
+    // Klinik hep yalnız kendi verisini görür; "aktif lab" UX bölmesidir. Birden çok
+    // AKTİF lab bağlantısı olan ve henüz seçim yapmamış kullanıcıyı seçim ekranına al.
+    const isClinicUser = userType === 'doctor' || userType === 'clinic_admin' || (userType as string) === 'clinic_secretary';
+    if (isClinicUser) {
+      const sub = segments[1];
+      const onSelect  = inAuthGroup && sub === 'select-lab';
+      const onConnect = inAuthGroup && sub === 'connect-lab';
+      if (onConnect) return;                                   // 'kod ile bağlan' ekranında kal
+      if (alLoaded) {
+        const activeCount = alMemberships.filter((m) => m.status === 'active').length;
+        const needsPick = activeCount > 1 && !alActive;        // >1 aktif + seçim yok
+        if (needsPick && !onSelect) { router.replace('/(auth)/select-lab' as any); return; }
+        if (onSelect && needsPick) return;                     // seçim gerekli → ekranda kal
+        // aksi halde aşağı düş → panele yönlendir
+      } else if (onSelect) {
+        return;                                                // yükleniyor + seçim ekranında → kal (flicker önle)
+      }
+    }
+
     // ── Lab/admin kullanıcı — lab_id yoksa ──
     // Mevcut bir lab varsa otomatik ona attach et (2. admin senaryosu).
     // Hiç lab yoksa setup-wizard'a yönlendir (ilk kurulum).
@@ -557,7 +591,7 @@ export default function RootLayout() {
         }
       }
     }
-  }, [session, profile, loading, platformAdmin]);
+  }, [session, profile, loading, platformAdmin, alLoaded, alActive, alMemberships]);
 
   // On native, wait for fonts before rendering
   if (!fontsLoaded && Platform.OS !== 'web') {
