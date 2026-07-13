@@ -497,7 +497,7 @@ export default function RootLayout() {
         const activeCount = alMemberships.filter((m) => m.status === 'active').length;
         const needsPick = activeCount > 1 && !alActive;        // >1 aktif + seçim yok
         if (needsPick && !onSelect) { router.replace('/(auth)/select-lab' as any); return; }
-        if (onSelect && needsPick) return;                     // seçim gerekli → ekranda kal
+        if (onSelect && activeCount > 1) return;               // >1 lab varsa seçim/switcher ekranında kal
         // aksi halde aşağı düş → panele yönlendir
       } else if (onSelect) {
         return;                                                // yükleniyor + seçim ekranında → kal (flicker önle)

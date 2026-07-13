@@ -59,6 +59,7 @@ import {
   ListCheck, Scooter,
 } from 'lucide-react-native';
 import { useAuthStore } from '../store/authStore';
+import { useActiveLabStore } from '../store/activeLabStore';
 import { usePermissionStore } from '../store/permissionStore';
 import { usePageTitleStore } from '../store/pageTitleStore';
 import { supabase } from '../api/supabase';
@@ -362,6 +363,9 @@ export function PatternsShell({
     .split(/\s+/).slice(0, 2).map(p => p[0]?.toUpperCase() ?? '').join('') || '?';
   // Profil avatarı/adı: klinik/hekimde klinik logosu + klinik adı (white-label)
   const isClinicSide = panelType === 'clinic_admin' || panelType === 'doctor';
+  // Çoklu-lab: klinik >1 aktif lab bağlantısına sahipse profil menüsünde "Lab değiştir".
+  const _labActiveCount = useActiveLabStore((s) => s.memberships.filter((m) => m.status === 'active').length);
+  const canSwitchLab = isClinicSide && _labActiveCount > 1;
   const headerAvatar = (profile as any)?.avatar_url || (isClinicSide ? clinicLogo : null);
   const clinicShort = shortClinicName(profile?.clinic_name);
   const headerName = isClinicSide && clinicShort ? clinicShort : ((profile?.full_name ?? 'Kullanıcı').split(' ')[0]);
@@ -676,6 +680,15 @@ export function PatternsShell({
                     >
                       <ShieldCheck size={14} color="#4F8DF7" strokeWidth={1.8} />
                       <Text className="text-[13px] text-ink-700">Platform</Text>
+                    </Pressable>
+                  )}
+                  {canSwitchLab && (
+                    <Pressable
+                      onPress={() => { setProfileMenuOpen(false); router.push('/(auth)/select-lab' as any); }}
+                      className="px-4 py-2.5 flex-row items-center gap-2.5"
+                    >
+                      <Building2 size={14} color="#2C2C2C" strokeWidth={1.8} />
+                      <Text className="text-[13px] text-ink-700">Lab değiştir</Text>
                     </Pressable>
                   )}
                   <View className="h-px bg-black/[0.06]" />

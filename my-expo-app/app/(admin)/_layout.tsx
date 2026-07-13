@@ -98,6 +98,7 @@ export default function AdminLayout() {
 
     // ── Müşteriler ─────────────────────────────────────────────────────────
     { label: t('nav.items.clinics'),  href: '/(admin)/clinics',          iconName: 'building-2',     matchPrefix: true, sectionLabel: t('nav.sections.customers') },
+    { label: 'Bağlantılar',            href: '/(admin)/clinic-connections', iconName: 'badge-check',   matchPrefix: true },
 
     // ── Ekip ───────────────────────────────────────────────────────────────
     { label: t('nav.items.team'),              href: '/(admin)/ik-depo',          iconName: 'users',          matchPrefix: false, sectionLabel: t('nav.sections.team'),

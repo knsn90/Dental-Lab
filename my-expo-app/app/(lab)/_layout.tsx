@@ -159,6 +159,7 @@ export default function LabLayout() {
 
     // ── Müşteriler ─────────────────────────────────────────────────────────
     { label: t('nav.items.clinics'), emoji: '🏥', href: '/(lab)/clinics',          iconName: 'building-2',     matchPrefix: true, sectionLabel: t('nav.sections.customers') },
+    { label: 'Bağlantılar',                        href: '/(lab)/clinic-connections', iconName: 'badge-check', matchPrefix: true },
 
     // ── Ekip ───────────────────────────────────────────────────────────────
     { label: t('nav.items.team'),             emoji: '👨‍💼', href: '/(lab)/ik-depo',         iconName: 'users',         matchPrefix: false, sectionLabel: t('nav.sections.team'),
