@@ -212,3 +212,11 @@ export async function createInvoice(labId: string, amountCents: number, opts?: {
 export async function setInvoiceStatus(id: number, status: 'open' | 'paid' | 'void'): Promise<void> {
   const { error } = await supabase.rpc('admin_set_invoice_status', { p_id: id, p_status: status }); if (error) throw error;
 }
+
+// ── F5: compliance (KVKK) ──
+export async function exportLabData(id: string): Promise<any> {
+  const { data, error } = await supabase.rpc('admin_export_lab_data', { p_lab: id }); if (error) throw error; return data;
+}
+export async function purgeLabPii(id: string, confirmName: string): Promise<any> {
+  const { data, error } = await supabase.rpc('admin_purge_lab_pii', { p_lab: id, p_confirm_name: confirmName }); if (error) throw error; return data;
+}

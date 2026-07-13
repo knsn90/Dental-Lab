@@ -85,6 +85,16 @@ export function fmtMoney(cents: number, currency = 'TRY') {
   return `${sym[currency] ?? ''}${v.toLocaleString('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }
 
+/** Web JSON indirme */
+export function downloadJson(filename: string, data: any) {
+  if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 /** Web CSV indirme */
 export function downloadCsv(filename: string, rows: (string | number)[][]) {
   if (Platform.OS !== 'web' || typeof document === 'undefined') return;

@@ -2,9 +2,9 @@ import { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ChevronRight, Users, Building2, FileText, ClipboardList, CalendarClock, Save, LogOut, Eye, ToggleLeft, ToggleRight } from 'lucide-react-native';
-import { labDetail, setLabStatus, setLabPlan, extendTrial, updateLabMeta, offboardLab, labFlags, setLabFlag, labBilling, createInvoice, setInvoiceStatus, PLANS, type PlatformLabDetail, type Plan, type LabFlag, type LabBilling } from '../../modules/platform/api';
-import { C, FONT, planTone, fmtMoney } from '../../modules/platform/ui';
-import { Check } from 'lucide-react-native';
+import { labDetail, setLabStatus, setLabPlan, extendTrial, updateLabMeta, offboardLab, labFlags, setLabFlag, labBilling, createInvoice, setInvoiceStatus, exportLabData, purgeLabPii, PLANS, type PlatformLabDetail, type Plan, type LabFlag, type LabBilling } from '../../modules/platform/api';
+import { C, FONT, planTone, fmtMoney, downloadJson } from '../../modules/platform/ui';
+import { Check, Download } from 'lucide-react-native';
 
 export default function PlatformLabDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -13,6 +13,8 @@ export default function PlatformLabDetail() {
   const [busy, setBusy] = useState(false);
   const [edit, setEdit] = useState<{ name: string; phone: string; email: string; address: string } | null>(null);
   const [confirmOff, setConfirmOff] = useState(false);
+  const [purgeName, setPurgeName] = useState<string | null>(null); // null = kapalı
+  const [purgeMsg, setPurgeMsg] = useState<string | null>(null);
   const [flags, setFlags] = useState<LabFlag[]>([]);
   const [billing, setBilling] = useState<LabBilling | null>(null);
 
@@ -204,6 +206,44 @@ export default function PlatformLabDetail() {
             </View>
           ))}
         </View>
+
+        {/* KVKK / Uyum */}
+        <Card title="KVKK / Uyum">
+          <Text style={{ color: C.ink3, fontSize: 13, marginBottom: 12 }}>Veri taşınabilirliği ve kişisel veri silme (unutulma hakkı).</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+            <Pressable disabled={busy} onPress={() => run(async () => { const data = await exportLabData(String(id)); downloadJson(`${lab.slug || 'lab'}-export.json`, data); })}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: C.line, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+              <Download size={15} color={C.ink2} strokeWidth={1.8} />
+              <Text style={{ color: C.ink2, fontSize: 13, fontWeight: '600' }}>Verileri dışa aktar (JSON)</Text>
+            </Pressable>
+            {purgeName == null && (
+              <Pressable disabled={busy} onPress={() => { setPurgeName(''); setPurgeMsg(null); }}
+                style={{ paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, backgroundColor: 'rgba(229,100,91,0.12)', borderWidth: 1, borderColor: 'rgba(229,100,91,0.3)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                <Text style={{ color: C.red, fontSize: 13, fontWeight: '700' }}>Kişisel verileri sil (anonimleştir)</Text>
+              </Pressable>
+            )}
+          </View>
+          {purgeName != null && (
+            <View style={{ marginTop: 14, gap: 10 }}>
+              <Text style={{ color: C.ink2, fontSize: 13 }}>
+                Bu işlem kullanıcı/hasta/klinik kişisel verilerini <Text style={{ color: C.red, fontWeight: '700' }}>geri alınamaz</Text> biçimde anonimleştirir ve lab'ı pasifleştirir. Onaylamak için lab adını yazın:
+                <Text style={{ color: C.ink, fontWeight: '700' }}>  {lab.name}</Text>
+              </Text>
+              <TextInput value={purgeName} onChangeText={setPurgeName} placeholder="Lab adı" placeholderTextColor={C.ink3}
+                style={{ height: 42, paddingHorizontal: 12, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: C.line, color: C.ink, fontSize: 14, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
+              {purgeMsg ? <Text style={{ color: C.green, fontSize: 12.5 }}>{purgeMsg}</Text> : null}
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <Pressable disabled={busy || purgeName !== lab.name} onPress={() => run(async () => { const r = await purgeLabPii(String(id), purgeName); setPurgeMsg(`Anonimleştirildi: ${r.profiles} kullanıcı, ${r.work_orders} sipariş, ${r.clinics} klinik, ${r.doctors} hekim.`); setPurgeName(null); })}
+                  style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: purgeName === lab.name ? C.red : 'rgba(229,100,91,0.3)', opacity: purgeName === lab.name ? 1 : 0.6, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>Onayla ve sil</Text>
+                </Pressable>
+                <Pressable onPress={() => setPurgeName(null)} style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.05)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                  <Text style={{ color: C.ink2, fontWeight: '600', fontSize: 13 }}>Vazgeç</Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
+        </Card>
 
         {/* Tehlikeli bölge */}
         <View style={{ borderWidth: 1, borderColor: 'rgba(229,100,91,0.3)', borderRadius: 14, padding: 16 }}>
