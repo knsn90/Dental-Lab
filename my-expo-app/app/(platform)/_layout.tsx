@@ -14,36 +14,26 @@ export default function PlatformLayout() {
 
   useEffect(() => {
     let alive = true;
-    // Hard refresh'te Supabase session storage'dan ASENKRON restore olur ve
-    // depolanmış access token'ın süresi geçmiş olabilir. is_platform_admin RPC'sini
-    // token yenilenmeden çağırırsak 401 → false döner ve kullanıcı yanlışlıkla lab
-    // paneline atılır. Bu yüzden: session'ı bekle → getUser() ile token'ı doğrula/yenile
-    // → sonra RPC. Negatif sonucu da birkaç kez retry ederek yarış durumunu emeriz;
-    // yalnız GERÇEKTEN yetkisizsek kök'e yönlendiririz.
+    // Hard refresh'te Supabase session storage'dan ASENKRON restore olur ve depolanmış
+    // access token'ın süresi geçmiş olabilir → is_platform_admin RPC'si ilk çağrıda 401→
+    // false dönebilir. supabase-js RPC'den ÖNCE token'ı otomatik yeniler; yine de yarışı
+    // emmek için negatif sonucu birkaç kez retry ederiz. ÖNEMLİ: her dal ya setOk yapar ya
+    // da yönlendirir — hiçbir dal `ok`'u null bırakıp dönmez (yoksa loader sonsuza takılır).
+    const setFlag = (v: boolean) => { try { if (typeof window !== 'undefined') v ? window.localStorage?.setItem('nx_panel', 'platform') : window.localStorage?.removeItem('nx_panel'); } catch {} };
     const decide = async (tries: number) => {
-      const { data: { session } } = await supabase.auth.getSession();
+      let session = null;
+      try { session = (await supabase.auth.getSession()).data.session; } catch {}
       if (!alive) return;
       if (!session) {
-        if (tries < 4) { setTimeout(() => alive && decide(tries + 1), 300); return; }
-        return; // oturum yok → root _layout /(auth)/login'e yönlendirir
+        if (tries < 6) { setTimeout(() => alive && decide(tries + 1), 250); return; }
+        setFlag(false); setOk(false); router.replace('/' as any); return; // oturum yok → root login'e atar
       }
-      const { data: { user } } = await supabase.auth.getUser(); // token doğrula/yenile
+      let allowed = false;
+      try { allowed = await amIPlatformAdmin(); } catch { allowed = false; }
       if (!alive) return;
-      if (!user) {
-        if (tries < 4) { setTimeout(() => alive && decide(tries + 1), 300); return; }
-        return;
-      }
-      const allowed = await amIPlatformAdmin();
-      if (!alive) return;
-      if (allowed) {
-        // Platform bağlamını kalıcı kıl — grup URL'de gizli olduğundan refresh'te
-        // kök index/layout bunu okuyup platforma geri döner (lab paneline atmaz).
-        try { if (typeof window !== 'undefined') window.localStorage?.setItem('nx_panel', 'platform'); } catch {}
-        setOk(true); return;
-      }
-      if (tries < 3) { setTimeout(() => alive && decide(tries + 1), 400); return; }
-      try { if (typeof window !== 'undefined') window.localStorage?.removeItem('nx_panel'); } catch {}
-      setOk(false); router.replace('/' as any); // kesin yetkisiz
+      if (allowed) { setFlag(true); setOk(true); return; }
+      if (tries < 4) { setTimeout(() => alive && decide(tries + 1), 350); return; }
+      setFlag(false); setOk(false); router.replace('/' as any); // kesin yetkisiz
     };
     decide(0);
     return () => { alive = false; };

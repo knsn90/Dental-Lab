@@ -168,6 +168,11 @@ export function PlatformTopBar() {
               <Text numberOfLines={1} style={{ color: C.ink3, fontSize: 12, marginTop: 2 }}>{me.email}</Text>
               <View style={{ flexDirection: 'row', marginTop: 8 }}><Chip tone={C.accent}>PLATFORM ADMIN</Chip></View>
             </View>
+            <Pressable onPress={() => { try { if (typeof window !== 'undefined') window.localStorage?.removeItem('nx_panel'); } catch {} setMenu(false); router.replace('/' as any); }}
+              style={({ hovered }: any) => [{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: C.line, backgroundColor: hovered ? C.cardHover : 'transparent', ...(web ? { cursor: 'pointer' } : {}) }]}>
+              <LayoutGrid size={15} color={C.ink2} strokeWidth={1.9} />
+              <Text style={{ color: C.ink, fontSize: 13, fontWeight: '600' }}>Uygulama paneline dön</Text>
+            </Pressable>
             <Pressable onPress={() => supabase.auth.signOut()}
               style={({ hovered }: any) => [{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 11, backgroundColor: hovered ? C.cardHover : 'transparent', ...(web ? { cursor: 'pointer' } : {}) }]}>
               <LogOut size={15} color={C.red} strokeWidth={1.9} />
