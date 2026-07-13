@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator, Platform } from 'react-native';
 import { UserPlus, Trash2, ShieldCheck } from 'lucide-react-native';
 import { listPlatformAdmins, addPlatformAdmin, removePlatformAdmin, type PlatformAdmin } from '../../modules/platform/api';
-import { C, FONT, PlatformNav } from '../../modules/platform/ui';
+import { C, PageHeader, Panel, SectionLabel, IconChip, hexA } from '../../modules/platform/ui';
 
 export default function PlatformAdmins() {
   const [admins, setAdmins] = useState<PlatformAdmin[] | null>(null);
@@ -28,48 +28,50 @@ export default function PlatformAdmins() {
     finally { setBusy(false); }
   };
 
+  const input: any = { height: 44, paddingHorizontal: 14, borderRadius: 12, backgroundColor: C.cardHover, borderWidth: 1, borderColor: C.line, color: C.ink, fontSize: 14, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) };
+
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 64, maxWidth: 900, width: '100%', alignSelf: 'center' }}>
-        <PlatformNav active="admins" />
-        <Text style={{ color: C.ink3, fontSize: 13, marginBottom: 18 }}>Platformun tamamını yönetebilen hesaplar. Yalnız kayıtlı bir kullanıcının e-postasıyla eklenebilir.</Text>
+      <ScrollView contentContainerStyle={{ padding: 28, paddingBottom: 72, maxWidth: 900, width: '100%', alignSelf: 'center' }}>
+        <PageHeader eyebrow="Sistem" title="Yöneticiler"
+          description="Platformun tamamını yönetebilen hesaplar. Yalnız kayıtlı bir kullanıcının e-postasıyla eklenebilir." />
 
         {/* Add */}
-        <View style={{ backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.line, padding: 18, marginBottom: 22 }}>
-          <Text style={{ color: C.ink2, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>Yönetici ekle</Text>
+        <SectionLabel>Yönetici ekle</SectionLabel>
+        <Panel style={{ marginBottom: 24 }}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
             <TextInput value={email} onChangeText={setEmail} placeholder="e-posta" placeholderTextColor={C.ink3} autoCapitalize="none"
-              style={{ flex: 2, minWidth: 200, height: 44, paddingHorizontal: 14, borderRadius: 12, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: C.line, color: C.ink, fontSize: 14, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
+              style={{ ...input, flex: 2, minWidth: 200 }} />
             <TextInput value={note} onChangeText={setNote} placeholder="not (opsiyonel)" placeholderTextColor={C.ink3}
-              style={{ flex: 1, minWidth: 140, height: 44, paddingHorizontal: 14, borderRadius: 12, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: C.line, color: C.ink, fontSize: 14, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
+              style={{ ...input, flex: 1, minWidth: 140 }} />
             <Pressable onPress={add} disabled={busy}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 7, height: 44, paddingHorizontal: 18, borderRadius: 12, backgroundColor: C.accent, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 7, height: 44, paddingHorizontal: 18, borderRadius: 999, backgroundColor: C.accent, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
               {busy ? <ActivityIndicator size="small" color="#fff" /> : <UserPlus size={16} color="#fff" strokeWidth={2} />}
               <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>Ekle</Text>
             </Pressable>
           </View>
-          {err ? <Text style={{ color: C.red, fontSize: 12.5, marginTop: 10 }}>{err}</Text> : null}
-        </View>
+          {err ? <Text style={{ color: C.red, fontSize: 12.5, marginTop: 10, fontWeight: '600' }}>{err}</Text> : null}
+        </Panel>
 
         {/* List */}
         {admins === null ? (
           <View style={{ paddingVertical: 32, alignItems: 'center' }}><ActivityIndicator color={C.accent} /></View>
         ) : (
-          <View style={{ backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.line, overflow: 'hidden' }}>
+          <Panel padding={0}>
             {admins.map((u, i) => (
-              <View key={u.user_id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, paddingHorizontal: 16, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: C.line }}>
-                <ShieldCheck size={16} color={C.accent} strokeWidth={1.8} />
+              <View key={u.user_id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, paddingHorizontal: 18, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: C.line }}>
+                <IconChip icon={ShieldCheck} tone={C.accent} size={36} />
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text numberOfLines={1} style={{ color: C.ink, fontSize: 14, fontWeight: '600' }}>{u.name || '—'}</Text>
+                  <Text numberOfLines={1} style={{ color: C.ink, fontSize: 14, fontWeight: '700', letterSpacing: -0.2 }}>{u.name || '—'}</Text>
                   <Text numberOfLines={1} style={{ color: C.ink3, fontSize: 12 }}>{u.email || '—'}{u.note ? `  ·  ${u.note}` : ''}</Text>
                 </View>
                 <Pressable onPress={() => remove(u)} disabled={busy || admins.length <= 1}
-                  style={{ padding: 8, borderRadius: 10, backgroundColor: 'rgba(229,100,91,0.10)', opacity: admins.length <= 1 ? 0.4 : 1, ...(Platform.OS === 'web' ? { cursor: admins.length <= 1 ? 'default' : 'pointer' } as any : {}) }}>
+                  style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: hexA(C.red, 0.1), opacity: admins.length <= 1 ? 0.4 : 1, ...(Platform.OS === 'web' ? { cursor: admins.length <= 1 ? 'default' : 'pointer' } as any : {}) }}>
                   <Trash2 size={16} color={C.red} strokeWidth={1.8} />
                 </Pressable>
               </View>
             ))}
-          </View>
+          </Panel>
         )}
       </ScrollView>
     </View>

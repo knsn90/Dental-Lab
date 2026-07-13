@@ -3,7 +3,7 @@ import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator, Platfo
 import { useRouter } from 'expo-router';
 import { Search, Building2, CheckCircle2, PauseCircle, Download } from 'lucide-react-native';
 import { listLabs, setLabStatus, type PlatformLab } from '../../modules/platform/api';
-import { C, FONT, PlatformNav, planTone, downloadCsv } from '../../modules/platform/ui';
+import { C, FONT, PageHeader, Panel, Chip, Btn, IconChip, hexA, planTone, downloadCsv } from '../../modules/platform/ui';
 
 type Filter = 'all' | 'active' | 'suspended' | 'trial';
 
@@ -43,46 +43,49 @@ export default function PlatformLabs() {
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 64, maxWidth: 1160, width: '100%', alignSelf: 'center' }}>
-        <PlatformNav active="labs" />
+      <ScrollView contentContainerStyle={{ padding: 28, paddingBottom: 72, maxWidth: 1180, width: '100%', alignSelf: 'center' }}>
+        <PageHeader eyebrow="Yönetim" title="Laboratuvarlar"
+          description="Tüm kiracı laboratuvarları — durum, plan ve kullanım."
+          stats={labs ? [{ label: 'Toplam', value: labs.length }] : undefined}
+          actions={<Btn variant="ghost" icon={Download} onPress={exportCsv}>CSV</Btn>} />
 
-        {/* Controls */}
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.line, paddingHorizontal: 14, height: 42, flex: 1, minWidth: 220 }}>
+        {/* Arama + filtreler */}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 18 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.card, borderRadius: 999, borderWidth: 1, borderColor: C.line, paddingHorizontal: 16, height: 42, flex: 1, minWidth: 220 }}>
             <Search size={16} color={C.ink3} strokeWidth={1.8} />
             <TextInput value={q} onChangeText={setQ} placeholder="Lab adı veya slug ara…" placeholderTextColor={C.ink3}
               style={{ flex: 1, color: C.ink, fontSize: 14, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }} />
           </View>
-          {FILTERS.map(([k, label]) => (
-            <Pressable key={k} onPress={() => setFilter(k)}
-              style={{ paddingHorizontal: 14, height: 42, justifyContent: 'center', borderRadius: 12, backgroundColor: filter === k ? '#EAF2FB' : C.card, borderWidth: 1, borderColor: filter === k ? '#4771AB' : C.line, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-              <Text style={{ color: filter === k ? C.ink : C.ink2, fontSize: 13, fontWeight: '600' }}>{label}</Text>
-            </Pressable>
-          ))}
-          <Pressable onPress={exportCsv}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, height: 42, borderRadius: 12, backgroundColor: C.card, borderWidth: 1, borderColor: C.line, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-            <Download size={15} color={C.ink2} strokeWidth={1.8} />
-            <Text style={{ color: C.ink2, fontSize: 13, fontWeight: '600' }}>CSV</Text>
-          </Pressable>
+          {FILTERS.map(([k, label]) => {
+            const on = filter === k;
+            return (
+              <Pressable key={k} onPress={() => setFilter(k)}
+                style={{ paddingHorizontal: 16, height: 42, justifyContent: 'center', borderRadius: 999, backgroundColor: on ? C.soft : C.card, borderWidth: 1, borderColor: on ? C.accent : C.line, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                <Text style={{ color: on ? C.accentDeep : C.ink2, fontSize: 13, fontWeight: on ? '700' : '600' }}>{label}</Text>
+              </Pressable>
+            );
+          })}
         </View>
 
         {labs === null ? (
           <View style={{ paddingVertical: 48, alignItems: 'center' }}><ActivityIndicator color={C.accent} /></View>
         ) : filtered.length === 0 ? (
-          <View style={{ paddingVertical: 48, alignItems: 'center', gap: 8 }}>
-            <Building2 size={28} color={C.ink3} strokeWidth={1.5} />
+          <Panel style={{ alignItems: 'center', paddingVertical: 44, gap: 10 }}>
+            <IconChip icon={Building2} tone={C.ink3} size={52} />
             <Text style={{ color: C.ink3, fontSize: 14 }}>Lab bulunamadı</Text>
-          </View>
+          </Panel>
         ) : (
-          <View style={{ gap: 10 }}>
-            <Text style={{ color: C.ink3, fontSize: 12, marginBottom: 2 }}>{filtered.length} lab</Text>
-            {filtered.map((l) => (
+          <Panel padding={0}>
+            {filtered.map((l, i) => (
               <Pressable key={l.id} onPress={() => router.push(`/(platform)/${l.id}` as any)}
-                style={({ hovered }: any) => [{ flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: hovered ? C.cardHover : C.card, borderRadius: 14, borderWidth: 1, borderColor: C.line, paddingVertical: 14, paddingHorizontal: 16, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }]}>
-                <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: l.is_active ? C.green : C.red }} />
+                style={({ hovered }: any) => [{ flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: hovered ? C.cardHover : 'transparent', paddingVertical: 14, paddingHorizontal: 18, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: C.line, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }]}>
+                <View style={{ position: 'relative' }}>
+                  <IconChip icon={Building2} tone={l.is_active ? C.accent : C.ink3} size={38} />
+                  <View style={{ position: 'absolute', right: -1, bottom: -1, width: 11, height: 11, borderRadius: 6, backgroundColor: l.is_active ? C.green : C.red, borderWidth: 2, borderColor: C.card }} />
+                </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text numberOfLines={1} style={{ color: C.ink, fontSize: 15, fontWeight: '600' }}>{l.name}</Text>
-                  <Text numberOfLines={1} style={{ color: C.ink3, fontSize: 12, marginTop: 2 }}>{l.slug}</Text>
+                  <Text numberOfLines={1} style={{ color: C.ink, fontSize: 15, fontWeight: '700', letterSpacing: -0.2 }}>{l.name}</Text>
+                  <Text numberOfLines={1} style={{ color: C.ink3, fontSize: 12, marginTop: 2, fontFamily: FONT }}>{l.slug}</Text>
                 </View>
                 <View style={{ width: 66, alignItems: 'flex-end' }}>
                   <Text style={{ color: C.ink, fontSize: 14, fontWeight: '600' }}>{l.users}</Text>
@@ -92,18 +95,16 @@ export default function PlatformLabs() {
                   <Text style={{ color: C.ink, fontSize: 14, fontWeight: '600' }}>{l.orders}</Text>
                   <Text style={{ color: C.ink3, fontSize: 11 }}>sipariş</Text>
                 </View>
-                <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: planTone(l.plan) + '22' }}>
-                  <Text style={{ color: planTone(l.plan), fontSize: 11, fontWeight: '700', textTransform: 'uppercase' }}>{l.plan}</Text>
-                </View>
+                <Chip tone={planTone(l.plan)}>{l.plan.toUpperCase()}</Chip>
                 <Pressable onPress={(e: any) => { e.stopPropagation?.(); toggle(l); }} disabled={busy === l.id}
-                  style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: '#F1F5F9', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}>
+                  style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: hexA(l.is_active ? C.amber : C.green, 0.12), ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}>
                   {busy === l.id ? <ActivityIndicator size="small" color={C.ink2} />
                     : l.is_active ? <PauseCircle size={18} color={C.amber} strokeWidth={1.8} />
                     : <CheckCircle2 size={18} color={C.green} strokeWidth={1.8} />}
                 </Pressable>
               </Pressable>
             ))}
-          </View>
+          </Panel>
         )}
       </ScrollView>
     </View>

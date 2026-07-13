@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
-import { AlertTriangle, TrendingUp, Filter as FunnelIcon, Repeat, Building2, CheckCircle2, Clock, PauseCircle, Users as UsersIcon, Package, Stethoscope } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
+import { AlertTriangle, TrendingUp, Filter as FunnelIcon, Repeat, ArrowUpRight } from 'lucide-react-native';
+import { PercentRingX } from '../../core/ui/ProgressX';
 import { platformStats, growthSeries, platformMetrics, type PlatformStats, type GrowthPoint, type PlatformMetrics } from '../../modules/platform/api';
-import { C, SERIF, Kpi, Panel, PageHeader, SectionLabel, Chip, planTone } from '../../modules/platform/ui';
+import { C, SERIF, Kpi, Panel, PageHeader, SectionLabel, Chip, Banner, IconBtn, planTone } from '../../modules/platform/ui';
 
 export default function PlatformOverview() {
+  const router = useRouter();
   const [stats, setStats] = useState<PlatformStats | null>(null);
   const [growth, setGrowth] = useState<GrowthPoint[]>([]);
   const [metrics, setMetrics] = useState<PlatformMetrics | null>(null);
@@ -19,28 +22,42 @@ export default function PlatformOverview() {
   const maxLabs = Math.max(1, ...growth.map((g) => g.new_labs));
   const maxOrders = Math.max(1, ...growth.map((g) => g.orders));
 
+  const attention = stats?.attention;
+  const urgent = attention ? attention.silent_30d + attention.trial_ending_7d : 0;
+  const activationPct = metrics ? pct(metrics.retention.activated_30d, metrics.retention.new_30d) : 0;
+
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <ScrollView contentContainerStyle={{ padding: 28, paddingBottom: 72, maxWidth: 1160, width: '100%', alignSelf: 'center' }}>
-        <PageHeader eyebrow="Platform" title="Genel" accent="bakış"
-          description="Tüm laboratuvarlar, büyüme ve elde tutma metrikleri tek ekranda." />
-
+      <ScrollView contentContainerStyle={{ padding: 28, paddingBottom: 72, maxWidth: 1180, width: '100%', alignSelf: 'center' }}>
         {!stats ? (
-          <View style={{ paddingVertical: 48, alignItems: 'center' }}><ActivityIndicator color={C.accent} /></View>
+          <>
+            <PageHeader eyebrow="Platform" title="Genel" accent="bakış" description="Tüm laboratuvarlar, büyüme ve elde tutma metrikleri tek ekranda." />
+            <View style={{ paddingVertical: 48, alignItems: 'center' }}><ActivityIndicator color={C.accent} /></View>
+          </>
         ) : (
           <>
-            {/* KPIs */}
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginBottom: 14 }}>
-              <Kpi label="Laboratuvar" value={stats.totals.labs} icon={Building2} />
-              <Kpi label="Aktif" value={stats.totals.active} tone={C.green} icon={CheckCircle2} />
-              <Kpi label="Deneme" value={stats.totals.trial} tone={C.amber} icon={Clock} />
-              <Kpi label="Askıda" value={stats.totals.suspended} tone={C.red} icon={PauseCircle} />
-            </View>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginBottom: 30 }}>
-              <Kpi label="Kullanıcı" value={stats.totals.users} icon={UsersIcon} />
-              <Kpi label="Sipariş" value={stats.totals.orders} icon={Package} />
-              <Kpi label="Klinik" value={stats.totals.clinics} icon={Stethoscope} />
-            </View>
+            <PageHeader eyebrow="Platform" title="Genel" accent="bakış"
+              description="Tüm laboratuvarlar, büyüme ve elde tutma metrikleri tek ekranda."
+              pills={[
+                { label: 'Aktif', value: stats.totals.active, tone: C.green },
+                { label: 'Deneme', value: stats.totals.trial, tone: C.amber },
+                { label: 'Askıda', value: stats.totals.suspended, tone: C.red },
+              ]}
+              stats={[
+                { label: 'Laboratuvar', value: stats.totals.labs },
+                { label: 'Kullanıcı', value: stats.totals.users },
+                { label: 'Sipariş', value: stats.totals.orders },
+                { label: 'Klinik', value: stats.totals.clinics },
+              ]}
+            />
+
+            {/* Acil dikkat — full-bleed banner */}
+            {urgent > 0 && (
+              <Banner tone={C.red} icon={AlertTriangle} title={`${urgent} lab dikkat gerektiriyor`}
+                action={<IconBtn icon={ArrowUpRight} tone={C.red} onPress={() => router.replace('/(platform)/labs' as any)} />}>
+                {attention!.silent_30d} lab 30 gündür sessiz · {attention!.trial_ending_7d} denemesi 7 gün içinde bitiyor
+              </Banner>
+            )}
 
             {/* Dikkat gerektirenler */}
             <SectionLabel icon={AlertTriangle} tone={C.amber}>Dikkat</SectionLabel>
@@ -106,11 +123,16 @@ export default function PlatformOverview() {
                 </Panel>
 
                 <SectionLabel icon={Repeat} tone={C.green}>Elde tutma · son 30 gün</SectionLabel>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>
-                  <Kpi label="Yeni lab (30g)" value={metrics.retention.new_30d} />
-                  <Kpi label="Aktifleşme" value={`%${pct(metrics.retention.activated_30d, metrics.retention.new_30d)}`} tone={C.green} />
-                  <Kpi label="7g aktif" value={metrics.retention.active_7d} />
-                  <Kpi label="Churn (30g sessiz)" value={metrics.retention.churned} tone={C.red} />
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14, alignItems: 'stretch' }}>
+                  <Panel padding={18} style={{ alignItems: 'center', justifyContent: 'center', minWidth: 190 }}>
+                    <PercentRingX value={activationPct} size={128} theme="exec" textColor={C.ink} />
+                    <Text style={{ fontSize: 10.5, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', color: C.ink3, marginTop: 10 }}>Aktifleşme</Text>
+                  </Panel>
+                  <View style={{ flex: 1, minWidth: 260, flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>
+                    <Kpi label="Yeni lab (30g)" value={metrics.retention.new_30d} />
+                    <Kpi label="7g aktif" value={metrics.retention.active_7d} tone={C.green} />
+                    <Kpi label="Churn (30g sessiz)" value={metrics.retention.churned} tone={C.red} />
+                  </View>
                 </View>
               </>
             )}

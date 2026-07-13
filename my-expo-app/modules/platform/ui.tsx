@@ -130,21 +130,79 @@ export function SectionLabel({ icon: Icon, tone, children, action }: { icon?: an
   );
 }
 
-/** Sayfa başlığı (hero) — eyebrow + ince display başlık + açıklama + alt divider */
-export function PageHeader({ eyebrow, title, accent: accentWord, description, actions }: {
+/** Ghost dairesel ikon butonu (kart köşesi ok'u vb.) */
+export function IconBtn({ icon: Icon, onPress, tone = C.ink3, size = 32 }: { icon: any; onPress?: () => void; tone?: string; size?: number }) {
+  return (
+    <Pressable onPress={onPress} style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: C.cardHover, alignItems: 'center', justifyContent: 'center', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}) }}>
+      <Icon size={Math.round(size * 0.44)} color={tone} strokeWidth={1.9} />
+    </Pressable>
+  );
+}
+
+/** Küçük stat: etiket + pill değeri (hero altı — ÜRETİM 20% gibi) */
+export function StatPill({ label, value, tone = C.ink }: { label: string; value: React.ReactNode; tone?: string }) {
+  const dark = tone === C.ink;
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', color: C.ink3 }}>{label}</Text>
+      <View style={{ backgroundColor: dark ? C.ink : hexA(tone, 0.14), borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3, minWidth: 24, alignItems: 'center' }}>
+        <Text style={{ fontSize: 11.5, fontWeight: '700', color: dark ? '#FFFFFF' : tone }}>{value}</Text>
+      </View>
+    </View>
+  );
+}
+
+/** Büyük stat kümesi öğesi — ince display değer + uppercase etiket (hero sağı) */
+export function BigStat({ label, value, tone }: { label: string; value: React.ReactNode; tone?: string }) {
+  return (
+    <View>
+      <Text style={{ ...SERIF, fontSize: 40, letterSpacing: -1.4, lineHeight: 42, color: tone ?? C.ink }}>{value}</Text>
+      <Text style={{ fontSize: 10.5, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', color: C.ink3, marginTop: 4 }}>{label}</Text>
+    </View>
+  );
+}
+
+/** Full-bleed accent uyarı banner'ı (yumuşak tonlu, ikon çipi + opsiyonel aksiyon) */
+export function Banner({ tone = C.accent, icon: Icon, title, children, action }: { tone?: string; icon?: any; title?: string; children?: React.ReactNode; action?: React.ReactNode }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: hexA(tone, 0.10), borderWidth: 1, borderColor: hexA(tone, 0.22), borderRadius: 18, paddingVertical: 15, paddingHorizontal: 16, marginBottom: 24 }}>
+      {Icon ? <IconChip icon={Icon} tone={tone} size={40} /> : null}
+      <View style={{ flex: 1, minWidth: 0 }}>
+        {title ? <Text style={{ color: tone, fontSize: 14, fontWeight: '700' }}>{title}</Text> : null}
+        {children ? <Text style={{ color: C.ink2, fontSize: 13, marginTop: title ? 2 : 0 }}>{children}</Text> : null}
+      </View>
+      {action}
+    </View>
+  );
+}
+
+/** Sayfa başlığı (hero) — eyebrow + ince display başlık + açıklama + opsiyonel pill satırı + sağ stat kümesi/aksiyonlar */
+export function PageHeader({ eyebrow, title, accent: accentWord, description, actions, stats, pills }: {
   eyebrow?: string; title: string; accent?: string; description?: string; actions?: React.ReactNode;
+  stats?: { label: string; value: React.ReactNode; tone?: string }[];
+  pills?: { label: string; value: React.ReactNode; tone?: string }[];
 }) {
   return (
-    <View style={{ paddingBottom: 22, marginBottom: 26, borderBottomWidth: 1, borderBottomColor: C.line }}>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 24, flexWrap: 'wrap' }}>
-        <View style={{ flex: 1, minWidth: 240 }}>
-          {eyebrow ? <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 1.3, textTransform: 'uppercase', color: C.ink3, marginBottom: 12 }}>{eyebrow}</Text> : null}
-          <Text style={{ ...SERIF, fontSize: 40, letterSpacing: -1.0, lineHeight: 44, color: C.ink }}>
+    <View style={{ paddingBottom: 24, marginBottom: 28, borderBottomWidth: 1, borderBottomColor: C.line }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 32, flexWrap: 'wrap' }}>
+        <View style={{ flex: 1, minWidth: 260 }}>
+          {eyebrow ? <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 1.3, textTransform: 'uppercase', color: C.ink3, marginBottom: 14 }}>{eyebrow}</Text> : null}
+          <Text style={{ ...SERIF, fontSize: 44, letterSpacing: -1.5, lineHeight: 48, color: C.ink }}>
             {title}
             {accentWord ? <Text style={{ ...SERIF, color: C.accent }}>{' ' + accentWord}</Text> : null}
           </Text>
-          {description ? <Text style={{ color: C.ink3, fontSize: 14, marginTop: 12, maxWidth: 620, lineHeight: 20 }}>{description}</Text> : null}
+          {description ? <Text style={{ color: C.ink3, fontSize: 14, marginTop: 14, maxWidth: 620, lineHeight: 20 }}>{description}</Text> : null}
+          {pills && pills.length ? (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 20, marginTop: 18 }}>
+              {pills.map((p, i) => <StatPill key={i} label={p.label} value={p.value} tone={p.tone} />)}
+            </View>
+          ) : null}
         </View>
+        {stats && stats.length ? (
+          <View style={{ flexDirection: 'row', gap: 30, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            {stats.map((s, i) => <BigStat key={i} label={s.label} value={s.value} tone={s.tone} />)}
+          </View>
+        ) : null}
         {actions ? <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>{actions}</View> : null}
       </View>
     </View>
