@@ -78,6 +78,14 @@ export interface TriageFile {
   isImage: boolean;
 }
 
+export interface TriageOrderItem {
+  id: string;
+  name: string;
+  quantity: number;
+  /** Bu kalemin uygulandığı dişler (FDI) — diş↔işlem şeması için */
+  tooth_numbers: number[] | null;
+}
+
 export interface TriageMessage {
   id: string;
   content: string | null;
@@ -96,6 +104,8 @@ export interface TriageData {
   messages: TriageMessage[];
   doctorName: string | null;
   clinicName: string | null;
+  /** Sipariş kalemleri — diş↔işlem şeması için (her kalem hangi dişlere uygulanır) */
+  items: TriageOrderItem[];
 }
 
 // Teknisyenin "aktif yük" sayılan stage durumları (tamamlanan/atlanan hariç)
@@ -133,6 +143,8 @@ export async function fetchTriageData(orderId: string, labId: string): Promise<T
       .eq('lab_id', labId)
       .eq('user_type', 'lab')
       .eq('approval_status', 'approved')
+      .eq('is_active', true)               // pasif kullanıcıya iş atanmasın
+      .neq('role', 'courier')              // kurye üretim istasyonlarına ASLA atanmaz
       .order('full_name'),
     supabase
       .from('workflow_templates')
@@ -218,6 +230,17 @@ export async function fetchTriageData(orderId: string, labId: string): Promise<T
     };
   }));
 
+  // 6b) Sipariş kalemleri (order_items) — diş↔işlem şeması için
+  const { data: oi } = await supabase
+    .from('order_items')
+    .select('id, name, quantity, tooth_numbers')
+    .eq('work_order_id', orderId)
+    .order('created_at', { ascending: true });
+  const items: TriageOrderItem[] = ((oi ?? []) as any[]).map((it) => ({
+    id: it.id, name: it.name ?? '', quantity: it.quantity ?? 1,
+    tooth_numbers: Array.isArray(it.tooth_numbers) ? it.tooth_numbers : null,
+  }));
+
   // 7) Hekim/klinik mesajları (order_messages) — sender user_type doctor | clinic_admin
   const { data: msgs } = await supabase
     .from('order_messages')
@@ -239,7 +262,7 @@ export async function fetchTriageData(orderId: string, labId: string): Promise<T
       };
     });
 
-  return { order: (ord as TriageOrderSummary) ?? null, stations, technicians, templates, files, messages, doctorName, clinicName };
+  return { order: (ord as TriageOrderSummary) ?? null, stations, technicians, templates, files, messages, doctorName, clinicName, items };
 }
 
 /** İş tipine en uygun şablonu seç (case_types eşleşmesi → default → ilk). */
@@ -279,8 +302,10 @@ export function isQualified(station: TriageStation, tech: TriageTech): boolean {
  *   3) Adaylar arasında en az yüklü (kapasiteye göre oransal); eşitlikte istasyon varsayılanı.
  */
 export function autoAssignTech(station: TriageStation, technicians: TriageTech[]): string | null {
-  const qualified = technicians.filter(t => isQualified(station, t));
-  const candidates = qualified.length > 0 ? qualified : technicians;
+  // Kurye ASLA üretim istasyonuna atanmaz (havuz başka yerden gelmiş olsa bile defansif).
+  const pool = technicians.filter(t => t.role !== 'courier');
+  const qualified = pool.filter(t => isQualified(station, t));
+  const candidates = qualified.length > 0 ? qualified : pool;
   if (candidates.length === 0) return station.default_technician_id ?? null;
   const ratio = (t: TriageTech) => t.load / (t.capacity && t.capacity > 0 ? t.capacity : 6);
   const sorted = [...candidates].sort((a, b) => {

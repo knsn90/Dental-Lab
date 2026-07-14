@@ -27,6 +27,8 @@ import { getStationKind, type StationKind } from '../../orders/stations/registry
 // Lazy viewer-3d (three.js ayrı chunk) — tek paylaşılan retry'lı lazy instance.
 import { Viewer3DModalLazy as Viewer3DModal } from '../../viewer-3d/Viewer3DLazy';
 import { unzipToViewer, isArchiveExt } from '../../orders/fileArchive';
+import { LivingToothChart } from '../../orders/components/LivingToothChart';
+import type { WorkOrder } from '../../orders/types';
 // Uygulama-içi görsel önizleme (zoom + ileri/geri + safe-area) — sipariş detayı kalıbı.
 import { ImageLightbox } from '../../../core/ui/ImageLightbox';
 
@@ -394,19 +396,37 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
 
   const o = data?.order;
 
-  // Diş ↔ işlem eşlemesi (work_type pozisyonel olarak tooth_numbers ile hizalı)
+  // Diş ↔ işlem eşlemesi. ÖNCELİK: order_items (her kalem hangi dişlere uygulanır —
+  // kesin veri). Yoksa work_type'ı pozisyonel olarak tooth_numbers ile hizala (eski).
   const teeth = o?.tooth_numbers ?? [];
-  const wtParts = (o?.work_type ?? '').split(/,\s*/).map(s => s.trim()).filter(Boolean);
-  const positional = teeth.length > 0 && wtParts.length === teeth.length;
+  const orderItems = data?.items ?? [];
+  const itemsWithTeeth = orderItems.filter(it => Array.isArray(it.tooth_numbers) && it.tooth_numbers!.length > 0);
   const toothProc: Record<number, string> = {};
   const procTeeth: Record<string, number[]> = {};
-  if (positional) {
-    teeth.forEach((t, i) => { toothProc[t] = wtParts[i]; (procTeeth[wtParts[i]] ??= []).push(t); });
+  let distinctProcs: string[] = [];
+  if (itemsWithTeeth.length > 0) {
+    itemsWithTeeth.forEach(it => {
+      it.tooth_numbers!.forEach(t => { toothProc[t] = it.name; (procTeeth[it.name] ??= []).push(t); });
+    });
+    distinctProcs = Array.from(new Set(itemsWithTeeth.map(it => it.name)));
+  } else {
+    const wtParts = (o?.work_type ?? '').split(/,\s*/).map(s => s.trim()).filter(Boolean);
+    if (teeth.length > 0 && wtParts.length === teeth.length) {
+      teeth.forEach((t, i) => { toothProc[t] = wtParts[i]; (procTeeth[wtParts[i]] ??= []).push(t); });
+    }
+    distinctProcs = Array.from(new Set(wtParts));
   }
-  // Tekrarsız işlem listesi (özet + lejant). Pozisyonel değilse yine de tekrarları at.
-  const distinctProcs = Array.from(new Set(wtParts));
+  const hasToothProc = Object.keys(toothProc).length > 0;
   const PROC_PALETTE = [A, '#3B82F6', '#8B5CB8', '#2BA39B', '#E89B2A', '#D94B4B', '#0EA5E9'];
-  const procColor = (p: string) => PROC_PALETTE[distinctProcs.indexOf(p) % PROC_PALETTE.length];
+  const procColor = (p: string) => PROC_PALETTE[Math.max(0, distinctProcs.indexOf(p)) % PROC_PALETTE.length];
+  // LivingToothChart için diş→renk (işlem rengi); eşlenmeyen diş = accent
+  const toothColorMap: Record<number, string> = {};
+  teeth.forEach(t => { toothColorMap[t] = toothProc[t] ? procColor(toothProc[t]) : A; });
+  // Lejantta bir işlem seçiliyse yalnız o dişleri vurgula, gerisini soluk göster.
+  const displayColorMap: Record<number, string> = {};
+  teeth.forEach(t => { displayColorMap[t] = selProc ? (toothProc[t] === selProc ? procColor(selProc) : INK[200]) : toothColorMap[t]; });
+  const chartOrder = { tooth_numbers: teeth } as unknown as WorkOrder;
+  const chartCardW = isNarrow ? Math.max(200, winW - 32) : 360;   // kart iç genişliği referansı
 
   return (
     <View style={{ flex: 1, backgroundColor: PAGE }}>
@@ -417,127 +437,138 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
           <Text style={{ fontSize: 13, color: INK[500], fontWeight: '600' }}>Geri</Text>
         </Pressable>
 
-        {/* Sipariş başlık kartı */}
-        <View style={{ borderRadius: 20, overflow: 'hidden', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', marginBottom: 16 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, padding: 18,
-            // @ts-ignore web gradient
-            backgroundImage: `linear-gradient(135deg, ${tint(A, 0.16)} 0%, #FFFFFF 70%)` }}>
-            <View style={{ width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: A }}>
-              <ListChecks size={22} color={theme.accent} strokeWidth={1.9} />
+        {/* Sipariş künyesi + diş şeması — SPLIT (sol künye · sağ diş şeması) */}
+        <View style={{ flexDirection: isNarrow ? 'column' : 'row', gap: 16, marginBottom: 16, alignItems: 'stretch' }}>
+          {/* ── SOL: künye kartı ── */}
+          <View style={{ flex: 1, minWidth: 0, borderRadius: 20, overflow: 'hidden', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, padding: 18,
+              // @ts-ignore web gradient
+              backgroundImage: `linear-gradient(135deg, ${tint(A, 0.16)} 0%, #FFFFFF 70%)` }}>
+              <View style={{ width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: A }}>
+                <ListChecks size={22} color={theme.accent} strokeWidth={1.9} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: A_DEEP, letterSpacing: 1, textTransform: 'uppercase' }}>Plan Önizleme</Text>
+                <Text style={{ fontSize: 23, color: INK[900], fontFamily: DISPLAY, letterSpacing: -0.6, marginTop: 2 }} numberOfLines={1}>
+                  #{o?.order_number ?? '—'} · {o?.patient_name ?? 'Hasta'}
+                </Text>
+                <Text style={{ fontSize: 12.5, color: INK[500], marginTop: 2 }} numberOfLines={1}>
+                  {distinctProcs.length > 0 ? distinctProcs.join(' · ') : 'Sipariş'}
+                </Text>
+              </View>
+              {o?.is_urgent && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: tint('#D94B4B', 0.10), borderWidth: 1, borderColor: tint('#D94B4B', 0.25) }}>
+                  <AlertTriangle size={12} color="#9C2E2E" strokeWidth={2} />
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#9C2E2E' }}>Acil</Text>
+                </View>
+              )}
+              {/* Sipariş yazışması — sorun olursa hekim/klinikle mesajlaş */}
+              <Pressable
+                onPress={() => setChatOpen(true)}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: tint(A, 0.12), borderWidth: 1, borderColor: tint(A, 0.28), ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+              >
+                <MessageSquare size={14} color={A_DEEP} strokeWidth={2} />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: A_DEEP }}>Mesaj{(data?.messages.length ?? 0) > 0 ? ` · ${data!.messages.length}` : ''}</Text>
+              </Pressable>
             </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: A_DEEP, letterSpacing: 1, textTransform: 'uppercase' }}>Plan Önizleme</Text>
-              <Text style={{ fontSize: 23, color: INK[900], fontFamily: DISPLAY, letterSpacing: -0.6, marginTop: 2 }} numberOfLines={1}>
-                #{o?.order_number ?? '—'} · {o?.patient_name ?? 'Hasta'}
-              </Text>
-              <Text style={{ fontSize: 12.5, color: INK[500], marginTop: 2 }} numberOfLines={1}>
-                {distinctProcs.length > 0 ? distinctProcs.join(' · ') : 'Sipariş'}
-              </Text>
-            </View>
-            {o?.is_urgent && (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: tint('#D94B4B', 0.10), borderWidth: 1, borderColor: tint('#D94B4B', 0.25) }}>
-                <AlertTriangle size={12} color="#9C2E2E" strokeWidth={2} />
-                <Text style={{ fontSize: 11, fontWeight: '700', color: '#9C2E2E' }}>Acil</Text>
+
+            {/* Detay şeridi — işin künyesi */}
+            {(() => {
+              const meta: { label: string; value: string }[] = [
+                ...(teeth.length ? [{ label: 'Üye', value: `${teeth.length} diş` }] : []),
+                ...(o?.shade ? [{ label: 'Renk', value: o.shade }] : []),
+                ...(o?.model_type ? [{ label: 'Model', value: o.model_type }] : []),
+                ...(o?.machine_type ? [{ label: 'Makine', value: o.machine_type }] : []),
+                ...(o?.patient_gender ? [{ label: 'Cinsiyet', value: o.patient_gender }] : []),
+                ...(o?.delivery_date ? [{ label: 'Teslim', value: new Date(o.delivery_date).toLocaleDateString(localeTag()) }] : []),
+                ...(o?.created_at ? [{ label: 'Oluşturma', value: new Date(o.created_at).toLocaleDateString(localeTag()) }] : []),
+              ];
+              if (meta.length === 0) return null;
+              return (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 18, paddingVertical: 14, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
+                  {meta.map(m => (
+                    <View key={m.label} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: PAGE, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' }}>
+                      <Text style={{ fontSize: 9, fontWeight: '700', color: INK[400], letterSpacing: 0.6, textTransform: 'uppercase' }}>{m.label}</Text>
+                      <Text style={{ fontSize: 12.5, fontWeight: '600', color: INK[900], marginTop: 1 }}>{m.value}</Text>
+                    </View>
+                  ))}
+                </View>
+              );
+            })()}
+
+            {/* İşlem lejantı (tıkla → şemada vurgula) + seçili diş */}
+            {teeth.length > 0 && (
+              <View style={{ paddingHorizontal: 18, paddingVertical: 14, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)', gap: 10 }}>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {distinctProcs.map(p => {
+                    const c = procColor(p);
+                    const active = selProc === p;
+                    const count = procTeeth[p]?.length ?? 0;
+                    return (
+                      <Pressable
+                        key={p}
+                        onPress={() => { setSelProc(active ? null : p); setSelTooth(null); }}
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', gap: 6,
+                          paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999,
+                          backgroundColor: active ? c : tint(c, 0.12),
+                          borderWidth: 1, borderColor: active ? c : tint(c, 0.25),
+                          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                        }}
+                      >
+                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: active ? '#FFF' : c }} />
+                        <Text style={{ fontSize: 11.5, fontWeight: '700', color: active ? '#FFF' : INK[800] }}>{p}</Text>
+                        {hasToothProc && count > 0 && (
+                          <Text style={{ fontSize: 10.5, fontWeight: '700', color: active ? 'rgba(255,255,255,0.85)' : INK[400] }}>{count}</Text>
+                        )}
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                {/* Seçili diş → işlemi */}
+                {selTooth != null && toothProc[selTooth] && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, backgroundColor: tint(procColor(toothProc[selTooth]), 0.10) }}>
+                    <View style={{ width: 22, height: 22, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: procColor(toothProc[selTooth]) }}>
+                      <Text style={{ fontSize: 10, fontWeight: '800', color: '#FFF' }}>{selTooth}</Text>
+                    </View>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: INK[900] }}>Diş {selTooth} · {toothProc[selTooth]}</Text>
+                  </View>
+                )}
               </View>
             )}
-            {/* Sipariş yazışması — sorun olursa hekim/klinikle mesajlaş */}
-            <Pressable
-              onPress={() => setChatOpen(true)}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: tint(A, 0.12), borderWidth: 1, borderColor: tint(A, 0.28), ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
-            >
-              <MessageSquare size={14} color={A_DEEP} strokeWidth={2} />
-              <Text style={{ fontSize: 12, fontWeight: '700', color: A_DEEP }}>Mesaj{(data?.messages.length ?? 0) > 0 ? ` · ${data!.messages.length}` : ''}</Text>
-            </Pressable>
           </View>
 
-          {/* Detay şeridi — işin künyesi */}
-          {(() => {
-            const meta: { label: string; value: string }[] = [
-              ...(teeth.length ? [{ label: 'Üye', value: `${teeth.length} diş` }] : []),
-              ...(o?.shade ? [{ label: 'Renk', value: o.shade }] : []),
-              ...(o?.model_type ? [{ label: 'Model', value: o.model_type }] : []),
-              ...(o?.machine_type ? [{ label: 'Makine', value: o.machine_type }] : []),
-              ...(o?.patient_gender ? [{ label: 'Cinsiyet', value: o.patient_gender }] : []),
-              ...(o?.delivery_date ? [{ label: 'Teslim', value: new Date(o.delivery_date).toLocaleDateString(localeTag()) }] : []),
-              ...(o?.created_at ? [{ label: 'Oluşturma', value: new Date(o.created_at).toLocaleDateString(localeTag()) }] : []),
-            ];
-            if (meta.length === 0) return null;
-            return (
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 18, paddingVertical: 14, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
-                {meta.map(m => (
-                  <View key={m.label} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: PAGE, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' }}>
-                    <Text style={{ fontSize: 9, fontWeight: '700', color: INK[400], letterSpacing: 0.6, textTransform: 'uppercase' }}>{m.label}</Text>
-                    <Text style={{ fontSize: 12.5, fontWeight: '600', color: INK[900], marginTop: 1 }}>{m.value}</Text>
-                  </View>
-                ))}
-              </View>
-            );
-          })()}
-
-          {/* Diş şeması & işlemler — tıklanabilir */}
+          {/* ── SAĞ: diş şeması kartı (görsel) ── */}
           {teeth.length > 0 && (
-            <View style={{ paddingHorizontal: 18, paddingVertical: 14, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)', gap: 10 }}>
-              {/* İşlem lejantı — tıkla → dişleri vurgula */}
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                {distinctProcs.map(p => {
-                  const c = procColor(p);
-                  const active = selProc === p;
-                  const count = procTeeth[p]?.length ?? 0;
-                  return (
-                    <Pressable
-                      key={p}
-                      onPress={() => { setSelProc(active ? null : p); setSelTooth(null); }}
-                      style={{
-                        flexDirection: 'row', alignItems: 'center', gap: 6,
-                        paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999,
-                        backgroundColor: active ? c : tint(c, 0.12),
-                        borderWidth: 1, borderColor: active ? c : tint(c, 0.25),
-                        ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                      }}
-                    >
-                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: active ? '#FFF' : c }} />
-                      <Text style={{ fontSize: 11.5, fontWeight: '700', color: active ? '#FFF' : INK[800] }}>{p}</Text>
-                      {positional && count > 0 && (
-                        <Text style={{ fontSize: 10.5, fontWeight: '700', color: active ? 'rgba(255,255,255,0.85)' : INK[400] }}>{count}</Text>
-                      )}
-                    </Pressable>
-                  );
-                })}
+            <View style={{ width: isNarrow ? '100%' : 360, borderRadius: 20, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', padding: 14, gap: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Box size={13} color={INK[400]} strokeWidth={1.8} />
+                <Text style={{ fontSize: 10, fontWeight: '700', color: INK[400], letterSpacing: 1, textTransform: 'uppercase' }}>Diş Şeması</Text>
+                <Text style={{ fontSize: 11, color: INK[400] }}>· {teeth.length} diş</Text>
+                <View style={{ flex: 1 }} />
+                {selProc && (
+                  <Pressable onPress={() => setSelProc(null)} hitSlop={6} style={{ ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                    <Text style={{ fontSize: 10.5, fontWeight: '700', color: A_DEEP }}>Tümü</Text>
+                  </Pressable>
+                )}
               </View>
-
-              {/* Diş çipleri — tıkla → işlemi göster */}
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                {teeth.map((t, i) => {
-                  const proc = positional ? toothProc[t] : null;
-                  const c = proc ? procColor(proc) : INK[400];
-                  const dim = selProc != null && proc !== selProc;
-                  const sel = selTooth === t;
-                  return (
-                    <Pressable
-                      key={`${t}-${i}`}
-                      onPress={() => setSelTooth(sel ? null : t)}
-                      style={{
-                        width: 34, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center',
-                        backgroundColor: sel ? c : tint(c, 0.12),
-                        borderWidth: sel ? 0 : 1, borderColor: tint(c, 0.3),
-                        opacity: dim ? 0.3 : 1,
-                        ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                      }}
-                    >
-                      <Text style={{ fontSize: 12, fontWeight: '700', color: sel ? '#FFF' : INK[800] }}>{t}</Text>
-                    </Pressable>
-                  );
-                })}
+              <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+                <LivingToothChart
+                  order={chartOrder}
+                  containerWidth={chartCardW - 28}
+                  containerHeight={210}
+                  colorMap={displayColorMap}
+                  activeTooth={selTooth}
+                  onToothPress={(t) => setSelTooth(selTooth === t ? null : t)}
+                  accentColor={A}
+                  frameless
+                />
               </View>
-
-              {/* Seçili diş → işlemi */}
-              {selTooth != null && positional && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, backgroundColor: tint(procColor(toothProc[selTooth]), 0.10) }}>
-                  <View style={{ width: 22, height: 22, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: procColor(toothProc[selTooth]) }}>
-                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#FFF' }}>{selTooth}</Text>
-                  </View>
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: INK[900] }}>Diş {selTooth} · {toothProc[selTooth]}</Text>
-                </View>
+              {!hasToothProc && (
+                <Text style={{ fontSize: 10.5, color: INK[400], textAlign: 'center', fontStyle: 'italic' }}>
+                  Diş-işlem eşlemesi yok — tüm dişler tek renk gösteriliyor.
+                </Text>
               )}
             </View>
           )}
