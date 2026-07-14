@@ -26,6 +26,7 @@ import { getStationKind, type StationKind } from '../../orders/stations/registry
 
 // Lazy viewer-3d (three.js ayrı chunk) — tek paylaşılan retry'lı lazy instance.
 import { Viewer3DModalLazy as Viewer3DModal } from '../../viewer-3d/Viewer3DLazy';
+import { unzipToViewer, isArchiveExt } from '../../orders/fileArchive';
 // Uygulama-içi görsel önizleme (zoom + ileri/geri + safe-area) — sipariş detayı kalıbı.
 import { ImageLightbox } from '../../../core/ui/ImageLightbox';
 
@@ -99,10 +100,25 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
   const [matchedTpl, setMatchedTpl] = useState(false);           // Faz 5c: şablon güvenle eşleşti mi
 
   // 3D önizleme — tekil dosya + tümünü katmanlı (OrderDetailScreenV2 kalıbı)
-  const [viewer3DFile, setViewer3DFile] = useState<{ id: string; name: string; url: string; format: 'stl'|'ply'|'obj' } | null>(null);
-  const [viewerAll, setViewerAll] = useState<Array<{ id: string; name: string; url: string; format: 'stl'|'ply'|'obj' }> | null>(null);
+  type ViewerMesh = { id: string; name: string; url: string; format: 'stl'|'ply'|'obj'; textureUrl?: string | null };
+  const [viewer3DFile, setViewer3DFile] = useState<ViewerMesh | null>(null);
+  const [viewerAll, setViewerAll] = useState<ViewerMesh[] | null>(null);
   // 2D görsel önizleme — uygulama-içi lightbox (yeni sekme yerine)
   const [imageViewer, setImageViewer] = useState<{ url: string; name: string } | null>(null);
+  // HTML tasarım (exocad vb.) → uygulama-içi iframe
+  const [htmlViewer, setHtmlViewer] = useState<{ url: string; name: string } | null>(null);
+  const closeHtmlViewer = () => {
+    if (htmlViewer?.url?.startsWith('blob:')) { try { URL.revokeObjectURL(htmlViewer.url); } catch {} }
+    setHtmlViewer(null);
+  };
+  // Zip açılıyor göstergesi + zip içi görseller (lightbox) + revoke edilecek blob URL'ler
+  const [extractingId, setExtractingId] = useState<string | null>(null);
+  const [zipImages, setZipImages] = useState<{ url: string; name: string }[] | null>(null);
+  const zipUrlsRef = useRef<string[]>([]);
+  const revokeZipUrls = () => {
+    zipUrlsRef.current.forEach(u => { try { URL.revokeObjectURL(u); } catch {} });
+    zipUrlsRef.current = [];
+  };
 
   // Tüm 3D dosyalar (STL/PLY/OBJ) — "tümünü katmanlı göster" için
   const all3DFiles = useMemo(() => (
@@ -129,6 +145,35 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
     if (fmt && Platform.OS === 'web') { setViewer3DFile({ id: f.id, name: f.name, url, format: fmt }); return; }
     // Görsel → uygulama-içi lightbox (zoom + ileri/geri + safe-area)
     if (isImagePath(f.name || f.storage_path) && Platform.OS === 'web') { setImageViewer({ url, name: f.name }); return; }
+    // HTML tasarım (exocad) → uygulama-içi iframe (content-type text olsa da render edilir)
+    if (/\.(html?|htm)$/i.test(f.name || f.storage_path) && Platform.OS === 'web') {
+      try {
+        const res = await fetch(url); const text = await res.text();
+        setHtmlViewer({ url: URL.createObjectURL(new Blob([text], { type: 'text/html' })), name: f.name });
+      } catch { if (typeof window !== 'undefined') window.open(url, '_blank'); }
+      return;
+    }
+    // ZIP → tarayıcı içinde aç, içindeki mesh'leri 3D viewer'da göster (klinikler
+    // tüm taramaları tek zip içine koyuyor). Mesh yoksa görsel lightbox, o da yoksa indir.
+    if (isArchiveExt(f.name || f.storage_path) && Platform.OS === 'web') {
+      setExtractingId(f.id);
+      try {
+        revokeZipUrls();
+        const r = await unzipToViewer(url, { idPrefix: f.id });
+        zipUrlsRef.current = r.objectUrls;
+        if (r.files.length > 0) {
+          setZipImages(r.images.length ? r.images : null);
+          setViewerAll(r.files);
+        } else if (r.images.length > 0) {
+          setZipImages(r.images);
+          setImageViewer(r.images[0]);
+        } else if (typeof window !== 'undefined') {
+          window.open(url, '_blank');            // içinde tanınan dosya yok → indir
+        }
+      } catch { if (typeof window !== 'undefined') window.open(url, '_blank'); }
+      finally { setExtractingId(null); }
+      return;
+    }
     if (Platform.OS === 'web' && typeof window !== 'undefined') window.open(url, '_blank');
   }, []);
 
@@ -580,34 +625,38 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
               ) : (
                 data!.files.map(f => {
                   const previewable = !!(f.storage_path || f.signed_url); // tıklamada taze imzalanır
+                  const isZip = isArchiveExt(f.name || f.storage_path);
+                  const isBusy = extractingId === f.id;
                   return (
                   <View
                     key={f.id}
                     style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 8, paddingVertical: 6, borderRadius: 10 }}
                   >
-                    <View style={{ width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(f.is3d ? A : INK[400], 0.12) }}>
-                      {f.is3d ? <Box size={14} color={A_DEEP} strokeWidth={1.8} /> : <FileText size={14} color={INK[500]} strokeWidth={1.8} />}
+                    <View style={{ width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(f.is3d || isZip ? A : INK[400], 0.12) }}>
+                      {f.is3d || isZip ? <Box size={14} color={A_DEEP} strokeWidth={1.8} /> : <FileText size={14} color={INK[500]} strokeWidth={1.8} />}
                     </View>
                     <Text style={{ flex: 1, fontSize: 12, fontWeight: '600', color: INK[800] }} numberOfLines={1}>{f.name}</Text>
-                    {f.is3d && (
+                    {(f.is3d || isZip) && (
                       <View style={{ paddingHorizontal: 6, paddingVertical: 1.5, borderRadius: 999, backgroundColor: tint(A, 0.16) }}>
-                        <Text style={{ fontSize: 8.5, fontWeight: '800', color: A_DEEP }}>3D</Text>
+                        <Text style={{ fontSize: 8.5, fontWeight: '800', color: A_DEEP }}>{isZip ? 'ZIP · 3D' : '3D'}</Text>
                       </View>
                     )}
                     {/* Önizleme butonu — 3D ise viewer, diğeri yeni sekme */}
                     <Pressable
                       onPress={() => openFilePreview(f)}
-                      disabled={!previewable}
+                      disabled={!previewable || isBusy}
                       hitSlop={6}
                       // @ts-ignore web tooltip
-                      title="Önizle"
+                      title={isZip ? 'Zip aç ve 3D göster' : 'Önizle'}
                       style={({ hovered }: any) => ({
                         width: 26, height: 26, borderRadius: 7, alignItems: 'center', justifyContent: 'center',
                         backgroundColor: hovered && previewable ? tint(A, 0.14) : 'transparent', opacity: previewable ? 1 : 0.4,
-                        ...(Platform.OS === 'web' && previewable ? { cursor: 'pointer' } as any : {}),
+                        ...(Platform.OS === 'web' && previewable && !isBusy ? { cursor: 'pointer' } as any : {}),
                       })}
                     >
-                      <Eye size={13} color={previewable ? A_DEEP : INK[400]} strokeWidth={1.9} />
+                      {isBusy
+                        ? <ActivityIndicator size="small" color={A_DEEP} />
+                        : <Eye size={13} color={previewable ? A_DEEP : INK[400]} strokeWidth={1.9} />}
                     </Pressable>
                   </View>
                   );
@@ -883,38 +932,64 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
         </React.Suspense>
       )}
 
-      {/* 3D Viewer — tümünü katmanlı (tek sahnede üst üste + 2D referans overlay) */}
+      {/* 3D Viewer — tümünü katmanlı (tek sahnede üst üste + 2D referans overlay).
+          Zip'ten geldiyse referans görseller zip içindekiler olur. */}
       {viewerAll && Platform.OS === 'web' && (
         <React.Suspense fallback={null}>
           <Viewer3DModal
             visible={!!viewerAll}
             files={viewerAll}
-            referenceImages={referenceImages}
+            referenceImages={zipImages ?? referenceImages}
             title={`${viewerAll.length} dosya birlikte`}
-            onClose={() => setViewerAll(null)}
+            onClose={() => { setViewerAll(null); setZipImages(null); revokeZipUrls(); }}
           />
         </React.Suspense>
       )}
 
-      {/* Görsel önizleme — uygulama-içi lightbox (zoom + ileri/geri + safe-area) */}
+      {/* Görsel önizleme — uygulama-içi lightbox (zoom + ileri/geri + safe-area).
+          Zip içi görseller varsa onlar arasında gezilir. */}
       {imageViewer && Platform.OS === 'web' && (() => {
-        const lbImages = referenceImages.length
-          ? referenceImages.map(r => (r.name === imageViewer.name ? { url: imageViewer.url, name: r.name } : { url: r.url, name: r.name }))
+        const src = (zipImages ?? referenceImages) as { url: string; name: string }[];
+        const lbImages = src.length
+          ? src.map(r => (r.name === imageViewer.name ? { url: imageViewer.url, name: r.name } : { url: r.url, name: r.name }))
           : [imageViewer];
         let lbIndex = lbImages.findIndex(im => im.name === imageViewer.name);
         if (lbIndex < 0) { lbImages.unshift(imageViewer); lbIndex = 0; }
+        const close = () => { setImageViewer(null); if (zipImages) { setZipImages(null); revokeZipUrls(); } };
         return (
-          <Modal visible transparent animationType="fade" onRequestClose={() => setImageViewer(null)}>
+          <Modal visible transparent animationType="fade" onRequestClose={close}>
             <ImageLightbox
               images={lbImages}
               index={lbIndex}
               topInset={insets.top}
-              onClose={() => setImageViewer(null)}
+              onClose={close}
               onIndexChange={(i) => setImageViewer({ url: lbImages[i].url, name: lbImages[i].name })}
             />
           </Modal>
         );
       })()}
+
+      {/* HTML tasarım önizleme — uygulama-içi iframe */}
+      {htmlViewer && Platform.OS === 'web' && (
+        <Modal visible transparent animationType="fade" onRequestClose={closeHtmlViewer}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 16, paddingTop: Math.max(16, insets.top + 8), paddingBottom: Math.max(16, insets.bottom) }}>
+            <View style={{ flex: 1, borderRadius: 16, overflow: 'hidden', backgroundColor: '#FFFFFF' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' }}>
+                <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: '#0A0A0A' }} numberOfLines={1}>{htmlViewer.name}</Text>
+                <Pressable onPress={() => window.open(htmlViewer.url, '_blank')} hitSlop={8} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: '#F1F5F9' }}>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: '#334155' }}>Yeni sekmede aç</Text>
+                </Pressable>
+                <Pressable onPress={closeHtmlViewer} hitSlop={10} style={{ width: 32, height: 32, borderRadius: 999, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 18, lineHeight: 18, color: '#334155' }}>×</Text>
+                </Pressable>
+              </View>
+              <View style={{ flex: 1 }}>
+                {React.createElement('iframe', { src: htmlViewer.url, style: { flex: 1, width: '100%', height: '100%', border: 0, backgroundColor: '#FFFFFF' }, title: htmlViewer.name })}
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
 
       {/* Sipariş yazışması modal'ı — sorun olursa hekim/klinikle mesajlaş */}
       <Modal visible={chatOpen} transparent animationType="fade" onRequestClose={() => setChatOpen(false)}>

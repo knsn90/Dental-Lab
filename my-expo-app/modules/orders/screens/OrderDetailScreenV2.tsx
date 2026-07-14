@@ -11,7 +11,7 @@ import { localeTag } from '../../../core/i18n';
  *     Tur 4: Action handlers + permissions + edge cases
  */
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { View, Text, ScrollView, Pressable, Platform, Modal, useWindowDimensions, Image } from 'react-native';
+import { View, Text, ScrollView, Pressable, Platform, Modal, useWindowDimensions, Image, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter, useSegments } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../../core/store/authStore';
@@ -26,6 +26,7 @@ import { Bell, Printer, Check, ArrowUpRight, ChevronRight, Phone, MapPin, Downlo
 
 // Lazy viewer-3d (three.js ayrı chunk) — tek paylaşılan retry'lı lazy instance.
 import { Viewer3DModalLazy as Viewer3DModal } from '../../viewer-3d/Viewer3DLazy';
+import { unzipToViewer, isArchiveExt } from '../fileArchive';
 
 function is3DFileExt(path: string): 'stl' | 'ply' | 'obj' | null {
   const ext = path.toLowerCase().split('.').pop();
@@ -3100,6 +3101,14 @@ function FilesList({
   // Uygulama-içi görsel / HTML tasarım önizleme (yeni tab yerine popup) — dosya modalı ile aynı davranış
   const [imageViewer, setImageViewer] = useState<{ url: string; name: string } | null>(null);
   const [htmlViewer, setHtmlViewer]   = useState<{ url: string; name: string } | null>(null);
+  // Zip tarama arşivi: açılıyor göstergesi + zip içi görseller + revoke edilecek blob URL'ler
+  const [extractingId, setExtractingId] = useState<string | null>(null);
+  const [zipImages, setZipImages] = useState<{ url: string; name: string }[] | null>(null);
+  const zipUrlsRef = useRef<string[]>([]);
+  const revokeZipUrls = () => {
+    zipUrlsRef.current.forEach(u => { try { URL.revokeObjectURL(u); } catch {} });
+    zipUrlsRef.current = [];
+  };
   const closeHtmlViewer = () => {
     if (htmlViewer?.url?.startsWith('blob:')) { try { URL.revokeObjectURL(htmlViewer.url); } catch {} }
     setHtmlViewer(null);
@@ -3143,6 +3152,29 @@ function FilesList({
     // Görsel → uygulama-içi popup
     if (['jpg','jpeg','png','gif','webp','bmp','heic','heif','svg','avif'].includes(ext) && Platform.OS === 'web') {
       setImageViewer({ url, name: filename });
+      return;
+    }
+    // ZIP → tarayıcı içinde aç, içindeki mesh'leri 3D viewer'da göster (klinikler tüm
+    // taramaları tek zip içine koyuyor). Mesh yoksa görsel lightbox, o da yoksa indir.
+    if (isArchiveExt(f.storage_path) && Platform.OS === 'web') {
+      setExtractingId(f.id);
+      (async () => {
+        try {
+          revokeZipUrls();
+          const r = await unzipToViewer(url, { idPrefix: f.id });
+          zipUrlsRef.current = r.objectUrls;
+          if (r.files.length > 0) {
+            setZipImages(r.images.length ? r.images : null);
+            setViewerAll(r.files);
+          } else if (r.images.length > 0) {
+            setZipImages(r.images);
+            setImageViewer(r.images[0]);
+          } else if (typeof window !== 'undefined') {
+            window.open(url, '_blank');
+          }
+        } catch { if (typeof window !== 'undefined') window.open(url, '_blank'); }
+        finally { setExtractingId(null); }
+      })();
       return;
     }
     if (typeof window !== 'undefined') window.open(url, '_blank');
@@ -3260,20 +3292,23 @@ function FilesList({
                     {ext}{f.tooth_number != null ? ` · Diş ${f.tooth_number}` : ''}
                   </Text>
                 </View>
-                {/* Preview button — STL/PLY/OBJ ise 3D viewer, diğerleri yeni tab */}
+                {/* Preview button — STL/PLY/OBJ ise 3D viewer, zip ise açıp 3D, diğerleri yeni tab */}
                 <Pressable
                   onPress={() => openPreview(f)}
+                  disabled={extractingId === f.id}
                   hitSlop={6}
                   // @ts-ignore web tooltip
-                  title="Önizle"
+                  title={isArchiveExt(f.storage_path) ? 'Zip aç ve 3D göster' : 'Önizle'}
                   style={({ hovered }: any) => ({
                     width: 24, height: 24, borderRadius: 6,
                     alignItems: 'center', justifyContent: 'center',
                     backgroundColor: hovered ? '#F1F5F9' : 'transparent',
-                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                    ...(Platform.OS === 'web' && extractingId !== f.id ? { cursor: 'pointer' } as any : {}),
                   })}
                 >
-                  <Eye size={12} color="#475569" strokeWidth={1.8} />
+                  {extractingId === f.id
+                    ? <ActivityIndicator size="small" color="#475569" />
+                    : <Eye size={12} color="#475569" strokeWidth={1.8} />}
                 </Pressable>
                 {/* Download button — zorla indirme */}
                 <Pressable
@@ -3326,20 +3361,23 @@ function FilesList({
         </React.Suspense>
       )}
 
-      {/* Görsel önizleme — zoom (scroll/pinch) + pan + next/prev + safe-area (uygulama-içi) */}
+      {/* Görsel önizleme — zoom (scroll/pinch) + pan + next/prev + safe-area (uygulama-içi).
+          Zip içi görseller varsa onlar arasında gezilir. */}
       {imageViewer && Platform.OS === 'web' && (() => {
-        const lbImages = referenceImages.length
-          ? referenceImages.map(r => ({ url: r.url, name: r.name }))
+        const src = (zipImages ?? referenceImages) as { url: string; name: string }[];
+        const lbImages = src.length
+          ? src.map(r => ({ url: r.url, name: r.name }))
           : [imageViewer];
         let lbIndex = lbImages.findIndex(im => im.url === imageViewer.url);
         if (lbIndex < 0) { lbImages.unshift(imageViewer); lbIndex = 0; }
+        const close = () => { setImageViewer(null); if (zipImages) { setZipImages(null); revokeZipUrls(); } };
         return (
-          <Modal visible transparent animationType="fade" onRequestClose={() => setImageViewer(null)}>
+          <Modal visible transparent animationType="fade" onRequestClose={close}>
             <ImageLightbox
               images={lbImages}
               index={lbIndex}
               topInset={insets.top}
-              onClose={() => setImageViewer(null)}
+              onClose={close}
               onIndexChange={(i) => setImageViewer({ url: lbImages[i].url, name: lbImages[i].name })}
             />
           </Modal>
@@ -3375,15 +3413,16 @@ function FilesList({
         </Modal>
       )}
 
-      {/* Multi-file viewer — "Tümünü 3D Aç" → tüm 3D dosyalar tek sahnede, layer panel açık */}
+      {/* Multi-file viewer — "Tümünü 3D Aç" veya zip'ten çıkan mesh'ler tek sahnede.
+          Zip'ten geldiyse referans görseller zip içindekiler olur. */}
       {viewerAll && Platform.OS === 'web' && (
         <React.Suspense fallback={null}>
           <Viewer3DModal
             visible={!!viewerAll}
             files={viewerAll}
-            referenceImages={referenceImages}
+            referenceImages={zipImages ?? referenceImages}
             title={`${viewerAll.length} dosya birlikte`}
-            onClose={() => setViewerAll(null)}
+            onClose={() => { setViewerAll(null); setZipImages(null); revokeZipUrls(); }}
           />
         </React.Suspense>
       )}
