@@ -48,7 +48,7 @@ const SERIF = {
 };
 
 // ── Shorthand aliases from DS tokens ──
-const P   = DS.exec.primary;      // #E97757 coral
+const P   = DS.exec.primary;      // #4771AB kobalt
 const INK = DS.ink[900];          // #0A0A0A
 
 const CLR = {
@@ -56,9 +56,25 @@ const CLR = {
   orange: DS.exec.warning,   // #E89B2A
   red:    DS.exec.danger,    // #D94B4B
   blue:   DS.exec.info,      // #4A8FC9
-  purple: '#7C3AED',
-  teal:   '#0D9488',
 };
+
+// İş tipi renkleri ANLAMSIZ — statü renkleri gibi bir şey ifade etmezler; tek işleri
+// satırı spine segmentine bağlamak. Kurallar:
+//   1. Hepsi DS token'ı — hardcode hue yok (eski '#7C3AED' / '#0D9488' elendi).
+//   2. Hepsi beyaz VE spine track (ink[100]) üstünde ≥3:1 — WCAG 1.4.11 non-text.
+//      7px nokta ve 8px şerit satırın tek görsel kimliği, soluk ton = görünmez satır.
+//   3. Statünün semantik hue'larından uzak (turuncu=üretim, yeşil=teslim, kırmızı=
+//      gecikme) — iki kart yan yana dururken anlam çakışmasın.
+// Tek-hue rampa denendi ve ELENDİ: 5 adımın 3'ü 3:1'in altına düşüyor (2.82 / 2.02 /
+// 1.58) ve son adımlar birbirinden ayırt edilemiyor. Tek hue 5 erişilebilir adım
+// taşıyamıyor; kontrollü kategorik palet tek çözüm.
+const WORKTYPE_RAMP = [
+  DS.exec.primaryDeep,   // #314F7E lacivert · 8.23:1
+  DS.teal.primaryDeep,   // #197872 koyu teal · 5.29:1
+  DS.plum.primary,       // #8B5CB8 erik moru · 4.86:1
+  DS.exec.info,          // #4A8FC9 açık mavi · 3.46:1
+  DS.plum.primaryDeep,   // #6B3F94 koyu erik · 7.60:1
+];
 
 const STATUS_CFG: Record<string, { labelKey: string; color: string; bg: string }> = {
   alindi:          { labelKey: 'admin.status.received',          color: DS.ink[500],  bg: 'rgba(0,0,0,0.05)' },
@@ -197,6 +213,95 @@ function Card({ children, style }: { children: React.ReactNode; style?: any }) {
       style={[{ borderRadius: DS.radius.xl, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' }, style]}
     >
       {children}
+    </View>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+// Hallmark · component: dashboard-cards · genre: modern-minimal
+// theme: design-system (CLAUDE.md · DS.exec kobalt) — katalog teması YOK,
+// kilitli sistem kazanır. Diversification askıda (system-managed project).
+//
+// "Spine" — üç kart TEK cihaz paylaşır: tepede bir yığılmış şerit, altında
+// bar'sız satırlar. Bir bütünün parçaları için N ayrı bar çizmek "toplamı
+// %100 eder" ilişkisini yok ediyordu; tek spine onu geri getiriyor.
+// Sıfır satırları tek soluk satıra toplanır (statü kartının %60'ı ölü
+// şeritti). Sayı sütunları tabular-nums ile dikeyde hizalanır.
+// ══════════════════════════════════════════════════════════════════
+
+/** Sayı sütunları dikeyde hizalansın — orantılı rakamlar sütunu kaydırıyor. */
+const NUM = { fontVariant: ['tabular-nums'] as any };
+
+/** Yığılmış şerit — segmentler pay oranında yer kaplar (flex = pay).
+ *  flexBasis 0 + flexGrow=pay ⇒ segment genişliği doğrudan payın kendisi. */
+function Spine({ segments }: { segments: { color: string; pct: number }[] }) {
+  const live = segments.filter(s => s.pct > 0.0001);
+  return (
+    <View style={{ flexDirection: 'row', height: 8, borderRadius: 999, overflow: 'hidden', backgroundColor: DS.ink[100], gap: 2, marginTop: 16 }}>
+      {live.map((s, i) => <View key={i} style={{ flex: s.pct, backgroundColor: s.color }} />)}
+    </View>
+  );
+}
+
+function SpineCard({ title, value, unit, segments, zeros, children }: {
+  title:     string;
+  /** string/number ise display tipografisiyle sarılır; ReactNode olduğu gibi basılır. */
+  value:     string | number | React.ReactNode;
+  unit?:     string;
+  segments:  { color: string; pct: number }[];
+  /** Sıfır olan kalemler — tek soluk satırda toplanır. */
+  zeros?:    string[];
+  children:  React.ReactNode;
+}) {
+  const plain = typeof value === 'string' || typeof value === 'number';
+  return (
+    <Card style={{ padding: 20 }}>
+      {/* Başlık solda · toplam sağda — koyu bant yok, kart bağırmıyor */}
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 12 }}>
+        <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+          {title}
+        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
+          {plain
+            ? <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.5, color: DS.ink[900], ...NUM }}>{value}</Text>
+            : value}
+          {unit ? <Text style={{ fontSize: 12, fontWeight: '500', color: DS.ink[400] }}>{unit}</Text> : null}
+        </View>
+      </View>
+
+      <Spine segments={segments} />
+
+      <View style={{ marginTop: 8 }}>{children}</View>
+
+      {zeros && zeros.length > 0 ? (
+        <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 4 }}>
+          {zeros.join(' · ')} — 0
+        </Text>
+      ) : null}
+    </Card>
+  );
+}
+
+/** Spine satırı — nokta (spine segmentine bağlar) + etiket + değer + oran.
+ *  Kendi barı YOK; oranı tepedeki spine taşıyor. */
+function SpineRow({ color, label, value, meta }: {
+  /** Yoksa satır spine'da temsil edilmiyor demektir (ör. salt sayaç). */
+  color?: string;
+  label:  string;
+  value:  string | number | React.ReactNode;
+  meta?:  string;
+}) {
+  const plain = typeof value === 'string' || typeof value === 'number';
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 }}>
+      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color ?? 'transparent' }} />
+      <Text style={{ flex: 1, fontSize: 13, fontWeight: '500', color: DS.ink[700] }} numberOfLines={1}>{label}</Text>
+      {plain
+        ? <Text style={{ fontSize: 13, fontWeight: '700', color: INK, ...NUM }}>{value}</Text>
+        : value}
+      {meta ? (
+        <Text style={{ fontSize: 12, fontWeight: '500', color: DS.ink[400], minWidth: 36, textAlign: 'right', ...NUM }}>{meta}</Text>
+      ) : null}
     </View>
   );
 }
@@ -1000,43 +1105,32 @@ function TasksCard({
 function StatusDistCard({ byStatus }: { byStatus: { label: string; count: number; key: string }[] }) {
   const { t } = useTranslation();
   const total = byStatus.reduce((s, x) => s + x.count, 0) || 1;
+  const labelOf = (x: { label: string; key: string }) => {
+    const k = STATUS_CFG[x.key]?.labelKey;
+    return k ? t(k) : x.label;
+  };
+  const colorOf = (x: { key: string }) => STATUS_CFG[x.key]?.color ?? INK;
+  // Sıfır statüler tam satır + boş bar yerine tek soluk satıra iner.
+  const live  = byStatus.filter(x => x.count > 0);
+  const zeros = byStatus.filter(x => x.count === 0).map(labelOf);
   return (
-    <Card style={{ padding: 0, overflow: 'hidden' }}>
-      {/* Header band */}
-      <View style={{ backgroundColor: DS.exec.surfaceAlt, paddingHorizontal: 20, paddingVertical: 16 }}>
-        <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(255,255,255,0.42)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
-          {t('admin.dashboard.statusDistribution')}
-        </Text>
-        <Text style={{ fontSize: 22, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.5 }}>
-          {total} <Text style={{ fontSize: 13, fontWeight: '500', color: 'rgba(255,255,255,0.5)', letterSpacing: 0 }}>{t('admin.dashboard.totalOrders')}</Text>
-        </Text>
-      </View>
-      {/* Rows */}
-      <View style={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 4 }}>
-        {byStatus.map((item, i) => {
-          const pct = Math.round((item.count / total) * 100);
-          const cfg = STATUS_CFG[item.key];
-          const color = cfg?.color ?? INK;
-          return (
-            <View key={item.key} style={{ paddingVertical: 11, borderBottomWidth: i < byStatus.length - 1 ? 1 : 0, borderBottomColor: DS.ink[100] }}>
-              <View className="flex-row items-center" style={{ gap: 10, marginBottom: 7 }}>
-                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />
-                <Text style={{ flex: 1, fontSize: 12, color: DS.ink[700], fontWeight: '500' }} numberOfLines={1}>
-                  {cfg?.labelKey ? t(cfg.labelKey) : item.label}
-                </Text>
-                <Text style={{ fontSize: 13, fontWeight: '800', color: INK, letterSpacing: -0.3 }}>{item.count}</Text>
-                <View style={{ width: 34, backgroundColor: `${color}18`, borderRadius: 999, paddingVertical: 2, alignItems: 'center' }}>
-                  <Text style={{ fontSize: 10, fontWeight: '700', color }}>{pct}%</Text>
-                </View>
-              </View>
-              <View style={{ height: 4, backgroundColor: DS.ink[100], borderRadius: 999, overflow: 'hidden' }}>
-                <View style={{ height: 4, backgroundColor: color, borderRadius: 999, width: `${pct}%` as any }} />
-              </View>
-            </View>
-          );
-        })}
-      </View>
-    </Card>
+    <SpineCard
+      title={t('admin.dashboard.statusDistribution')}
+      value={total}
+      unit={t('admin.dashboard.totalOrders')}
+      segments={live.map(x => ({ color: colorOf(x), pct: x.count / total }))}
+      zeros={zeros}
+    >
+      {live.map(x => (
+        <SpineRow
+          key={x.key}
+          color={colorOf(x)}
+          label={labelOf(x)}
+          value={x.count}
+          meta={`${Math.round((x.count / total) * 100)}%`}
+        />
+      ))}
+    </SpineCard>
   );
 }
 
@@ -1044,42 +1138,30 @@ function StatusDistCard({ byStatus }: { byStatus: { label: string; count: number
 function WorkTypeCard({ data }: { data: { label: string; count: number }[] }) {
   const { t } = useTranslation();
   if (!data.length) return null;
-  const palette = [P, CLR.blue, CLR.purple, CLR.teal, CLR.orange];
+  const rows  = data.slice(0, 5);
   const total = data.reduce((s, d) => s + d.count, 0) || 1;
+  const live  = rows.filter(w => w.count > 0);
+  const zeros = rows.filter(w => w.count === 0).map(w => w.label);
   return (
-    <Card style={{ padding: 0, overflow: 'hidden' }}>
-      {/* Header band */}
-      <View style={{ backgroundColor: DS.exec.surfaceAlt, paddingHorizontal: 20, paddingVertical: 16 }}>
-        <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(255,255,255,0.42)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
-          {t('admin.dashboard.workTypeDistribution')}
-        </Text>
-        <Text style={{ fontSize: 22, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.5 }}>
-          {total} <Text style={{ fontSize: 13, fontWeight: '500', color: 'rgba(255,255,255,0.5)', letterSpacing: 0 }}>{t('admin.dashboard.totalMembers')}</Text>
-        </Text>
-      </View>
-      {/* Rows */}
-      <View style={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 4 }}>
-        {data.slice(0, 5).map((w, i) => {
-          const color = palette[i];
-          const pct = Math.round((w.count / total) * 100);
-          return (
-            <View key={i} style={{ paddingVertical: 11, borderBottomWidth: i < Math.min(data.length, 5) - 1 ? 1 : 0, borderBottomColor: DS.ink[100] }}>
-              <View className="flex-row items-center" style={{ gap: 10, marginBottom: 7 }}>
-                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />
-                <Text style={{ flex: 1, fontSize: 12, color: DS.ink[700], fontWeight: '500' }} numberOfLines={1}>{w.label}</Text>
-                <Text style={{ fontSize: 13, fontWeight: '800', color: INK, letterSpacing: -0.3 }}>{w.count}</Text>
-                <View style={{ width: 34, backgroundColor: `${color}18`, borderRadius: 999, paddingVertical: 2, alignItems: 'center' }}>
-                  <Text style={{ fontSize: 10, fontWeight: '700', color }}>{pct}%</Text>
-                </View>
-              </View>
-              <View style={{ height: 4, backgroundColor: DS.ink[100], borderRadius: 999, overflow: 'hidden' }}>
-                <View style={{ height: 4, backgroundColor: color, borderRadius: 999, width: `${pct}%` as any }} />
-              </View>
-            </View>
-          );
-        })}
-      </View>
-    </Card>
+    <SpineCard
+      title={t('admin.dashboard.workTypeDistribution')}
+      value={total}
+      // NOT: "üye" = diş protez birimi (1 diş = 1 üye), üyelik değil — sayaç
+      // diş sayar (bkz. wtMap += teeth). EN "Units" / DE "Einheiten" ile aynı.
+      unit={t('admin.dashboard.totalMembers')}
+      segments={live.map((w, i) => ({ color: WORKTYPE_RAMP[rows.indexOf(w)], pct: w.count / total }))}
+      zeros={zeros}
+    >
+      {live.map(w => (
+        <SpineRow
+          key={w.label}
+          color={WORKTYPE_RAMP[rows.indexOf(w)]}
+          label={w.label}
+          value={w.count}
+          meta={`${Math.round((w.count / total) * 100)}%`}
+        />
+      ))}
+    </SpineCard>
   );
 }
 
@@ -1088,111 +1170,57 @@ function FinanceCard({ monthly, pending, paid }: { monthly: CurrencyTotal[]; pen
   const { t } = useTranslation();
   const baseCurrency = useBaseCurrency();
 
-  const ccyLine = (slicesRaw: CurrencyTotal[], color: string, size = 18) => {
+  /** Para satırı — katı per-currency: her dilim kendi biriminde, asla baz'a çevrilmez. */
+  const ccyLine = (slicesRaw: CurrencyTotal[], size: number) => {
     const slices = Array.isArray(slicesRaw) ? slicesRaw : [];
+    const st = { fontSize: size, fontWeight: '700' as const, color: INK, ...NUM };
     return slices.length === 0
-      ? <Text style={{ fontSize: size, fontWeight: '800', color, letterSpacing: -0.5 }}>{formatMoney(0, baseCurrency, { fractionDigits: 0 })}</Text>
-      : <View style={{ gap: 0 }}>{slices.map(s => (
-          <Text key={s.currency} style={{ fontSize: size, fontWeight: '800', color, letterSpacing: -0.5 }} numberOfLines={1}>
+      ? <Text style={st}>{formatMoney(0, baseCurrency, { fractionDigits: 0 })}</Text>
+      : <View style={{ alignItems: 'flex-end' }}>{slices.map(s => (
+          <Text key={s.currency} style={st} numberOfLines={1}>
             {formatMoney(s.total, s.currency, { fractionDigits: 0 })}
           </Text>
         ))}</View>;
   };
 
+  // UYARI (mevcut davranış korundu): bu oran para birimlerini toplayarak hesaplanıyor
+  // (₺0 + 615 € → tek oran). Katı per-currency kuralına aykırı; eski donut ring de
+  // aynı matematiği kullanıyordu. Ayrı bir karar gerektirir — bu redesign kapsamı değil.
   const totalMonthly = (Array.isArray(monthly) ? monthly : []).reduce((s, c) => s + (Number(c.total) || 0), 0);
   const totalPending = (Array.isArray(pending) ? pending : []).reduce((s, c) => s + (Number(c.total) || 0), 0);
-  const grandTotal = totalMonthly + totalPending;
+  const grandTotal   = totalMonthly + totalPending;
   const collectRatio = grandTotal > 0 ? totalMonthly / grandTotal : 0;
-
-  const RING = 72; const SW = 7;
-  const Rad = (RING - SW) / 2;
-  const CIRC = 2 * Math.PI * Rad;
-  const greenLen = CIRC * collectRatio;
-  const orangeLen = CIRC * (1 - collectRatio);
+  const collectPct   = Math.round(collectRatio * 100);
 
   return (
-    <Card style={{ padding: 0, overflow: 'hidden' }}>
-      {/* ── Hero band — kobalt dark ── */}
-      <View style={{ backgroundColor: DS.exec.surfaceAlt, paddingHorizontal: 20, paddingTop: 18, paddingBottom: 18, flexDirection: 'row', alignItems: 'center' }}>
-        <View style={{ flex: 1, marginRight: 12 }}>
-          <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(255,255,255,0.42)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>
-            {t('admin.dashboard.financialSummary')}
-          </Text>
-          <Text style={{ fontSize: 10, fontWeight: '600', color: `${CLR.green}BB`, marginBottom: 3 }}>
-            {t('admin.dashboard.monthlyCollection')}
-          </Text>
-          {ccyLine(monthly, '#FFFFFF', 26)}
-        </View>
-
-        {/* Donut ring — collected vs pending */}
-        <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-          <Svg width={RING} height={RING} viewBox={`0 0 ${RING} ${RING}`}>
-            {/* Track */}
-            <Circle cx={RING / 2} cy={RING / 2} r={Rad} stroke="rgba(255,255,255,0.12)" strokeWidth={SW} fill="none" />
-            {/* Orange arc (pending) */}
-            {grandTotal > 0 && orangeLen > 1 && (
-              <Circle
-                cx={RING / 2} cy={RING / 2} r={Rad}
-                stroke={CLR.orange} strokeWidth={SW} fill="none"
-                strokeDasharray={`${orangeLen} ${CIRC}`}
-                strokeDashoffset={greenLen}
-                transform={`rotate(-90 ${RING / 2} ${RING / 2})`}
-              />
-            )}
-            {/* Green arc (collected) */}
-            {grandTotal > 0 && greenLen > 1 && (
-              <Circle
-                cx={RING / 2} cy={RING / 2} r={Rad}
-                stroke={CLR.green} strokeWidth={SW} fill="none"
-                strokeDasharray={`${greenLen} ${CIRC}`}
-                strokeDashoffset={0}
-                transform={`rotate(-90 ${RING / 2} ${RING / 2})`}
-              />
-            )}
-          </Svg>
-          <View style={{ position: 'absolute', alignItems: 'center' }}>
-            <Text style={{ fontSize: 14, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.4 }}>
-              {Math.round(collectRatio * 100)}%
-            </Text>
-            <Text style={{ fontSize: 7, fontWeight: '600', color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: 0.4 }}>
-              tahsil
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      {/* ── KPI rows ── */}
-      <View style={{ paddingHorizontal: 16, paddingTop: 2, paddingBottom: 2 }}>
-        {/* Bekleyen Fatura */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: DS.ink[100] }}>
-          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: `${CLR.orange}1A`, alignItems: 'center', justifyContent: 'center' }}>
-            <Receipt size={17} color={CLR.orange} strokeWidth={2} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 10, fontWeight: '600', color: DS.ink[400], textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 3 }}>
-              {t('admin.dashboard.pendingInvoice')}
-            </Text>
-            {ccyLine(pending, CLR.orange, 17)}
-          </View>
-        </View>
-
-        {/* Ödenen Fatura Adedi */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13 }}>
-          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: `${CLR.green}1A`, alignItems: 'center', justifyContent: 'center' }}>
-            <CheckCircle size={17} color={CLR.green} strokeWidth={2} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 10, fontWeight: '600', color: DS.ink[400], textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 3 }}>
-              {t('admin.dashboard.paidInvoiceCount')}
-            </Text>
-            <NumberTickerX value={paid} duration={700} style={{ fontSize: 17, fontWeight: '800', color: CLR.green, letterSpacing: -0.4 } as any} />
-          </View>
-          <View style={{ backgroundColor: `${CLR.green}18`, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999 }}>
-            <Text style={{ fontSize: 10, fontWeight: '700', color: CLR.green, letterSpacing: 0.3 }}>Ödendi</Text>
-          </View>
-        </View>
-      </View>
-    </Card>
+    <SpineCard
+      title={t('admin.dashboard.financialSummary')}
+      value={`${collectPct}%`}
+      unit="tahsil"
+      // Veri yokken tam turuncu şerit göstermemek için boş bırak.
+      segments={grandTotal > 0 ? [
+        { color: CLR.green,  pct: collectRatio },
+        { color: CLR.orange, pct: 1 - collectRatio },
+      ] : []}
+    >
+      <SpineRow
+        color={CLR.green}
+        label={t('admin.dashboard.monthlyCollection')}
+        value={ccyLine(monthly, 13)}
+        meta={`${collectPct}%`}
+      />
+      <SpineRow
+        color={CLR.orange}
+        label={t('admin.dashboard.pendingInvoice')}
+        value={ccyLine(pending, 13)}
+        meta={`${100 - collectPct}%`}
+      />
+      {/* Nokta yok — bu bir sayaç, spine'daki paya dahil değil. */}
+      <SpineRow
+        label={t('admin.dashboard.paidInvoiceCount')}
+        value={<NumberTickerX value={paid} duration={700} style={{ fontSize: 13, fontWeight: '700', color: INK, ...NUM } as any} />}
+      />
+    </SpineCard>
   );
 }
 

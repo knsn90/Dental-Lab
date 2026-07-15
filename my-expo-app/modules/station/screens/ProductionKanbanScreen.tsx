@@ -1,14 +1,20 @@
 import { localeTag } from '../../../core/i18n';
 // modules/station/screens/ProductionKanbanScreen.tsx
-// Üretim Panosu — Apple Reminders tarzı liste/sütun.
+// Üretim Panosu — iş odaklı liste/sütun panosu.
+//
+// Hallmark · redesign · genre: modern-minimal · theme: design-system (CLAUDE.md)
+// Katalog teması / macrostructure YOK — sistem-yönetimli proje, kilitli sistem kazanır.
 //
 // Stil dili:
-//   • Page bg: iOS systemGroupedBackground (#F2F2F7)
-//   • Column = rounded white container (radius 18), kart yığını yok
-//   • Item = inline row, hairline ayraçlarla bölünür
-//   • Pastel filled circle = stage indicator (left)
-//   • Late = soft red dot + subtle red title
-//   • iOS-style filled pill button (Continue)
+//   • Renklerin TAMAMI panelden çözülür — usePanelTheme() (accent) + useMobileTokens()
+//     (zemin/ink/hairline, dark-mode farkında). Hardcode renk YOK (CLAUDE.md §7).
+//     Eskiden burada 44 adet hardcode Apple sistem rengi vardı; dark mode'u kırıyor
+//     ve sayfayı uygulamanın geri kalanından koparıyordu.
+//   • Kolon = yuvarlak yüzey konteyner, kart yığını yok
+//   • Item = inline satır, hairline ayraçlarla bölünür
+//   • Dolu daire = aşama göstergesi (sol)
+//   • Tek kontrol çubuğu: durum solda · arama + filtre + yenile sağda.
+//     KPI şeridi kaldırıldı — aynı sayıları durum satırı zaten söylüyordu.
 
 import React, { useEffect, useMemo, useState, useContext } from 'react';
 import {
@@ -21,6 +27,7 @@ import { useRouter } from 'expo-router';
 import { useAuthStore } from '../../../core/store/authStore';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { DS } from '../../../core/theme/dsTokens';
 import { supabase } from '../../../core/api/supabase';
 import { toast } from '../../../core/ui/Toast';
 import { AppIcon } from '../../../core/ui/AppIcon';
@@ -33,33 +40,139 @@ import { slaStatus, humanIdle } from '../../orders/slaConfig';
 import { StageChecklistModal } from '../../orders/components/StageChecklistModal';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 
-// ─── iOS palette ─────────────────────────────────────────────────────────────
-const iOS = {
-  bg:       '#F2F2F7',         // systemGroupedBackground
-  card:     '#FFFFFF',         // secondarySystemGroupedBackground
-  hairline: '#E5E5EA',         // separator
-  text:     '#1C1C1E',         // label
-  text2:    '#3C3C43',         // secondaryLabel
-  text3:    '#8E8E93',         // tertiaryLabel
-  text4:    '#C7C7CC',         // quaternaryLabel
-  blue:     '#007AFF',
-  red:      '#FF3B30',
-  orange:   '#FF9500',
-  green:    '#34C759',
-  purple:   '#AF52DE',
-};
-
-const COL_WIDTH = 300;
+// ─── Sabitler ────────────────────────────────────────────────────────────────
+const COL_WIDTH = 300;   // dar ekranda kolon genişliği
+// Geniş ekranda TAVAN — kolonlar boşluğa yayılmasın (aksi halde aksiyon pili
+// ait olduğu metinden ~350px uzakta yüzüyor). 380 fazla sıkıydı: iş tipi
+// başlıkları kırpılıyordu. 440 + 2 satırlık başlık = içerik kromun önünde.
+const COL_MAX   = 440;
 const COL_GAP   = 16;
 const PAD       = 16;
 
-// Tasarım dili — display font + ortak status renkleri
-const DISPLAY = Platform.select({ web: 'Inter Tight, Inter, sans-serif', default: 'InterTight_300Light' }) as string;
-const DANGER = '#D94B4B';
-const WARN   = '#E89B2A';
+// Status renkleri tüm panellerde ortak (CLAUDE.md §1) — DS'ten gelir, hardcode değil.
+const DANGER = DS.lab.danger;    // #D94B4B
+const WARN   = DS.lab.warning;   // #E89B2A
+
+/** Sayı sütunları dikeyde hizalansın. */
+const NUM = { fontVariant: ['tabular-nums'] as any };
+
 function hexA(hex: string, a: number) {
   try { const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16); return `rgba(${r},${g},${b},${a})`; } catch { return hex; }
 }
+
+// ─── Palet — panelden çözülür, dark-mode farkında ────────────────────────────
+
+interface Palette {
+  bg: string; card: string; cardSoft: string; hairline: string;
+  ink: string; ink2: string; ink3: string;
+  accent: string; accentDeep: string;
+}
+
+function usePalette(): Palette {
+  const T = useMobileTokens();
+  const theme = usePanelTheme();
+  return useMemo(() => ({
+    bg: T.bg, card: T.card, cardSoft: T.cardSoft, hairline: T.hairline,
+    ink: T.ink, ink2: T.ink2, ink3: T.ink3,
+    accent: theme.primary, accentDeep: theme.primaryDeep,
+  }), [T.bg, T.card, T.cardSoft, T.hairline, T.ink, T.ink2, T.ink3, theme.primary, theme.primaryDeep]);
+}
+
+/** Stiller paletten türetilir — StyleSheet.create statik olduğu için factory + memo. */
+function makeStyles(C: Palette) {
+  return {
+    s: StyleSheet.create({
+      container: { flex: 1, backgroundColor: C.bg },
+
+      // Tek kontrol çubuğu — durum solda, araçlar sağda
+      bar: {
+        flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap',
+        gap: 8, paddingHorizontal: PAD, paddingTop: 8, paddingBottom: 12,
+      },
+      status:     { flexGrow: 1, flexShrink: 1, flexBasis: 160, minWidth: 0, fontSize: 14, fontWeight: '600', color: C.ink2, ...NUM },
+      statusMuted:{ color: C.ink3, fontWeight: '500' },
+      // flexBasis şart: temeli olmayan wrap-item kendi satırına düştüğünde
+      // içeriğine göre boyutlanıp taşar, içindeki çipler sarmalanmaz.
+      barTools:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap', flexGrow: 1, flexShrink: 1, flexBasis: 300, minWidth: 0 },
+
+      searchBox:  { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.card, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, flexGrow: 1, flexBasis: 200, minWidth: 150, borderWidth: 1, borderColor: C.hairline },
+      searchInput:{ flex: 1, fontSize: 13, color: C.ink, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) },
+      fchip:      { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: C.hairline, backgroundColor: C.card },
+      fchipTxt:   { fontSize: 12.5, fontWeight: '700', color: C.ink2 },
+      clearBtn:   { paddingHorizontal: 10, paddingVertical: 7 },
+      clearTxt:   { fontSize: 12.5, fontWeight: '600' },
+      refreshBtn: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+
+      center:    { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
+      errorText: { fontSize: 14, color: C.ink3 },
+      retryBtn:  { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999 },
+      retryText: { color: '#FFFFFF', fontWeight: '700' },
+    }),
+
+    col: StyleSheet.create({
+      wrap:        { gap: 8 },
+      headerOuter: { paddingHorizontal: 14, paddingTop: 4, paddingBottom: 4, gap: 2 },
+      headerRow:   { flexDirection: 'row', alignItems: 'center', gap: 8 },
+      dot:         { width: 10, height: 10, borderRadius: 5 },
+      title:       { flex: 1, fontSize: 15, fontWeight: '700', color: C.ink, letterSpacing: -0.2 },
+      count:       { fontSize: 13, fontWeight: '700', color: C.ink3, ...NUM },
+      subtitle:    { fontSize: 12, color: C.ink3, fontWeight: '500' },
+      list:        { backgroundColor: C.card, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: C.hairline },
+      empty:       { fontSize: 14, color: C.ink3, textAlign: 'center', paddingVertical: 26, fontWeight: '500' },
+    }),
+
+    r: StyleSheet.create({
+      rowOuter:   { paddingHorizontal: 14, paddingVertical: 12, gap: 8 },
+      row:        { flexDirection: 'row', alignItems: 'center', gap: 12 },
+      // Atanmamış satırda iki pil (Otomatik+Manuel) genişliğin yarısını yiyor →
+      // kendi satırlarına in, başlık tam genişliği alsın.
+      actionRow:  { flexDirection: 'row', justifyContent: 'flex-end', gap: 6, marginLeft: 24 },
+      rowDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.hairline },
+
+      indicatorWrap: { paddingVertical: 4 },
+      indicator:     { width: 12, height: 12, borderRadius: 6 },
+
+      body:     { flex: 1, gap: 2, minWidth: 0 },
+      titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+      title:    { flex: 1, fontSize: 15, fontWeight: '600', color: C.ink, letterSpacing: -0.2 },
+      lateText: { fontSize: 12, fontWeight: '700', color: DANGER, letterSpacing: 0.2 },
+
+      parallelBadge:     { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: hexA(C.accent, 0.12) },
+      parallelBadgeText: { fontSize: 8.5, fontWeight: '800', color: C.accentDeep, letterSpacing: 0.4 },
+
+      meta:       { fontSize: 12, color: C.ink3, fontWeight: '500' },
+      metaStrong: { color: C.ink2, fontWeight: '700' },
+
+      actionWrap: { flexShrink: 0 },
+      pill:           { paddingHorizontal: 14, height: 30, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+      pillFilledText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF', letterSpacing: -0.1 },
+      pillTintedText: { fontSize: 13, fontWeight: '700', letterSpacing: -0.1 },
+    }),
+
+    mp: StyleSheet.create({
+      backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.40)', justifyContent: 'flex-end', alignItems: 'center' },
+      sheet: {
+        width: '100%', maxWidth: 420, backgroundColor: C.card,
+        borderTopLeftRadius: 20, borderTopRightRadius: 20,
+        paddingTop: 8, paddingBottom: 24, paddingHorizontal: 16, gap: 8,
+      },
+      handle:   { width: 36, height: 5, borderRadius: 2.5, backgroundColor: C.ink3, alignSelf: 'center', marginBottom: 8, opacity: 0.4 },
+      title:    { fontSize: 17, fontWeight: '700', color: C.ink, paddingHorizontal: 4 },
+      subtitle: { fontSize: 13, color: C.ink3, paddingHorizontal: 4, marginBottom: 6 },
+      empty:    { fontSize: 14, color: C.ink3, textAlign: 'center', paddingVertical: 24 },
+
+      row:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 12, backgroundColor: C.card },
+      rowDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.hairline },
+      name:       { fontSize: 15, fontWeight: '600', color: C.ink },
+      count:      { fontSize: 13, color: C.ink3, fontWeight: '600', ...NUM },
+
+      close:     { alignItems: 'center', justifyContent: 'center', paddingVertical: 14, marginTop: 8, backgroundColor: C.bg, borderRadius: 14 },
+      closeText: { fontSize: 15, fontWeight: '700' },
+    }),
+  };
+}
+
+type Sx = ReturnType<typeof makeStyles>;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -74,15 +187,15 @@ function deliveryText(d: string): string {
   return due.toLocaleDateString(localeTag(), { day: 'numeric', month: 'short' });
 }
 
-// ─── Item Row (Reminders task row) ───────────────────────────────────────────
+// ─── Item Row ────────────────────────────────────────────────────────────────
 
 interface ItemProps {
   card:        KanbanCard;
   isLast:      boolean;
   isUnassigned?: boolean;
   busy?:       boolean;
-  accent:      string;
-  accentDeep:  string;
+  C:           Palette;
+  sx:          Sx;
   onOpen:      () => void;
   onContinue:  () => void;
   onAutoAssign?: () => void;
@@ -90,9 +203,10 @@ interface ItemProps {
 }
 
 function ItemRow({
-  card, isLast, isUnassigned, busy, accent, accentDeep,
+  card, isLast, isUnassigned, busy, C, sx,
   onOpen, onContinue, onAutoAssign, onAssign,
 }: ItemProps) {
+  const r = sx.r;
   const idleMs = card.stage_started_at ? Date.now() - new Date(card.stage_started_at).getTime() : 0;
   const sla    = slaStatus(card.current_stage, idleMs);
   const isLate = sla === 'red';
@@ -108,78 +222,83 @@ function ItemRow({
   })();
 
   return (
-    <View style={[r.row, !isLast && r.rowDivider]}>
-      {/* Left: filled circle (stage indicator) */}
-      <TouchableOpacity onPress={onOpen} activeOpacity={0.7} style={r.indicatorWrap}>
-        <View style={[r.indicator, { backgroundColor: stageColor }]} />
-      </TouchableOpacity>
+    <View style={[r.rowOuter, !isLast && r.rowDivider]}>
+      <View style={r.row}>
+        {/* Sol: dolu daire (aşama göstergesi) */}
+        <TouchableOpacity onPress={onOpen} activeOpacity={0.7} style={r.indicatorWrap}>
+          <View style={[r.indicator, { backgroundColor: stageColor }]} />
+        </TouchableOpacity>
 
-      {/* Body */}
-      <TouchableOpacity onPress={onOpen} activeOpacity={0.7} style={r.body}>
-        <View style={r.titleRow}>
-          <Text style={[r.title, isLate && { color: iOS.red }]} numberOfLines={1}>
-            {workTypeLabel}
+        {/* Gövde */}
+        <TouchableOpacity onPress={onOpen} activeOpacity={0.7} style={r.body}>
+          <View style={r.titleRow}>
+            {/* 2 satır: iş tipi adları uzun — başlığı butona sığdırmak için kırpmayız */}
+            <Text style={[r.title, isLate && { color: DANGER }]} numberOfLines={2}>
+              {workTypeLabel}
+            </Text>
+            {isLate && (
+              <Text style={r.lateText}>+{humanIdle(idleMs)}</Text>
+            )}
+            {card.parallel_group != null && (
+              <View style={r.parallelBadge}>
+                <Text style={r.parallelBadgeText}>‖ PARALEL</Text>
+              </View>
+            )}
+          </View>
+          <Text style={r.meta} numberOfLines={1}>
+            <Text style={r.metaStrong}>#{card.order_number}</Text>
+            {card.doctor_name ? `  ·  ${card.doctor_name}` : ''}
+            {card.technician_name ? `  ·  ${card.technician_name}` : '  ·  Atanmadı'}
+            {`  ·  ${deliveryText(card.delivery_date)}`}
           </Text>
-          {isLate && (
-            <Text style={[r.lateText, { color: DANGER }]}>+{humanIdle(idleMs)}</Text>
-          )}
-          {card.parallel_group != null && (
-            <View style={r.parallelBadge}>
-              <Text style={r.parallelBadgeText}>‖ PARALEL</Text>
-            </View>
-          )}
-        </View>
-        <Text style={r.meta} numberOfLines={1}>
-          <Text style={r.metaStrong}>#{card.order_number}</Text>
-          {card.doctor_name ? `  ·  ${card.doctor_name}` : ''}
-          {card.technician_name ? `  ·  ${card.technician_name}` : '  ·  Atanmadı'}
-          {`  ·  ${deliveryText(card.delivery_date)}`}
-        </Text>
-      </TouchableOpacity>
+        </TouchableOpacity>
 
-      {/* Action */}
-      <View style={r.actionWrap}>
-        {isUnassigned ? (
-          <View style={{ flexDirection: 'row', gap: 6 }}>
+        {/* Tek aksiyon satır içinde kalır */}
+        {!isUnassigned && (
+          <View style={r.actionWrap}>
             <TouchableOpacity
-              onPress={onAutoAssign}
+              onPress={onContinue}
               disabled={busy}
               activeOpacity={0.75}
-              style={[r.pill, { backgroundColor: accent }, busy && { opacity: 0.5 }]}
+              style={[r.pill, { backgroundColor: hexA(C.accent, 0.12) }, busy && { opacity: 0.5 }]}
             >
-              <Text style={[r.pillFilledText, { color: '#FFFFFF' }]}>Otomatik</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={onAssign}
-              activeOpacity={0.75}
-              style={[r.pill, { backgroundColor: hexA(accent, 0.12) }]}
-            >
-              <Text style={[r.pillTintedText, { color: accentDeep }]}>Manuel</Text>
+              <Text style={[r.pillTintedText, { color: C.accentDeep }]}>Devam ›</Text>
             </TouchableOpacity>
           </View>
-        ) : (
-          <TouchableOpacity
-            onPress={onContinue}
-            disabled={busy}
-            activeOpacity={0.75}
-            style={[r.pill, { backgroundColor: hexA(accent, 0.12) }, busy && { opacity: 0.5 }]}
-          >
-            <Text style={[r.pillTintedText, { color: accentDeep }]}>Devam ›</Text>
-          </TouchableOpacity>
         )}
       </View>
+
+      {/* İki aksiyon kendi satırında — başlığı ezmesin */}
+      {isUnassigned && (
+        <View style={r.actionRow}>
+          <TouchableOpacity
+            onPress={onAutoAssign}
+            disabled={busy}
+            activeOpacity={0.75}
+            style={[r.pill, { backgroundColor: C.accent }, busy && { opacity: 0.5 }]}
+          >
+            <Text style={r.pillFilledText}>Otomatik</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={onAssign}
+            activeOpacity={0.75}
+            style={[r.pill, { backgroundColor: hexA(C.accent, 0.12) }]}
+          >
+            <Text style={[r.pillTintedText, { color: C.accentDeep }]}>Manuel</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 }
 
-// ─── Column (Reminders list container) ───────────────────────────────────────
+// ─── Column ──────────────────────────────────────────────────────────────────
 
 interface ColumnProps {
   column:    KanbanColumn;
   colWidth:  number;
-  isWide:    boolean;
-  accent:    string;
-  accentDeep: string;
+  C:         Palette;
+  sx:        Sx;
   onCard:    (c: KanbanCard) => void;
   onContinue:(c: KanbanCard) => void;
   onAutoAssign:(c: KanbanCard) => void;
@@ -188,9 +307,10 @@ interface ColumnProps {
 }
 
 function ColumnView({
-  column, colWidth, isWide, accent, accentDeep,
+  column, colWidth, C, sx,
   onCard, onContinue, onAutoAssign, onAssign, busyId,
 }: ColumnProps) {
+  const col = sx.col;
   const isUnassigned = column.isUnassigned;
   const headerColor  = column.color;
   const workloadLine = column.workload.slice(0, 2).map(w => `${w.name} ${w.count}`).join(' · ');
@@ -199,8 +319,8 @@ function ColumnView({
   const bottleneck = !isUnassigned && column.cards.length >= WIP;
 
   return (
-    <View style={[col.wrap, isWide ? { flex: 1 } : { width: colWidth }, bottleneck && { borderWidth: 1, borderColor: hexA(DANGER, 0.35), borderRadius: 16 }]}>
-      {/* Section header (Reminders style: small caps gray) */}
+    <View style={[col.wrap, { width: colWidth }]}>
+      {/* Kolon başlığı — konteynerin dışında */}
       <View style={col.headerOuter}>
         <View style={col.headerRow}>
           <View style={[col.dot, { backgroundColor: headerColor }]} />
@@ -208,11 +328,11 @@ function ColumnView({
           <Text style={col.count}>{column.cards.length}</Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 18, marginTop: 2, flexWrap: 'wrap' }}>
-          {workloadLine && !isUnassigned ? <Text style={[col.subtitle, { marginLeft: 0 }]}>{workloadLine}</Text> : null}
+          {workloadLine && !isUnassigned ? <Text style={col.subtitle}>{workloadLine}</Text> : null}
           {column.overdue > 0 ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6, backgroundColor: hexA(DANGER, 0.12) }}>
               <AppIcon name="alert-triangle" size={9} color={DANGER} />
-              <Text style={{ fontSize: 9.5, fontWeight: '700', color: DANGER }}>{column.overdue} geciken</Text>
+              <Text style={{ fontSize: 9.5, fontWeight: '700', color: DANGER, ...NUM }}>{column.overdue} geciken</Text>
             </View>
           ) : null}
           {bottleneck ? (
@@ -223,8 +343,8 @@ function ColumnView({
         </View>
       </View>
 
-      {/* Items list (rounded white container) */}
-      <View style={col.list}>
+      {/* Liste konteyneri — darboğazda kenarlık kırmızıya döner (kart-içinde-kart değil) */}
+      <View style={[col.list, bottleneck && { borderColor: hexA(DANGER, 0.45) }]}>
         {column.cards.length === 0 ? (
           <Text style={col.empty}>Boş</Text>
         ) : (
@@ -235,8 +355,8 @@ function ColumnView({
               isLast={i === column.cards.length - 1}
               isUnassigned={isUnassigned}
               busy={busyId === card.id}
-              accent={accent}
-              accentDeep={accentDeep}
+              C={C}
+              sx={sx}
               onOpen={() => onCard(card)}
               onContinue={() => onContinue(card)}
               onAutoAssign={() => onAutoAssign(card)}
@@ -249,18 +369,20 @@ function ColumnView({
   );
 }
 
-// ─── Manual Assign picker (iOS sheet feel) ───────────────────────────────────
+// ─── Manuel atama seçici ─────────────────────────────────────────────────────
 
 interface AssignPickerProps {
   visible:    boolean;
   card:       KanbanCard | null;
   labId:      string;
-  accent:     string;
+  C:          Palette;
+  sx:         Sx;
   onClose:    () => void;
   onAssigned: () => void;
 }
 
-function AssignPickerModal({ visible, card, labId, accent, onClose, onAssigned }: AssignPickerProps) {
+function AssignPickerModal({ visible, card, labId, C, sx, onClose, onAssigned }: AssignPickerProps) {
+  const mp = sx.mp;
   const [users, setUsers] = useState<{ id: string; full_name: string; workload: number }[]>([]);
   const [loading, setLoading] = useState(false);
   const stage = card?.current_stage ?? 'TRIAGE';
@@ -315,7 +437,7 @@ function AssignPickerModal({ visible, card, labId, accent, onClose, onAssigned }
           <Text style={mp.title}>{STAGE_LABEL[stage]}</Text>
           <Text style={mp.subtitle}>İş yüküne göre sıralı</Text>
           {loading ? (
-            <ActivityIndicator color={accent} style={{ marginVertical: 30 }} />
+            <ActivityIndicator color={C.accent} style={{ marginVertical: 30 }} />
           ) : users.length === 0 ? (
             <Text style={mp.empty}>Bu aşama için yetkili kullanıcı yok</Text>
           ) : (
@@ -334,7 +456,7 @@ function AssignPickerModal({ visible, card, labId, accent, onClose, onAssigned }
             </ScrollView>
           )}
           <TouchableOpacity onPress={onClose} style={mp.close}>
-            <Text style={[mp.closeText, { color: accent }]}>Kapat</Text>
+            <Text style={[mp.closeText, { color: C.accent }]}>Kapat</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -342,20 +464,14 @@ function AssignPickerModal({ visible, card, labId, accent, onClose, onAssigned }
   );
 }
 
-// ─── Main Screen ─────────────────────────────────────────────────────────────
+// ─── Ana ekran ───────────────────────────────────────────────────────────────
 
-function Kpi({ label, value, color }: { label: string; value: number; color: string }) {
+function FilterChip({ label, active, onPress, color, sx }: {
+  label: string; active: boolean; onPress: () => void; color: string; sx: Sx;
+}) {
   return (
-    <View style={s.kpi}>
-      <Text style={[s.kpiVal, { color }]}>{value}</Text>
-      <Text style={s.kpiLbl}>{label}</Text>
-    </View>
-  );
-}
-function FilterChip({ label, active, onPress, color }: { label: string; active: boolean; onPress: () => void; color: string }) {
-  return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.7} style={[s.fchip, active && { backgroundColor: color, borderColor: color }]}>
-      <Text style={[s.fchipTxt, active && { color: '#FFFFFF' }]}>{label}</Text>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.7} style={[sx.s.fchip, active && { backgroundColor: color, borderColor: color }]}>
+      <Text style={[sx.s.fchipTxt, active && { color: '#FFFFFF' }]}>{label}</Text>
     </TouchableOpacity>
   );
 }
@@ -367,9 +483,10 @@ export function ProductionKanbanScreen() {
   const isDesktop   = width >= 900;
   const isEmbedded  = useContext(HubContext);
 
-  const theme = usePanelTheme();
-  const T = useMobileTokens();
-  const A = theme.primary, AD = theme.primaryDeep, PAGE = (T as any).bg ?? iOS.bg;
+  const C  = usePalette();
+  const sx = useMemo(() => makeStyles(C), [C]);
+  const s  = sx.s;
+  const A  = C.accent;
 
   const labId = profile?.lab_id ?? profile?.id ?? null;
   const { columns, loading, error, lastSync, refresh } = useKanbanData(labId);
@@ -486,19 +603,19 @@ export function ProductionKanbanScreen() {
     }
   }
 
+  // Kolonlar boşluğa yayılmaz — geniş ekranda da tavan var, sola yaslı akar.
   const visibleCount = filteredColumns.length || 1;
   const available = width - PAD * 2 - COL_GAP * Math.max(visibleCount - 1, 0);
-  const isWide    = isDesktop && visibleCount > 0 && available / visibleCount >= COL_WIDTH;
-  const colWidth  = isWide ? available / visibleCount : COL_WIDTH;
+  const fits      = isDesktop && available / visibleCount >= COL_WIDTH;
+  const colWidth  = fits ? Math.min(available / visibleCount, COL_MAX) : COL_WIDTH;
 
   const renderColumns = () => filteredColumns.map(c => (
     <ColumnView
       key={c.key}
       column={c}
       colWidth={colWidth}
-      isWide={isWide}
-      accent={A}
-      accentDeep={AD}
+      C={C}
+      sx={sx}
       onCard={onCard}
       onContinue={onContinue}
       onAutoAssign={onAutoAssign}
@@ -507,56 +624,54 @@ export function ProductionKanbanScreen() {
     />
   ));
 
+  // Durum satırı — KPI şeridinin yerini alır. Sıfırlar render EDİLMEZ.
+  const statusBits: React.ReactNode[] = [];
+  statusBits.push(<Text key="t">{totalCards} iş</Text>);
+  statusBits.push(<Text key="a">{activeCount} aktif</Text>);
+  if (overdueTotal > 0) statusBits.push(<Text key="o" style={{ color: DANGER }}>{overdueTotal} geciken</Text>);
+  if (rushTotal > 0)    statusBits.push(<Text key="r" style={{ color: WARN }}>{rushTotal} acil</Text>);
+
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: PAGE }]} edges={isEmbedded ? ([] as any) : ['top']}>
-      <View style={s.header}>
-        <View>
-          {/* Başlık shell üst barında (PatternsShell) gösteriliyor — burada tekrar etme */}
-          <Text style={s.subtitle}>
-            {totalCards} iş · {activeCount} aktif
+    <SafeAreaView style={[s.container]} edges={isEmbedded ? ([] as any) : ['top']}>
+      {/* ── Tek kontrol çubuğu: durum + arama + filtre + yenile ── */}
+      {!loading && !error && (
+        <View style={s.bar}>
+          <Text style={s.status} numberOfLines={1}>
+            {statusBits.map((b, i) => (
+              <Text key={i}>{i > 0 ? '  ·  ' : ''}{b}</Text>
+            ))}
             {lastSync && (
-              <Text style={s.syncTime}>
+              <Text style={s.statusMuted}>
                 {'  ·  '}{lastSync.toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' })}
               </Text>
             )}
           </Text>
-        </View>
-        <TouchableOpacity style={[s.refreshBtn, { backgroundColor: hexA(A, 0.12) }]} onPress={refresh} activeOpacity={0.7}>
-          <AppIcon name="refresh-cw" size={17} color={A} />
-        </TouchableOpacity>
-      </View>
 
-      {/* ── Araç çubuğu: KPI + filtre + arama (#1) ── */}
-      {!loading && !error && (
-        <View style={s.toolbar}>
-          <View style={s.kpiRow}>
-            <Kpi label="Toplam" value={totalCards} color={iOS.text2} />
-            <Kpi label="Aktif" value={activeCount} color={A} />
-            <Kpi label="Geciken" value={overdueTotal} color={overdueTotal > 0 ? DANGER : iOS.text3} />
-            <Kpi label="Acil" value={rushTotal} color={rushTotal > 0 ? WARN : iOS.text3} />
-          </View>
-          <View style={s.filterRow}>
+          <View style={s.barTools}>
             <View style={s.searchBox}>
-              <AppIcon name="search" size={14} color={iOS.text3} />
+              <AppIcon name="search" size={14} color={C.ink3} />
               <TextInput
                 value={search} onChangeText={setSearch}
-                placeholder="Vaka no, hasta, hekim, teknisyen…" placeholderTextColor={iOS.text3}
+                placeholder="Vaka no, hasta, hekim, teknisyen…" placeholderTextColor={C.ink3}
                 style={s.searchInput as any}
               />
               {search.length > 0 && (
-                <TouchableOpacity onPress={() => setSearch('')} hitSlop={8}><AppIcon name="x" size={14} color={iOS.text3} /></TouchableOpacity>
+                <TouchableOpacity onPress={() => setSearch('')} hitSlop={8}><AppIcon name="x" size={14} color={C.ink3} /></TouchableOpacity>
               )}
             </View>
-            <FilterChip label="Acil" active={fAcil} onPress={() => setFAcil(v => !v)} color={WARN} />
-            <FilterChip label="Geciken" active={fGeciken} onPress={() => setFGeciken(v => !v)} color={DANGER} />
+            <FilterChip label="Acil" active={fAcil} onPress={() => setFAcil(v => !v)} color={WARN} sx={sx} />
+            <FilterChip label="Geciken" active={fGeciken} onPress={() => setFGeciken(v => !v)} color={DANGER} sx={sx} />
             {hiddenEmptyCount > 0 && (
-              <FilterChip label={showEmpty ? 'Boşları gizle' : `Boş istasyonlar (${hiddenEmptyCount})`} active={showEmpty} onPress={() => setShowEmpty(v => !v)} color={A} />
+              <FilterChip label={showEmpty ? 'Boşları gizle' : `Boş istasyonlar (${hiddenEmptyCount})`} active={showEmpty} onPress={() => setShowEmpty(v => !v)} color={A} sx={sx} />
             )}
             {filtersActive && (
               <TouchableOpacity onPress={() => { setSearch(''); setFAcil(false); setFGeciken(false); }} style={s.clearBtn} activeOpacity={0.7}>
                 <Text style={[s.clearTxt, { color: A }]}>Temizle</Text>
               </TouchableOpacity>
             )}
+            <TouchableOpacity style={[s.refreshBtn, { backgroundColor: hexA(A, 0.12) }]} onPress={refresh} activeOpacity={0.7}>
+              <AppIcon name="refresh-cw" size={16} color={A} />
+            </TouchableOpacity>
           </View>
         </View>
       )}
@@ -570,13 +685,13 @@ export function ProductionKanbanScreen() {
             <Text style={s.retryText}>Tekrar Dene</Text>
           </TouchableOpacity>
         </View>
-      ) : isWide ? (
+      ) : fits ? (
         <ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={{ padding: PAD }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={A} />}
         >
-          <View style={{ flexDirection: 'row', gap: COL_GAP, alignItems: 'flex-start' }}>
+          <View style={{ flexDirection: 'row', gap: COL_GAP, alignItems: 'flex-start', flexWrap: 'wrap' }}>
             {renderColumns()}
           </View>
         </ScrollView>
@@ -607,158 +722,11 @@ export function ProductionKanbanScreen() {
         visible={!!assignFor}
         card={assignFor}
         labId={labId ?? ''}
-        accent={A}
+        C={C}
+        sx={sx}
         onClose={() => setAssignFor(null)}
         onAssigned={refresh}
       />
     </SafeAreaView>
   );
 }
-
-// ─── Styles ──────────────────────────────────────────────────────────────────
-
-const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: iOS.bg },
-
-  // Araç çubuğu (KPI + filtre + arama)
-  toolbar: { paddingHorizontal: PAD, paddingBottom: 10, gap: 10 },
-  kpiRow: { flexDirection: 'row', gap: 8 },
-  kpi: { flex: 1, backgroundColor: iOS.card, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 8, alignItems: 'center' },
-  kpiVal: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
-  kpiLbl: { fontSize: 10.5, color: iOS.text3, fontWeight: '600', marginTop: 1 },
-  filterRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-  searchBox: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: iOS.card, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7, flexGrow: 1, flexBasis: 220, minWidth: 150 },
-  searchInput: { flex: 1, fontSize: 13, color: iOS.text, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) },
-  fchip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(0,0,0,0.12)', backgroundColor: iOS.card },
-  fchipTxt: { fontSize: 12.5, fontWeight: '700', color: iOS.text2 },
-  clearBtn: { paddingHorizontal: 10, paddingVertical: 7 },
-  clearTxt: { fontSize: 12.5, fontWeight: '600', color: iOS.blue },
-
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: PAD, paddingTop: 68, paddingBottom: 10,
-    backgroundColor: 'transparent',
-  },
-  title:    { fontSize: 32, fontWeight: '800', color: iOS.text, letterSpacing: -0.8 },
-  subtitle: { fontSize: 14, color: iOS.text3, marginTop: 4, fontWeight: '500' },
-  syncTime: { color: iOS.text4 },
-
-  refreshBtn: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: 'rgba(0,122,255,0.10)',
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 4,
-  },
-
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  errorText: { fontSize: 14, color: iOS.text3 },
-  retryBtn:  { paddingHorizontal: 18, paddingVertical: 10, backgroundColor: iOS.blue, borderRadius: 999 },
-  retryText: { color: '#FFFFFF', fontWeight: '700' },
-});
-
-const col = StyleSheet.create({
-  wrap: { gap: 8 },
-
-  // Section header (outside the white container — Reminders pattern)
-  headerOuter: { paddingHorizontal: 14, paddingTop: 4, paddingBottom: 4, gap: 2 },
-  headerRow:   { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  dot:         { width: 10, height: 10, borderRadius: 5 },
-  title:       { flex: 1, fontSize: 15, fontWeight: '700', color: iOS.text, letterSpacing: -0.2 },
-  count:       { fontSize: 13, fontWeight: '700', color: iOS.text3 },
-  subtitle:    { fontSize: 12, color: iOS.text3, marginLeft: 18, fontWeight: '500' },
-
-  // Rounded white list container
-  list: {
-    backgroundColor: iOS.card,
-    borderRadius: 14,
-    overflow: 'hidden',
-  },
-  empty: {
-    fontSize: 14, color: iOS.text4,
-    textAlign: 'center', paddingVertical: 26,
-    fontWeight: '500',
-  },
-});
-
-const r = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    gap: 12,
-  },
-  rowDivider: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: iOS.hairline,
-  },
-
-  indicatorWrap: { paddingVertical: 4 },
-  indicator: {
-    width: 12, height: 12, borderRadius: 6,
-  },
-
-  body: { flex: 1, gap: 2, minWidth: 0 },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  title: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '600',
-    color: iOS.text,
-    letterSpacing: -0.2,
-  },
-  lateText: { fontSize: 12, fontWeight: '700', color: iOS.red, letterSpacing: 0.2 },
-  parallelBadge: { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: 'rgba(59,130,246,0.12)' },
-  parallelBadgeText: { fontSize: 8.5, fontWeight: '800', color: '#1E5FBF', letterSpacing: 0.4 },
-
-  meta: { fontSize: 12, color: iOS.text3, fontWeight: '500' },
-  metaStrong: { color: iOS.text2, fontWeight: '700' },
-
-  actionWrap: { flexShrink: 0 },
-
-  // iOS pill buttons
-  pill: {
-    paddingHorizontal: 14, height: 30,
-    borderRadius: 999,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  pillFilled: { backgroundColor: iOS.blue },
-  pillFilledText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF', letterSpacing: -0.1 },
-
-  pillTinted: { backgroundColor: 'rgba(0,122,255,0.12)' },
-  pillTintedText: { fontSize: 13, fontWeight: '700', color: iOS.blue, letterSpacing: -0.1 },
-});
-
-const mp = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.40)', justifyContent: 'flex-end', alignItems: 'center' },
-  sheet: {
-    width: '100%', maxWidth: 420,
-    backgroundColor: iOS.card,
-    borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    paddingTop: 8, paddingBottom: 24, paddingHorizontal: 16,
-    gap: 8,
-  },
-  handle: {
-    width: 36, height: 5, borderRadius: 2.5,
-    backgroundColor: iOS.text4, alignSelf: 'center', marginBottom: 8,
-  },
-  title:    { fontSize: 17, fontWeight: '700', color: iOS.text, paddingHorizontal: 4 },
-  subtitle: { fontSize: 13, color: iOS.text3, paddingHorizontal: 4, marginBottom: 6 },
-  empty:    { fontSize: 14, color: iOS.text3, textAlign: 'center', paddingVertical: 24 },
-
-  row: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 14, paddingVertical: 12,
-    backgroundColor: iOS.card,
-  },
-  rowDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: iOS.hairline },
-  name:  { fontSize: 15, fontWeight: '600', color: iOS.text },
-  count: { fontSize: 13, color: iOS.text3, fontWeight: '600' },
-
-  close: {
-    alignItems: 'center', justifyContent: 'center',
-    paddingVertical: 14, marginTop: 8,
-    backgroundColor: iOS.bg, borderRadius: 14,
-  },
-  closeText: { fontSize: 15, fontWeight: '700', color: iOS.blue },
-});
