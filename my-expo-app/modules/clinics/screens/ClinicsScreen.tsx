@@ -5,10 +5,11 @@ import {
   KeyboardAvoidingView, Platform, Alert, Pressable,
   RefreshControl, useWindowDimensions, Animated, Easing,
 } from 'react-native';
-import { Search, X, SlidersHorizontal, Plus, Building2, Users, UserPlus, List, ChevronRight, ChevronUp, ChevronDown, Edit2, Trash2, Phone, Mail, MapPin, RefreshCw, UserX, AlertCircle, Check, Percent, MinusCircle, Briefcase, Stethoscope, Printer, Eye, EyeOff } from 'lucide-react-native';
+import { Search, X, SlidersHorizontal, Plus, Building2, Users, UserPlus, List, ChevronRight, ChevronUp, ChevronDown, Edit2, Trash2, Phone, Mail, MapPin, RefreshCw, UserX, AlertCircle, Check, Percent, MinusCircle, Briefcase, Stethoscope, Printer, Eye, EyeOff, Link2, Copy } from 'lucide-react-native';
 import { buildWorkOrderFormHtml } from '../../orders/buildWorkOrderFormHtml';
 import { useSegments } from 'expo-router';
 import { LabConnectionsScreen } from '../../lab-connections/screens/LabConnectionsScreen';
+import { labCreateInvite } from '../../lab-connections/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { toast } from '../../../core/ui/Toast';
 import { MobilePageTitle } from '../../../core/ui/mobile/MobilePageTitle';
@@ -183,6 +184,28 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
   const [defaultClinicId, setDefaultClinicId] = useState('');
 
   const [activeTab,       setActiveTab]       = useState<'all' | ClinicCategory | 'doctors' | 'managers' | 'connections'>('all');
+  // "Bağlantı gönder" CTA — tek kullanımlık davet kodu üret + kopyala
+  const [inviteOpen,   setInviteOpen]   = useState(false);
+  const [inviteCode,   setInviteCode]   = useState<string | null>(null);
+  const [inviteBusy,   setInviteBusy]   = useState(false);
+  const [inviteErr,    setInviteErr]    = useState<string | null>(null);
+  const [inviteCopied, setInviteCopied] = useState(false);
+
+  const sendInvite = useCallback(async () => {
+    setInviteOpen(true); setInviteBusy(true); setInviteErr(null); setInviteCode(null); setInviteCopied(false);
+    try { setInviteCode(await labCreateInvite()); }
+    catch (e: any) { setInviteErr(e?.message ?? 'Davet kodu üretilemedi'); }
+    finally { setInviteBusy(false); }
+  }, []);
+
+  const copyInvite = useCallback(() => {
+    if (!inviteCode) return;
+    if (Platform.OS === 'web' && typeof navigator !== 'undefined' && (navigator as any).clipboard) {
+      (navigator as any).clipboard.writeText(inviteCode).catch(() => {});
+      setInviteCopied(true);
+      setTimeout(() => setInviteCopied(false), 1500);
+    }
+  }, [inviteCode]);
   const [managers,        setManagers]        = useState<any[]>(initial?.managers ?? []);
   const [searchOpen,      setSearchOpen]      = useState(false);
   const [categoryFilter,  setCategoryFilter]  = useState<ClinicCategory | 'all'>('all');
@@ -483,6 +506,24 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
             </Pressable>
           )}
 
+          {/* Bağlantı gönder — tek kullanımlık davet kodu üret, kliniğe ilet.
+              Klinik kodu girince bu lab'a anında bağlanır (Bağlantılar sekmesi = tam yönetim). */}
+          <Pressable
+            onPress={sendInvite}
+            style={({ hovered }: any) => ({
+              flexDirection: 'row', alignItems: 'center', gap: 6,
+              height: 36, paddingHorizontal: 14, borderRadius: 9999,
+              backgroundColor: hovered ? T.bgDeep : T.card,
+              borderWidth: 1, borderColor: T.hairline,
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+            })}
+          >
+            <Link2 size={13} color={T.ink} strokeWidth={2} />
+            <Text style={{ fontSize: 12, fontWeight: '700', color: T.ink }}>
+              {isNarrow ? '' : 'Bağlantı gönder'}
+            </Text>
+          </Pressable>
+
           {/* Add clinic — 36px height */}
           <Pressable
             onPress={() => { setEditingClinic(null); setShowClinicModal(true); }}
@@ -703,6 +744,52 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
       </ScrollView>
 
       {/* ── Modals ─────────────────────────────────────────────── */}
+      {/* Bağlantı gönder — üretilen davet kodunu kliniğe ilet */}
+      <Modal visible={inviteOpen} transparent animationType="fade" onRequestClose={() => setInviteOpen(false)}>
+        <Pressable onPress={() => setInviteOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <Pressable onPress={() => {}} style={{ width: '100%', maxWidth: 440, backgroundColor: '#FFFFFF', borderRadius: 20, padding: 20, gap: 14 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Link2 size={18} color={DS.ink[900]} strokeWidth={2} />
+              <Text style={{ fontSize: 17, fontWeight: '700', color: DS.ink[900] }}>Bağlantı gönder</Text>
+            </View>
+            <Text style={{ fontSize: 12.5, color: DS.ink[500], lineHeight: 18 }}>
+              Bu kodu kliniğe ilet. Klinik uygulamada kodu girince laboratuvarınıza anında bağlanır
+              (onay gerekmez). Kod 7 gün geçerli ve tek kullanımlıktır.
+            </Text>
+
+            {inviteBusy ? (
+              <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                <ActivityIndicator color={DS.ink[900]} />
+              </View>
+            ) : inviteErr ? (
+              <Text style={{ fontSize: 13, color: '#DC2626' }}>{inviteErr}</Text>
+            ) : inviteCode ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 14, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E5E7EB' }}>
+                <Text selectable style={{ flex: 1, fontSize: 24, fontWeight: '800', letterSpacing: 3, color: DS.ink[900], fontFamily: Platform.OS === 'web' ? 'JetBrains Mono, monospace' : undefined }}>
+                  {inviteCode}
+                </Text>
+                <Pressable onPress={copyInvite}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5E7EB', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                  {inviteCopied ? <Check size={14} color="#059669" strokeWidth={2.2} /> : <Copy size={14} color={DS.ink[500]} strokeWidth={1.9} />}
+                  <Text style={{ fontSize: 12.5, fontWeight: '600', color: inviteCopied ? '#059669' : DS.ink[500] }}>
+                    {inviteCopied ? 'Kopyalandı' : 'Kopyala'}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+              <Pressable onPress={() => { setInviteOpen(false); setActiveTab('connections'); }}>
+                <Text style={{ fontSize: 12.5, fontWeight: '700', color: accentColor }}>Tüm bağlantılar →</Text>
+              </Pressable>
+              <Pressable onPress={() => setInviteOpen(false)} style={{ paddingHorizontal: 18, paddingVertical: 10, borderRadius: 12, backgroundColor: DS.ink[900] }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFF' }}>Kapat</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       <ClinicModal visible={showClinicModal} editingClinic={editingClinic} existingClinics={clinics} accentColor={accentColor}
         onClose={() => { setShowClinicModal(false); setEditingClinic(null); }}
         onSuccess={() => { setShowClinicModal(false); setEditingClinic(null); loadData(); }} />
