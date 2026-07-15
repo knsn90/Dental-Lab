@@ -903,9 +903,9 @@ export function PeopleArea({ theme, techs, stations, stationSkills, onToggleStat
 }) {
   const { A, A_DEEP } = theme;
   // Teknisyen + YÖNETİCİ görünür (yönetici de istasyonda çalışabilir → yetkinlik alabilir).
-  // Kurye hariç: kuryenin üretim istasyonu yetkinliği olmaz. Pasif personel zaten
-  // fetchSkillsData'da (is_active) elenir → listede görünmez.
-  const techList = techs.filter(t => (t.role ?? 'technician') !== 'courier');
+  // Kurye hariç (üretim istasyonu yetkinliği olmaz) + pasif personel hariç.
+  // is_active undefined = bilinmiyor → gösterilir (fail-open; liste asla boşalmaz).
+  const techList = techs.filter(t => (t.role ?? 'technician') !== 'courier' && t.is_active !== false);
   return (
     <View style={{ gap: 12 }}>
       <View style={{ borderRadius: 14, backgroundColor: tint(A, 0.06), borderWidth: 1, borderColor: tint(A, 0.18), padding: 14, gap: 4 }}>

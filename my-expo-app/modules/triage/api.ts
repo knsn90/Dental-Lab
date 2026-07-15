@@ -32,6 +32,8 @@ export interface TriageTech {
   id: string;
   full_name: string;
   role: string | null;
+  /** Pasif personel atanmaz / yetkinlik listesinde görünmez. undefined = bilinmiyor (engelleme). */
+  is_active?: boolean | null;
   /** Aktif iş yükü — devam eden order_stages sayısı */
   load: number;
   /** Teknisyenin yetkinlik etiketleri (eski serbest model — sadece görüntü) */
@@ -139,12 +141,10 @@ export async function fetchTriageData(orderId: string, labId: string): Promise<T
       .order('sequence_hint', { ascending: true }),
     supabase
       .from('profiles')
-      .select('id, full_name, role, skills, daily_capacity')
+      .select('id, full_name, role, skills, daily_capacity, is_active')
       .eq('lab_id', labId)
       .eq('user_type', 'lab')
       .eq('approval_status', 'approved')
-      .eq('is_active', true)               // pasif kullanıcıya iş atanmasın
-      .neq('role', 'courier')              // kurye üretim istasyonlarına ASLA atanmaz
       .order('full_name'),
     supabase
       .from('workflow_templates')
@@ -179,7 +179,7 @@ export async function fetchTriageData(orderId: string, labId: string): Promise<T
   }
   const stMap = await fetchStationSkillsMap(); // user_id → Set<station_id>
   const technicians: TriageTech[] = (techRes.data ?? []).map((t: any) => ({
-    id: t.id, full_name: t.full_name, role: t.role, load: loadMap.get(t.id) ?? 0,
+    id: t.id, full_name: t.full_name, role: t.role, is_active: t.is_active, load: loadMap.get(t.id) ?? 0,
     skills: t.skills ?? [], stationIds: Array.from(stMap.get(t.id) ?? []),
     capacity: t.daily_capacity ?? null,
   }));
@@ -306,14 +306,20 @@ export function isQualified(station: TriageStation, tech: TriageTech): boolean {
  *   3) Adaylar arasında en az yüklü (kapasiteye göre oransal); eşitlikte istasyon varsayılanı.
  */
 export function autoAssignTech(station: TriageStation, technicians: TriageTech[]): string | null {
-  // Kurye ASLA üretim istasyonuna atanmaz (havuz başka yerden gelse bile defansif).
-  const pool = technicians.filter(t => t.role !== 'courier');
+  // Kurye ASLA üretim istasyonuna atanmaz; pasif personele de iş verilmez.
+  // (is_active undefined = bilinmiyor → engelleme; yalnız açıkça false olan elenir.)
+  const pool = technicians.filter(t => t.role !== 'courier' && t.is_active !== false);
   // Yalnız bu istasyona YETKİN teknisyenler aday olur. Yetkin yoksa aşama BOŞ kalır:
   // yetkin olmayan birine (ya da varsayılan teknisyene) düşürmeyiz — müdür elle atar.
   const candidates = pool.filter(t => isQualified(station, t));
   if (candidates.length === 0) return null;
   const ratio = (t: TriageTech) => t.load / (t.capacity && t.capacity > 0 ? t.capacity : 6);
+  // Yetkin TEKNİSYEN varsa önce o gelir; yönetici yalnız fallback (yöneticiye
+  // teknisyen gibi rutin iş atanmasın — yetkinliği olsa bile).
+  const rank = (t: TriageTech) => ((t.role ?? 'technician') === 'technician' ? 0 : 1);
   const sorted = [...candidates].sort((a, b) => {
+    const rk = rank(a) - rank(b);
+    if (rk !== 0) return rk;
     const r = ratio(a) - ratio(b);
     if (Math.abs(r) > 0.0001) return r;
     if (a.id === station.default_technician_id) return -1;
@@ -539,12 +545,10 @@ export async function fetchSkillsData(labId: string): Promise<SkillsData> {
       .order('sequence_hint', { ascending: true }),
     supabase
       .from('profiles')
-      .select('id, full_name, role, skills, daily_capacity')
+      .select('id, full_name, role, skills, daily_capacity, is_active')
       .eq('lab_id', labId)
       .eq('user_type', 'lab')
       .eq('approval_status', 'approved')
-      .eq('is_active', true)               // pasif personel yetkinlik listesinde görünmez
-      .neq('role', 'courier')              // kuryenin üretim istasyonu yetkinliği olmaz
       .order('full_name'),
   ]);
   const stations: TriageStation[] = ((stRes.data ?? []) as any[]).map((s) => ({
@@ -554,7 +558,7 @@ export async function fetchSkillsData(labId: string): Promise<SkillsData> {
     est_duration_min: s.est_duration_min ?? null, sla_hours: s.sla_hours ?? null,
   }));
   const technicians: TriageTech[] = ((techRes.data ?? []) as any[]).map((t) => ({
-    id: t.id, full_name: t.full_name, role: t.role, load: 0, skills: t.skills ?? [], capacity: t.daily_capacity ?? null,
+    id: t.id, full_name: t.full_name, role: t.role, is_active: t.is_active, load: 0, skills: t.skills ?? [], capacity: t.daily_capacity ?? null,
   }));
   const allSkills = Array.from(new Set([
     ...stations.flatMap(s => s.required_skills),

@@ -112,8 +112,10 @@ const SORT_OPTIONS: { value: SortBy; label: string }[] = [
 ];
 
 // ── Helpers ─────────────────────────────────────────────────────────
-function deliveryText(d: string, status: WorkOrderStatus): string {
+function deliveryText(d: string, status: WorkOrderStatus, holdStatus?: string | null): string {
   if (status === 'teslim_edildi') return 'Teslim edildi';
+  // Beklemedeki iş gecikme göstermez — sayaç durdu (bkz. isOrderOverdue / hold).
+  if (holdStatus === 'on_hold') return 'Beklemede';
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const due   = new Date(d + 'T00:00:00');
   const diff  = Math.ceil((due.getTime() - today.getTime()) / 86_400_000);
@@ -1101,10 +1103,11 @@ const MobileOrderCard = React.memo(function MobileOrderCard({ order, isManager, 
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const due   = new Date(order.delivery_date + 'T00:00:00');
   const diff  = Math.ceil((due.getTime() - today.getTime()) / 86_400_000);
-  const isLate  = order.status !== 'teslim_edildi' && diff < 0;
+  const onHold  = (order as any).hold_status === 'on_hold';
+  const isLate  = order.status !== 'teslim_edildi' && diff < 0 && !onHold;
   const stage   = stageOf(order);
   const stageColor = STAGE_COLOR[stage];
-  const dText   = deliveryText(order.delivery_date, order.status);
+  const dText   = deliveryText(order.delivery_date, order.status, (order as any).hold_status);
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const dColor  = isLate ? '#DC2626' : diff <= 1 && order.status !== 'teslim_edildi' ? '#D97706' : T.ink2;
@@ -1171,9 +1174,9 @@ const MobileOrderCard = React.memo(function MobileOrderCard({ order, isManager, 
               </Text>
             </View>
           ) : (
-            <View className="px-2 py-0.5 rounded" style={{ backgroundColor: stageColor + '14' }}>
-              <Text className="text-[10px] font-bold" style={{ color: stageColor, letterSpacing: 0.3 }}>
-                {getOrderStageLabel(order as any).toUpperCase()}
+            <View className="px-2 py-0.5 rounded" style={{ backgroundColor: (onHold ? '#E89B2A' : stageColor) + '14' }}>
+              <Text className="text-[10px] font-bold" style={{ color: onHold ? '#9C5E0E' : stageColor, letterSpacing: 0.3 }}>
+                {onHold ? 'DURAKLATILDI' : getOrderStageLabel(order as any).toUpperCase()}
               </Text>
             </View>
           )}
@@ -1346,18 +1349,20 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const due   = new Date(order.delivery_date + 'T00:00:00');
   const diff  = Math.ceil((due.getTime() - today.getTime()) / 86_400_000);
-  const isLate  = order.status !== 'teslim_edildi' && diff < 0;
+  const onHold  = (order as any).hold_status === 'on_hold';
+  const isLate  = order.status !== 'teslim_edildi' && diff < 0 && !onHold;
   const stage   = stageOf(order);
   const stageColor = STAGE_COLOR[stage];
-  const dText   = deliveryText(order.delivery_date, order.status);
+  const dText   = deliveryText(order.delivery_date, order.status, (order as any).hold_status);
   const canAssign = isManager && order.status === 'alindi' && !order.assigned_to;
   const needsTriage = order.status === 'alindi' && !(order as any).triaged_at;
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
 
-  // Status chip tone
+  // Status chip tone — beklemedeki iş her yerde "Duraklatıldı" görünür (gecikme değil)
   const chipTone: 'success' | 'warning' | 'danger' | 'info' =
-    isLate ? 'danger'
+    onHold ? 'warning'
+    : isLate ? 'danger'
     : (order.status === 'teslim_edildi') ? 'success'
     : (order.status === 'kalite_kontrol' || order.status === 'teslimata_hazir') ? 'warning'
     : 'info';
@@ -1485,7 +1490,7 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
         >
           <View className="w-1.5 h-1.5 rounded-full opacity-80" style={{ backgroundColor: tone.fg, flexShrink: 0 }} />
           <Text style={{ fontSize: 12, fontWeight: '500', color: tone.fg, flexShrink: 1 }} numberOfLines={1}>
-            {getOrderStageLabel(order as any)}
+            {onHold ? 'Duraklatıldı' : getOrderStageLabel(order as any)}
           </Text>
         </View>
       </View>

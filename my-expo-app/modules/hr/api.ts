@@ -155,6 +155,7 @@ export async function fetchLeaveSummaries() {
   return supabase
     .from('v_leave_summary')
     .select('*')
+    .eq('is_active', true)        // pasif personel İzin & Devam listesinde görünmez
     .order('full_name')
     .returns<LeaveSummary[]>();
 }
