@@ -73,6 +73,13 @@ export interface WorkOrder {
   lab_notes: string | null;   // internal lab notes
   delivery_date: string;
   delivered_at: string | null;
+  // ── İşi Beklet (hold) — bkz. modules/orders/types.ts ──
+  hold_status?: 'on_hold' | null;
+  hold_reason?: string | null;
+  hold_category?: string | null;
+  hold_responsible?: 'client' | 'lab' | null;
+  hold_started_at?: string | null;
+  hold_by?: string | null;
   created_at: string;
   updated_at: string;
   // Joined relations (optional)

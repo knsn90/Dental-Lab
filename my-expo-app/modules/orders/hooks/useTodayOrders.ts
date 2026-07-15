@@ -30,8 +30,8 @@ function writeCache(items: WorkOrder[]) {
 
 function sortWorkList(orders: WorkOrder[]): WorkOrder[] {
   return [...orders].sort((a, b) => {
-    const aOverdue = isOrderOverdue(a.delivery_date, a.status);
-    const bOverdue = isOrderOverdue(b.delivery_date, b.status);
+    const aOverdue = isOrderOverdue(a.delivery_date, a.status, (a as any).hold_status);
+    const bOverdue = isOrderOverdue(b.delivery_date, b.status, (b as any).hold_status);
 
     // Overdue items first
     if (aOverdue && !bOverdue) return -1;

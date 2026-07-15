@@ -194,7 +194,7 @@ function KanbanCard({
   onPress: () => void;
   onAdvance?: () => void;
 }) {
-  const overdue    = isOrderOverdue(order.delivery_date, order.status);
+  const overdue    = isOrderOverdue(order.delivery_date, order.status, (order as any).hold_status);
   const nextStatus = getNextStatus(order.status);
   const { text: dateText, color: dateColor } = deliveryText(order.delivery_date, order.status);
   const doctorName = order.doctor?.full_name ?? '';

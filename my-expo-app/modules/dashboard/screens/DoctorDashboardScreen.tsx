@@ -749,7 +749,7 @@ export function DoctorDashboardScreen() {
     for (const o of orders) {
       if (o.status === 'teslim_edildi') delivered++;
       else if (o.status !== 'iptal') active++;
-      if (isOrderOverdue(o.delivery_date, o.status)) overdueList.push(o);
+      if (isOrderOverdue(o.delivery_date, o.status, (o as any).hold_status)) overdueList.push(o);
 
       if (o.status && pipelineCounts[o.status] !== undefined) pipelineCounts[o.status]++;
 

@@ -1017,7 +1017,7 @@ export function ClinicDashboardScreen() {
   // ── Derived stats ──
   const total = orders.length;
   const activeCount = orders.filter(o => o.status !== 'teslim_edildi' && o.status !== 'iptal').length;
-  const overdueList = orders.filter(o => isOrderOverdue(o.delivery_date, o.status));
+  const overdueList = orders.filter(o => isOrderOverdue(o.delivery_date, o.status, (o as any).hold_status));
   const overdueCount = overdueList.length;
   const delivered = orders.filter(o => o.status === 'teslim_edildi').length;
   const thisMonthNew = useMemo(() => {
@@ -1117,7 +1117,7 @@ export function ClinicDashboardScreen() {
       const row = map.get(docId)!;
       row.total += 1;
       if (o.status !== 'teslim_edildi' && o.status !== 'iptal') row.active += 1;
-      if (isOrderOverdue(o.delivery_date, o.status)) row.overdue += 1;
+      if (isOrderOverdue(o.delivery_date, o.status, (o as any).hold_status)) row.overdue += 1;
     }
     return Array.from(map.values()).sort((a, b) => b.total - a.total).slice(0, 8);
   }, [orders]);

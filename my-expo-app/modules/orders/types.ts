@@ -42,6 +42,15 @@ export interface WorkOrder {
   is_archived?: boolean;            // Admin pasife aldıysa true
   archived_at?: string | null;
   archived_by?: string | null;
+  // ── İşi Beklet (hold) — lab kaynaklı olmayan bekleme gecikmeye yazılmasın ──
+  /** 'on_hold' = iş beklemede (gecikme sayacı durur). null = normal akış. */
+  hold_status?: 'on_hold' | null;
+  hold_reason?: string | null;
+  hold_category?: string | null;
+  /** 'client' → devam ettirince teslim tarihi bekleme kadar ötelenir; 'lab' → ötelenmez */
+  hold_responsible?: 'client' | 'lab' | null;
+  hold_started_at?: string | null;
+  hold_by?: string | null;
   created_at: string;
   updated_at: string;
   // Joined relations (optional)

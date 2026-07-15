@@ -11,7 +11,7 @@ import { localeTag } from '../../../core/i18n';
  *     Tur 4: Action handlers + permissions + edge cases
  */
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { View, Text, ScrollView, Pressable, Platform, Modal, useWindowDimensions, Image, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, Pressable, Platform, Modal, useWindowDimensions, Image, ActivityIndicator, TextInput } from 'react-native';
 import { useLocalSearchParams, useRouter, useSegments } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../../core/store/authStore';
@@ -22,11 +22,12 @@ import { SupportButton } from '../../support/components/SupportButton';
 import { useOrderStages } from '../hooks/useOrderStages';
 import { LivingToothChart } from '../components/LivingToothChart';
 import { LinearProgressX, PercentRingX, StepsTimelineX } from '../../../core/ui/ProgressX';
-import { Bell, Printer, Check, ArrowUpRight, ChevronRight, Phone, MapPin, Download, MessageSquare, FileText, Image as ImageIcon, File as FileIcon, QrCode, RotateCcw, UserCheck, Upload, AlertTriangle, CircleCheck, Circle, Clock, ChevronDown, ChevronUp, ListChecks, Play, Truck, Eye, Trash2, Plus, SkipForward } from 'lucide-react-native';
+import { Bell, Printer, Check, ArrowUpRight, ChevronRight, Phone, MapPin, Download, MessageSquare, FileText, Image as ImageIcon, File as FileIcon, QrCode, RotateCcw, UserCheck, Upload, AlertTriangle, CircleCheck, Circle, Clock, ChevronDown, ChevronUp, ListChecks, Play, Truck, Eye, Trash2, Plus, SkipForward, Pause } from 'lucide-react-native';
 
 // Lazy viewer-3d (three.js ayrı chunk) — tek paylaşılan retry'lı lazy instance.
 import { Viewer3DModalLazy as Viewer3DModal } from '../../viewer-3d/Viewer3DLazy';
 import { unzipToViewer, isArchiveExt } from '../fileArchive';
+import { holdOrder, resumeOrder, HOLD_CATEGORIES, holdCategoryLabel, holdDays } from '../holdApi';
 
 function is3DFileExt(path: string): 'stl' | 'ply' | 'obj' | null {
   const ext = path.toLowerCase().split('.').pop();
@@ -211,6 +212,12 @@ export function OrderDetailScreenV2() {
   const [printOpen, setPrintOpen] = useState(false);
   const [printPreviewHtml, setPrintPreviewHtml] = useState<string | null>(null);
   const [addStageOpen, setAddStageOpen] = useState(false);
+  // İşi Beklet modalı
+  const [holdOpen, setHoldOpen]     = useState(false);
+  const [holdCat, setHoldCat]       = useState<string>('client_missing_file');
+  const [holdReason, setHoldReason] = useState('');
+  const [holdBusy, setHoldBusy]     = useState(false);
+  const [holdErr, setHoldErr]       = useState<string | null>(null);
   const [sideTab, setSideTab] = useState<'doctor_note' | 'files'>('doctor_note');
   const [chatOpen, setChatOpen] = useState(false);
   const [profit, setProfit] = useState<ProfitData | null>(null);
@@ -507,7 +514,11 @@ export function OrderDetailScreenV2() {
 
   // Derived ────────────────────────────────────────────────────────
   const statusIdx = order ? STATUS_ORDER.indexOf(order.status as any) : 0;
-  const overdue = order ? isOrderOverdue(order.delivery_date, order.status) : false;
+  const overdue = order ? isOrderOverdue(order.delivery_date, order.status, (order as any).hold_status) : false;
+  // ── İşi Beklet — beklerken gecikme sayacı durur, kart "BEKLEMEDE" gösterir ──
+  const onHold      = (order as any)?.hold_status === 'on_hold';
+  const heldDays    = onHold ? holdDays((order as any)?.hold_started_at) : 0;
+  const heldByClient = (order as any)?.hold_responsible !== 'lab';
   // Kalan gün — her iki taraf da yerel gün başına sabitlenir; saat farkı
   // yüzünden geciken sipariş "Bugün" (veya bugün teslim "1 gün gecikti")
   // görünmesin (off-by-one).
@@ -1002,6 +1013,33 @@ export function OrderDetailScreenV2() {
   };
 
   // ── Print popup ─────────────────────────────────────────────────
+  // ── İşi Beklet / Devam ettir ──────────────────────────────────────
+  const submitHold = async () => {
+    if (!order) return;
+    setHoldBusy(true); setHoldErr(null);
+    const res = await holdOrder({
+      orderId:     order.id,
+      reason:      holdReason,
+      category:    holdCat,
+      orderNumber: (order as any).order_number,
+      doctorId:    (order as any).doctor_id,
+      clinicId:    (order as any).doctor?.clinic?.id ?? null,
+    });
+    setHoldBusy(false);
+    if (!res.ok) { setHoldErr(res.error ?? 'Bekletilemedi'); return; }
+    setHoldOpen(false); setHoldReason('');
+    refetch();
+  };
+
+  const submitResume = async () => {
+    if (!order) return;
+    setHoldBusy(true);
+    const res = await resumeOrder(order.id);
+    setHoldBusy(false);
+    if (!res.ok) { setHoldErr(res.error ?? 'Devam ettirilemedi'); return; }
+    refetch();
+  };
+
   const handlePrintFull = async () => {
     setPrintOpen(true);
     // Önizleme HTML'ini hazırla (yeni A5 layout)
@@ -1122,8 +1160,37 @@ export function OrderDetailScreenV2() {
                   Giriş: {fmtDate(order.created_at)}
                 </Text>
               </View>
+              {/* İşi beklemede — gecikme yerine BEKLEMEDE + neden (sayaç durdu) */}
+              {onHold && order.status !== 'teslim_edildi' && order.status !== 'iptal' && (
+                <View className="items-end" style={{ flexShrink: 0, maxWidth: 260 }}>
+                  <Text className="text-[11px] font-semibold uppercase" style={{ letterSpacing: 1.32, color: '#E89B2A' }}>
+                    Beklemede
+                  </Text>
+                  <View className="flex-row items-baseline mt-1.5" style={{ gap: 8 }}>
+                    <Text style={{ ...DISPLAY, fontSize: 56, letterSpacing: -2.24, lineHeight: 52, color: heroPalette.dark ? '#FFFFFF' : '#0A0A0A' }}>
+                      {heldDays}
+                    </Text>
+                    <Text className="uppercase" style={{ fontFamily: 'Inter Tight, Inter, system-ui, sans-serif', fontWeight: '500', fontSize: 11, letterSpacing: 2.2, color: heroPalette.dark ? 'rgba(255,255,255,0.70)' : '#6B6B6B' }}>
+                      gün
+                    </Text>
+                  </View>
+                  <Text className="text-[12px] mt-1 text-right" style={{ color: heroPalette.dark ? 'rgba(255,255,255,0.80)' : '#3C3C3C' }}>
+                    {holdCategoryLabel((order as any).hold_category)}
+                  </Text>
+                  {!!(order as any).hold_reason && (
+                    <Text className="text-[11px] mt-0.5 text-right" numberOfLines={2} style={{ color: heroPalette.dark ? 'rgba(255,255,255,0.60)' : '#6B6B6B' }}>
+                      {(order as any).hold_reason}
+                    </Text>
+                  )}
+                  {heldByClient && (
+                    <Text className="text-[10.5px] mt-1 text-right" style={{ color: '#E89B2A' }}>
+                      Teslim tarihi devam edince ötelenecek
+                    </Text>
+                  )}
+                </View>
+              )}
               {/* Kalan gün — sağ üst, başlıkla hizalı (dar header'da bile sabit kalır) */}
-              {daysLeft != null && order.status !== 'teslim_edildi' && order.status !== 'iptal' && (
+              {!onHold && daysLeft != null && order.status !== 'teslim_edildi' && order.status !== 'iptal' && (
                 <View className="items-end" style={{ flexShrink: 0 }}>
                   <Text className="text-[11px] font-semibold uppercase" style={{ letterSpacing: 1.32, color: heroPalette.kicker }}>
                     {overdue ? 'Gecikti' : 'Kalan'}
@@ -1169,6 +1236,24 @@ export function OrderDetailScreenV2() {
                     <Printer size={14} color={heroPalette.dark ? '#FFFFFF' : '#0A0A0A'} strokeWidth={1.8} />
                   </Pressable>
                   <OrderClientActions order={order as any} panelGroup={panelGroup} compact onChanged={refetch} onDark={heroPalette.dark} />
+                  {/* İşi Beklet / Devam ettir — lab tarafı. Hekim kaynaklı beklemede
+                      gecikme sayacı durur, devam edince teslim tarihi ötelenir. */}
+                  {(panelGroup === '(lab)' || panelGroup === '(admin)')
+                    && order.status !== 'teslim_edildi' && order.status !== 'iptal' && (
+                    onHold ? (
+                      <Pressable onPress={submitResume} disabled={holdBusy}>
+                        <PillBtn onDark={heroPalette.dark} variant="primary" size="sm" icon={Play}>
+                          {holdBusy ? 'Devam ediliyor…' : 'Devam ettir'}
+                        </PillBtn>
+                      </Pressable>
+                    ) : (
+                      <Pressable onPress={() => { setHoldErr(null); setHoldOpen(true); }}>
+                        <PillBtn onDark={heroPalette.dark} variant="surface" size="sm" icon={Pause}>
+                          İşi beklet
+                        </PillBtn>
+                      </Pressable>
+                    )
+                  )}
                   {/* Henüz triajlanmamış → "Planlamayı yap" — LAB yeni route'a, diğerleri modal */}
                   {canTriage && needsTriage && (
                     <Pressable onPress={() => {
@@ -2754,6 +2839,75 @@ export function OrderDetailScreenV2() {
           onSaved={() => { setReplanOpen(false); refetch(); refetchStages(); }}
         />
       )}
+
+      {/* İşi Beklet — neden + kategori. Müşteri kaynaklıysa devam edince teslim ötelenir. */}
+      <Modal visible={holdOpen} transparent animationType="fade" onRequestClose={() => setHoldOpen(false)}>
+        <Pressable onPress={() => setHoldOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <Pressable onPress={() => {}} style={{ width: '100%', maxWidth: 480, backgroundColor: '#FFFFFF', borderRadius: 20, padding: 20, gap: 14 }}>
+            <View style={{ gap: 4 }}>
+              <Text style={{ fontSize: 17, fontWeight: '700', color: '#0A0A0A' }}>İşi beklet</Text>
+              <Text style={{ fontSize: 12.5, color: '#6B6B6B', lineHeight: 18 }}>
+                Beklerken gecikme sayacı durur. Bekleme hekim/klinik kaynaklıysa devam ettirdiğinde
+                teslim tarihi bekleme süresi kadar ötelenir — gecikme lab'a yazılmaz.
+              </Text>
+            </View>
+
+            <View style={{ gap: 6 }}>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: '#0A0A0A' }}>Neden kategorisi</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {HOLD_CATEGORIES.map(c => {
+                  const sel = holdCat === c.key;
+                  return (
+                    <Pressable key={c.key} onPress={() => setHoldCat(c.key)}
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 6,
+                        paddingHorizontal: 11, paddingVertical: 7, borderRadius: 999,
+                        backgroundColor: sel ? panelAccent : '#F1F5F9',
+                        borderWidth: 1, borderColor: sel ? panelAccent : 'rgba(0,0,0,0.08)',
+                        ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                      }}>
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: sel ? '#FFFFFF' : '#334155' }}>{c.label}</Text>
+                      <Text style={{ fontSize: 9.5, fontWeight: '700', color: sel ? 'rgba(255,255,255,0.8)' : '#9A9A9A' }}>
+                        {c.responsible === 'client' ? 'MÜŞTERİ' : 'LAB'}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <Text style={{ fontSize: 11, color: '#9A9A9A' }}>
+                {HOLD_CATEGORIES.find(c => c.key === holdCat)?.responsible === 'client'
+                  ? 'Müşteri kaynaklı → teslim tarihi ötelenecek, hekime bildirim gider.'
+                  : 'Lab kaynaklı → teslim tarihi ÖTELENMEZ, gecikme lab\'da kalır.'}
+              </Text>
+            </View>
+
+            <View style={{ gap: 6 }}>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: '#0A0A0A' }}>Açıklama</Text>
+              <TextInput
+                value={holdReason}
+                onChangeText={setHoldReason}
+                placeholder="Örn: Üst çene taraması eksik, hekimden bekleniyor"
+                placeholderTextColor="#9A9A9A"
+                multiline
+                style={{ minHeight: 72, borderWidth: 1, borderColor: 'rgba(0,0,0,0.12)', borderRadius: 14, padding: 12, fontSize: 13, color: '#0A0A0A', textAlignVertical: 'top' }}
+              />
+            </View>
+
+            {!!holdErr && <Text style={{ fontSize: 12, color: '#D94B4B' }}>{holdErr}</Text>}
+
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10 }}>
+              <Pressable onPress={() => setHoldOpen(false)} style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.12)' }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#334155' }}>Vazgeç</Text>
+              </Pressable>
+              <Pressable onPress={submitHold} disabled={holdBusy || !holdReason.trim()}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 12, backgroundColor: panelAccent, opacity: (holdBusy || !holdReason.trim()) ? 0.5 : 1 }}>
+                <Pause size={14} color="#FFF" strokeWidth={2} />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFF' }}>{holdBusy ? 'Bekletiliyor…' : 'Beklet'}</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Material Confirm Modal — aşamayı malzeme onayıyla tamamla */}
       <MaterialConfirmModal

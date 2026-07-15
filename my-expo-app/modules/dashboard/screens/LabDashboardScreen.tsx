@@ -1067,7 +1067,7 @@ export function LabDashboardScreen() {
   const isManager  = profile?.role === 'manager' || profile?.user_type === 'admin';
   const today      = todayStr();
   const firstName  = profile?.full_name?.split(' ')[0] ?? '';
-  const overdueOrders    = orders.filter(o => isOrderOverdue(o.delivery_date, o.status));
+  const overdueOrders    = orders.filter(o => isOrderOverdue(o.delivery_date, o.status, (o as any).hold_status));
   const todayDeliverable = orders.filter(o => o.delivery_date === today && o.status !== 'teslim_edildi');
 
   // ── Data loaders ──

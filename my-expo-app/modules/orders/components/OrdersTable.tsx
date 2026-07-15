@@ -48,7 +48,7 @@ export function OrdersTable({ orders, onPress, onStatusAdvance, showDoctor = tru
           </View>
         ) : (
           orders.map((order, index) => {
-            const overdue = isOrderOverdue(order.delivery_date, order.status);
+            const overdue = isOrderOverdue(order.delivery_date, order.status, (order as any).hold_status);
             const cfg = STATUS_CONFIG[order.status];
             const daysLeft = Math.ceil(
               (new Date(order.delivery_date + 'T00:00:00').getTime() - new Date(today).getTime()) /

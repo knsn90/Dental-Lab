@@ -132,8 +132,19 @@ export function getNextStatus(status: WorkOrderStatus): WorkOrderStatus | null {
   return STATUS_CONFIG[status]?.next ?? null;
 }
 
-export function isOrderOverdue(deliveryDate: string, status: WorkOrderStatus): boolean {
+/**
+ * Sipariş gecikti mi?
+ * @param holdStatus 'on_hold' ise iş BEKLEMEDE → gecikme sayılmaz (sayaç durur).
+ *   Bekleme müşteri kaynaklıysa devam ettirildiğinde teslim tarihi bekleme kadar
+ *   ötelenir (resume_order RPC), böylece lab gecikmiş görünmez.
+ */
+export function isOrderOverdue(
+  deliveryDate: string,
+  status: WorkOrderStatus,
+  holdStatus?: string | null,
+): boolean {
   if (status === 'teslim_edildi' || status === 'iptal') return false;
+  if (holdStatus === 'on_hold') return false;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   return new Date(deliveryDate) < today;
