@@ -122,8 +122,13 @@ export default function StationLayout() {
   };
 
   return (
-    <React.Suspense fallback={null}>
     <>
+    {/* NOT: navigator (PatternsShell'in <Slot/>'u / <Tabs>) lazy kardeşlerle AYNI
+            Suspense sınırında OLMAMALI. Lazy chunk yüklenirken sınır askıya alınır ve
+            fallback={null} alt ağacın tamamını — navigator dahil — söker; o pencerede
+            expo-router render edilmiş çocuk rotası bulamayıp durumunu kaybeder ve
+            index'e sıfırlanır (alt sayfada yenileyince özete dönme hatası).
+            Lazy kardeşler kendi sınırlarında durur. */}
     <View style={{ flex: 1, backgroundColor: T.bg }}>
       <StatusBar style="dark" />
       <Tabs
@@ -218,15 +223,16 @@ export default function StationLayout() {
       presentationStyle="fullScreen"
       onRequestClose={() => setScanOpen(false)}
     >
-      <ScanB6Mobile
-        onClose={() => setScanOpen(false)}
-        onOpenOrder={(id: string) => {
-          setScanOpen(false);
-          router.push(`/(station)/job-detail?id=${id}` as any);
-        }}
-      />
+      <React.Suspense fallback={null}>
+        <ScanB6Mobile
+          onClose={() => setScanOpen(false)}
+          onOpenOrder={(id: string) => {
+            setScanOpen(false);
+            router.push(`/(station)/job-detail?id=${id}` as any);
+          }}
+        />
+      </React.Suspense>
     </Modal>
     </>
-    </React.Suspense>
   );
 }

@@ -96,8 +96,13 @@ export default function ClinicLayout() {
 
   if (isDesktop) {
     return (
-      <React.Suspense fallback={null}>
       <>
+        {/* NOT: navigator (PatternsShell'in <Slot/>'u / <Tabs>) lazy kardeşlerle AYNI
+            Suspense sınırında OLMAMALI. Lazy chunk yüklenirken sınır askıya alınır ve
+            fallback={null} alt ağacın tamamını — navigator dahil — söker; o pencerede
+            expo-router render edilmiş çocuk rotası bulamayıp durumunu kaybeder ve
+            index'e sıfırlanır (alt sayfada yenileyince özete dönme hatası).
+            Lazy kardeşler kendi sınırlarında durur. */}
         <PatternsShell
           navItems={CLINIC_NAV}
           accentColor={accentColor}
@@ -107,13 +112,14 @@ export default function ClinicLayout() {
           panelType="clinic_admin"
           newOrderHref="/(clinic)/new-order"
         />
-        <MessagesPopup
-          visible={messagesOpen}
-          onClose={() => setMessagesOpen(false)}
-          accentColor={accentColor}
-        />
+        <React.Suspense fallback={null}>
+          <MessagesPopup
+            visible={messagesOpen}
+            onClose={() => setMessagesOpen(false)}
+            accentColor={accentColor}
+          />
+        </React.Suspense>
       </>
-      </React.Suspense>
     );
   }
 
@@ -146,8 +152,13 @@ export default function ClinicLayout() {
   ];
 
   return (
-    <React.Suspense fallback={null}>
     <>
+      {/* NOT: navigator (PatternsShell'in <Slot/>'u / <Tabs>) lazy kardeşlerle AYNI
+            Suspense sınırında OLMAMALI. Lazy chunk yüklenirken sınır askıya alınır ve
+            fallback={null} alt ağacın tamamını — navigator dahil — söker; o pencerede
+            expo-router render edilmiş çocuk rotası bulamayıp durumunu kaybeder ve
+            index'e sıfırlanır (alt sayfada yenileyince özete dönme hatası).
+            Lazy kardeşler kendi sınırlarında durur. */}
       <View style={{ flex: 1, backgroundColor: isDark ? '#0E0E0E' : MOBILE_PANEL_THEMES.klinik.bgPage }}>
         <Tabs
           screenOptions={{
@@ -191,19 +202,23 @@ export default function ClinicLayout() {
         presentationStyle="pageSheet"
         onRequestClose={() => setNewOrderOpen(false)}
       >
-        <NewOrderScreen
-          clinicMode
-          accentColor={accentColor}
-          onClose={() => setNewOrderOpen(false)}
-        />
+        <React.Suspense fallback={null}>
+          <NewOrderScreen
+            clinicMode
+            accentColor={accentColor}
+            onClose={() => setNewOrderOpen(false)}
+          />
+        </React.Suspense>
       </Modal>
 
       {/* Mesajlar Popup */}
-      <MessagesPopup
-        visible={messagesOpen}
-        onClose={() => setMessagesOpen(false)}
-        accentColor={accentColor}
-      />
+      <React.Suspense fallback={null}>
+        <MessagesPopup
+          visible={messagesOpen}
+          onClose={() => setMessagesOpen(false)}
+          accentColor={accentColor}
+        />
+      </React.Suspense>
 
       {/* Scan (B6) — Tara FAB → kamera + QR scan */}
       <Modal
@@ -212,32 +227,37 @@ export default function ClinicLayout() {
         presentationStyle="fullScreen"
         onRequestClose={() => setScanOpen(false)}
       >
-        <ScanB6Mobile
-          onClose={() => setScanOpen(false)}
-          onOpenOrder={(id: string) => { setScanOpen(false); router.push(`/(clinic)/order/${id}` as any); }}
-        />
+        <React.Suspense fallback={null}>
+          <ScanB6Mobile
+            onClose={() => setScanOpen(false)}
+            onOpenOrder={(id: string) => { setScanOpen(false); router.push(`/(clinic)/order/${id}` as any); }}
+          />
+        </React.Suspense>
       </Modal>
 
       {/* Daha menüsü (mobil PillTabBar 'Daha' tab'ından açılır) */}
-      <MoreMenuSheet
-        visible={moreOpen}
-        onClose={() => setMoreOpen(false)}
-        title={t('clinic.moreMenu.title')}
-        items={MORE_ITEMS}
-        accentColor={accentColor}
-      />
+      <React.Suspense fallback={null}>
+        <MoreMenuSheet
+          visible={moreOpen}
+          onClose={() => setMoreOpen(false)}
+          title={t('clinic.moreMenu.title')}
+          items={MORE_ITEMS}
+          accentColor={accentColor}
+        />
+      </React.Suspense>
 
       {/* Sağ üst kalıcı aksiyon butonları (mobile only) — QR · Bell · Profile */}
       {!hideTopActionBar && <TopActionBar routePrefix="/(clinic)" accentColor={accentColor} />}
       {!hideTopActionBar && <PanelTopHeader />}
 
       {/* Command Palette — mobile search FAB üzerinden de erişilebilir */}
-      <CommandPalette
-        navItems={CLINIC_NAV}
-        onNavigate={(href: string) => router.push(href as any)}
-        accentColor={accentColor}
-      />
+      <React.Suspense fallback={null}>
+        <CommandPalette
+          navItems={CLINIC_NAV}
+          onNavigate={(href: string) => router.push(href as any)}
+          accentColor={accentColor}
+        />
+      </React.Suspense>
     </>
-    </React.Suspense>
   );
 }

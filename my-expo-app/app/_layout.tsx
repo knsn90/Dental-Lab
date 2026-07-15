@@ -547,6 +547,10 @@ export default function RootLayout() {
       else if (isTechnician)                      router.replace('/(station)' as any);
       else                                        router.replace('/(lab)');
     } else {
+      // Kök index (segments boş) — app/index.tsx tarayıcı yolunu okuyup doğru panele
+      // yönlendiriyor; buradan ikinci bir replace atmak onu ezer.
+      if (!currentGroup) return;
+
       if (currentGroup !== expectedGroup) {
         // Platform (super-admin) paneli — grup içinde kalmasına izin ver;
         // asıl yetki kontrolü (platform)/_layout'ta is_platform_admin() ile yapılır.

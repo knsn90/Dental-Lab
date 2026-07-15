@@ -199,8 +199,13 @@ export default function LabLayout() {
 
   if (isDesktop) {
     return (
-      <React.Suspense fallback={null}>
       <>
+        {/* NOT: navigator (PatternsShell'in <Slot/>'u / <Tabs>) lazy kardeşlerle AYNI
+            Suspense sınırında OLMAMALI. Lazy chunk yüklenirken sınır askıya alınır ve
+            fallback={null} alt ağacın tamamını — navigator dahil — söker; o pencerede
+            expo-router render edilmiş çocuk rotası bulamayıp durumunu kaybeder ve
+            index'e sıfırlanır (alt sayfada yenileyince özete dönme hatası).
+            Lazy kardeşler kendi sınırlarında durur. */}
         <PatternsShell
           navItems={filteredNavForPalette}
           accentColor={accentColor}
@@ -210,18 +215,21 @@ export default function LabLayout() {
           panelType="lab"
           newOrderHref={canCreate ? '/(lab)/new-order' : undefined}
         />
-        <MessagesPopup
-          visible={messagesOpen}
-          onClose={() => setMessagesOpen(false)}
-          accentColor={accentColor}
-        />
-        <CommandPalette
-          navItems={filteredNavForPalette}
-          onNavigate={(href: string) => router.push(href as any)}
-          accentColor={accentColor}
-        />
+        <React.Suspense fallback={null}>
+          <MessagesPopup
+            visible={messagesOpen}
+            onClose={() => setMessagesOpen(false)}
+            accentColor={accentColor}
+          />
+        </React.Suspense>
+        <React.Suspense fallback={null}>
+          <CommandPalette
+            navItems={filteredNavForPalette}
+            onNavigate={(href: string) => router.push(href as any)}
+            accentColor={accentColor}
+          />
+        </React.Suspense>
       </>
-      </React.Suspense>
     );
   }
 
@@ -255,8 +263,13 @@ export default function LabLayout() {
   ] as any[]).filter((it: any) => !permLoaded || !it.requires || canPerm(it.requires));
 
   return (
-    <React.Suspense fallback={null}>
     <>
+      {/* NOT: navigator (PatternsShell'in <Slot/>'u / <Tabs>) lazy kardeşlerle AYNI
+            Suspense sınırında OLMAMALI. Lazy chunk yüklenirken sınır askıya alınır ve
+            fallback={null} alt ağacın tamamını — navigator dahil — söker; o pencerede
+            expo-router render edilmiş çocuk rotası bulamayıp durumunu kaybeder ve
+            index'e sıfırlanır (alt sayfada yenileyince özete dönme hatası).
+            Lazy kardeşler kendi sınırlarında durur. */}
       <View style={{ flex: 1, backgroundColor: isDark ? '#0E0E0E' : MOBILE_PANEL_THEMES.lab.bgPage }}>
         <Tabs
           screenOptions={{
@@ -324,15 +337,19 @@ export default function LabLayout() {
         presentationStyle="pageSheet"
         onRequestClose={() => setNewOrderOpen(false)}
       >
-        <NewOrderScreen onClose={() => setNewOrderOpen(false)} />
+        <React.Suspense fallback={null}>
+          <NewOrderScreen onClose={() => setNewOrderOpen(false)} />
+        </React.Suspense>
       </Modal>
 
       {/* Mesajlar Popup */}
-      <MessagesPopup
-        visible={messagesOpen}
-        onClose={() => setMessagesOpen(false)}
-        accentColor={accentColor}
-      />
+      <React.Suspense fallback={null}>
+        <MessagesPopup
+          visible={messagesOpen}
+          onClose={() => setMessagesOpen(false)}
+          accentColor={accentColor}
+        />
+      </React.Suspense>
 
       {/* Scan (B6) — Tara FAB → kamera + QR scan */}
       <Modal
@@ -341,28 +358,34 @@ export default function LabLayout() {
         presentationStyle="fullScreen"
         onRequestClose={() => setScanOpen(false)}
       >
-        <ScanB6Mobile
-          onClose={() => setScanOpen(false)}
-          onOpenOrder={(id: string) => { setScanOpen(false); router.push(`/(lab)/order/${id}` as any); }}
-        />
+        <React.Suspense fallback={null}>
+          <ScanB6Mobile
+            onClose={() => setScanOpen(false)}
+            onOpenOrder={(id: string) => { setScanOpen(false); router.push(`/(lab)/order/${id}` as any); }}
+          />
+        </React.Suspense>
       </Modal>
 
       {/* Command Palette — modal, tüm sayfalarda erişilebilir */}
-      <CommandPalette
-        navItems={filteredNavForPalette}
-        onNavigate={(href: string) => router.push(href as any)}
-        accentColor={accentColor}
-      />
+      <React.Suspense fallback={null}>
+        <CommandPalette
+          navItems={filteredNavForPalette}
+          onNavigate={(href: string) => router.push(href as any)}
+          accentColor={accentColor}
+        />
+      </React.Suspense>
 
       {/* Daha menüsü (mobil PillTabBar 'Daha' tab'ından açılır) */}
-      <MoreMenuSheet
-        visible={moreOpen}
-        onClose={() => setMoreOpen(false)}
-        title="Tüm Menü"
-        subtitle="Sık kullanılmayan ekranlar"
-        items={MORE_ITEMS}
-        accentColor={accentColor}
-      />
+      <React.Suspense fallback={null}>
+        <MoreMenuSheet
+          visible={moreOpen}
+          onClose={() => setMoreOpen(false)}
+          title="Tüm Menü"
+          subtitle="Sık kullanılmayan ekranlar"
+          items={MORE_ITEMS}
+          accentColor={accentColor}
+        />
+      </React.Suspense>
 
       {/* Search button moved to TopActionBar (top-right) */}
 
@@ -372,6 +395,5 @@ export default function LabLayout() {
       {/* Global sabit lab başlığı — logo + üst blur şeridi (her sayfada) */}
       {!hideTopActionBar && <LabTopHeader />}
     </>
-    </React.Suspense>
   );
 }

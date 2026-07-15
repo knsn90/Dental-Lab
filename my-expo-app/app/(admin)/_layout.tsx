@@ -126,8 +126,15 @@ export default function AdminLayout() {
 
   if (isDesktop) {
     return (
-      <React.Suspense fallback={null}>
       <>
+        {/* PatternsShell <Slot/>'u içinde barındırır ve LAZY DEĞİL → kendi Suspense'i
+            yok, hemen render olur. Eskiden MessagesPopup + CommandPalette (ikisi de
+            React.lazy) ile AYNI Suspense sınırı içindeydi: o chunk'lar yüklenirken
+            sınır askıya alınıyor, fallback={null} tüm alt ağacı — <Slot/> dahil —
+            söküyordu. O pencerede expo-router'ın render edilmiş çocuk rotası kalmıyor
+            ve durumu kaybedip index'e (özet) sıfırlanıyordu: /orders'ta yenileyince
+            özete dönme hatasının sebebi buydu. Lazy kardeşler artık kendi
+            sınırlarında — Slot onları asla beklemez. */}
         <PatternsShell
           navItems={ADMIN_NAV}
           accentColor={accentColor}
@@ -137,18 +144,21 @@ export default function AdminLayout() {
           panelType="admin"
           newOrderHref="/(admin)/new-order"
         />
-        <MessagesPopup
-          visible={messagesOpen}
-          onClose={() => setMessagesOpen(false)}
-          accentColor={accentColor}
-        />
-        <CommandPalette
-          navItems={ADMIN_NAV}
-          onNavigate={(href: string) => router.push(href as any)}
-          accentColor={accentColor}
-        />
+        <React.Suspense fallback={null}>
+          <MessagesPopup
+            visible={messagesOpen}
+            onClose={() => setMessagesOpen(false)}
+            accentColor={accentColor}
+          />
+        </React.Suspense>
+        <React.Suspense fallback={null}>
+          <CommandPalette
+            navItems={ADMIN_NAV}
+            onNavigate={(href: string) => router.push(href as any)}
+            accentColor={accentColor}
+          />
+        </React.Suspense>
       </>
-      </React.Suspense>
     );
   }
 
@@ -179,8 +189,10 @@ export default function AdminLayout() {
   ];
 
   return (
-    <React.Suspense fallback={null}>
     <>
+      {/* NOT: navigator (<Tabs>) lazy kardeşlerle AYNI Suspense sınırında OLMAMALI —
+          lazy chunk yüklenirken fallback={null} navigator'ı da söker ve expo-router
+          durumunu kaybedip index'e sıfırlanır. Bkz. masaüstü dalındaki not. */}
       <View style={{ flex: 1, backgroundColor: isDark ? T.dark : T.bg }}>
         {/* MobileHeader kaldırıldı — yeni AdminMobileDashboard kendi başlığını taşıyor */}
         <Tabs
@@ -243,15 +255,19 @@ export default function AdminLayout() {
         presentationStyle="pageSheet"
         onRequestClose={() => setNewOrderOpen(false)}
       >
-        <NewOrderScreen panel="admin" accentColor={accentColor} onClose={() => setNewOrderOpen(false)} />
+        <React.Suspense fallback={null}>
+          <NewOrderScreen panel="admin" accentColor={accentColor} onClose={() => setNewOrderOpen(false)} />
+        </React.Suspense>
       </Modal>
 
       {/* Mesajlar Popup */}
-      <MessagesPopup
-        visible={messagesOpen}
-        onClose={() => setMessagesOpen(false)}
-        accentColor={accentColor}
-      />
+      <React.Suspense fallback={null}>
+        <MessagesPopup
+          visible={messagesOpen}
+          onClose={() => setMessagesOpen(false)}
+          accentColor={accentColor}
+        />
+      </React.Suspense>
 
       {/* Scan (B6) — Tara FAB → kamera + QR scan */}
       <Modal
@@ -260,33 +276,38 @@ export default function AdminLayout() {
         presentationStyle="fullScreen"
         onRequestClose={() => setScanOpen(false)}
       >
-        <ScanB6Mobile
-          onClose={() => setScanOpen(false)}
-          onOpenOrder={(id: string) => { setScanOpen(false); router.push(`/(admin)/order/${id}` as any); }}
-        />
+        <React.Suspense fallback={null}>
+          <ScanB6Mobile
+            onClose={() => setScanOpen(false)}
+            onOpenOrder={(id: string) => { setScanOpen(false); router.push(`/(admin)/order/${id}` as any); }}
+          />
+        </React.Suspense>
       </Modal>
 
       {/* Daha menüsü (mobil PillTabBar 'Daha' tab'ından açılır) */}
-      <MoreMenuSheet
-        visible={moreOpen}
-        onClose={() => setMoreOpen(false)}
-        title={t('admin.moreSheet.title')}
-        subtitle={t('admin.moreSheet.subtitle')}
-        items={MORE_ITEMS}
-        accentColor={accentColor}
-      />
+      <React.Suspense fallback={null}>
+        <MoreMenuSheet
+          visible={moreOpen}
+          onClose={() => setMoreOpen(false)}
+          title={t('admin.moreSheet.title')}
+          subtitle={t('admin.moreSheet.subtitle')}
+          items={MORE_ITEMS}
+          accentColor={accentColor}
+        />
+      </React.Suspense>
 
       {/* Sağ üst kalıcı aksiyon butonları (mobile only) — QR · Bell · Profile */}
       {!hideTopActionBar && <TopActionBar routePrefix="/(admin)" accentColor={accentColor} />}
       {!hideTopActionBar && <PanelTopHeader />}
 
       {/* Command Palette — mobile search FAB üzerinden de erişilebilir */}
-      <CommandPalette
-        navItems={ADMIN_NAV}
-        onNavigate={(href: string) => router.push(href as any)}
-        accentColor={accentColor}
-      />
+      <React.Suspense fallback={null}>
+        <CommandPalette
+          navItems={ADMIN_NAV}
+          onNavigate={(href: string) => router.push(href as any)}
+          accentColor={accentColor}
+        />
+      </React.Suspense>
     </>
-    </React.Suspense>
   );
 }
