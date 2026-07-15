@@ -8,6 +8,7 @@ import {
 import { Search, X, SlidersHorizontal, Plus, Building2, Users, UserPlus, List, ChevronRight, ChevronUp, ChevronDown, Edit2, Trash2, Phone, Mail, MapPin, RefreshCw, UserX, AlertCircle, Check, Percent, MinusCircle, Briefcase, Stethoscope, Printer, Eye, EyeOff } from 'lucide-react-native';
 import { buildWorkOrderFormHtml } from '../../orders/buildWorkOrderFormHtml';
 import { useSegments } from 'expo-router';
+import { LabConnectionsScreen } from '../../lab-connections/screens/LabConnectionsScreen';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { toast } from '../../../core/ui/Toast';
 import { MobilePageTitle } from '../../../core/ui/mobile/MobilePageTitle';
@@ -134,6 +135,7 @@ const TAB_FILTERS = [
   { key: 'laboratuvar', label: 'Laboratuvar' },
   { key: 'doctors',     label: 'Hekimler' },
   { key: 'managers',    label: 'Yöneticiler' },
+  { key: 'connections', label: 'Bağlantılar' },
 ];
 
 // ═════════════════════════════════════════════════════════════════════
@@ -180,7 +182,7 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
   const [editingDoctor,   setEditingDoctor]   = useState<Doctor | null>(null);
   const [defaultClinicId, setDefaultClinicId] = useState('');
 
-  const [activeTab,       setActiveTab]       = useState<'all' | ClinicCategory | 'doctors' | 'managers'>('all');
+  const [activeTab,       setActiveTab]       = useState<'all' | ClinicCategory | 'doctors' | 'managers' | 'connections'>('all');
   const [managers,        setManagers]        = useState<any[]>(initial?.managers ?? []);
   const [searchOpen,      setSearchOpen]      = useState(false);
   const [categoryFilter,  setCategoryFilter]  = useState<ClinicCategory | 'all'>('all');
@@ -395,7 +397,7 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
           <View className="flex-row gap-0.5 p-0.5 bg-cream-panel rounded-full">
             {TAB_FILTERS.map(f => {
               const active = activeTab === f.key;
-              const count = tabCounts[f.key] ?? 0;
+              const count = tabCounts[f.key];        // Bağlantılar gibi sayısız sekmelerde undefined
               return (
                 <Pressable
                   key={f.key}
@@ -405,16 +407,20 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
                   <Text className={`text-[12px] font-semibold ${active ? 'text-white' : 'text-ink-500'}`}>
                     {f.label}
                   </Text>
-                  <Text className={`text-[10px] font-bold ${active ? 'text-white/60' : 'text-ink-400'}`}>
-                    {count}
-                  </Text>
+                  {count != null && (
+                    <Text className={`text-[10px] font-bold ${active ? 'text-white/60' : 'text-ink-400'}`}>
+                      {count}
+                    </Text>
+                  )}
                 </Pressable>
               );
             })}
           </View>
         </ScrollView>
 
-        {/* Row 2: Actions — Ara / Filtrele / Kurum (her zaman 36px, kompakt) */}
+        {/* Row 2: Actions — Ara / Filtrele / Kurum (her zaman 36px, kompakt).
+            Bağlantılar sekmesi klinik listesi değil → arama/filtre/ekle gizlenir. */}
+        {activeTab !== 'connections' && (
         <View className="flex-row items-center gap-2">
           {/* Search — daima açık, sol-hizalı, sabit yükseklik */}
           <View
@@ -493,6 +499,7 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
             </Text>
           </Pressable>
         </View>
+        )}
       </View>
 
       {/* ── Content ──────────────────────────────────────────────── */}
@@ -502,7 +509,11 @@ export default function ClinicsScreen({ accentColor: accentColorProp }: Props) {
         refreshControl={<RefreshControl refreshing={loading} onRefresh={loadData} tintColor="#0A0A0A" />}
         showsVerticalScrollIndicator={false}
       >
-        {loading && clinics.length === 0 ? (
+        {activeTab === 'connections' ? (
+          /* Klinik bağlantıları — davet kodu / public kod / bekleyen istekler.
+             Eskiden ayrı sidebar sayfasıydı; artık Sağlık Kurumları sekmesi. */
+          <LabConnectionsScreen embedded />
+        ) : loading && clinics.length === 0 ? (
           <View className="py-16 items-center">
             <ActivityIndicator color="#0A0A0A" />
             <Text className="text-[13px] text-ink-400 mt-3">Yükleniyor…</Text>

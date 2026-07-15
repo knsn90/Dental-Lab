@@ -22,7 +22,11 @@ function copy(text: string) {
   }
 }
 
-export function LabConnectionsScreen() {
+/**
+ * @param embedded Sağlık Kurumları → "Bağlantılar" sekmesi içinde render edilirken
+ *   true: kendi ResponsiveCanvas'ını ve sayfa başlığını çizmez (duplicate başlık olmasın).
+ */
+export function LabConnectionsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const [invite, setInvite] = useState<string | null>(null);
   const [publicCode, setPublicCode] = useState<string | null>(null);
   const [autoApprove, setAutoApprove] = useState<boolean>(false);
@@ -54,13 +58,14 @@ export function LabConnectionsScreen() {
     setBusy(id); try { await fn(); await loadPending(); } finally { setBusy(null); }
   };
 
-  return (
-    <ResponsiveCanvas size="md">
+  const body = (
       <ScrollView contentContainerStyle={{ paddingBottom: 64 }} showsVerticalScrollIndicator={false}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-          <Link2 size={22} color={INK} strokeWidth={1.8} />
-          <Text style={{ fontSize: 22, fontWeight: '700', color: INK, letterSpacing: -0.4 }}>Klinik Bağlantıları</Text>
-        </View>
+        {!embedded && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <Link2 size={22} color={INK} strokeWidth={1.8} />
+            <Text style={{ fontSize: 22, fontWeight: '700', color: INK, letterSpacing: -0.4 }}>Klinik Bağlantıları</Text>
+          </View>
+        )}
         <Text style={{ color: INK2, fontSize: 13.5, marginBottom: 20, lineHeight: 19 }}>
           Kliniklerle bağlan: davet kodu paylaş ya da public katılım kodunu kullan. Klinik tek hesapla birden çok lab'la çalışabilir.
         </Text>
@@ -124,8 +129,10 @@ export function LabConnectionsScreen() {
           )}
         </Card>
       </ScrollView>
-    </ResponsiveCanvas>
   );
+
+  // Gömülüyken (Sağlık Kurumları → Bağlantılar sekmesi) parent zaten canvas veriyor.
+  return embedded ? body : <ResponsiveCanvas size="md">{body}</ResponsiveCanvas>;
 }
 
 function Card({ children }: { children: React.ReactNode }) {
