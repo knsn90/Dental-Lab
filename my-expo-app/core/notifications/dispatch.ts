@@ -226,6 +226,27 @@ export async function dispatchChatPush(opts: {
   } catch (e) {
     if (typeof console !== 'undefined') console.debug('[chat-push] send-expo-push skipped:', e);
   }
+
+  // ─── Email (Resend) — yeni mesaj bildirimi e-postası ─────────────
+  // Opt-in: yalnız notification_prefs.categories.chat.email == true olan
+  // kullanıcılara gider (filtre send-email-notification edge fn içinde).
+  try {
+    await supabase.functions.invoke('send-email-notification', {
+      body: {
+        userIds,
+        category: 'chat',
+        payload: {
+          title:        opts.title,
+          body:         opts.body ?? '',
+          actionUrl:    opts.actionUrl,
+          resourceType: 'work_order',
+          extra:        { tag },
+        },
+      },
+    });
+  } catch (e) {
+    if (typeof console !== 'undefined') console.debug('[chat-push] send-email-notification skipped:', e);
+  }
 }
 
 /**

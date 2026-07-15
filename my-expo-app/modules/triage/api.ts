@@ -290,8 +290,12 @@ export function matchTemplate(templates: TriageTemplate[], workType: string | nu
  * Teknisyenin hiç istasyon yetkisi yoksa "henüz tanımlanmamış" sayılır → geriye uyumlu (herkes uygun).
  */
 export function isQualified(station: TriageStation, tech: TriageTech): boolean {
+  // KATI yetkinlik: yalnız user_station_skills'te bu istasyona yetkili işaretlenmiş
+  // teknisyen uygundur. Yetkinliği hiç tanımlanmamış (0 istasyon) kullanıcı UYGUN
+  // DEĞİLDİR — eskiden true dönüyordu ve 0-yetkinlikli kurye/yönetici her aşamaya
+  // "uygun" sayılıp otomatik atanıyordu.
   const ids = tech.stationIds;
-  if (!ids || ids.length === 0) return true; // tanımlanmamış teknisyen → engelleme
+  if (!ids || ids.length === 0) return false;
   return ids.includes(station.id);
 }
 
@@ -302,11 +306,12 @@ export function isQualified(station: TriageStation, tech: TriageTech): boolean {
  *   3) Adaylar arasında en az yüklü (kapasiteye göre oransal); eşitlikte istasyon varsayılanı.
  */
 export function autoAssignTech(station: TriageStation, technicians: TriageTech[]): string | null {
-  // Kurye ASLA üretim istasyonuna atanmaz (havuz başka yerden gelmiş olsa bile defansif).
+  // Kurye ASLA üretim istasyonuna atanmaz (havuz başka yerden gelse bile defansif).
   const pool = technicians.filter(t => t.role !== 'courier');
-  const qualified = pool.filter(t => isQualified(station, t));
-  const candidates = qualified.length > 0 ? qualified : pool;
-  if (candidates.length === 0) return station.default_technician_id ?? null;
+  // Yalnız bu istasyona YETKİN teknisyenler aday olur. Yetkin yoksa aşama BOŞ kalır:
+  // yetkin olmayan birine (ya da varsayılan teknisyene) düşürmeyiz — müdür elle atar.
+  const candidates = pool.filter(t => isQualified(station, t));
+  if (candidates.length === 0) return null;
   const ratio = (t: TriageTech) => t.load / (t.capacity && t.capacity > 0 ? t.capacity : 6);
   const sorted = [...candidates].sort((a, b) => {
     const r = ratio(a) - ratio(b);
@@ -538,6 +543,8 @@ export async function fetchSkillsData(labId: string): Promise<SkillsData> {
       .eq('lab_id', labId)
       .eq('user_type', 'lab')
       .eq('approval_status', 'approved')
+      .eq('is_active', true)               // pasif personel yetkinlik listesinde görünmez
+      .neq('role', 'courier')              // kuryenin üretim istasyonu yetkinliği olmaz
       .order('full_name'),
   ]);
   const stations: TriageStation[] = ((stRes.data ?? []) as any[]).map((s) => ({

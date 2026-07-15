@@ -902,15 +902,17 @@ export function PeopleArea({ theme, techs, stations, stationSkills, onToggleStat
   onToggleStation: (techId: string, stationId: string, currentlyHas: boolean) => void;
 }) {
   const { A, A_DEEP } = theme;
-  // Yalnız teknisyenleri göster (kurye/yönetici hariç)
-  const techList = techs.filter(t => (t.role ?? 'technician') === 'technician');
+  // Teknisyen + YÖNETİCİ görünür (yönetici de istasyonda çalışabilir → yetkinlik alabilir).
+  // Kurye hariç: kuryenin üretim istasyonu yetkinliği olmaz. Pasif personel zaten
+  // fetchSkillsData'da (is_active) elenir → listede görünmez.
+  const techList = techs.filter(t => (t.role ?? 'technician') !== 'courier');
   return (
     <View style={{ gap: 12 }}>
       <View style={{ borderRadius: 14, backgroundColor: tint(A, 0.06), borderWidth: 1, borderColor: tint(A, 0.18), padding: 14, gap: 4 }}>
         <Text style={{ fontSize: 13, fontWeight: '700', color: INK[900] }}>Personel yetkinlikleri</Text>
-        <Text style={{ fontSize: 12, color: INK[500], lineHeight: 18 }}>Her teknisyenin hangi istasyonlarda çalışabildiğini işaretle. Otomatik atama ve "Yeniden Ata" yalnız yetkili teknisyenlere yapılır. (Tek yetkinlik kaynağı burası.)</Text>
+        <Text style={{ fontSize: 12, color: INK[500], lineHeight: 18 }}>Her personelin (teknisyen + yönetici) hangi istasyonlarda çalışabildiğini işaretle. Otomatik atama ve "Yeniden Ata" YALNIZ yetkili personele yapılır; hiç yetkili yoksa aşama boş kalır. Pasif personel ve kuryeler listede yer almaz. (Tek yetkinlik kaynağı burası.)</Text>
       </View>
-      {techList.length === 0 && <Text style={{ fontSize: 12, color: INK[400], fontStyle: 'italic' }}>Teknisyen yok.</Text>}
+      {techList.length === 0 && <Text style={{ fontSize: 12, color: INK[400], fontStyle: 'italic' }}>Personel yok.</Text>}
       {stations.length === 0 && techList.length > 0 && (
         <Text style={{ fontSize: 12, color: INK[400], fontStyle: 'italic' }}>Önce "Akış" alanından istasyon ekleyin.</Text>
       )}
@@ -923,6 +925,11 @@ export function PeopleArea({ theme, techs, stations, stationSkills, onToggleStat
                 <Text style={{ fontSize: 11, fontWeight: '800', color: A_DEEP }}>{initials(t.full_name)}</Text>
               </View>
               <Text style={{ fontSize: 14, fontWeight: '700', color: INK[900] }}>{t.full_name}</Text>
+              {(t.role ?? 'technician') === 'manager' && (
+                <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: tint(A, 0.12), borderWidth: 1, borderColor: tint(A, 0.25) }}>
+                  <Text style={{ fontSize: 9.5, fontWeight: '800', color: A_DEEP, letterSpacing: 0.4 }}>YÖNETİCİ</Text>
+                </View>
+              )}
               <Text style={{ fontSize: 11, color: INK[400], marginLeft: 'auto' }}>{owned.size}/{stations.length}</Text>
             </View>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
