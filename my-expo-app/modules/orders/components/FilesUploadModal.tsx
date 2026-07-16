@@ -82,7 +82,7 @@ export interface FilesUploadModalProps {
   extraGroups?: Array<{
     title: string;
     color: string;
-    items: Array<{ label: string; kind: 'image' | 'video' | 'scan' | 'pdf' }>;
+    items: Array<{ label: string; kind: 'image' | 'video' | 'scan' | 'pdf' | 'any' }>;
     /** Grup kartlarının altında opsiyonel aksiyon (ör. "Hekim Onayına Gönder"). */
     cta?: React.ReactNode;
   }>;
@@ -579,10 +579,13 @@ export function FilesUploadModal({
               {/* ── Aşama-spesifik (Tasarım Çıktıları / Kalite Kontrol / CAD-CAM)
                   — lab üretim çıktıları EN SONDA (hekim kaynak dosyalarından sonra) ── */}
               {extraGroups?.map((group, gi) => {
-                const renderForKind = (label: string, kind: 'image'|'video'|'scan'|'pdf') => {
+                const renderForKind = (label: string, kind: 'image'|'video'|'scan'|'pdf'|'any') => {
                   if (kind === 'video') return renderVideoCard(label, group.color);
                   if (kind === 'pdf')   return renderPdfCard(label, group.color);
                   if (kind === 'scan')  return renderScanCard(label, group.color, 'cube-outline');
+                  // 'any' = her tür (görsel/STL/PLY/HTML/belge). scan picker'ı ('*/*')
+                  // kullanır ama önizleme slotu olduğu için göz ikonu taşır.
+                  if (kind === 'any')   return renderScanCard(label, group.color, 'eye-outline');
                   return renderPhotoCard(label, group.color);
                 };
                 // Hekim/klinik: sadece yüklenmiş kartları göster; boş slotları ve

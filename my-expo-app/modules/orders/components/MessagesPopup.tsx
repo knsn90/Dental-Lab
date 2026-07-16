@@ -1,5 +1,5 @@
 import { localeTag } from '../../../core/i18n';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TextInput,
   TouchableOpacity, Animated, Easing, Modal,
@@ -34,6 +34,7 @@ const BORDER  = '#F1F5F9';
 const TEXT    = '#0F172A';
 const MUTED   = '#64748B';
 const SUBTLE  = '#94A3B8';
+const DANGER  = '#EF4444';   // dosyada zaten kullanılan kırmızı (kayıt/sil)
 
 // ── Icons (Lucide-style) ─────────────────────────────────────────────
 type IconName =
@@ -41,7 +42,7 @@ type IconName =
   | 'message-circle' | 'video' | 'phone' | 'more-vertical'
   | 'image' | 'file' | 'arrow-left' | 'check' | 'check-check'
   | 'pin' | 'calendar' | 'tooth' | 'palette' | 'cog'
-  | 'play' | 'pause' | 'trash' | 'scan' | 'stop';
+  | 'play' | 'pause' | 'trash' | 'scan' | 'stop' | 'upload' | 'alert';
 function Icon({ name, size = 18, color = TEXT, strokeWidth = 1.8 }: {
   name: IconName; size?: number; color?: string; strokeWidth?: number;
 }) {
@@ -72,11 +73,32 @@ function Icon({ name, size = 18, color = TEXT, strokeWidth = 1.8 }: {
     case 'trash':          return <Svg width={size} height={size} viewBox="0 0 24 24"><Polyline points="3 6 5 6 21 6" {...p}/><Path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" {...p}/></Svg>;
     case 'scan':           return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2" {...p}/><Path d="M7 12h10M12 7v10" {...p}/></Svg>;
     case 'stop':           return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M5 5h14v14H5z" {...p} fill={color} stroke={color}/></Svg>;
+    case 'upload':         return <Svg width={size} height={size} viewBox="0 0 24 24"><Path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" {...p}/><Polyline points="17 8 12 3 7 8" {...p}/><Line x1="12" y1="3" x2="12" y2="15" {...p}/></Svg>;
+    case 'alert':          return <Svg width={size} height={size} viewBox="0 0 24 24"><Circle cx="12" cy="12" r="10" {...p}/><Line x1="12" y1="8" x2="12" y2="12" {...p}/><Line x1="12" y1="16" x2="12.01" y2="16" {...p}/></Svg>;
     default: return null;
   }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
+// Storage'ın ham İngilizce hatasını kullanıcıya anlatılabilir hale getirir.
+// Bucket artık tüm MIME türlerini kabul ediyor (20260716120000 migration), yani
+// tür reddi normalde görülmemeli — ama bucket ayarı ileride yeniden daraltılırsa
+// hata yine sessiz kalmasın diye dal duruyor.
+function explainUploadError(error: string | null, fileName: string): string {
+  const raw = (error ?? '').toLowerCase();
+  const ext = fileName.includes('.') ? fileName.split('.').pop()!.toUpperCase() : '';
+  if (raw.includes('mime') || raw.includes('not supported')) {
+    return ext
+      ? `${ext} dosyaları sunucu tarafından kabul edilmedi.`
+      : 'Bu dosya türü sunucu tarafından kabul edilmedi.';
+  }
+  if (raw.includes('exceeded') || raw.includes('maximum allowed size') || raw.includes('too large')) {
+    return 'Dosya çok büyük — en fazla 100 MB gönderebilirsin.';
+  }
+  if (raw.includes('aşamaz')) return error!;   // uploadChatAttachment'ın kendi 100 MB kontrolü
+  return `Dosya yüklenemedi: ${error ?? 'bilinmeyen hata'}`;
+}
+
 function hexA(hex: string, a: number) {
   try {
     const r = parseInt(hex.slice(1, 3), 16);
@@ -813,8 +835,87 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
   // ── Attachment state ─────────────────────────────────────────────
   const [attachOpen, setAttachOpen]       = useState(false);
   const [uploading, setUploading]         = useState(false);
-  const [pendingFile, setPendingFile]     = useState<File | null>(null);
   const [pendingCaption, setPendingCaption] = useState('');
+
+  // Bekleyen dosyalar — [0] önizlemede, gerisi sırada (çoklu sürükle-bırak).
+  // Tek dizi tek kaynak: hem "önizle" hem "kuyruk" ayrı state olsaydı, yükleme
+  // sürerken bırakılan dosya bayat closure yüzünden yanlış sırayı ezerdi.
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const pendingFile = pendingFiles[0] ?? null;
+  const queuedCount = Math.max(0, pendingFiles.length - 1);
+
+  const enqueueFiles = useCallback((files: File[]) => {
+    if (files.length === 0) return;
+    setAttachOpen(false);
+    setPendingFiles((prev) => [...prev, ...files]);
+  }, []);
+
+  // Sıradaki dosyaya geç (gönderildi / atlandı); sıra boşsa önizleme kapanır.
+  const advancePending = useCallback(() => {
+    setPendingFiles((prev) => prev.slice(1));
+  }, []);
+
+  // Yükleme hatası — kullanıcıya önizlemede gösterilir (sessiz console.warn değil).
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  // Başlık + hata her yeni dosyada sıfırlanır — advance/enqueue'yu saf tutar.
+  useEffect(() => { setPendingCaption(''); setUploadError(null); }, [pendingFile]);
+
+  // ── Sürükle-bırak (web) ──────────────────────────────────────────
+  // NOT: react-native-web 0.21 onDrop/onDragOver/onDragEnter prop'larını DOM'a
+  // geçirmiyor (forwardedProps listesinde yoklar) — bu yüzden dinleyiciler
+  // ref ile doğrudan host node'una bağlanıyor. Prop olarak yazılırsa sessizce
+  // hiç tetiklenmez.
+  const dropRef   = useRef<any>(null);
+  const dragDepth = useRef(0);
+  const [dragActive, setDragActive] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const node = dropRef.current as HTMLElement | null;
+    if (!node || typeof node.addEventListener !== 'function') return;
+
+    // Yalnız dosya sürüklemesi — metin/link seçimi sürüklenirken katman açılmasın.
+    const hasFiles = (e: DragEvent) =>
+      Array.from(e.dataTransfer?.types ?? []).includes('Files');
+
+    // dragenter/dragleave her çocuk elemanda tetiklenir; derinlik sayacı olmadan
+    // katman sohbet balonları üzerinde gezerken titrer.
+    const onEnter = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      dragDepth.current += 1;
+      setDragActive(true);
+    };
+    const onOver = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();            // drop'u etkinleştiren tek şey bu
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    };
+    const onLeave = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      dragDepth.current = Math.max(0, dragDepth.current - 1);
+      if (dragDepth.current === 0) setDragActive(false);
+    };
+    const onDropEv = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();            // tarayıcı dosyayı sekmede açmasın
+      dragDepth.current = 0;
+      setDragActive(false);
+      enqueueFiles(Array.from(e.dataTransfer?.files ?? []));
+    };
+
+    node.addEventListener('dragenter', onEnter);
+    node.addEventListener('dragover',  onOver);
+    node.addEventListener('dragleave', onLeave);
+    node.addEventListener('drop',      onDropEv);
+    return () => {
+      node.removeEventListener('dragenter', onEnter);
+      node.removeEventListener('dragover',  onOver);
+      node.removeEventListener('dragleave', onLeave);
+      node.removeEventListener('drop',      onDropEv);
+    };
+  }, [enqueueFiles, workOrderId]);
 
   // ── Voice recording — state machine: idle → recording → recorded ─
   type VoiceMode = 'idle' | 'recording' | 'recorded';
@@ -843,8 +944,10 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
   // Reset attachment + voice state when switching chats
   useEffect(() => {
     setAttachOpen(false);
-    setPendingFile(null);
+    setPendingFiles([]);
     setPendingCaption('');
+    dragDepth.current = 0;
+    setDragActive(false);
     discardRecording();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workOrderId]);
@@ -886,12 +989,9 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
 
   // ── File picker handlers ─────────────────────────────────────────
   function handleFilePicked(e: any) {
-    const file: File | undefined = e.target.files?.[0];
-    if (!file) return;
+    const files: File[] = Array.from(e.target.files ?? []);
     e.target.value = '';
-    setAttachOpen(false);
-    setPendingFile(file);
-    setPendingCaption('');
+    enqueueFiles(files);
   }
 
   async function sendPendingFile() {
@@ -901,18 +1001,18 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
     else if (pendingFile.type.startsWith('audio/')) type = 'audio';
 
     setUploading(true);
+    setUploadError(null);
     const { url, error } = await uploadChatAttachment(pendingFile, workOrderId, pendingFile.name);
     if (error || !url) {
       setUploading(false);
-      console.warn('[chat-popup] upload error:', error);
+      setUploadError(explainUploadError(error, pendingFile.name));
       return;
     }
     await chat.sendWithAttachment(currentUserId, pendingCaption.trim(), {
       url, type, name: pendingFile.name, size: pendingFile.size,
     });
     setUploading(false);
-    setPendingFile(null);
-    setPendingCaption('');
+    advancePending();
   }
 
   // ── Voice recording (web only via MediaRecorder) ─────────────────
@@ -997,7 +1097,7 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
   const isWebPlatform = Platform.OS === 'web';
 
   return (
-    <View style={cd.wrap}>
+    <View style={cd.wrap} ref={dropRef}>
       {/* Header */}
       <View style={cd.header}>
         {onBack && (
@@ -1150,12 +1250,15 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
 
       {/* Pending file preview modal */}
       {pendingFile ? (
-        <Modal transparent animationType="fade" onRequestClose={() => setPendingFile(null)}>
-          <Pressable style={cd.previewOverlay} onPress={() => setPendingFile(null)}>
+        <Modal transparent animationType="fade" onRequestClose={advancePending}>
+          <Pressable style={cd.previewOverlay} onPress={advancePending}>
             <Pressable style={cd.previewCard} onPress={(e) => e.stopPropagation()}>
               <View style={cd.previewHeader}>
-                <Text style={cd.previewTitle}>Dosya Gönder</Text>
-                <TouchableOpacity onPress={() => setPendingFile(null)} activeOpacity={0.7}>
+                <Text style={cd.previewTitle}>
+                  Dosya Gönder
+                  {queuedCount > 0 ? ` · sırada ${queuedCount} dosya` : ''}
+                </Text>
+                <TouchableOpacity onPress={advancePending} activeOpacity={0.7}>
                   <Icon name="x" size={18} color={MUTED} strokeWidth={2} />
                 </TouchableOpacity>
               </View>
@@ -1184,9 +1287,17 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
                 value={pendingCaption}
                 onChangeText={setPendingCaption}
               />
+              {uploadError ? (
+                <View style={cd.previewError}>
+                  <Icon name="alert" size={14} color={DANGER} strokeWidth={2} />
+                  <Text style={cd.previewErrorText}>{uploadError}</Text>
+                </View>
+              ) : null}
               <View style={cd.previewActions}>
-                <TouchableOpacity style={cd.previewCancel} onPress={() => setPendingFile(null)} activeOpacity={0.7}>
-                  <Text style={cd.previewCancelText}>İptal</Text>
+                <TouchableOpacity style={cd.previewCancel} onPress={advancePending} activeOpacity={0.7}>
+                  <Text style={cd.previewCancelText}>
+                    {queuedCount > 0 ? 'Atla' : 'İptal'}
+                  </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[cd.previewSend, { backgroundColor: accentColor }, uploading && { opacity: 0.55 }]}
@@ -1385,11 +1496,48 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
           )}
         </View>
       )}
+
+      {/* ── Sürükle-bırak katmanı ────────────────────────────────── */}
+      {/* pointerEvents="none" şart: katman fare olaylarını yakalarsa altındaki
+          node'da dragleave tetiklenir ve katman anında kapanır. */}
+      {dragActive && (
+        <View style={cd.dropOverlay} pointerEvents="none">
+          <View style={[cd.dropCard, { borderColor: accentColor, backgroundColor: hexA(accentColor, 0.06) }]}>
+            <Icon name="upload" size={28} color={accentColor} strokeWidth={1.6} />
+            <Text style={[cd.dropTitle, { color: accentColor }]}>Dosyayı buraya bırak</Text>
+            <Text style={cd.dropSub}>Fotoğraf, dijital tarama veya belge · en fazla 100 MB</Text>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
 const cd = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: BG_SOFT },
+
+  // Sürükle-bırak katmanı
+  dropOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center', justifyContent: 'center',
+    padding: 16,
+    backgroundColor: 'rgba(255,255,255,0.82)',
+  },
+  dropCard: {
+    alignItems: 'center', gap: 12,
+    paddingVertical: 32, paddingHorizontal: 24,
+    borderRadius: 20, borderWidth: 2, borderStyle: 'dashed',
+    alignSelf: 'stretch',
+  },
+  dropTitle: { fontSize: 15, fontWeight: '600' },
+  dropSub:   { fontSize: 12, fontWeight: '500', color: MUTED, textAlign: 'center' },
+
+  // Yükleme hatası satırı (önizleme modalı)
+  previewError: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    padding: 12, borderRadius: 12,
+    backgroundColor: 'rgba(239,68,68,0.08)',
+  },
+  previewErrorText: { flex: 1, fontSize: 12, fontWeight: '500', color: DANGER, lineHeight: 17 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 10, backgroundColor: BG_SOFT },
   emptyIcon: { width: 72, height: 72, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   emptyTitle: { fontSize: 17, fontWeight: '800', color: TEXT, letterSpacing: -0.3 },
@@ -1703,9 +1851,14 @@ export function MessagesPopup({ visible, onClose, accentColor, initialOrderId }:
   // doğrudan inline style olarak DOM'a basar. Transform array'ini
   // CSS transform string'ine çevirip transition ile yumuşatır.
   const isWeb = Platform.OS === 'web';
+  // NOT: backdrop'ta `opacity` ANİME ETME. opacity<1 (ve animasyonu) elemanı
+  // bir "backdrop root" yapar → kendi backdropFilter'ı arkadaki uygulamayı
+  // bulanıklaştıramaz, blur görünmez olur (paylaşımlı ModalBackdrop opacity
+  // kullanmadığı için blur'u çalışıyor). Bunun yerine koyuluğu backgroundColor
+  // alfasıyla fade'liyoruz; opacity hep 1, blur korunur.
   const webBackdropStyle: any = isWeb ? {
-    opacity: active ? 1 : 0,
-    transitionProperty: 'opacity',
+    backgroundColor: active ? 'rgba(10,14,26,0.52)' : 'rgba(10,14,26,0)',
+    transitionProperty: 'background-color',
     transitionDuration: active ? '260ms' : '180ms',
     transitionTimingFunction: 'ease',
   } : null;
@@ -1954,10 +2107,11 @@ export function MessagesPopup({ visible, onClose, accentColor, initialOrderId }:
 const p = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(10,14,26,0.38)',
+    // Web'de koyuluk backgroundColor ile inline sürülür (bkz. webBackdropStyle) —
+    // opacity animasyonu blur'u kırdığı için. Native'de sabit koyu ton yeterli.
     ...(Platform.OS === 'web'
-      ? ({ backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' } as any)
-      : {}),
+      ? ({ backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' } as any)
+      : { backgroundColor: 'rgba(10,14,26,0.52)' }),
   },
   centerWrap: {
     ...StyleSheet.absoluteFillObject,

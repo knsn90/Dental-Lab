@@ -3628,7 +3628,15 @@ function OrderChatPopup({
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View
         className="flex-1 items-center justify-center"
-        style={{ backgroundColor: 'rgba(10,10,10,0.45)' }}
+        style={{
+          backgroundColor: 'rgba(10,14,26,0.52)',
+          // Global mesaj popup'ıyla tutarlı koyu+blur zemin. animationType="fade"
+          // Modal'ın kendisini fade'ler; backdrop'ta element-opacity animasyonu
+          // olmadığı için backdropFilter arkadaki uygulamayı bulanıklaştırabiliyor.
+          ...(Platform.OS === 'web'
+            ? ({ backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' } as any)
+            : {}),
+        }}
       >
         <View
           className="bg-white rounded-3xl border border-black/[0.06] overflow-hidden"

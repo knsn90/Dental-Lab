@@ -42,7 +42,9 @@ export interface ValidationItem {
 /** Aşama-spesifik dosya kategorisi (FilesUploadModal extra group'a yansır). */
 export interface FileCategoryItem {
   label: string;
-  kind:  'image' | 'video' | 'scan' | 'pdf';
+  // 'any' = her dosya türü (görsel + STL/PLY 3D + HTML + belge); önizleme
+  // slotları için — DocumentPicker '*/*' ile açılır, göz ikonuyla gösterilir.
+  kind:  'image' | 'video' | 'scan' | 'pdf' | 'any';
 }
 
 export interface FileCategoryGroup {
@@ -145,7 +147,7 @@ export const STATION_REGISTRY: Record<StationKind, StationDescriptor> = {
         { label: 'Frezeye Gönderilen Tasarım (STL)', kind: 'scan' },
         { label: '3D Yazıcıya Gönderilen Tasarım (STL)', kind: 'scan' },
         { label: 'Metal Döküm Pattern (STL)', kind: 'scan' },
-        { label: 'Tasarım Önizleme', kind: 'image' },
+        { label: 'Tasarım Önizleme', kind: 'any' },
         { label: 'Margin / Kontak Detay', kind: 'image' },
         { label: 'Hekim Onay PDF', kind: 'pdf' },
       ],

@@ -1024,7 +1024,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
 
       {/* Sipariş yazışması modal'ı — sorun olursa hekim/klinikle mesajlaş */}
       <Modal visible={chatOpen} transparent animationType="fade" onRequestClose={() => setChatOpen(false)}>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(10,10,10,0.45)', paddingTop: insets.top }}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(10,14,26,0.52)', paddingTop: insets.top, ...(Platform.OS === 'web' ? ({ backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' } as any) : {}) }}>
           <View style={{ width: '94%', maxWidth: 720, height: '88%', maxHeight: 880, backgroundColor: '#FFFFFF', borderRadius: 24, overflow: 'hidden' }}>
             <ChatDetail
               selectedOrder={{
