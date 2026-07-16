@@ -137,6 +137,25 @@ function Viewer3DModal(props: Viewer3DProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [files]);
 
+  // ── Format ayrımı ────────────────────────────────────────────────
+  // STL ve PLY (ve OBJ) farklı koordinat sistemlerinde olabilir → aynı sahnede
+  // farklı konum/açıda görünürler ve otomatik hizalama güvenilir değil (exocad
+  // dahil). Çözüm: aynı anda TEK format göster; kullanıcı üstteki sekmeden seçer.
+  // Tek format içindeki dosyalar aynı sistemde olduğundan doğru çakışır.
+  type Fmt = 'stl' | 'ply' | 'obj';
+  const formatsPresent = useMemo<Fmt[]>(() => {
+    const s = new Set(files.map(f => f.format));
+    return (['stl', 'ply', 'obj'] as Fmt[]).filter(f => s.has(f));
+  }, [files]);
+  const multiFormat = formatsPresent.length > 1;
+  const [activeFormat, setActiveFormat] = useState<Fmt | null>(null);
+  const effectiveFormat: Fmt | null =
+    activeFormat && formatsPresent.includes(activeFormat) ? activeFormat : (formatsPresent[0] ?? null);
+  const visibleFiles = useMemo(
+    () => (multiFormat && effectiveFormat ? files.filter(f => f.format === effectiveFormat) : files),
+    [files, multiFormat, effectiveFormat],
+  );
+
   const patchLayer = (id: string, patch: Partial<LayerStyle>) => {
     setLayerStyles((prev) => ({
       ...prev,
@@ -263,7 +282,7 @@ function Viewer3DModal(props: Viewer3DProps) {
               <>
                 <ThreeScene
                   ref={sceneRef}
-                  files={files}
+                  files={visibleFiles}
                   layerStyles={layerStyles}
                   bg={T.sceneBg}
                   measureMode={measureMode}
@@ -276,15 +295,52 @@ function Viewer3DModal(props: Viewer3DProps) {
                   autoAlign={autoAlign}
                   onDiagnostics={(id, d) => setDiagnostics(prev => ({ ...prev, [id]: d }))}
                 />
-                {layersOpen && files.length >= 1 && (
+                {layersOpen && visibleFiles.length >= 1 && (
                   <LayerPanel
-                    files={files}
+                    files={visibleFiles}
                     layerStyles={layerStyles}
                     diagnostics={diagnostics}
                     onChange={patchLayer}
                     onSetAllVisible={setAllVisible}
                     onClose={() => setLayersOpen(false)}
                   />
+                )}
+
+                {/* Format sekmesi — STL/PLY ayrı önizleme (üst-orta) */}
+                {multiFormat && (
+                  <View
+                    pointerEvents="box-none"
+                    style={{ position: 'absolute', top: 12, left: 0, right: 0, alignItems: 'center' }}
+                  >
+                    <View style={{
+                      flexDirection: 'row', backgroundColor: T.toolbarBg,
+                      borderRadius: 999, padding: 3, gap: 2,
+                      ...(Platform.OS === 'web' ? { boxShadow: '0 4px 16px rgba(0,0,0,0.20)' } as any : {}),
+                    }}>
+                      {formatsPresent.map((fmt) => {
+                        const active = fmt === effectiveFormat;
+                        const count = files.filter(f => f.format === fmt).length;
+                        return (
+                          <Pressable
+                            key={fmt}
+                            onPress={() => setActiveFormat(fmt)}
+                            style={({ hovered }: any) => ({
+                              paddingHorizontal: 16, paddingVertical: 7, borderRadius: 999,
+                              backgroundColor: active ? T.accent : (hovered ? T.iconBgHover : 'transparent'),
+                              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                            })}
+                          >
+                            <Text style={{
+                              fontSize: 12, fontWeight: '700', letterSpacing: 0.3,
+                              color: active ? '#FFFFFF' : T.headerSub,
+                            }}>
+                              {fmt.toUpperCase()} · {count}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
                 )}
 
                 {/* Faz A: Smile design foto overlay (manuel hizalama) */}

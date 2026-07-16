@@ -21,7 +21,7 @@ import { loadGeometry } from '../lib/loaders';
 import { classifyFile } from '../lib/layerMap';
 import { analyzeOcclusion as computeOcclusion, clearOcclusion as clearOcclusionGeom, type OcclusionResult } from '../lib/occlusion';
 import { createScene, centerGeometry, fitCameraToObject, disposeObject, type SceneRefs } from '../lib/scene';
-import { autoOrient, computeGroupOrientation } from '../lib/orient';
+import { computeGroupOrientation } from '../lib/orient';
 import { analyzeMesh, type MeshDiagnostics } from '../lib/meshDiagnostics';
 import { applyPreset, applyPresetSmooth, type CameraPreset } from '../lib/cameraPresets';
 import { useViewerTheme } from '../lib/viewerTheme';
@@ -278,24 +278,14 @@ export const ThreeScene = React.forwardRef<ThreeSceneHandle, Props>(function Thr
         }
         if (!geometry.attributes.normal) geometry.computeVertexNormals();
         const layer = classifyFile(file.name);
-        // Hizalama stratejisi:
-        //  • autoAlign=false (default) → ham koordinat (exocad davranışı).
-        //    Aynı tarama oturumundan gelen üst/alt/bite zaten okluzyonda hizalı.
-        //  • autoAlign=true → PCA orient + jaw-hint flip (farklı oturumlar için).
-        let size: THREE.Vector3;
-        if (autoAlign) {
-          const jawHint: 'maxilla' | 'mandible' | 'bite' | 'other' =
-            layer.type === 'maxilla' ? 'maxilla'
-            : layer.type === 'mandible' || layer.type === 'antagonist' ? 'mandible'
-            : layer.type === 'bite' ? 'bite'
-            : 'other';
-          size = autoOrient(geometry, jawHint).size;
-        } else {
-          // Ham koordinat — sadece bbox hesapla, taşıma yapma
-          geometry.computeBoundingBox();
-          size = new THREE.Vector3();
-          geometry.boundingBox!.getSize(size);
-        }
+        // Ham koordinat (exocad davranışı) — taşıma/döndürme YOK. Farklı formatlar
+        // (STL/PLY) farklı koordinat sisteminde olabildiği için modal format bazında
+        // ayrılır (bkz. Viewer3DModal formatFilter); tek format içindeki dosyalar
+        // aynı sistemde olduğundan doğru çakışır. Otomatik hizalama denendi ve
+        // ELENDİ — exocad dahil güvenilir çalışmıyor.
+        geometry.computeBoundingBox();
+        const size = new THREE.Vector3();
+        geometry.boundingBox!.getSize(size);
         const style = layerStyles?.[file.id];
         const colorHex = style?.color ?? file.color ?? layer.color;
         const opacity = style?.opacity ?? layer.opacity ?? 1;
@@ -359,6 +349,9 @@ export const ThreeScene = React.forwardRef<ThreeSceneHandle, Props>(function Thr
         mesh.userData.fileId = file.id;
         mesh.userData.layerType = layer.type;
         mesh.userData.layerSize = size; // fit sırasında stack hesabı için
+        // PLY vertex-renkleri / OBJ texture olan mesh'ler GERÇEK renklerini korur;
+        // katman paleti (mono) bunların üstüne yazılmamalı (style-sync guard'ı).
+        mesh.userData.hasOriginalColors = !!texture || hasVertexColors;
 
         group.add(mesh);
         meshesRef.current.push({ fileId: file.id, mesh });
@@ -528,26 +521,11 @@ export const ThreeScene = React.forwardRef<ThreeSceneHandle, Props>(function Thr
           group.quaternion.identity();
         }
 
-        // Mesh konumlandırma:
-        //  • autoAlign=false (default) → ham koordinat. Sadece manuel offsetY uygulanır.
-        //  • autoAlign=true → PCA hizalanmış meshleri maxilla +halfY, mandible -halfY.
+        // Mesh konumlandırma — ham koordinat; sadece manuel offsetY uygulanır.
         for (const entry of meshesRef.current) {
-          let autoY = 0;
-          if (autoAlign) {
-            const type = entry.mesh.userData.layerType as string;
-            const sz = entry.mesh.userData.layerSize as THREE.Vector3;
-            const halfY = sz.y / 2;
-            if (type === 'maxilla') autoY = halfY;
-            else if (type === 'mandible' || type === 'antagonist') autoY = -halfY;
-          }
-          entry.mesh.userData.autoStackY = autoY;
+          entry.mesh.userData.autoStackY = 0;
           const style = layerStyles?.[entry.fileId];
-          if (autoAlign) {
-            entry.mesh.position.set(0, autoY + (style?.offsetY ?? 0), 0);
-          } else {
-            // Ham koordinatta sadece manuel Y offset
-            entry.mesh.position.set(0, style?.offsetY ?? 0, 0);
-          }
+          entry.mesh.position.set(0, style?.offsetY ?? 0, 0);
         }
         // Combined bbox + ÖLÇEK NORMALİZASYONU.
         // Telefon taramaları metre ölçekli olabilir (~0.2 birim); viewer/kamera dental
@@ -602,9 +580,11 @@ export const ThreeScene = React.forwardRef<ThreeSceneHandle, Props>(function Thr
         mat.opacity = style.opacity;
         mat.transparent = style.opacity < 1;
       }
-      if (style?.color) {
+      // Gerçek renkli tarama (PLY vertex-color / OBJ texture) katman paletiyle
+      // EZİLMEZ — kullanıcı renkli taramayı renkli görmek ister. Sadece renksiz
+      // mesh'lere (STL) mono katman rengi uygulanır.
+      if (style?.color && !mesh.userData.hasOriginalColors) {
         mat.color.set(style.color);
-        // PLY vertex-color override — kullanıcı renk seçtiyse vertex color'ı devre dışı bırak
         if (mat.vertexColors) {
           mat.vertexColors = false;
           mat.needsUpdate = true;
