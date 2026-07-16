@@ -845,9 +845,11 @@ export const ThreeScene = React.forwardRef<ThreeSceneHandle, Props>(function Thr
       <div ref={wrapRef} style={(() => {
         const bgHex = '#' + bg.toString(16).padStart(6, '0');
         const isLight = bg > 0x808080;
-        // Warm-gray dental studio bg — radial vignette ile premium hava
+        // Light: preview zemini = aktif panelin bgPage'i (düz, shell ile aynı) +
+        // yalnız kenarlarda algılanamaz bir koyulaşma (model öne çıksın, renk
+        // panel bg'si kalsın). Dark: koyu studio radial.
         const radial = isLight
-          ? `radial-gradient(circle at 50% 38%, #FBF6EC 0%, #EFE7D8 55%, #DCD2BE 100%)`
+          ? `radial-gradient(circle at 50% 42%, rgba(0,0,0,0) 58%, rgba(0,0,0,0.045) 100%)`
           : `radial-gradient(circle at 50% 38%, #25272C 0%, #18191D 60%, #0C0D10 100%)`;
         return {
           position: 'absolute', inset: 0,

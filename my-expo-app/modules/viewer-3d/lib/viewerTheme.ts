@@ -5,7 +5,18 @@
  * Light mode → beyaz kart + aktif panel rengi accent olarak.
  */
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
-import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { usePanelTheme, type PanelThemeKey } from '../../../core/theme/usePanelTheme';
+import { MOBILE_PANEL_THEMES } from '../../../core/theme/mobileDesignTokens';
+
+// Panel key → sayfa zemini (bgPage). Shell/PatternsShell ile birebir aynı renk.
+// usePanelTheme key'leri (clinic/tech) ↔ MOBILE_PANEL_THEMES key'leri (klinik/teknisyen).
+const BG_PAGE_BY_KEY: Record<PanelThemeKey, string> = {
+  lab:    MOBILE_PANEL_THEMES.lab.bgPage,
+  clinic: MOBILE_PANEL_THEMES.klinik.bgPage,
+  exec:   MOBILE_PANEL_THEMES.exec.bgPage,
+  tech:   MOBILE_PANEL_THEMES.teknisyen.bgPage,
+};
+const hexToNum = (hex: string): number => parseInt(hex.replace('#', ''), 16);
 
 export interface ViewerTheme {
   /** Three.js renderer clear color */
@@ -72,8 +83,8 @@ const DARK_THEME = (accent: string): ViewerTheme => ({
   accentSoft: accent + '14',
 });
 
-const LIGHT_THEME = (accent: string): ViewerTheme => ({
-  sceneBg: 0xeee5d4,                                    // warm dental studio gray-cream
+const LIGHT_THEME = (accent: string, sceneBg: number): ViewerTheme => ({
+  sceneBg,                                              // aktif panelin bgPage'i (shell ile aynı)
   headerBg: '#FFFFFF',
   headerTitle: '#0A0A0A',
   headerSub: 'rgba(0,0,0,0.55)',
@@ -105,5 +116,8 @@ export function useViewerTheme(): ViewerTheme {
   const isDark = useThemeModeStore((s) => s.resolvedDark);
   const panelTheme = usePanelTheme();
   const accent = panelTheme.primary;
-  return isDark ? DARK_THEME(accent) : LIGHT_THEME(accent);
+  // Light mode: preview zemini = aktif panelin bgPage'i. Dark mode: 3D viewer
+  // koyu kalır (panel bgPage açık renk, karanlık sahnede yanlış olur).
+  const sceneBg = hexToNum(BG_PAGE_BY_KEY[panelTheme.key] ?? MOBILE_PANEL_THEMES.lab.bgPage);
+  return isDark ? DARK_THEME(accent) : LIGHT_THEME(accent, sceneBg);
 }
