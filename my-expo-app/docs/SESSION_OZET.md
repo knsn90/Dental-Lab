@@ -158,3 +158,85 @@ Açık + koyu modda screenshot ile doğrulandı.
 | Talepler nav/sheet | `app/(station)/_layout.tsx`, `core/layout/PatternsShell.tsx` |
 | Avans migration | `supabase/migrations/20260603120000_advance_requests.sql` |
 | Çıkış modalı | `modules/profile/screens/DoctorProfileMobile.tsx` |
+
+---
+---
+
+# Oturum Özeti — Hekim RLS + Ölü Supabase URL Nüksü
+
+> Tarih: 2026-07-28 · Proje: Siman (my-expo-app) · Odak: Hekim sipariş akışı RLS + prod bağlantı kurtarma
+
+## 1. Metro-cache "ölü Supabase URL" hatası TEKRAR yaşandı (kritik)
+
+**Sorun:** Canlı (siman.app) uygulama yine "Uygulama yanlış Supabase projesine bağlı
+(eski URL)" kırmızı banner'ı verip boş açıldı (bkz. yukarıdaki 2026-06-03 kaydı — aynı hata).
+
+**Kök neden:** Bu sefer suçlu Vercel env veya yerel `.env` DEĞİLdi — ikisi de doğruydu
+(`kjwjxqfdsxkxgcgophdy`). Suçlu yine **Metro transform cache**: eski bir "ölü-env"
+build'inden `lib/supabase.ts` modülü cache'lenmiş; doğru env'e rağmen bundle'a ölü URL
+(`fukaxeppklvtegnjuwih`) gömülüyordu. `rm -rf dist .vercel/output` Metro cache'ini
+(`.expo`, `node_modules/.cache`, `$TMPDIR/metro-*`) temizlemiyor.
+
+**Çözüm (uygulandı + canlı):**
+- Metro cache elle temizlendi → temiz `vercel build` → bundle grep ile doğrulandı
+  (`n="https://kjwjxqfdsxkxgcgophdy.supabase.co"`, ölü ref yalnız guard dizisinde) →
+  `vercel deploy --prebuilt --prod` ile production'a alındı. Prod ayağa kalktı.
+
+**KALICI KORUMA (tekrarı imkânsız kılmak için — `scripts/vercel-build.sh`):**
+1. Her prod build öncesi Metro/Expo cache'i sıfırlanır
+   (`rm -rf .expo node_modules/.cache $TMPDIR/metro-*`). Bayat cache asla eski env gömemez.
+2. Build sonrası **bekçi grep**: `dist/`'te `https://fukaxeppklvtegnjuwih` bulunursa
+   build `exit 1` ile DURUR — kırık bundle production'a asla çıkamaz. (Guard'ın kendi
+   `DEAD_SUPABASE_REFS` dizisi tırnak içinde/`https://`siz olduğu için tetiklemez.)
+
+## 2. Ölü Supabase artıkları temizlendi
+
+- **`copy-storage-tmp.mjs` silindi** (git-tracked) — tek seferlik Tokyo→Frankfurt storage
+  taşıma scripti; işini bitirmişti + **canlı projenin service_role anahtarını sızdırıyordu.**
+- **`supabase/.temp/project-ref`** ölü ref'ten canlıya (`kjwjxqfdsxkxgcgophdy`) çevrildi;
+  `supabase/.temp/pooler-url` (ölü host) silindi (CLI yeniden üretir).
+- Kalan ölü ref'ler kasıtlı: bu doküman (tarihsel), `.claude/settings.local.json`
+  (yerel izin listesi) ve iki bekçi (`vercel-build.sh` + `lib/supabase.ts` — tespit için gerekli).
+
+## 3. Hekim sipariş akışı RLS düzeltmesi (doctor_id polimorfizmi)
+
+**Sorun:** Hekim iş girerken `new row violates row-level security policy for table
+"work_orders"`; ayrıca açtığı siparişi listede/dosyalarda göremiyordu.
+
+**Kök neden:** `work_orders.doctor_id` **polimorfik** — NewOrderScreen `form.doctor_id`'yi
+(hekimin `auth.uid()`'si) `doctors` tablosu satırına çevirir. Yani TÜM siparişlerde
+`doctor_id = doctors.id` (profil id DEĞİL). Hekim-kapsamlı RLS politikaları
+`doctor_id = auth.uid()` varsayıyordu → eşleşmiyordu. **En kritik tuzak:**
+`.insert().select()` RETURNING dönen satırı SELECT USING politikasına tabi tutar →
+INSERT geçse bile okuma reddedilince "violates RLS" + rollback.
+
+**Çözüm (DB, canlı+doğrulandı):** İki SECURITY DEFINER yardımcı
+(`doctor_owns_order_doctor`, `is_my_doctor_order`); 12 politika bunlara geçirildi
+(work_orders INSERT/SELECT/UPDATE, work_order_photos, stage_photos, order_messages,
+approvals, provas, status_history, qr_links).
+**Çözüm (istemci):** `fetchWorkOrdersForDoctor`'daki hatalı `.eq('doctor_id', ...)`
+filtresi kaldırıldı (RLS zaten scope'luyor).
+
+## 4. Bu oturumda ayrıca
+
+- OCR (Opus 5 `temperature` deprecated kaldırıldı) + paper-order storage upload `apikey` fix.
+- Hekim/personel hesap oluşturma `signUp` → `admin-create-user` (confirmation-email hatası çözüldü).
+- "Merhaba Dr. Dr." → isim önekindeki tekrarlı "Dr." temizlendi.
+- Kurye harita düzeltmeleri (özel ikon, ETA hesabı, gelen-sarf yönü, Google Places adres autocomplete).
+- WhatsApp giden bildirim Meta şablonlarına bağlandı; Twilio yolu kaldırıldı.
+- BanaBiKurye 56198 gönderisi #LAB-2026-0123'e bağlandı.
+
+## 5. Açık kalan
+
+- **WhatsApp ile rehberli manuel sipariş alma** (anahtar kelime + buton girişi, bekleyen
+  kutusuna düşme) — yaklaşım onaylandı, henüz başlanmadı.
+
+## Hızlı Referans — Bu Oturumda Dokunulan Önemli Dosyalar
+
+| Alan | Dosya |
+|---|---|
+| Build cache/URL bekçileri | `scripts/vercel-build.sh` |
+| Runtime ölü-URL guard | `lib/supabase.ts` |
+| Hekim RLS yardımcıları | DB (execute_sql, migration dosyası yok) |
+| Sipariş listesi filtresi | `modules/orders/api.ts` |
+| Silinen sızdıran script | `copy-storage-tmp.mjs` (silindi) |

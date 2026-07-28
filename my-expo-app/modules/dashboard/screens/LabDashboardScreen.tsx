@@ -13,21 +13,23 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { localeTag, isRTL } from '../../../core/i18n';
 import {
-  View, Text, ScrollView, Pressable,
+  View, Text, ScrollView, Pressable, Image,
   useWindowDimensions, RefreshControl,
   Animated, Platform, Easing,
 } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuthStore } from '../../../core/store/authStore';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 import {
   Plus, ClipboardList, TrendingUp, AlertTriangle, Package,
   Calendar, ShieldCheck, Inbox, Activity, CheckCircle,
   ChevronRight, ArrowUpRight, ArrowRight, Clock, Trophy,
-  Check, Clipboard, Box, Settings, ListChecks,
+  Check, Clipboard, Box, Settings, ListChecks, CornerDownRight,
+  Receipt, Wallet,
 } from 'lucide-react-native';
+import { formatMoney, type Currency } from '../../../core/money/currency';
 
 // DS tokens — single source of truth for all design values
 import { DS } from '../../../core/theme/dsTokens';
@@ -41,6 +43,9 @@ import { useDashboardCache } from '../../../core/store/dashboardCacheStore';
 import { useUiOverlayStore } from '../../../core/store/uiOverlayStore';
 import { useNewOrderModalStore } from '../../../core/store/newOrderModalStore';
 import { FaceScanQuickAction } from '../../orders/components/FaceScanQuickAction';
+import { resolveOrderStatus } from '../components/RecentOrdersMobile';
+import { mapRevisionCases, flattenRevisionCases } from '../../orders/revisionGroups';
+import { useRevisionParents } from '../../orders/hooks/useRevisionParents';
 
 // Display font — Patterns: Inter Tight Light (300), tight tracking
 const SERIF = {
@@ -221,8 +226,13 @@ interface TechStat    { technician_name: string; approval_rate: number; avg_work
 
 const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
   alindi:          { label: 'Alındı',          color: DS.ink[500], bg: 'rgba(0,0,0,0.05)' },
+  atama_bekleniyor:{ label: 'Atama Bekliyor',  color: DS.ink[500],     bg: 'rgba(0,0,0,0.05)' },
+  asamada:         { label: 'Üretimde',        color: '#9C5E0E',       bg: 'rgba(232,155,42,0.15)' },
   uretimde:        { label: 'Üretimde',        color: '#9C5E0E',       bg: 'rgba(232,155,42,0.15)' },
   kalite_kontrol:  { label: 'Kalite Kontrol',  color: '#1F5689',       bg: 'rgba(74,143,201,0.12)' },
+  kurye_bekleniyor:{ label: 'Kurye Bekleniyor',color: '#1F5689',       bg: 'rgba(74,143,201,0.12)' },
+  kuryede:         { label: 'Kuryede',         color: '#1F5689',       bg: 'rgba(74,143,201,0.12)' },
+  iptal:           { label: 'İptal',           color: '#B91C1C',       bg: 'rgba(220,38,38,0.10)' },
   teslimata_hazir: { label: 'Kuryeye Teslim Edildi', color: '#1F6B47',       bg: 'rgba(45,154,107,0.12)' },
   teslim_edildi:   { label: 'Teslim Edildi',   color: DS.ink[400],bg: 'rgba(0,0,0,0.04)' },
 };
@@ -607,9 +617,11 @@ function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDeskto
   );
 }
 
-/** Status badge with dot */
-function StatusBadge({ status }: { status: string }) {
-  const c = STATUS_CFG[status] ?? { label: status, color: DS.ink[500], bg: 'rgba(0,0,0,0.05)' };
+/** Status badge with dot. hold_status='on_hold' → Siparişler sayfasıyla aynı "Duraklatıldı" (warning). */
+function StatusBadge({ status, holdStatus }: { status: string; holdStatus?: string | null }) {
+  const c = holdStatus === 'on_hold'
+    ? { label: 'Duraklatıldı', color: '#9C5E0E', bg: 'rgba(232,155,42,0.15)' }
+    : (STATUS_CFG[status] ?? { label: status, color: DS.ink[500], bg: 'rgba(0,0,0,0.05)' });
   return (
     <View
       className="flex-row items-center self-start rounded-full"
@@ -869,7 +881,7 @@ function TasksCard({
       flex: 1, gap: 0,
     }}>
       <View className="flex-row items-center justify-between" style={{ marginBottom: 14 }}>
-        <Text style={{ fontSize: 14, fontWeight: '500', color: '#FFF' }}>Bugünkü görevler</Text>
+        <Text style={{ fontSize: 14, fontWeight: '500', color: '#FFF' }}>Bekleyen aksiyonlar</Text>
         <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{doneCount}/{tasks.length}</Text>
       </View>
       <View style={{ gap: 10, flex: 1 }}>
@@ -1063,6 +1075,10 @@ export function LabDashboardScreen() {
   } | null>(cache?.stockSummary ?? null);
   // Planlama bekleyen siparişler — yeni gelen, henüz triajı yapılmamış
   const [triagePending, setTriagePending] = useState<any[]>(cache?.triagePending ?? []);
+  // Görev kartını besleyen finans aksiyonları (faturasız teslimat + vadesi geçmiş fatura)
+  const [financeActions, setFinanceActions] = useState<{ unbilled: any[]; overdueInv: any[] }>({
+    unbilled: [], overdueInv: [],
+  });
 
   const isManager  = profile?.role === 'manager' || profile?.user_type === 'admin';
   const today      = todayStr();
@@ -1105,7 +1121,10 @@ export function LabDashboardScreen() {
         // PostgREST'te çözülemez ve sorgu hatayla döner. Dashboard için sadece
         // doctor_id'yi çekiyoruz; gerekirse doctor adını sonradan ayrı sorgu ile
         // resolve ediyoruz (latestOrder kartı patient_name'e geri düşer).
-        .select('id, order_number, work_type, status, delivery_date, created_at, patient_name, doctor_id, tooth_numbers')
+        // revision_no ŞART: revisionGroups zincirin kökünü/en güncelini bununla
+        // sıralar. Eksikse hepsi 0 sayılır ve ORİJİNAL/REVİZYON etiketleri ters
+        // düşer (revizyon "orijinal" görünür).
+        .select('id, order_number, work_type, status, hold_status, delivery_date, created_at, patient_name, doctor_id, tooth_numbers, revision_of_id, revision_no')
         .gte('created_at', sixMonthsAgo.toISOString())
         .order('created_at', { ascending: false }),
       supabase
@@ -1140,18 +1159,32 @@ export function LabDashboardScreen() {
         data.slice(0, 5).map((o: any) => o.doctor_id).filter(Boolean),
       ));
       const doctorNameMap = new Map<string, string>();
+      const doctorClinicMap = new Map<string, string>();
+      const clinicLogoMap   = new Map<string, string>();
       if (docIds.length > 0) {
         const [{ data: profs }, { data: docs }] = await Promise.all([
-          supabase.from('profiles').select('id, full_name').in('id', docIds),
-          supabase.from('doctors').select('id, full_name').in('id', docIds),
+          supabase.from('profiles').select('id, full_name, clinic_id').in('id', docIds),
+          supabase.from('doctors').select('id, full_name, clinic_id').in('id', docIds),
         ]);
         (profs ?? []).forEach((p: any) => { if (p.full_name) doctorNameMap.set(p.id, p.full_name); });
         (docs  ?? []).forEach((d: any) => { if (!doctorNameMap.has(d.id) && d.full_name) doctorNameMap.set(d.id, d.full_name); });
+        // Klinik logosu: listede hekim baş harfleri yerine hangi klinikten
+        // geldiğini gösterir (lab/admin panelleri).
+        (profs ?? []).forEach((p: any) => { if (p.clinic_id) doctorClinicMap.set(p.id, p.clinic_id); });
+        (docs  ?? []).forEach((d: any) => { if (d.clinic_id && !doctorClinicMap.has(d.id)) doctorClinicMap.set(d.id, d.clinic_id); });
+        const clinicIds = Array.from(new Set(Array.from(doctorClinicMap.values())));
+        if (clinicIds.length) {
+          const { data: cls } = await supabase.from('clinics').select('id, logo_url').in('id', clinicIds);
+          (cls ?? []).forEach((c: any) => { if (c.logo_url) clinicLogoMap.set(c.id, c.logo_url); });
+        }
       }
       const recent5 = data.slice(0, 5).map((o: any) => ({
         ...o,
         doctor: o.doctor_id && doctorNameMap.has(o.doctor_id)
           ? { full_name: doctorNameMap.get(o.doctor_id)! }
+          : null,
+        clinic_logo_url: o.doctor_id
+          ? (clinicLogoMap.get(doctorClinicMap.get(o.doctor_id) ?? '') ?? null)
           : null,
       }));
       setRecentOrders(recent5);
@@ -1275,16 +1308,51 @@ export function LabDashboardScreen() {
     } catch {}
   }, [profile?.lab_id, profile?.id]);
 
+  // Finans aksiyonları — görev kartını besler (faturası kesilmemiş teslimat +
+  // vadesi geçmiş fatura). Hafif tutulur: yalnız gösterilecek alanlar, limit 5.
+  const loadFinanceActions = useCallback(async () => {
+    try {
+      const [unbilledRes, overdueRes] = await Promise.all([
+        supabase
+          .from('v_unbilled_work_orders')
+          .select('work_order_id, order_number, patient_name, doctor_name, delivered_at')
+          .order('delivered_at', { ascending: false, nullsFirst: false })
+          .limit(5),
+        supabase
+          .from('invoices')
+          .select('id, invoice_number, total, paid_amount, due_date, currency')
+          .lt('due_date', today)
+          .not('status', 'in', '("odendi","iptal","taslak")')  // taslak = henüz kesilmemiş fatura
+          .order('due_date', { ascending: true })
+          .limit(5),
+      ]);
+      setFinanceActions({
+        unbilled:   (unbilledRes.data as any[]) ?? [],
+        overdueInv: (overdueRes.data as any[]) ?? [],
+      });
+    } catch { /* view/tablo yoksa kart sessizce eski haliyle çalışır */ }
+  }, [today]);
+
   const handleRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([refetch(), loadProvas(), loadExtra(), loadAnalytics(), loadPipeline(), loadStockSummary()]);
+    await Promise.all([refetch(), loadProvas(), loadExtra(), loadAnalytics(), loadPipeline(), loadStockSummary(), loadFinanceActions()]);
     setRefreshing(false);
   };
 
   useEffect(() => {
-    // 5 bağımsız loader paralel — eskiden seri başlatılıyordu (~2sn → ~400ms).
-    Promise.all([loadProvas(), loadExtra(), loadAnalytics(), loadPipeline(), loadStockSummary()]);
-  }, [loadProvas, loadExtra, loadAnalytics, loadPipeline, loadStockSummary]);
+    // Bağımsız loader'lar paralel — eskiden seri başlatılıyordu (~2sn → ~400ms).
+    Promise.all([loadProvas(), loadExtra(), loadAnalytics(), loadPipeline(), loadStockSummary(), loadFinanceActions()]);
+  }, [loadProvas, loadExtra, loadAnalytics, loadPipeline, loadStockSummary, loadFinanceActions]);
+
+  // Ekrana her GERİ DÖNÜŞTE tazele — sekme mount'lu kaldığından (bottom-tab / stack)
+  // mount effect yeniden çalışmaz; planlama yapıp dashboard'a dönünce "planlama
+  // bekliyor" sayacı (triagePending) ile pipeline sayaçları bayat kalıyordu.
+  useFocusEffect(
+    useCallback(() => {
+      Promise.all([refetch(), loadExtra(), loadPipeline(), loadProvas()]);
+      // cleanup gerekmez — fetch'ler idempotent, unmount'ta state guard'lı.
+    }, [refetch, loadExtra, loadPipeline, loadProvas]),
+  );
 
   // Local state → global cache (debounced; navigation sonrası anında render)
   useEffect(() => {
@@ -1314,35 +1382,96 @@ export function LabDashboardScreen() {
   // Latest active order for "Aktif Vaka" card
   const latestOrder = recentOrders.find(o => o.status !== 'teslim_edildi') ?? recentOrders[0];
 
-  // Tasks for dark card
+  // Revizyon alt-listesi: penceredeki revizyonun ebeveyni pencere dışındaysa
+  // ek sorguyla tamamlanır (hook koşulsuz çağrılmalı — erken return'lerden önce).
+  const revParents = useRevisionParents(recentOrders);
+  const recentWithParents = revParents.length ? [...recentOrders, ...revParents] : recentOrders;
+  // Masaüstü tablo için vaka sırası (anchor + altında eski revizyonlar)
+  const recentRows = flattenRevisionCases(recentWithParents);
+
+  // Görev/aksiyon kartı — yalnız sipariş değil, iş akışındaki TÜM bekleyen
+  // aksiyonlar tek yerde: planlama · gecikme · teslim · prova · faturalama ·
+  // tahsilat · kritik stok. Sıra = aciliyet sırası (yukarıdan aşağı).
+  // UX: 1. satır = YAPILACAK İŞ (fiil önde), 2. satır = kararı veren bağlam
+  // (kaç gün gecikti, ne kadar kaldı). Kuru "gecikmiş / tahsilat" etiketleri
+  // kullanıcıya ne yapacağını söylemiyordu.
+  const shortNo = (no?: string | null) => (no ? `#${no}` : 'sipariş');
+  const daysLate = (d?: string | null) => {
+    if (!d) return null;
+    const diff = Math.floor((Date.now() - new Date(`${d}T00:00:00`).getTime()) / 86400000);
+    return diff > 0 ? diff : null;
+  };
   const taskItems = [
-    ...overdueOrders.slice(0, 2).map(o => ({
-      icon: Clock as React.FC<any>,
-      label: `${(o.doctor as any)?.full_name ?? 'Sipariş'} · gecikmiş`,
-      time: fmtDate(o.delivery_date),
+    ...(triagePending.length > 0 ? [{
+      icon: ClipboardList as React.FC<any>,
+      label: `Planlamayı tamamla · ${triagePending.length} sipariş`,
+      time: 'Aşama ataması bekliyor',
       done: false,
-      onPress: () => router.push(`/(lab)/order/${o.id}` as any),
-    })),
+      onPress: () => router.push('/(lab)/all-orders' as any),
+    }] : []),
+    ...overdueOrders.slice(0, 2).map(o => {
+      const late = daysLate(o.delivery_date);
+      return {
+        icon: Clock as React.FC<any>,
+        label: `Gecikmiş teslimat · ${shortNo(o.order_number)}`,
+        time: late ? `${late} gün gecikti · ${fmtDate(o.delivery_date)}` : fmtDate(o.delivery_date),
+        done: false,
+        onPress: () => router.push(`/(lab)/order/${o.id}` as any),
+      };
+    }),
     ...todayDeliverable.slice(0, 2).map(o => ({
       icon: Package as React.FC<any>,
-      label: `${(o.doctor as any)?.full_name ?? 'Sipariş'} · teslim`,
-      time: 'Bugün',
+      label: `Bugün teslim et · ${shortNo(o.order_number)}`,
+      time: (o as any).patient_name ?? 'Teslim tarihi bugün',
       done: false,
       onPress: () => router.push(`/(lab)/order/${o.id}` as any),
     })),
     ...provas.slice(0, 2).map(pv => ({
       icon: Calendar as React.FC<any>,
-      label: `${pv.work_order?.order_number ?? ''} · prova`,
+      label: `Prova randevusu · ${shortNo(pv.work_order?.order_number)}`,
       time: pv.scheduled_date ? fmtDate(pv.scheduled_date) : 'Bugün',
       done: pv.status === 'completed',
       onPress: pv.work_order ? () => router.push(`/(lab)/order/${pv.work_order!.id}` as any) : undefined,
     })),
-  ].slice(0, 5);
+    // Teslim edildi ama faturası kesilmedi → doğrudan sipariş detayına (fatura kes)
+    ...financeActions.unbilled.slice(0, 2).map((u: any) => ({
+      icon: Receipt as React.FC<any>,
+      label: `Fatura kes · ${shortNo(u.order_number)}`,
+      time: u.delivered_at
+        ? `${fmtDate(String(u.delivered_at).slice(0, 10))} tarihinde teslim edildi`
+        : 'Teslim edildi, faturası yok',
+      done: false,
+      onPress: () => router.push(`/(lab)/order/${u.work_order_id}` as any),
+    })),
+    // Vadesi geçmiş fatura → tahsilat
+    ...financeActions.overdueInv.slice(0, 2).map((inv: any) => {
+      const remaining = formatMoney(
+        (Number(inv.total) || 0) - (Number(inv.paid_amount) || 0),
+        (inv.currency ?? 'TRY') as Currency,
+        { fractionDigits: 0 },
+      );
+      const late = daysLate(inv.due_date);
+      return {
+        icon: Wallet as React.FC<any>,
+        label: `Tahsilat yap · ${inv.invoice_number ?? 'fatura'}`,
+        time: late ? `${remaining} kaldı · ${late} gün vadesi geçti` : `${remaining} kaldı`,
+        done: false,
+        onPress: () => router.push(`/(lab)/invoice/${inv.id}` as any),
+      };
+    }),
+    ...((stockSummary?.lowCount ?? 0) > 0 ? [{
+      icon: AlertTriangle as React.FC<any>,
+      label: `Stok siparişi ver · ${stockSummary!.lowCount} kalem`,
+      time: 'Kritik seviyenin altında',
+      done: false,
+      onPress: () => router.push('/(lab)/stock' as any),
+    }] : []),
+  ].slice(0, 7);
 
   // If no tasks, add placeholders
   if (taskItems.length === 0) {
     taskItems.push(
-      { icon: CheckCircle as React.FC<any>, label: 'Bekleyen görev yok', time: '', done: true, onPress: undefined },
+      { icon: CheckCircle as React.FC<any>, label: 'Bekleyen aksiyon yok', time: '', done: true, onPress: undefined },
     );
   }
 
@@ -1419,6 +1548,29 @@ export function LabDashboardScreen() {
       remainLabel: 'Bugün',
     }));
 
+    // Son Siparişler — mobil kart listesi için şekillendir (durum/renk STATUS_CFG'den)
+    // Vaka grupları: her satır bir vaka, eski revizyonlar altında alt-liste olur.
+    // Gruplama slice'tan ÖNCE yapılır ki 6 satır 6 VAKA olsun (aynı vakanın iki
+    // üyesi iki satır yiyip listeyi kısaltmasın).
+    const toRecentItem = (o: any) => {
+      const st = resolveOrderStatus(o.status, o.hold_status);
+      const isOverdue = !!o.delivery_date && o.delivery_date < today && o.status !== 'teslim_edildi';
+      const drName = (o.doctor as any)?.full_name ?? '—';
+      return {
+        id: String(o.id),
+        no: String(o.order_number ?? ''),
+        title: drName,
+        initials: initials(drName),
+        workType: o.work_type || '—',
+        statusLabel: st.label,
+        statusColor: st.color,
+        statusBg: st.bg,
+        delivery: o.delivery_date ? fmtDate(o.delivery_date) : '',
+        overdue: isOverdue,
+      };
+    };
+    const recentForMobile = mapRevisionCases(recentWithParents, toRecentItem).slice(0, 6);
+
     return (
       <>
         <LabMobileDashboard
@@ -1436,6 +1588,7 @@ export function LabDashboardScreen() {
           weekRange={weekRange}
           weekTotal={weekBars.reduce((a, b) => a + b, 0)}
           delayed={delayedItems}
+          recentOrders={recentForMobile}
           onNewOrder={() => useNewOrderModalStore.getState().setOpen(true)}
           onScan={() => require('../../../core/store/scanStore').useScanStore.getState().setOpen(true)}
           onApprovals={() => router.push('/(lab)/approvals' as any)}
@@ -1445,6 +1598,8 @@ export function LabDashboardScreen() {
             const found = delayedItems.find((x: any) => x.id === id);
             if (found) router.push(`/(lab)/order/${(found as any)._id}` as any);
           }}
+          onOpenOrderById={(dbId: string) => router.push(`/(lab)/order/${dbId}` as any)}
+          onAllOrders={() => router.push('/(lab)/all-orders' as any)}
           refreshing={refreshing || loading}
           onRefresh={handleRefresh}
         />
@@ -1536,11 +1691,11 @@ export function LabDashboardScreen() {
             <View style={{ flex: 1 }}>
               <View className="flex-row items-center" style={{ gap: 6, flexWrap: 'wrap' }}>
                 <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: INK }} />
-                <Text style={{ fontSize: 9, fontWeight: '600', color: INK, letterSpacing: 0.5, textTransform: 'uppercase', opacity: 0.65 }}>Yeni</Text>
+                <Text style={{ fontSize: 9, fontWeight: '700', color: INK, letterSpacing: 0.7, textTransform: 'uppercase', opacity: 0.75 }}>Yeni iş</Text>
                 <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.5, lineHeight: 24, color: INK, marginLeft: 4 }}>
                   {triagePending.length}
                 </Text>
-                <Text style={{ fontSize: 13, color: INK, marginLeft: 2, opacity: 0.8 }}>planlama bekliyor</Text>
+                <Text style={{ fontSize: 13, color: INK, marginLeft: 2, opacity: 0.8 }}>sipariş geldi — planlamayı başlat</Text>
               </View>
             </View>
             <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.10)', alignItems: 'center', justifyContent: 'center' }}>
@@ -1806,9 +1961,10 @@ export function LabDashboardScreen() {
 
         {recentOrders.length === 0
           ? <Text className="p-6 text-center" style={{ fontSize: 13, color: DS.ink[400] }}>Yükleniyor...</Text>
-          : recentOrders.map((order, idx) => {
-              const overdue = order.delivery_date < today && order.status !== 'teslim_edildi';
-              const isLast  = idx === recentOrders.length - 1;
+          : recentRows.map((order: any, idx: number) => {
+              const onHold  = (order as any).hold_status === 'on_hold';
+              const overdue = order.delivery_date < today && order.status !== 'teslim_edildi' && !onHold;
+              const isLast  = idx === recentRows.length - 1;
               const drName  = (order.doctor as any)?.full_name ?? '--';
               return (
                 <Pressable
@@ -1829,21 +1985,44 @@ export function LabDashboardScreen() {
                   onMouseEnter={() => setHovered(order.id)}
                   onMouseLeave={() => setHovered(null)}
                 >
-                  <Text style={{ flex: 1.2, fontSize: 12, fontWeight: '800', color: P }} numberOfLines={1}>#{order.order_number}</Text>
+                  {/* Vaka grubu: anchor üstte, eski üyeler altında girintili + ok
+                      (siparişler listesiyle aynı dil — flattenRevisionCases bayrakları) */}
+                  <View style={{ flex: 1.2, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 4, paddingLeft: (order as any).__revChild ? 14 : 0 }}>
+                    {(order as any).__revChild && (
+                      <CornerDownRight size={12} color="#9C5E0E" strokeWidth={2.2} style={{ flexShrink: 0 }} />
+                    )}
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: P }} numberOfLines={1}>#{order.order_number}</Text>
+                      {(order as any).__revChild ? (
+                        <Text style={{ fontSize: 8.5, fontWeight: '700', color: '#9C5E0E', letterSpacing: 0.4 }}>REVİZYON</Text>
+                      ) : (order as any).__revParent ? (
+                        <Text style={{ fontSize: 8.5, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.4 }}>ORİJİNAL</Text>
+                      ) : null}
+                    </View>
+                  </View>
                   <View className="flex-row items-center" style={{ flex: 2, gap: 8 }}>
+                    {/* Klinik logosu varsa o, yoksa hekim baş harfleri */}
                     <View
                       className="items-center justify-center rounded-full"
-                      style={{ width: 28, height: 28, backgroundColor: hexA(P, 0.1), borderWidth: 1, borderColor: hexA(P, 0.15) }}
+                      style={{ width: 28, height: 28, overflow: 'hidden',
+                        backgroundColor: (order as any).clinic_logo_url ? '#FFFFFF' : hexA(P, 0.1),
+                        borderWidth: 1, borderColor: (order as any).clinic_logo_url ? 'rgba(0,0,0,0.08)' : hexA(P, 0.15) }}
                     >
-                      <Text style={{ fontSize: 9, fontWeight: '800', color: P }}>{initials(drName)}</Text>
+                      {(order as any).clinic_logo_url ? (
+                        <Image source={{ uri: (order as any).clinic_logo_url }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                      ) : (
+                        <Text style={{ fontSize: 9, fontWeight: '800', color: P }}>{initials(drName)}</Text>
+                      )}
                     </View>
                     <Text style={{ fontSize: 13, fontWeight: '600', color: INK }} numberOfLines={1}>{drName}</Text>
                   </View>
                   {isDesktop && (
-                    <Text style={{ flex: 2, fontSize: 11, color: DS.ink[500] }} numberOfLines={1}>{order.work_type || '--'}</Text>
+                    <Text style={{ flex: 2, fontSize: 11, color: DS.ink[500] }} numberOfLines={1}>{(order as any).__revChild && (
+                      <Text style={{ fontWeight: '700', color: '#9C5E0E' }}>Revizyon - </Text>
+                    )}{order.work_type || '--'}</Text>
                   )}
                   <View style={{ flex: 1.4 }}>
-                    <StatusBadge status={order.status} />
+                    <StatusBadge status={order.status} holdStatus={(order as any).hold_status} />
                   </View>
                   {isDesktop && (
                     <Text style={{
@@ -1886,7 +2065,7 @@ export function LabDashboardScreen() {
 
             <View className="rounded-xl" style={{ flex: 1, padding: 12, gap: 4, backgroundColor: DS.ink[50], borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)' }}>
               <Text style={{ fontSize: 18, fontWeight: '800', color: INK, letterSpacing: -0.4 }}>
-                {stockSummary.materialCostMtd.toLocaleString('tr-TR')} ₺
+                {(Number(stockSummary.materialCostMtd) || 0).toLocaleString('tr-TR')} ₺
               </Text>
               <Text style={{ fontSize: 11, fontWeight: '600', color: DS.ink[500] }}>Materyal Maliyeti</Text>
             </View>
@@ -1897,7 +2076,7 @@ export function LabDashboardScreen() {
               borderWidth: 1, borderColor: stockSummary.wasteCostMtd > 0 ? 'rgba(217,75,75,0.2)' : 'rgba(0,0,0,0.04)',
             }}>
               <Text style={{ fontSize: 18, fontWeight: '800', letterSpacing: -0.4, color: stockSummary.wasteCostMtd > 0 ? '#9C2E2E' : INK }}>
-                {stockSummary.wasteCostMtd > 0 ? '-' : ''}{stockSummary.wasteCostMtd.toLocaleString('tr-TR')} ₺
+                {stockSummary.wasteCostMtd > 0 ? '-' : ''}{(Number(stockSummary.wasteCostMtd) || 0).toLocaleString('tr-TR')} ₺
               </Text>
               <Text style={{ fontSize: 11, fontWeight: '600', color: DS.ink[500] }}>Fire Kaybı</Text>
             </View>

@@ -11,23 +11,28 @@ import { localeTag } from '../../../core/i18n';
  *     Tur 4: Action handlers + permissions + edge cases
  */
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { View, Text, ScrollView, Pressable, Platform, Modal, useWindowDimensions, Image, ActivityIndicator, TextInput } from 'react-native';
+import { View, Text, ScrollView, Pressable, Platform, Modal, useWindowDimensions, Image, ActivityIndicator, TextInput, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter, useSegments } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../../core/store/authStore';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 import { supabase } from '../../../core/api/supabase';
+import { getSignedUrls } from '../../../lib/photos';
 import { useOrderDetail } from '../hooks/useOrderDetail';
 import { SupportButton } from '../../support/components/SupportButton';
 import { useOrderStages } from '../hooks/useOrderStages';
 import { LivingToothChart } from '../components/LivingToothChart';
 import { LinearProgressX, PercentRingX, StepsTimelineX } from '../../../core/ui/ProgressX';
-import { Bell, Printer, Check, ArrowUpRight, ChevronRight, Phone, MapPin, Download, MessageSquare, FileText, Image as ImageIcon, File as FileIcon, QrCode, RotateCcw, UserCheck, Upload, AlertTriangle, CircleCheck, Circle, Clock, ChevronDown, ChevronUp, ListChecks, Play, Truck, Eye, Trash2, Plus, SkipForward, Pause } from 'lucide-react-native';
+import { Bell, Printer, Check, ArrowUpRight, ChevronRight, Phone, MapPin, Download, MessageSquare, FileText, Image as ImageIcon, File as FileIcon, RotateCcw, UserCheck, Upload, AlertTriangle, CircleCheck, Circle, Clock, ChevronDown, ChevronUp, ListChecks, Play, Truck, Eye, Trash2, Plus, SkipForward, Pause, Layers, CornerUpLeft } from 'lucide-react-native';
 
 // Lazy viewer-3d (three.js ayrı chunk) — tek paylaşılan retry'lı lazy instance.
 import { Viewer3DModalLazy as Viewer3DModal } from '../../viewer-3d/Viewer3DLazy';
-import { unzipToViewer, isArchiveExt } from '../fileArchive';
+import { unzipToViewer, unzipToViewerNative, isArchiveExt } from '../fileArchive';
 import { holdOrder, resumeOrder, HOLD_CATEGORIES, holdCategoryLabel, holdDays } from '../holdApi';
+
+// HTML tasarım (exocad web viewer) native önizleme — sadece native'de WebView yükle
+// (web'de iframe kullanılır, require çağrılmaz → web bundle'ı etkilenmez).
+const HtmlWebView: any = Platform.OS !== 'web' ? require('react-native-webview').WebView : null;
 
 function is3DFileExt(path: string): 'stl' | 'ply' | 'obj' | null {
   const ext = path.toLowerCase().split('.').pop();
@@ -64,11 +69,17 @@ import { STATUS_CONFIG, getNextStatus, isOrderOverdue, OP_CATEGORY } from '../co
 import { getOrderStageLabel } from '../utils/currentStage';
 import { titleCaseTR } from '../../../core/utils/textCase';
 import { confirmAsync } from '../../../core/util/confirm';
+import { openFileUrl } from '../../../core/util/openFile';
 import { MaterialConfirmModal } from '../components/MaterialConfirmModal';
 import { fetchStageMaterialContext, confirmStageMaterials } from '../api';
-import { advanceOrderStatus, approveTriage, forceActivateStage, revertStage, updateDeliveryStatus, addOrderStage, removeOrderStage, requestDesignApproval, adminCompleteStage, adminSkipStage, adminActivateStage } from '../api';
+import { advanceOrderStatus, forceActivateStage, revertStage, updateDeliveryStatus, addOrderStage, removeOrderStage, requestDesignApproval, adminCompleteStage, adminSkipStage, adminActivateStage, fetchRevisionLinks, type RevisionLink } from '../api';
+import { OriginFillButton, OriginFillPressable } from '../../../core/ui/OriginFillButton';
+import { RevisionModal } from '../components/RevisionModal';
 import { AddStageModal } from '../components/AddStageModal';
 import { DeliveryModal } from '../components/DeliveryModal';
+import { DeliveryFeeModal } from '../components/DeliveryFeeModal';
+import { OrderLogisticsCard } from '../components/OrderLogisticsCard';
+import { CURRENCY_META, type Currency } from '../../../core/money/currency';
 import { CourierLiveMap } from '../../courier/CourierLiveMap';
 import { MeditCompleteModal } from '../components/MeditCompleteModal';
 import { DoctorChangeModal } from '../components/DoctorChangeModal';
@@ -85,6 +96,8 @@ import { ChatDetail } from '../components/MessagesPopup';
 import { useChatMessages } from '../hooks/useChatMessages';
 import { toast } from '../../../core/ui/Toast';
 import { ImageLightbox } from '../../../core/ui/ImageLightbox';
+import { NativeImageViewer } from '../../../core/ui/mobile/NativeImageViewer';
+import MobileViewer3D from '../../viewer-3d/mobile/MobileViewer3D';
 import { X as CloseIcon } from 'lucide-react-native';
 import { QCRejectModal } from '../components/QCRejectModal';
 import { ReassignModal } from '../components/ReassignModal';
@@ -108,13 +121,23 @@ interface ProfitData {
   net_revenue:     number;
   material_cost:   number;
   labor_cost:      number;
+  /** Kurye/kargo masrafı — siparişin tüm hareketleri (iptal hariç). */
+  logistics_cost:  number;
   overhead_cost:   number;
   total_cost:      number;
   profit:          number;
   margin_pct:      number | null;
+  /** Lab'ın baz para birimi — ₺ hardcode edilmez. */
+  currency:        string;
+  /** Baz dışı dövizdeki kurye ücretleri; çevrilmez, ayrı gösterilir. */
+  logistics_other: Record<string, number>;
 }
-const fmtTL = (n: number) =>
-  n.toLocaleString('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+// Defansif: RPC numeric alanları string dönebilir, alan hiç gelmeyebilir.
+const fmtTL = (n: unknown) =>
+  (Number(n) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
+/** Sipariş detayındaki "Mali Bilgi" kartı — geçici olarak kapalı (istek üzerine). */
+const SHOW_FINANCIAL_CARD = false;
 
 const DISPLAY = { fontFamily: 'Inter Tight, Inter, system-ui, sans-serif' as const, fontWeight: '300' as const };
 
@@ -196,7 +219,7 @@ export function OrderDetailScreenV2() {
   const { profile } = useAuthStore();
   const insets = useSafeAreaInsets();
   const { order, signedUrls, loading, error, refetch } = useOrderDetail(id);
-  const { stages: orderStages, activeStage, completedCount, totalStages, refetch: refetchStages } = useOrderStages(id ?? undefined);
+  const { stages: orderStages, activeStage, completedCount, totalStages, lanes, isMultiLane, refetch: refetchStages } = useOrderStages(id ?? undefined);
   // "Atanmamış" senaryosu — aktif yoksa ilk bekliyor aşamayı reassign hedefi olarak kullan
   const reassignTargetStage = activeStage ?? orderStages.find(s => s.status === 'bekliyor') ?? null;
   const { width, height } = useWindowDimensions();
@@ -229,36 +252,140 @@ export function OrderDetailScreenV2() {
   const [reviewOpen, setReviewOpen] = useState(false);
   const reviewAutoPromptId = useRef<string | null>(null);  // iş başına bir kez oto-aç
   const [orderRating, setOrderRating] = useState<{ avg: number; count: number } | null>(null);
-  const { messages: chatMessages } = useChatMessages(id, profile?.id);
+  // Route param order_number slug'ı olabilir (/order/LAB-2026-0118) — chat sorgusu
+  // work_order_id UUID ister; bu yüzden her zaman çözülmüş order.id kullanılır.
+  const revParentIds = (order as any)?.revision_of_id ? [(order as any).revision_of_id as string] : undefined;
+  const { messages: chatMessages } = useChatMessages((order as any)?.id ?? '', profile?.id, revParentIds);
   const [togglingUrgent, setTogglingUrgent] = useState(false);
   const [qcRejectOpen, setQcRejectOpen] = useState(false);
   const [reassignOpen, setReassignOpen] = useState(false);
   const [deliveryModalOpen, setDeliveryModalOpen] = useState(false);
+  // Revizyon (teslim sonrası yeniden yapım) — modal + karşılıklı bağlantı rozetleri
+  const [revisionOpen, setRevisionOpen] = useState(false);
+  const [revLinks, setRevLinks] = useState<{ parent: RevisionLink | null; children: RevisionLink[] }>({ parent: null, children: [] });
   const [meditCompleteOpen, setMeditCompleteOpen] = useState(false);
   const [doctorChangeOpen, setDoctorChangeOpen] = useState(false);
   const [activeDelivery, setActiveDelivery] = useState<any | null>(null);
+  /** Siparişin TÜM kurye hareketleri (final teslimat + ara bacaklar), yeniden eskiye. */
+  const [deliveryLegs, setDeliveryLegs] = useState<any[]>([]);
+  const [callCourierOpen, setCallCourierOpen] = useState(false);   // ara hareket modalı
+  const [feeTarget, setFeeTarget] = useState<any | null>(null);     // ücret gir/düzelt
+  const [legsTick, setLegsTick]   = useState(0);                    // manuel yenileme tetiği
+  /** Mali panel para birimi sembolü — RPC'nin döndüğü lab baz para birimi. */
+  const profitSym = CURRENCY_META[(profit?.currency ?? 'TRY') as Currency]?.symbol ?? (profit?.currency ?? '');
 
-  // Aktif teslimat çek + realtime izle
+  // ── Lojistik kartındaki rota önizlemesi için gereken üç veri ──────────────
+  // Google Maps anahtarı + laboratuvar adresi entegrasyon ayarlarından,
+  // klinik adresi siparişin kliniğinden gelir. Hiçbiri yoksa harita gizlenir.
+  const [mapsApiKey, setMapsApiKey]     = useState<string | null>(null);
+  const [labAddress, setLabAddress]     = useState<string | null>(null);
+  const [clinicAddress, setClinicAddress] = useState<string | null>(null);
+  const orderClinicId = (order as any)?.doctor?.clinic?.id as string | undefined;
+
   useEffect(() => {
-    if (!id) return;
-    const fetchDelivery = async () => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [maps, courier] = await Promise.all([
+          supabase.rpc('get_active_provider', { p_type: 'maps' }),
+          supabase.rpc('get_active_provider', { p_type: 'courier' }),
+        ]);
+        if (cancelled) return;
+        const m: any = Array.isArray(maps.data) ? maps.data[0] : maps.data;
+        const c: any = Array.isArray(courier.data) ? courier.data[0] : courier.data;
+        if (m?.provider === 'google-maps' && m?.credentials?.api_key) setMapsApiKey(m.credentials.api_key);
+        if (c?.credentials?.pickup_address) setLabAddress(c.credentials.pickup_address);
+      } catch { /* entegrasyon yoksa önizleme çizilmez */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!orderClinicId) { setClinicAddress(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase.from('clinics').select('address').eq('id', orderClinicId).maybeSingle();
+        if (!cancelled) setClinicAddress((data as any)?.address ?? null);
+      } catch { /* yoksa önizleme gizlenir */ }
+    })();
+    return () => { cancelled = true; };
+  }, [orderClinicId]);
+
+  // Kurye hareketlerini çek + realtime izle.
+  // NOT: route param'ı order_number slug'ı olabilir; work_order_id UUID ister.
+  const orderUuid = (order as any)?.id as string | undefined;
+  useEffect(() => {
+    if (!orderUuid) return;
+    const fetchDeliveries = async () => {
       const { data } = await supabase
         .from('deliveries')
-        .select('id, mode, status, courier_id, external_provider, external_tracking_no, picked_up_at, delivered_at, notes, destination_name, destination_address, destination_phone')
-        .eq('work_order_id', id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      // İptal edilen teslimat "aktif" sayılmaz → "Kuryeye Gönder" geri gelir (yeniden çağrılabilir)
-      setActiveDelivery(data && (data as any).status === 'iptal' ? null : (data ?? null));
+        .select('id, mode, status, courier_id, external_provider, external_tracking_no, picked_up_at, delivered_at, created_at, notes, destination_name, destination_address, destination_phone, purpose, direction, fee_amount, fee_currency, fee_source, stage_snapshot, courier:profiles!deliveries_courier_profiles_fkey(full_name)')
+        .eq('work_order_id', orderUuid)
+        .order('created_at', { ascending: false });
+      const rows = (data ?? []) as any[];
+      setDeliveryLegs(rows);
+      // "Aktif teslimat" = siparişin FİNAL teslimatı. Ara kurye hareketleri (eksik
+      // parça, model alma...) timeline'ı ve "Kuryeye Gönder" butonunu etkilemez.
+      // İptal edilen teslimat aktif sayılmaz → buton geri gelir.
+      const finalLeg = rows.find(r => (r.purpose ?? 'teslimat') === 'teslimat');
+      setActiveDelivery(finalLeg && finalLeg.status === 'iptal' ? null : (finalLeg ?? null));
     };
-    fetchDelivery();
+    fetchDeliveries();
     const ch = supabase
-      .channel(`delivery-${id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'deliveries', filter: `work_order_id=eq.${id}` }, () => fetchDelivery())
+      .channel(`delivery-${orderUuid}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'deliveries', filter: `work_order_id=eq.${orderUuid}` }, () => fetchDeliveries())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [id]);
+  }, [orderUuid, legsTick]);
+
+  // Adres çubuğu kozmetiği (yalnız web): /order/<uuid> → /order/<order_number>.
+  // fetchWorkOrderById ikisini de çözer; bu yalnız GÖRÜNEN URL'yi okunur yapar
+  // Revizyonda orijinalin DOSYALARI devralınır — kopyalanmaz, salt okunur gösterilir.
+  const [inheritedFiles, setInheritedFiles] = useState<{ photos: any[]; urls: Record<string, string> }>({ photos: [], urls: {} });
+  useEffect(() => {
+    const pid = (order as any)?.revision_of_id as string | undefined;
+    if (!pid) { setInheritedFiles({ photos: [], urls: {} }); return; }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('work_orders')
+        .select('order_number, photos:work_order_photos(*)')
+        .eq('id', pid)
+        .maybeSingle();
+      const ph = (((data as any)?.photos ?? []) as any[]).map(p => ({ ...p, __inherited: true }));
+      if (cancelled || ph.length === 0) return;
+      const urls = await getSignedUrls(ph.map(p => p.storage_path).filter(Boolean));
+      if (!cancelled) setInheritedFiles({ photos: ph, urls });
+    })().catch(() => { /* dosya devralma opsiyonel */ });
+    return () => { cancelled = true; };
+  }, [(order as any)?.revision_of_id]);
+
+  // Revizyon bağlantıları — bu sipariş neyin revizyonu + bundan açılan revizyonlar
+  useEffect(() => {
+    const oid = (order as any)?.id as string | undefined;
+    if (!oid) { setRevLinks({ parent: null, children: [] }); return; }
+    let cancelled = false;
+    fetchRevisionLinks(oid, (order as any)?.revision_of_id ?? null)
+      .then(r => { if (!cancelled) setRevLinks(r); })
+      .catch(() => { /* rozet opsiyonel — sessiz geç */ });
+    return () => { cancelled = true; };
+  }, [(order as any)?.id, (order as any)?.revision_of_id]);
+
+  // (LAB-2026-0042). history.replaceState → remount/refetch YOK, expo-router
+  // state korunur; eski UUID linkleri/QR'lar çalışmaya devam eder.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const num = (order as any)?.order_number as string | undefined;
+    if (!num || !id) return;
+    const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID.test(String(id))) return; // zaten slug ile gelinmiş
+    try {
+      const path = window.location.pathname;
+      const nice = path.replace(String(id), encodeURIComponent(num));
+      if (nice !== path) window.history.replaceState(window.history.state, '', nice + (window.location.search || ''));
+    } catch { /* no-op */ }
+  }, [id, (order as any)?.order_number]);
 
   // ── Aşama timeline'ına virtual Kurye + Teslim aşamaları ekle ─────────────
   // order_stages sadece üretim aşamalarını tutar. Teslimat akışı (kurye atandı →
@@ -335,6 +462,8 @@ export function OrderDetailScreenV2() {
   const [cancelingDelivery, setCancelingDelivery] = useState(false);
   const [editDeliveryTarget, setEditDeliveryTarget] = useState<{ id: string; orderId: string } | null>(null);
   const [stagesExpanded, setStagesExpanded] = useState(false);
+  // Faz 4b: çok-şeritte AŞAMA DETAYLARI iş (şerit) başına collapse gruplar.
+  const [expandedLanes, setExpandedLanes] = useState<Record<number, boolean>>({});
   const [triageOpen, setTriageOpen] = useState(false);
   const [triageAutoOpened, setTriageAutoOpened] = useState(false);
   const [replanOpen, setReplanOpen] = useState(false);
@@ -360,8 +489,6 @@ export function OrderDetailScreenV2() {
   // Henüz triajlanmamış mı? — Medit eksikse triaja açma
   const needsTriage = !!order && !(order as any).triaged_at && ((order.status as string) === 'alindi' || (order.status as string) === 'aktif') && !meditNeedsCompletion;
 
-  // Triajlanmış ama onay bekliyor mu?
-  const needsTriageApproval = !!order && !!(order as any).triaged_at && !(order as any).triage_approved_at;
   // Yeniden planlanabilir mi? — triajlı + hiçbir aşama TAMAMLANMAMIŞ.
   // 'skipped' aşamalar normaldir (atlanmış), göz ardı edilir. Tamamlanmamış
   // (bekliyor/aktif/durakladi vb.) aşamalar yeniden planlanabilir.
@@ -386,17 +513,6 @@ export function OrderDetailScreenV2() {
     refetch();
   }, [order, sendingApproval, refetch]);
 
-  const [approvingTriage, setApprovingTriage] = useState(false);
-  const handleApproveTriage = useCallback(async () => {
-    if (!order || approvingTriage) return;
-    setApprovingTriage(true);
-    const res = await approveTriage(order.id);
-    setApprovingTriage(false);
-    if (!res.ok) { alert(`Onaylanamadı: ${res.error ?? ''}`); return; }
-    refetch();
-    refetchStages();
-  }, [order, approvingTriage, refetch, refetchStages]);
-
   // Auto-open: triaj manager + henüz triajlanmamış → ilk yüklemede modal'ı aç (kullanıcı kapatabilir)
   // Ayrıca: ?triage=open query param ile zorla açma (mobile list "Planlama" lane'inden gelen tıklamalar)
   useEffect(() => {
@@ -418,25 +534,25 @@ export function OrderDetailScreenV2() {
   // ── Mali bilgi (profit RPC) ─────────────────────────────────────
   // Doctor/klinik panel'de mali RPC çağrılmaz (gereksiz network + RLS hatası)
   useEffect(() => {
-    if (!id || _isDoctorOrClinic) return;
+    if (!orderUuid || _isDoctorOrClinic) return;
     let cancelled = false;
     (async () => {
-      const { data } = await supabase.rpc('calculate_order_profit', { p_work_order_id: id });
+      const { data } = await supabase.rpc('calculate_order_profit', { p_work_order_id: orderUuid });
       if (!cancelled) setProfit((data?.[0] ?? null) as ProfitData | null);
     })();
     return () => { cancelled = true; };
-  }, [id, _isDoctorOrClinic]);
+  }, [orderUuid, _isDoctorOrClinic, legsTick]);
 
   // ── Materyal hareketleri (calculate_order_cost RPC) ──────────────
   useEffect(() => {
-    if (!id || _isDoctorOrClinic) return;
+    if (!orderUuid || _isDoctorOrClinic) return;
     let cancelled = false;
     (async () => {
-      const { data } = await supabase.rpc('calculate_order_cost', { p_work_order_id: id });
+      const { data } = await supabase.rpc('calculate_order_cost', { p_work_order_id: orderUuid });
       if (!cancelled) setMaterials((data ?? []) as any);
     })();
     return () => { cancelled = true; };
-  }, [id, _isDoctorOrClinic]);
+  }, [orderUuid, _isDoctorOrClinic]);
 
   // ── İlgili siparişler (aynı hasta) ──────────────────────────────
   useEffect(() => {
@@ -677,6 +793,47 @@ export function OrderDetailScreenV2() {
   // Hem mobil hem desktop branch'lerinde kullanılan istasyon adı
   const stageName = activeStage?.station?.name ?? (STATUS_CONFIG[order.status as WorkOrderStatus]?.label ?? 'Bekliyor');
 
+  // ── Faz 4b: şerit → diş etiketi + collapse durumu ──────────────────────────
+  const laneTeethLabel = (lane: number) => {
+    const its = ((order as any)?.order_items ?? []) as Array<any>;
+    const teeth = its
+      .filter(it => (it.lane ?? 1) === lane)
+      .flatMap(it => (Array.isArray(it.tooth_numbers) ? it.tooth_numbers : []));
+    return teeth.length ? teeth.join(', ') : `Şerit ${lane}`;
+  };
+  // Şeridin İŞ TÜRÜ etiketi (aşama adı yerine gösterilir). İsmin sonundaki diş
+  // parantezini temizle — dişler zaten ayrı "DİŞ …" olarak gösteriliyor.
+  const laneWorkTypeLabel = (lane: number) => {
+    const its = ((order as any)?.order_items ?? []) as Array<any>;
+    const names = Array.from(new Set(
+      its
+        .filter(it => (it.lane ?? 1) === lane)
+        .map(it => String(it.name ?? '').replace(/\s*\([^)]*\)\s*$/, '').trim())
+        .filter(Boolean),
+    ));
+    return names.length ? names.join(' · ') : `Şerit ${lane}`;
+  };
+  // Çok-şeritte VARSAYILAN: tüm şeritler açık → her şeridin aşamaları ayrı ayrı
+  // görünür (yalnız aktif şerit açık değil). Kullanıcı istediğini kapatabilir.
+  const isLaneOpen = (lane: number) => expandedLanes[lane] ?? true;
+  const toggleLane = (lane: number) => setExpandedLanes(p => ({ ...p, [lane]: !(p[lane] ?? true) }));
+
+  // Faz 4b: AŞAMA DETAYLARI görüntü listesi — çok-şeritte iş (şerit) başına
+  // collapse grup başlığı + (açıksa) o şeridin aşamaları; sonda teslimat virtual'ları.
+  const displayStages: any[] = (() => {
+    if (!isMultiLane) return combinedStages;
+    const out: any[] = [];
+    for (const l of lanes as any[]) {
+      out.push({ __laneHeader: true, id: `__lh_${l.lane}`, lane: l.lane, teeth: laneTeethLabel(l.lane),
+        workType: laneWorkTypeLabel(l.lane),
+        done: l.completedCount, total: l.totalStages, current: l.currentStage?.station?.name ?? null });
+      if (isLaneOpen(l.lane)) out.push(...l.stages);
+    }
+    const virtuals = combinedStages.filter((s: any) => s.is_virtual);
+    if (virtuals.length) out.push(...virtuals);
+    return out;
+  })();
+
   // Print — basit window.print() (full QR HTML için Tur 4'te detaylandırılacak)
   const qrUrl = Platform.OS === 'web' && typeof window !== 'undefined'
     ? `${window.location.origin}/order/${order.id}`
@@ -800,6 +957,22 @@ export function OrderDetailScreenV2() {
       .filter((s: any) => s.status !== 'skipped')
       .map((s: any) => ({ name: s.station?.name ?? '—', status: s.status }));
 
+    // Paralel şerit (desktop ile aynı mantık): çok-şeritte hero + aşama detayları
+    // şerit-başına ayrılır. Tek-şeritte undefined → mobil bugünkü görünümü korur.
+    const mLaneSummary = isMultiLane ? lanes.map((l: any) => ({
+      lane:    l.lane,
+      teeth:   laneTeethLabel(l.lane),
+      station: laneWorkTypeLabel(l.lane),
+      pct:     l.progressPct,
+      done:    l.completedCount,
+      total:   l.totalStages,
+    })) : undefined;
+    const mLaneStageGroups = isMultiLane ? lanes.map((l: any) => ({
+      lane:   l.lane,
+      teeth:  laneTeethLabel(l.lane),
+      stages: (l.stages ?? []).map((s: any) => ({ name: s.station?.name ?? '—', status: s.status })),
+    })) : undefined;
+
     // segments[0] route-group formatında (örn: '(doctor)') — MobilePanel'e map
     const panelKind = panelGroup === '(doctor)'  ? 'doctor'
                     : panelGroup === '(clinic)'  ? 'klinik'
@@ -833,7 +1006,7 @@ export function OrderDetailScreenV2() {
         mDeliveryButton = {
           label: 'Elden Teslim Edildi', icon: 'check',
           onPress: async () => {
-            const ok = typeof window !== 'undefined' ? window.confirm('Sipariş elden teslim edildi olarak işaretlensin mi?') : true;
+            const ok = await confirmAsync('Elden Teslim', 'Sipariş elden teslim edildi olarak işaretlensin mi?', { confirmText: 'Teslim Edildi' });
             if (!ok) return;
             const { error: e } = await supabase
               .from('work_orders')
@@ -886,6 +1059,20 @@ export function OrderDetailScreenV2() {
         operatorMins={mOperatorMins}
         queueMins={mQueueMins}
         stageDetails={mStageDetails}
+        laneSummary={mLaneSummary}
+        laneStageGroups={mLaneStageGroups}
+        onCreateRevision={isManager && (order.status as string) === 'teslim_edildi' ? () => setRevisionOpen(true) : undefined}
+        revisionLinks={[
+          ...(revLinks.parent ? [{
+            id: revLinks.parent.id, kind: 'parent' as const,
+            label: `${revLinks.parent.order_number} revizyonu${(order as any).revision_responsible === 'lab' ? ' · garanti' : ''}`,
+          }] : []),
+          ...revLinks.children.map(ch => ({
+            id: ch.id, kind: 'child' as const,
+            label: `Revizyon: ${ch.order_number}${ch.revision_responsible === 'lab' ? ' · garanti' : ''}`,
+          })),
+        ]}
+        onOpenRelated={handleNavigateRelated}
         technicianName={techName ?? undefined}
         technicianInitials={techInit}
         ringPercent={Math.round(progressPct)}
@@ -906,8 +1093,8 @@ export function OrderDetailScreenV2() {
         attachments={[]}
         attachmentsNode={
           <FilesList
-            photos={order.photos ?? []}
-            signedUrls={signedUrls ?? {}}
+            photos={[...(order.photos ?? []), ...inheritedFiles.photos]}
+            signedUrls={{ ...(signedUrls ?? {}), ...inheritedFiles.urls }}
             workOrderId={order.id}
             accentColor={panelAccent}
             onUploaded={refetch}
@@ -924,12 +1111,38 @@ export function OrderDetailScreenV2() {
         }}
         onChat={() => setChatOpen(true)}
         cancelNode={<OrderClientActions order={order as any} panelGroup={panelGroup} onChanged={refetch} />}
+        logisticsNode={
+          <OrderLogisticsCard
+            legs={deliveryLegs}
+            accent={panelAccent}
+            rowBg={softPanelBg}
+            isManager={isManager}
+            canCall={order.status !== 'iptal'}
+            onCall={() => setCallCourierOpen(true)}
+            onEditFee={leg => setFeeTarget(leg)}
+            fmtDate={fmtDate}
+            mapsApiKey={mapsApiKey}
+            labAddress={labAddress}
+            clinicAddress={clinicAddress}
+            onOpenTracking={leg => {
+              // courier-tracking rotası yalnız bu dört panelde var; istasyon vb.
+              // panellerden gelindiğinde lab'a düşülür.
+              const hasRoute = ['(admin)', '(lab)', '(clinic)', '(doctor)'].includes(panelGroup);
+              const base = hasRoute ? panelGroup : '(lab)';
+              router.push(`/${base}/courier-tracking?delivery=${leg.id}` as any);
+            }}
+            clientView={panelGroup === '(clinic)' || panelGroup === '(doctor)'}
+            frameless
+          />
+        }
         activeTooth={activeTooth}
         activeToothDetail={(() => {
           if (activeTooth == null) return null;
           const items = (order.order_items ?? []) as Array<any>;
-          // Tıklanan dişe ait order_item — tooth_numbers eşleşmesi (desktop ile aynı mantık)
-          const matched = items.find(it => Array.isArray(it.tooth_numbers) && it.tooth_numbers.includes(activeTooth));
+          // Tıklanan dişe ait order_item'lar — bir dişte birden çok işlem olabilir
+          const matches = items.filter(it => Array.isArray(it.tooth_numbers) && it.tooth_numbers.includes(activeTooth));
+          const matched = matches[0];
+          const matchedNames = Array.from(new Set(matches.map(m => String(m.name ?? '').trim()).filter(Boolean)));
           // Eşleşme yoksa work_type'ı sadeleştirip fallback göster (legacy / tooth_numbers boş)
           const rawWt = (order as any).work_type as string | undefined;
           const wtParts = rawWt ? rawWt.split(/,\s*/).map(s => s.trim()).filter(Boolean) : [];
@@ -938,8 +1151,8 @@ export function OrderDetailScreenV2() {
             ? `${uniqueWt[0]} · ${wtParts.length} diş`
             : uniqueWt.join(', ') || undefined;
           return {
-            // Eşleşen item varsa onun adını göster; yoksa work_type fallback
-            itemName:  matched?.name ?? fallbackWt,
+            // Eşleşen item(ler) varsa hepsinin adını göster; yoksa work_type fallback
+            itemName:  matchedNames.length ? matchedNames.join(' · ') : fallbackWt,
             // İkincil satır tekrarı önlemek için boş — diş bilgisi shade/price ile veriliyor
             workType:  undefined,
             shade:     matched?.shade ?? (order as any).shade ?? undefined,
@@ -967,7 +1180,12 @@ export function OrderDetailScreenV2() {
         }
         onPrint={Platform.OS === 'web' ? () => handlePrintFull() : undefined}
         onPause={undefined}
-        onStageDone={canAdvance && !!nextStatus && !designApprovalPending ? () => handleAdvanceStage() : undefined}
+        // teslimata_hazir + aktif teslimat: doğru aksiyon deliveryButton'da
+        // (Kuryeye Gönder / Teslim Edildi) — genel ilerlet burada gizlenir,
+        // yoksa aynı geçiş için iki buton çıkıyor (desktop ile aynı kural).
+        onStageDone={canAdvance && !!nextStatus && !designApprovalPending
+          && !activeDelivery && (order.status as string) !== 'teslimata_hazir'
+          ? () => handleAdvanceStage() : undefined}
         onAddAttachment={undefined}
       />
       {/* Order-scoped chat modal — mobile branch için (Mesaj tab / sticky chat butonu) */}
@@ -979,17 +1197,52 @@ export function OrderDetailScreenV2() {
         viewerType={profile?.user_type ?? null}
         panelAccent={panelAccent}
       />
+      {/* Revizyon modalı — mobil (desktop ile aynı akış) */}
+      <RevisionModal
+        visible={revisionOpen}
+        orderId={order.id}
+        orderNumber={String((order as any).order_number ?? order.id)}
+        labId={(order as any).lab_id ?? null}
+        accentColor={panelAccent}
+        onClose={() => setRevisionOpen(false)}
+        onCreated={(newId) => { setRevisionOpen(false); handleNavigateRelated(newId); }}
+      />
+
       {/* Kuryeye Gönder modalı — mobil (desktop ile aynı; kargo → sadece dış) */}
       {isManager && (
         <DeliveryModal
           visible={deliveryModalOpen}
-          workOrderId={id ?? ''}
+          workOrderId={order.id}
           labId={(profile as any)?.lab_id ?? profile?.id ?? ''}
           accentColor={panelAccent}
           lockExternal={mDeliveryMethod === 'kargo'}
           editDelivery={editDeliveryTarget}
           onClose={() => { setDeliveryModalOpen(false); setEditDeliveryTarget(null); }}
           onCreated={() => { refetch(); }}
+        />
+      )}
+
+      {/* Kurye Çağır — ara hareket (mobil) */}
+      {isManager && (
+        <DeliveryModal
+          visible={callCourierOpen}
+          workOrderId={order.id}
+          labId={(profile as any)?.lab_id ?? profile?.id ?? ''}
+          accentColor={panelAccent}
+          extraLeg
+          stageSnapshot={stageName}
+          onClose={() => setCallCourierOpen(false)}
+          onCreated={() => { setLegsTick(t => t + 1); refetch(); }}
+        />
+      )}
+
+      {/* Kurye ücreti gir / düzelt (mobil) */}
+      {isManager && (
+        <DeliveryFeeModal
+          leg={feeTarget}
+          accentColor={panelAccent}
+          onClose={() => setFeeTarget(null)}
+          onSaved={() => { setLegsTick(t => t + 1); refetch(); }}
         />
       )}
       </>
@@ -1159,6 +1412,39 @@ export function OrderDetailScreenV2() {
                 <Text className="text-[12px] mt-1" style={{ color: heroPalette.dark ? 'rgba(255,255,255,0.65)' : '#6B6B6B' }}>
                   Giriş: {fmtDate(order.created_at)}
                 </Text>
+
+                {/* Revizyon bağlantıları — karşılıklı, tıklanınca ilgili siparişe gider */}
+                {(revLinks.parent || revLinks.children.length > 0) && (
+                  <View className="flex-row flex-wrap items-center mt-2.5" style={{ gap: 6 }}>
+                    {revLinks.parent && (
+                      <Pressable onPress={() => handleNavigateRelated(revLinks.parent!.id)}>
+                        <View className="flex-row items-center gap-1.5 px-2.5 py-1 rounded-full"
+                          style={{ backgroundColor: heroPalette.dark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.05)',
+                                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                          <CornerUpLeft size={11} color={heroPalette.dark ? '#FFFFFF' : '#6B6B6B'} strokeWidth={2} />
+                          <Text className="text-[11.5px] font-medium" style={{ color: heroPalette.dark ? '#FFFFFF' : '#2C2C2C' }}>
+                            {revLinks.parent.order_number} revizyonu
+                            {(order as any).revision_no ? ` · #${(order as any).revision_no}` : ''}
+                            {(order as any).revision_responsible === 'lab' ? ' · garanti' : ''}
+                          </Text>
+                        </View>
+                      </Pressable>
+                    )}
+                    {revLinks.children.map(ch => (
+                      <Pressable key={ch.id} onPress={() => handleNavigateRelated(ch.id)}>
+                        <View className="flex-row items-center gap-1.5 px-2.5 py-1 rounded-full"
+                          style={{ backgroundColor: heroPalette.dark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.05)',
+                                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                          <RotateCcw size={11} color={heroPalette.dark ? '#FFFFFF' : '#6B6B6B'} strokeWidth={2} />
+                          <Text className="text-[11.5px] font-medium" style={{ color: heroPalette.dark ? '#FFFFFF' : '#2C2C2C' }}>
+                            Revizyon: {ch.order_number}
+                            {ch.revision_responsible === 'lab' ? ' · garanti' : ''}
+                          </Text>
+                        </View>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
               </View>
               {/* İşi beklemede — gecikme yerine BEKLEMEDE + neden (sayaç durdu) */}
               {onHold && order.status !== 'teslim_edildi' && order.status !== 'iptal' && (
@@ -1208,6 +1494,49 @@ export function OrderDetailScreenV2() {
                   </Text>
                 </View>
               )}
+
+              {/* QR — hero'nun sağ üst köşesi; taranabilirlik için her zaman beyaz zemin */}
+              <Pressable
+                onPress={handlePrintFull}
+                className="items-center"
+                style={{ flexShrink: 0 }}
+                accessibilityLabel={`Sipariş ${order.order_number} QR kodu · yazdır`}
+              >
+                <View
+                  style={{
+                    width: 78, height: 78, borderRadius: 16,
+                    backgroundColor: '#FFFFFF',
+                    borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+                    alignItems: 'center', justifyContent: 'center',
+                    padding: 6,
+                    ...(Platform.OS === 'web' ? { boxShadow: '0 1px 4px rgba(0,0,0,0.06)' } as any : {}),
+                  }}
+                >
+                  {Platform.OS === 'web' ? (
+                    // @ts-ignore — RN-Web img passthrough
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(qrUrl)}&margin=1&bgcolor=ffffff&color=0a0a0a`}
+                      alt="QR"
+                      width={66}
+                      height={66}
+                      style={{ display: 'block', borderRadius: 3 }}
+                    />
+                  ) : (
+                    <Image
+                      source={{ uri: `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(qrUrl)}&margin=1&bgcolor=ffffff&color=0a0a0a` }}
+                      style={{ width: 66, height: 66, borderRadius: 3 }}
+                      resizeMode="contain"
+                    />
+                  )}
+                </View>
+                <Text
+                  className="text-[10px] font-mono font-semibold mt-1.5"
+                  numberOfLines={1}
+                  style={{ color: heroPalette.dark ? 'rgba(255,255,255,0.70)' : '#6B6B6B' }}
+                >
+                  #{order.order_number}
+                </Text>
+              </Pressable>
             </View>
 
             {/* Aksiyonlar — kendi tam-genişlik satırı, taşarsa sarar (countdown'ı aşağı itmez) */}
@@ -1241,17 +1570,13 @@ export function OrderDetailScreenV2() {
                   {(panelGroup === '(lab)' || panelGroup === '(admin)')
                     && order.status !== 'teslim_edildi' && order.status !== 'iptal' && (
                     onHold ? (
-                      <Pressable onPress={submitResume} disabled={holdBusy}>
-                        <PillBtn onDark={heroPalette.dark} variant="primary" size="sm" icon={Play}>
+                                              <PillBtn onDark={heroPalette.dark} variant="primary" size="sm" icon={Play} onPress={submitResume} disabled={holdBusy}>
                           {holdBusy ? 'Devam ediliyor…' : 'Devam ettir'}
                         </PillBtn>
-                      </Pressable>
                     ) : (
-                      <Pressable onPress={() => { setHoldErr(null); setHoldOpen(true); }}>
-                        <PillBtn onDark={heroPalette.dark} variant="surface" size="sm" icon={Pause}>
+                                              <PillBtn onDark={heroPalette.dark} variant="surface" size="sm" icon={Pause} onPress={() => { setHoldErr(null); setHoldOpen(true); }}>
                           İşi beklet
                         </PillBtn>
-                      </Pressable>
                     )
                   )}
                   {/* Henüz triajlanmamış → "Planlamayı yap" — LAB yeni route'a, diğerleri modal */}
@@ -1267,11 +1592,9 @@ export function OrderDetailScreenV2() {
                   )}
                   {/* Yeniden Planla — triajlı + üretim başlamamış (manager/admin) */}
                   {canReplan && !needsTriage && (
-                    <Pressable onPress={() => setReplanOpen(true)}>
-                      <PillBtn onDark={heroPalette.dark} variant="surface" size="sm" icon={ListChecks}>
+                                          <PillBtn onDark={heroPalette.dark} variant="surface" size="sm" icon={ListChecks} onPress={() => setReplanOpen(true)}>
                         Yeniden Planla
                       </PillBtn>
-                    </Pressable>
                   )}
                   {/* Onay bekliyor rozeti */}
                   {designApprovalPending && (
@@ -1282,19 +1605,20 @@ export function OrderDetailScreenV2() {
                   )}
                   {/* Hekim Onayına Gönder — lab manager, triajlı, henüz pending/approved değil */}
                   {canSendDesignApproval && !needsTriage && (
-                    <Pressable onPress={handleSendDesignApproval} disabled={sendingApproval}>
-                      <PillBtn onDark={heroPalette.dark} variant="surface" size="sm" icon={UserCheck}>
+                                          <PillBtn onDark={heroPalette.dark} variant="surface" size="sm" icon={UserCheck} onPress={handleSendDesignApproval} disabled={sendingApproval}>
                         {sendingApproval ? 'Gönderiliyor…' : 'Hekim Onayına Gönder'}
                       </PillBtn>
-                    </Pressable>
                   )}
-                  {/* Manuel "Final QC'a geç" — aktif teslimat varken gizli (delivery flow yönetir) */}
-                  {canAdvance && nextStatus && !needsTriage && !hasPendingProductionStages && !activeDelivery && !designApprovalPending && (
-                    <Pressable onPress={handleAdvanceStage} disabled={advancing}>
-                      <PillBtn onDark={heroPalette.dark} variant="primary" size="sm" icon={Check}>
+                  {/* Manuel "Final QC'a geç" — aktif teslimat varken gizli (delivery flow yönetir).
+                      teslimata_hazir'da da gizli: orada doğru aksiyon "Kuryeye Gönder" /
+                      "Elden Teslim Edildi" (aşağıdaki blok). Aksi halde ikisi birden çıkıp
+                      aynı geçiş için iki buton oluyordu — üstelik bu buton kurye akışını
+                      atlayarak teslimat kaydı oluşturmadan siparişi teslim edilmiş yapıyordu. */}
+                  {canAdvance && nextStatus && !needsTriage && !hasPendingProductionStages && !activeDelivery && !designApprovalPending
+                    && (order.status as string) !== 'teslimata_hazir' && (
+                                          <PillBtn onDark={heroPalette.dark} variant="primary" size="sm" icon={Check} onPress={handleAdvanceStage} disabled={advancing}>
                         {advancing ? 'Güncelleniyor…' : `${nextStatusLabel}'a geç`}
                       </PillBtn>
-                    </Pressable>
                   )}
                   {/* Aşamalar bitmemişse manuel butonu yerine bilgilendirici chip */}
                   {hasPendingProductionStages && (
@@ -1311,14 +1635,20 @@ export function OrderDetailScreenV2() {
                       <Text className="text-[12px] font-medium" style={{ color: heroPalette.dark ? '#FFFFFF' : '#0F6E50' }}>Teslim edildi</Text>
                     </View>
                   )}
+                  {/* Revizyon oluştur — teslim edilmiş siparişte hekim revize isterse.
+                      Orijinal kapalı kalır, bağlı yeni sipariş planlamaya düşer. */}
+                  {isManager && (order.status as string) === 'teslim_edildi' && (
+                                          <PillBtn onDark={heroPalette.dark} variant="ghost" size="sm" icon={RotateCcw} onPress={() => setRevisionOpen(true)}>
+                        Revizyon Oluştur
+                      </PillBtn>
+                  )}
                   {/* Teslimata hazır + henüz teslimat yok → teslim şekline göre aksiyon */}
                   {isManager && (order.status as string) === 'teslimata_hazir' && !activeDelivery && (
                     (order as any).delivery_method === 'elden' ? (
                       // Elden teslim → kurye yok, direkt teslim
                       <Pressable
                         onPress={async () => {
-                          const ok = typeof window !== 'undefined'
-                            ? window.confirm('Sipariş elden teslim edildi olarak işaretlensin mi?') : true;
+                          const ok = await confirmAsync('Elden Teslim', 'Sipariş elden teslim edildi olarak işaretlensin mi?', { confirmText: 'Teslim Edildi' });
                           if (!ok) return;
                           const { error: e } = await supabase
                             .from('work_orders')
@@ -1333,11 +1663,9 @@ export function OrderDetailScreenV2() {
                         </PillBtn>
                       </Pressable>
                     ) : (
-                      <Pressable onPress={() => setDeliveryModalOpen(true)}>
-                        <PillBtn onDark={heroPalette.dark} variant="primary" size="sm">
+                                              <PillBtn onDark={heroPalette.dark} variant="primary" size="sm" onPress={() => setDeliveryModalOpen(true)}>
                           Kuryeye Gönder
                         </PillBtn>
-                      </Pressable>
                     )
                   )}
                   {/* Aktif teslimat varsa status + manuel "Teslim edildi" */}
@@ -1415,9 +1743,7 @@ export function OrderDetailScreenV2() {
                     <Pressable
                       disabled={cancelingDelivery}
                       onPress={async () => {
-                        const ok = typeof window !== 'undefined'
-                          ? window.confirm('Teslimat iptal edilsin mi? Sipariş "Kuryeye Gönder" durumuna döner, kurye yeniden çağrılabilir.')
-                          : true;
+                        const ok = await confirmAsync('Teslimatı İptal Et', 'Teslimat iptal edilsin mi? Sipariş "Kuryeye Gönder" durumuna döner, kurye yeniden çağrılabilir.', { confirmText: 'İptal Et', destructive: true });
                         if (!ok) return;
                         setCancelingDelivery(true);
                         // BanaBiKurye ise gerçek siparişi de iptal et (best-effort)
@@ -1490,42 +1816,11 @@ export function OrderDetailScreenV2() {
               </View>
             )}
 
-            {/* Planlama onayı bekliyor banner — manager/admin için CTA, diğerleri için bilgi */}
-            {needsTriageApproval && (
-              <View
-                className="flex-row items-center"
-                style={{
-                  marginTop: 16, padding: 14, gap: 12, borderRadius: 14,
-                  backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FDE68A',
-                }}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#92400E', letterSpacing: 0.6, textTransform: 'uppercase' }}>
-                    Planlama onayı bekliyor
-                  </Text>
-                  <Text style={{ fontSize: 12, color: '#78350F', marginTop: 2 }}>
-                    Aşamalar planlandı ve teknisyenler otomatik atandı. Müdür/admin onayı sonrası iş ilk istasyondan başlar.
-                  </Text>
-                </View>
-                {isManager && (
-                  <Pressable
-                    onPress={handleApproveTriage}
-                    disabled={approvingTriage}
-                    style={{
-                      flexDirection: 'row', alignItems: 'center', gap: 6,
-                      paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10,
-                      backgroundColor: '#059669',
-                      opacity: approvingTriage ? 0.6 : 1,
-                    }}
-                  >
-                    <Check size={14} color="#FFFFFF" strokeWidth={2.5} />
-                    <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#FFFFFF', letterSpacing: 0.3 }}>
-                      {approvingTriage ? 'Onaylanıyor…' : 'Planlamayı Onayla'}
-                    </Text>
-                  </Pressable>
-                )}
-              </View>
-            )}
+            {/* NOT: "Planlamayı Onayla" bloğu kaldırıldı. Planlamayı kaydetmek
+                artık approve_triage'ı da çağırıyor (TriageModal.handleSave), yani
+                ayrı bir onay adımı yok. Eski buton iş başladıktan sonra bile
+                görünüyordu ve basılırsa aktif aşamanın yanına ikinci bir aşama
+                açıyordu. */}
 
             {/* Canlı kurye haritası — internal teslimat aktif iken */}
             {activeDelivery
@@ -1582,7 +1877,7 @@ export function OrderDetailScreenV2() {
                   Şu an
                 </Text>
                 <Text className="text-white mt-0.5" style={{ ...DISPLAY, fontSize: 24, letterSpacing: -0.4 }}>
-                  {currentStation}{currentStationSuffix}
+                  {isMultiLane ? `${lanes.length} iş şeridi · paralel` : `${currentStation}${currentStationSuffix}`}
                 </Text>
                 {overdue && (
                   <View className="flex-row items-center gap-1.5 mt-1.5">
@@ -1652,6 +1947,29 @@ export function OrderDetailScreenV2() {
                 );
               })()}
             </View>
+
+            {/* Faz 4b: çok-şeritte her şeridin kendi aktif aşaması + ilerlemesi (dark strip) */}
+            {isMultiLane && (
+              <View style={{ paddingHorizontal: 24, paddingBottom: 12, gap: 9 }}>
+                {lanes.map((l: any) => {
+                  // Aşama adı yerine şeridin İŞ TÜRÜ (kullanıcı isteği)
+                  const st = laneWorkTypeLabel(l.lane);
+                  return (
+                    <View key={l.lane} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <View style={{ minWidth: 58, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Text style={{ fontSize: 9, color: 'rgba(255,255,255,0.45)', fontWeight: '700' }}>DİŞ</Text>
+                        <Text numberOfLines={1} style={{ color: panelAccent, fontSize: 12, fontWeight: '800', letterSpacing: 0.3, fontFamily: Platform.OS === 'web' ? 'monospace' : undefined }}>{laneTeethLabel(l.lane)}</Text>
+                      </View>
+                      <Text numberOfLines={1} style={{ flex: 1, color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>{st}</Text>
+                      <View style={{ width: 96, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.14)', overflow: 'hidden' }}>
+                        <View style={{ width: `${l.progressPct}%`, height: 6, borderRadius: 3, backgroundColor: panelAccent }} />
+                      </View>
+                      <Text style={{ width: 36, textAlign: 'right', color: 'rgba(255,255,255,0.9)', fontSize: 11.5, fontWeight: '700' }}>{l.progressPct}%</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
 
             {/* Zaman dağılımı — siparişin kümülatif timing'i (dark strip).
                 Hekim ve klinik panelleri için gizli — bu metrikler lab/admin operasyonel
@@ -1841,7 +2159,31 @@ export function OrderDetailScreenV2() {
                     paddingHorizontal: 24, paddingTop: 8, paddingBottom: 22,
                     borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)',
                   }}>
-                    {combinedStages.map((stg: any, i: number) => {
+                    {displayStages.map((stg: any, i: number) => {
+                      // Faz 4b: şerit grup başlığı (çok-şerit) — diş etiketi + ilerleme + collapse
+                      if (stg.__laneHeader) {
+                        const open = stg.lane != null ? isLaneOpen(stg.lane) : true;
+                        return (
+                          <Pressable key={stg.id}
+                            onPress={stg.lane != null ? () => toggleLane(stg.lane) : undefined}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 11, marginTop: i === 0 ? 0 : 6, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: 'rgba(255,255,255,0.06)', ...(Platform.OS === 'web' && stg.lane != null ? { cursor: 'pointer' } as any : {}) }}>
+                            {stg.lane != null && (
+                              <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: panelAccent + '26' }}>
+                                <Text style={{ fontSize: 11.5, fontWeight: '800', color: panelAccent, fontFamily: Platform.OS === 'web' ? 'monospace' : undefined }}>{stg.teeth}</Text>
+                              </View>
+                            )}
+                            <Text numberOfLines={1} style={{ flex: 1, color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>
+                              {stg.lane == null ? stg.teeth : (stg.workType || (stg.done >= stg.total ? 'Tamamlandı' : ''))}
+                            </Text>
+                            <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11.5, fontWeight: '700' }}>{stg.done}/{stg.total}</Text>
+                            {stg.lane != null && (
+                              open
+                                ? <ChevronUp size={15} color="rgba(255,255,255,0.6)" strokeWidth={2} />
+                                : <ChevronDown size={15} color="rgba(255,255,255,0.6)" strokeWidth={2} />
+                            )}
+                          </Pressable>
+                        );
+                      }
                       const isCompleted = stg.status === 'onaylandi' || stg.status === 'tamamlandi';
                       const isActive    = stg.status === 'aktif';
                       const isPending   = stg.status === 'bekliyor';
@@ -1849,7 +2191,8 @@ export function OrderDetailScreenV2() {
                       const stationName = stg.station?.name ?? `Aşama ${i + 1}`;
                       const stationColor = stg.station?.color ?? panelAccent;
                       const techName = stg.technician?.full_name;
-                      const isLast = i === combinedStages.length - 1;
+                      // Sonraki öğe bir grup başlığıysa (veya son) timeline çizgisi çizilmez.
+                      const isLast = i === displayStages.length - 1 || !!displayStages[i + 1]?.__laneHeader;
 
                       return (
                         <View key={stg.id} className="flex-row">
@@ -1991,7 +2334,7 @@ export function OrderDetailScreenV2() {
                                   <Pressable
                                     onPress={async () => {
                                       if (!order) return;
-                                      const ok = typeof window !== 'undefined' ? window.confirm('Bir önceki aşamaya dönülsün mü? Şu anki aşama "bekliyor"a, önceki aşama "aktif"e çevrilir.') : true;
+                                      const ok = await confirmAsync('Önceki Aşamaya Dön', 'Bir önceki aşamaya dönülsün mü? Şu anki aşama "bekliyor"a, önceki aşama "aktif"e çevrilir.', { confirmText: 'Geri Al', destructive: true });
                                       if (!ok) return;
                                       const r = await revertStage(order.id);
                                       if (!r.ok) { alert(`Geri alınamadı: ${r.error}`); return; }
@@ -2011,8 +2354,11 @@ export function OrderDetailScreenV2() {
                               </View>
                             )}
 
-                            {/* Force-activate — manager için 'bekliyor' aşamayı manuel aktif yap */}
-                            {isPending && isManager && (
+                            {/* Force-activate — manager için 'bekliyor' aşamayı manuel aktif yap.
+                                Sanal aşamalarda (Kurye/Teslim) GİZLİ: gerçek order_stages satırı
+                                değiller, teknisyene atanmazlar; doğru aksiyonları kendi
+                                "Kuryeye Gönder" / teslim akışları. */}
+                            {isPending && isManager && !stg.is_virtual && (
                               <View className="flex-row gap-2 mt-2 flex-wrap">
                                 <Pressable
                                   onPress={async () => {
@@ -2085,6 +2431,50 @@ export function OrderDetailScreenV2() {
                                 >
                                   <SkipForward size={11} color="#FCD34D" strokeWidth={2} />
                                   <Text style={{ fontSize: 10, fontWeight: '600', color: '#FCD34D' }}>Aşamayı atla</Text>
+                                </Pressable>
+                              </View>
+                            )}
+
+                            {/* Müdür/admin: sanal Kurye/Teslim aşamasını ilerlet.
+                                Bunlar order_stages satırı değil (deliveries'ten türetilir),
+                                o yüzden aşama RPC'leri işlemez — teslimat durumu üzerinden
+                                ilerletilir. Kurye kaydı varsa onu 'teslim edildi' yapar,
+                                yoksa siparişin statüsünü doğrudan taşır. */}
+                            {isManager && stg.is_virtual && !isCompleted && (
+                              <View className="flex-row gap-2 mt-2 flex-wrap">
+                                <Pressable
+                                  onPress={async () => {
+                                    const label = stg?.station?.name ?? 'Aşama';
+                                    const ok = await confirmAsync(
+                                      `${label} aşamasını tamamla`,
+                                      activeDelivery && activeDelivery.status !== 'teslim_edildi'
+                                        ? 'Kurye teslimatı "teslim edildi" olarak işaretlenecek. Emin misin?'
+                                        : 'Sipariş "teslim edildi" olarak işaretlenecek. Emin misin?',
+                                      { confirmText: 'Tamamla' },
+                                    );
+                                    if (!ok) return;
+                                    if (activeDelivery && activeDelivery.status !== 'teslim_edildi') {
+                                      const r = await updateDeliveryStatus(activeDelivery.id, 'teslim_edildi');
+                                      if (!r.ok) { toast.error(r.error ?? 'Teslimat güncellenemedi'); return; }
+                                    } else {
+                                      const { error } = await advanceOrderStatus(
+                                        order.id, 'teslim_edildi' as WorkOrderStatus, profile?.id ?? '',
+                                      );
+                                      if (error) { toast.error((error as any).message ?? 'Statü güncellenemedi'); return; }
+                                    }
+                                    toast.success(`"${label}" tamamlandı.`);
+                                    refetch(); refetchStages();
+                                  }}
+                                  style={{
+                                    flexDirection: 'row', alignItems: 'center', gap: 5,
+                                    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 9999,
+                                    backgroundColor: 'rgba(45,154,107,0.18)',
+                                    borderWidth: 1, borderColor: 'rgba(45,154,107,0.40)',
+                                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                                  }}
+                                >
+                                  <Check size={11} color="#6EE7B7" strokeWidth={2.2} />
+                                  <Text style={{ fontSize: 10, fontWeight: '600', color: '#6EE7B7' }}>Tamamla</Text>
                                 </Pressable>
                               </View>
                             )}
@@ -2176,16 +2566,23 @@ export function OrderDetailScreenV2() {
               // Her order_item ayrı satır (farklı işlemler farklı satırlarda).
               // tooth_numbers'lı item yoksa → tek satır fallback (work_type).
               const oi = ((order.order_items ?? []) as Array<any>).filter(it => it?.name);
-              const rows: Array<{ key: string; name: string; qty: number; teeth: number[] }> =
+              const rows: Array<{ key: string; name: string; qty: number; teeth: number[]; lane: number }> =
                 oi.length > 0
                   ? oi.map((it, idx) => ({
                       key: String(it.id ?? idx),
                       name: it.name,
                       qty: it.quantity ?? (Array.isArray(it.tooth_numbers) ? it.tooth_numbers.length : 1),
                       teeth: Array.isArray(it.tooth_numbers) ? it.tooth_numbers : [],
+                      lane: (it.lane ?? 1) as number,
                     }))
-                  : [{ key: 'all', name: order.work_type || '—', qty: allTeeth.length, teeth: allTeeth }];
-              return rows.map(row => (
+                  : [{ key: 'all', name: order.work_type || '—', qty: allTeeth.length, teeth: allTeeth, lane: 1 }];
+              // Faz 4: çok-şeritte her item KENDİ şeridinin gerçek %'sini + aktif aşamasını gösterir.
+              const laneInfoOf = (lane: number) => lanes.find((l: any) => l.lane === lane) ?? null;
+              return rows.map(row => {
+                const li = isMultiLane ? laneInfoOf(row.lane) : null;
+                const rowPct = li ? li.progressPct : progressPct;
+                const laneStation = li?.currentStage?.station?.name ?? (li && li.completedCount >= li.totalStages ? 'Tamamlandı' : null);
+                return (
                 <View key={row.key} className="flex-row px-4 py-3.5 items-center border-t border-black/[0.04]">
                   <View className="flex-1 flex-row gap-1 flex-wrap">
                     {row.teeth.length === 0 ? (
@@ -2214,19 +2611,27 @@ export function OrderDetailScreenV2() {
                       <Text className="text-[11px] text-ink-500" style={{ alignSelf: 'center' }}>+{row.teeth.length - 8}</Text>
                     )}
                   </View>
-                  <Text className="text-[13px] font-medium text-ink-900" style={{ flex: 2 }} numberOfLines={2}>{row.name}</Text>
+                  <View style={{ flex: 2 }}>
+                    <Text className="text-[13px] font-medium text-ink-900" numberOfLines={2}>{row.name}</Text>
+                    {isMultiLane && laneStation && (
+                      <Text className="text-[10.5px] text-ink-500" numberOfLines={1} style={{ marginTop: 2 }}>
+                        {laneStation}
+                      </Text>
+                    )}
+                  </View>
                   <Text className="text-[13px] text-ink-500" style={{ flex: 1 }}>{row.qty} {row.teeth.length > 0 ? 'diş' : 'adet'}</Text>
                   <View className="flex-row items-center gap-2.5" style={{ flex: 1.4 }}>
                     <View className="flex-1">
-                      <LinearProgressX value={progressPct} theme={progressTheme} compact hideLabel animate />
+                      <LinearProgressX value={rowPct} theme={progressTheme} compact hideLabel animate />
                     </View>
-                    <Text className="text-[11px] text-ink-500 text-right" style={{ width: 32 }}>{progressPct}%</Text>
+                    <Text className="text-[11px] text-ink-500 text-right" style={{ width: 32 }}>{rowPct}%</Text>
                   </View>
                   <View className="items-end" style={{ flex: 0.4 }}>
                     <ArrowUpRight size={16} color="#9A9A9A" strokeWidth={1.6} />
                   </View>
                 </View>
-              ));
+                );
+              });
             })()}
           </View>
 
@@ -2300,66 +2705,92 @@ export function OrderDetailScreenV2() {
         {/* ═══════════ SAĞ KOLON ═══════════ */}
         <View className="gap-4" style={{ width: isDesktop ? 360 : undefined }}>
 
-          {/* QR / KARGO ETİKETİ — sağ kolon en üstünde */}
+          {/* MESAJ KUTUSU — sağ kolon en üstünde (QR hero'ya taşındı) */}
           <View className="bg-white rounded-3xl border border-black/[0.06] p-5">
-            {/* Header eyebrow */}
             <View className="flex-row items-center gap-2 mb-3.5">
-              <QrCode size={12} color="#9A9A9A" strokeWidth={1.8} />
+              <MessageSquare size={12} color="#9A9A9A" strokeWidth={1.8} />
               <Text className="text-[11px] font-semibold uppercase text-ink-400" style={{ letterSpacing: 1.1 }}>
-                QR Kodu
+                Mesaj kutusu
               </Text>
-            </View>
-
-            {/* QR + sağ blok */}
-            <View className="flex-row items-center gap-4">
-              {/* QR image — soft beyaz çerçeve içinde */}
-              <View
-                style={{
-                  width: 96, height: 96, borderRadius: 14,
-                  backgroundColor: '#FFFFFF',
-                  borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
-                  alignItems: 'center', justifyContent: 'center',
-                  padding: 6,
-                  ...(Platform.OS === 'web' ? { boxShadow: '0 1px 3px rgba(0,0,0,0.04)' } as any : {}),
-                }}
-              >
-                {Platform.OS === 'web' ? (
-                  // @ts-ignore — RN-Web img passthrough
-                  <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(qrUrl)}&margin=2&bgcolor=ffffff&color=0a0a0a`}
-                    alt="QR"
-                    width={84}
-                    height={84}
-                    style={{ display: 'block', borderRadius: 4 }}
-                  />
-                ) : (
-                  <Image
-                    source={{ uri: `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(qrUrl)}&margin=2&bgcolor=ffffff&color=0a0a0a` }}
-                    style={{ width: 84, height: 84, borderRadius: 4 }}
-                    resizeMode="contain"
-                  />
-                )}
-              </View>
-
-              {/* Right block — sipariş + URL + actions */}
-              <View className="flex-1" style={{ gap: 6 }}>
-                <View>
-                  <Text className="text-[10px] font-semibold uppercase text-ink-400" style={{ letterSpacing: 0.8 }}>
-                    Sipariş
-                  </Text>
-                  <Text className="text-[13px] font-mono font-semibold text-ink-900" numberOfLines={1}>
-                    #{order.order_number}
-                  </Text>
+              <View className="flex-1" />
+              {chatMessages.length > 0 && (
+                <View className="px-2 py-0.5 rounded-full bg-ink-50">
+                  <Text className="text-[11px] font-medium text-ink-700">{chatMessages.length}</Text>
                 </View>
-                <Text className="text-[10px] text-ink-400" numberOfLines={2} style={{ lineHeight: 13 }}>
-                  {qrUrl}
-                </Text>
-                <Pressable onPress={handlePrintFull} style={{ alignSelf: 'flex-start' }}>
-                  <PillBtn variant="surface" size="sm" icon={Printer}>Yazdır</PillBtn>
-                </Pressable>
-              </View>
+              )}
             </View>
+
+            {(() => {
+              const last = chatMessages.length > 0 ? chatMessages[chatMessages.length - 1] : null;
+              if (!last) {
+                return (
+                  <Text className="text-[12px] text-ink-400 italic mb-3.5 px-0.5">
+                    Bu vaka için henüz mesaj yok.
+                  </Text>
+                );
+              }
+              const who = last.sender?.full_name ?? 'Bilinmeyen';
+              const body = String(last.content ?? '').trim() || 'Dosya gönderildi';
+              return (
+                <Pressable onPress={() => setChatOpen(true)} className="rounded-2xl p-3.5 mb-3.5" style={{ backgroundColor: softPanelBg }}>
+                  <View className="flex-row items-center gap-2 mb-1.5">
+                    <View
+                      className="w-6 h-6 rounded-full items-center justify-center"
+                      style={{ backgroundColor: hexA(panelAccent, 0.14) }}
+                    >
+                      <Text className="text-[10px] font-semibold" style={{ color: panelAccent }}>
+                        {who.trim().charAt(0).toUpperCase() || '?'}
+                      </Text>
+                    </View>
+                    <Text className="text-[12px] font-medium text-ink-900 flex-1" numberOfLines={1}>
+                      {who}
+                    </Text>
+                    <Text className="text-[10.5px] text-ink-400">{fmtDate(last.created_at)}</Text>
+                  </View>
+                  <Text className="text-[12.5px] text-ink-700 leading-5" numberOfLines={3}>
+                    {body}
+                  </Text>
+                </Pressable>
+              );
+            })()}
+
+            <OriginFillButton
+              label={chatMessages.length > 0 ? 'Sohbeti aç' : 'Mesaj gönder'}
+              icon={MessageSquare}
+              onPress={() => setChatOpen(true)}
+              backgroundColor={panelAccent}
+              fillColor={readableInk(panelAccent)}
+              baseTextColor={readableInk(panelAccent)}
+              fillTextColor={panelAccent}
+              radius={16}
+              paddingVertical={12}
+              fontSize={13}
+              iconSize={15}
+            />
           </View>
+
+          {/* LOJİSTİK — siparişin tüm kurye hareketleri (desktop + mobil ortak bileşen) */}
+          <OrderLogisticsCard
+            legs={deliveryLegs}
+            accent={panelAccent}
+            rowBg={softPanelBg}
+            isManager={isManager}
+            canCall={order.status !== 'iptal'}
+            onCall={() => setCallCourierOpen(true)}
+            onEditFee={leg => setFeeTarget(leg)}
+            fmtDate={fmtDate}
+            mapsApiKey={mapsApiKey}
+            labAddress={labAddress}
+            clinicAddress={clinicAddress}
+            onOpenTracking={leg => {
+              // courier-tracking rotası yalnız bu dört panelde var; istasyon vb.
+              // panellerden gelindiğinde lab'a düşülür.
+              const hasRoute = ['(admin)', '(lab)', '(clinic)', '(doctor)'].includes(panelGroup);
+              const base = hasRoute ? panelGroup : '(lab)';
+              router.push(`/${base}/courier-tracking?delivery=${leg.id}` as any);
+            }}
+            clientView={panelGroup === '(clinic)' || panelGroup === '(doctor)'}
+          />
 
           {/* DİŞ ŞEMASI */}
           <View
@@ -2446,11 +2877,12 @@ export function OrderDetailScreenV2() {
                       {(() => {
                         // Aktif dişe ait spesifik işlem — 3 katmanlı resolve
                         if (activeTooth == null) return order.work_type || '—';
-                        // 1) order_items.tooth_numbers eşleşmesi
+                        // 1) order_items.tooth_numbers eşleşmesi — bir dişte BİRDEN
+                        //    ÇOK işlem olabilir (ör. Zirkon + PMMA geçici) → hepsini göster.
                         const items = (order as any)?.order_items as Array<{ name: string; tooth_numbers?: number[] | null }> | undefined;
                         if (items && items.length > 0) {
-                          const hit = items.find(it => Array.isArray(it.tooth_numbers) && it.tooth_numbers!.includes(activeTooth));
-                          if (hit) return hit.name;
+                          const hits = items.filter(it => Array.isArray(it.tooth_numbers) && it.tooth_numbers!.includes(activeTooth));
+                          if (hits.length) return Array.from(new Set(hits.map(h => h.name))).join('\n');
                         }
                         // 2) work_type virgülle birleşik segmentler + tooth_numbers index
                         const teeth = order.tooth_numbers ?? [];
@@ -2503,16 +2935,12 @@ export function OrderDetailScreenV2() {
               {([
                 { id: 'doctor_note', label: 'Hekim Notu', count: (order.notes && String(order.notes).trim().length > 0) ? 1 : 0 },
                 { id: 'files',       label: 'Dosyalar',     count: (order.photos ?? []).length },
-                { id: 'chat',        label: 'Mesaj kutusu', count: 0 },
               ] as const).map(tb => {
-                const active = (tb.id === 'chat' ? false : sideTab === tb.id);
+                const active = sideTab === tb.id;
                 return (
                   <Pressable
                     key={tb.id}
-                    onPress={() => {
-                      if (tb.id === 'chat') setChatOpen(true);
-                      else setSideTab(tb.id);
-                    }}
+                    onPress={() => setSideTab(tb.id)}
                     className={`flex-1 px-2.5 py-2 rounded-[9px] flex-row items-center justify-center gap-1.5 ${active ? 'bg-white' : ''}`}
                     style={active ? ({ /* @ts-ignore */ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' } as any) : undefined}
                   >
@@ -2549,8 +2977,8 @@ export function OrderDetailScreenV2() {
             )}
             {sideTab === 'files' && (
               <FilesList
-                photos={order.photos ?? []}
-                signedUrls={signedUrls ?? {}}
+                photos={[...(order.photos ?? []), ...inheritedFiles.photos]}
+                signedUrls={{ ...(signedUrls ?? {}), ...inheritedFiles.urls }}
                 workOrderId={order.id}
                 accentColor={panelAccent}
                 onUploaded={refetch}
@@ -2558,8 +2986,11 @@ export function OrderDetailScreenV2() {
             )}
           </View>
 
-          {/* MALİ BİLGİ — sadece manager veya cost erişimi */}
-          {isManager && profit && (
+          {/* MALİ BİLGİ — kullanıcı isteğiyle GEÇİCİ olarak gizlendi (2026-07-21).
+              Kart ve calculate_order_profit hesabı (malzeme/işçilik/lojistik)
+              çalışır durumda; geri açmak için SHOW_FINANCIAL_CARD = true yap.
+              Para birimi RPC'den gelen lab baz para birimidir (₺ sabit değil). */}
+          {SHOW_FINANCIAL_CARD && isManager && profit && (
             <View className="bg-ink-900 rounded-3xl p-5">
               <View className="flex-row items-center mb-3.5">
                 <Text className="text-[11px] font-semibold uppercase text-white/50" style={{ letterSpacing: 1.1 }}>
@@ -2572,7 +3003,7 @@ export function OrderDetailScreenV2() {
                 >
                   <View className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: panelAccent }} />
                   <Text className="text-[10px] font-medium" style={{ color: panelAccent }}>
-                    {profit.sale_price > 0 ? 'Tanımlı' : 'Beklemede'}
+                    {(Number(profit.sale_price) || 0) > 0 ? 'Tanımlı' : 'Beklemede'}
                   </Text>
                 </View>
               </View>
@@ -2580,33 +3011,47 @@ export function OrderDetailScreenV2() {
                 <View className="flex-row justify-between items-baseline">
                   <Text className="text-[12px] text-white/60">Satış fiyatı</Text>
                   <Text className="text-white" style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.66 }}>
-                    ₺ {fmtTL(profit.sale_price)}
+                    {profitSym} {fmtTL(profit.sale_price)}
                   </Text>
                 </View>
                 <View className="flex-row justify-between">
                   <Text className="text-[12px] text-white/60">Materyal</Text>
-                  <Text className="text-[12px] text-white">₺ {fmtTL(profit.material_cost)}</Text>
+                  <Text className="text-[12px] text-white">{profitSym} {fmtTL(profit.material_cost)}</Text>
                 </View>
                 <View className="flex-row justify-between">
                   <Text className="text-[12px] text-white/60">İşçilik</Text>
-                  <Text className="text-[12px] text-white">₺ {fmtTL(profit.labor_cost)}</Text>
+                  <Text className="text-[12px] text-white">{profitSym} {fmtTL(profit.labor_cost)}</Text>
                 </View>
-                {profit.overhead_cost > 0 && (
+                {/* Lojistik — kurye/kargo masrafı, siparişin tüm hareketleri */}
+                {(Number(profit.logistics_cost) || 0) > 0 && (
+                  <View className="flex-row justify-between">
+                    <Text className="text-[12px] text-white/60">Lojistik</Text>
+                    <Text className="text-[12px] text-white">{profitSym} {fmtTL(profit.logistics_cost)}</Text>
+                  </View>
+                )}
+                {/* Baz dışı dövizdeki kurye ücretleri — kur çevrimi yok, ayrı satır */}
+                {Object.entries(profit.logistics_other ?? {}).map(([cur, amt]) => (
+                  <View key={cur} className="flex-row justify-between">
+                    <Text className="text-[12px] text-white/60">Lojistik ({cur})</Text>
+                    <Text className="text-[12px] text-white">{fmtTL(amt)} {cur}</Text>
+                  </View>
+                ))}
+                {(Number(profit.overhead_cost) || 0) > 0 && (
                   <View className="flex-row justify-between">
                     <Text className="text-[12px] text-white/60">Genel gider</Text>
-                    <Text className="text-[12px] text-white">₺ {fmtTL(profit.overhead_cost)}</Text>
+                    <Text className="text-[12px] text-white">{profitSym} {fmtTL(profit.overhead_cost)}</Text>
                   </View>
                 )}
                 <View className="h-px bg-white/10 my-0.5" />
                 <View className="flex-row justify-between items-baseline">
                   <Text className="text-[12px]" style={{ color: panelAccent }}>Net kâr</Text>
                   <Text style={{ ...DISPLAY, fontSize: 28, letterSpacing: -0.84, color: panelAccent }}>
-                    ₺ {fmtTL(profit.profit)}
+                    {profitSym} {fmtTL(profit.profit)}
                   </Text>
                 </View>
                 {profit.margin_pct != null && (
                   <Text className="text-[10px] text-white/50 text-right">
-                    Marj %{profit.margin_pct.toFixed(0)}
+                    Marj %{(Number(profit.margin_pct) || 0).toFixed(0)}
                   </Text>
                 )}
               </View>
@@ -2765,17 +3210,52 @@ export function OrderDetailScreenV2() {
         />
       )}
 
-      {/* Delivery Modal — Kuryeye Gönder */}
+      {/* Revizyon Modal — teslim sonrası yeniden yapım (bağlı yeni sipariş) */}
+      <RevisionModal
+        visible={revisionOpen}
+        orderId={order.id}
+        orderNumber={String((order as any).order_number ?? order.id)}
+        labId={(order as any).lab_id ?? null}
+        accentColor={panelAccent}
+        onClose={() => setRevisionOpen(false)}
+        onCreated={(newId) => { setRevisionOpen(false); handleNavigateRelated(newId); }}
+      />
+
+      {/* Delivery Modal — Kuryeye Gönder (final teslimat) */}
       {isManager && (
         <DeliveryModal
           visible={deliveryModalOpen}
-          workOrderId={id ?? ''}
+          workOrderId={order.id}
           labId={(profile as any)?.lab_id ?? profile?.id ?? ''}
           accentColor={panelAccent}
           lockExternal={(order as any)?.delivery_method === 'kargo'}
           editDelivery={editDeliveryTarget}
           onClose={() => { setDeliveryModalOpen(false); setEditDeliveryTarget(null); }}
           onCreated={() => { refetch(); }}
+        />
+      )}
+
+      {/* Kurye Çağır — üretim sırasındaki ara hareket (eksik parça, model alma…) */}
+      {isManager && (
+        <DeliveryModal
+          visible={callCourierOpen}
+          workOrderId={order.id}
+          labId={(profile as any)?.lab_id ?? profile?.id ?? ''}
+          accentColor={panelAccent}
+          extraLeg
+          stageSnapshot={stageName}
+          onClose={() => setCallCourierOpen(false)}
+          onCreated={() => { setLegsTick(t => t + 1); refetch(); }}
+        />
+      )}
+
+      {/* Kurye ücreti gir / düzelt */}
+      {isManager && (
+        <DeliveryFeeModal
+          leg={feeTarget}
+          accentColor={panelAccent}
+          onClose={() => setFeeTarget(null)}
+          onSaved={() => { setLegsTick(t => t + 1); refetch(); }}
         />
       )}
 
@@ -3240,6 +3720,23 @@ function ActivityFeed({ history }: { history: StatusHistory[] }) {
   );
 }
 
+/** Accent üzerinde okunabilir ön-plan: açık accent'te (lab safranı) ink, koyuda beyaz. */
+function onAccent(hex: string): string {
+  const h = hex.replace('#', '');
+  if (h.length !== 6) return '#FFFFFF';
+  const lin = (v: number) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); };
+  const L = 0.2126 * lin(parseInt(h.slice(0, 2), 16))
+          + 0.7152 * lin(parseInt(h.slice(2, 4), 16))
+          + 0.0722 * lin(parseInt(h.slice(4, 6), 16));
+  return L > 0.5 ? '#0A0A0A' : '#FFFFFF';
+}
+/** #RRGGBB → rgba(...) */
+function alphaOf(hex: string, a: number): string {
+  const h = hex.replace('#', '');
+  if (h.length !== 6) return hex;
+  return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`;
+}
+
 function FilesList({
   photos, signedUrls, workOrderId, accentColor, onUploaded,
 }: {
@@ -3254,7 +3751,7 @@ function FilesList({
   const [viewer3DFile, setViewer3DFile] = useState<{ id: string; name: string; url: string; format: 'stl'|'ply'|'obj'; textureUrl?: string|null } | null>(null);
   // Uygulama-içi görsel / HTML tasarım önizleme (yeni tab yerine popup) — dosya modalı ile aynı davranış
   const [imageViewer, setImageViewer] = useState<{ url: string; name: string } | null>(null);
-  const [htmlViewer, setHtmlViewer]   = useState<{ url: string; name: string } | null>(null);
+  const [htmlViewer, setHtmlViewer]   = useState<{ url?: string; html?: string; name: string } | null>(null);
   // Zip tarama arşivi: açılıyor göstergesi + zip içi görseller + revoke edilecek blob URL'ler
   const [extractingId, setExtractingId] = useState<string | null>(null);
   const [zipImages, setZipImages] = useState<{ url: string; name: string }[] | null>(null);
@@ -3283,31 +3780,64 @@ function FilesList({
 
   const openPreview = (f: WorkOrderPhoto) => {
     const url = signedUrls[f.storage_path] ?? (f as any).signed_url ?? null;
-    if (!url) return;
+    // İmzalı URL yok (henüz yüklenmedi ya da storage erişimi yok) → sessiz kalma.
+    if (!url) { toast.error('Dosyaya erişilemedi. Birazdan tekrar deneyin.'); return; }
     const filename = f.caption ?? f.storage_path.split('/').pop() ?? '';
+    const ext = (f.storage_path.split('.').pop() || '').toLowerCase();
+    // Görsel → uygulama-içi lightbox (web + native). SVG native'de RN Image ile
+    // render olmaz → native'de aşağıdaki sistem-tarayıcı yoluna düşer.
+    const isRasterImg = ['jpg','jpeg','png','gif','webp','bmp','heic','heif','avif'].includes(ext);
+    if (isRasterImg || (ext === 'svg' && Platform.OS === 'web')) {
+      setImageViewer({ url, name: filename });
+      return;
+    }
+    // 3D (STL/PLY/OBJ) → uygulama-içi viewer (web three.js · native WebView+three.js).
     const fmt = is3DFileExt(f.storage_path);
-    if (fmt && Platform.OS === 'web') {
+    if (fmt) {
       const textureUrl = fmt === 'obj' ? siblingTextureUrl(f.storage_path) : null;
       setViewer3DFile({ id: f.id, name: filename, url, format: fmt, textureUrl });
       return;
     }
-    const ext = (f.storage_path.split('.').pop() || '').toLowerCase();
-    // HTML tasarım (exocad) → uygulama-içi iframe; content-type text olabildiği
-    // için içeriği çekip text/html blob ile gömüyoruz (yazı değil tasarım render edilir).
-    if ((ext === 'html' || ext === 'htm') && Platform.OS === 'web') {
+    // ZIP → native: fflate ile aç (data-URI), içindeki mesh'leri 3D viewer'da göster.
+    if (isArchiveExt(f.storage_path) && Platform.OS !== 'web') {
+      setExtractingId(f.id);
       (async () => {
         try {
-          const res = await fetch(url); const text = await res.text();
-          setHtmlViewer({ url: URL.createObjectURL(new Blob([text], { type: 'text/html' })), name: filename });
-        } catch { window.open(url, '_blank'); }
+          const r = await unzipToViewerNative(url, { idPrefix: f.id });
+          if (r.files.length > 0) {
+            setZipImages(r.images.length ? r.images : null);
+            setViewerAll(r.files);
+          } else if (r.images.length > 0) {
+            setZipImages(r.images);
+            setImageViewer(r.images[0]);
+          } else {
+            openFileUrl(url);
+          }
+        } catch { openFileUrl(url); }
+        finally { setExtractingId(null); }
       })();
       return;
     }
-    // Görsel → uygulama-içi popup
-    if (['jpg','jpeg','png','gif','webp','bmp','heic','heif','svg','avif'].includes(ext) && Platform.OS === 'web') {
-      setImageViewer({ url, name: filename });
+    // HTML tasarım (exocad web viewer) → uygulama-içi görüntüleyici (web: iframe · native: WebView).
+    // content-type text olabildiği için içeriği çekip gömüyoruz (yazı değil tasarım render edilir).
+    // Desktop/webapp ile birebir: dosya dışarı çıkmadan uygulama içinde açılır.
+    if (ext === 'html' || ext === 'htm') {
+      setExtractingId(f.id);
+      (async () => {
+        try {
+          const res = await fetch(url); const text = await res.text();
+          if (Platform.OS === 'web') {
+            setHtmlViewer({ url: URL.createObjectURL(new Blob([text], { type: 'text/html' })), name: filename });
+          } else {
+            setHtmlViewer({ html: text, name: filename });
+          }
+        } catch { openFileUrl(url); }
+        finally { setExtractingId(null); }
+      })();
       return;
     }
+    // Native: kalan tipler (PDF vb.) için web-içi görüntüleyici yok → sistem tarayıcısı.
+    if (Platform.OS !== 'web') { openFileUrl(url); return; }
     // ZIP → tarayıcı içinde aç, içindeki mesh'leri 3D viewer'da göster (klinikler tüm
     // taramaları tek zip içine koyuyor). Mesh yoksa görsel lightbox, o da yoksa indir.
     if (isArchiveExt(f.storage_path) && Platform.OS === 'web') {
@@ -3338,6 +3868,8 @@ function FilesList({
     const url = signedUrls[f.storage_path] ?? (f as any).signed_url ?? null;
     if (!url) return;
     const filename = f.caption ?? f.storage_path.split('/').pop() ?? 'file';
+    // Native: <a download> yok → dosyayı sistem tarayıcısında aç (kullanıcı oradan kaydeder/paylaşır).
+    if (Platform.OS !== 'web') { openFileUrl(url); return; }
     if (typeof document === 'undefined') return;
     // Cross-origin (Supabase storage) signed URL'de <a download> YOK SAYILIR →
     // HTML/SVG vb. yeni sekmede text gibi açılır. Çözüm: içeriği blob olarak çek,
@@ -3390,24 +3922,38 @@ function FilesList({
   // sıfırlanır ve modal kapanır.
   return (
     <View className="gap-3">
-      {/* Multi-file "Tümünü 3D Aç" butonu — 2+ STL/PLY/OBJ varsa görünür */}
-      {all3DFiles.length >= 2 && Platform.OS === 'web' && (
-        <Pressable
-          onPress={() => setViewerAll(all3DFiles)}
-          style={({ hovered }: any) => ({
-            alignSelf: 'flex-start',
-            flexDirection: 'row', alignItems: 'center', gap: 6,
-            paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999,
-            backgroundColor: hovered ? '#0A0A0A' : '#1A1A1A',
-            ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-          })}
-        >
-          <Eye size={12} color="#E8D5C4" strokeWidth={2} />
-          <Text style={{ fontSize: 11.5, fontWeight: '700', color: '#E8D5C4' }}>
-            Tümünü 3D Aç ({all3DFiles.length})
-          </Text>
-        </Pressable>
-      )}
+      {/* Multi-file "Tümünü 3D Aç" butonu — 2+ STL/PLY/OBJ varsa görünür (web + native).
+          Tüm taramaları tek sahnede katmanlar halinde açar (desktop paritesi). */}
+      {all3DFiles.length >= 2 && (() => {
+        // Panel accent'li pill CTA (tasarım dili: radius 999, accent = panel primary,
+        // accent-tonlu yumuşak gölge). Ön-plan kontrast-farkında: lab safranında ink.
+        const fg = onAccent(accentColor);
+        return (
+          <Pressable
+            onPress={() => setViewerAll(all3DFiles)}
+            android_ripple={{ color: alphaOf(fg, 0.12) }}
+            /* NOT: object style ZORUNLU — NativeWind v4'te fonksiyon-stilli Pressable
+               native'de backgroundColor'ı düşürüyor (buton beyaz kalıyordu). */
+            style={{
+              alignSelf: 'center',
+              flexDirection: 'row', alignItems: 'center', gap: 9,
+              height: 40, paddingHorizontal: 13, borderRadius: 999,
+              backgroundColor: accentColor,
+              shadowColor: accentColor, shadowOpacity: 0.30, shadowRadius: 12, shadowOffset: { width: 0, height: 4 },
+              elevation: 3,
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+            }}
+          >
+            <Layers size={16} color={fg} strokeWidth={2.2} />
+            <Text style={{ fontSize: 13.5, fontWeight: '700', color: fg, letterSpacing: -0.2 }} numberOfLines={1}>
+              Tümünü 3D Aç
+            </Text>
+            <View style={{ minWidth: 20, height: 20, paddingHorizontal: 6, borderRadius: 10, backgroundColor: alphaOf(fg, 0.20), alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ fontSize: 11.5, fontWeight: '800', color: fg }}>{all3DFiles.length}</Text>
+            </View>
+          </Pressable>
+        );
+      })()}
       {photos.length === 0 ? (
         <View className="py-4 items-center">
           <Text className="text-[12px] text-ink-400">Bu siparişe henüz dosya eklenmedi</Text>
@@ -3439,10 +3985,10 @@ function FilesList({
                   <Icon size={11} color={color} strokeWidth={1.8} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-                  <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '600', color: '#0A0A0A' }}>
+                  <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '600', color: '#0A0A0A', flexShrink: 1 }}>
                     {filename}
                   </Text>
-                  <Text style={{ fontSize: 10, color: '#9A9A9A' }} numberOfLines={1}>
+                  <Text style={{ fontSize: 10, color: '#9A9A9A', flexShrink: 0 }} numberOfLines={1}>
                     {ext}{f.tooth_number != null ? ` · Diş ${f.tooth_number}` : ''}
                   </Text>
                 </View>
@@ -3514,10 +4060,19 @@ function FilesList({
           />
         </React.Suspense>
       )}
+      {/* 3D Viewer — native (WebView + three.js) */}
+      {viewer3DFile && Platform.OS !== 'web' && (
+        <MobileViewer3D
+          visible={!!viewer3DFile}
+          files={[viewer3DFile]}
+          title={viewer3DFile.name}
+          onClose={() => setViewer3DFile(null)}
+        />
+      )}
 
       {/* Görsel önizleme — zoom (scroll/pinch) + pan + next/prev + safe-area (uygulama-içi).
           Zip içi görseller varsa onlar arasında gezilir. */}
-      {imageViewer && Platform.OS === 'web' && (() => {
+      {imageViewer && (() => {
         const src = (zipImages ?? referenceImages) as { url: string; name: string }[];
         const lbImages = src.length
           ? src.map(r => ({ url: r.url, name: r.name }))
@@ -3526,14 +4081,24 @@ function FilesList({
         if (lbIndex < 0) { lbImages.unshift(imageViewer); lbIndex = 0; }
         const close = () => { setImageViewer(null); if (zipImages) { setZipImages(null); revokeZipUrls(); } };
         return (
-          <Modal visible transparent animationType="fade" onRequestClose={close}>
-            <ImageLightbox
-              images={lbImages}
-              index={lbIndex}
-              topInset={insets.top}
-              onClose={close}
-              onIndexChange={(i) => setImageViewer({ url: lbImages[i].url, name: lbImages[i].name })}
-            />
+          <Modal visible transparent animationType="fade" onRequestClose={close} statusBarTranslucent>
+            {Platform.OS === 'web' ? (
+              <ImageLightbox
+                images={lbImages}
+                index={lbIndex}
+                topInset={insets.top}
+                onClose={close}
+                onIndexChange={(i) => setImageViewer({ url: lbImages[i].url, name: lbImages[i].name })}
+              />
+            ) : (
+              <NativeImageViewer
+                images={lbImages}
+                index={lbIndex}
+                topInset={insets.top}
+                onClose={close}
+                onIndexChange={(i) => setImageViewer({ url: lbImages[i].url, name: lbImages[i].name })}
+              />
+            )}
           </Modal>
         );
       })()}
@@ -3567,6 +4132,42 @@ function FilesList({
         </Modal>
       )}
 
+      {/* HTML tasarım önizleme — native (WebView, uygulama-içi exocad viewer) */}
+      {htmlViewer && Platform.OS !== 'web' && HtmlWebView && (
+        <Modal visible transparent animationType="fade" onRequestClose={closeHtmlViewer}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 12,
+            paddingTop: Math.max(insets.top, 12) + 8, paddingBottom: Math.max(insets.bottom, 12) }}>
+            <View style={{ flex: 1, borderRadius: 16, overflow: 'hidden', backgroundColor: '#FFFFFF' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' }}>
+                <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: '#0A0A0A' }} numberOfLines={1}>{htmlViewer.name}</Text>
+                <Pressable onPress={closeHtmlViewer} hitSlop={10} style={{ width: 32, height: 32, borderRadius: 999, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 18, lineHeight: 18, color: '#334155' }}>×</Text>
+                </Pressable>
+              </View>
+              <View style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
+                <HtmlWebView
+                  originWhitelist={['*']}
+                  source={{ html: htmlViewer.html ?? '' }}
+                  style={{ flex: 1, backgroundColor: '#FFFFFF' }}
+                  javaScriptEnabled
+                  domStorageEnabled
+                  allowFileAccess
+                  allowUniversalAccessFromFileURLs
+                  originAllowsMixedContent
+                  scalesPageToFit
+                  startInLoadingState
+                  renderLoading={() => (
+                    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
+                      <ActivityIndicator size="large" color="#4771AB" />
+                    </View>
+                  )}
+                />
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
+
       {/* Multi-file viewer — "Tümünü 3D Aç" veya zip'ten çıkan mesh'ler tek sahnede.
           Zip'ten geldiyse referans görseller zip içindekiler olur. */}
       {viewerAll && Platform.OS === 'web' && (
@@ -3579,6 +4180,15 @@ function FilesList({
             onClose={() => { setViewerAll(null); setZipImages(null); revokeZipUrls(); }}
           />
         </React.Suspense>
+      )}
+      {/* ZIP taraması / çoklu 3D — native (WebView + three.js) */}
+      {viewerAll && Platform.OS !== 'web' && (
+        <MobileViewer3D
+          visible={!!viewerAll}
+          files={viewerAll}
+          title={`${viewerAll.length} dosya birlikte`}
+          onClose={() => { setViewerAll(null); setZipImages(null); }}
+        />
       )}
     </View>
   );
@@ -4071,13 +4681,16 @@ function Chip({ children, tone, dot = false, icon: Icon }: {
   );
 }
 
-function PillBtn({ children, variant = 'primary', size = 'md', icon: Icon, onDark = false }: {
+function PillBtn({ children, variant = 'primary', size = 'md', icon: Icon, onDark = false, onPress, disabled }: {
   children: React.ReactNode;
   variant?: 'primary' | 'surface' | 'ghost';
   size?: 'sm' | 'md';
   icon?: any; // Lucide ForwardRefExoticComponent — accept any to avoid type friction
   /** Renkli/koyu zemin (yeşil hero) üstünde: primary→beyaz pill + yeşil metin, surface→şeffaf-beyaz outline. */
   onDark?: boolean;
+  /** Verilirse buton kendisi basılabilir olur + origin-fill efekti kazanır. */
+  onPress?: () => void;
+  disabled?: boolean;
 }) {
   const sizeCls = size === 'sm' ? 'px-3 py-1.5' : 'px-4 py-2';
   const textSize = size === 'sm' ? 'text-[12px]' : 'text-[13px]';
@@ -4096,10 +4709,56 @@ function PillBtn({ children, variant = 'primary', size = 'md', icon: Icon, onDar
     ? (variant === 'primary' ? '#0C8F56' : '#FFFFFF')
     : (variant === 'primary' ? '#FFFFFF' : '#0A0A0A');
 
-  return (
-    <View className={`flex-row items-center gap-1.5 rounded-full border ${sizeCls} ${variantCls}`}>
-      {Icon && <Icon size={iconSize} color={fgHex} strokeWidth={1.8} />}
-      <Text className={`font-medium ${textSize} ${fgClass}`}>{children}</Text>
+  // variantCls NativeWind class'ı; OriginFillPressable style aldığı için
+  // aynı değerleri hex olarak da tutuyoruz.
+  const bgHex = onDark
+    ? (variant === 'primary' ? '#FFFFFF' : variant === 'surface' ? 'rgba(255,255,255,0.15)' : 'transparent')
+    : (variant === 'primary' ? '#0A0A0A' : variant === 'surface' ? '#FFFFFF' : 'transparent');
+  const bdHex = onDark
+    ? (variant === 'primary' ? '#FFFFFF' : variant === 'surface' ? 'rgba(255,255,255,0.40)' : 'transparent')
+    : (variant === 'primary' ? '#0A0A0A' : variant === 'surface' ? '#EAEAEA' : 'transparent');
+
+  // Dolgu rengi = mevcut zeminin tersi. Beyaza dönen varyantlarda buton beyaz
+  // kart üstünde kaybolmasın diye dolu haldeyken ince bir kenar gösterilir.
+  const fillHex = onDark
+    ? (variant === 'primary' ? '#0C8F56' : '#FFFFFF')
+    : (variant === 'primary' ? '#FFFFFF' : '#0A0A0A');
+  const fillFgHex = onDark
+    ? (variant === 'primary' ? '#FFFFFF' : '#0A0A0A')
+    : (variant === 'primary' ? '#0A0A0A' : '#FFFFFF');
+  // Açık dolgu (beyaz) → stroke şart; koyu dolguda gerekmiyor.
+  const fillBorder = fillHex === '#FFFFFF'
+    ? (onDark ? 'rgba(255,255,255,0.55)' : '#EAEAEA')
+    : undefined;
+
+  const inner = (color: string) => (
+    <View className={`flex-row items-center gap-1.5 ${sizeCls}`}>
+      {Icon && <Icon size={iconSize} color={color} strokeWidth={1.8} />}
+      <Text className={`font-medium ${textSize}`} style={{ color }}>{children}</Text>
     </View>
+  );
+
+  // onPress verilmediyse (salt görsel kullanım) eski davranış: düz View.
+  if (!onPress) {
+    return (
+      <View className={`flex-row items-center gap-1.5 rounded-full border ${sizeCls} ${variantCls}`}>
+        {Icon && <Icon size={iconSize} color={fgHex} strokeWidth={1.8} />}
+        <Text className={`font-medium ${textSize} ${fgClass}`}>{children}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <OriginFillPressable
+      onPress={onPress}
+      disabled={disabled}
+      content={inner}
+      baseContentColor={fgHex}
+      fillContentColor={fillFgHex}
+      fillColor={fillHex}
+      fillBorderColor={fillBorder}
+      radius={999}
+      style={{ borderWidth: 1, backgroundColor: bgHex, borderColor: bdHex }}
+    />
   );
 }
