@@ -26,6 +26,10 @@ export interface TriageStation {
   est_duration_min: number | null;
   /** Faz 3: aşamanın hedef teslim süresi / SLA (saat) */
   sla_hours: number | null;
+  /** Bu aşamada kullanılan malzeme kategorileri (stock_items.category ile birebir) */
+  allowed_material_types: string[];
+  /** Bu aşama malzeme tüketir mi (tamamlanırken malzeme onay popup'ı açılır) */
+  consumes_materials: boolean;
 }
 
 export interface TriageTech {
@@ -136,7 +140,7 @@ export async function fetchTriageData(orderId: string, labId: string): Promise<T
   const [stRes, techRes, wfRes, presetRes] = await Promise.all([
     supabase
       .from('lab_stations')
-      .select('id, name, color, icon, sequence_hint, is_critical, applicable_work_types, default_technician_id, required_skills, est_duration_min, sla_hours')
+      .select('id, name, color, icon, sequence_hint, is_critical, applicable_work_types, default_technician_id, required_skills, est_duration_min, sla_hours, allowed_material_types, consumes_materials')
       .eq('is_active', true)
       .order('sequence_hint', { ascending: true }),
     supabase
@@ -162,20 +166,29 @@ export async function fetchTriageData(orderId: string, labId: string): Promise<T
     is_critical: !!s.is_critical, applicable_work_types: s.applicable_work_types,
     default_technician_id: s.default_technician_id, required_skills: s.required_skills ?? [],
     est_duration_min: s.est_duration_min ?? null, sla_hours: s.sla_hours ?? null,
+    allowed_material_types: s.allowed_material_types ?? [], consumes_materials: !!s.consumes_materials,
   }));
 
-  // 3) Teknisyen iş yükü — aktif order_stages sayısı
+  // 3) Teknisyen iş yükü — teknisyene atalı, tamamlanmamış aşaması olan BENZERSIZ
+  //    SİPARİŞ sayısı (aşama satırı DEĞİL). Tek sipariş çok aşamalı olabilir (paralel
+  //    şeritler + gelecekteki tüm aşamalar aynı teknisyene atanır); satır sayınca
+  //    tek iş "8 aktif" gibi şişiyordu. Yük = kaç ayrı sipariş üstünde sorumlu.
   const techIds = (techRes.data ?? []).map((t: any) => t.id);
   const loadMap = new Map<string, number>();
   if (techIds.length > 0) {
     const { data: wip } = await supabase
       .from('order_stages')
-      .select('technician_id')
+      .select('technician_id, work_order_id')
       .in('technician_id', techIds)
       .in('status', ACTIVE_STAGE_STATUSES);
+    const ordersPerTech = new Map<string, Set<string>>();
     (wip ?? []).forEach((r: any) => {
-      if (r.technician_id) loadMap.set(r.technician_id, (loadMap.get(r.technician_id) ?? 0) + 1);
+      if (!r.technician_id || !r.work_order_id) return;
+      let set = ordersPerTech.get(r.technician_id);
+      if (!set) { set = new Set<string>(); ordersPerTech.set(r.technician_id, set); }
+      set.add(r.work_order_id);
     });
+    ordersPerTech.forEach((set, techId) => loadMap.set(techId, set.size));
   }
   const stMap = await fetchStationSkillsMap(); // user_id → Set<station_id>
   const technicians: TriageTech[] = (techRes.data ?? []).map((t: any) => ({
@@ -338,6 +351,8 @@ export interface PlanLine {
   is_critical: boolean;
   /** Faz 5: aynı parallel_group → eşzamanlı yürüyen aşamalar. null = seri. */
   parallel_group: number | null;
+  /** Faz 2 (paralel şerit): işlem şeridi (1,2,…). Yoksa/1 → tek şerit (bugünkü davranış). */
+  lane?: number;
 }
 
 // ── Faz 5c: sıfır-tıkla oto-triaj ───────────────────────────────────────────
@@ -364,6 +379,17 @@ export async function saveTriagePlan(orderId: string, lines: PlanLine[], firstTe
     p_lines: lines,
     p_first_tech_id: firstTechId,
   });
+}
+
+/** Faz 2 (paralel şerit): order_items → lane atamasını yaz. Lab müdürü RLS
+ *  ("Lab users manage order_items") ile doğrudan günceller. Tek-şerit (hepsi 1)
+ *  planlarda çağrılmasa da zararsız. */
+export async function setOrderItemLanes(orderId: string, itemLanes: { id: string; lane: number }[]) {
+  await Promise.all(
+    itemLanes.map(({ id, lane }) =>
+      supabase.from('order_items').update({ lane }).eq('id', id).eq('work_order_id', orderId),
+    ),
+  );
 }
 
 /** Yeniden planla — mevcut aşamaların SIRA + TEKNİSYEN'ini güncelle.
@@ -540,7 +566,7 @@ export async function fetchSkillsData(labId: string): Promise<SkillsData> {
   const [stRes, techRes] = await Promise.all([
     supabase
       .from('lab_stations')
-      .select('id, name, color, icon, sequence_hint, is_critical, applicable_work_types, default_technician_id, required_skills, est_duration_min, sla_hours')
+      .select('id, name, color, icon, sequence_hint, is_critical, applicable_work_types, default_technician_id, required_skills, est_duration_min, sla_hours, allowed_material_types, consumes_materials')
       .eq('is_active', true)
       .order('sequence_hint', { ascending: true }),
     supabase
@@ -556,6 +582,7 @@ export async function fetchSkillsData(labId: string): Promise<SkillsData> {
     is_critical: !!s.is_critical, applicable_work_types: s.applicable_work_types,
     default_technician_id: s.default_technician_id, required_skills: s.required_skills ?? [],
     est_duration_min: s.est_duration_min ?? null, sla_hours: s.sla_hours ?? null,
+    allowed_material_types: s.allowed_material_types ?? [], consumes_materials: !!s.consumes_materials,
   }));
   const technicians: TriageTech[] = ((techRes.data ?? []) as any[]).map((t) => ({
     id: t.id, full_name: t.full_name, role: t.role, is_active: t.is_active, load: 0, skills: t.skills ?? [], capacity: t.daily_capacity ?? null,
@@ -569,6 +596,18 @@ export async function fetchSkillsData(labId: string): Promise<SkillsData> {
 
 export async function updateStationSkills(stationId: string, skills: string[]) {
   return supabase.from('lab_stations').update({ required_skills: skills }).eq('id', stationId);
+}
+
+/**
+ * Aşamada kullanılan malzeme kategorileri. Kategori seçiliyse aşama malzeme
+ * tüketir (consumes_materials = true) → tamamlanırken malzeme onay popup'ı açılır.
+ * Kategori kalmazsa tüketim kapanır (popup açılmaz).
+ */
+export async function updateStationMaterials(stationId: string, categories: string[]) {
+  return supabase
+    .from('lab_stations')
+    .update({ allowed_material_types: categories, consumes_materials: categories.length > 0 })
+    .eq('id', stationId);
 }
 
 // ── Faz 3: plan zaman çizelgesi yardımcıları (saf fonksiyon) ────────────────
