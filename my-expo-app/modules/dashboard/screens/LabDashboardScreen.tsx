@@ -1109,6 +1109,7 @@ export function LabDashboardScreen() {
   }, []);
 
   const loadExtra = useCallback(async () => {
+   try {
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
 
@@ -1249,6 +1250,23 @@ export function LabDashboardScreen() {
     } else {
       setTriagePending([]);
     }
+   } catch (e) {
+      // Promise.all sorgularından biri (RLS/kolon/ağ) patlarsa setTriagePending'e
+      // ulaşılmadan çıkılıyordu → localStorage'da persist edilen ESKİ triagePending
+      // özet sayfasında "hayalet" planlama-bekliyor sayısı olarak kalıyordu. Sayacı
+      // bağımsız + dayanıklı tazele ki gerçek durumu (çoğu zaman 0) yansıtsın.
+      if (typeof console !== 'undefined') console.debug('[dashboard] loadExtra failed, triage fallback:', e);
+      try {
+        const { data: tf } = await supabase
+          .from('work_orders')
+          .select('id, order_number, work_type, patient_name, created_at, is_urgent, doctor_id')
+          .eq('status', 'alindi')
+          .is('triaged_at', null)
+          .or('is_archived.is.null,is_archived.eq.false')
+          .limit(5);
+        setTriagePending((tf ?? []).map((o: any) => ({ ...o, doctor: null })));
+      } catch { setTriagePending([]); }
+   }
   }, [today]);
 
   const loadAnalytics = useCallback(async () => {
