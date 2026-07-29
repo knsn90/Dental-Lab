@@ -12,7 +12,7 @@
  */
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
-  View, Text, ScrollView, Pressable,
+  View, Text, ScrollView, Pressable, Image,
   useWindowDimensions, Animated,
   Platform, RefreshControl, Easing,
 } from 'react-native';
@@ -22,8 +22,10 @@ import { useRouter } from 'expo-router';
 import {
   Package, Plus, Clock, CheckCircle, Activity, Users,
   CreditCard, Calendar, BarChart3, Layers, TrendingUp,
-  AlertTriangle, ArrowUpRight, ArrowRight, Check, Trophy, Inbox, Receipt,
+  AlertTriangle, ArrowUpRight, ArrowRight, Check, Trophy, Inbox, Receipt, CornerDownRight,
+  Wallet,
 } from 'lucide-react-native';
+import { useStockAlert } from '../../core/hooks/useStockAlert';
 import { useTranslation } from 'react-i18next';
 import { localeTag } from '../../core/i18n';
 import { supabase } from '../../core/api/supabase';
@@ -32,7 +34,10 @@ import { useIsDesktop } from '../../core/layout/PatternsShell';
 import { usePageTitleStore } from '../../core/store/pageTitleStore';
 import { useAuthStore } from '../../core/store/authStore';
 import { HomeB1, type PriorityOrder, type KpiItem, defaultInsight } from '../../core/ui/HomeB1';
-import { AdminMobileDashboard, type DelayedCase } from '../../modules/admin/components/AdminMobileDashboard';
+import { AdminMobileDashboard } from '../../modules/admin/components/AdminMobileDashboard';
+import { resolveOrderStatus } from '../../modules/dashboard/components/RecentOrdersMobile';
+import { mapRevisionCases, flattenRevisionCases } from '../../modules/orders/revisionGroups';
+import { useRevisionParents } from '../../modules/orders/hooks/useRevisionParents';
 import { NumberTickerX } from '../../core/ui/NumberTickerX';
 import { groupByCurrency, type CurrencyTotal } from '../../core/money/aggregations';
 import { formatMoney, useBaseCurrency, type Currency } from '../../core/money/currency';
@@ -942,7 +947,7 @@ function PlanningWaitingCard({ count, onPress }: { count: number; onPress: () =>
           <View style={{ flex: 1 }}>
             <View className="flex-row items-center" style={{ gap: 6 }}>
               <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: '#FFEDD5' }} />
-              <Text style={{ fontSize: 9, fontWeight: '500', color: '#FFEDD5', letterSpacing: 0.5, textTransform: 'uppercase' }}>Yeni</Text>
+              <Text style={{ fontSize: 9, fontWeight: '700', color: '#FFEDD5', letterSpacing: 0.7, textTransform: 'uppercase' }}>{t('admin.status.newWorkKicker')}</Text>
               <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.5, lineHeight: 24, color: '#FFF', marginLeft: 4 }}>
                 {count}
               </Text>
@@ -1261,6 +1266,9 @@ export default function AdminDashboard() {
   const [upcoming, setUpcoming]           = useState<any[]>(cache?.upcoming ?? []);
   const [hovered, setHovered]             = useState<string | null>(null);
   const [pipelineCounts, setPipelineCounts] = useState<Record<string, number>>(cache?.pipelineCounts ?? {});
+  // Planlama bekleyen = status 'alindi' VE triaged_at NULL (planlanmamış). pipelineCounts['alindi']
+  // planlanmışları da sayıyordu → planlanmış sipariş "planlamayı başlat" olarak kalıyordu.
+  const [planningPending, setPlanningPending] = useState<number>(0);
   const [weekCounts, setWeekCounts]       = useState<Record<string, number>>(cache?.weekCounts ?? {});
   const [weekDone, setWeekDone]           = useState<Record<string, number>>(cache?.weekDone ?? {});
 
@@ -1272,19 +1280,49 @@ export default function AdminDashboard() {
   // Faturalanmamış siparişler (Faz 3 hatırlatma)
   const [unbilledCount, setUnbilledCount]   = useState(0);
   const [unbilledClinics, setUnbilledClinics] = useState(0);
-  const [unbilledTotal, setUnbilledTotal]   = useState(0);
+  // Para birimi → tutar (katı per-currency; tek sayıya indirgeme YOK)
+  const [unbilledTotals, setUnbilledTotals] = useState<Record<string, number>>({});
+  // Kritik stok sayısı — görev kartındaki "kritik stok" satırı için (realtime)
+  const lowStockCount = useStockAlert();
+  // Görev kartını besleyen satırlar: faturasız teslimatlar + vadesi geçmiş faturalar
+  const [unbilledRows, setUnbilledRows]     = useState<any[]>([]);
+  const [overdueInvoices, setOverdueInvoices] = useState<any[]>([]);
   const loadUnbilled = useCallback(async () => {
     try {
       const { data } = await supabase
         .from('v_unbilled_work_orders')
-        .select('work_order_id, clinic_id, estimated_total');
+        .select('work_order_id, order_number, clinic_id, estimated_total, totals_by_currency, delivered_at')
+        .order('delivered_at', { ascending: false, nullsFirst: false });
       const rows = (data ?? []) as any[];
       setUnbilledCount(rows.length);
       setUnbilledClinics(new Set(rows.map(r => r.clinic_id).filter(Boolean)).size);
-      setUnbilledTotal(rows.reduce((s, r) => s + Number(r.estimated_total ?? 0), 0));
+      // Para birimi başına topla — kalemler farklı dövizde olabilir; tek sayıda
+      // birleştirmek (eski davranış) 7 EUR'yu ₺7 gösteriyordu.
+      const byCcy: Record<string, number> = {};
+      rows.forEach(r => {
+        const map = (r.totals_by_currency ?? {}) as Record<string, any>;
+        const entries = Object.entries(map);
+        if (entries.length === 0) return;
+        entries.forEach(([ccy, val]) => { byCcy[ccy] = (byCcy[ccy] ?? 0) + (Number(val) || 0); });
+      });
+      setUnbilledTotals(byCcy);
+      setUnbilledRows(rows.slice(0, 2));
     } catch { /* skip */ }
   }, []);
-  useEffect(() => { loadUnbilled(); }, [loadUnbilled]);
+  const loadOverdueInvoices = useCallback(async () => {
+    try {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const { data } = await supabase
+        .from('invoices')
+        .select('id, invoice_number, total, paid_amount, due_date, currency')
+        .lt('due_date', todayStr)
+        .not('status', 'in', '("odendi","iptal","taslak")')  // taslak = henüz kesilmemiş fatura
+        .order('due_date', { ascending: true })
+        .limit(2);
+      setOverdueInvoices((data as any[]) ?? []);
+    } catch { /* skip */ }
+  }, []);
+  useEffect(() => { loadUnbilled(); loadOverdueInvoices(); }, [loadUnbilled, loadOverdueInvoices]);
 
   // ── Data loaders (mirroring Lab dashboard pattern) ──
 
@@ -1305,6 +1343,15 @@ export default function AdminDashboard() {
       counts['uretimde'] = (counts['uretimde'] ?? 0) + asamadaCount;
       setPipelineCounts(counts);
 
+      // Planlama bekleyen: yalnız triaged_at NULL olan 'alindi' siparişler (planlanmamış).
+      const planRes = await supabase
+        .from('work_orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'alindi')
+        .is('triaged_at', null)
+        .or('is_archived.is.null,is_archived.eq.false');
+      setPlanningPending(planRes.count ?? 0);
+
       // Toplam = work_orders'ın doğrudan (arşiv hariç) sayısı — status kovaları
       // toplamı, bilinmeyen/özel durumdaki siparişleri kaçırıyordu.
       const totalRes = await supabase
@@ -1320,27 +1367,47 @@ export default function AdminDashboard() {
   const loadRecent = useCallback(async () => {
     const { data, error } = await supabase
       .from('work_orders')
-      .select('id, order_number, work_type, status, delivery_date, doctor_id')
+      // hold_status + revizyon alanları: durum etiketi ve vaka gruplaması için
+      // gerekli (bu sorgu ikisini de seçmiyordu → revizyonlar köksüz görünüyordu)
+      .select('id, order_number, work_type, status, hold_status, delivery_date, doctor_id, patient_name, revision_of_id, revision_no')
       .order('created_at', { ascending: false })
       .limit(8);
     if (error) { console.error('[AdminDashboard] loadRecent error:', error); return; }
     const rows = data ?? [];
     const doctorIds = Array.from(new Set(rows.map((r: any) => r.doctor_id).filter(Boolean)));
     const nameMap: Record<string, string> = {};
+    const clinicOf: Record<string, string> = {};   // doctor_id → clinic_id
+    const logoOf: Record<string, string> = {};     // clinic_id → logo_url
     if (doctorIds.length) {
       // doctor_id polimorfik (doctors.id VEYA profiles.id) — iki tabloyu da çöz,
       // doctors öncelikli.
       const [docsR, profsR] = await Promise.all([
-        supabase.from('doctors').select('id, full_name').in('id', doctorIds),
-        supabase.from('profiles').select('id, full_name').in('id', doctorIds),
+        supabase.from('doctors').select('id, full_name, clinic_id').in('id', doctorIds),
+        supabase.from('profiles').select('id, full_name, clinic_id').in('id', doctorIds),
       ]);
       (docsR.data ?? []).forEach((d: any) => { nameMap[d.id] = d.full_name; });
       (profsR.data ?? []).forEach((p: any) => { if (!nameMap[p.id]) nameMap[p.id] = p.full_name; });
+      // Avatar: hekim baş harfleri yerine KLİNİK LOGOSU (hangi kurumdan geldiği
+      // bir bakışta belli olsun) — lab/admin panelleri.
+      (docsR.data ?? []).forEach((d: any) => { if (d.clinic_id) clinicOf[d.id] = d.clinic_id; });
+      (profsR.data ?? []).forEach((p: any) => { if (p.clinic_id && !clinicOf[p.id]) clinicOf[p.id] = p.clinic_id; });
+      const clinicIds = Array.from(new Set(Object.values(clinicOf)));
+      if (clinicIds.length) {
+        const { data: cls } = await supabase.from('clinics').select('id, logo_url').in('id', clinicIds);
+        (cls ?? []).forEach((c: any) => { if (c.logo_url) logoOf[c.id] = c.logo_url; });
+      }
     }
+    // revision_of_id + revision_no + hold_status BURADA DA TAŞINMALI: sorgu
+    // çekse bile bu map onları düşürürse vaka gruplaması kurulamaz ve revizyon
+    // satırı ebeveyninin altına girintili girmez (köksüz, düz satır görünür).
     setRecentOrders(rows.map((o: any) => ({
       id: o.id, order_number: o.order_number, work_type: o.work_type,
-      status: o.status, delivery_date: o.delivery_date, is_urgent: o.is_urgent ?? false,
+      status: o.status, hold_status: o.hold_status ?? null,
+      delivery_date: o.delivery_date, is_urgent: o.is_urgent ?? false,
+      revision_of_id: o.revision_of_id ?? null,
+      revision_no: o.revision_no ?? null,
       doctor_name: nameMap[o.doctor_id] ?? '--',
+      clinic_logo_url: logoOf[clinicOf[o.doctor_id] ?? ''] ?? null,
     })));
   }, []);
 
@@ -1516,16 +1583,25 @@ export default function AdminDashboard() {
   // Latest active order for AnimatedAktifVakaCard
   const latestOrder = recentOrders.find(o => o.status !== 'teslim_edildi') ?? recentOrders[0];
 
-  // Tasks for dark card
+  // Görev/aksiyon kartı — yalnız sipariş değil, bekleyen TÜM aksiyonlar burada:
+  // gecikme · teslim · bugün · faturalama · tahsilat · kritik stok (aciliyet sırası).
   const taskItems: { icon: React.FC<any>; label: string; time: string; done: boolean; onPress?: () => void }[] = [];
+  // UX: 1. satır = YAPILACAK İŞ (fiil önde), 2. satır = kararı veren bağlam.
+  const taskNo = (no?: string | null) => (no ? `#${no}` : 'sipariş');
+  const daysLate = (d?: string | null) => {
+    if (!d) return null;
+    const diff = Math.floor((Date.now() - new Date(`${d}T00:00:00`).getTime()) / 86400000);
+    return diff > 0 ? diff : null;
+  };
 
   // Overdue orders as tasks
   const overdueOrdersFromRecent = recentOrders.filter(o => o.delivery_date < today && o.status !== 'teslim_edildi');
   overdueOrdersFromRecent.slice(0, 2).forEach(o => {
+    const late = daysLate(o.delivery_date);
     taskItems.push({
       icon: Clock as React.FC<any>,
-      label: `${o.doctor_name ?? 'Sipariş'} · ${t('admin.task.overdue')}`,
-      time: fmtDate(o.delivery_date),
+      label: `Gecikmiş teslimat · ${taskNo(o.order_number)}`,
+      time: late ? `${late} gün gecikti · ${fmtDate(o.delivery_date)}` : fmtDate(o.delivery_date),
       done: false,
       onPress: () => router.push(`/(admin)/order/${o.id}` as any),
     });
@@ -1535,8 +1611,8 @@ export default function AdminDashboard() {
   upcoming.slice(0, 2).forEach(o => {
     taskItems.push({
       icon: Package as React.FC<any>,
-      label: `${o.doctor_name ?? 'Sipariş'} · ${t('admin.task.delivery')}`,
-      time: fmtDate(o.delivery_date),
+      label: `Teslime hazırla · ${taskNo(o.order_number)}`,
+      time: `${fmtDate(o.delivery_date)} teslim`,
       done: false,
       onPress: () => router.push(`/(admin)/order/${o.id}` as any),
     });
@@ -1547,12 +1623,52 @@ export default function AdminDashboard() {
   todayOrdersFromRecent.slice(0, 1).forEach(o => {
     taskItems.push({
       icon: Calendar as React.FC<any>,
-      label: `${o.doctor_name ?? 'Sipariş'} · ${t('admin.task.today')}`,
-      time: t('admin.dashboard.today'),
+      label: `Bugün teslim et · ${taskNo(o.order_number)}`,
+      time: o.patient_name ?? t('admin.dashboard.today'),
       done: false,
       onPress: () => router.push(`/(admin)/order/${o.id}` as any),
     });
   });
+
+  // Teslim edildi ama faturası kesilmedi → sipariş detayında fatura kesilir
+  unbilledRows.forEach((u: any) => {
+    taskItems.push({
+      icon: Receipt as React.FC<any>,
+      label: `Fatura kes · ${taskNo(u.order_number)}`,
+      time: u.delivered_at
+        ? `${fmtDate(String(u.delivered_at).slice(0, 10))} tarihinde teslim edildi`
+        : 'Teslim edildi, faturası yok',
+      done: false,
+      onPress: () => router.push(`/(admin)/order/${u.work_order_id}` as any),
+    });
+  });
+
+  // Vadesi geçmiş fatura → tahsilat (kalan tutar faturanın kendi para biriminde)
+  overdueInvoices.forEach((inv: any) => {
+    const remaining = formatMoney(
+      (Number(inv.total) || 0) - (Number(inv.paid_amount) || 0),
+      (inv.currency ?? 'TRY') as Currency,
+      { fractionDigits: 0 },
+    );
+    const late = daysLate(inv.due_date);
+    taskItems.push({
+      icon: Wallet as React.FC<any>,
+      label: `Tahsilat yap · ${inv.invoice_number ?? 'fatura'}`,
+      time: late ? `${remaining} kaldı · ${late} gün vadesi geçti` : `${remaining} kaldı`,
+      done: false,
+      onPress: () => router.push(`/(admin)/invoice/${inv.id}` as any),
+    });
+  });
+
+  if (lowStockCount > 0) {
+    taskItems.push({
+      icon: AlertTriangle as React.FC<any>,
+      label: `Stok siparişi ver · ${lowStockCount} kalem`,
+      time: 'Kritik seviyenin altında',
+      done: false,
+      onPress: () => router.push('/(admin)/stock' as any),
+    });
+  }
 
   if (taskItems.length === 0) {
     taskItems.push(
@@ -1565,22 +1681,22 @@ export default function AdminDashboard() {
   // ══════════════════════════════════════════════════════════════
   //  MOBILE — Variant B Home (B1)
   // ══════════════════════════════════════════════════════════════
-  if (!isDesktop) {
-    // Geciken vakalar → handoff delayed cases listesi
-    const delayedCases: DelayedCase[] = recentOrders
-      .filter((o: any) => o.status === 'delayed' || o.status === 'qc_issue' || o.status === 'qc' || o.is_delayed)
-      .slice(0, 3)
-      .map((o: any) => ({
-        id: String(o.order_number ?? o.id),
-        name: o.patient_name ?? '—',
-        clinic: o.doctor_name ?? '—',
-        stage: STATUS_CFG[o.status]?.labelKey ? t(STATUS_CFG[o.status].labelKey) : o.status,
-        remain: o.delivery_date ? fmtDate(o.delivery_date) : '+1g',
-        kind: (o.status === 'qc' || o.status === 'qc_issue') ? 'qc' : 'delay',
-      }));
+  // Revizyon alt-listesi: penceredeki revizyonun ebeveyni pencere dışındaysa ek
+  // sorguyla tamamlanır. Hook KOŞULSUZ çağrılmalı → isDesktop dalından önce.
+  const revParents = useRevisionParents(recentOrders);
+  const recentWithParents = revParents.length ? [...recentOrders, ...revParents] : recentOrders;
+  // Masaüstü tablo için vaka sırası (anchor + altında eski revizyonlar)
+  const recentRows = flattenRevisionCases(recentWithParents);
 
-    // Bu hafta bar değerleri — basit stub (eğer veriniz yoksa 0'lar gösterir)
-    const weekBars = [0, 0, 0, 0, 0, 0, todayOrders];
+  if (!isDesktop) {
+    // Bu hafta bar değerleri — GERÇEK veri (weekCounts zaten yüklü; desktop kartı
+    // da aynı kaynağı kullanıyor). Eskiden [0,0,0,0,0,0,todayOrders] stub'ıydı:
+    // 6 gün hep boş görünüyor, bugünkü değer de daima son sütuna yazılıyordu.
+    // weekDays Pazartesi'den başlar; etiket ve bugün indeksi de oradan gelir ki
+    // sütunlarla veri hizalı olsun (i18n listesi Pazar ile başlıyor).
+    const weekBars   = weekDays.map(d => weekCounts[d.date] ?? 0);
+    const weekLabels = weekDays.map(d => d.label.split(' ')[0]);
+    const weekTodayIndex = weekDays.findIndex(d => d.isToday);
 
     // Notification buckets — admin-specific
     const { NotificationsSheet } = require('../../core/ui/mobile/NotificationsSheet');
@@ -1618,9 +1734,33 @@ export default function AdminDashboard() {
       };
     });
 
+    // Son Siparişler — mobil kart listesi (başlık = hekim adı; admin lab'ı yönetir)
+    const toRecentItem = (o: any) => {
+      const st = resolveOrderStatus(o.status, o.hold_status);
+      const isOverdue = !!o.delivery_date && o.delivery_date < today && o.status !== 'teslim_edildi';
+      const drName = o.doctor_name || '—';
+      return {
+        id: String(o.id),
+        no: String(o.order_number ?? ''),
+        title: drName,
+        initials: initials(drName),
+        workType: o.work_type || '—',
+        statusLabel: st.label,
+        statusColor: st.color,
+        statusBg: st.bg,
+        delivery: o.delivery_date ? fmtDate(o.delivery_date) : '',
+        overdue: isOverdue,
+      };
+    };
+    // Gruplama slice'tan ÖNCE: 6 satır = 6 VAKA (aynı vakanın üyeleri yer yemesin)
+    const recentForMobile = mapRevisionCases(recentWithParents, toRecentItem).slice(0, 6);
+
     return (
       <View style={{ flex: 1 }}>
         <AdminMobileDashboard
+          recentOrders={recentForMobile}
+          onOpenOrderById={(dbId: string) => router.push(`/(admin)/order/${dbId}` as any)}
+          onAllOrders={() => router.push('/(admin)/orders' as any)}
           liveActive={totalActive}
           liveTotal={totalOrders}
           liveStages={{ alindi: 0, uretim: totalActive, kk: 0, hazir: 0 }}
@@ -1633,9 +1773,10 @@ export default function AdminDashboard() {
           overdueCount={overdueCount}
           pendingApprovalsCount={notifApprovals.length}
           weekBars={weekBars}
-          weekRange={''}
+          weekLabels={weekLabels}
+          weekTodayIndex={weekTodayIndex}
+          weekRange={`${fmtDate(weekDays[0].date)} – ${fmtDate(weekDays[6].date)}`}
           weekTotal={weekBars.reduce((a, b) => a + b, 0)}
-          delayed={delayedCases}
           onNewOrder={() => useNewOrderModalStore.getState().setOpen(true)}
           onScan={() => router.push('/(admin)/scan' as any)}
           onApprovals={() => router.push('/(admin)/approvals' as any)}
@@ -1708,14 +1849,14 @@ export default function AdminDashboard() {
       </View>
 
       {/* ════════ OVERDUE + PLANLAMA BEKLEYEN ════════ */}
-      {(overdueCount > 0 || (pipelineCounts['alindi'] ?? 0) > 0) && (
+      {(overdueCount > 0 || planningPending > 0) && (
         <View className={isDesktop ? 'flex-row' : ''} style={{ gap: 16, marginBottom: 16 }}>
           {overdueCount > 0 && (
             <AnimatedOverdueCard count={overdueCount} onPress={() => router.push('/(admin)/orders' as any)} />
           )}
-          {(pipelineCounts['alindi'] ?? 0) > 0 && (
+          {planningPending > 0 && (
             <PlanningWaitingCard
-              count={pipelineCounts['alindi'] ?? 0}
+              count={planningPending}
               onPress={() => router.push('/(admin)/orders?status=alindi' as any)}
             />
           )}
@@ -1840,9 +1981,9 @@ export default function AdminDashboard() {
 
             {recentOrders.length === 0
               ? <Text className="p-6 text-center" style={{ fontSize: 13, color: DS.ink[400] }}>{loading ? t('common.loading') : t('admin.dashboard.noOrders')}</Text>
-              : recentOrders.map((order, idx) => {
+              : recentRows.map((order: any, idx: number) => {
                   const overdue = order.delivery_date < today && order.status !== 'teslim_edildi';
-                  const isLast  = idx === recentOrders.length - 1;
+                  const isLast  = idx === recentRows.length - 1;
                   return (
                     <Pressable
                       key={order.id}
@@ -1862,8 +2003,18 @@ export default function AdminDashboard() {
                       onMouseEnter={() => setHovered(order.id)}
                       onMouseLeave={() => setHovered(null)}
                     >
-                      <View className="flex-row items-center" style={{ flex: 1.2, gap: 6 }}>
-                        <Text style={{ fontSize: 12, fontWeight: '800', color: P }} numberOfLines={1}>#{order.order_number}</Text>
+                      {/* Vaka grubu: orijinal üstte, revizyonlar altında girintili
+                          (siparişler sayfasıyla aynı dil) */}
+                      <View className="flex-row items-center" style={{ flex: 1.2, minWidth: 0, gap: 6, paddingLeft: (order as any).__revChild ? 14 : 0 }}>
+                        {(order as any).__revChild && <CornerDownRight size={12} color="#9C5E0E" strokeWidth={2} style={{ flexShrink: 0 }} />}
+                        <View style={{ minWidth: 0 }}>
+                          <Text style={{ fontSize: 12, fontWeight: '800', color: P }} numberOfLines={1}>#{order.order_number}</Text>
+                          {(order as any).__revChild ? (
+                            <Text style={{ fontSize: 8.5, fontWeight: '700', color: '#9C5E0E', letterSpacing: 0.4 }}>REVİZYON</Text>
+                          ) : (order as any).__revParent ? (
+                            <Text style={{ fontSize: 8.5, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.4 }}>ORİJİNAL</Text>
+                          ) : null}
+                        </View>
                         {order.is_urgent && (
                           <View className="rounded" style={{ paddingHorizontal: 4, paddingVertical: 1, backgroundColor: 'rgba(217,75,75,0.1)' }}>
                             <Text style={{ fontSize: 9, fontWeight: '800', color: CLR.red }}>{t('admin.status.urgent')}</Text>
@@ -1871,16 +2022,25 @@ export default function AdminDashboard() {
                         )}
                       </View>
                       <View className="flex-row items-center" style={{ flex: 2, gap: 8 }}>
+                        {/* Klinik logosu varsa o, yoksa hekim baş harfleri */}
                         <View
                           className="items-center justify-center rounded-full"
-                          style={{ width: 28, height: 28, backgroundColor: hexA(P, 0.1), borderWidth: 1, borderColor: hexA(P, 0.15) }}
+                          style={{ width: 28, height: 28, overflow: 'hidden',
+                            backgroundColor: (order as any).clinic_logo_url ? '#FFFFFF' : hexA(P, 0.1),
+                            borderWidth: 1, borderColor: (order as any).clinic_logo_url ? 'rgba(0,0,0,0.08)' : hexA(P, 0.15) }}
                         >
-                          <Text style={{ fontSize: 9, fontWeight: '800', color: P }}>{initials(order.doctor_name)}</Text>
+                          {(order as any).clinic_logo_url ? (
+                            <Image source={{ uri: (order as any).clinic_logo_url }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                          ) : (
+                            <Text style={{ fontSize: 9, fontWeight: '800', color: P }}>{initials(order.doctor_name)}</Text>
+                          )}
                         </View>
                         <Text style={{ fontSize: 13, fontWeight: '600', color: INK }} numberOfLines={1}>{order.doctor_name}</Text>
                       </View>
                       {isDesktop && (
-                        <Text style={{ flex: 2, fontSize: 11, color: DS.ink[500] }} numberOfLines={1}>{order.work_type || '--'}</Text>
+                        <Text style={{ flex: 2, fontSize: 11, color: DS.ink[500] }} numberOfLines={1}>{(order as any).__revChild && (
+                      <Text style={{ fontWeight: '700', color: '#9C5E0E' }}>Revizyon - </Text>
+                    )}{order.work_type || '--'}</Text>
                       )}
                       <View style={{ flex: 1.4 }}>
                         <StatusBadge status={order.status} />
@@ -1932,7 +2092,14 @@ export default function AdminDashboard() {
                   {` ${t('admin.dashboard.orders')}`}
                   <NumberTickerX value={unbilledClinics} duration={600} style={{ fontWeight: '700', color: DS.ink[800] } as any} />
                   {` ${t('admin.dashboard.clinicEstimated')}`}
-                  <NumberTickerX value={unbilledTotal} duration={700} prefix="₺" style={{ fontWeight: '700', color: DS.ink[800] } as any} />
+                  <Text style={{ fontWeight: '700', color: DS.ink[800] }}>
+                    {Object.entries(unbilledTotals).length === 0
+                      ? '—'
+                      : Object.entries(unbilledTotals)
+                          .sort((a, b) => b[1] - a[1])
+                          .map(([ccy, amt]) => formatMoney(amt, ccy as Currency, { fractionDigits: 2 }))
+                          .join(' · ')}
+                  </Text>
                 </Text>
               </View>
               <Text style={{ fontSize: 11, fontWeight: '700', color: '#9C5E0E', letterSpacing: 0.5, textTransform: 'uppercase' }}>
