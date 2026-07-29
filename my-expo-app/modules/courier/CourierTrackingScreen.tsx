@@ -3,27 +3,121 @@
 // thin wrapper olarak çağırır.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, Pressable, ScrollView, TextInput, Platform, useWindowDimensions, Modal, Alert } from 'react-native';
-import { useRouter } from 'expo-router';
+import { View, Text, Pressable, ScrollView, TextInput, Platform, useWindowDimensions, Modal, Alert, Linking, Image } from 'react-native';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Search, MapPin, ArrowRight, MessageSquare, Phone, ChevronRight, Clock,
-  QrCode, Bell, User as UserIcon, X, Package, Trash2,
+  QrCode, Bell, User as UserIcon, X, Package, PackageCheck, Trash2,
 } from 'lucide-react-native';
 import { supabase } from '../../core/api/supabase';
 import { CourierTrackingMap } from './CourierTrackingMap';
 import { ActivityIndicator } from '../../core/ui/teethCompat';
 import { useScanStore } from '../../core/store/scanStore';
 import { useThemeModeStore } from '../../core/store/themeModeStore';
+import { formatAddress } from '../../core/util/formatAddress';
+import { useExternalCourier } from './useExternalCourier';
+import { toast } from '../../core/ui/Toast';
 
 const INK_900 = '#0A0A0A';
 const INK_500 = '#6B6B6B';
 const INK_300 = '#CBD5E1';
 
+/** Tek glass kutu içindeki bölüm ayracı (kurye · varış · rota · kargo takip). */
+const HAIRLINE = { height: 1, backgroundColor: 'rgba(15,23,42,0.08)' } as const;
+
 function getInitials(name: string): string {
   const parts = String(name).trim().split(/\s+/).filter(Boolean);
   const initials = parts.slice(0, 2).map(p => p.charAt(0).toUpperCase()).join('');
   return initials || 'K';
+}
+
+/** Kurye avatarı: foto varsa fotoğraf, yoksa accent daire + baş harf. */
+function CourierAvatar({ photo, name, size, accent, initialsColor }: {
+  photo?: string | null; name: string; size: number; accent: string; initialsColor: string;
+}) {
+  const radius = size / 2;
+  if (photo) {
+    return (
+      <Image
+        source={{ uri: photo }}
+        style={{ width: size, height: size, borderRadius: radius, backgroundColor: `${accent}22` }}
+        accessibilityLabel={name}
+      />
+    );
+  }
+  return (
+    <View style={{
+      width: size, height: size, borderRadius: radius,
+      backgroundColor: `${accent}22`, alignItems: 'center', justifyContent: 'center',
+    }}>
+      <Text style={{ fontSize: size * 0.32, fontWeight: '700', color: initialsColor }}>
+        {getInitials(name)}
+      </Text>
+    </View>
+  );
+}
+
+/**
+ * Gönderen/alıcı yöne göre değişir. `direction='clinic_to_lab'` (klinikten alım,
+ * ör. eksik parça/model alma) durumunda gönderen klinik, alıcı laboratuvardır.
+ * Eskiden gönderen sabit "Laboratuvar" yazıyordu ve geliş bacaklarında ters görünüyordu.
+ */
+function routeEndpoints(d: {
+  direction?: string | null;
+  destination_name?: string | null;
+  destination_address?: string | null;
+  clinic_name?: string | null;
+  doctor_name?: string | null;
+  origin_name?: string | null;
+  origin_address?: string | null;
+}) {
+  const addr = formatAddress(d.destination_address) || '';
+  if (d.direction === 'clinic_to_lab') {
+    // Klinikten/tedarikçiden alım: gönderen = origin_* (varsa, sipariş kliniğinden
+    // bağımsız gerçek alım noktası) ya da klinik/hekim; alıcı = laboratuvar (destination_*).
+    const fromAddr = formatAddress(d.origin_address) || '';
+    return {
+      fromText: [d.origin_name || d.clinic_name || d.doctor_name || 'Klinik', fromAddr].filter(Boolean).join('\n'),
+      toLabel:  'Alıcı Adres',
+      toText:   [d.destination_name || 'Laboratuvar', addr].filter(Boolean).join('\n'),
+    };
+  }
+  // Lab çıkışı (varsayılan): gönderen laboratuvar, alıcı klinik/hekim (= destination_*)
+  return {
+    fromText: 'Laboratuvar',
+    toLabel:  'Alıcı Adres',
+    toText:   [d.destination_name, addr].filter(Boolean).join('\n') || '—',
+  };
+}
+
+/** OSRM sürüş süresi (sn) → "~12 dk" / "~1 sa 5 dk". Kurye trafikte motorla genelde
+ *  daha hızlıdır; bu sürüş tahmini üst-sınır sayılabilir. */
+function fmtDuration(sec: number): string {
+  const m = Math.max(1, Math.round(sec / 60));
+  if (m < 60) return `${m} dk`;
+  const h = Math.floor(m / 60), mm = m % 60;
+  return mm ? `${h} sa ${mm} dk` : `${h} sa`;
+}
+function fmtKm(m: number): string {
+  return m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`;
+}
+/** Teslim zaman damgası → "28.07.2026 · 14:16" (tarih + saat). */
+function fmtDateTime(iso?: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} · ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/** BanaBiKurye telefonu "905355244859" biçiminde gelir → "0535 524 48 59". */
+function formatPhone(raw: string): string {
+  const d = String(raw).replace(/\D/g, '');
+  const local = d.startsWith('90') && d.length === 12 ? '0' + d.slice(2) : d;
+  return local.length === 11
+    ? `${local.slice(0, 4)} ${local.slice(4, 7)} ${local.slice(7, 9)} ${local.slice(9)}`
+    : raw;
 }
 
 type DeliveryRow = {
@@ -36,13 +130,30 @@ type DeliveryRow = {
   destination_name:     string | null;
   destination_address:  string | null;
   destination_phone:    string | null;
+  /** 'lab_to_clinic' (lab çıkışı) | 'clinic_to_lab' (klinikten alım) */
+  direction:            string | null;
+  purpose:              string | null;
+  /** Dış gönderide gerçek alım/teslim koordinatı + gönderen etiketi (NULL ise geocode/labCoord fallback) */
+  origin_name?:         string | null;
+  origin_address?:      string | null;
+  origin_lat?:          number | null;
+  origin_lng?:          number | null;
+  dest_lat?:            number | null;
+  dest_lng?:            number | null;
   picked_up_at:         string | null;
   delivered_at:         string | null;
   assigned_at:          string;
   work_order_id:        string;
   order_number?:        string | null;
+  clinic_name?:         string | null;
+  clinic_address?:      string | null;
+  doctor_name?:         string | null;
   patient_name?:        string | null;
   courier_name?:        string | null;
+  /** Dış kurye kimliği — track çağrısından kalıcılaştırılır (geçmiş gönderilerde gösterim). */
+  ext_courier_name?:    string | null;
+  ext_courier_phone?:   string | null;
+  ext_courier_photo?:   string | null;
 };
 
 interface Props {
@@ -80,6 +191,10 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix 
   };
   const cached = loadCached();
 
+  // Sipariş detayı → "Kurye Takip" derin bağlantısı: ?delivery=<teslimat id>
+  const searchParams = useLocalSearchParams<{ delivery?: string }>();
+  const deepLinkId = typeof searchParams?.delivery === 'string' ? searchParams.delivery : null;
+
   const [tab, setTab]       = useState<'active' | 'done'>('active');
   const [search, setSearch] = useState('');
   const [list, setList]     = useState<DeliveryRow[]>(cached ?? []);
@@ -103,25 +218,63 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix 
       .from('deliveries')
       .select(`
         id, status, mode, courier_id, external_provider, external_tracking_no,
-        destination_name, destination_address, destination_phone,
+        destination_name, destination_address, destination_phone, direction, purpose,
+        origin_name, origin_address, origin_lat, origin_lng, dest_lat, dest_lng,
+        ext_courier_name, ext_courier_phone, ext_courier_photo,
         picked_up_at, delivered_at, assigned_at, work_order_id,
-        work_order:work_orders!work_order_id(order_number, patient_name),
+        work_order:work_orders!work_order_id(order_number, patient_name, doctor_id),
         courier:profiles!deliveries_courier_profiles_fkey(id, full_name)
       `)
       .order('assigned_at', { ascending: false })
       .limit(100);
-    const rows = (data ?? []).map((r: any) => ({
-      ...r,
-      order_number: r.work_order?.order_number ?? null,
-      patient_name: r.work_order?.patient_name ?? null,
-      courier_name: r.courier?.full_name ?? null,
-    })) as DeliveryRow[];
+    // Klinik adı: geliş bacağında (clinic_to_lab) gönderen taraf klinik ama teslimat
+    // kaydında tutulmuyor. doctors.clinic_id üzerinde FOREIGN KEY OLMADIĞI için
+    // PostgREST gömme (embed) çalışmıyor → hekim ve klinik ayrı sorgularla çözülür.
+    const docIds = Array.from(new Set(
+      (data ?? []).map((r: any) => r.work_order?.doctor_id).filter(Boolean),
+    ));
+    const docMap = new Map<string, { name: string | null; clinicId: string | null }>();
+    const clinicMap = new Map<string, { name: string | null; address: string | null }>();
+    if (docIds.length) {
+      const { data: docs } = await supabase
+        .from('doctors').select('id, full_name, clinic_id').in('id', docIds);
+      (docs ?? []).forEach((d: any) => docMap.set(d.id, { name: d.full_name ?? null, clinicId: d.clinic_id ?? null }));
+      const clinicIds = Array.from(new Set(
+        (docs ?? []).map((d: any) => d.clinic_id).filter(Boolean),
+      ));
+      if (clinicIds.length) {
+        const { data: cls } = await supabase.from('clinics').select('id, name, address').in('id', clinicIds);
+        (cls ?? []).forEach((c: any) => clinicMap.set(c.id, { name: c.name, address: c.address ?? null }));
+      }
+    }
+
+    const rows = (data ?? []).map((r: any) => {
+      const doc = r.work_order?.doctor_id ? docMap.get(r.work_order.doctor_id) : null;
+      return {
+        ...r,
+        order_number: r.work_order?.order_number ?? null,
+        patient_name: r.work_order?.patient_name ?? null,
+        courier_name: r.courier?.full_name ?? null,
+        doctor_name:    doc?.name ?? null,
+        clinic_name:    doc?.clinicId ? (clinicMap.get(doc.clinicId)?.name ?? null) : null,
+        clinic_address: doc?.clinicId ? (clinicMap.get(doc.clinicId)?.address ?? null) : null,
+      };
+    }) as DeliveryRow[];
     setList(rows);
     saveCached(rows);
     if (!silent) setLoading(false);
     if (rows.length && !selectedId) {
-      const firstActive = rows.find(r => r.status !== 'teslim_edildi' && r.status !== 'iptal');
-      setSelectedId((firstActive ?? rows[0]).id);
+      // Sipariş detayındaki lojistik satırından gelindiyse (?delivery=<id>) o teslimatı
+      // seç; ayrıca kayıt teslim edilmişse listeyi doğru sekmeye çevir, yoksa
+      // "Yolda" sekmesinde görünmediği için seçim boşa düşerdi.
+      const wanted = deepLinkId ? rows.find(r => r.id === deepLinkId) : null;
+      if (wanted) {
+        setSelectedId(wanted.id);
+        setTab(wanted.status === 'teslim_edildi' || wanted.status === 'iptal' ? 'done' : 'active');
+      } else {
+        const firstActive = rows.find(r => r.status !== 'teslim_edildi' && r.status !== 'iptal');
+        setSelectedId((firstActive ?? rows[0]).id);
+      }
     }
   }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -155,21 +308,60 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix 
       .filter(r => {
         if (!search.trim()) return true;
         const q = search.toLowerCase();
-        return [r.order_number, r.patient_name, r.destination_name, r.destination_address, r.courier_name, r.external_tracking_no]
+        return [r.order_number, r.patient_name, r.destination_name, formatAddress(r.destination_address), r.courier_name, r.external_tracking_no]
           .some(v => v?.toLowerCase().includes(q));
       });
   }, [list, tab, search]);
 
   const selected = useMemo(() => list.find(r => r.id === selectedId) ?? null, [list, selectedId]);
+  // Dış kurye (BanaBiKurye) canlı konumu — kendi kuryemiz gps_pings'e yazar,
+  // dış sağlayıcının kuryesi için konum sağlayıcı API'sinden çekilir.
+  const { courier: extCourier } = useExternalCourier(selected);
+
+  // Tahmini varış — CourierTrackingMap OSRM rota süresini buraya verir.
+  // `live`: rota kuryenin anlık konumundan başlıyorsa true (gerçek varış tahmini);
+  // false ise süre yalnızca çıkış→teslim güzergâhının süresidir.
+  const [eta, setEta] = useState<{ durationSec: number | null; distanceM: number | null; live: boolean } | null>(null);
+  useEffect(() => { setEta(null); }, [selected?.id]);
+
+  // Laboratuvarın koordinatı — kurye entegrasyonundaki alış noktası (pickup_lat/lng).
+  // Lab çıkışlı gönderilerde rotanın başlangıcı; teslim edilmişlerde de rota çizilsin diye.
+  const [labCoord, setLabCoord] = useState<{ lat: number; lng: number } | undefined>(undefined);
+  useEffect(() => {
+    let cancelled = false;
+    // Not: PostgrestBuilder'da .catch() yok — try/catch ile sarmalanır.
+    (async () => {
+      try {
+        const { data } = await supabase.rpc('get_active_provider', { p_type: 'courier' });
+        if (cancelled) return;
+        const p: any = Array.isArray(data) ? data[0] : data;
+        const lat = Number(p?.credentials?.pickup_lat);
+        const lng = Number(p?.credentials?.pickup_lng);
+        if (Number.isFinite(lat) && Number.isFinite(lng)) setLabCoord({ lat, lng });
+      } catch { /* entegrasyon yoksa rota çıkış noktası olmadan çalışır */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const goOrder = (id: string) => router.push(`${routePrefix}/order/${id}` as any);
 
   const cancelDelivery = useCallback((d: DeliveryRow) => {
+    // Doğrudan tablo update'i yerine RPC: cancelled_at/cancel_reason'ı da yazar.
+    // Yetki kontrolü RLS ile birebir aynı (admin · lab manager/admin · kuryenin kendisi),
+    // ama RPC yetkisizde hata döndürür — RLS sessizce 0 satır güncelliyordu.
     const confirm = () => {
-      supabase
-        .from('deliveries')
-        .update({ status: 'iptal' })
-        .eq('id', d.id)
-        .then(() => load(true));
+      (async () => {
+        try {
+          const { error } = await supabase.rpc('update_delivery_status', {
+            p_delivery_id: d.id,
+            p_status: 'iptal',
+            p_note: 'Panelden iptal edildi',
+          });
+          if (error) { toast.error('Teslimat iptal edilemedi: ' + error.message); return; }
+          load(true);
+        } catch (e: any) {
+          toast.error('Teslimat iptal edilemedi: ' + (e?.message ?? 'bilinmeyen hata'));
+        }
+      })();
     };
     if (Platform.OS === 'web') {
       if (window.confirm(`"#${d.order_number ?? d.id.slice(0, 8)}" teslimatını iptal etmek istediğinizden emin misiniz?`)) confirm();
@@ -206,9 +398,24 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix 
         }}>
           <CourierTrackingMap
             deliveryId={selected?.id}
-            destinationLabel={selected?.destination_address ?? selected?.destination_name ?? undefined}
+            externalPosition={extCourier?.lat != null && extCourier?.lng != null
+              ? { lat: extCourier.lat, lng: extCourier.lng } : null}
+            // Çıkış noktası: dış gönderide saklı gerçek koordinat (origin_lat/lng) —
+            // panelden özel adresle açılan gönderide bu kesin. Yoksa: lab çıkışında
+            // laboratuvarın koordinatı, klinikten alımda klinik adresi (geokod).
+            origin={(selected?.origin_lat != null && selected?.origin_lng != null)
+              ? { lat: Number(selected.origin_lat), lng: Number(selected.origin_lng) }
+              : (selected?.direction !== 'clinic_to_lab' ? labCoord : undefined)}
+            // Klinik/tedarikçi adresi de JSON olarak saklanıyor → geokodlamadan önce metne çevir.
+            originLabel={selected?.direction === 'clinic_to_lab'
+              ? (formatAddress(selected?.origin_address) || formatAddress(selected?.clinic_address) || undefined) : undefined}
+            // Teslim: dış gönderide saklı gerçek koordinat; yoksa adresten geokod.
+            destination={(selected?.dest_lat != null && selected?.dest_lng != null)
+              ? { lat: Number(selected.dest_lat), lng: Number(selected.dest_lng) } : undefined}
+            destinationLabel={formatAddress(selected?.destination_address) || selected?.destination_name || undefined}
             accent={accent}
             height="100%"
+            onRouteInfo={setEta}
           />
         </View>
       </View>
@@ -222,7 +429,7 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix 
         right: isNarrow ? 16 : undefined,
         top: isNarrow ? undefined : 24,
         bottom: isNarrow ? 110 : 24,
-        width: isNarrow ? undefined : 360,
+        width: isNarrow ? undefined : 300,
         height: isNarrow ? '45%' as any : undefined,
         // @ts-ignore
         zIndex: 1000,
@@ -234,8 +441,8 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix 
           overflow: 'hidden',
           ...glassStrong,
         }}>
-          <View style={{ padding: 16, gap: 12 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 999, backgroundColor: pillBg, borderWidth: 1, borderColor: pillBorder }}>
+          <View style={{ padding: 12, gap: 10 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 11, paddingVertical: 7, borderRadius: 999, backgroundColor: pillBg, borderWidth: 1, borderColor: pillBorder }}>
               <Search size={14} color={inkMutedDark} strokeWidth={1.8} />
               <TextInput
                 value={search}
@@ -283,16 +490,23 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix 
       <View style={{ flex: 1, position: 'relative' as any, ...(Platform.OS === 'web' ? { pointerEvents: 'none' } as any : {}) }}>
         {selected && !isNarrow && (
           <View style={{
-            position: 'absolute', right: 24, top: 24, bottom: 24,
-            width: 320, gap: 14,
+            // top: kabuktaki arama/profil pill'i sağ üstte (sayfa top:16, yükseklik ~44 →
+            // alt kenarı ~60) ve ayrı yığılma bağlamında olduğu için zIndex ile önüne
+            // geçilemiyor. 52 bu sınırı geçen en küçük değer; daha azaltılırsa kart
+            // çubuğun arkasında kalıyor (ilk çakışmanın sebebi buydu).
+            // bottom vermiyoruz: kutu içeriği kadar yer kaplasın, altında kalan harita
+            // sürüklenebilir kalsın (tam boy kapsayıcı tıklamaları yutuyordu).
+            position: 'absolute', right: 24, top: 52,
+            width: 320,
             // @ts-ignore
             zIndex: 1000,
             ...(Platform.OS === 'web' ? { pointerEvents: 'auto' } as any : {}),
           }}>
-            {/* ─── Kurye Kartı (glass) ─── */}
+            {/* ─── TEK GLASS KUTU ───
+                Kurye · tahmini varış · rota · kargo takip tek kart içinde, aralarında
+                hairline ayraç. (Önceden 4 ayrı yüzen kart vardı; haritayı parçalıyordu.) */}
             <View style={{
-              backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 18, padding: 14,
-              flexDirection: 'row', alignItems: 'center', gap: 12,
+              backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 22, overflow: 'hidden',
               borderWidth: 1, borderColor: 'rgba(255,255,255,0.55)',
               ...(Platform.OS === 'web' ? {
                 backdropFilter: 'blur(3px) saturate(120%)',
@@ -300,93 +514,160 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix 
                 boxShadow: '0 12px 32px rgba(15,23,42,0.18), inset 0 1px 0 rgba(255,255,255,0.6)',
               } as any : {}),
             }}>
+              {/* ─── Kurye ─── */}
               <View style={{
-                width: 44, height: 44, borderRadius: 22,
-                backgroundColor: `${accent}22`,
-                alignItems: 'center', justifyContent: 'center',
+                padding: 14,
+                flexDirection: 'row', alignItems: 'center', gap: 12,
               }}>
-                <Text style={{ fontSize: 14, fontWeight: '700', color: accent }}>
-                  {getInitials(selected.courier_name ?? selected.external_provider ?? 'K')}
-                </Text>
-              </View>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ fontSize: 14, fontWeight: '700', color: INK_900 }} numberOfLines={1}>
-                  {selected.courier_name ?? selected.external_provider ?? 'Kurye'}
-                </Text>
-                <Text style={{ fontSize: 11, color: INK_500 }}>
-                  {selected.mode === 'internal' ? 'Bizim kurye' : 'Dış kargo'}
-                </Text>
-              </View>
-              <View style={{ flexDirection: 'row', gap: 6 }}>
-                <Pressable
-                  style={{
-                    width: 36, height: 36, borderRadius: 18,
-                    alignItems: 'center', justifyContent: 'center',
-                    backgroundColor: INK_900,
-                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                  }}
-                >
-                  <MessageSquare size={14} color="#FFF" strokeWidth={2} />
-                </Pressable>
-                <Pressable
-                  style={{
-                    width: 36, height: 36, borderRadius: 18,
-                    alignItems: 'center', justifyContent: 'center',
-                    backgroundColor: accent,
-                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                  }}
-                >
-                  <Phone size={14} color="#FFF" strokeWidth={2} />
-                </Pressable>
-              </View>
-            </View>
-
-            {/* ─── Rota (Gönderen → Alıcı) ─── */}
-            <View style={{
-              backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 18, padding: 14, gap: 10,
-              borderWidth: 1, borderColor: 'rgba(255,255,255,0.55)',
-              ...(Platform.OS === 'web' ? {
-                backdropFilter: 'blur(3px) saturate(120%)',
-                WebkitBackdropFilter: 'blur(3px) saturate(120%)',
-                boxShadow: '0 12px 32px rgba(15,23,42,0.18), inset 0 1px 0 rgba(255,255,255,0.6)',
-              } as any : {}),
-            }}>
-              <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
-                <View style={{ width: 14, alignItems: 'center', paddingTop: 4, gap: 3 }}>
-                  <View style={{ width: 8, height: 8, borderRadius: 4, borderWidth: 2, borderColor: accent }} />
-                  <View style={{ width: 1, height: 26, backgroundColor: `${accent}66` }} />
-                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: accent }} />
+                {/* Canlı takipten (extCourier) → kalıcı kolonlar → iç kurye → sağlayıcı.
+                    Geçmiş dış gönderilerde ext_courier_* dolu geldiği için ad/foto burada çıkar. */}
+                <CourierAvatar
+                  size={44}
+                  accent={accent}
+                  initialsColor={accent}
+                  photo={extCourier?.photoUrl ?? selected.ext_courier_photo}
+                  name={extCourier?.name ?? selected.ext_courier_name ?? selected.courier_name ?? selected.external_provider ?? 'K'}
+                />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  {/* Dış kuryede API gerçek kurye adını veriyor → onu başlığa al,
+                      sağlayıcı adı alt satıra düşsün. Yoksa eski davranış. */}
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: INK_900 }} numberOfLines={1}>
+                    {extCourier?.name ?? selected.ext_courier_name ?? selected.courier_name ?? selected.external_provider ?? 'Kurye'}
+                  </Text>
+                  <Text style={{ fontSize: 11, color: INK_500 }} numberOfLines={1}>
+                    {selected.mode === 'internal'
+                      ? 'Bizim kurye'
+                      : [selected.external_provider ?? 'Dış kargo',
+                         (() => { const p = extCourier?.phone ?? selected.ext_courier_phone; return p ? formatPhone(p) : null; })()]
+                          .filter(Boolean).join(' · ')}
+                  </Text>
                 </View>
-                <View style={{ flex: 1, gap: 14 }}>
-                  <View>
-                    <Text style={{ fontSize: 10, fontWeight: '700', color: accent, letterSpacing: 0.4, textTransform: 'uppercase' }}>Gönderen</Text>
-                    <Text style={{ fontSize: 12, color: INK_900, fontWeight: '500' }} numberOfLines={2}>Laboratuvar</Text>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  <Pressable
+                    onPress={() => {
+                      // Kuryeye WhatsApp'tan yaz (hem web hem mobil). Numara yoksa uyar.
+                      const raw = (extCourier?.phone ?? selected.ext_courier_phone ?? selected.destination_phone ?? '');
+                      let d = raw.replace(/\D/g, '');
+                      if (!d) { Alert.alert('Telefon yok', 'Mesaj gönderilecek numara bulunamadı.'); return; }
+                      if (d.startsWith('0')) d = '90' + d.slice(1); else if (d.length === 10) d = '90' + d;
+                      const tno = (selected as any).external_tracking_no ? ` (#${(selected as any).external_tracking_no})` : '';
+                      const text = encodeURIComponent(`Merhaba, BanaBiKurye gönderisi${tno} hakkında bilgi almak istiyorum.`);
+                      Linking.openURL(`https://wa.me/${d}?text=${text}`)
+                        .catch(() => { Linking.openURL(`sms:${raw.replace(/[^\d+]/g, '')}`).catch(() => {}); });
+                    }}
+                    style={{
+                      width: 36, height: 36, borderRadius: 18,
+                      alignItems: 'center', justifyContent: 'center',
+                      backgroundColor: (extCourier?.phone ?? selected.ext_courier_phone ?? selected.destination_phone) ? INK_900 : `${INK_900}66`,
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                    }}
+                  >
+                    <MessageSquare size={14} color="#FFF" strokeWidth={2} />
+                  </Pressable>
+                  <Pressable
+                    onPress={() => {
+                      // Dış kuryede API'den / kayıtlı kurye telefonu; yoksa alıcı telefonu.
+                      const tel = (extCourier?.phone ?? selected.ext_courier_phone ?? selected.destination_phone ?? '').replace(/[^\d+]/g, '');
+                      if (!tel) { Alert.alert('Telefon yok', 'Bu teslimat için aranacak bir numara bulunamadı.'); return; }
+                      Linking.openURL(`tel:${tel}`).catch(() => {});
+                    }}
+                    style={{
+                      width: 36, height: 36, borderRadius: 18,
+                      alignItems: 'center', justifyContent: 'center',
+                      backgroundColor: (extCourier?.phone ?? selected.ext_courier_phone ?? selected.destination_phone) ? accent : `${accent}66`,
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                    }}
+                  >
+                    <Phone size={14} color="#FFF" strokeWidth={2} />
+                  </Pressable>
+                </View>
+              </View>
+
+              {/* ─── Tahmini Varış ───
+                  Kurye canlı konum verirken rota kuryeden başlar → gerçek varış tahmini.
+                  Konum yoksa süre çıkış→teslim güzergâhınındır, etiket ona göre değişir.
+                  Biten/iptal gönderide anlamsız olduğu için gizlenir. */}
+              {eta?.durationSec != null && selected.status !== 'teslim_edildi' && selected.status !== 'iptal' && (
+                <>
+                  <View style={HAIRLINE} />
+                  <View style={{ padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <View style={{
+                      width: 38, height: 38, borderRadius: 19, backgroundColor: `${accent}1F`,
+                      alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <Clock size={19} color={accent} strokeWidth={2} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: accent, letterSpacing: 0.4, textTransform: 'uppercase' }}>
+                        {eta.live ? 'Tahmini Varış' : 'Güzergâh Süresi'}
+                      </Text>
+                      <Text style={{ fontSize: 16, fontWeight: '800', color: INK_900 }} numberOfLines={1}>
+                        ~{fmtDuration(eta.durationSec)}
+                        {eta.distanceM != null ? <Text style={{ fontSize: 12, fontWeight: '600', color: INK_500 }}>{`  ·  ${fmtKm(eta.distanceM)}`}</Text> : null}
+                      </Text>
+                    </View>
                   </View>
-                  <View>
-                    <Text style={{ fontSize: 10, fontWeight: '700', color: accent, letterSpacing: 0.4, textTransform: 'uppercase' }}>Alıcı Adres</Text>
-                    <Text style={{ fontSize: 12, color: INK_900, fontWeight: '500', lineHeight: 16 }} numberOfLines={3}>{selected.destination_address ?? '—'}</Text>
+                </>
+              )}
+
+              {/* ─── Teslim Edildi (tarih + saat) ─── */}
+              {selected.delivered_at && fmtDateTime(selected.delivered_at) && (
+                <>
+                  <View style={HAIRLINE} />
+                  <View style={{ padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <View style={{
+                      width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(16,185,129,0.14)',
+                      alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <PackageCheck size={19} color="#0F6E50" strokeWidth={2} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: '#0F6E50', letterSpacing: 0.4, textTransform: 'uppercase' }}>
+                        Teslim Edildi
+                      </Text>
+                      <Text style={{ fontSize: 16, fontWeight: '800', color: INK_900 }} numberOfLines={1}>
+                        {fmtDateTime(selected.delivered_at)}
+                      </Text>
+                    </View>
+                  </View>
+                </>
+              )}
+
+              {/* ─── Rota (Gönderen → Alıcı) ─── */}
+              <View style={HAIRLINE} />
+              <View style={{ padding: 14 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+                  <View style={{ width: 14, alignItems: 'center', paddingTop: 4, gap: 3 }}>
+                    <View style={{ width: 8, height: 8, borderRadius: 4, borderWidth: 2, borderColor: accent }} />
+                    <View style={{ width: 1, height: 26, backgroundColor: `${accent}66` }} />
+                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: accent }} />
+                  </View>
+                  <View style={{ flex: 1, gap: 14 }}>
+                    <View>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: accent, letterSpacing: 0.4, textTransform: 'uppercase' }}>Gönderen</Text>
+                      <Text style={{ fontSize: 12, color: INK_900, fontWeight: '500' }} numberOfLines={2}>{routeEndpoints(selected).fromText}</Text>
+                    </View>
+                    <View>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: accent, letterSpacing: 0.4, textTransform: 'uppercase' }}>{routeEndpoints(selected).toLabel}</Text>
+                      <Text style={{ fontSize: 12, color: INK_900, fontWeight: '500', lineHeight: 16 }} numberOfLines={3}>{routeEndpoints(selected).toText}</Text>
+                    </View>
                   </View>
                 </View>
               </View>
-            </View>
 
-            {/* ─── External tracking varsa göster ─── */}
-            {selected.mode === 'external' && selected.external_tracking_no && (
-              <View style={{
-                backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 18, padding: 12, gap: 4,
-                borderWidth: 1, borderColor: 'rgba(255,255,255,0.55)',
-                ...(Platform.OS === 'web' ? {
-                  backdropFilter: 'blur(3px) saturate(120%)',
-                  WebkitBackdropFilter: 'blur(3px) saturate(120%)',
-                  boxShadow: '0 12px 32px rgba(15,23,42,0.18), inset 0 1px 0 rgba(255,255,255,0.6)',
-                } as any : {}),
-              }}>
-                <Text style={{ fontSize: 10, fontWeight: '700', color: INK_500, letterSpacing: 0.4, textTransform: 'uppercase' }}>Kargo Takip</Text>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: INK_900 }}>
-                  {selected.external_provider} · #{selected.external_tracking_no}
-                </Text>
-              </View>
-            )}
+              {/* ─── External tracking varsa göster ─── */}
+              {selected.mode === 'external' && selected.external_tracking_no && (
+                <>
+                  <View style={HAIRLINE} />
+                  <View style={{ padding: 14, gap: 3 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: INK_500, letterSpacing: 0.4, textTransform: 'uppercase' }}>Kargo Takip</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: INK_900 }}>
+                      {selected.external_provider} · #{selected.external_tracking_no}
+                    </Text>
+                  </View>
+                </>
+              )}
+            </View>
           </View>
         )}
       </View>
@@ -422,14 +703,60 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix 
               <>
                 {/* Kurye */}
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, backgroundColor: '#FAFAF7', borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)' }}>
-                  <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: `${accent}22`, alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: accent }}>{getInitials(selected.courier_name ?? selected.external_provider ?? 'K')}</Text>
-                  </View>
+                  <CourierAvatar
+                    size={44}
+                    accent={accent}
+                    initialsColor={accent}
+                    photo={extCourier?.photoUrl ?? selected.ext_courier_photo}
+                    name={extCourier?.name ?? selected.ext_courier_name ?? selected.courier_name ?? selected.external_provider ?? 'K'}
+                  />
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: INK_900 }} numberOfLines={1}>{selected.courier_name ?? selected.external_provider ?? 'Kurye'}</Text>
-                    <Text style={{ fontSize: 11, color: INK_500 }}>{selected.mode === 'internal' ? 'Bizim kurye' : 'Dış kargo'}</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: INK_900 }} numberOfLines={1}>{extCourier?.name ?? selected.ext_courier_name ?? selected.courier_name ?? selected.external_provider ?? 'Kurye'}</Text>
+                    <Text style={{ fontSize: 11, color: INK_500 }} numberOfLines={1}>
+                      {selected.mode === 'internal'
+                        ? 'Bizim kurye'
+                        : [selected.external_provider ?? 'Dış kargo',
+                           (() => { const p = extCourier?.phone ?? selected.ext_courier_phone; return p ? formatPhone(p) : null; })()]
+                            .filter(Boolean).join(' · ')}
+                    </Text>
                   </View>
                 </View>
+
+                {/* Tahmini varış — OSRM rota süresinden hesaplanır (BanaBiKurye ETA
+                    vermiyor). Kurye canlı değilse süre güzergâhın kendisine aittir. */}
+                {eta?.durationSec != null && selected.status !== 'teslim_edildi' && selected.status !== 'iptal' && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, backgroundColor: `${accent}12`, borderWidth: 1, borderColor: `${accent}33` }}>
+                    <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: `${accent}1F`, alignItems: 'center', justifyContent: 'center' }}>
+                      <Clock size={19} color={accent} strokeWidth={2} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: accent, letterSpacing: 0.4, textTransform: 'uppercase' }}>
+                        {eta.live ? 'Tahmini Varış' : 'Güzergâh Süresi'}
+                      </Text>
+                      <Text style={{ fontSize: 16, fontWeight: '800', color: INK_900 }} numberOfLines={1}>
+                        ~{fmtDuration(eta.durationSec)}
+                        {eta.distanceM != null ? <Text style={{ fontSize: 12, fontWeight: '600', color: INK_500 }}>{`  ·  ${fmtKm(eta.distanceM)}`}</Text> : null}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* Teslim edildi (tarih + saat) */}
+                {selected.delivered_at && fmtDateTime(selected.delivered_at) && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, backgroundColor: 'rgba(16,185,129,0.10)', borderWidth: 1, borderColor: 'rgba(16,185,129,0.28)' }}>
+                    <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(16,185,129,0.16)', alignItems: 'center', justifyContent: 'center' }}>
+                      <PackageCheck size={19} color="#0F6E50" strokeWidth={2} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: '#0F6E50', letterSpacing: 0.4, textTransform: 'uppercase' }}>
+                        Teslim Edildi
+                      </Text>
+                      <Text style={{ fontSize: 16, fontWeight: '800', color: INK_900 }} numberOfLines={1}>
+                        {fmtDateTime(selected.delivered_at)}
+                      </Text>
+                    </View>
+                  </View>
+                )}
 
                 {/* Rota */}
                 <View style={{ padding: 14, borderRadius: 16, backgroundColor: '#FAFAF7', borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)' }}>
@@ -442,11 +769,11 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix 
                     <View style={{ flex: 1, gap: 14 }}>
                       <View>
                         <Text style={{ fontSize: 10, fontWeight: '700', color: accent, letterSpacing: 0.4, textTransform: 'uppercase' }}>Gönderen</Text>
-                        <Text style={{ fontSize: 13, color: INK_900, fontWeight: '500' }}>Laboratuvar</Text>
+                        <Text style={{ fontSize: 13, color: INK_900, fontWeight: '500' }}>{routeEndpoints(selected).fromText}</Text>
                       </View>
                       <View>
-                        <Text style={{ fontSize: 10, fontWeight: '700', color: accent, letterSpacing: 0.4, textTransform: 'uppercase' }}>Alıcı Adres</Text>
-                        <Text style={{ fontSize: 13, color: INK_900, fontWeight: '500', lineHeight: 18 }}>{selected.destination_name ? `${selected.destination_name}\n` : ''}{selected.destination_address ?? '—'}</Text>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: accent, letterSpacing: 0.4, textTransform: 'uppercase' }}>{routeEndpoints(selected).toLabel}</Text>
+                        <Text style={{ fontSize: 13, color: INK_900, fontWeight: '500', lineHeight: 18 }}>{routeEndpoints(selected).toText}</Text>
                         {selected.destination_phone ? (
                           <Text style={{ fontSize: 12, color: INK_500, marginTop: 2 }}>{selected.destination_phone}</Text>
                         ) : null}
@@ -519,16 +846,24 @@ function DeliveryListCard({ d, selected, onSelect, onOpenOrder, onCancel, accent
   accent: string; statusCfg: Record<DeliveryRow['status'], { label: string; bg: string; fg: string }>;
 }) {
   const cfg = statusCfg[d.status];
-  const origin = 'Lab';
-  const dest = d.destination_name ?? d.patient_name ?? 'Alıcı';
+  // Yön duyarlı: klinikten alımda (clinic_to_lab) gönderen klinik, alıcı laboratuvardır.
+  // Eskiden gönderen sabit "Lab" yazıyordu ve geliş bacakları ters görünüyordu.
+  const incoming = d.direction === 'clinic_to_lab';
+  const origin = incoming ? (d.clinic_name || d.doctor_name || 'Klinik') : 'Lab';
+  const dest   = incoming
+    ? (d.destination_name || 'Laboratuvar')
+    : (d.destination_name ?? d.patient_name ?? 'Alıcı');
+  // Kurye kimliği: kayıtlı dış kurye adı (geçmiş gönderiler dahil) → iç kurye.
+  const courierName  = d.ext_courier_name ?? d.courier_name ?? null;
+  const courierPhoto = d.ext_courier_photo ?? null;
 
   return (
     <Pressable
       onPress={onSelect}
       style={{
         backgroundColor: selected ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.45)',
-        borderRadius: 16,
-        padding: 14, gap: 10,
+        borderRadius: 14,
+        padding: 11, gap: 7,
         ...(Platform.OS === 'web' ? {
           cursor: 'pointer',
           backdropFilter: 'blur(8px) saturate(140%)',
@@ -538,9 +873,12 @@ function DeliveryListCard({ d, selected, onSelect, onOpenOrder, onCancel, accent
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Text style={{ fontSize: 13, fontWeight: '700', color: INK_900 }}>{origin}</Text>
+          <Text
+            style={{ fontSize: 12, fontWeight: '700', color: INK_900, flexShrink: 1 }}
+            numberOfLines={1}
+          >{origin}</Text>
           <ArrowRight size={11} color={INK_300} strokeWidth={1.8} />
-          <Text style={{ fontSize: 13, fontWeight: '700', color: INK_900 }} numberOfLines={1}>{dest}</Text>
+          <Text style={{ fontSize: 12, fontWeight: '700', color: INK_900 }} numberOfLines={1}>{dest}</Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: cfg.bg }}>
@@ -563,7 +901,16 @@ function DeliveryListCard({ d, selected, onSelect, onOpenOrder, onCancel, accent
         </View>
       </View>
 
-      <Text style={{ fontSize: 11, color: INK_500 }}>Sipariş #{d.order_number ?? '—'}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        {courierName && (
+          <>
+            <CourierAvatar size={18} accent={accent} initialsColor={accent} photo={courierPhoto} name={courierName} />
+            <Text style={{ fontSize: 10.5, fontWeight: '600', color: INK_900 }} numberOfLines={1}>{courierName}</Text>
+            <Text style={{ fontSize: 10.5, color: INK_300 }}>·</Text>
+          </>
+        )}
+        <Text style={{ fontSize: 10.5, color: INK_500 }}>Sipariş #{d.order_number ?? '—'}</Text>
+      </View>
     </Pressable>
   );
 }
