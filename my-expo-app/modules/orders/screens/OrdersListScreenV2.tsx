@@ -37,18 +37,20 @@ function injectFooterPulseKeyframes() {
   document.head.appendChild(style);
 }
 import {
-  View, Text, ScrollView, RefreshControl, Pressable,
+  View, Text, ScrollView, RefreshControl, Pressable, Image,
   TextInput, Modal, Platform, useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useSegments } from 'expo-router';
-import { Search, X, SlidersHorizontal, ArrowUpDown, ChevronRight, Flame, Clock, LayoutList, Columns3, UserCheck, Pencil, Archive, Trash2, RotateCcw, AlertCircle, ShieldAlert, ListChecks, Camera } from 'lucide-react-native';
+import { Search, X, SlidersHorizontal, ArrowUpDown, ChevronRight, Flame, Clock, LayoutList, Columns3, UserCheck, Pencil, Archive, Trash2, RotateCcw, AlertCircle, ShieldAlert, ListChecks, Camera, CornerDownRight } from 'lucide-react-native';
 import { ScanWorkOrderModal } from '../components/ScanWorkOrderModal';
-import { OrderEditSheet } from '../components/OrderEditSheet';
+// Admin düzenleme artık yeni-sipariş SİHİRBAZINI (aynı 4 adım) düzenleme modunda açar.
+const NewOrderEditWizard: any = React.lazy(() => import('./NewOrderScreen').then((m) => ({ default: (m as any).NewOrderScreen })));
 import { archiveOrder, restoreOrder, hardDeleteOrder } from '../api';
 import { titleCaseTR } from '../../../core/utils/textCase';
 
 import { useAuthStore } from '../../../core/store/authStore';
+import { supabase } from '../../../core/api/supabase';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
@@ -62,9 +64,11 @@ import { StatusUpdateModal } from '../components/StatusUpdateModal';
 import { KanbanBoard } from '../components/KanbanBoard';
 import { WorkOrder, WorkOrderStatus } from '../types';
 import { STATUS_CONFIG, isOrderOverdue } from '../constants';
+import { OrderStatusInfo } from '../../../core/ui/OrderStatusInfo';
 import { getOrderStageLabel } from '../utils/currentStage';
 import { OrdersKanbanB2Mobile } from './OrdersKanbanB2Mobile';
 import { DoctorOrdersMobile } from './DoctorOrdersMobile';
+import { PendingPaperOrdersScreen } from './PendingPaperOrdersScreen';
 import { mapStationToStage } from '../stationMapping';
 import { STAGE_LABEL, STAGE_COLOR, legacyStatusToStage, type Stage } from '../stages';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
@@ -222,15 +226,40 @@ export function OrdersListScreenV2() {
 
   // ── State ──
   const [viewMode, setViewMode]         = useState<ViewMode>('list');
-  const [statusFilter, setStatusFilter] = useState<WorkOrderStatus | 'all'>('all');
+  const [statusFilter, setStatusFilter] = useState<WorkOrderStatus | 'all' | 'manual'>('all');
   const [search, setSearch]             = useState('');
   const [searchOpen, setSearchOpen]     = useState(false);
   const [scanOpen, setScanOpen]         = useState(false);
+  const [paperInboxCount, setPaperInboxCount] = useState(0);
   const [urgentOnly, setUrgentOnly]     = useState(false);
   const [overdueOnly, setOverdueOnly]   = useState(false);
   const [sortBy, setSortBy]             = useState<SortBy>('created_at');  // en yeni sipariş her zaman üstte
   const [sortDir, setSortDir]           = useState<SortDir>('desc');
   const [sortOpen, setSortOpen]         = useState(false);
+
+  // Manuel/kağıt sipariş inbox — bekleyen sayısı (lab panelindeki Inbox butonu rozeti)
+  useEffect(() => {
+    if (panel !== 'lab') return;
+    const labId = (profile as any)?.lab_id ?? profile?.id;
+    if (!labId) return;
+    let mounted = true;
+    const load = async () => {
+      try {
+        const { count } = await supabase
+          .from('pending_paper_orders')
+          .select('id', { count: 'exact', head: true })
+          .eq('lab_id', labId)
+          .eq('status', 'pending');
+        if (mounted) setPaperInboxCount(count ?? 0);
+      } catch { /* sessiz */ }
+    };
+    load();
+    const ch = supabase
+      .channel(`orders-paper-inbox-${labId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pending_paper_orders', filter: `lab_id=eq.${labId}` }, () => load())
+      .subscribe();
+    return () => { mounted = false; supabase.removeChannel(ch); };
+  }, [panel, (profile as any)?.lab_id, profile?.id]);
 
   // ── Modals ──
   const [selectedOrder, setSelectedOrder]           = useState<WorkOrder | null>(null);
@@ -279,6 +308,12 @@ export function OrdersListScreenV2() {
     for (const o of visibleOrders) counts[o.status] = (counts[o.status] ?? 0) + 1;
     return counts;
   }, [visibleOrders]);
+
+  // Durum sekmeleri — lab panelinde sona "Manuel" (WhatsApp/kağıt inbox) eklenir.
+  const statusFilters = useMemo<{ value: WorkOrderStatus | 'all' | 'manual'; label: string }[]>(
+    () => (panel === 'lab' ? [...STATUS_FILTERS, { value: 'manual', label: 'Manuel' }] : STATUS_FILTERS),
+    [panel],
+  );
 
   const urgentCount = useMemo(() => visibleOrders.filter(o => o.is_urgent).length, [visibleOrders]);
   const overdueCount = useMemo(
@@ -382,9 +417,9 @@ export function OrdersListScreenV2() {
             contentContainerStyle={{ gap: 6 }}
           >
             <View className="flex-row gap-0.5 p-0.5 bg-cream-panel rounded-full">
-              {STATUS_FILTERS.map(f => {
+              {statusFilters.map(f => {
                 const active = statusFilter === f.value && !urgentOnly && !overdueOnly;
-                const count = statusCounts[f.value] ?? 0;
+                const count = f.value === 'manual' ? paperInboxCount : (statusCounts[f.value] ?? 0);
                 return (
                   <Pressable
                     key={f.value}
@@ -451,6 +486,8 @@ export function OrdersListScreenV2() {
                 </Text>
               </Pressable>
             )}
+
+            {/* Manuel inbox artık "Manuel" durum sekmesi olarak sunuluyor (yukarıdaki strip). */}
 
             {/* Kağıt sipariş tara — klinikler kağıt formla sipariş veriyorsa OCR */}
             {Platform.OS === 'web' && (
@@ -579,9 +616,9 @@ export function OrdersListScreenV2() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{ gap: 6 }}
           >
-            {STATUS_FILTERS.map(f => {
+            {statusFilters.map(f => {
               const active = statusFilter === f.value && !urgentOnly && !overdueOnly;
-              const count = statusCounts[f.value] ?? 0;
+              const count = f.value === 'manual' ? paperInboxCount : (statusCounts[f.value] ?? 0);
               return (
                 <Pressable
                   key={f.value}
@@ -650,7 +687,10 @@ export function OrdersListScreenV2() {
       )}
 
       {/* ── Content ────────────────────────────────────────────────── */}
-      {isDesktop && viewMode === 'kanban' ? (
+      {statusFilter === 'manual' ? (
+        // Manuel sekmesi — WhatsApp/kağıt (pending_paper_orders) inbox'u satır-içi.
+        <PendingPaperOrdersScreen />
+      ) : isDesktop && viewMode === 'kanban' ? (
         <KanbanBoard orders={visibleOrders} userGroup={(panelGroup || '(lab)') as any} onStatusAdvance={onStatusAdvance} />
       ) : (
         <ScrollView
@@ -672,11 +712,52 @@ export function OrdersListScreenV2() {
             <EmptyStateV2 search={search} hasFilters={urgentOnly || overdueOnly || statusFilter !== 'all'} />
           ) : (() => {
             // Planlama bekleyen siparişler ayrı bir bloğa alınır
-            const triagePendingOrders = filtered.filter(
-              o => o.status === 'alindi' && !(o as any).triaged_at
-            );
-            const mainOrders = filtered.filter(
-              o => !(o.status === 'alindi' && !(o as any).triaged_at)
+            const isTriagePending = (o: any) => o.status === 'alindi' && !o.triaged_at;
+            const pendingBase = filtered.filter(isTriagePending);
+
+            // Revizyon vaka-grubu: planlama bekleyen bir revizyon varsa, ORİJİNALİ de
+            // (teslim edilmiş olsa bile) bu bloğa taşınır ve revizyon onun ALTINA
+            // girintili yerleşir. Böylece parça-bütün ilişkisi görünür kalır ve iş
+            // planlama kuyruğundan düşmez.
+            const byId = new Map(filtered.map(o => [o.id, o]));
+            const pulledParentIds = new Set<string>();
+            const triagePendingOrders: any[] = [];
+            pendingBase.forEach(rev => {
+              const parentId = (rev as any).revision_of_id as string | undefined;
+              const parent = parentId ? byId.get(parentId) : undefined;
+              if (parent && !isTriagePending(parent) && !pulledParentIds.has(parent.id)) {
+                pulledParentIds.add(parent.id);
+                triagePendingOrders.push({ ...(parent as any), __revParent: true });
+              }
+              triagePendingOrders.push(parentId && parent ? { ...(rev as any), __revChild: true } : rev);
+            });
+
+            // Ana listede de revizyonlar orijinallerinin ALTINA yuvalanır.
+            // (Orijinali listede olmayan revizyon yalnız kendi rozetiyle görünür.)
+            const nestRevisions = (list: any[]) => {
+              const ids = new Map(list.map(o => [o.id, o]));
+              const kids = new Map<string, any[]>();
+              const roots: any[] = [];
+              list.forEach(o => {
+                const pid = o.revision_of_id as string | undefined;
+                if (pid && ids.has(pid)) {
+                  if (!kids.has(pid)) kids.set(pid, []);
+                  kids.get(pid)!.push(o);
+                } else {
+                  roots.push(o);
+                }
+              });
+              const out: any[] = [];
+              roots.forEach(r => {
+                const cs = kids.get(r.id);
+                out.push(cs?.length ? { ...r, __revParent: true } : r);
+                cs?.forEach(c => out.push({ ...c, __revChild: true }));
+              });
+              return out;
+            };
+
+            const mainOrders = nestRevisions(
+              filtered.filter(o => !isTriagePending(o) && !pulledParentIds.has(o.id))
             );
 
             return (
@@ -904,14 +985,23 @@ export function OrdersListScreenV2() {
         />
       )}
 
-      {/* Admin: kapsamlı düzenleme (tüm alanlar, gate yok) */}
-      <OrderEditSheet
-        visible={!!adminEditTarget}
-        order={adminEditTarget as any}
-        mode="admin"
-        onClose={() => setAdminEditTarget(null)}
-        onSaved={() => { refetch?.(); }}
-      />
+      {/* Admin: kapsamlı düzenleme — yeni-sipariş sihirbazı (aynı 4 adım), bilgi dolu, popup */}
+      {adminEditTarget && (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setAdminEditTarget(null)}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', alignItems: 'center', justifyContent: 'center', padding: width >= 768 ? 24 : 0 }}>
+            <View style={{ width: '100%', maxWidth: 1120, flex: 1, maxHeight: width >= 768 ? '94%' : '100%', borderRadius: width >= 768 ? 20 : 0, overflow: 'hidden', backgroundColor: '#F1F5F9', ...(Platform.OS === 'web' ? ({ boxShadow: '0 24px 60px rgba(15,23,42,0.28)' } as any) : {}) }}>
+              <React.Suspense fallback={<View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color="#0A0A0A" /></View>}>
+                <NewOrderEditWizard
+                  panel={panel as any}
+                  editOrderId={(adminEditTarget as any).id}
+                  onClose={() => setAdminEditTarget(null)}
+                  onSaved={() => { refetch?.(); setAdminEditTarget(null); }}
+                />
+              </React.Suspense>
+            </View>
+          </View>
+        </Modal>
+      )}
 
       {/* Admin: Archive/Restore Confirm */}
       {adminArchiveTarget && (
@@ -952,7 +1042,7 @@ export function OrdersListScreenV2() {
               window.sessionStorage.setItem('ocr_work_order', JSON.stringify(parsed));
             }
           } catch { /* ignore */ }
-          router.push('/(lab)/new-order' as any);
+          router.push(`${panelGroup && panelGroup.startsWith('(') ? `/${panelGroup}` : '/(lab)'}/new-order` as any);
         }}
         accentColor="#2563EB"
       />
@@ -1167,6 +1257,7 @@ const MobileOrderCard = React.memo(function MobileOrderCard({ order, isManager, 
               Acil
             </Text>
           )}
+          <OrderStatusInfo order={order as any} size={13} />
           {needsTriage ? (
             <View className="px-2 py-0.5 rounded flex-row items-center gap-1" style={{ backgroundColor: '#D97706' }}>
               <Text className="text-[10px] font-bold" style={{ color: '#FFF', letterSpacing: 0.3 }}>
@@ -1252,6 +1343,8 @@ function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, o
 }) {
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
+  // Avatar: lab tarafı panellerde klinik logosu, klinik/hekimde hasta baş harfleri
+  const tablePanel = detectPanel(useSegments() as string[]);
   const headColor = T.ink3;
   return (
     <View
@@ -1289,6 +1382,7 @@ function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, o
       {/* Table body */}
       {orders.map((order, i) => (
         <DesktopRow
+          useClinicLogoAvatar={tablePanel !== 'clinic' && tablePanel !== 'doctor'}
           key={order.id}
           order={order}
           isManager={isManager}
@@ -1335,8 +1429,10 @@ function DesktopTable({ orders, isManager, isAdmin, onPress, onAssign, onEdit, o
   );
 }
 
-const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, isLast, onPress, onAssign, onEdit, onArchive, onDelete }: {
+const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, isLast, useClinicLogoAvatar, onPress, onAssign, onEdit, onArchive, onDelete }: {
   order: WorkOrder;
+  /** Lab/admin/teknisyen: hasta baş harfleri yerine klinik logosu göster. */
+  useClinicLogoAvatar?: boolean;
   isManager: boolean;
   isAdmin?: boolean;
   isLast: boolean;
@@ -1378,6 +1474,8 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
   // Patient initials for avatar
   const patientName = order.patient_name ? titleCaseTR(order.patient_name) : '—';
   const initials = patientName.trim().split(/\s+/).slice(0, 2).map(p => p[0]?.toUpperCase() ?? '').join('') || '?';
+  // Lab tarafı panellerde klinik logosu kullanılır; klinik/hekim panelinde hayır.
+  const clinicLogo = useClinicLogoAvatar ? ((order as any)?.doctor?.clinic?.logo_url ?? null) : null;
 
   return (
     <Pressable
@@ -1388,42 +1486,76 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
         !isLast && { borderBottomWidth: 1, borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
         // Planlama bekleyen — sabit soft amber zemin + sol kenar şeridi (animasyon yok)
         needsTriage && { backgroundColor: 'rgba(217,119,6,0.05)', borderLeftWidth: 3, borderLeftColor: '#D97706' },
+        // Revizyon alt-satırı — girintili (üstteki orijinale bağlı)
+        (order as any).__revChild && { paddingLeft: 18 },
         // @ts-ignore web hover
         Platform.OS === 'web' ? { cursor: 'pointer', transition: 'background-color 0.15s' } as any : undefined,
       ]}
     >
-      {/* No */}
-      <View style={{ width: 90 }} className="flex-row items-center gap-1.5">
-        <Text style={{ fontSize: 11, fontFamily: 'monospace', color: T.ink3 }}>
-          #{order.order_number}
-        </Text>
+      {/* No — revizyonda sol üstte bağlantı oku + "revizyon" rozeti */}
+      <View
+        style={{ width: (order as any).__revChild ? 116 : 96, flexShrink: 0 }}
+        className="flex-row items-start gap-1"
+      >
+        {(order as any).__revChild && (
+          <CornerDownRight size={13} color="#9C5E0E" strokeWidth={2.2} style={{ marginTop: 1, flexShrink: 0 }} />
+        )}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={{ fontSize: 11, fontFamily: 'monospace', color: T.ink3 }} numberOfLines={1}>
+            #{order.order_number}
+          </Text>
+          {(order as any).__revChild && (
+            <Text style={{ fontSize: 9, fontWeight: '700', color: '#9C5E0E', letterSpacing: 0.4, marginTop: 1 }}>
+              REVİZYON
+            </Text>
+          )}
+          {(order as any).__revParent && (
+            <Text style={{ fontSize: 9, fontWeight: '700', color: T.ink3, letterSpacing: 0.4, marginTop: 1 }}>
+              ORİJİNAL
+            </Text>
+          )}
+        </View>
       </View>
 
-      {/* Hasta — avatar + isim */}
-      <View style={{ flex: 2 }} className="flex-row items-center gap-2.5">
-        <View
-          className="w-7 h-7 rounded-full items-center justify-center shrink-0"
-          style={{ backgroundColor: stageColor + '20' }}
-        >
-          <Text style={{ fontSize: 10, fontWeight: '600', color: stageColor }}>
-            {initials}
-          </Text>
-        </View>
+      {/* Hasta — avatar + isim.
+          LAB/ADMIN/TEKNİSYEN: klinik logosu (iş hangi klinikten geldi, bir bakışta belli).
+          KLİNİK/HEKİM: kendi işleri olduğu için eskisi gibi hasta baş harfleri. */}
+      <View style={{ flex: 2, minWidth: 0 }} className="flex-row items-center gap-2.5">
+        {clinicLogo ? (
+          <View
+            className="w-7 h-7 rounded-full items-center justify-center shrink-0 overflow-hidden"
+            style={{ backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline }}
+          >
+            <Image source={{ uri: clinicLogo }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+          </View>
+        ) : (
+          <View
+            className="w-7 h-7 rounded-full items-center justify-center shrink-0"
+            style={{ backgroundColor: stageColor + '20' }}
+          >
+            <Text style={{ fontSize: 10, fontWeight: '600', color: stageColor }}>
+              {initials}
+            </Text>
+          </View>
+        )}
         <Text
-          style={{ fontSize: 13, fontWeight: '500', color: isLate ? '#DC2626' : T.ink }}
+          style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: '500', color: isLate ? '#DC2626' : T.ink }}
           numberOfLines={1}
         >
           {patientName}
         </Text>
       </View>
 
-      {/* Vaka */}
-      <Text style={{ flex: 1.8, fontSize: 13, color: T.ink }} numberOfLines={1}>
+      {/* Vaka — revizyonda başına "Revizyon -" öneki */}
+      <Text style={{ flex: 1.8, minWidth: 0, fontSize: 13, color: T.ink }} numberOfLines={1}>
+        {(order as any).__revChild && (
+          <Text style={{ fontWeight: '700', color: '#9C5E0E' }}>Revizyon - </Text>
+        )}
         {order.work_type}
       </Text>
 
       {/* Hekim */}
-      <Text style={{ flex: 1.6, fontSize: 13, color: T.ink2 }} numberOfLines={1}>
+      <Text style={{ flex: 1.6, minWidth: 0, fontSize: 13, color: T.ink2 }} numberOfLines={1}>
         {order.doctor?.full_name ?? '—'}
       </Text>
 
@@ -1484,14 +1616,17 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
             )}
           </View>
         )}
-        <View
-          className="flex-row items-center gap-1.5 self-start px-3 py-1 rounded-full"
-          style={{ backgroundColor: tone.bg, maxWidth: '100%' }}
-        >
-          <View className="w-1.5 h-1.5 rounded-full opacity-80" style={{ backgroundColor: tone.fg, flexShrink: 0 }} />
-          <Text style={{ fontSize: 12, fontWeight: '500', color: tone.fg, flexShrink: 1 }} numberOfLines={1}>
-            {onHold ? 'Duraklatıldı' : getOrderStageLabel(order as any)}
-          </Text>
+        <View className="flex-row items-center gap-1.5 self-start" style={{ maxWidth: '100%' }}>
+          <OrderStatusInfo order={order as any} />
+          <View
+            className="flex-row items-center gap-1.5 px-3 py-1 rounded-full"
+            style={{ backgroundColor: tone.bg, flexShrink: 1 }}
+          >
+            <View className="w-1.5 h-1.5 rounded-full opacity-80" style={{ backgroundColor: tone.fg, flexShrink: 0 }} />
+            <Text style={{ fontSize: 12, fontWeight: '500', color: tone.fg, flexShrink: 1 }} numberOfLines={1}>
+              {onHold ? 'Duraklatıldı' : getOrderStageLabel(order as any)}
+            </Text>
+          </View>
         </View>
       </View>
 
