@@ -8,7 +8,7 @@ import { create } from 'zustand';
 import { Platform } from 'react-native';
 import type { CurrencyTotal } from '../money/aggregations';
 
-const LS_KEY = 'dashboard_cache_v2';  // v2: finMonthly/finPending number → CurrencyTotal[] (eski sayı-cache geçersiz)
+const LS_KEY = 'dashboard_cache_v3';  // v3: eski persist edilmiş triagePending "hayalet planlama-bekliyor" sayısı (DB'de 0 olsa da 1 gösteriyordu) düşürülsün · v2: finMonthly/finPending number → CurrencyTotal[]
 
 export interface AdminDashboardCache {
   pipelineCounts: Record<string, number>;
