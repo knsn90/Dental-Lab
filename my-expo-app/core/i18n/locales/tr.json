@@ -39,7 +39,7 @@
     "items": {
       "today": "Bugün",
       "orders": "Siparişler",
-      "paperOrders": "Kağıt Siparişler",
+      "paperOrders": "Manuel Siparişler",
       "approvals": "Onaylar",
       "clinics": "Sağlık Kurumları",
       "team": "Ekip",
@@ -53,11 +53,11 @@
       "messages": "Mesajlar",
       "settings": "Ayarlar",
       "summary": "Özet",
-      "cases": "Vakalar",
+      "cases": "Siparişler",
       "search": "Ara",
       "more": "Daha",
       "new": "Yeni",
-      "paperInbox": "Kağıt Inbox",
+      "paperInbox": "Manuel Inbox",
       "deliveries": "Teslimatlar",
       "map": "Harita",
       "stats": "İstatistik",
@@ -70,7 +70,8 @@
       "panel": "Panel",
       "myJobs": "İşlerim",
       "history": "Geçmiş",
-      "requests": "Talepler"
+      "requests": "Talepler",
+      "waSupport": "WhatsApp Destek"
     },
     "sections": {
       "work": "İş Yönetimi",
@@ -410,6 +411,10 @@
       "logs": {
         "label": "Loglar",
         "sub": "Sistem aktivite kayıtları"
+      },
+      "workflows": {
+        "label": "İş Akışları",
+        "sub": "Üretim akışı tasarımcısı"
       }
     }
   },
@@ -465,9 +470,11 @@
       "qcShort": "KK",
       "ready": "Hazır",
       "live": "CANLI",
-      "awaitingPlanning": "planlama bekliyor",
+      "awaitingPlanning": "sipariş geldi — planlamayı başlat",
+      "newWorkKicker": "YENİ İŞ",
       "overdueOrder": "geciken sipariş",
-      "urgent": "ACİL"
+      "urgent": "ACİL",
+      "toPlanShort": "Planlanacak"
     },
     "months": {
       "short": "Oca, Şub, Mar, Nis, May, Haz, Tem, Ağu, Eyl, Eki, Kas, Ara",
@@ -497,7 +504,7 @@
       "deliveryRate": "Teslim Oranı",
       "delivered": "Teslim",
       "inProduction": "üretimde",
-      "todaysTasks": "Bugünkü görevler",
+      "todaysTasks": "Bekleyen aksiyonlar",
       "recentOrders": "Son Siparişler",
       "viewAll": "Tümünü Gör →",
       "noOrders": "Henüz sipariş yok",
@@ -516,13 +523,18 @@
       "ordersSummary": "{{total}} sipariş, {{active}} aktif{{overdue}}.",
       "liveProduction": "Canlı üretim",
       "monthlyRevenue": "Aylık gelir",
+      "pendingApprovals": "Onay bekleyen",
+      "approvalsActionNeeded": "İşlem gerekli",
+      "approvalsClear": "Her şey güncel",
       "revenueTarget": "Hedef ₺60K",
       "activeOrders": "Aktif sipariş",
       "overdueCount": "{{count}} geciken",
       "total": "Toplam {{total}}",
       "delayedCases": "Geciken vakalar",
       "noDelayedCases": "Geciken vaka yok",
-      "productionOnTrack": "Tüm üretim planlandığı gibi ilerliyor."
+      "productionOnTrack": "Tüm üretim planlandığı gibi ilerliyor.",
+      "ordersOfTotal": "{{done}} / {{total}} sipariş",
+      "deliveredAllTime": "Teslim edilen · tüm zamanlar"
     },
     "buttons": {
       "start": "Başla"
@@ -543,12 +555,17 @@
       "actor": {
         "admin": "Admin",
         "doctor": "Hekim",
-        "lab": "Lab"
+        "lab": "Lab",
+        "clinic": "Klinik",
+        "technician": "Teknisyen",
+        "courier": "Kurye"
       },
       "tab": {
         "all": "Tümü",
         "users": "Kullanıcılar",
-        "doctors": "Hekimler"
+        "doctors": "Hekimler",
+        "technicians": "Teknisyenler",
+        "clinics": "Klinikler"
       },
       "searchPlaceholder": "İsim, aksiyon veya kayıt ara...",
       "loading": "Loglar yükleniyor…",
@@ -581,7 +598,7 @@
   },
   "clinic": {
     "tabs": {
-      "cases": "Vakalar",
+      "cases": "Siparişler",
       "team": "Ekip",
       "search": "Ara",
       "more": "Daha"

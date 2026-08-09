@@ -19,6 +19,7 @@ import {
 } from '../api';
 import { getActiveProvider } from '../providers';
 import type { EFaturaStatus } from '../types';
+import { confirmAsync } from '../../../core/util/confirm';
 
 interface Props {
   invoiceId:   string;
@@ -72,23 +73,20 @@ export function EFaturaPanel({ invoiceId, status, uuid, type, provider, error, o
     onChanged?.();
   };
 
-  const handleCancel = () => {
-    Alert.alert(
+  const handleCancel = async () => {
+    const ok = await confirmAsync(
       'e-Faturayı İptal Et',
       'Bu fatura GİB üzerinde iptal edilsin mi? Bu işlem geri alınamaz.',
-      [
-        { text: 'Vazgeç', style: 'cancel' },
-        { text: 'İptal Et', style: 'destructive', onPress: async () => {
-          setBusy(true);
-          const r = await cancelEFatura(invoiceId, 'Kullanıcı iptali');
-          setBusy(false);
-          if (!r.ok) toast.error(r.error ?? 'İptal başarısız');
-          else       toast.success('e-Fatura iptal edildi');
-          refreshLogs();
-          onChanged?.();
-        }},
-      ],
+      { confirmText: 'İptal Et', destructive: true },
     );
+    if (!ok) return;
+    setBusy(true);
+    const r = await cancelEFatura(invoiceId, 'Kullanıcı iptali');
+    setBusy(false);
+    if (!r.ok) toast.error(r.error ?? 'İptal başarısız');
+    else       toast.success('e-Fatura iptal edildi');
+    refreshLogs();
+    onChanged?.();
   };
 
   return (
@@ -173,12 +171,12 @@ const s = StyleSheet.create({
     borderRadius:    CardSpec.radius,
     borderWidth:     1,
     borderColor:     CardSpec.border,
-    padding:         16,
-    gap:             12,
+    padding:         13,
+    gap:             10,
     ...Shadows.card,
   } as any,
-  head: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  iconBox: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  head: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  iconBox: { width: 28, height: 28, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 14, fontWeight: '800', color: '#0F172A' },
   providerHint: { fontSize: 11, color: '#94A3B8', marginTop: 2 },
   statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },

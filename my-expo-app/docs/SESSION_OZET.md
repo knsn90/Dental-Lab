@@ -240,3 +240,112 @@ filtresi kaldırıldı (RLS zaten scope'luyor).
 | Hekim RLS yardımcıları | DB (execute_sql, migration dosyası yok) |
 | Sipariş listesi filtresi | `modules/orders/api.ts` |
 | Silinen sızdıran script | `copy-storage-tmp.mjs` (silindi) |
+
+---
+---
+
+# Oturum Özeti — Devam Siparişi + Tasarım/Deploy
+
+> Tarih: 2026-08-01 · Proje: Siman (my-expo-app) · Odak: sipariş devam akışı, tasarım showcase, deploy düzeni
+
+Bu blok, ilgili oturumda yapılan işleri özetler. Yukarıdaki (2026-06-03) özetten bağımsızdır.
+
+---
+
+## 1. Devam Siparişi (geçici → nihai) — YENİ ÖZELLİK · CANLI
+
+Teslim edilmiş bir işin **planlı sonraki aşaması** (ör. geçici diş → nihai zirkon).
+**Revizyon DEĞİL:** ayrı ilişki, tam ücretli yeni sipariş, kalite/yeniden-yapım
+KPI'ına sayılmaz.
+
+### Faz 1 — DB (canlı)
+- `work_orders.continues_order_id` (self-FK, ON DELETE SET NULL, partial index).
+  Migration: `supabase/migrations/20260804150000_order_continuation_link.sql`
+  (project `kjwjxqfdsxkxgcgophdy`). Additive, tek-lab'da NO-OP.
+
+### Faz 2 — Client (canlı)
+- Yeni hook `modules/orders/useContinuationOrder.ts` — mobil = global modal,
+  **desktop = stagePrefill + `/<panel>/new-order` route'una git** (yeni-sipariş modal'ı
+  desktop'ta render edilmiyor; RN Modal web'de de overlay açar → open:true kullanılmaz).
+- `modules/orders/prefillFromOrder.ts` `fetchContinuationPrefill` — hasta + dosya-var-mı
+  taşır; iş tipi/materyal/fiyat BOŞ (tooth_ops boş — dişleri önceden listeye koymak
+  "boş satır" hatası yaptı, kaldırıldı).
+- `core/store/newOrderModalStore.ts` `stagePrefill` (modal açmadan prefill hazırla).
+- `NewOrderScreen.tsx` — `applyPrefill` hasta + bağ; submit payload `continues_order_id`;
+  **dijital-dosya zorunluluğu gevşetildi** (`has_source_files` → dosyalar miras alınır,
+  yeşil bilgi banner'ı).
+- `OrderDetailScreenV2.tsx` — "Devam Siparişi" butonu (teslim_edildi + lab/admin veya
+  hekim/klinik); dosya-miras + mesaj-arşiv çözücüleri `continues_order_id`'yi de takip eder.
+- `StageFileUpload.tsx` — aşama dosya mirası continues_order_id çözer.
+
+### Faz 3 — Görünürlük (canlı)
+- `revisionGroups.ts` genelleştirildi: bağ = `revision_of_id ?? continues_order_id`;
+  kök revizyon-no'ya değil BAĞA göre bulunur; `isContinuation` + `__continuation` bayrağı.
+- Siparişler listesi (`OrdersListScreenV2`) + 5 dashboard (Lab/Clinic/Doctor/admin index +
+  RecentOrdersMobile): devam siparişi asıl işin ALTINDA girintili, mavi `#3563A8`
+  **"DEVAM"** etiketi + "Devam - " öneki.
+- Planlama ekranı (`triage/api.ts fetchTriageData`): asıl işten dosya + mesaj + hekim notu
+  MİRAS (revizyon planlamasındaki aynı boşluğu da kapattı).
+- `OrderDetailScreenV2` hero'da karşılıklı **"Tedavi zinciri"** çipleri:
+  "Asıl iş: <no>" ↔ "Devam: <no>".
+
+### Kritik bug (düzeltildi)
+- Admin dashboard `loadRecent` satırları yeniden map'lerken `continues_order_id`'yi
+  DÜŞÜRÜYORDU (select çekse de map'te yoktu) → admin panelinde yuvalanmıyordu.
+  Düzeltildi (LabDashboard `...o` spread ile zaten korunuyordu; clinic/doctor `select('*')`).
+
+### Gotcha'lar
+- Desktop yeni-sipariş MODAL değil ROUTE (`/(lab)/new-order`); `useCopyOrder` ölü koddu.
+- Kalan opsiyonel: **Faz 4 — Vaka çatısı** (bir hastanın tüm tedavisi tek görünüm).
+
+---
+
+## 2. Tasarım — /dev/patterns tazeleme + Dağılım Kartları
+
+- `/dev/patterns` (desktop + mobile) güncellendi: "Instrument Serif" → **Inter Tight 300**;
+  renk sistemi 4 → **6 panel** (Analitik/plum + Depo/teal); exec "Mercan" → **Kobalt** (#4771AB).
+- Yeni **Dağılım Kartı (DistCard)** kalıbı: yığılmış oranlı şerit + noktalı lejant
+  (Finansal Özet / Statü / İş Tipi). Desktop bölüm 11.9, mobile F7.
+- `docs/DESIGN_LANGUAGE.md` gerçek dsTokens değerleriyle güncellendi (başlık → Siman).
+
+---
+
+## 3. Sidebar "Yeni sekmede aç" — DEPLOY BEKLİYOR
+
+- `core/layout/PatternsShell.tsx` `NavAnchor`: sidebar satırları web'de gerçek `<a href>`
+  (`display: contents`) → sağ-tık "yeni sekmede aç" + Cmd/Ctrl/orta-tık yeni sekme;
+  normal tık SPA. Native no-op. (RN Web'de tıklanabilirler `<a>` değil `Pressable` olduğu
+  için tarayıcı "yeni sekmede aç" göstermiyordu.)
+
+---
+
+## 4. iyzico — iş modeli mail taslağı
+
+- inceleme@iyzico.com'a "POS'tan geçecek ödeme nedir" sorusuna cevap taslağı hazırlandı
+  (NexaDent laboratuvarı; klinik/hekimlerin protez üretim faturalarının online tahsili;
+  B2B, TL). Yalnız taslak — gönderilmedi.
+
+---
+
+## 5. Deploy düzeni
+
+- 2 deploy yapıldı (siman.app CANLI, HTTP 200 doğrulandı). Devam Siparişi tam canlı.
+- **Kural CLAUDE.md'ye eklendi:** kullanıcı "deploy" demedikçe deploy YOK; değişiklikler
+  biriktirilir. Deploy komutu + siman.app 200 doğrulaması CLAUDE.md §🚀 Deploy Kuralı'nda.
+- Deploy bekleyen: **Sidebar "yeni sekmede aç"** (bu oturumdaki tek yayınlanmamış fonksiyonel değişiklik).
+
+## Hızlı Referans — Bu Oturumda Dokunulan Önemli Dosyalar
+
+| Alan | Dosya |
+|---|---|
+| Devam siparişi DB | `supabase/migrations/20260804150000_order_continuation_link.sql` |
+| Devam siparişi hook | `modules/orders/useContinuationOrder.ts` |
+| Prefill + bağ | `modules/orders/prefillFromOrder.ts`, `core/store/newOrderModalStore.ts` |
+| Sihirbaz | `modules/orders/screens/NewOrderScreen.tsx` |
+| Detay + tedavi zinciri | `modules/orders/screens/OrderDetailScreenV2.tsx` |
+| Yuvalama motoru | `modules/orders/revisionGroups.ts`, `modules/orders/hooks/useRevisionParents.ts` |
+| Liste + dashboard yuvalama | `OrdersListScreenV2`, Lab/Clinic/Doctor Dashboard, `app/(admin)/index.tsx`, `RecentOrdersMobile` |
+| Planlama mirası | `modules/triage/api.ts` |
+| Tasarım showcase | `app/dev/patterns.tsx`, `app/dev/patterns-mobile.tsx`, `docs/DESIGN_LANGUAGE.md` |
+| Sidebar anchor | `core/layout/PatternsShell.tsx` |
+| Deploy kuralı | `CLAUDE.md` (§🚀 Deploy Kuralı) |

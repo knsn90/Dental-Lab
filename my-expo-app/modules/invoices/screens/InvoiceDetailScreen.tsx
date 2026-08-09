@@ -16,11 +16,12 @@ import {
   ArrowLeft, Printer, Banknote, CreditCard, Landmark, File,
   MoreHorizontal, Building2, User, Phone, MapPin, Calendar,
   ClipboardList, Plus, Trash2, Send, BellRing, CircleX,
-  CircleCheck, X, AlertCircle, ChevronRight, ChevronDown, Check, FileText,
+  CircleCheck, X, AlertCircle, ChevronRight, ChevronDown, Check, FileText, Undo2,
 } from 'lucide-react-native';
 import { toast } from '../../../core/ui/Toast';
 import { ConfirmDialog, type ConfirmState } from '../../../core/ui/ConfirmDialog';
 import { useRouter, useLocalSearchParams, useSegments } from 'expo-router';
+import { safeBack } from '../../../core/util/safeBack';
 
 import { DS } from '../../../core/theme/dsTokens';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
@@ -41,6 +42,7 @@ import { EFaturaPanel } from '../../efatura/components/EFaturaPanel';
 import { PaymentLinkPanel } from '../../payments/components/PaymentLinkPanel';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { CenteredLoader } from '../../../core/ui/CenteredLoader';
+import { normalizeDoctorName } from '../../../core/utils/textCase';
 
 // ── Patterns tokens (§05 kartlar) ───────────────────────────────────
 const DISPLAY = {
@@ -166,15 +168,31 @@ function EditableNum({ value, editable, onSave, fmt, textStyle, inputStyle }: {
 // ═════════════════════════════════════════════════════════════════════
 // MAIN
 // ═════════════════════════════════════════════════════════════════════
-export function InvoiceDetailScreen() {
+interface DetailProps {
+  /** Hub içinde gömülü açılırken — route param yerine doğrudan id */
+  invoiceId?: string;
+  /** Gömülü kullanımda geri; verilmezse geçmiş kullanılır */
+  onBack?: () => void;
+}
+
+export function InvoiceDetailScreen({ invoiceId, onBack }: DetailProps = {}) {
   const theme = usePanelTheme();
   const router = useRouter();
   const segments = useSegments();
-  const panelBase = String(segments?.[0] ?? '(lab)');  // sipariş linki için aktif panel
+  const panelBase = String(segments?.[0] ?? '(lab)');
+  // Doğrudan URL ile açılışta (yenileme / paylaşılan link) navigasyon geçmişi yok:
+  // router.back() "GO_BACK was not handled" konsol hatası verip hiçbir şey yapmıyordu.
+  // Fatura listesi rotası yalnız lab'da var; diğer panellerde Finans hub'ı
+  // ortak giriş noktası (hepsinde finance.tsx mevcut).
+  const goBack = () => {
+    if (onBack) { onBack(); return; }
+    safeBack(`/${panelBase}${panelBase === '(lab)' ? '/invoices' : '/finance'}`);
+  };
   // Klinik/hekim panelinde fatura yalnız GÖRÜNTÜLENİR — lab aksiyonları (tahsilat,
   // hatırlatma, ödeme linki, e-fatura, iptal/sil) gizlenir.
   const readOnly = panelBase === '(clinic)' || panelBase === '(doctor)';
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const routeParams = useLocalSearchParams<{ id: string }>();
+  const id = invoiceId ?? routeParams.id;
   const { invoice, loading, refetch } = useInvoice(id);
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1024;
@@ -197,8 +215,8 @@ export function InvoiceDetailScreen() {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
         <AlertCircle size={40} strokeWidth={1.4} color={DS.ink[300]} />
-        <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[900] }}>Fatura bulunamadi</Text>
-        <Pressable onPress={() => router.back()} style={{
+        <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[900] }}>Fatura bulunamadı</Text>
+        <Pressable onPress={goBack} style={{
           paddingHorizontal: 20, paddingVertical: 10, borderRadius: 9999,
           backgroundColor: DS.ink[100], cursor: 'pointer' as any,
         }}>
@@ -245,6 +263,50 @@ export function InvoiceDetailScreen() {
   const isOverdue = invoice.due_date && invoice.due_date < today
     && invoice.status !== 'odendi' && invoice.status !== 'iptal';
 
+  // Zaman şeridi — oluşturuldu · son ödeme · vade baskısı (kullanıcı zaman baskısını da yönetir)
+  const createdDate = (invoice.created_at ? String(invoice.created_at).slice(0, 10) : invoice.issue_date);
+  const _payDates = (invoice.payments ?? []).map(p => p.payment_date).filter(Boolean).sort();
+  const lastPaymentDate = _payDates.length ? _payDates[_payDates.length - 1] : null;
+  const duePressure: { text: string; color: string; bg: string; fg: string; light: string } = (() => {
+    const amber = { bg: 'rgba(232,155,42,0.15)', fg: '#9C5E0E', light: '#FCD34D' };
+    const green = { bg: 'rgba(45,154,107,0.12)', fg: '#1F6B47', light: '#86EFAC' };
+    const red   = { bg: 'rgba(217,75,75,0.12)',  fg: '#9C2E2E', light: '#FCA5A5' };
+    const none  = { bg: DS.ink[100],             fg: DS.ink[500], light: 'rgba(255,255,255,0.7)' };
+    if (invoice.status === 'odendi') return { text: 'Ödendi', color: '#1F6B47', ...green };
+    if (invoice.status === 'iptal')  return { text: 'İptal',  color: DS.ink[400], ...none };
+    if (!invoice.due_date)           return { text: '—',      color: DS.ink[400], ...none };
+    const diff = Math.round(
+      (new Date(invoice.due_date + 'T00:00:00').getTime() - new Date(today + 'T00:00:00').getTime()) / 86400000,
+    );
+    if (diff < 0)   return { text: `${Math.abs(diff)} gün gecikti`, color: '#DC2626', ...red };
+    if (diff === 0) return { text: 'Bugün vadeli',                  color: '#B45309', ...amber };
+    return { text: `${diff} gün kaldı`, color: diff <= 7 ? '#B45309' : '#1F6B47', ...(diff <= 7 ? amber : green) };
+  })();
+
+  // Fatura yaşam döngüsü — muhasebe için 4 adımlı çizelge (✓ done · ● active · ○ pending)
+  const _paid = invoice.status === 'odendi';
+  const _partial = invoice.status === 'kismi_odendi';
+  const _issued = _paid || _partial || invoice.status === 'kesildi';
+  const _cancelled = invoice.status === 'iptal';
+  type LcState = 'done' | 'active' | 'pending';
+  const _dueVisible = _issued && !_paid && !_cancelled && !!invoice.due_date;
+  const lifecycle: {
+    label: string; short: string; state: LcState; date?: string | null;
+    dueCaption?: string | null; badge?: { text: string; bg: string; fg: string } | null;
+  }[] = [
+    { label: 'Fatura oluşturuldu', short: 'Oluşturuldu', state: 'done', date: createdDate },
+    { label: _cancelled ? 'İptal edildi' : 'Kesildi', short: _cancelled ? 'İptal' : 'Kesildi',
+      state: _cancelled ? 'done' : _issued ? 'done' : 'active',
+      date: _issued ? invoice.issue_date : null },
+    { label: _partial ? 'Kısmi tahsil edildi' : 'Ödeme bekleniyor', short: _partial ? 'Kısmi' : 'Ödeme',
+      state: _cancelled ? 'pending' : _paid ? 'done' : _issued ? 'active' : 'pending',
+      dueCaption: _dueVisible ? `Vade ${fmtDate(invoice.due_date)}` : null,
+      badge: _dueVisible ? { text: duePressure.text, bg: duePressure.bg, fg: duePressure.fg } : null },
+    { label: 'Tahsil edildi', short: 'Tahsil',
+      state: _paid ? 'done' : _partial ? 'active' : 'pending',
+      date: _paid ? lastPaymentDate : null },
+  ];
+
   const handlePrint = async () => {
     const res = await printInvoice(invoice);
     if (!res.ok && res.error) toast.error(res.error);
@@ -255,6 +317,22 @@ export function InvoiceDetailScreen() {
     setBusy(false);
     if (error) toast.error((error as any).message ?? String(error)); else refetch();
   };
+  // Kesilmiş faturayı TASLAĞA geri al → düzenleme (kalem ekle/sil, adet/fiyat) yeniden açılır.
+  // Yalnız ödeme yokken; taslak bakiyeye/ekstreye girmez, yeniden kesilince aynı numarayla döner.
+  const handleRevertToDraft = () => {
+    setConfirm({
+      title: 'Taslağa Dön', variant: 'warning',
+      message: 'Fatura taslağa çevrilecek ve düzenlenebilir olacak. Taslak fatura bakiyeye/ekstreye dahil edilmez; düzenledikten sonra "Kesildi İşaretle" ile yeniden kesebilirsin.',
+      label: 'Taslağa Dön',
+      onConfirm: async () => {
+        setConfirm(null);   // onay diyaloğunu hemen kapat (ConfirmDialog onConfirm sonrası kapatmıyor)
+        setBusy(true);
+        const { error } = await setInvoiceStatus(invoice.id, 'taslak');
+        setBusy(false);
+        if (error) toast.error((error as any).message ?? String(error)); else { toast.success('Fatura taslağa alındı — artık düzenlenebilir.'); refetch(); }
+      },
+    });
+  };
   // NOT: RN Alert.alert web'de çalışmıyor → onay diyaloğu açılmıyordu (silinemiyordu).
   // Cross-platform ConfirmDialog kullanılıyor.
   const handleCancel = () => {
@@ -263,6 +341,7 @@ export function InvoiceDetailScreen() {
       message: 'Bu faturayı iptal etmek istediğinize emin misiniz?',
       label: 'İptal Et',
       onConfirm: async () => {
+        setConfirm(null);   // onay diyaloğunu hemen kapat
         setBusy(true);
         const { error } = await setInvoiceStatus(invoice.id, 'iptal');
         setBusy(false);
@@ -279,7 +358,7 @@ export function InvoiceDetailScreen() {
         setBusy(true);
         const { error } = await deleteInvoice(invoice.id);
         setBusy(false);
-        if (error) toast.error((error as any).message ?? String(error)); else router.back();
+        if (error) toast.error((error as any).message ?? String(error)); else goBack();
       },
     });
   };
@@ -289,14 +368,18 @@ export function InvoiceDetailScreen() {
   return (
     <View style={{ flex: 1 }}>
 
-      {/* ── Toolbar — mobile'da ikon-only pills ── */}
+      {/* ── Toolbar — solda belge kimliği, sağda eylemler ──
+          Eskiden yalnız geri oku + sağda butonlar vardı; satırın ortası bomboş
+          kalıyor, üstündeki dikey pay ile birlikte ~180px boşluk oluşuyordu.
+          Belge kimliği (numara + durum) buraya taşındı: sayfa kaydırılıp hero
+          ekrandan çıktığında da "hangi faturadayım" görünür kalır. */}
       <View style={{
-        flexDirection: 'row', alignItems: 'center', gap: 6,
+        flexDirection: 'row', alignItems: 'center', gap: 10,
         paddingHorizontal: isDesktop ? 20 : 12,
-        paddingTop: (isDesktop ? 10 : 8) + (isDesktop ? 0 : insets.top),
-        paddingBottom: isDesktop ? 10 : 8,
+        paddingTop: (isDesktop ? 6 : 6) + (isDesktop ? 0 : insets.top),
+        paddingBottom: isDesktop ? 6 : 8,
       }}>
-        <Pressable onPress={() => router.back()} style={{
+        <Pressable onPress={goBack} style={{
           width: isDesktop ? 36 : 34, height: isDesktop ? 36 : 34, borderRadius: 10,
           alignItems: 'center', justifyContent: 'center',
           backgroundColor: '#FFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
@@ -304,12 +387,42 @@ export function InvoiceDetailScreen() {
         }}>
           <ArrowLeft size={17} strokeWidth={1.8} color={DS.ink[900]} />
         </Pressable>
+
+        {isDesktop && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            <Text style={{ fontSize: 13, fontFamily: 'monospace', color: DS.ink[700] }} numberOfLines={1}>
+              {invoice.invoice_number}
+            </Text>
+            {(() => {
+              const chip = isOverdue ? CHIP_TONES.danger : (STATUS_CHIP[invoice.status] ?? CHIP_TONES.neutral);
+              return (
+                <View style={{ paddingHorizontal: 8, paddingVertical: 2.5, borderRadius: 999, backgroundColor: chip.bg }}>
+                  <Text style={{ fontSize: 9.5, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: chip.text }}>
+                    {isOverdue ? 'Vadesi Geçti' : INVOICE_STATUS_LABELS[invoice.status]}
+                  </Text>
+                </View>
+              );
+            })()}
+            {!!invoice.clinic?.name && (
+              <>
+                <Text style={{ fontSize: 12, color: DS.ink[300] }}>·</Text>
+                <Text style={{ fontSize: 12.5, color: DS.ink[500], flexShrink: 1 }} numberOfLines={1}>
+                  {invoice.clinic.name}
+                </Text>
+              </>
+            )}
+          </View>
+        )}
+
         <View style={{ flex: 1 }} />
         {!readOnly && invoice.status === 'taslak' && (
-          <PillBtn icon={Send} label={isDesktop ? 'Kesildi Isaretle' : undefined} color={CHIP_TONES.info.text} bg={CHIP_TONES.info.bg} onPress={handleMarkSent} disabled={busy} />
+          <PillBtn icon={Send} label={isDesktop ? 'Kesildi İşaretle' : undefined} color={CHIP_TONES.info.text} bg={CHIP_TONES.info.bg} onPress={handleMarkSent} disabled={busy} />
         )}
         {!readOnly && (invoice.status === 'kesildi' || invoice.status === 'kismi_odendi') && (
-          <PillBtn icon={BellRing} label={isDesktop ? 'Hatirlatma' : undefined} color={CHIP_TONES.warning.text} bg={CHIP_TONES.warning.bg} onPress={() => setReminderOpen(true)} disabled={busy} />
+          <PillBtn icon={BellRing} label={isDesktop ? 'Hatirlatma' : undefined} color={DS.ink[500]} bg={DS.ink[50]} onPress={() => setReminderOpen(true)} disabled={busy} />
+        )}
+        {!readOnly && invoice.status === 'kesildi' && Number(invoice.paid_amount) === 0 && (
+          <PillBtn icon={Undo2} label={isDesktop ? 'Taslağa Dön' : undefined} color={DS.ink[700]} bg={DS.ink[100]} onPress={handleRevertToDraft} disabled={busy} />
         )}
         {!readOnly && balance > 0 && invoice.status !== 'iptal' && (
           <PillBtn icon={Banknote} label={isDesktop ? 'Tahsilat Ekle' : undefined} onPress={() => setPaymentModalVisible(true)} dark />
@@ -322,7 +435,7 @@ export function InvoiceDetailScreen() {
         contentContainerStyle={{
           alignItems: isDesktop ? 'center' : 'stretch',
           paddingHorizontal: isDesktop ? 32 : 12,
-          paddingTop: 4,
+          paddingTop: 0,
           paddingBottom: 80,
           gap: isDesktop ? 20 : 14,
         }}
@@ -335,35 +448,41 @@ export function InvoiceDetailScreen() {
           alignItems: 'flex-start',
           gap: isDesktop ? 20 : 14,
         }}>
-        {/* ═══ SOL KOLON — fatura içeriği ═══ */}
-        <View style={{ flex: isDesktop ? 1 : undefined, width: '100%', minWidth: 0, gap: isDesktop ? 20 : 14 }}>
+        {/* ═══ SOL KOLON — fatura içeriği (maxWidth TEK yerde: tüm kartlar width:100% → aynı sol hiza) ═══ */}
+        <View style={{ flex: isDesktop ? 1 : undefined, width: '100%', minWidth: 0, maxWidth: 800, gap: isDesktop ? 20 : 14 }}>
 
         {/* ═══════════════════════════════════════════════════════════
             §10 HERO — Fatura özet kartı (koşullu: overdue=dark, normal=panel)
             ═══════════════════════════════════════════════════════════ */}
         <View style={{
-          width: '100%', maxWidth: 800,
-          borderRadius: isDesktop ? 28 : 20,
-          padding: isDesktop ? 36 : 18,
+          width: '100%',
+          borderRadius: 24,
+          padding: 22,
           backgroundColor: isOverdue ? DS.ink[900] : theme.primary,
           position: 'relative', overflow: 'hidden',
         }}>
-          {/* §10 decorative circles — beyaz cam tonu (her iki bg state'inde) */}
-          <View style={{ position: 'absolute', top: -40, right: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.18)' }} />
-          <View style={{ position: 'absolute', bottom: -50, left: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.12)' }} />
-
           {/* Row 1: FATURA title + number + status */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
             <Text style={{
-              ...DISPLAY, fontSize: isDesktop ? 40 : 22, letterSpacing: -1,
+              ...DISPLAY, fontSize: isDesktop ? 32 : 20, letterSpacing: -1,
               color: '#FFFFFF',
             }}>
               FATURA
             </Text>
             <View style={{
+              flexDirection: 'row', alignItems: 'center', gap: 4,
               paddingHorizontal: 9, paddingVertical: 3, borderRadius: 999,
               backgroundColor: 'rgba(255,255,255,0.22)',
             }}>
+              {(() => {
+                const SIcon = isOverdue ? AlertCircle
+                  : invoice.status === 'odendi' ? CircleCheck
+                  : invoice.status === 'kesildi' ? Check
+                  : invoice.status === 'kismi_odendi' ? Check
+                  : invoice.status === 'iptal' ? X
+                  : FileText; // taslak
+                return <SIcon size={11} color="#FFFFFF" strokeWidth={2.6} />;
+              })()}
               <Text style={{
                 fontSize: 9.5, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase',
                 color: '#FFFFFF',
@@ -375,63 +494,103 @@ export function InvoiceDetailScreen() {
           <Text style={{
             fontSize: 12, fontFamily: 'monospace',
             color: 'rgba(255,255,255,0.72)',
-            marginBottom: isDesktop ? 20 : 14,
+            marginBottom: isDesktop ? 12 : 10,
           }}>
             {invoice.invoice_number}
           </Text>
 
-          {/* Row 2: BigStats — toplam, ödenen, kalan */}
-          <View style={{ flexDirection: 'row', gap: isDesktop ? 48 : 16, flexWrap: 'wrap' }}>
-            <View>
-              <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.72)', marginBottom: 4 }}>
-                Toplam
-              </Text>
-              <Text numberOfLines={1} adjustsFontSizeToFit style={{ ...DISPLAY, fontSize: isDesktop ? 40 : 22, letterSpacing: -0.8, color: '#FFFFFF' }}>
-                {fmtMoney(invoice.total)}
-              </Text>
-            </View>
-            <View>
-              <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.72)', marginBottom: 4 }}>
-                Ödenen
-              </Text>
-              <Text style={{ ...DISPLAY, fontSize: isDesktop ? 40 : 22, letterSpacing: -0.8, color: '#FFFFFF' }}>
-                {fmtMoney(invoice.paid_amount)}
-              </Text>
-            </View>
-            <View>
-              <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.72)', marginBottom: 4 }}>
+          {/* Row 2: HİYERARŞİ — Kalan birincil (büyük), Toplam & Ödenen ikincil (küçük kolonlar) */}
+          <View style={{
+            flexDirection: isDesktop ? 'row' : 'column',
+            alignItems: isDesktop ? 'flex-end' : 'stretch',
+            gap: isDesktop ? 40 : 28,
+          }}>
+            {/* PRIMARY — Kalan */}
+            <View style={{ flex: isDesktop ? 1 : undefined, minWidth: 0 }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.75)', marginBottom: 4 }}>
                 Kalan
               </Text>
-              <Text style={{
-                ...DISPLAY, fontSize: isDesktop ? 40 : 22, letterSpacing: -0.8,
-                color: '#FFFFFF',
-              }}>
+              <Text numberOfLines={1} adjustsFontSizeToFit style={{ ...DISPLAY, fontSize: isDesktop ? 46 : 32, letterSpacing: -1.2, color: '#FFFFFF' }}>
                 {fmtMoney(balance)}
               </Text>
             </View>
+            {/* SECONDARY — Toplam · Ödenen (küçük, eşit kolonlar) */}
+            <View style={{ flexDirection: 'row', alignItems: 'stretch' }}>
+              {[
+                { label: 'Toplam', value: fmtMoney(invoice.total) },
+                { label: 'Ödenen', value: fmtMoney(invoice.paid_amount) },
+              ].map((s, i) => (
+                <View key={s.label} style={{
+                  minWidth: isDesktop ? 96 : 0, flex: isDesktop ? undefined : 1,
+                  paddingLeft: i === 0 ? 0 : 16, paddingRight: i === 0 ? 16 : 0,
+                  borderLeftWidth: i === 0 ? 0 : 1, borderLeftColor: 'rgba(255,255,255,0.15)',
+                }}>
+                  <Text style={{ fontSize: 9.5, fontWeight: '600', letterSpacing: 0.9, textTransform: 'uppercase', color: 'rgba(255,255,255,0.60)', marginBottom: 3 }}>
+                    {s.label}
+                  </Text>
+                  <Text numberOfLines={1} adjustsFontSizeToFit style={{ ...DISPLAY, fontSize: isDesktop ? 18 : 17, letterSpacing: -0.4, color: 'rgba(255,255,255,0.90)' }}>
+                    {s.value}
+                  </Text>
+                </View>
+              ))}
+            </View>
           </View>
 
-          {/* Dates row */}
-          <View style={{
-            flexDirection: 'row', gap: 20, marginTop: isDesktop ? 20 : 14, paddingTop: 12,
-            borderTopWidth: 1,
-            borderTopColor: 'rgba(255,255,255,0.18)',
-          }}>
-            <View>
-              <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.7, textTransform: 'uppercase', color: 'rgba(255,255,255,0.65)' }}>Düzenleme</Text>
-              <Text style={{ fontSize: 12.5, fontWeight: '600', color: '#FFFFFF', marginTop: 2 }}>{fmtDate(invoice.issue_date)}</Text>
-            </View>
-            <View>
-              <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.7, textTransform: 'uppercase', color: 'rgba(255,255,255,0.65)' }}>Vade</Text>
-              <Text style={{ fontSize: 12.5, fontWeight: '600', color: '#FFFFFF', marginTop: 2 }}>{fmtDate(invoice.due_date)}</Text>
-            </View>
+          {/* ═══ YATAY YAŞAM DÖNGÜSÜ ŞERİDİ — hero içinde (✓ done · ● active · ○ pending) ═══ */}
+          <View style={{ marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.15)', flexDirection: 'row', alignItems: 'flex-start' }}>
+            {lifecycle.map((st, i) => {
+              const done = st.state === 'done';
+              const active = st.state === 'active';
+              const prevDone = i > 0 && lifecycle[i - 1].state === 'done';
+              const isLast = i === lifecycle.length - 1;
+              return (
+                // minWidth:0 şart — web'de flex öğesinin varsayılan min-width'i
+                // "auto"dur, yani hücre içeriğinden (ör. "29 gün kaldı" rozeti)
+                // daha dar olamaz. Rozetli adım genişleyince bağlaç çizgileri
+                // eşitliğini kaybediyor ve son aralık kırık görünüyordu.
+                <View key={st.label} style={{ flex: 1, minWidth: 0, alignItems: 'center' }}>
+                  {/* Düğüm + bağlaç çizgileri */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%' }}>
+                    <View style={{ flex: 1, height: 1.5, backgroundColor: i === 0 ? 'transparent' : (prevDone ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.16)') }} />
+                    {/* Düğüm yuvası SABİT 18px. Bekleyen daire 14px çizilir ama
+                        yuvası 18 kalır. Aksi halde çizgiler flex:1 olduğu için
+                        küçük düğümün iki yanındaki aralık 4px uzuyor ve bağlaç
+                        çizgileri farklı boylarda görünüyordu (daire merkezleri
+                        eşit aralıklı olsa bile). */}
+                    <View style={{ width: 18, height: 18, alignItems: 'center', justifyContent: 'center' }}>
+                      {done ? (
+                        <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
+                          <Check size={12} color={theme.primary} strokeWidth={3} />
+                        </View>
+                      ) : active ? (
+                        <View style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
+                          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFFFFF' }} />
+                        </View>
+                      ) : (
+                        <View style={{ width: 14, height: 14, borderRadius: 7, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.40)' }} />
+                      )}
+                    </View>
+                    <View style={{ flex: 1, height: 1.5, backgroundColor: isLast ? 'transparent' : (done ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.16)') }} />
+                  </View>
+                  <Text numberOfLines={1} style={{ maxWidth: '100%', fontSize: 9.5, fontWeight: active ? '700' : '600', letterSpacing: 0.2, color: done || active ? '#FFFFFF' : 'rgba(255,255,255,0.5)', marginTop: 6 }}>
+                    {st.short}
+                  </Text>
+                  {st.badge ? (
+                    <Text numberOfLines={1} style={{ maxWidth: '100%', fontSize: 9, fontWeight: '700', color: duePressure.light, marginTop: 2 }}>
+                      {st.badge.text}
+                    </Text>
+                  ) : null}
+                </View>
+              );
+            })}
           </View>
+
         </View>
 
         {/* ═══════════════════════════════════════════════════════════
             §05 cardSolid — Alici bilgileri
             ═══════════════════════════════════════════════════════════ */}
-        <View style={{ width: '100%', maxWidth: 800 }}>
+        <View style={{ width: '100%' }}>
           <View style={{
             ...cardSolid,
             flexDirection: isDesktop ? 'row' : 'column',
@@ -441,7 +600,10 @@ export function InvoiceDetailScreen() {
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 9, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[400], marginBottom: 10 }}>Alici</Text>
               <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[900] }}>{invoice.clinic?.name ?? '—'}</Text>
-              {invoice.doctor?.full_name && <Text style={{ fontSize: 13, color: DS.ink[500], marginTop: 4 }}>Dr. {invoice.doctor.full_name}</Text>}
+              {/* doctors.full_name ZATEN ön ek içeriyor ("Dr. Aylar Teke", "Dt. Beyza…").
+                  Düz "Dr. " eklemek "Dr. Dr. Aylar Teke" üretiyordu. normalizeDoctorName
+                  ön eki varsa korur, yoksa ekler. */}
+              {invoice.doctor?.full_name && <Text style={{ fontSize: 13, color: DS.ink[500], marginTop: 4 }}>{normalizeDoctorName(invoice.doctor.full_name)}</Text>}
               {invoice.doctor?.phone && <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 2 }}>{invoice.doctor.phone}</Text>}
               {invoice.clinic?.address && <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 2, maxWidth: 280 }}>{formatAddress(invoice.clinic.address)}</Text>}
             </View>
@@ -480,7 +642,7 @@ export function InvoiceDetailScreen() {
         {/* ═══════════════════════════════════════════════════════════
             §09 TABLO — Kalemler
             ═══════════════════════════════════════════════════════════ */}
-        <View style={{ width: '100%', maxWidth: 800, ...tableCard }}>
+        <View style={{ width: '100%', ...tableCard }}>
           {/* Toolbar */}
           <View style={{
             flexDirection: 'row', alignItems: 'center',
@@ -488,8 +650,13 @@ export function InvoiceDetailScreen() {
             borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
           }}>
             <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.4, color: DS.ink[900], flex: 1 }}>
-              Kalemler · {items.length}
+              Fatura Kalemleri
             </Text>
+            <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: DS.ink[100] }}>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[500] }}>
+                {items.length} Kalem
+              </Text>
+            </View>
             {invoice.status === 'taslak' && (
               <Pressable onPress={() => setCurPickerOpen(true)} style={{
                 flexDirection: 'row', alignItems: 'center', gap: 5,
@@ -531,7 +698,7 @@ export function InvoiceDetailScreen() {
           {/* Rows — §09 exact: paddingHorizontal 20, paddingVertical 14 */}
           {items.length === 0 ? (
             <View style={{ paddingVertical: 32, alignItems: 'center' }}>
-              <Text style={{ fontSize: 13, color: DS.ink[400], fontStyle: 'italic' }}>Kalem eklenmemis</Text>
+              <Text style={{ fontSize: 13, color: DS.ink[400], fontStyle: 'italic' }}>Kalem eklenmemiş</Text>
             </View>
           ) : (
             items.map((it, idx) => (
@@ -608,7 +775,7 @@ export function InvoiceDetailScreen() {
                   style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, paddingVertical: 4, ...(Platform.OS === 'web' && !readOnly ? { cursor: 'pointer' } as any : {}) }}
                 >
                   <Text style={{ fontSize: 11, color: DS.ink[500] }}>
-                    Kur: 1 {invoice.currency} = {baseSymbol()}{rateVal.toLocaleString('tr-TR', { maximumFractionDigits: 4 })}{!readOnly ? '  · düzenle' : ''}
+                    Kur: 1 {invoice.currency} = {baseSymbol()}{(Number(rateVal) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 4 })}{!readOnly ? '  · düzenle' : ''}
                   </Text>
                   <Text style={{ fontSize: 12, fontWeight: '700', color: DS.ink[700] }}>
                     ≈ {baseSymbol()}{Number(invoice.amount_base ?? 0).toLocaleString('tr-TR', { maximumFractionDigits: 0 })}
@@ -641,7 +808,7 @@ export function InvoiceDetailScreen() {
             §05 cardSolid — Tahsilat Gecmisi
             ═══════════════════════════════════════════════════════════ */}
         {(invoice.payments ?? []).length > 0 && (
-          <View style={{ width: '100%', maxWidth: 800, ...tableCard }}>
+          <View style={{ width: '100%', ...tableCard }}>
             {/* Toolbar */}
             <View style={{
               flexDirection: 'row', alignItems: 'center',
@@ -684,6 +851,8 @@ export function InvoiceDetailScreen() {
         </View>{/* ═══ /SOL KOLON ═══ */}
 
         {/* ═══ SAĞ KOLON — aksiyonlar (Notlar · Ödeme · e-Fatura · tehlikeli) ═══ */}
+        {/* Sağ kolon ilk kartı hero ile AYNI hizadan başlar (fatura toolbar'ı yüzen
+            arama/profil çubuğu için zaten yeterli boşluk bırakıyor). */}
         <View style={{ width: isDesktop ? 360 : '100%', gap: isDesktop ? 16 : 14 }}>
 
         {/* ═══ Notlar — cardSolid ═══ */}
@@ -694,10 +863,31 @@ export function InvoiceDetailScreen() {
           </View>
         )}
 
-        {/* ═══ Paneller ═══ (lab/admin) */}
+        {/* ═══ Paneller ═══ (lab/admin) — AKIŞ: 1) Ödeme Linki → 2) E-Fatura
+            (numaralı adımlar "önce hangisi?" belirsizliğini giderir) */}
         {!readOnly && (
-          <View style={{ width: '100%', maxWidth: 800, gap: 12 }}>
+          <View style={{ width: '100%', gap: 6 }}>
+            {/* Adım 1 */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+              <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFFFFF' }}>1</Text>
+              </View>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: DS.ink[700], letterSpacing: 0.3 }}>Ödeme Linki</Text>
+            </View>
             <PaymentLinkPanel invoiceId={invoice.id} balance={balance} onChanged={refetch} />
+
+            {/* Bağlaç ↓ */}
+            <View style={{ alignItems: 'center', paddingVertical: 2 }}>
+              <ChevronDown size={16} color={DS.ink[300]} strokeWidth={2.2} />
+            </View>
+
+            {/* Adım 2 */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+              <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFFFFF' }}>2</Text>
+              </View>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: DS.ink[700], letterSpacing: 0.3 }}>E-Fatura</Text>
+            </View>
             <EFaturaPanel
               invoiceId={invoice.id} status={invoice.efatura_status ?? 'pending'}
               uuid={invoice.efatura_uuid ?? null} type={invoice.efatura_type ?? null}
@@ -707,20 +897,35 @@ export function InvoiceDetailScreen() {
           </View>
         )}
 
-        {/* ═══ Tehlikeli aksiyonlar ═══ (lab/admin) */}
-        {!readOnly && (
-          <View style={{ width: '100%', maxWidth: 800, flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {invoice.status !== 'iptal' && invoice.status !== 'odendi' && (
-              <PillBtn icon={CircleX} label="Iptal Et" color={CHIP_TONES.danger.text} bg={CHIP_TONES.danger.bg} onPress={handleCancel} disabled={busy} />
-            )}
+        </View>{/* ═══ /SAĞ KOLON ═══ */}
+        </View>{/* ═══ /split wrapper ═══ */}
+
+        {/* ═══ TEHLİKELİ İŞLEMLER — sayfa altı, birincil aksiyonlardan AYRI, sönük ═══
+            Koşul: iptal/ödendi DIŞINDA (İptal Et uygun); taslakta ayrıca Sil. */}
+        {!readOnly && invoice.status !== 'iptal' && invoice.status !== 'odendi' && (
+          <View style={{
+            width: '100%', maxWidth: isDesktop ? 1180 : 800,
+            marginTop: 8, paddingTop: 16,
+            borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.07)',
+            flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+          }}>
+            <Text style={{ flex: 1, minWidth: 140, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[400] }}>
+              Tehlikeli işlemler
+            </Text>
+            <Pressable onPress={handleCancel} disabled={busy}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(217,75,75,0.28)', opacity: busy ? 0.5 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+              <CircleX size={13} strokeWidth={1.8} color={CHIP_TONES.danger.text} />
+              <Text style={{ fontSize: 12.5, fontWeight: '600', color: CHIP_TONES.danger.text }}>Iptal Et</Text>
+            </Pressable>
             {invoice.status === 'taslak' && (
-              <PillBtn icon={Trash2} label="Taslagi Sil" color={CHIP_TONES.danger.text} bg={CHIP_TONES.danger.bg} onPress={handleDelete} disabled={busy} />
+              <Pressable onPress={handleDelete} disabled={busy}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(217,75,75,0.28)', opacity: busy ? 0.5 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                <Trash2 size={13} strokeWidth={1.8} color={CHIP_TONES.danger.text} />
+                <Text style={{ fontSize: 12.5, fontWeight: '600', color: CHIP_TONES.danger.text }}>Taslagi Sil</Text>
+              </Pressable>
             )}
           </View>
         )}
-
-        </View>{/* ═══ /SAĞ KOLON ═══ */}
-        </View>{/* ═══ /split wrapper ═══ */}
       </ScrollView>
 
       {/* Modals */}
@@ -834,7 +1039,7 @@ function PaymentModal({ visible, invoiceId, maxAmount, currency = 'TRY', onClose
 
   const handleSave = async () => {
     const amt = Number(amount.replace(',', '.'));
-    if (!Number.isFinite(amt) || amt <= 0) { toast.error('Gecerli bir tutar girin.'); return; }
+    if (!Number.isFinite(amt) || amt <= 0) { toast.error('Geçerli bir tutar girin.'); return; }
     setBusy(true);
     const { error } = await recordPayment({ invoice_id: invoiceId, amount: amt, payment_method: method, reference_no: refNo || undefined, notes: notes || undefined });
     setBusy(false);
@@ -897,9 +1102,9 @@ function AddItemModal({ visible, invoiceId, currency = 'TRY', onClose, onDone }:
 
   const handleSave = async () => {
     const q = Number(qty.replace(',', '.')); const p = Number(price.replace(',', '.'));
-    if (!desc.trim()) { toast.error('Aciklama girin.'); return; }
-    if (!Number.isFinite(q) || q <= 0) { toast.error('Gecerli bir adet girin.'); return; }
-    if (!Number.isFinite(p) || p < 0) { toast.error('Gecerli bir birim fiyat girin.'); return; }
+    if (!desc.trim()) { toast.error('Açıklama girin.'); return; }
+    if (!Number.isFinite(q) || q <= 0) { toast.error('Geçerli bir adet girin.'); return; }
+    if (!Number.isFinite(p) || p < 0) { toast.error('Geçerli bir birim fiyat girin.'); return; }
     setBusy(true);
     const { error } = await addInvoiceItem(invoiceId, { description: desc.trim(), quantity: q, unit_price: p });
     setBusy(false);
@@ -916,7 +1121,7 @@ function AddItemModal({ visible, invoiceId, currency = 'TRY', onClose, onDone }:
               <X size={16} strokeWidth={1.8} color={DS.ink[500]} />
             </Pressable>
           </View>
-          <FL>Aciklama</FL>
+          <FL>Açıklama</FL>
           <FI value={desc} onChangeText={setDesc} placeholder="Orn: Zirkonya kron" />
           <View style={{ flexDirection: 'row', gap: 12 }}>
             <View style={{ flex: 1 }}><FL>Adet</FL><FI value={qty} onChangeText={setQty} placeholder="1" keyboardType={Platform.OS === 'web' ? 'default' : 'decimal-pad'} /></View>

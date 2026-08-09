@@ -28,7 +28,11 @@ import { RootErrorBoundary, installGlobalErrorHandler } from '../core/ui/RootErr
 installGlobalErrorHandler();
 import { GlobalSupportTrigger } from '../modules/support/components/GlobalSupportTrigger';
 import { DentyFAB } from '../modules/denty/components/DentyFAB';
+import { ConsentGuard } from '../modules/auth/components/ConsentGuard';
 import { supabase } from '../core/api/supabase';
+import { bootMark } from '../core/debug/bootTrace';
+import { signalAppReady } from '../core/debug/appReady';
+import { BootTracePanel } from '../core/debug/BootTracePanel';
 import { useAuthStore } from '../core/store/authStore';
 import { usePermissionStore } from '../core/store/permissionStore';
 import { useFonts } from 'expo-font';
@@ -61,9 +65,9 @@ function useWebStyles() {
   // ── Dark mode: CSS değişkeniyle html/body/root rengini güncelle ──
   useEffect(() => {
     if (Platform.OS !== 'web') return;
-    // Light: ivory canvas (T.bg) — safe zone & içerik aynı renk olsun.
-    // Dark:  ink (T.bg).
-    const bg = resolvedDark ? '#0E0E0E' : '#F2EDE3';
+    // Light: beyaz canvas — splash/safe-zone kremi (eski #F2EDE3) kaldırıldı.
+    // Dark:  ink.
+    const bg = resolvedDark ? '#0E0E0E' : '#FFFFFF';
     document.documentElement.style.setProperty('--app-bg', bg);
     document.documentElement.style.setProperty('color-scheme', resolvedDark ? 'dark' : 'light');
     document.documentElement.setAttribute('data-theme', resolvedDark ? 'dark' : 'light');
@@ -118,7 +122,7 @@ function useWebStyles() {
         font-family: 'Inter Tight', 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
       }
 
-      :root { --app-bg: #F2EDE3; }
+      :root { --app-bg: #FFFFFF; }
       *, *::before, *::after { box-sizing: border-box; }
 
       html, body {
@@ -288,6 +292,8 @@ export default function RootLayout() {
 
   // Hydrate persisted theme mode (light/dark/system)
   useEffect(() => { useThemeModeStore.getState().hydrate(); }, []);
+  // Hydrate son panel (optimistic ilk-açılış routing için)
+  useEffect(() => { require('../core/store/lastPanelStore').useLastPanelStore.getState().hydrate(); }, []);
   useEffect(() => {
     try {
       const { useUserPrefsStore } = require('../core/store/userPrefsStore');
@@ -393,6 +399,19 @@ export default function RootLayout() {
         applySession(null);
         return;
       }
+      // Aktivite logu: yalnız GERÇEK yeni giriş (SIGNED_IN + kullanıcı değişti).
+      // Token yenileme / sekme geri-odak (aynı user) veya app yeniden açılış
+      // (INITIAL_SESSION) loglanmaz. Fire-and-forget, hata yutulur.
+      // GEÇİCİ TEŞHİS: ölçümde giriş sonrası oturum 3,2 sn'de null'a düşüp
+      // 9,9 sn'de geri geliyor; arada uygulama çıkış yapmış gibi davranıp
+      // onlarca 401 üretiyor. Hangi OLAYIN bunu tetiklediğini görmek için.
+      bootMark(`auth olayı: ${event}`, { user: s?.user?.id?.slice(0, 8) ?? null });
+      if (event === 'SIGNED_IN') {
+        const nid = s?.user?.id ?? null;
+        if (nid && nid !== previousUserIdRef.current) {
+          try { supabase.rpc('log_login').then(() => {}, () => {}); } catch { /* */ }
+        }
+      }
       // TOKEN_REFRESHED / USER_UPDATED / SIGNED_IN (re-fire) → aynı kullanıcı ise
       // sadece session güncelle, profile/perms tekrar çekme.
       // Aksi halde tarayıcı tabı geri açıldığında "loading=true → fetchProfile → fetchPerms"
@@ -421,7 +440,7 @@ export default function RootLayout() {
     // Public routes — auth gerekmez (token bazlı erişim + dev showcase)
     // 'checkin' ve 'c': QR check-in akışı token ile çalışır, oturum gerektirmez
     const isPublicRoute = segments[0] === 'pay' || segments[0] === 'doctor-approval' || segments[0] === 'dev'
-      || segments[0] === 'checkin' || segments[0] === 'c';
+      || segments[0] === 'checkin' || segments[0] === 'c' || segments[0] === 'legal';
     if (isPublicRoute) return;
 
     if (!session) {
@@ -494,7 +513,9 @@ export default function RootLayout() {
       const onConnect = inAuthGroup && sub === 'connect-lab';
       if (onConnect) return;                                   // 'kod ile bağlan' ekranında kal
       if (alLoaded) {
-        const activeCount = alMemberships.filter((m) => m.status === 'active').length;
+        // Defansif: memberships beklenmedik şekilde undefined olsa bile kök layout ÇÖKMESİN
+        // (fail-open — tek-lab davranışı korunur).
+        const activeCount = (alMemberships ?? []).filter((m) => m.status === 'active').length;
         const needsPick = activeCount > 1 && !alActive;        // >1 aktif + seçim yok
         if (needsPick && !onSelect) { router.replace('/(auth)/select-lab' as any); return; }
         if (onSelect && activeCount > 1) return;               // >1 lab varsa seçim/switcher ekranında kal
@@ -597,6 +618,15 @@ export default function RootLayout() {
     }
   }, [session, profile, loading, platformAdmin, alLoaded, alActive, alMemberships]);
 
+  // Splash'ı kapat — HANGİ ROTADA olursak olalım. `app/index.tsx` yalnız '/'
+  // adresinde mount olduğu için derin bağlantıda (ör. /orders) sinyal hiç
+  // gelmiyor ve splash 12 sn boyunca ekranda kalıyordu.
+  useEffect(() => {
+    if (loading) return;               // auth bootstrap bitmeden kapatma
+    bootMark('splash kapatılıyor (rotadan bağımsız)');
+    signalAppReady();
+  }, [loading]);
+
   // On native, wait for fonts before rendering
   if (!fontsLoaded && Platform.OS !== 'web') {
     return <View style={{ flex: 1, backgroundColor: '#FFFFFF' }} />;
@@ -639,6 +669,8 @@ export default function RootLayout() {
       <ToastContainer />
       <GlobalSupportTrigger />
       <DentyFAB />
+      <ConsentGuard />
+      <BootTracePanel />
     </RootErrorBoundary>
     </SafeAreaProvider>
   );

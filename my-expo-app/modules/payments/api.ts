@@ -75,75 +75,53 @@ export async function fetchPublicIntent(token: string) {
 }
 
 // ─── 3DS akışı başlat ────────────────────────────────────────────────────
+//
+// GÜVENLİK (2026-08-02): tüm akış payments-charge edge function'ına taşındı.
+// Eskiden tarayıcı hem sağlayıcıyı çağırıyor hem de sonucu kendisi yazıyordu
+// (`UPDATE payment_intents SET status=...`, `INSERT payment_attempts`) — yani
+// ödemenin başarılı sayılıp sayılmayacağına istemci karar veriyordu.
+// Artık istemcinin payment_intents üzerinde UPDATE/DELETE, payment_attempts
+// üzerinde INSERT yetkisi yok; ödeme durumunu yalnız service_role yazar.
 export async function chargeWithCard(params: {
   intent_id: string;
   token:     string;
   card:      CardInput;
 }): Promise<ChargeInitResult> {
-  // Intent'i public token ile çek
-  const { data: intentRow } = await supabase
-    .from('payment_intents')
-    .select('*')
-    .eq('id', params.intent_id)
-    .eq('public_token', params.token)
-    .maybeSingle();
-
-  if (!intentRow) return { ok: false, error: 'Geçersiz ödeme linki' };
-  const intent = intentRow as PaymentIntent;
-  if (intent.status === 'paid') {
-    return { ok: false, error: 'Bu ödeme zaten alındı', error_code: 'ALREADY_PAID' };
-  }
-  if (new Date(intent.expires_at).getTime() < Date.now()) {
-    return { ok: false, error: 'Ödeme linki süresi dolmuş', error_code: 'EXPIRED' };
-  }
-
-  const provider = await getActivePaymentProvider();
-
-  // Log: init
-  await supabase.from('payment_attempts').insert({
-    intent_id: intent.id, action: 'init',
-    request_body: { masked_pan: '****' + params.card.number.slice(-4), installment: params.card.installment ?? 1 },
+  const { data, error } = await supabase.functions.invoke('payments-charge', {
+    body: {
+      action:       'charge',
+      intent_id:    params.intent_id,
+      public_token: params.token,
+      card:         params.card,
+      installment:  params.card.installment ?? 1,
+    },
   });
-
-  const result = await provider.charge3D(intent, params.card);
-
-  // Status & provider_ref güncelle
-  await supabase.from('payment_intents').update({
-    status:       result.status ?? (result.ok ? 'awaiting_3ds' : 'failed'),
-    provider_ref: result.provider_ref ?? null,
-    installments: params.card.installment ?? 1,
-    error_code:   result.error_code ?? null,
-    error_message:result.error ?? null,
-    updated_at:   new Date().toISOString(),
-  }).eq('id', intent.id);
-
-  // Eğer demo otomatik success döndüyse, hemen invoice'a yansıt
-  if (result.ok && result.status === 'paid' && result.provider_ref) {
-    await supabase.rpc('confirm_payment_intent', {
-      p_intent_id: intent.id,
-      p_provider_ref: result.provider_ref,
-    });
-  }
-
-  // Log: response
-  await supabase.from('payment_attempts').insert({
-    intent_id: intent.id, action: '3ds_redirect',
-    response_body: result.raw_response ?? null,
-    http_status:   result.http_status ?? null,
-    error_code:    result.error_code ?? null,
-    error_message: result.error ?? null,
-  });
-
-  return result;
+  if (error) return { ok: false, error: error.message ?? 'Ödeme başlatılamadı' };
+  return (data ?? { ok: false, error: 'Boş yanıt' }) as ChargeInitResult;
 }
 
-// ─── 3DS callback (provider tamamlandığında çağrılır) ────────────────────
-export async function confirmPayment(intentId: string, providerRef?: string) {
-  const { data, error } = await supabase.rpc('confirm_payment_intent', {
-    p_intent_id:    intentId,
-    p_provider_ref: providerRef ?? null,
+// ─── 3DS onayı ───────────────────────────────────────────────────────────
+//
+// GÜVENLİK (2026-08-02): eskiden burada confirm_payment_intent RPC'si DOĞRUDAN
+// çağrılıyordu. O RPC SECURITY DEFINER'dı, EXECUTE yetkisi anon'daydı ve tek
+// argümanı intent UUID'siydi — token/oturum/tutar doğrulaması yoktu. Ödeme
+// linkini açan herkes (fetch_public_payment_intent zaten intent_id döndürür)
+// kart girmeden faturayı "ödendi" yapabilirdi. RPC artık yalnız service_role'a
+// açık; onay edge function üzerinden geçiyor ve orada da yalnız laba açıkça
+// 'demo' POS tanımlıysa kabul ediliyor. Gerçek sağlayıcıda onayın tek kaynağı
+// imzası doğrulanmış payments-callback'tir.
+export async function confirmPayment(intentId: string, providerRef?: string, token?: string) {
+  const { data, error } = await supabase.functions.invoke('payments-charge', {
+    body: {
+      action:       'confirm',
+      intent_id:    intentId,
+      public_token: token,
+      provider_ref: providerRef ?? null,
+    },
   });
-  return { paymentId: data as string | null, error };
+  if (error)          return { paymentId: null, error };
+  if (!data?.ok)      return { paymentId: null, error: new Error(data?.error ?? 'Onaylanamadı') };
+  return { paymentId: intentId, error: null };
 }
 
 // ─── Lab tarafı: durum sorgu ─────────────────────────────────────────────
@@ -174,11 +152,18 @@ export async function refundIntent(intentId: string, amount?: number): Promise<R
   const result = await provider.refund(ref, amount);
 
   if (result.ok) {
-    await supabase.from('payment_intents').update({
-      status:      result.status ?? 'refunded',
-      refunded_at: new Date().toISOString(),
-      updated_at:  new Date().toISOString(),
-    }).eq('id', intentId);
+    // GÜVENLİK (2026-08-02): doğrudan UPDATE kaldırıldı — istemcinin artık
+    // payment_intents üzerinde UPDATE yetkisi yok. RPC lab sahipliğini ve
+    // manage_finance iznini kontrol eder.
+    // NOT: sağlayıcı çağrısı (provider.refund) hâlâ istemcide. Gerçek bir POS
+    // entegre edilirken o da edge function'a taşınmalı; şu an tek sağlayıcı
+    // demo olduğu için para hareketi yok.
+    const { error: rpcErr } = await supabase.rpc('refund_payment_intent', {
+      p_intent_id:    intentId,
+      p_status:       result.status ?? 'refunded',
+      p_provider_ref: null,
+    });
+    if (rpcErr) return { ok: false, error: rpcErr.message };
   }
   return result;
 }

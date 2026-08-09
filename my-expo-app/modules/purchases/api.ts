@@ -5,6 +5,7 @@
  * RPC create_purchase_invoice ile atomic insert.
  */
 
+import { Platform, Linking } from 'react-native';
 import { supabase } from '../../core/api/supabase';
 import type { Currency } from '../../core/money/currency';
 
@@ -19,9 +20,16 @@ export interface PurchaseLineInput {
   vat_rate?: number | null;    // satır bazlı KDV (%); null → header default
   brand?: string | null;       // RPC: yoksa brands tablosuna otomatik insert + stock_item.brand
   category?: string | null;    // RPC: yoksa categories tablosuna otomatik insert + stock_item.category
-  item_kind?: 'consumable' | 'equipment'; // 'equipment' → demirbaş kaydı, sarf değil
+  /**
+   * Satır stoğa girecek mi:
+   *   consumable → stok kalemi · equipment → demirbaş
+   *   service / shipping / other_nonstock → stok dışı, yalnız fatura satırı
+   */
+  item_kind?: 'consumable' | 'equipment' | 'service' | 'shipping' | 'other_nonstock'; // 'equipment' → demirbaş kaydı, sarf değil
   model?: string | null;       // sadece equipment için
   equipment_category?: 'cad_cam' | 'scanner' | 'furnace' | 'milling' | 'printer' | 'sintering' | 'polishing' | 'articulator' | 'compressor' | 'other' | null;
+  lot_no?: string | null;      // opsiyonel: lot/seri no → stock_movements.lot_no
+  expiry_date?: string | null; // opsiyonel: son kullanma (YYYY-MM-DD) → stock_movements.expiry_date
 }
 
 export interface CreatePurchaseInput {
@@ -145,4 +153,109 @@ export async function findPurchaseInvoiceByNumber(
   if (supplierId) q = q.eq('supplier_id', supplierId);
   const { data, error } = await q.maybeSingle();
   return { data: (data as any)?.id ?? null, error };
+}
+
+// ── Stok dışı fatura kalemleri (cihaz/demirbaş, hizmet, kargo) ──────────────
+
+export type PurchaseExtraKind = 'equipment' | 'service' | 'shipping' | 'other';
+
+export const PURCHASE_EXTRA_LABELS: Record<PurchaseExtraKind, string> = {
+  equipment: 'Cihaz / Demirbaş',
+  service:   'Hizmet / İşçilik',
+  shipping:  'Kargo / Nakliye',
+  other:     'Diğer',
+};
+
+export interface PurchaseInvoiceExtra {
+  id: string;
+  purchase_invoice_id: string;
+  kind: PurchaseExtraKind;
+  description: string;
+  quantity: number;
+  unit: string | null;
+  unit_price: number;
+  equipment_id: string | null;
+  note: string | null;
+  sort_order: number;
+}
+
+/**
+ * Faturanın stok dışı satırları. Stok satırları stock_movements'ta kalır —
+ * bu ikisi fatura görünümünde birleştirilir.
+ */
+export async function getPurchaseInvoiceExtras(
+  purchaseInvoiceId: string,
+): Promise<{ data: PurchaseInvoiceExtra[] | null; error: any }> {
+  const { data, error } = await supabase
+    .from('purchase_invoice_extras')
+    .select('id, purchase_invoice_id, kind, description, quantity, unit, unit_price, equipment_id, note, sort_order')
+    .eq('purchase_invoice_id', purchaseInvoiceId)
+    .order('sort_order')
+    .order('created_at');
+  return { data: data as PurchaseInvoiceExtra[] | null, error };
+}
+
+export async function addPurchaseInvoiceExtra(input: {
+  purchaseInvoiceId: string;
+  kind: PurchaseExtraKind;
+  description: string;
+  quantity: number;
+  unit?: string | null;
+  unitPrice: number;
+  equipmentId?: string | null;
+  note?: string | null;
+}): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.from('purchase_invoice_extras').insert({
+    purchase_invoice_id: input.purchaseInvoiceId,
+    kind: input.kind,
+    description: input.description.trim(),
+    quantity: input.quantity,
+    unit: input.unit ?? null,
+    unit_price: input.unitPrice,
+    equipment_id: input.equipmentId ?? null,
+    note: input.note ?? null,
+  });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+export async function deletePurchaseInvoiceExtra(id: string): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.from('purchase_invoice_extras').delete().eq('id', id);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+/** Faturaya bağlanabilecek demirbaşlar — cihaz satırı eklerken seçilir */
+export async function listEquipmentOptions(): Promise<{
+  data: { id: string; name: string; brand: string | null; purchase_date: string | null }[];
+}> {
+  const { data } = await supabase
+    .from('equipment')
+    .select('id, name, brand, purchase_date')
+    .order('name');
+  return { data: (data ?? []) as any };
+}
+
+/** Arşivlenmiş fatura dosyasını açar.
+ *
+ *  `invoice_file_url` iki biçimde olabilir:
+ *   • Storage YOLU  → bucket özel, açarken imzalanır (yeni kayıtlar).
+ *   • Tam URL       → bucket özelleşmeden önce yazılmış eski kayıtlar.
+ *  İki ekran (detay + önizleme) aynı mantığı kopyalamasın diye burada.
+ *
+ *  Hata mesajı döndürür (null = başarılı), çağıran tarafta gösterilebilsin.
+ */
+export async function openPurchaseInvoiceFile(ref: string | null | undefined): Promise<string | null> {
+  if (!ref) return 'Arşivlenmiş dosya yok.';
+  const open = (u: string) => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') window.open(u, '_blank');
+    else Linking.openURL(u).catch(() => {});
+  };
+  if (/^https?:\/\//.test(ref)) { open(ref); return null; }
+  const { data, error } = await supabase.storage
+    .from('purchase-invoices')
+    .createSignedUrl(ref, 300);
+  if (error || !data?.signedUrl) return 'Dosya açılamadı: ' + (error?.message ?? 'imzalı bağlantı alınamadı');
+  open(data.signedUrl);
+  return null;
 }

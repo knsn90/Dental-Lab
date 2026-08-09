@@ -22,6 +22,7 @@ import { useAuthStore } from '../../../core/store/authStore';
 import { toast } from '../../../core/ui/Toast';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { confirmAsync } from '../../../core/util/confirm';
 
 // ── Constants ───────────────────────────────────────────────────────────
 const CARD_SHADOW = Platform.select({
@@ -636,27 +637,19 @@ export function StationsSection({ accentColor = '#F5C24B' }: Props) {
   }
 
   // ── Delete ──────────────────────────────────────────────────────────
-  function confirmDelete(station: Station) {
-    Alert.alert(
+  async function confirmDelete(station: Station) {
+    const ok = await confirmAsync(
       'İstasyonu Sil',
       `"${station.name}" istasyonunu silmek istediğinize emin misiniz?`,
-      [
-        { text: 'Vazgeç', style: 'cancel' },
-        {
-          text: 'Sil', style: 'destructive',
-          onPress: async () => {
-            const { error } = await supabase.from('lab_stations').delete().eq('id', station.id);
-            if (error) {
-              Alert.alert('Silinemedi',
-                error.code === '23503'
-                  ? 'Bu istasyona bağlı aktif aşamalar var. Önce aşamaları tamamlayın.'
-                  : error.message,
-              );
-            } else { toast.success('İstasyon silindi.'); loadStations(); }
-          },
-        },
-      ],
+      { confirmText: 'Sil', destructive: true },
     );
+    if (!ok) return;
+    const { error } = await supabase.from('lab_stations').delete().eq('id', station.id);
+    if (error) {
+      toast.error(error.code === '23503'
+        ? 'Bu istasyona bağlı aktif aşamalar var. Önce aşamaları tamamlayın.'
+        : error.message);
+    } else { toast.success('İstasyon silindi.'); loadStations(); }
   }
 
   // ── Reorder ─────────────────────────────────────────────────────────

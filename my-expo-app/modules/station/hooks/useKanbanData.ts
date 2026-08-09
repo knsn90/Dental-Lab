@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../../../core/api/supabase';
+import { useAppResume } from '../../../core/hooks/useAppResume';
 import { mapStationToStage } from '../../orders/stationMapping';
 import { type Stage } from '../../orders/stages';
 
@@ -110,6 +111,9 @@ export function useKanbanData(labId: string | null | undefined) {
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [labId, load]);
+
+  // Ön plana dönünce tazele — askıdayken kaçan realtime olaylarını telafi eder.
+  useAppResume(() => { void load(); }, { enabled: !!labId });
 
   // Kolonlar: gerçek istasyonlar (sequence sırasıyla) + kartlarda görülen ekstra istasyonlar + Atanmamış.
   const columns = useMemo<KanbanColumn[]>(() => {

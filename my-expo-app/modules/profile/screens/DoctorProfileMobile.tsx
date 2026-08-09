@@ -6,14 +6,14 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { setLanguage, SUPPORTED, localeTag, type Lang } from '../../../core/i18n';
 import {
-  View, Text, Pressable, ScrollView, Switch, Platform, Alert, Modal, TextInput, } from 'react-native';
+  View, Text, Pressable, ScrollView, Switch, Platform, Alert, Modal, TextInput, Linking, } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
   User as UserIcon, Mail, Phone, MapPin, Building2, Lock, Bell, Moon, Sun,
   Smartphone, ChevronRight, LogOut, ShieldCheck, FileText, HelpCircle, ScrollText,
   X, Eye, EyeOff, Check as CheckIcon, Users, FileSpreadsheet, Banknote, Settings,
-  Landmark, Package, Wallet, CalendarDays,
+  Landmark, Package, Wallet, CalendarDays, Trash2, AlertTriangle,
 } from 'lucide-react-native';
 import Constants from 'expo-constants';
 import { MOBILE_PANEL_THEMES, useMobileTokens, type MobilePanel } from '../../../core/theme/mobileDesignTokens';
@@ -21,6 +21,10 @@ import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { supabase } from '../../../core/api/supabase';
 import { toast } from '../../../core/ui/Toast';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
+import { deleteMyAccount } from '../../../lib/auth';
+import { DataRightsRequest } from '../../auth/components/DataRightsRequest';
+// Yasal sayfalar — tek kaynak (core/legal.ts). App Store zorunlu.
+import { LEGAL_PRIVACY_URL, LEGAL_TERMS_URL } from '../../../core/legal';
 
 const APP_VERSION = (Constants?.expoConfig?.version ?? '1.0.0') as string;
 
@@ -75,9 +79,29 @@ export function DoctorProfileMobile({ profile, onSignOut, panel = 'doctor' }: Pr
 
   // Modal states
   const [pwOpen,      setPwOpen]      = useState(false);
+  const [kvkkOpen,    setKvkkOpen]    = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [editField,   setEditField]   = useState<'full_name' | 'phone' | null>(null);
   const [signOutOpen, setSignOutOpen] = useState(false);
+
+  // Hesap silme (App Store 5.1.1(v)) — yaz-onayla ("SİL") + geri alınamaz uyarı
+  const [delOpen,  setDelOpen]  = useState(false);
+  const [delText,  setDelText]  = useState('');
+  const [delBusy,  setDelBusy]  = useState(false);
+  const [delError, setDelError] = useState<string | null>(null);
+  // Hermes toLocaleUpperCase locale'i yok sayabilir → hem "SİL" hem "SIL" kabul
+  const _delNorm = delText.trim().toLocaleUpperCase('tr-TR');
+  const delConfirmed = _delNorm === 'SİL' || _delNorm === 'SIL';
+  const runDeleteAccount = async () => {
+    if (delBusy || !delConfirmed) return;
+    setDelBusy(true); setDelError(null);
+    const res = await deleteMyAccount();
+    setDelBusy(false);
+    if (!res.ok) { setDelError(res.error); return; }
+    setDelOpen(false);
+    toast.success('Hesabınız silindi.');
+    onSignOut();
+  };
 
   const PANEL = MOBILE_PANEL_THEMES[panel];
   const meta = panelMeta(panel);
@@ -409,9 +433,11 @@ export function DoctorProfileMobile({ profile, onSignOut, panel = 'doctor' }: Pr
         <CardGroup>
           <Row icon={HelpCircle} label={t('profile.rows.helpCenter')}  onPress={() => Alert.alert(t('profile.rows.helpCenter'), t('common.soon'))} />
           <Divider />
-          <Row icon={FileText}    label={t('profile.rows.terms')}      onPress={() => Alert.alert(t('profile.rows.terms'), t('common.soon'))} />
+          <Row icon={FileText}    label={t('profile.rows.terms')}      onPress={() => Linking.openURL(LEGAL_TERMS_URL)} />
           <Divider />
-          <Row icon={ScrollText}  label={t('profile.rows.privacy')}    onPress={() => Alert.alert(t('profile.rows.privacy'), t('common.soon'))} />
+          <Row icon={ScrollText}  label={t('profile.rows.privacy')}    onPress={() => Linking.openURL(LEGAL_PRIVACY_URL)} />
+          <Divider />
+          <Row icon={ShieldCheck} label="KVKK / Verilerim"             onPress={() => setKvkkOpen(true)} />
         </CardGroup>
 
         {/* (modal'lar ScrollView dışına render edilecek — aşağıda) */}
@@ -452,10 +478,27 @@ export function DoctorProfileMobile({ profile, onSignOut, panel = 'doctor' }: Pr
             </Text>
           </Pressable>
         </View>
+
+        {/* ═══ HESABIMI SİL — sade tehlikeli bağlantı (çıkışla yarışmasın) ═══ */}
+        <View style={{ alignItems: 'center', marginTop: 2, marginBottom: 4 }}>
+          <Pressable
+            onPress={() => { setDelText(''); setDelError(null); setDelOpen(true); }}
+            hitSlop={8}
+            style={({ pressed }: any) => ({
+              flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 10, paddingHorizontal: 16,
+              opacity: pressed ? 0.6 : 1,
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+            })}
+          >
+            <Trash2 size={15} color="#B42318" strokeWidth={2} />
+            <Text style={{ fontSize: 13.5, fontWeight: '600', color: '#B42318' }}>Hesabımı Sil</Text>
+          </Pressable>
+        </View>
       </ScrollView>
 
       {/* ═══ Password change modal ═══ */}
       <PasswordModal visible={pwOpen} onClose={() => setPwOpen(false)} accent={PANEL.primary} />
+      <DataRightsRequest visible={kvkkOpen} onClose={() => setKvkkOpen(false)} />
 
       {/* ═══ Profile field edit modal ═══ */}
       <ProfileFieldModal
@@ -512,6 +555,85 @@ export function DoctorProfileMobile({ profile, onSignOut, panel = 'doctor' }: Pr
                 })}
               >
                 <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>{t('common.signOut')}</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* ═══ HESAP SİLME onay modalı — yaz-onayla + geri alınamaz uyarı ═══ */}
+      <Modal visible={delOpen} transparent animationType="fade" onRequestClose={() => { if (!delBusy) setDelOpen(false); }}>
+        <Pressable
+          onPress={() => { if (!delBusy) setDelOpen(false); }}
+          style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+        >
+          <Pressable
+            onPress={(e: any) => e.stopPropagation?.()}
+            style={{
+              width: '100%', maxWidth: 380, backgroundColor: T.card, borderRadius: 20, padding: 20, gap: 12,
+              ...(Platform.OS === 'web' ? { boxShadow: '0 12px 40px rgba(0,0,0,0.28)' } as any : {}),
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View style={{ width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(217,75,75,0.12)' }}>
+                <AlertTriangle size={18} color="#D94B4B" strokeWidth={2} />
+              </View>
+              <Text style={{ flex: 1, fontSize: 16, fontWeight: '700', color: T.ink, letterSpacing: -0.2 }}>
+                Hesabımı Sil
+              </Text>
+            </View>
+
+            <Text style={{ fontSize: 13, color: T.ink3, lineHeight: 19 }}>
+              Bu işlem <Text style={{ fontWeight: '700', color: T.ink }}>geri alınamaz</Text>. Kişisel bilgilerin ve giriş bilgin kalıcı olarak silinir.
+              Oluşturduğun sipariş, fatura ve finans kayıtları yasal saklama gereği kimliksiz olarak korunur.
+            </Text>
+
+            <Text style={{ fontSize: 12.5, color: T.ink3 }}>
+              Onaylamak için aşağıya <Text style={{ fontWeight: '800', color: T.ink }}>SİL</Text> yaz.
+            </Text>
+            <TextInput
+              value={delText}
+              onChangeText={(v) => { setDelText(v); if (delError) setDelError(null); }}
+              editable={!delBusy}
+              placeholder="SİL"
+              placeholderTextColor={T.ink3}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              style={[
+                { height: 46, borderRadius: 12, borderWidth: 1, borderColor: delConfirmed ? '#D94B4B' : T.hairline, backgroundColor: T.cardSoft, paddingHorizontal: 14, fontSize: 15, color: T.ink },
+                Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null,
+              ]}
+            />
+
+            {delError && (
+              <Text style={{ fontSize: 12.5, color: '#D94B4B', lineHeight: 17 }}>{delError}</Text>
+            )}
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 2 }}>
+              <Pressable
+                onPress={() => { if (!delBusy) setDelOpen(false); }}
+                style={({ pressed }: any) => ({
+                  flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center',
+                  backgroundColor: T.cardSoft, borderWidth: 1, borderColor: T.hairline,
+                  opacity: pressed ? 0.7 : 1,
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                })}
+              >
+                <Text style={{ fontSize: 14, fontWeight: '600', color: T.ink }}>İptal</Text>
+              </Pressable>
+              <Pressable
+                onPress={runDeleteAccount}
+                disabled={!delConfirmed || delBusy}
+                style={({ pressed }: any) => ({
+                  flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: !delConfirmed || delBusy ? 'rgba(217,75,75,0.4)' : '#D94B4B',
+                  opacity: pressed ? 0.85 : 1,
+                  ...(Platform.OS === 'web' && delConfirmed && !delBusy ? { cursor: 'pointer' } as any : {}),
+                })}
+              >
+                {delBusy
+                  ? <ActivityIndicator size="small" color="#FFFFFF" />
+                  : <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>Kalıcı Sil</Text>}
               </Pressable>
             </View>
           </Pressable>

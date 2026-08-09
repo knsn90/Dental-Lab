@@ -1,26 +1,32 @@
-# LabFlow Tasarım Dili
+# Siman Tasarım Dili
 
 > Tek kaynak: `/dev/patterns` (desktop + mobile birleşik showcase).
 > Token kaynağı: `core/theme/dsTokens.ts` ve `core/theme/mobileDesignTokens.ts`.
 >
-> **Düstur:** Krem zemin · Inter Tight Light display · büyük yumuşak köşeler ·
-> glassmorphism · ince modern hatlar · panel başına farklı accent.
+> **Düstur:** Panele göre değişen zemin · Inter Tight Light (300) display ·
+> büyük yumuşak köşeler · glassmorphism · ince modern hatlar · panel başına
+> farklı accent.
 
 ---
 
 ## 1. Panel Temaları
 
-6 panel teması var. Her tema kendi `bg / bgSoft / bgDeep / primary / primaryDeep / accent` setini
-taşır. `DS.<panel>` ile erişilir.
+6 panel teması var. Her tema kendi `bg / bgSoft / bgDeep / primary / primaryDeep / accent`
+setini taşır. `DS.<panel>` ile erişilir. Lab · Klinik · Yönetim · Teknisyen **canlı**;
+Analitik & Depo ileride kullanılmak üzere ayrılmış.
 
-| Panel | Anahtar | Karakter | Primary | bg |
-|---|---|---|---|---|
-| Lab | `DS.lab` | Saffron / Krem | `#F5C24B` | `#FBE9B6` |
-| Klinik | `DS.clinic` | Sage / Koyu yeşil | `#6BA888` | `#D8ECDF` |
-| Yönetim (Admin) | `DS.exec` | Mercan / Krem | `#EA7A4C` | `#FBE2D2` |
-| Teknisyen | `DS.tech` | Açık gökyüzü mavisi | _bkz. tokens_ | `#EAF2FA` |
-| Analitik | `DS.analytics` | _bkz. tokens_ | — | — |
-| Depo | `DS.stock` | _bkz. tokens_ | — | — |
+| Panel | Anahtar | Karakter | Primary | primaryDeep | accent (ink) | bg (soft fill) |
+|---|---|---|---|---|---|---|
+| Lab | `DS.lab` | Safran / açık krem | `#F5C24B` | `#E0A82E` | `#0A0A0A` | `#FBE9B6` |
+| Klinik | `DS.clinic` | Zümrüt / koyu yeşil | `#32BB78` | `#0C8F56` | `#2F313F` | `#D3F8E0` |
+| Yönetim (Admin) | `DS.exec` | Kobalt / açık mavi | `#4771AB` | `#314F7E` | `#172235` | `#EAF2FB` |
+| Teknisyen | `DS.tech` | Parlak mavi (istasyon) | `#3B82F6` | `#1E5FBF` | `#0F2840` | `#EAF2FA` |
+| Analitik _(ileride)_ | `DS.plum` | Erik / lavanta | `#8B5CB8` | `#6B3F94` | `#2A1A3D` | `#EFE9F5` |
+| Depo _(ileride)_ | `DS.teal` | Petrol / turkuaz | `#2BA39B` | `#197872` | `#0E2E2C` | `#E4F1F0` |
+
+> **Sayfa zemini ≠ `bg` (soft fill).** Gerçek sayfa arka planı her panelin
+> `MOBILE_PANEL_THEMES.bgPage`'i: lab `#F5F1EB` · klinik/hekim `#F9FAFB` ·
+> admin `#F7F9FC` · istasyon `#F5F9FD`. surface (kart) = `#FFFFFF` her panelde.
 
 **Status renkleri ortak** (tüm temalarda aynı):
 - `success: #2D9A6B`
@@ -108,16 +114,48 @@ bu sayıyı kullan.
 - Form group → form group
 - Body 2-kolon `gap` (mobile stack'te de 16)
 
-**Outer padding helper** (hub içi):
-```ts
-import { useContext } from 'react';
-import { HubContext } from 'core/ui/HubContext';
+### Tek kaynak: `PAGE_PADDING` (ZORUNLU)
 
-export const usePagePadding = (): number => {
-  const isHub = useContext(HubContext);
-  return isHub ? 0 : 16;   // standalone: 16 outer; hub: HRHub provides 20 → use -4 marginHorizontal
-};
+**Sayfa kenarı için çıplak sayı YAZMA.** Değer `core/ui/pageMetrics.ts`'ten gelir:
+
+```ts
+import { PAGE_PADDING, PAGE_BLEED } from 'core/ui/pageMetrics';
+
+<ScrollView contentContainerStyle={{ paddingHorizontal: PAGE_PADDING }}>
 ```
+
+| Token | Değer | Ne için |
+|---|---|---|
+| `PAGE_PADDING` | `16` | Sayfa kenarı → içerik |
+| `PAGE_BLEED` | `-16` | Tam-genişlik şeridi kenara taşırma telafisi |
+| `CARD_GAP` | `12` | Kart–kart arası |
+| `CARD_PADDING` | `18` | Kart iç dolgusu |
+
+**Neden token:** değer her ekranda elle yazıldığı için kod tabanında **17 farklı
+sayı** birikmişti (8·10·12·16·18·20·22·24·28…). Aynı ekranda üç ayrı kenar
+oluyordu — başlık 24, sekmeler 16, kartlar 12. Yeni ekran yazan (insan ya da AI)
+sözleşmeye değil komşu dosyaya bakıp kopyaladığı için hata kendini çoğaltıyordu.
+
+Full-bleed telafisi de türetilmeli: elle yazılan `marginHorizontal: -12`, sayfa
+kenarı değişince senkronu kaybeder. `PAGE_BLEED` kullan.
+
+### ⚠️ Hub içinde YATAY dolgu EKLEME
+
+Bir ekran hub'a (Stok, Finans, İK…) gömülü render ediliyorsa **sayfa kenarını hub
+verir.** Ekran bir daha eklerse kenar boşluğu ikiye katlanır.
+
+`ResponsiveCanvas` bunu `HubContext`'ten kendisi çözer — hub içinde yalnız dikey
+dolgu uygular. Elle sarmalayıcı yazıyorsan aynı kuralı uygula:
+
+```tsx
+const isHub = useContext(HubContext);
+<View style={{ paddingHorizontal: isHub ? 0 : PAGE_PADDING }}>
+```
+
+> **Gerçek vaka:** Stok › Malzeme Eşleştirme'de StockScreen kabı 16, içindeki
+> `ResponsiveCanvas` bir 16 daha ekliyordu → kartlar **32**'de, sekmeler 16'da.
+> Kartlar "dar/küçük" görünüyordu; sorun genişlik değil çift dolguydu.
+
 
 ### Gölge (yumuşak, hafif)
 - Hero / FAB: `shadowOpacity: 0.06–0.1, shadowRadius: 10–20`
@@ -374,6 +412,44 @@ Hub içi tek satırlık özet için. Performans hero anatomisini birebir taşır
 - Sol: hasta + kod + work_type + diş bilgisi
 - Sağ: status pill + due bilgisi
 - Acil/overdue durumda kırmızı border accent
+
+### Dağılım Kartı (DistCard)
+
+Dashboard özet kartları için standart: **başlık + sağda büyük metrik → tek
+yığılmış oranlı şerit → noktalı lejant listesi**. `Statü Dağılımı`, `İş Tipi
+Dağılımı`, `Finansal Özet` bu kalıbı kullanır. Showcase: desktop `/dev/patterns`
+bölüm **11.9**, mobile bölüm **F7** (`DistCard`/`DistLegendRow`,
+mobile `MDistCard`/`MDistRow`).
+
+**Anatomi**
+```
+┌────────────────────────────────────────────────┐
+│ Statü Dağılımı              18  Toplam sipariş   │  başlık 17/600 · metrik DISPLAY 30
+│ ▓▓▓░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  │  yığılmış şerit h8, gap 3, radius 4
+│ ● Alındı                        2         11%    │  lejant: nokta 8 · etiket · değer 700 · % ink[400]
+│ ● Üretimde                      2         11%    │
+│ ● Teslim Edildi                14         78%    │
+│ Kalite Kontrol · Kuryeye Teslim — 0             │  footer meta: sıfır kalemler (12 ink[400])
+└────────────────────────────────────────────────┘
+```
+
+**Token tablosu**
+| Element | Değer |
+|---|---|
+| Kart | `cardSolid` (radius 24, padding 26) |
+| Başlık | 17px · weight 600 · ls −0.2 · `ink[900]` |
+| Metrik | DISPLAY 30px · ls −0.9 · `ink[900]` + 12px `ink[400]` etiket |
+| Yığılmış şerit | height 8 · gap 3 · radius 4 · `flex: ratio/total` segmentler |
+| Lejant satırı | nokta 8×8 · etiket 14 `ink[700]` (flex) · değer 14/700 `ink[900]` · yüzde 12 `ink[400]` (w40 sağa) |
+| Footer meta | 12px `ink[400]` · marginTop 16 (yalnız sıfır olan kalemler) |
+
+**Kurallar**
+- Segment oranları `ratio/total` ile normalize; renk = kalemin lejant noktasıyla **aynı**.
+- Sıfır sayılı kalemler lejanttan çıkarılıp footer'da toplanır (`… — 0`).
+- Yüzdesiz/noktasız satır olabilir (ör. "Ödenen Fatura Adedi" — düz metrik satırı).
+- Renk paleti: statü → nötr/kahve/açık-gri tonları; iş tipi → 5'li ayrık palet
+  (`#33456B` · `success` · `plum.primary` · `info` · `plum.primaryDeep`);
+  finans → `success` (tahsilat) + `warning` (bekleyen).
 
 ---
 

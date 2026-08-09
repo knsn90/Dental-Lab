@@ -28,6 +28,8 @@ export interface PanelTheme {
 
 function pickThemeFromSegment(seg: string): PanelTheme {
   if (seg === '(admin)')   return { key: 'exec',   ...DS.exec   } as PanelTheme;
+  if (seg === '(platform)') return { key: 'exec',  ...DS.exec   } as PanelTheme; // süper-admin konsolu — Kobalt
+
   if (seg === '(clinic)')  return { key: 'clinic', ...DS.clinic } as PanelTheme;
   if (seg === '(doctor)')  return { key: 'clinic', ...DS.clinic } as PanelTheme;
   if (seg === '(station)') return { key: 'tech',   ...DS.tech   } as PanelTheme;

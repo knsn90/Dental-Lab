@@ -13,7 +13,7 @@
 import React from 'react';
 import {
   View, Text, ScrollView, Pressable, Platform, Image,
-  KeyboardAvoidingView, useWindowDimensions, StyleSheet, Keyboard,
+  KeyboardAvoidingView, useWindowDimensions, StyleSheet, Keyboard, Animated,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -214,13 +214,30 @@ export function AuthShell({ eyebrow, heading, subtitle, illustrationCaption, chi
   // Klavye açıldığında brand mark + illustration'ı gizle ki kart yukarı
   // kayınca karışmasın. Klavye kapanınca tekrar göster.
   const [keyboardVisible, setKeyboardVisible] = React.useState(false);
+  // Klavye yüksekliğini ANİMASYONLU takip ediyoruz. KeyboardAvoidingView anlık
+  // sıçrıyordu; burada iOS'un kendi süre + easing değerlerini kullanıp kartı
+  // klavyeyle BİRLİKTE akıcı şekilde yukarı taşıyoruz.
+  const kbHeight = React.useRef(new Animated.Value(0)).current;
   React.useEffect(() => {
     const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const subShow = Keyboard.addListener(showEvt, () => setKeyboardVisible(true));
-    const subHide = Keyboard.addListener(hideEvt, () => setKeyboardVisible(false));
+    const subShow = Keyboard.addListener(showEvt, (e: any) => {
+      setKeyboardVisible(true);
+      Animated.timing(kbHeight, {
+        toValue: e?.endCoordinates?.height ?? 0,
+        duration: e?.duration || 250,
+        useNativeDriver: false,   // paddingBottom/height animasyonu → JS driver
+      }).start();
+    });
+    const subHide = Keyboard.addListener(hideEvt, (e: any) => {
+      Animated.timing(kbHeight, {
+        toValue: 0,
+        duration: e?.duration || 250,
+        useNativeDriver: false,
+      }).start(() => setKeyboardVisible(false));
+    });
     return () => { subShow.remove(); subHide.remove(); };
-  }, []);
+  }, [kbHeight]);
 
   // ── Brand mark (logo + wordmark) ──────────────────────────────────
   // LabFlow gradient stroke logo + wordmark
@@ -434,12 +451,26 @@ export function AuthShell({ eyebrow, heading, subtitle, illustrationCaption, chi
       )}
 
       {/* ── BOTTOM-SHEET KART: alttan kayar ──────────────────────────
-         iOS'ta klavyeyi ScrollView.automaticallyAdjustKeyboardInsets yönetir →
-         KeyboardAvoidingView'da iOS için padding YOK (çift itme = garip zıplama).
-         Android'de KAV 'height' kullanılır (automaticallyAdjust iOS-only). */}
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'android' ? 'height' : undefined}
-        style={{ flex: 1, justifyContent: 'flex-end' }}
+         Klavye yönetimi KeyboardAvoidingView'da (iOS: padding · Android: height).
+         ÖNCEDEN iOS'ta KAV kapalıydı ve iş ScrollView'un
+         automaticallyAdjustKeyboardInsets'ine bırakılmıştı; o özellik yalnız
+         içerik KAYDIRILABİLİRKEN çalışıyor, burada kart flex-end + bounces=false
+         ile alta sabit olduğu için hiç itme olmuyordu (klavye formu örtüyordu).
+         İkisi AYNI ANDA açık olursa çift itme/zıplama olur → aşağıda
+         automaticallyAdjustKeyboardInsets kapatıldı. */}
+      {/* Klavye ARKASI beyaz dolgu — kartın altında kalan şerit sayfa zemini
+          (#E5E7EB) olduğu için klavyenin yuvarlak köşelerinin yanında gri
+          üçgenler görünüyordu. Kart rengiyle doldurunca beyaz kesintisiz devam eder. */}
+      <Animated.View
+        pointerEvents="none"
+        style={{
+          position: 'absolute', left: 0, right: 0, bottom: 0,
+          height: kbHeight, backgroundColor: AUTH.cardBg,
+        }}
+      />
+
+      <Animated.View
+        style={{ flex: 1, justifyContent: 'flex-end', paddingBottom: kbHeight }}
       >
         <ScrollView
           contentContainerStyle={{
@@ -450,7 +481,7 @@ export function AuthShell({ eyebrow, heading, subtitle, illustrationCaption, chi
           keyboardDismissMode="interactive"
           showsVerticalScrollIndicator={false}
           bounces={false}
-          automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+          automaticallyAdjustKeyboardInsets={false}
         >
           <View
             style={{
@@ -543,7 +574,7 @@ export function AuthShell({ eyebrow, heading, subtitle, illustrationCaption, chi
             </View>
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </Animated.View>
     </View>
   );
 }
@@ -567,7 +598,7 @@ function CloudShape({ style, size = 100 }: { style?: any; size?: number }) {
 /** Beyaz arka planlı, soft shadow'lu, label içermeyen input (referansta olduğu gibi) */
 export function AuthInput({
   value, onChangeText, placeholder, secureTextEntry, keyboardType, autoCapitalize,
-  returnKeyType, onSubmitEditing, error, autoFocus, rightElement, icon,
+  returnKeyType, onSubmitEditing, error, autoFocus, rightElement, icon, inputRef,
 }: {
   value: string;
   onChangeText: (v: string) => void;
@@ -581,6 +612,12 @@ export function AuthInput({
   autoFocus?: boolean;
   rightElement?: React.ReactNode;
   icon?: React.ReactNode;
+  /**
+   * Alttaki TextInput'a erişim — "Enter → sonraki alan" için gerekli.
+   * `returnKeyType="next"` tek başına HİÇBİR ŞEY yapmaz; sadece klavyedeki
+   * tuşun etiketini değiştirir. Odağı taşıyan kod olmadan Enter ölüdür.
+   */
+  inputRef?: React.RefObject<RNTextInput | null>;
 }) {
   const [focused, setFocused] = React.useState(false);
   return (
@@ -606,6 +643,7 @@ export function AuthInput({
       }}>
         {icon}
         <RNTextInput
+          ref={inputRef}
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}

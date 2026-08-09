@@ -49,6 +49,11 @@ export interface StatementLine {
   type: 'invoice' | 'payment';
   description: string;
   invoiceNo?: string;
+  /** Ekstre satırı başlığı/alt-satırı için (ekran) — sipariş no, hasta, klinik, hekim */
+  orderNo?: string | null;
+  patientName?: string | null;
+  clinicName?: string | null;
+  doctorName?: string | null;
   status?: string;
   method?: string;
   /** Baz para (₺) cinsinden — KPI'lar ve bakiye ile tutarlı */
@@ -81,12 +86,17 @@ export function buildStatementLines(
     // Borç: original ise faturanın kendi tutarı; değilse baz ₺ (amount_base ya da total×kur).
     const debitVal = original ? inv.total : (inv.amount_base != null ? inv.amount_base : inv.total * rate);
     lines.push({
+      id: inv.id,
       date: inv.issue_date,
       type: 'invoice',
       description: inv.work_order?.patient_name
         ? `${inv.work_order.patient_name} — ${inv.invoice_number}`
         : inv.invoice_number,
       invoiceNo: inv.invoice_number,
+      orderNo: inv.work_order?.order_number ?? null,
+      patientName: inv.work_order?.patient_name ?? null,
+      clinicName: inv.clinic?.name ?? null,
+      doctorName: inv.doctor?.full_name ?? null,
       status: inv.status,
       debit: debitVal,
       credit: 0,
@@ -97,10 +107,15 @@ export function buildStatementLines(
         // Alacak: original ise ödemenin kendi tutarı; değilse faturanın kuruyla baz'a çevrilir.
         const creditVal = original ? p.amount : p.amount * rate;
         lines.push({
+          id: inv.id,
           date: p.payment_date,
           type: 'payment',
           description: `Tahsilat — ${inv.invoice_number}`,
           invoiceNo: inv.invoice_number,
+          orderNo: inv.work_order?.order_number ?? null,
+          patientName: inv.work_order?.patient_name ?? null,
+          clinicName: inv.clinic?.name ?? null,
+          doctorName: inv.doctor?.full_name ?? null,
           method: p.payment_method,
           debit: 0,
           credit: creditVal,

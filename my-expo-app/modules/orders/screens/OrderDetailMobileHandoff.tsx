@@ -18,7 +18,7 @@ import { StepsTimelineX } from '../../../core/ui/ProgressX';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ChevronLeft, Printer, MoreHorizontal, Play, Pause, AlertCircle,
-  Paperclip, Plus, MessageCircle, Mic, Truck, Check, ChevronDown,
+  Paperclip, Plus, MessageCircle, Mic, Truck, Check, ChevronDown, RotateCcw, Star,
 } from 'lucide-react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { MOBILE_PANEL_THEMES, useMobileTokens, type MobilePanel } from '../../../core/theme/mobileDesignTokens';
@@ -55,8 +55,20 @@ export interface OrderDetailMobileHandoffProps {
   operatorMins?: number;        // toplam operatör (aktif iş) dakikası
   queueMins?: number;           // toplam kuyruk (bekleme) dakikası
   stageDetails?: { name: string; status: string }[]; // sırayla üretim aşamaları + durum
+  // Paralel şerit (desktop ile aynı mantık). Verilirse (çok-şerit) hero + aşama
+  // detayları şerit-başına ayrılır; verilmezse (tek-şerit) mevcut görünüm korunur.
+  laneSummary?: { lane: number; teeth: string; station: string | null; pct: number; done: number; total: number }[];
+  laneStageGroups?: { lane: number; teeth: string; stages: { name: string; status: string }[] }[];
   technicianName?: string;
   technicianInitials?: string;
+  /** Desktop ile ortak AŞAMA DETAYLARI timeline (varsa basit listenin yerine render edilir) */
+  stageTimelineNode?: React.ReactNode;
+  /** Gecikme — üretim panelinde "X gün gecikti" uyarısı (masaüstü paritesi) */
+  overdue?: boolean;
+  /** Teslim sonrası değerlendirme — sorumlu yerine ⭐ ortalama + adet */
+  rating?: { avg: number; count: number } | null;
+  /** Atanmamış aktif aşamaya yönetici dokunuşuyla atama aç (masaüstü paritesi) */
+  onAssignTech?: () => void;
   ringPercent: number;          // 40
   remainingTime: string;        // "1g 23:43:32"
   // Meta
@@ -71,6 +83,8 @@ export interface OrderDetailMobileHandoffProps {
   attachmentsNode?: React.ReactNode;
   /** İptal talebi aksiyonu (klinik/hekim) — içerik altında gösterilir. */
   cancelNode?: React.ReactNode;
+  /** Lojistik (kurye hareketleri) kartı — Ekler'in hemen altında gösterilir. */
+  logisticsNode?: React.ReactNode;
   // Progress
   operatorProgress: number;     // 40
   // Activity
@@ -84,6 +98,11 @@ export interface OrderDetailMobileHandoffProps {
   onPause?: () => void;
   onStageDone?: () => void;
   onAddAttachment?: () => void;
+  /** Revizyon oluştur — teslim edilmiş siparişte (lab yöneticisi). Verilmezse buton çıkmaz. */
+  onCreateRevision?: () => void;
+  /** Revizyon bağlantı rozetleri (karşılıklı) — tıklanınca onOpenRelated çağrılır. */
+  revisionLinks?: { id: string; label: string; kind: 'parent' | 'child' }[];
+  onOpenRelated?: (id: string) => void;
   /** Teslimat aksiyonu — "Kuryeye Gönder" / "Elden Teslim Edildi" / "Teslim Edildi" (desktop ile aynı mantık) */
   deliveryButton?: { label: string; icon?: 'truck' | 'check'; onPress: () => void } | null;
   /** Aktif teslimat durumu etiketi — ör. "Bizim kurye" / "MNG Kargo · 123" */
@@ -110,6 +129,8 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
   const accent = theme.primary;
   const accentDeep = darken(accent, 0.18);
   const accentSoft = `${accent}26`;
+  // Paralel şerit: laneSummary >1 ise hero + aşama detayları şerit-başına ayrılır.
+  const isMultiLane = (props.laneSummary?.length ?? 0) > 1;
 
   const [tab, setTab] = useState<'all' | 'doctor_note' | 'msg'>('doctor_note');
   const [stagesOpen, setStagesOpen] = useState(false);
@@ -193,10 +214,10 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
           marginHorizontal: 14, marginTop: 6, marginBottom: 12,
           padding: 20, paddingBottom: 18, borderRadius: 26,
           overflow: 'hidden',
-          backgroundColor: `${accent}40`,
-          ...(Platform.OS === 'web' ? {
-            backgroundImage: `linear-gradient(135deg, ${accent}55 0%, ${accent}40 50%, ${accent}2A 100%)`,
-          } as any : {}),
+          // Diğer detay kartlarıyla (tooth chart / materyal / ekler) BİREBİR aynı
+          // düz beyaz + ince kenarlık. T.card açık modda #FFFFFF, koyu modda uyumlu.
+          backgroundColor: T.card,
+          borderWidth: 1, borderColor: T.hairline,
         }}>
           {/* radial glow */}
           {Platform.OS === 'web' && (
@@ -266,6 +287,27 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
             </View>
           </View>
 
+          {/* Revizyon bağlantıları — desktop ile aynı bilgi, karşılıklı ve tıklanabilir */}
+          {(props.revisionLinks?.length ?? 0) > 0 && (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
+              {props.revisionLinks!.map(l => (
+                <Pressable
+                  key={l.id}
+                  onPress={() => props.onOpenRelated?.(l.id)}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 5,
+                    paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999,
+                    backgroundColor: 'rgba(0,0,0,0.05)',
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  }}
+                >
+                  <RotateCcw size={10} color={T.ink3} strokeWidth={2} />
+                  <Text style={{ fontSize: 11, fontWeight: '500', color: T.ink }}>{l.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+
           {/* Timeline */}
           <View style={{ marginTop: 16 }}>
             <StepsTimelineX
@@ -298,15 +340,57 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
               <Text style={{
                 fontSize: 9.5, color: T.onDark3, letterSpacing: 1.4, textTransform: 'uppercase', fontWeight: '600',
               }}>
-                Şu an · aşama {props.currentStageIdx + 1} / {props.totalStages}
+                {isMultiLane ? 'Şu an' : `Şu an · aşama ${props.currentStageIdx + 1} / ${props.totalStages}`}
               </Text>
+              {isMultiLane ? (
+                /* Çok-şerit: şerit-başına (dişler · aktif istasyon · %) — desktop ile aynı */
+                <View style={{ marginTop: 4 }}>
+                  <Text style={{
+                    fontSize: 15, fontWeight: '500', color: T.onDark,
+                    ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
+                  }} numberOfLines={1}>
+                    {props.laneSummary!.length} iş şeridi · paralel
+                  </Text>
+                  <View style={{ marginTop: 8, gap: 7 }}>
+                    {props.laneSummary!.map((l) => (
+                      <View key={l.lane} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, backgroundColor: accentSoft }}>
+                          <Text style={{ fontSize: 10.5, fontWeight: '800', color: accent, fontFamily: T.mono }}>{l.teeth}</Text>
+                        </View>
+                        <Text style={{ flex: 1, fontSize: 12, color: T.onDark2, fontWeight: '500' }} numberOfLines={1}>
+                          {l.station ?? 'Bekliyor'}
+                        </Text>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: T.onDark }}>{l.pct}%</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ) : (
               <Text style={{
                 fontSize: 17, fontWeight: '500', color: T.onDark, marginTop: 2,
                 ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
               }} numberOfLines={1}>
                 {props.stageName}
               </Text>
-              {props.technicianName && (
+              )}
+              {/* Sorumlu / teslim sonrası değerlendirme / atanmamış — masaüstü paritesi */}
+              {!isMultiLane && props.rating ? (
+                <View style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6,
+                  paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999,
+                  alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.06)',
+                }}>
+                  <View style={{ flexDirection: 'row', gap: 2 }}>
+                    {[1, 2, 3, 4, 5].map(n => (
+                      <Star key={n} size={13} strokeWidth={1.6} color="#FFD86B"
+                        fill={props.rating!.count > 0 && Math.round(props.rating!.avg) >= n ? '#FFD86B' : 'transparent'} />
+                    ))}
+                  </View>
+                  <Text style={{ fontSize: 11, color: T.onDark2 }} numberOfLines={1}>
+                    {props.rating!.count > 0 ? `${props.rating!.avg.toFixed(1)} · ${props.rating!.count} değerlendirme` : 'Değerlendirilmedi'}
+                  </Text>
+                </View>
+              ) : !isMultiLane && props.technicianName ? (
                 <View style={{
                   flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6,
                   paddingHorizontal: 5, paddingRight: 8, paddingVertical: 3,
@@ -324,6 +408,37 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
                   </View>
                   <Text style={{ fontSize: 11, color: T.onDark2 }} numberOfLines={1}>
                     {props.technicianName}
+                  </Text>
+                </View>
+              ) : !isMultiLane && props.onAssignTech ? (
+                <Pressable
+                  onPress={props.onAssignTech}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6,
+                    paddingHorizontal: 5, paddingRight: 10, paddingVertical: 3,
+                    borderRadius: 999, alignSelf: 'flex-start',
+                    backgroundColor: 'rgba(255,255,255,0.05)',
+                    borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)',
+                    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+                  }}
+                >
+                  <View style={{
+                    width: 18, height: 18, borderRadius: 9,
+                    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.25)', borderStyle: 'dashed',
+                    alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(255,255,255,0.4)' }}>?</Text>
+                  </View>
+                  <Text style={{ fontSize: 11, color: T.onDark2 }} numberOfLines={1}>Atanmamış · tıkla, ata</Text>
+                </Pressable>
+              ) : null}
+
+              {/* Gecikme göstergesi — masaüstü paritesi */}
+              {props.overdue && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFD86B' }} />
+                  <Text style={{ fontSize: 11.5, fontWeight: '500', color: '#FFD86B' }}>
+                    {Math.abs(props.remainingDays)} gün gecikti
                   </Text>
                 </View>
               )}
@@ -397,8 +512,12 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
             </View>
           )}
 
-          {/* AŞAMA DETAYLARI — açılır liste (desktop kartı bilgisi) */}
-          {props.stageDetails && props.stageDetails.length > 0 && (
+          {/* AŞAMA DETAYLARI — desktop ile TEK bileşen (StageWorkflowTimeline); node yoksa basit listeye düşer */}
+          {props.stageTimelineNode ? (
+            <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.10)' }}>
+              {props.stageTimelineNode}
+            </View>
+          ) : (props.stageDetails && props.stageDetails.length > 0) ? (
             <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.10)' }}>
               <Pressable onPress={() => setStagesOpen(o => !o)} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Text style={{ fontSize: 9.5, color: T.onDark3, letterSpacing: 1, textTransform: 'uppercase', fontWeight: '600' }}>
@@ -412,6 +531,38 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
                 </View>
               </Pressable>
               {stagesOpen && (
+                isMultiLane && props.laneStageGroups ? (
+                  /* Çok-şerit: her şeridin aşamaları AYRI grup (diş başlığı + o şeridin aşamaları) */
+                  <View style={{ marginTop: 10, gap: 14 }}>
+                    {props.laneStageGroups.map((g) => {
+                      const gDone = g.stages.filter(s => s.status === 'tamamlandi' || s.status === 'onaylandi').length;
+                      return (
+                        <View key={g.lane} style={{ gap: 8 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, backgroundColor: accentSoft }}>
+                              <Text style={{ fontSize: 10.5, fontWeight: '800', color: accent, fontFamily: T.mono }}>{g.teeth}</Text>
+                            </View>
+                            <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.08)' }} />
+                            <Text style={{ fontSize: 10.5, color: T.onDark3, fontWeight: '700' }}>{gDone}/{g.stages.length}</Text>
+                          </View>
+                          {g.stages.map((s, i) => {
+                            const done = s.status === 'tamamlandi' || s.status === 'onaylandi';
+                            const active = s.status === 'aktif';
+                            const dot = done || active ? accent : 'rgba(255,255,255,0.25)';
+                            return (
+                              <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 4 }}>
+                                <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: dot }} />
+                                <Text style={{ fontSize: 12, color: active ? T.onDark : T.onDark2, fontWeight: active ? '700' : '400', flex: 1 }} numberOfLines={1}>{s.name}</Text>
+                                {done && <Text style={{ fontSize: 9, color: accent, fontWeight: '700' }}>✓</Text>}
+                                {active && <Text style={{ fontSize: 9, color: accent, fontWeight: '700' }}>şu an</Text>}
+                              </View>
+                            );
+                          })}
+                        </View>
+                      );
+                    })}
+                  </View>
+                ) : (
                 <View style={{ marginTop: 10, gap: 8 }}>
                   {props.stageDetails.map((s, i) => {
                     const done = s.status === 'tamamlandi' || s.status === 'onaylandi';
@@ -427,7 +578,27 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
                     );
                   })}
                 </View>
+                )
               )}
+            </View>
+          ) : null}
+
+          {/* Revizyon oluştur — teslim edilmiş siparişte (desktop ile aynı akış) */}
+          {props.onCreateRevision && (
+            <View style={{ marginTop: 12 }}>
+              <Pressable
+                onPress={props.onCreateRevision}
+                style={{
+                  alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6,
+                  paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
+                  backgroundColor: 'rgba(255,255,255,0.10)',
+                  borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                }}
+              >
+                <RotateCcw size={13} color={T.onDark} strokeWidth={2} />
+                <Text style={{ fontSize: 12, color: T.onDark, fontWeight: '700' }}>Revizyon Oluştur</Text>
+              </Pressable>
             </View>
           )}
 
@@ -554,7 +725,7 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
                         backgroundColor: T.cardSoft, borderWidth: 1, borderColor: T.hairline,
                       }}>
                         <Text style={{ fontSize: 11, color: T.ink2, fontWeight: '500' }}>
-                          ₺{props.activeToothDetail.price.toLocaleString('tr-TR')}
+                          ₺{(Number(props.activeToothDetail.price) || 0).toLocaleString('tr-TR')}
                         </Text>
                       </View>
                     )}
@@ -638,6 +809,15 @@ export function OrderDetailMobileHandoff(props: OrderDetailMobileHandoffProps) {
             )}
           </View>
         </View>
+
+        {/* Lojistik — kurye hareketleri + "Kurye çağır" (desktop ile aynı bileşen) */}
+        {props.logisticsNode ? (
+          <View style={{ paddingHorizontal: 14, marginBottom: 12 }}>
+            <View style={{ padding: 14, borderRadius: 20, backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline }}>
+              {props.logisticsNode}
+            </View>
+          </View>
+        ) : null}
 
         {/* İptal talebi (klinik/hekim) */}
         {props.cancelNode ? (

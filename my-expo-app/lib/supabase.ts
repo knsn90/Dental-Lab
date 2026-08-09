@@ -155,13 +155,33 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   };
 }
 
-// Refresh token when app comes back to foreground (native only)
+// ── Realtime reconnect on foreground ──────────────────────────────────────
+//
+// Mobil/PWA askıya alındığında (arka plan) websocket kopabilir ve "açık" görünse
+// bile ölü kalır → geri dönünce canlı güncelleme gelmez, refresh gerekir. Ön plana
+// dönünce socket'i yeniden kur; kanallar rejoin timer'ıyla otomatik yeniden katılır.
+function nudgeRealtime() {
+  try {
+    const rt: any = (supabase as any).realtime;
+    if (!rt) return;
+    const connected = typeof rt.isConnected === 'function' ? rt.isConnected() : false;
+    if (!connected) rt.connect();
+  } catch { /* realtime yoksa/başlatılmadıysa yok say */ }
+}
+
+// Refresh token + realtime when app comes back to foreground.
 if (Platform.OS !== 'web') {
   AppState.addEventListener('change', (state) => {
     if (state === 'active') {
       supabase.auth.startAutoRefresh();
+      nudgeRealtime();
     } else {
       supabase.auth.stopAutoRefresh();
     }
   });
+} else if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') nudgeRealtime();
+  });
+  if (typeof window !== 'undefined') window.addEventListener?.('focus', nudgeRealtime);
 }

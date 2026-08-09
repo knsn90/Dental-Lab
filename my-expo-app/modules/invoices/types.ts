@@ -114,8 +114,13 @@ export interface UnbilledWorkOrder {
   doctor_name: string | null;
   clinic_id: string | null;
   clinic_name: string | null;
+  /** DİKKAT: para biriminden bağımsız ham toplam (geriye dönük uyum).
+   *  Çok dövizli siparişte anlamsızdır — gösterimde totals_by_currency kullan. */
   estimated_total: number;
   item_count: number;
+  /** Para birimi → tutar, ör. { "EUR": 7, "TRY": 1250 }. Migration
+   *  20260721100000 öncesi kayıtlarda undefined olabilir. */
+  totals_by_currency?: Record<string, number>;
 }
 
 export interface InvoiceItem {

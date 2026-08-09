@@ -6,11 +6,22 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, Animated, Easing } from 'react-native';
 import { Star, ArrowUpRight } from 'lucide-react-native';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
+import { AlertPillX } from '../../../core/ui/AlertPillX';
 import { listMyPendingReviews } from '../api';
 import { ReviewModal } from './ReviewModal';
 import type { PendingReviewOrder } from '../types';
 
-export function PendingReviewsCard({ raterRole }: { raterRole?: 'doctor' | 'clinic' | null }) {
+export function PendingReviewsCard({
+  raterRole,
+  compact = false,
+  onCount,
+}: {
+  raterRole?: 'doctor' | 'clinic' | null;
+  /** true → tam genişlikte banner yerine tek satırlık pill (bkz. AlertPillX). */
+  compact?: boolean;
+  /** Bekleyen sayısını dışarı bildirir; çağıran satır boşluğunu buna göre ayarlar. */
+  onCount?: (n: number) => void;
+}) {
   const T = usePanelTheme();
   const [items, setItems] = useState<PendingReviewOrder[]>([]);
   const [active, setActive] = useState<PendingReviewOrder | null>(null);
@@ -25,9 +36,15 @@ export function PendingReviewsCard({ raterRole }: { raterRole?: 'doctor' | 'clin
     ])).start();
   }, [glowAnim]);
 
+  // ref üzerinden: çağıran inline arrow geçtiğinde load()'un kimliği değişip
+  // effect'i her render'da yeniden tetiklemesin (sonsuz döngü).
+  const onCountRef = useRef(onCount);
+  onCountRef.current = onCount;
+
   const load = useCallback(async () => {
     const { data } = await listMyPendingReviews();
     setItems(data);
+    onCountRef.current?.(data.length);
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -37,6 +54,26 @@ export function PendingReviewsCard({ raterRole }: { raterRole?: 'doctor' | 'clin
   const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.06, 0.18] });
   const glowScale   = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1.2] });
   const count = items.length;
+
+  const modal = (
+    <ReviewModal
+      visible={!!active}
+      onClose={() => setActive(null)}
+      workOrderId={active?.id ?? ''}
+      orderLabel={active ? `${active.order_number}${active.patient_name ? ' · ' + active.patient_name : ''}` : undefined}
+      raterRole={raterRole}
+      onSaved={() => { setActive(null); load(); }}
+    />
+  );
+
+  if (compact) {
+    return (
+      <>
+        <AlertPillX icon={Star} count={count} label="Değerlendirilecek" color={T.primary} onPress={() => setActive(items[0])} />
+        {modal}
+      </>
+    );
+  }
 
   return (
     <>
@@ -85,14 +122,7 @@ export function PendingReviewsCard({ raterRole }: { raterRole?: 'doctor' | 'clin
         </Animated.View>
       </Pressable>
 
-      <ReviewModal
-        visible={!!active}
-        onClose={() => setActive(null)}
-        workOrderId={active?.id ?? ''}
-        orderLabel={active ? `${active.order_number}${active.patient_name ? ' · ' + active.patient_name : ''}` : undefined}
-        raterRole={raterRole}
-        onSaved={() => { setActive(null); load(); }}
-      />
+      {modal}
     </>
   );
 }

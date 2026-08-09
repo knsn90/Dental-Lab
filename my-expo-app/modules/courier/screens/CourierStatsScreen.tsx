@@ -32,6 +32,7 @@ import { useAuthStore } from '../../../core/store/authStore';
 import { fetchMyDeliveries, type CourierDelivery } from '../api';
 import { PremiumKPI } from '../components/PremiumKPI';
 import { localeTag } from '../../../core/i18n';
+import { formatAddress } from '../../../core/util/formatAddress';
 
 const TH = DS.tech;
 const DISPLAY = {
@@ -415,7 +416,7 @@ function DesktopView({ profile, filtered, stats, loading, range, setRange, onRef
                   {d.delivered_at ? new Date(d.delivered_at).toLocaleDateString(localeTag(i18n.language), { day: '2-digit', month: 'short' }) : '—'}
                 </Text>
                 <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>{d.destination_name ?? '—'}</Text>
-                <Text style={{ flex: 2, fontSize: 12, color: DS.ink[500] }} numberOfLines={1}>{d.destination_address ?? '—'}</Text>
+                <Text style={{ flex: 2, fontSize: 12, color: DS.ink[500] }} numberOfLines={1}>{formatAddress(d.destination_address) || '—'}</Text>
                 <Text style={{ flex: 1, fontSize: 12, color: DS.ink[700] }}>{dur ? `${dur} dk` : '—'}</Text>
                 <View style={{ flex: 1 }}>
                   <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: 'rgba(45,154,107,0.14)', alignSelf: 'flex-start' }}>

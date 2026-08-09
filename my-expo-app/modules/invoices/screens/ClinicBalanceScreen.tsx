@@ -1,4 +1,5 @@
 import { localeTag } from '../../../core/i18n';
+import { safeBack } from '../../../core/util/safeBack';
 /**
  * ClinicBalanceScreen — Cari Hesap (Patterns Design Language)
  *
@@ -13,7 +14,7 @@ import {
   TextInput, useWindowDimensions, Platform, Modal,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useSegments } from 'expo-router';
 import {
   ArrowLeft, Search, X, Building2, AlertTriangle,
   Clock, Inbox, ChevronRight, FileText, Receipt, SlidersHorizontal, Check, Bell,
@@ -32,6 +33,7 @@ import { useBaseCurrency } from '../../../core/money/baseCurrency';
 import { formatMoney, CURRENCY_META, type Currency } from '../../../core/money/currency';
 import { groupByCurrency } from '../../../core/money/aggregations';
 import { MoneyMultiX } from '../../../core/money/MoneyMultiX';
+import { FAB_CLEARANCE } from '../../../core/ui/pageMetrics';
 
 // ── Patterns tokens ─────────────────────────────────────────────────
 const DISPLAY = {
@@ -81,6 +83,7 @@ export function ClinicBalanceScreen() {
   useBaseCurrency();
   const theme = usePanelTheme();
   const router = useRouter();
+  const panelBase = String((useSegments() as string[])?.[0] ?? '(lab)');
   const isEmbedded = useContext(HubContext);
   const { rows, loading, refetch } = useClinicBalancesByCurrency();
   const { orders: unbilled, refetch: refetchUnbilled } = useUnbilledWorkOrders();
@@ -206,7 +209,10 @@ export function ClinicBalanceScreen() {
   const hasAging = agingByCcy.length > 0;
 
   const openStatement = (clinicId: string) => {
-    router.push(`/statement/${clinicId}` as any);
+    // GRUP ÖNEKİ ŞART: /statement/:id yolu hem (lab) hem (admin) grubunda tanımlı.
+    // Öneksiz push belirsiz eşleşme yapıyor → URL değişiyor ama ekran yenilenmiyor
+    // (sidebar'a tıklayınca sayfada kalma hatası).
+    router.push(`/${panelBase}/statement/${clinicId}` as any);
   };
 
   return (
@@ -214,7 +220,7 @@ export function ClinicBalanceScreen() {
       {/* ── Standalone header ─────────────────────────────────── */}
       {!isEmbedded && (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingTop: 58, paddingBottom: 8 }}>
-          <Pressable onPress={() => router.back()} style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}>
+          <Pressable onPress={() => safeBack('/')} style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}>
             <ArrowLeft size={18} color={DS.ink[900]} strokeWidth={1.8} />
           </Pressable>
           <View style={{ flex: 1 }}>
@@ -226,7 +232,9 @@ export function ClinicBalanceScreen() {
 
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 4, paddingBottom: 48, gap: 14 }}
+        // paddingBottom 48 idi: kartın "Toplam: …" alt satırı sağ-altta yüzen
+        // Simanty FAB'ının altında kalıp okunamıyordu (FAB zIndex 9999).
+        contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 4, paddingBottom: FAB_CLEARANCE, gap: 14 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={DS.ink[300]} />}
         showsVerticalScrollIndicator={false}
       >

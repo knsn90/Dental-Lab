@@ -44,6 +44,8 @@ export interface TriageTech {
   skills: string[];
   /** Yetkili olduğu istasyon id'leri (user_station_skills — kanonik). */
   stationIds?: string[];
+  /** profiles.department — yetkinlik ekranındaki departman filtresi bunu kullanır. */
+  department?: string | null;
   /** Günlük eşzamanlı iş kapasitesi (yük çubuğu referansı); null = varsayılan */
   capacity: number | null;
 }
@@ -132,9 +134,15 @@ export async function fetchTriageData(orderId: string, labId: string): Promise<T
   // 1) Sipariş
   const { data: ord } = await supabase
     .from('work_orders')
-    .select('order_number, patient_name, patient_gender, work_type, tooth_numbers, shade, model_type, machine_type, is_urgent, delivery_date, created_at, notes, lab_notes, doctor_id, measurement_type')
+    .select('order_number, patient_name, patient_gender, work_type, tooth_numbers, shade, model_type, machine_type, is_urgent, delivery_date, created_at, notes, lab_notes, doctor_id, measurement_type, revision_of_id, continues_order_id')
     .eq('id', orderId)
     .maybeSingle();
+
+  // Revizyon (revision_of_id) VEYA devam siparişi (continues_order_id) ise ASIL işin
+  // dosyaları / hekim notu / mesajları da miras alınır (planlamada teknisyen görür).
+  const parentId = ((ord as any)?.revision_of_id ?? (ord as any)?.continues_order_id) as string | null ?? null;
+  // Sipariş + (varsa) ebeveyn birlikte sorgulanır.
+  const fileOrderIds = parentId ? [orderId, parentId] : [orderId];
 
   // 2) İstasyonlar · teknisyenler · şablonlar (paralel)
   const [stRes, techRes, wfRes, presetRes] = await Promise.all([
@@ -145,7 +153,7 @@ export async function fetchTriageData(orderId: string, labId: string): Promise<T
       .order('sequence_hint', { ascending: true }),
     supabase
       .from('profiles')
-      .select('id, full_name, role, skills, daily_capacity, is_active')
+      .select('id, full_name, role, skills, daily_capacity, is_active, department')
       .eq('lab_id', labId)
       .eq('user_type', 'lab')
       .eq('approval_status', 'approved')
@@ -194,6 +202,7 @@ export async function fetchTriageData(orderId: string, labId: string): Promise<T
   const technicians: TriageTech[] = (techRes.data ?? []).map((t: any) => ({
     id: t.id, full_name: t.full_name, role: t.role, is_active: t.is_active, load: loadMap.get(t.id) ?? 0,
     skills: t.skills ?? [], stationIds: Array.from(stMap.get(t.id) ?? []),
+    department: t.department ?? null,
     capacity: t.daily_capacity ?? null,
   }));
 
@@ -230,7 +239,7 @@ export async function fetchTriageData(orderId: string, labId: string): Promise<T
   const { data: ph } = await supabase
     .from('work_order_photos')
     .select('id, storage_path, caption')
-    .eq('work_order_id', orderId)
+    .in('work_order_id', fileOrderIds)
     .order('created_at', { ascending: true });
   const files: TriageFile[] = await Promise.all(((ph ?? []) as any[]).map(async (f) => {
     const { data: signed } = await supabase.storage.from('work-order-photos').createSignedUrl(f.storage_path, 60 * 60);
@@ -258,7 +267,7 @@ export async function fetchTriageData(orderId: string, labId: string): Promise<T
   const { data: msgs } = await supabase
     .from('order_messages')
     .select('id, content, created_at, attachment_name, attachment_url, sender:profiles!order_messages_sender_id_fkey(full_name, user_type)')
-    .eq('work_order_id', orderId)
+    .in('work_order_id', fileOrderIds)
     .order('created_at', { ascending: true });
   const messages: TriageMessage[] = ((msgs ?? []) as any[])
     .filter((m) => {
@@ -275,7 +284,19 @@ export async function fetchTriageData(orderId: string, labId: string): Promise<T
       };
     });
 
-  return { order: (ord as TriageOrderSummary) ?? null, stations, technicians, templates, files, messages, doctorName, clinicName, items };
+  // 8) Hekim notu — devam/revizyon siparişinde kendi notu boşsa ASIL işin notunu göster.
+  let mergedOrder = ord;
+  if (ord && !((ord as any).notes) && parentId) {
+    const { data: pOrd } = await supabase
+      .from('work_orders')
+      .select('notes')
+      .eq('id', parentId)
+      .maybeSingle();
+    const pNote = (pOrd as any)?.notes;
+    if (pNote) mergedOrder = { ...(ord as any), notes: pNote };
+  }
+
+  return { order: (mergedOrder as TriageOrderSummary) ?? null, stations, technicians, templates, files, messages, doctorName, clinicName, items };
 }
 
 /** İş tipine en uygun şablonu seç (case_types eşleşmesi → default → ilk). */

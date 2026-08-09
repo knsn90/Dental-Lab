@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import {
   X, Send, MessageCirclePlus,
-  Bug, FileWarning, Cog, Truck, Receipt, Plug, GraduationCap, ShieldAlert,
+  Bug, FileWarning, Cog, Truck, Receipt, Plug, GraduationCap, ShieldAlert, ShieldCheck,
   Layers, AlertCircle, Briefcase,
 } from 'lucide-react-native';
 import { useSupportStore } from '../../../core/store/supportStore';
@@ -39,6 +39,7 @@ const CATEGORY_ICONS: Record<SupportCategory, any> = {
   entegrasyon:     Plug,
   ozellik_egitim:  GraduationCap,
   yazilim_hatasi:  ShieldAlert,
+  kvkk_talebi:     ShieldCheck,
 };
 
 export function GlobalSupportTrigger() {

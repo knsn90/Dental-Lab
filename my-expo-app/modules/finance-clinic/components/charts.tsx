@@ -18,7 +18,8 @@ import type { MonthlyFlowPoint, AgingBucket, MethodSlice } from '../api';
 
 // Katı per-currency: grafik ekseni/etiketi verilen para biriminin sembolüyle.
 const sym = (cur?: string) => CURRENCY_META[(cur || getBaseCurrency()) as Currency]?.symbol ?? baseSymbol();
-const compactCur = (n: number, cur?: string): string => {
+const compactCur = (nRaw: number, cur?: string): string => {
+  const n = Number(nRaw) || 0;   // undefined/NaN → 0 (ham toLocaleString çökmesi)
   const s = sym(cur);
   const v = Math.abs(n);
   if (v >= 1_000_000) return s + (n / 1_000_000).toLocaleString('tr-TR', { maximumFractionDigits: 1 }) + 'M';

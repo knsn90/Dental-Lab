@@ -7,16 +7,18 @@ import { localeTag } from '../../../core/i18n';
 import React, { useMemo, useState } from 'react';
 import {
   View, Text, ScrollView, Pressable, TextInput,
-  RefreshControl, StyleSheet, Modal,
+  RefreshControl, StyleSheet, Modal, Image,
 } from 'react-native';
-import { Search, X, SlidersHorizontal, Hash, CalendarDays, Clock } from 'lucide-react-native';
+import { Search, X, SlidersHorizontal, Hash, CalendarDays, Clock, CornerDownRight } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSegments } from 'expo-router';
 import { DS } from '../../../core/theme/dsTokens';
 import { MFONT, useMobileTheme } from '../../../core/theme/mobileTheme';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import Svg, { Defs, Rect, RadialGradient, Stop } from 'react-native-svg';
 import type { WorkOrder } from '../types';
+import { buildRevisionCases } from '../revisionGroups';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 void DS;
 
@@ -31,15 +33,18 @@ interface LaneDef {
 }
 
 const LANES: LaneDef[] = [
-  { key: 'planlama', title: 'Planlama', dot: '#C97A2A', match: ['alindi'],            triageState: 'pending' },
-  { key: 'yeni',     title: 'Yeni',     dot: '#E89B2A', match: ['alindi'],            triageState: 'done' },
-  { key: 'uretimde', title: 'Üretimde', dot: 'PRIMARY', match: ['uretimde'] },
-  { key: 'qa',       title: 'Kontrol',  dot: '#4A8FC9', match: ['kalite_kontrol'] },
-  { key: 'teslimat', title: 'Yolda',    dot: '#2D9A6B', match: ['teslimata_hazir'] },
+  // Masaüstü Siparişler sayfasıyla AYNI kategori mantığı (STATUS_FILTERS):
+  // Planlama(alindi) · Üretim(uretimde) · KK(kalite_kontrol) · Hazır(teslimata_hazir) · Teslim(teslim_edildi).
+  // 'asamada' = üretimin ilk aşaması → uygulama genelinde 'Üretim' sayılır, bu yüzden Üretim'e dahil.
+  { key: 'planlama', title: 'Planlama', dot: '#C97A2A', match: ['alindi'] },
+  { key: 'uretim',   title: 'Üretim',   dot: 'PRIMARY', match: ['uretimde', 'asamada'] },
+  { key: 'kk',       title: 'KK',       dot: '#4A8FC9', match: ['kalite_kontrol'] },
+  { key: 'hazir',    title: 'Hazır',    dot: '#2D9A6B', match: ['teslimata_hazir'] },
+  { key: 'teslim',   title: 'Teslim',   dot: '#64748B', match: ['teslim_edildi'] },
 ];
 
 type ViewMode = 'list' | 'kanban';
-type StatusFilter = 'all' | 'planlama' | 'yeni' | 'uretimde' | 'qa' | 'teslimat';
+type StatusFilter = 'all' | 'planlama' | 'uretim' | 'kk' | 'hazir' | 'teslim';
 
 interface Props {
   orders: WorkOrder[];
@@ -63,15 +68,8 @@ export function OrdersKanbanB2Mobile({ orders, loading, refetch, onOpenOrder, on
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
   /** Lane assignment for an order */
-  const laneOf = (o: WorkOrder): LaneDef | undefined => {
-    const triaged = !!(o as any).triaged_at;
-    return LANES.find(l => {
-      if (!l.match.includes(o.status)) return false;
-      if (l.triageState === 'pending') return !triaged;
-      if (l.triageState === 'done')    return triaged;
-      return true;
-    });
-  };
+  const laneOf = (o: WorkOrder): LaneDef | undefined =>
+    LANES.find(l => l.match.includes(o.status));
 
   // Apply search + status filter
   const filtered = useMemo(() => {
@@ -120,10 +118,12 @@ export function OrdersKanbanB2Mobile({ orders, loading, refetch, onOpenOrder, on
       <View style={[styles.header, { paddingTop: Math.max(insets.top, 8) + 72 }]}>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={styles.eyebrow}>ÜRETİM PANOSU</Text>
-          <Text style={styles.h2}>Vakalar</Text>
-          <Text style={styles.hint}>
-            {filtered.length} kayıt{statusFilter !== 'all' ? ` · ${LANES.find(l => l.key === statusFilter)?.title}` : ''}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, flexWrap: 'nowrap' }}>
+            <Text style={styles.h2} numberOfLines={1}>Siparişler</Text>
+            <Text style={[styles.hint, { marginTop: 0 }]} numberOfLines={1}>
+              {filtered.length} sipariş{statusFilter !== 'all' ? ` · ${LANES.find(l => l.key === statusFilter)?.title}` : ''}
+            </Text>
+          </View>
         </View>
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
           <Pressable
@@ -275,18 +275,19 @@ function ListView({
   const theme = useMobileTheme();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const styles = useMemo(() => makeStyles(T, isDark, theme.primary), [T, isDark, theme.primary]);
+  // Lab/Admin panelinde avatar = klinik logosu (hangi klinikten geldiği bir bakışta belli).
+  // Klinik/Hekim panelinde kendi işleri → hasta baş harfleri.
+  const segments = useSegments() as string[];
+  const useClinicLogoAvatar = segments?.[0] === '(lab)' || segments?.[0] === '(admin)';
 
   // Group orders by lane — TÜM hook'lar early return'den ÖNCE (Rules of Hooks)
-  const sections = useMemo(() => {
-    const buckets: Record<string, WorkOrder[]> = {};
-    LANES.forEach(l => { buckets[l.key] = []; });
-    const other: WorkOrder[] = []; // hiçbir lane'e uymayanlar (teslim edildi / tamamlandı vb.)
-    orders.forEach(o => {
-      const lane = laneOf(o);
-      if (lane) buckets[lane.key].push(o);
-      else other.push(o);
-    });
-    // Yeniden eskiye sırala (en yeni üstte) — created_at, yoksa order_number
+  //
+  // Revizyonlar: aynı vakanın üyeleri ayrı kulvarlara dağılmasın diye önce vaka
+  // gruplarına ayrılır. Kulvara YALNIZ en güncel üye (anchor) girer; eski
+  // revizyonlar onun kartının altında girintili alt-liste olur. Böylece devam
+  // eden revizyon "Tamamlandı" kulvarına gömülmez.
+  const { groups, revChildren } = useMemo(() => {
+    const { anchors, children: revChildren } = buildRevisionCases(orders as any[]);
     const recent = (o: WorkOrder) => {
       const t = (o as any).created_at ? Date.parse((o as any).created_at) : NaN;
       return Number.isNaN(t) ? String((o as any).order_number ?? '') : t;
@@ -296,29 +297,29 @@ function ListView({
       if (typeof ra === 'number' && typeof rb === 'number') return rb - ra;
       return String(rb).localeCompare(String(ra));
     };
-    Object.values(buckets).forEach(arr => arr.sort(byNewest));
-    other.sort(byNewest);
-    const result = LANES.filter(l => (buckets[l.key]?.length ?? 0) > 0).map(l => ({
-      lane: l,
-      items: buckets[l.key],
-    }));
-    // Lane'lere uymayanları "Devam Eden" (aktif) ve "Tamamlandı" (teslim edildi) olarak ayır
-    const finished = other.filter(o => (o as any).status === 'teslim_edildi');
-    const ongoing  = other.filter(o => (o as any).status !== 'teslim_edildi');
-    if (ongoing.length > 0) {
-      result.push({
-        lane: { key: 'devam', title: 'Devam Eden', dot: 'PRIMARY', match: [] } as LaneDef,
-        items: ongoing,
-      });
-    }
-    if (finished.length > 0) {
-      result.push({
-        lane: { key: 'tamam', title: 'Tamamlandı', dot: '#2D9A6B', match: [] } as LaneDef,
-        items: finished,
-      });
-    }
-    return result;
-  }, [orders]);
+    // 4 kategori (sıralı bölümler):
+    //   1) Planlama Bekliyor — alındı + triage yapılmamış
+    //   2) Bekletilen İşler  — duraklatılmış (hold_status = on_hold), teslim edilmemiş
+    //   3) Üretim            — planlaması yapılmış + üretim aşamalarında (geri kalan aktif)
+    //   4) Teslim Edilen İşler — teslim_edildi (en sonda)
+    // Öncelik: teslim > bekletilen > planlama > üretim.
+    const isDone    = (o: WorkOrder) => (o as any).status === 'teslim_edildi';
+    const isHold    = (o: WorkOrder) => (o as any).hold_status === 'on_hold';
+    const needsTri  = (o: WorkOrder) => (o as any).status === 'alindi' && !(o as any).triaged_at;
+    const bucketOf = (o: WorkOrder): string =>
+      isDone(o) ? 'teslim' : isHold(o) ? 'bekletilen' : needsTri(o) ? 'planlama' : 'uretim';
+    const defs = [
+      { key: 'planlama',   title: 'Planlama Bekliyor',    dot: '#C97A2A' },
+      { key: 'bekletilen', title: 'Bekletilen İşler',     dot: '#E89B2A' },
+      { key: 'uretim',     title: 'Üretim',               dot: theme.primary },
+      { key: 'teslim',     title: 'Teslim Edilen İşler',  dot: '#64748B' },
+    ];
+    const byKey: Record<string, WorkOrder[]> = { planlama: [], bekletilen: [], uretim: [], teslim: [] };
+    (anchors as WorkOrder[]).forEach(o => { byKey[bucketOf(o)].push(o); });
+    Object.values(byKey).forEach(arr => arr.sort(byNewest));
+    const groups = defs.filter(d => byKey[d.key].length > 0).map(d => ({ ...d, items: byKey[d.key] }));
+    return { groups, revChildren };
+  }, [orders, theme.primary]);
 
   if (orders.length === 0) {
     return (
@@ -330,95 +331,138 @@ function ListView({
     );
   }
 
-  return (
-    <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
-      {sections.map((section, sIdx) => {
-        const dot = section.lane.dot === 'PRIMARY' ? theme.primary : section.lane.dot;
-        return (
-          <View key={section.lane.key} style={{ marginTop: sIdx === 0 ? 4 : 22 }}>
-            {/* Section başlığı — küçük uppercase + sayı */}
-            <View style={styles.sectionHead}>
-              <View style={[styles.sectionDot, { backgroundColor: dot }]} />
-              <Text style={styles.sectionTitle}>{section.lane.title}</Text>
-              <Text style={styles.sectionCount}>{section.items.length}</Text>
+  // Tek kart render — hem "Planlama bekliyor" bloğunda hem düz listede kullanılır.
+  const renderCard = (o: WorkOrder) => {
+    const orderNum = String((o as any).order_number ?? o.id ?? '').slice(-6);
+    const workType = (o as any).work_type ?? 'Sipariş';
+    const patient = (o as any).patient_name ?? (o as any).doctor_name ?? '—';
+    const doctorName = (o as any).doctor?.full_name ?? (o as any).doctor_name ?? null;
+    const clinicName = (o as any).doctor?.clinic?.name ?? (o as any).doctor?.clinic_name ?? (o as any).clinic_name ?? null;
+    // Doktoru kısalt, kliniği tam bırak (lab kliniğe göre düşünür)
+    const who = [doctorName ? abbrevDoctor(doctorName) : null, clinicName].filter(Boolean).join(' · ');
+    const onHold = (o as any).hold_status === 'on_hold';
+    const isDone = (o as any).status === 'teslim_edildi';
+    // Bölüm kalktı → durum rengi + etiketi karttan (order'dan) türetilir.
+    const lane = laneOf(o);
+    const laneColor = lane ? (lane.dot === 'PRIMARY' ? theme.primary : lane.dot) : (isDone ? '#64748B' : theme.primary);
+    const dot = onHold ? '#E89B2A' : laneColor;
+    const badgeLabel = (onHold ? 'Duraklatıldı' : (lane?.title ?? (isDone ? 'Teslim' : 'İşlemde'))).toLocaleUpperCase('tr');
+    const dd = (o as any).delivery_date;
+    const dleft = dd ? Math.ceil((new Date(dd + 'T00:00:00').getTime() - Date.now()) / 86_400_000) : null;
+    const due = onHold ? 'Beklemede' : (dd ? formatDue(dd) : '—');
+    const dueColor = onHold ? '#E89B2A'
+      : isDone || dleft == null ? T.ink2
+      : dleft < 0 ? '#D94B4B' : dleft <= 1 ? '#E89B2A' : T.ink2;
+    const createdTime = (o as any).created_at
+      ? new Date((o as any).created_at).toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' })
+      : null;
+    const initials = String(patient).trim().split(/\s+/).slice(0, 2)
+      .map((p: string) => p[0]?.toUpperCase() ?? '').join('') || '?';
+    const toothCount = Array.isArray((o as any).tooth_numbers) ? (o as any).tooth_numbers.length : 0;
+    const history = revChildren.get(String(o.id)) as WorkOrder[] | undefined;
+    const clinicLogo = useClinicLogoAvatar ? ((o as any)?.doctor?.clinic?.logo_url ?? null) : null;
+    return (
+      <View key={o.id}>
+        <Pressable
+          onPress={() => onOpenOrder(o)}
+          style={[styles.histCard, { borderColor: `${dot}40` }, isDone && { opacity: 0.74 }]}
+        >
+          {/* Üst satır — avatar + hasta/iş türü + durum çipi */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 11 }}>
+            {clinicLogo ? (
+              <View style={[styles.histAvatar, { backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline, overflow: 'hidden' }]}>
+                <Image source={{ uri: clinicLogo }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+              </View>
+            ) : (
+              <View style={[styles.histAvatar, { backgroundColor: `${dot}1A` }]}>
+                <Text style={[styles.histAvatarText, { color: dot }]}>{initials}</Text>
+              </View>
+            )}
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, minWidth: 0 }}>
+                <Text style={[styles.histTitle, { flexShrink: 1 }]} numberOfLines={1}>{patient}</Text>
+                {!!(o as any).revision_of_id && (
+                  <View style={{ paddingHorizontal: 5, paddingVertical: 1.5, borderRadius: 6, backgroundColor: 'rgba(232,155,42,0.15)', flexShrink: 0 }}>
+                    <Text style={{ fontSize: 8.5, fontWeight: '800', color: '#9C5E0E', letterSpacing: 0.4 }}>REVİZYON</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.histSub} numberOfLines={1}>{workType}</Text>
+              {!!who && (<Text style={styles.histWho} numberOfLines={1}>{who}</Text>)}
             </View>
-
-            {/* Kartlar — teknisyen geçmiş tasarımı (beyaz kart + gölge) */}
-            <View style={{ gap: 10 }}>
-              {section.items.map((o) => {
-                const orderNum = String((o as any).order_number ?? o.id ?? '').slice(-6);
-                const workType = (o as any).work_type ?? 'Sipariş';
-                const patient = (o as any).patient_name ?? (o as any).doctor_name ?? '—';
-                // Hekim + klinik — attachDoctors o.doctor'a yapıştırır; flat alanlara da düş
-                const doctorName = (o as any).doctor?.full_name ?? (o as any).doctor_name ?? null;
-                const clinicName = (o as any).doctor?.clinic?.name ?? (o as any).doctor?.clinic_name ?? (o as any).clinic_name ?? null;
-                const who = [doctorName, clinicName].filter(Boolean).join(' · ');
-                const due = (o as any).delivery_date ? formatDue((o as any).delivery_date) : '—';
-                // Sipariş oluşturma saati (created_at → HH:MM)
-                const createdTime = (o as any).created_at
-                  ? new Date((o as any).created_at).toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' })
-                  : null;
-                const initials = String(patient).trim().split(/\s+/).slice(0, 2)
-                  .map((p: string) => p[0]?.toUpperCase() ?? '').join('') || '?';
-                // Teslim rengi — gecikmiş kırmızı, yakın amber, "diğer"(teslim) nötr
-                const dd = (o as any).delivery_date;
-                const dleft = dd ? Math.ceil((new Date(dd + 'T00:00:00').getTime() - Date.now()) / 86_400_000) : null;
-                const isDone = (o as any).status === 'teslim_edildi' || section.lane.key === 'tamam';
-                const dueColor = isDone || dleft == null ? T.ink2
-                  : dleft < 0 ? '#D94B4B' : dleft <= 1 ? '#E89B2A' : T.ink2;
-                return (
-                  <Pressable
-                    key={o.id}
-                    onPress={() => onOpenOrder(o)}
-                    style={[styles.histCard, section.lane.key === 'tamam' && { opacity: 0.74 }]}
-                  >
-                    {/* Sol renk-accent şeridi */}
-                    <View style={[styles.histAccent, { backgroundColor: dot }]} />
-
-                    {/* Üst satır — avatar + hasta/iş türü + durum çipi */}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 11 }}>
-                      <View style={[styles.histAvatar, { backgroundColor: `${dot}1A` }]}>
-                        <Text style={[styles.histAvatarText, { color: dot }]}>{initials}</Text>
-                      </View>
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={styles.histTitle} numberOfLines={1}>{patient}</Text>
-                        <Text style={styles.histSub} numberOfLines={1}>{workType}</Text>
-                        {!!who && (
-                          <Text style={styles.histWho}>{who}</Text>
-                        )}
-                      </View>
-                      <View style={[styles.histBadge, { backgroundColor: `${dot}1A` }]}>
-                        <View style={[styles.histBadgeDot, { backgroundColor: dot }]} />
-                        <Text style={[styles.histBadgeText, { color: dot }]} numberOfLines={1}>
-                          {section.lane.title.toUpperCase()}
-                        </Text>
-                      </View>
-                    </View>
-
-                    {/* Alt satır — ikonlu meta: no · teslim */}
-                    <View style={styles.histMetaRow}>
-                      <View style={styles.histMeta}>
-                        <Hash size={12.5} color={T.ink3} strokeWidth={1.8} />
-                        <Text style={styles.histMetaText} numberOfLines={1}>{orderNum}</Text>
-                      </View>
-                      <View style={styles.histMeta}>
-                        <CalendarDays size={13} color={dueColor} strokeWidth={1.8} />
-                        <Text style={[styles.histMetaText, { color: dueColor, fontFamily: MFONT.uiSemibold }]} numberOfLines={1}>{due}</Text>
-                      </View>
-                      {createdTime && (
-                        <View style={styles.histMeta}>
-                          <Clock size={12.5} color={T.ink3} strokeWidth={1.8} />
-                          <Text style={styles.histMetaText} numberOfLines={1}>{createdTime}</Text>
-                        </View>
-                      )}
-                    </View>
-                  </Pressable>
-                );
-              })}
+            <View style={[styles.histBadge, { backgroundColor: `${dot}1A` }]}>
+              <View style={[styles.histBadgeDot, { backgroundColor: dot }]} />
+              <Text style={[styles.histBadgeText, { color: dot }]} numberOfLines={1}>{badgeLabel}</Text>
             </View>
           </View>
-        );
-      })}
+
+          {/* Alt satır — ikonlu meta: no · teslim · saat · diş */}
+          <View style={styles.histMetaRow}>
+            <View style={styles.histMeta}>
+              <Hash size={12.5} color={T.ink3} strokeWidth={1.8} />
+              <Text style={styles.histMetaText} numberOfLines={1}>{orderNum}</Text>
+            </View>
+            <View style={styles.histMeta}>
+              <CalendarDays size={13} color={dueColor} strokeWidth={1.8} />
+              <Text style={[styles.histMetaText, { color: dueColor, fontFamily: MFONT.uiSemibold }]} numberOfLines={1}>{due}</Text>
+            </View>
+            {createdTime && (
+              <View style={styles.histMeta}>
+                <Clock size={12.5} color={T.ink3} strokeWidth={1.8} />
+                <Text style={styles.histMetaText} numberOfLines={1}>{createdTime}</Text>
+              </View>
+            )}
+            {toothCount > 0 && (
+              <View style={styles.histMeta}>
+                <Text style={styles.histMetaText} numberOfLines={1}>{`${toothCount} diş`}</Text>
+              </View>
+            )}
+          </View>
+        </Pressable>
+
+        {/* Vakanın eski revizyonları — girintili alt-liste */}
+        {(history ?? []).map(h => {
+          const hNo = String((h as any).order_number ?? h.id ?? '').slice(-6);
+          const hDone = (h as any).status === 'teslim_edildi';
+          return (
+            <Pressable
+              key={h.id}
+              onPress={() => onOpenOrder(h)}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 8,
+                marginLeft: 22, marginTop: 6,
+                paddingHorizontal: 12, paddingVertical: 9,
+                borderRadius: 12,
+                backgroundColor: `${dot}0D`,
+                borderWidth: 1, borderColor: `${dot}1F`,
+              }}
+            >
+              <CornerDownRight size={13} color={T.ink3} strokeWidth={2} />
+              <Text style={[styles.histMetaText, { flex: 1 }]} numberOfLines={1}>#{hNo}</Text>
+              <Text style={[styles.histMetaText, { color: hDone ? '#2D9A6B' : T.ink2 }]} numberOfLines={1}>
+                {hDone ? 'Teslim edildi' : 'Önceki'}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    );
+  };
+
+  return (
+    <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
+      {groups.map((g, gi) => (
+        <View key={g.key} style={{ marginTop: gi === 0 ? 4 : 22 }}>
+          <View style={styles.sectionHead}>
+            <View style={[styles.sectionDot, { backgroundColor: g.dot }]} />
+            <Text style={[styles.sectionTitle, (g.key === 'planlama' || g.key === 'bekletilen') && { color: '#9C5E0E' }]}>
+              {g.title.toLocaleUpperCase('tr')}
+            </Text>
+            <Text style={styles.sectionCount}>{`(${g.items.length})`}</Text>
+          </View>
+          <View style={{ gap: 20 }}>{g.items.map(renderCard)}</View>
+        </View>
+      ))}
     </View>
   );
 }
@@ -463,6 +507,28 @@ function LaneCard({ order, onPress }: { order: WorkOrder; onPress: () => void })
       </View>
     </Pressable>
   );
+}
+
+/**
+ * Hekim adını kısaltır, KLİNİĞİ değil — laboratuvarlar kliniğe göre düşünür,
+ * o yüzden satır sığmadığında doktor kısalsın, klinik tam kalsın.
+ *   "Dr. Aylin Şahiner"       → "Dr. A. Şahiner"
+ *   "Dt. Medet Roger Paydaş"  → "Dt. M. R. Paydaş"
+ *   "Aylin Şahiner"           → "A. Şahiner"
+ */
+function abbrevDoctor(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return name;
+  let title = '';
+  let rest = parts;
+  if (/^(Dr|Dt|Prof|Doç|Uzm|Op)\.?$/i.test(parts[0])) {
+    title = parts[0].endsWith('.') ? parts[0] : `${parts[0]}.`;
+    rest = parts.slice(1);
+  }
+  if (rest.length <= 1) return [title, ...rest].filter(Boolean).join(' ');
+  const last = rest[rest.length - 1];
+  const inits = rest.slice(0, -1).map(p => `${p[0]?.toLocaleUpperCase('tr')}.`).join(' ');
+  return [title, inits, last].filter(Boolean).join(' ');
 }
 
 function formatDue(d: string): string {
@@ -603,7 +669,7 @@ const makeStyles = (T: any, isDark: boolean, accent: string) => StyleSheet.creat
     fontFamily: MFONT.uiRegular,
     fontSize: 11,
     color: T.ink3,
-    marginLeft: 'auto',
+    marginLeft: -2,
   },
 
   // ── Kart tarzı (teknisyen geçmiş sayfası ile aynı) ──
@@ -619,11 +685,12 @@ const makeStyles = (T: any, isDark: boolean, accent: string) => StyleSheet.creat
     overflow: 'hidden',
     position: 'relative',
     ...(isDark ? {} : {
+      // Stroke zaten kartları ayırdığı için gölge ~%20 azaltıldı (daha premium)
       shadowColor: '#0F172A',
-      shadowOffset: { width: 0, height: 5 },
-      shadowOpacity: 0.07,
-      shadowRadius: 14,
-      elevation: 3,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.056,
+      shadowRadius: 11,
+      elevation: 2,
     }),
   },
   histAccent: {
@@ -664,18 +731,18 @@ const makeStyles = (T: any, isDark: boolean, accent: string) => StyleSheet.creat
     flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3.5,
     borderRadius: 999,
     maxWidth: 132,
   },
   histBadgeDot: {
-    width: 5, height: 5, borderRadius: 3, flexShrink: 0,
+    width: 4.5, height: 4.5, borderRadius: 3, flexShrink: 0,
   },
   histBadgeText: {
     fontFamily: MFONT.uiSemibold,
-    fontSize: 9.5,
+    fontSize: 9,
     letterSpacing: 0.4,
   },
   histMetaRow: {

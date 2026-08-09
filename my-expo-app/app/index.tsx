@@ -2,21 +2,19 @@ import { useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import { Redirect } from 'expo-router';
 import { useAuthStore } from '../store/authStore';
+import { useLastPanelStore, PANEL_ROUTE } from '../core/store/lastPanelStore';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { supabase } from '../core/api/supabase';
+import { bootMark } from '../core/debug/bootTrace';
+import { signalAppReady } from '../core/debug/appReady';
 
-// Web: HTML splash'ı kapatmak için bir kere ready sinyali gönder.
-// İlk açılışta HTML splash (logo + bar) görünür, React tarafı bu fonksiyon
-// çağrılana kadar boş kalır → tek loader deneyimi.
-function signalAppReady() {
-  if (Platform.OS !== 'web' || typeof window === 'undefined') return;
-  if ((window as any).__nxReady) return;
-  (window as any).__nxReady = true;
-  try { window.dispatchEvent(new Event('nx:ready')); } catch {}
-}
+// Splash kapatma sinyali artık paylaşılan yardımcıda — kök layout da çağırıyor
+// ki derin bağlantılarda (index mount olmadan) splash asılı kalmasın.
 
 export default function Index() {
   const { session, profile, loading, fetchProfile } = useAuthStore();
+  const lastPanelKey   = useLastPanelStore((s) => s.panel);
+  const lastPanelReady = useLastPanelStore((s) => s.hydrated);
   const [stuck, setStuck] = useState<'retrying' | 'failed' | null>(null);
   const retried = useRef(false);
 
@@ -39,8 +37,8 @@ export default function Index() {
     fetchProfile(session.user.id);
   }, [loading, session, profile, fetchProfile]);
 
-  // Hâlâ auth bootstrap yapılıyor → splash görünür, React boş döner (tek loader)
-  if (loading) return null;
+  // Auth bootstrap: session henüz bilinmiyor (ilk getSession bitmedi) → splash bekle
+  if (loading && !session) { bootMark('index: oturum bilinmiyor → boş'); return null; }
 
   if (!session) {
     signalAppReady();
@@ -52,11 +50,21 @@ export default function Index() {
       signalAppReady();
       return <Redirect href="/(auth)/login" />;
     }
-    // Profile fetch sürüyor — splash görünür, React boş
+    // Optimistic ilk-açılış: profil beklemeden son panele git → kabuk anında görünür.
+    // Panel layout'ları profilsizken <Slot/> render eder; profil gelince yanlış
+    // panelse kendini '/'ya yönlendirir (guard self-heal) → doğru panele düşer.
+    if (lastPanelReady && lastPanelKey) {
+      bootMark('index: OPTİMİSTİK panele git', { panel: lastPanelKey });
+      signalAppReady();
+      return <Redirect href={PANEL_ROUTE[lastPanelKey] as any} />;
+    }
+    // Son panel yok (ilk giriş) → splash bekle
+    bootMark('index: son panel YOK → splash bekliyor (boş sayfa)');
     return null;
   }
 
   // Profile geldi → splash'ı kapat, panel'e yönlendir
+  bootMark('index: profil hazır → gerçek panele yönlendir');
   signalAppReady();
 
   // Platform konsolu bağlamı korunsun. (platform) bir route grubu olduğundan

@@ -70,9 +70,15 @@ Deno.serve(async (req: Request) => {
       const { error: upErr } = await admin.storage.from('avatars').upload(path, buf, { upsert: true, contentType: ct })
       if (upErr) return json({ error: upErr.message })
       const { data: pub } = admin.storage.from('avatars').getPublicUrl(path)
-      const { error: dbErr } = await caller.from('clinics').update({ logo_url: pub.publicUrl }).eq('id', payload.clinicId)
+      // SÜRÜM DAMGASI ŞART: dosya yolu sabit (clinics/<id>/logo.<ext>) ve upsert
+      // ediliyor → public URL hep aynı. Supabase Storage CDN'i eski görseli
+      // saatlerce servis ediyordu; "logo güncellendi" denip ekranda değişmemesinin
+      // sebebi buydu. Sürüm parametresi VERİTABANINA yazılır ki her ekran
+      // (profil, sidebar, klinik seçici) yeni URL'i görsün.
+      const versioned = `${pub.publicUrl}?v=${Date.now()}`
+      const { error: dbErr } = await caller.from('clinics').update({ logo_url: versioned }).eq('id', payload.clinicId)
       if (dbErr) return json({ error: dbErr.message })
-      return json({ logo_url: pub.publicUrl })
+      return json({ logo_url: versioned })
     }
 
     // ── SEARCH ──

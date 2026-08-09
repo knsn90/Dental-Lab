@@ -39,7 +39,7 @@
     "items": {
       "today": "امروز",
       "orders": "سفارش‌ها",
-      "paperOrders": "سفارش‌های کاغذی",
+      "paperOrders": "سفارش‌های دستی",
       "approvals": "تأییدها",
       "clinics": "کلینیک‌ها",
       "team": "تیم",
@@ -57,7 +57,7 @@
       "search": "جستجو",
       "more": "بیشتر",
       "new": "جدید",
-      "paperInbox": "صندوق کاغذی",
+      "paperInbox": "صندوق دستی",
       "deliveries": "تحویل‌ها",
       "map": "نقشه",
       "stats": "آمار",
@@ -70,7 +70,8 @@
       "panel": "داشبورد",
       "myJobs": "کارهای من",
       "history": "تاریخچه",
-      "requests": "درخواست‌ها"
+      "requests": "درخواست‌ها",
+      "waSupport": "پشتیبانی واتس‌اپ"
     },
     "sections": {
       "work": "مدیریت کار",
@@ -410,6 +411,10 @@
       "logs": {
         "label": "گزارش‌ها",
         "sub": "سوابق فعالیت سیستم"
+      },
+      "workflows": {
+        "label": "گردش‌کارها",
+        "sub": "طراح جریان تولید"
       }
     }
   },
@@ -465,9 +470,11 @@
       "qcShort": "کنترل کیفیت",
       "ready": "آماده",
       "live": "زنده",
-      "awaitingPlanning": "در انتظار برنامه‌ریزی",
+      "awaitingPlanning": "سفارش رسید — برنامه‌ریزی را شروع کن",
+      "newWorkKicker": "کار جدید",
       "overdueOrder": "سفارش عقب‌افتاده",
-      "urgent": "فوری"
+      "urgent": "فوری",
+      "toPlanShort": "برای برنامه‌ریزی"
     },
     "months": {
       "short": "ژانویه, فوریه, مارس, آوریل, مه, ژوئن, ژوئیه, اوت, سپتامبر, اکتبر, نوامبر, دسامبر",
@@ -497,7 +504,7 @@
       "deliveryRate": "نرخ تحویل",
       "delivered": "تحویل‌شده",
       "inProduction": "در حال ساخت",
-      "todaysTasks": "وظایف امروز",
+      "todaysTasks": "اقدامات در انتظار",
       "recentOrders": "سفارش‌های اخیر",
       "viewAll": "مشاهده همه ←",
       "noOrders": "هنوز سفارشی نیست",
@@ -516,13 +523,18 @@
       "ordersSummary": "{{total}} سفارش، {{active}} فعال{{overdue}}.",
       "liveProduction": "ساخت زنده",
       "monthlyRevenue": "درآمد ماهانه",
+      "pendingApprovals": "در انتظار تأیید",
+      "approvalsActionNeeded": "نیاز به اقدام",
+      "approvalsClear": "همه‌چیز به‌روز است",
       "revenueTarget": "هدف ₺60K",
       "activeOrders": "سفارش‌های فعال",
       "overdueCount": "{{count}} عقب‌افتاده",
       "total": "کل {{total}}",
       "delayedCases": "کیس‌های عقب‌افتاده",
       "noDelayedCases": "کیس عقب‌افتاده‌ای نیست",
-      "productionOnTrack": "همهٔ کارها طبق برنامه پیش می‌رود."
+      "productionOnTrack": "همهٔ کارها طبق برنامه پیش می‌رود.",
+      "ordersOfTotal": "{{done}} / {{total}} سفارش",
+      "deliveredAllTime": "تحویل‌شده · کل دوره"
     },
     "buttons": {
       "start": "شروع"
@@ -543,12 +555,17 @@
       "actor": {
         "admin": "مدیر",
         "doctor": "دندانپزشک",
-        "lab": "لابراتوار"
+        "lab": "لابراتوار",
+        "clinic": "کلینیک",
+        "technician": "تکنسین",
+        "courier": "پیک"
       },
       "tab": {
         "all": "همه",
         "users": "کاربران",
-        "doctors": "دندانپزشکان"
+        "doctors": "دندانپزشکان",
+        "technicians": "تکنسین‌ها",
+        "clinics": "کلینیک‌ها"
       },
       "searchPlaceholder": "جستجو بر اساس نام، اقدام یا سابقه…",
       "loading": "در حال بارگذاری گزارش‌ها…",

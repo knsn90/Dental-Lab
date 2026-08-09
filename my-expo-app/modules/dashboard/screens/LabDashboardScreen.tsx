@@ -15,7 +15,7 @@ import { localeTag, isRTL } from '../../../core/i18n';
 import {
   View, Text, ScrollView, Pressable, Image,
   useWindowDimensions, RefreshControl,
-  Animated, Platform, Easing,
+  Animated, Platform, Easing, StyleSheet,
 } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -38,7 +38,10 @@ import { isOrderOverdue } from '../../orders/constants';
 import { fetchTodayProvas } from '../../provas/api';
 import { PROVA_TYPES } from '../../provas/types';
 import { supabase } from '../../../core/api/supabase';
+import { useRealtimeRefresh } from '../../../core/hooks/useRealtimeRefresh';
 import { NumberTickerX } from '../../../core/ui/NumberTickerX';
+import { AlertPillX } from '../../../core/ui/AlertPillX';
+import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 import { useDashboardCache } from '../../../core/store/dashboardCacheStore';
 import { useUiOverlayStore } from '../../../core/store/uiOverlayStore';
 import { useNewOrderModalStore } from '../../../core/store/newOrderModalStore';
@@ -360,7 +363,9 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, plannin
   }, [dotAnim, glowAnim, breatheAnim]);
 
   const dotOpacity = dotAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.3] });
-  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.12] });
+  // Bulanıklık ışığı geniş alana yayıp kontrastı düşürüyor; parıltı aralığı
+  // 0–0.12'den 0–0.30'a çıkarıldı, yoksa kart soluk/ölü görünüyor.
+  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.30] });
   const glowScale = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1.2] });
   const breatheScale = breatheAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] });
 
@@ -573,21 +578,51 @@ function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDeskto
         minHeight: isDesktop ? undefined : 160,
         transform: [{ scale: scaleAnim }],
       }}>
-        {/* Decorative floating circle */}
-        <Animated.View style={{
-          position: 'absolute', top: -20, right: -20,
-          width: 140, height: 140, borderRadius: 70,
-          backgroundColor: 'rgba(255,255,255,0.18)',
-          transform: [{ translateY: floatY }],
-        }} />
-        {/* Glow pulse circle — larger, softer */}
-        <Animated.View style={{
-          position: 'absolute', top: -40, right: -40,
-          width: 180, height: 180, borderRadius: 90,
-          backgroundColor: 'rgba(255,255,255,1)',
-          opacity: glowOpacity,
-          transform: [{ scale: glowScale }],
-        }} pointerEvents="none" />
+        {/* Yüzen ışık lekeleri — web'de BULANIK (aurora hissi).
+            `filter` yalnız web'de var; native'de RN desteklemiyor, orada net
+            daire olarak kalır. Bulanıklık kenara taşar, kartın `overflow:
+            hidden`'ı kırpar — istenen davranış.
+            `willChange` şart: bulanık katman her karede yeniden
+            rasterleştirilirse animasyon pahalıya gelir; katman terfi edilince
+            tarayıcı yalnız transform/opacity uygular, blur bir kez hesaplanır. */}
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: 'absolute', top: -20, right: -20,
+            width: 140, height: 140, borderRadius: 70,
+            // Bulanıklık ışığı yaydığı için opaklık 0.18 → 0.22; aynı değerde
+            // bırakılınca leke soluklaşıyordu.
+            backgroundColor: '#FFF3D0',
+            opacity: 0.55,
+            transform: [{ translateY: floatY }],
+            ...(Platform.OS === 'web' ? ({ filter: 'blur(18px)', mixBlendMode: 'screen', willChange: 'transform' } as any) : {}),
+          }}
+        />
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: 'absolute', top: -40, right: -40,
+            width: 180, height: 180, borderRadius: 90,
+            backgroundColor: 'rgba(255,255,255,1)',
+            opacity: glowOpacity,
+            transform: [{ scale: glowScale }],
+            ...(Platform.OS === 'web' ? ({ filter: 'blur(30px)', mixBlendMode: 'screen', willChange: 'transform, opacity' } as any) : {}),
+          }}
+        />
+        {/* Karşı köşede ikinci, daha geniş leke — tek leke bulanıklaşınca kart
+            tek renkli bir zemine dönüyordu; bu, aurora'daki renk dalgalanmasının
+            yerini tutan derinliği geri veriyor. */}
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: 'absolute', bottom: -60, left: -40,
+            width: 200, height: 200, borderRadius: 100,
+            backgroundColor: '#F4D078',
+            opacity: 0.42,
+            transform: [{ translateY: Animated.multiply(floatY, -1) }],
+            ...(Platform.OS === 'web' ? ({ filter: 'blur(40px)', mixBlendMode: 'screen', willChange: 'transform' } as any) : {}),
+          }}
+        />
         {/* Content */}
         <View style={{ position: 'relative' }}>
           <Text style={{
@@ -648,6 +683,11 @@ function StatPill({ label, value, bg, color }: { label: string; value: string; b
 }
 
 // ── Big Stat — Patterns section 10, Hero 1 right side ──
+/** Hero KPI'ları arasındaki saç teli ayraç — sayı bloğu kadar yüksek. */
+function StatDivider() {
+  return <View style={{ width: StyleSheet.hairlineWidth, alignSelf: 'stretch', marginVertical: 2, backgroundColor: 'rgba(0,0,0,0.10)' }} />;
+}
+
 function BigStat({ value, label }: { value: string | number; label: string }) {
   const isNum = typeof value === 'number';
   const numStyle = { ...SERIF, fontSize: DS.size.h2, letterSpacing: -0.025 * DS.size.h2, lineHeight: DS.size.h2, color: DS.ink[900] };
@@ -866,6 +906,9 @@ function WeeklyStrip({
 }
 
 // ── Bugünkü Görevler — Dark card (mockup card 4) ──
+// Zemin DS.lab.surfaceAlt'ın (#1A1A1A) %10 beyazla karışmış hâli: yandaki
+// kartlarla ağırlık yarışına girmesin diye açıldı. Token'a dokunulmadı.
+const TASKS_SURFACE = '#333333';
 function TasksCard({
   tasks,
 }: {
@@ -874,9 +917,9 @@ function TasksCard({
   const doneCount = tasks.filter(t => t.done).length;
   return (
     <View style={{
-      backgroundColor: DS.lab.surfaceAlt,
+      backgroundColor: TASKS_SURFACE,
       // @ts-ignore web gradient — Patterns 11.5 dark card
-      backgroundImage: `linear-gradient(135deg, ${DS.lab.surfaceAlt} 0%, ${DS.lab.primaryDeep}33 100%)`,
+      backgroundImage: `linear-gradient(135deg, ${TASKS_SURFACE} 0%, ${DS.lab.primaryDeep}33 100%)`,
       borderRadius: DS.radius.xl, padding: 22,
       flex: 1, gap: 0,
     }}>
@@ -1096,10 +1139,24 @@ export function LabDashboardScreen() {
       const ACTIVE = ['alindi', 'kutu_atandi', 'atama_bekleniyor', 'tasarim_onayi_bekleniyor',
                       'asamada', 'uretimde', 'kalite_kontrol', 'teslimata_hazir',
                       'kurye_bekleniyor', 'kuryede'];
-      const { data, error } = await supabase.from('work_orders').select('status').neq('status', 'iptal');
-      if (error) throw error;
+
+      // PERF (P1): sayımı sunucuda yap. Dönen satır sayısı STATÜ sayısı kadar,
+      // sipariş sayısından bağımsız. Eskiden lab'ın TÜM açık siparişleri
+      // çekilip JS'te sayılıyordu — 5.000 siparişlik bir lab'da her dashboard
+      // açılışında megabaytlarca veri demekti.
       const counts: Record<string, number> = {};
-      (data ?? []).forEach((r: any) => { const s = r.status; if (s) counts[s] = (counts[s] ?? 0) + 1; });
+      const { data: agg, error: aggErr } = await supabase.rpc('dashboard_pipeline_counts');
+
+      if (!aggErr && Array.isArray(agg)) {
+        (agg as any[]).forEach((r) => {
+          if (r?.status) counts[r.status] = Number(r.n) || 0;
+        });
+      } else {
+        // Fallback: RPC yoksa (eski DB) veya hata verirse eski davranışa dön.
+        const { data, error } = await supabase.from('work_orders').select('status').neq('status', 'iptal');
+        if (error) throw error;
+        (data ?? []).forEach((r: any) => { const s = r.status; if (s) counts[s] = (counts[s] ?? 0) + 1; });
+      }
       setPipelineCounts(counts);
 
       // Total active (teslim edilmemiş + iptal olmayan)
@@ -1113,8 +1170,8 @@ export function LabDashboardScreen() {
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
 
-    // 5 sorgu paralel — eskiden seri idi (~4× round-trip).
-    const [mainRes, todayRes, approvalRes, triageRes, deliveredTodayRes] = await Promise.all([
+    // 7 sorgu paralel — eskiden seri idi (~4× round-trip).
+    const [mainRes, todayRes, approvalRes, triageRes, deliveredTodayRes, totalRes, seriesRes] = await Promise.all([
       supabase
         .from('work_orders')
         // NOT: work_orders.doctor_id polymorphic (profiles VEYA doctors) — FK
@@ -1125,9 +1182,16 @@ export function LabDashboardScreen() {
         // revision_no ŞART: revisionGroups zincirin kökünü/en güncelini bununla
         // sıralar. Eksikse hepsi 0 sayılır ve ORİJİNAL/REVİZYON etiketleri ters
         // düşer (revizyon "orijinal" görünür).
-        .select('id, order_number, work_type, status, hold_status, delivery_date, created_at, patient_name, doctor_id, tooth_numbers, revision_of_id, revision_no')
+        //
+        // PERF (P1): LIMIT 5. Bu sorgu yalnızca "son siparişler" kartını besliyor
+        // (mapRevisionCases da recentOrders + useRevisionParents üzerinden çalışır,
+        // tam listeye ihtiyaç duymaz). Toplam sayı totalRes'ten, aylık/haftalık
+        // seri dashboard_activity_series RPC'sinden geliyor. Eskiden 6 aylık TÜM
+        // siparişler 12 kolonla çekilip JS'te gruplanıyordu.
+        .select('id, order_number, work_type, status, hold_status, delivery_date, created_at, patient_name, doctor_id, tooth_numbers, revision_of_id, revision_no, continues_order_id')
         .gte('created_at', sixMonthsAgo.toISOString())
-        .order('created_at', { ascending: false }),
+        .order('created_at', { ascending: false })
+        .limit(5),
       supabase
         .from('work_orders')
         .select('id', { count: 'exact', head: true })
@@ -1150,6 +1214,14 @@ export function LabDashboardScreen() {
         .select('id', { count: 'exact', head: true })
         .eq('status', 'teslim_edildi')
         .gte('updated_at', `${today}T00:00:00`),
+      // PERF (P1): toplam vaka sayısı — satır çekmeden HEAD count.
+      supabase
+        .from('work_orders')
+        .select('id', { count: 'exact', head: true })
+        .gte('created_at', sixMonthsAgo.toISOString()),
+      // PERF (P1): aylık + haftalık seri, sunucu tarafında toplanmış.
+      // Dönen satır: ay sayısı + son 7 gün. Sipariş sayısıyla ölçeklenmez.
+      supabase.rpc('dashboard_activity_series', { p_months: 6 }),
     ]);
 
     const data = mainRes.data;
@@ -1189,9 +1261,11 @@ export function LabDashboardScreen() {
           : null,
       }));
       setRecentOrders(recent5);
-      setTotalCases(data.length);
+      setTotalCases(totalRes.count ?? data.length);
 
-      // Tek pass: monthly + week count + diş (üye) sayısı
+      // ── Aylık + haftalık seri ────────────────────────────────────────────
+      // PERF (P1): toplama sunucuda yapıldı. Boş iskeleti burada kuruyoruz ki
+      // veri gelmeyen ay/gün 0 görünsün (grafikte boşluk olmasın).
       const weekDays = getWeekDays();
       const monthBuckets: { y: number; m: number; count: number; teeth: number }[] = [];
       for (let i = 5; i >= 0; i--) {
@@ -1203,24 +1277,48 @@ export function LabDashboardScreen() {
       const wt: Record<string, number> = {}; // haftalık diş (üye) sayısı
       weekDays.forEach(d => { wc[d.date] = 0; wd[d.date] = 0; wt[d.date] = 0; });
 
-      for (const o of data) {
-        // Diş (üye) sayısı — tooth_numbers dizisinin uzunluğu
-        const teeth = Array.isArray((o as any).tooth_numbers) ? (o as any).tooth_numbers.length : 0;
-        const c = o.created_at ? new Date(o.created_at) : null;
-        if (c) {
+      const series = (!seriesRes.error && Array.isArray(seriesRes.data)) ? seriesRes.data as any[] : null;
+
+      if (series) {
+        for (const row of series) {
+          const period = String(row.period ?? '');           // 'YYYY-MM-DD'
+          const orders = Number(row.orders) || 0;
+          const teeth  = Number(row.teeth) || 0;
+          const done   = Number(row.delivered) || 0;
+
+          if (row.bucket === 'month') {
+            const y = Number(period.slice(0, 4));
+            const m = Number(period.slice(5, 7)) - 1;
+            const mb = monthBuckets.find(b => b.y === y && b.m === m);
+            if (mb) { mb.count = orders; mb.teeth = teeth; }
+          } else if (row.bucket === 'day') {
+            if (wc[period] !== undefined) { wc[period] = orders; wt[period] = teeth; wd[period] = done; }
+          }
+        }
+      } else {
+        // Fallback: RPC yoksa (eski DB) veya hata verirse eski davranışa dön —
+        // 6 aylık tam listeyi çekip JS'te grupla.
+        const { data: full } = await supabase
+          .from('work_orders')
+          .select('created_at, status, tooth_numbers')
+          .gte('created_at', sixMonthsAgo.toISOString());
+        for (const o of (full ?? [])) {
+          const teeth = Array.isArray((o as any).tooth_numbers) ? (o as any).tooth_numbers.length : 0;
+          const c = (o as any).created_at ? new Date((o as any).created_at) : null;
+          if (!c) continue;
           const y = c.getFullYear(), m = c.getMonth();
           for (const mb of monthBuckets) {
             if (mb.y === y && mb.m === m) { mb.count++; mb.teeth += teeth; break; }
           }
-          const isoDay = o.created_at?.slice(0, 10);
+          const isoDay = (o as any).created_at?.slice(0, 10);
           if (isoDay && wc[isoDay] !== undefined) {
             wc[isoDay]++;
             wt[isoDay] += teeth;
-            // Tamamlanan = teslim_edildi statüsü bu hafta içinde olan
             if ((o as any).status === 'teslim_edildi') wd[isoDay]++;
           }
         }
       }
+
       setMonthly(monthBuckets.map(b => ({ month: MONTHS_TR[b.m], count: b.count, teeth: b.teeth })));
       setWeekCounts(wc);
       setWeekDone(wd);
@@ -1371,6 +1469,11 @@ export function LabDashboardScreen() {
       // cleanup gerekmez — fetch'ler idempotent, unmount'ta state guard'lı.
     }, [refetch, loadExtra, loadPipeline, loadProvas]),
   );
+
+  // Canlı: work_orders / order_stages değiştiğinde odak-reload'un aynısını debounce'lu çalıştır.
+  useRealtimeRefresh('lab_dashboard_rt', ['work_orders', 'order_stages'], () => {
+    Promise.all([refetch(), loadExtra(), loadPipeline(), loadProvas()]);
+  });
 
   // Local state → global cache (debounced; navigation sonrası anında render)
   useEffect(() => {
@@ -1641,23 +1744,26 @@ export function LabDashboardScreen() {
     <ScrollView
       className="flex-1"
       contentContainerStyle={{
-        padding: isDesktop ? 10 : 16,
+        // Sayfa kenarı tek kaynaktan (PAGE_PADDING = 16). Desktop'ta 10'du.
+        paddingHorizontal: PAGE_PADDING,
         paddingTop: isDesktop ? 10 : insets.top + 8,
         paddingBottom: 120,
       }}
       refreshControl={<RefreshControl refreshing={refreshing || loading} onRefresh={handleRefresh} tintColor={P} />}
     >
       {/* ════════ HERO ════════ */}
-      <View className="mb-5">
+      {/* Alt boşluk 16 — hero ile altındaki ilk kart arasındaki mesafe sabit. */}
+      <View style={{ marginBottom: 16 }}>
         {/* Hero content row */}
         <View className={`${isDesktop ? 'flex-row justify-between items-end' : ''}`} style={{ gap: 32, paddingTop: 8 }}>
           {/* Left: greeting + stat pills */}
           <View style={{ flex: 1 }}>
+            {/* Selamlama sayfanın konusu değil; bilgi öndedir. 56/40 → 28/24. */}
             <Text style={{
-              ...SERIF, fontSize: isDesktop ? 56 : 40,
-              letterSpacing: -0.025 * (isDesktop ? 56 : 40),
+              ...SERIF, fontSize: isDesktop ? 28 : 24,
+              letterSpacing: -0.025 * (isDesktop ? 28 : 24),
               // Farsça glifler daha uzun → satır kutusunu gevşet (aksi halde üst/alt kırpılır)
-              lineHeight: isRTL(i18n.language) ? (isDesktop ? 82 : 60) : (isDesktop ? 56 : 42),
+              lineHeight: isRTL(i18n.language) ? (isDesktop ? 44 : 38) : (isDesktop ? 32 : 28),
               color: INK,
             }}>
               {t('dashboard.greetingWord')}{' '}
@@ -1669,17 +1775,28 @@ export function LabDashboardScreen() {
               <StatPill label={t('dashboard.stages.production')} value={`${productionPct}%`} bg={INK} color="#FFF" />
               <StatPill label={t('dashboard.delivered')} value={`${deliveryPct}%`} bg={P} color={INK} />
               <StatPill label={t('dashboard.stages.ready')} value={`${readyPct}%`} bg="rgba(0,0,0,0.08)" color={INK} />
+              {/* Geciken AYNI satırda: StatPill ile eşit ölçülü rozet. */}
               {overdueOrders.length > 0 && (
-                <StatPill label={t('dashboard.overdueLabel')} value={`${overdueOrders.length}`} bg="rgba(217,75,75,0.12)" color="#9C2E2E" />
+                <AlertPillX
+                  icon={AlertTriangle}
+                  count={overdueOrders.length}
+                  label={t('dashboard.overdueLabel')}
+                  color={DS.lab.danger}
+                  labelColor="#9C2E2E"
+                  pulse
+                  onPress={() => router.push('/(lab)/orders' as any)}
+                />
               )}
               <FaceScanQuickAction accentColor={P} compact />
             </View>
           </View>
 
-          {/* Right: big stats */}
-          <View className="flex-row" style={{ gap: 32, alignItems: 'flex-end' }}>
+          {/* Right: big stats — kart yok, aralarında yalnız saç teli ayraç. */}
+          <View className="flex-row" style={{ gap: 24, alignItems: 'flex-end', alignSelf: 'flex-end' }}>
             <BigStat value={totalActiveCount} label={t('dashboard.activeOrders')} />
+            <StatDivider />
             <BigStat value={provas.length} label={t('dashboard.tryin')} />
+            <StatDivider />
             <BigStat value={totalCaseCount} label={t('dashboard.totalCases')} />
           </View>
         </View>
@@ -2007,12 +2124,12 @@ export function LabDashboardScreen() {
                       (siparişler listesiyle aynı dil — flattenRevisionCases bayrakları) */}
                   <View style={{ flex: 1.2, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 4, paddingLeft: (order as any).__revChild ? 14 : 0 }}>
                     {(order as any).__revChild && (
-                      <CornerDownRight size={12} color="#9C5E0E" strokeWidth={2.2} style={{ flexShrink: 0 }} />
+                      <CornerDownRight size={12} color={(order as any).__continuation ? '#3563A8' : '#9C5E0E'} strokeWidth={2.2} style={{ flexShrink: 0 }} />
                     )}
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text style={{ fontSize: 12, fontWeight: '800', color: P }} numberOfLines={1}>#{order.order_number}</Text>
                       {(order as any).__revChild ? (
-                        <Text style={{ fontSize: 8.5, fontWeight: '700', color: '#9C5E0E', letterSpacing: 0.4 }}>REVİZYON</Text>
+                        <Text style={{ fontSize: 8.5, fontWeight: '700', color: (order as any).__continuation ? '#3563A8' : '#9C5E0E', letterSpacing: 0.4 }}>{(order as any).__continuation ? 'DEVAM' : 'REVİZYON'}</Text>
                       ) : (order as any).__revParent ? (
                         <Text style={{ fontSize: 8.5, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.4 }}>ORİJİNAL</Text>
                       ) : null}
@@ -2036,7 +2153,7 @@ export function LabDashboardScreen() {
                   </View>
                   {isDesktop && (
                     <Text style={{ flex: 2, fontSize: 11, color: DS.ink[500] }} numberOfLines={1}>{(order as any).__revChild && (
-                      <Text style={{ fontWeight: '700', color: '#9C5E0E' }}>Revizyon - </Text>
+                      <Text style={{ fontWeight: '700', color: (order as any).__continuation ? '#3563A8' : '#9C5E0E' }}>{(order as any).__continuation ? 'Devam - ' : 'Revizyon - '}</Text>
                     )}{order.work_type || '--'}</Text>
                   )}
                   <View style={{ flex: 1.4 }}>

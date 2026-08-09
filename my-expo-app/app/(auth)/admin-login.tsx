@@ -246,7 +246,7 @@ export default function AdminLoginScreen() {
     setForgotLoading(true); setForgotError('');
     const { error } = await supabase.auth.resetPasswordForEmail(
       forgotEmail.trim().toLowerCase(),
-      { redirectTo: 'https://lab.esenkim.com/reset-password' },
+      { redirectTo: 'https://siman.app/reset-password' },
     );
     setForgotLoading(false);
     if (error) { setForgotError('E-posta gönderilemedi.'); return; }

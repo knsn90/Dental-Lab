@@ -4,6 +4,7 @@
  * AuthShell ile beyaz tema.
  */
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { safeBack } from '../../../core/util/safeBack';
 import {
   View, Text, Pressable, TextInput, Platform, Animated,
 } from 'react-native';
@@ -142,7 +143,7 @@ export function VerifyEmailScreen() {
       footerLink={{
         text: 'Yanlış e-posta mı?',
         linkText: 'Geri Dön',
-        onPress: () => router.back(),
+        onPress: () => safeBack('/(auth)/login'),
       }}
     >
       <Animated.View style={{ transform: [{ translateX: shakeX }] }}>

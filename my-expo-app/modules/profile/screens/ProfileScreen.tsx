@@ -11,7 +11,7 @@ import { localeTag } from '../../../core/i18n';
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, Pressable, TextInput,
-  Alert, KeyboardAvoidingView, Platform, Image,
+  Alert, KeyboardAvoidingView, Platform, Image, Modal,
   useWindowDimensions,
 } from 'react-native';
 import { useSegments } from 'expo-router';
@@ -240,6 +240,8 @@ export function ProfileScreen() {
   const inkPrimary = T.ink;
 
   const { profile, signOut, setProfile, session } = useAuthStore() as any;
+  // Web/PWA çıkış onayı — Alert.alert web'de çalışmadığı için modal
+  const [signOutOpen, setSignOutOpen] = useState(false);
   // Auth membership email fallback — profile.email NULL ise auth.users'tan al
   const authEmail: string = (session?.user?.email ?? '').trim();
   const roleLabel = getRoleLabel(profile);
@@ -393,7 +395,11 @@ export function ProfileScreen() {
     finally { setSavingPass(false); }
   };
 
+  // Web/PWA: Alert.alert react-native-web'de NO-OP (buton callback'i hiç çalışmaz),
+  // window.confirm ise standalone PWA'da engellenebiliyor → uygulama-içi onay modalı.
+  // (DoctorProfileMobile ile aynı desen.) Native'de Alert.alert korunur.
   const handleSignOut = () => {
+    if (Platform.OS === 'web') { setSignOutOpen(true); return; }
     Alert.alert('Çıkış Yap', 'Hesabınızdan çıkmak istediğinizden emin misiniz?', [
       { text: 'İptal', style: 'cancel' },
       { text: 'Çıkış Yap', style: 'destructive', onPress: signOut },
@@ -839,6 +845,38 @@ export function ProfileScreen() {
 
         </>}
       </ScrollView>
+
+      {/* Çıkış onayı — web/PWA (Alert.alert orada no-op) */}
+      <Modal visible={signOutOpen} transparent animationType="fade" onRequestClose={() => setSignOutOpen(false)}>
+        <Pressable
+          onPress={() => setSignOutOpen(false)}
+          style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+        >
+          <Pressable
+            onPress={(e: any) => e.stopPropagation?.()}
+            style={{ width: '100%', maxWidth: 380, backgroundColor: '#FFFFFF', borderRadius: 18, padding: 22, gap: 8 }}
+          >
+            <Text style={{ fontSize: 17, fontWeight: '700', color: '#0A0A0A', letterSpacing: -0.3 }}>Çıkış Yap</Text>
+            <Text style={{ fontSize: 13.5, color: '#6B6B6B', lineHeight: 20 }}>
+              Hesabınızdan çıkmak istediğinizden emin misiniz?
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+              <Pressable
+                onPress={() => setSignOutOpen(false)}
+                style={{ flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: '#EAEAEA', alignItems: 'center', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+              >
+                <Text style={{ fontSize: 14, fontWeight: '600', color: '#2C2C2C' }}>İptal</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => { setSignOutOpen(false); signOut(); }}
+                style={{ flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: '#DC2626', alignItems: 'center', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
+              >
+                <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>Çıkış Yap</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }

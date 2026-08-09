@@ -24,7 +24,7 @@ import type { PublicPaymentIntent, CardInput } from '../types';
 
 function fmtMoney(n: number, cur = 'TRY'): string {
   const sym = cur === 'TRY' ? '₺' : cur === 'USD' ? '$' : '€';
-  return sym + n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return sym + (Number(n) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export function PublicPaymentScreen() {
@@ -60,7 +60,7 @@ export function PublicPaymentScreen() {
       if (e.data?.type === 'demo-3ds-success') {
         // Backend'e onay
         if (intent) {
-          const { error } = await confirmPayment(intent.intent_id, e.data.ref);
+          const { error } = await confirmPayment(intent.intent_id, e.data.ref, String(token));
           if (error) { setFailMessage(error.message ?? 'Onaylama başarısız'); setStage('fail'); }
           else                                                              setStage('success');
         }
@@ -68,7 +68,7 @@ export function PublicPaymentScreen() {
     };
     window.addEventListener('message', onMsg);
     return () => window.removeEventListener('message', onMsg);
-  }, [stage, intent]);
+  }, [stage, intent, token]);
 
   const handlePay = async () => {
     if (!intent) return;

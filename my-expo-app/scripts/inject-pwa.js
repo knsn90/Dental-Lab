@@ -15,7 +15,7 @@ let html = fs.readFileSync(indexPath, 'utf8');
 const PWA_HEAD = `
     <!-- ── PWA Manifest ──────────────────────────────────────────────── -->
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#F2EDE3" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0E0E0E" media="(prefers-color-scheme: dark)" />
 
     <!-- ── iOS PWA capable ──────────────────────────────────────────── -->
@@ -53,18 +53,30 @@ const PWA_HEAD = `
               });
             });
 
-            // Controller değişince (yeni SW aktif olduğunda) sayfayı yenile
-            var refreshing = false;
-            navigator.serviceWorker.addEventListener('controllerchange', function () {
-              if (refreshing) return;
-              refreshing = true;
-              window.location.reload();
-            });
+            // ZORLA YENILEME YOK - bilerek kaldirildi (2026-08-04).
+            //
+            // Eskiden burada controllerchange olayinda window.location.reload()
+            // cagriliyordu. Sonucu: yeni bir surum yayinlandigi anda, kullanici
+            // ne yapiyorsa yapsin sayfa kendini yeniliyordu. Kullanici deneyimi:
+            //   tikla -> sayfa acildi -> EKRAN KAYBOLDU -> 18 sn tam ekran splash
+            //   -> sayfa geri geldi
+            // (olculen gercek vaka: dashboard -> siparisler gecisinde 18 saniye).
+            // Bu "veri yukleniyor" akisi degil, tam sayfa yeniden yuklemeydi:
+            // HTML bastan ayristigi icin lf-splash tekrar goruntuleniyor ve
+            // 8 MB'lik paket yeniden indirilip parse ediliyordu. Formda yazilan
+            // veri de uyarisiz kaybolabiliyordu.
+            //
+            // Yeni davranis: SW install'da skipWaiting + activate'te clients.claim
+            // yaptigi icin yeni surum ZATEN devreye giriyor; kullanici bir sonraki
+            // dogal sayfa acilisinda yeni surumu alir. Calisan sekme kesilmez.
+            // (Eski chunk URL'leri Vercel'de kalici oldugu icin mevcut oturum
+            //  sorunsuz devam eder.)
 
-            // Periyodik update kontrolü — her 60 saniyede bir
-            setInterval(function () { reg.update().catch(function(){}); }, 60_000);
+            // Periyodik update kontrolü — 60 sn çok agresifti; artık 15 dakika.
+            // Kontrolün kendisi zararsız, ama sık kontrol = sık SW takası.
+            setInterval(function () { reg.update().catch(function(){}); }, 900_000);
 
-            // Sekme tekrar aktif olunca da kontrol et
+            // Sekme tekrar aktif olunca da kontrol et (yenileme tetiklemez).
             document.addEventListener('visibilitychange', function () {
               if (document.visibilityState === 'visible') reg.update().catch(function(){});
             });
@@ -77,7 +89,7 @@ const PWA_HEAD = `
 
     <!-- ── Safe area CSS (üst notch + alt home indicator) + no-zoom ── -->
     <style>
-      :root { --app-bg: #F2EDE3; }
+      :root { --app-bg: #FFFFFF; }
       html, body {
         background-color: var(--app-bg);
         /* PWA: pinch-zoom / double-tap zoom kapalı */
@@ -99,6 +111,18 @@ html = html.replace(
   /<meta name="viewport" content="[^"]+"\s*\/>/,
   '<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover" />',
 );
+
+// ─── Dil + otomatik çeviri ─────────────────────────────────────────────
+// Expo varsayılan olarak <html lang="en"> üretir; içerik Türkçe olunca
+// Chrome/Android otomatik Google Translate ile İngilizceye çevirip UI'ı bozuyor.
+// Doğru dil (tr) + translate="no" + notranslate meta → otomatik çeviri kapanır.
+// (Uygulama TR-öncelikli + kendi i18n'i var.)
+html = html.replace(/<html[^>]*>/i, '<html lang="tr" translate="no">');
+if (!/name=["']google["']\s+content=["']notranslate["']/i.test(html)) {
+  html = html.replace(/<head>/i, '<head>\n    <meta name="google" content="notranslate" />');
+}
+fs.writeFileSync(indexPath, html);
+console.log('✓ lang=tr + notranslate (auto-translate off) applied');
 
 // ─── Preload entry JS — browser bundle'ı header'ı parse eder etmez fetch'lemeye başlasın
 // Expo dist'inde script tag <body>'de en sona ekleniyor; bu HTML parse blocking olmasa da

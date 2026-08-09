@@ -6,6 +6,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, Pressable, Platform, Animated, Keyboard, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Mail, Lock, Eye, EyeOff, AlertCircle, Check, WifiOff, ShieldAlert, RefreshCw, X } from 'lucide-react-native';
+import { PaymentBadges } from '../../../core/ui/PaymentBadges';
 
 // "Beni Hatırla" preference — localStorage'da saklanır.
 // OFF olursa: sayfa kapanırken supabase.auth.signOut çağrılır (tab close → logout).
@@ -94,6 +95,8 @@ export function LoginScreen() {
     setOtpDigits(prev => Array.from({ length: OTP_LENGTH }, (_, i) => clean[i] ?? ''));
   };
   const otpRefs = useRef<(TextInput | null)[]>([]);
+  /** Şifre alanı — e-postada Enter'a basınca odak buraya geçer. */
+  const passRef = useRef<TextInput>(null);
   const handleOtpBoxChange = (idx: number, v: string) => {
     const digit = (v.replace(/\D/g, '').slice(-1)) || '';
     setOtpDigits(prev => {
@@ -289,7 +292,7 @@ export function LoginScreen() {
     setForgotLoading(true); setForgotError('');
     const { error } = await supabase.auth.resetPasswordForEmail(
       forgotEmail.trim().toLowerCase(),
-      { redirectTo: 'https://lab.esenkim.com/reset-password' },
+      { redirectTo: 'https://siman.app/reset-password' },
     );
     setForgotLoading(false);
     if (error) { setForgotError('E-posta gönderilemedi. Tekrar deneyin.'); return; }
@@ -496,6 +499,10 @@ export function LoginScreen() {
               keyboardType="email-address"
               autoCapitalize="none"
               returnKeyType="next"
+              // Enter → şifre alanına geç. `returnKeyType="next"` yazıyordu ama
+              // odağı taşıyan kod yoktu; e-postada Enter'a basmak hiçbir şey
+              // yapmıyor, kullanıcı da "Enter ile giriş olmuyor" diyordu.
+              onSubmitEditing={() => passRef.current?.focus()}
               error={errors.email}
               icon={<Mail size={15} color={AUTH.inkMuted} strokeWidth={1.8} />}
             />
@@ -553,6 +560,7 @@ export function LoginScreen() {
                 value={password}
                 onChangeText={v => { setPassword(v); setErrors(p => ({ ...p, password: undefined })); setErrorMsg(''); }}
                 placeholder="••••••••••••"
+                inputRef={passRef}
                 secureTextEntry={!showPass}
                 returnKeyType="go"
                 onSubmitEditing={otpMode ? handleOtpVerify : handleLogin}
@@ -642,6 +650,23 @@ export function LoginScreen() {
           </>
         )}
       </Animated.View>
+
+      {/* iyzico kriteri: giriş ekranında yasal sayfa linkleri + ödeme logoları görünür */}
+      <View style={{ marginTop: 22, alignItems: 'center', gap: 12 }}>
+        <PaymentBadges />
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 12 }}>
+          {[
+            { href: '/legal/hakkimizda', label: 'Hakkımızda' },
+            { href: '/legal/mesafeli-satis', label: 'Mesafeli Satış' },
+            { href: '/legal/teslimat-iade', label: 'Teslimat & İade' },
+            { href: '/legal/gizlilik', label: 'Gizlilik / KVKK' },
+          ].map(l => (
+            <Pressable key={l.href} onPress={() => router.push(l.href as any)} style={Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : undefined}>
+              <Text style={{ fontSize: 9.5, fontWeight: '600', color: '#9A9A9A' }}>{l.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
     </AuthShell>
   );
 }

@@ -9,15 +9,19 @@ import { localeTag } from '../../../core/i18n';
  *   • Cari hareketler tablosu (PURCHASE / PAYMENT / RETURN / ADJUSTMENT)
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
+import { useRouter, useSegments } from 'expo-router';
+import { HubContext } from '../../../core/ui/HubContext';
+import { PurchaseInvoiceDetailScreen } from '../../purchases/screens/PurchaseInvoiceDetailScreen';
 import { View, Text, Pressable, Platform, ScrollView} from 'react-native';
+import { confirmAsync } from '../../../core/util/confirm';
 import {
   ArrowLeft, ArrowDownCircle, ArrowUpCircle, RotateCcw, Settings as Adjust,
   Phone, Mail, Globe, MapPin, Building2, CreditCard, Calendar,
   Pencil, Plus, Receipt, Printer, FileSpreadsheet, Trash2,
 } from 'lucide-react-native';
 import { useAuthStore } from '../../../core/store/authStore';
-import { formatMoney, useBaseCurrency } from '../../../core/money/currency';
+import { formatMoney, useBaseCurrency, type Currency } from '../../../core/money/currency';
 import { CurrencyBreakdown } from '../../../core/money/CurrencyBreakdown';
 import { sumByCurrency } from '../../../core/money/aggregations';
 import {
@@ -40,6 +44,22 @@ interface Props {
 }
 
 export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBack }: Props) {
+  const router     = useRouter();
+  const segments   = useSegments();
+  const panel      = (segments?.[0] as string) ?? '(lab)';
+  const isEmbedded = useContext(HubContext);
+
+  /**
+   * Fatura detayı bu ekranın İÇİNDE açılır — hub'ın içeriğini değiştirmek
+   * yerine. Sebep: hub seviyesinde açınca bu ekran unmount oluyor, geri
+   * dönüldüğünde hangi tedarikçide olduğumuz kayboluyor ve liste başa
+   * dönüyordu. Kenar çubuğu yine yerinde kalır (hub'ın içindeyiz).
+   */
+  const [invoiceId, setInvoiceId] = useState<string | null>(null);
+  const openInvoice = (id: string) => {
+    if (isEmbedded) setInvoiceId(id);
+    else router.push(`/${panel}/purchase-invoice/${id}` as any);
+  };
   const baseCurrency = useBaseCurrency();
   const [supplier, setSupplier] = useState<Supplier | null>(null);
   const [balance, setBalance] = useState<SupplierBalance | null>(null);
@@ -56,9 +76,7 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
 
   const handleDeleteTx = async (t: SupplierTransaction) => {
     const msg = `"${TX_TYPE_LABELS[t.type]}" hareketini silmek istediğine emin misin? Cari bakiye yeniden hesaplanacak.`;
-    const ok = Platform.OS === 'web' && typeof window !== 'undefined'
-      ? window.confirm(msg)
-      : true;
+    const ok = await confirmAsync('Hareketi Sil', msg, { confirmText: 'Sil', destructive: true });
     if (!ok) return;
     const { error } = await deleteTransaction(t.id);
     if (error) {
@@ -97,13 +115,29 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
 
   // Hooks ÖNCE, early return SONRA — "Rendered more hooks" hatasını önler.
   // Phase 4: currency breakdown for purchases vs payments
+  // Cari, tedarikçinin kendi para biriminde tutulur (EUR faturalı tedarikçide EUR).
+  // Toplamlar/bakiye amount_account üzerinden; ≈₺ karşılığı ikincil bilgi olarak kalır.
+  const acctCurrency = ((supplier?.default_currency ?? baseCurrency) as Currency);
+  /**
+   * Hareketin CARİ para birimindeki tutarı.
+   *
+   * amount_base'e ASLA düşülmez: o, labın baz para biriminde (EUR) tutulur ve
+   * cari TL ise 593 TL'lik alış "₺11" olarak görünür. Hesap tutarı yoksa,
+   * yalnız para birimleri aynıysa işlemin kendi tutarı kullanılabilir.
+   */
+  const acctOf = (t: any) => {
+    if (t.amount_account != null) return Number(t.amount_account);
+    if ((t.currency ?? acctCurrency) === acctCurrency) return Number(t.amount);
+    return 0;   // çevrilemiyor — sıfır say, toplamı yanlış para birimiyle şişirme
+  };
+
   const purchaseSummary = useMemo(() => sumByCurrency(
     transactions.filter(t => t.type === 'PURCHASE'),
-    t => ({ amount: Number(t.amount), currency: t.currency, amountBase: Number(t.amount_base ?? t.amount) }),
+    t => ({ amount: Number(t.amount), currency: t.currency, amountBase: acctOf(t) }),
   ), [transactions]);
   const paymentSummary = useMemo(() => sumByCurrency(
     transactions.filter(t => t.type === 'PAYMENT' || t.type === 'RETURN'),
-    t => ({ amount: Number(t.amount), currency: t.currency, amountBase: Number(t.amount_base ?? t.amount) }),
+    t => ({ amount: Number(t.amount), currency: t.currency, amountBase: acctOf(t) }),
   ), [transactions]);
 
   // Hareketleri eskiden yeniye sıralayıp running balance hesapla.
@@ -119,7 +153,7 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
     let totalDebit = 0;
     let totalCredit = 0;
     const rows = asc.map(t => {
-      const baseAmt = t.amount_base != null ? Number(t.amount_base) : Number(t.amount);
+      const baseAmt = acctOf(t);
       let debit = 0, credit = 0;
       if (t.type === 'PURCHASE') debit = baseAmt;
       else if (t.type === 'PAYMENT' || t.type === 'RETURN') credit = baseAmt;
@@ -132,14 +166,29 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
     return { rows, totalDebit, totalCredit, closing: running };
   }, [transactions]);
 
+  if (invoiceId) {
+    return (
+      <PurchaseInvoiceDetailScreen
+        invoiceId={invoiceId}
+        onBack={() => { setInvoiceId(null); load(); }}
+      />
+    );
+  }
+
   if (loading || !supplier) {
     return <CenteredLoader color={accentColor} />;
   }
 
-  const tone = balance ? balanceColor(balance.balance_base) : 'zero';
+  // Bakiye cari para biriminde (balance_account); view'da yoksa eski alana düş.
+  const balanceAcct = balance
+    ? Number((balance as any).balance_account ?? balance.balance_base)
+    : 0;
+  const tone = balance ? balanceColor(balanceAcct) : 'zero';
   const toneColor = tone === 'debt' ? '#9C2E2E' : tone === 'credit' ? '#1F6B47' : '#9A9A9A';
   const toneLabel = tone === 'debt' ? 'Bizim borcumuz' : tone === 'credit' ? 'Bizim alacağımız' : 'Hesap eşit';
-  const balanceText = balance ? formatMoney(Math.abs(balance.balance_base), baseCurrency, { fractionDigits: 0 }) : '—';
+  const balanceText = balance
+    ? formatMoney(Math.abs(balanceAcct), acctCurrency, { fractionDigits: 2 })
+    : '—';
 
   // ── Export helpers ──
   const escapeCsv = (v: any): string => {
@@ -356,7 +405,7 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
               <Text style={[eyebrow, { color: '#9C2E2E' }]}>Toplam alış</Text>
               <CurrencyBreakdown
                 summary={purchaseSummary}
-                baseCurrency={baseCurrency}
+                baseCurrency={acctCurrency}
                 mode="compact"
                 title="Alış"
                 accentColor="#9C2E2E"
@@ -367,7 +416,7 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
               <Text style={[eyebrow, { color: '#1F6B47' }]}>Toplam ödenen</Text>
               <CurrencyBreakdown
                 summary={paymentSummary}
-                baseCurrency={baseCurrency}
+                baseCurrency={acctCurrency}
                 mode="compact"
                 title="Ödeme"
                 accentColor="#1F6B47"
@@ -413,15 +462,17 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
           // PURCHASE satırı tıklanabilir: önce purchase_invoice_id, yoksa invoice_no ile bul
           const isPurchase = t.type === 'PURCHASE' && (!!t.purchase_invoice_id || !!t.invoice_no);
 
+          // Fatura artık uygulama içinde tam sayfa açılır; resmî belge
+          // görünümü orada "Yazdır" butonunun arkasında.
           const openPurchasePreview = async () => {
             if (t.purchase_invoice_id) {
-              setPreviewInvoiceId(t.purchase_invoice_id);
+              openInvoice(t.purchase_invoice_id);
               return;
             }
             // Legacy fallback — invoice_no'dan UUID bul
             if (t.invoice_no) {
               const { data: uuid } = await findPurchaseInvoiceByNumber(t.invoice_no, t.supplier_id);
-              if (uuid) setPreviewInvoiceId(uuid);
+              if (uuid) openInvoice(uuid);
             }
           };
 
@@ -474,9 +525,13 @@ export function SupplierDetailScreen({ supplierId, accentColor = '#0A0A0A', onBa
                 <Text style={{ fontSize: 14, fontWeight: '600', color: txColor, letterSpacing: -0.2 }}>
                   {sign > 0 ? '+' : '−'}{formatMoney(t.amount, t.currency, { fractionDigits: 2 })}
                 </Text>
-                {t.currency !== baseCurrency && t.amount_base != null ? (
+                {/* İkincil satır CARİNİN para biriminde (amount_account), baz ₺'de değil.
+                    Bakiye/toplamlar zaten acctCurrency üzerinden hesaplanıyor; ≈ satırı
+                    da onunla aynı birimde olmalı ki hareketler bakiyeyle kıyaslanabilsin.
+                    Çevrim kaydın kendi account_rate_at_time'ıyla yapılmış (yeniden hesap yok). */}
+                {t.currency !== acctCurrency && t.amount_account != null ? (
                   <Text style={{ fontSize: 10, color: '#9A9A9A', marginTop: 1 }}>
-                    ≈ {formatMoney(Math.abs(t.amount_base), baseCurrency, { fractionDigits: 0 })}
+                    ≈ {formatMoney(Math.abs(Number(t.amount_account)), acctCurrency, { fractionDigits: 2 })}
                   </Text>
                 ) : null}
               </View>

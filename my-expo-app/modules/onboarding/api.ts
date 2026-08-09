@@ -246,6 +246,6 @@ export function fmtPrice(n: number) {
       style: 'currency', currency: 'TRY', maximumFractionDigits: 0,
     }).format(n);
   } catch {
-    return `₺${n.toLocaleString('tr-TR')}`;
+    return `₺${(Number(n) || 0).toLocaleString('tr-TR')}`;
   }
 }

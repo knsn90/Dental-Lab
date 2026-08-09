@@ -20,24 +20,40 @@ import {
   type ClientOrderEditFields, type ClientOrderEditItem,
 } from '../orders/api';
 import { createChangeRequest } from '../orders/changeRequests';
+import { adminCompleteStage, assignTechnician } from '../orders/api';
 import { sendMessage as chatSendMessage } from '../orders/chatApi';
 import { createTicket } from '../support/api';
-import { fetchClinicBalancesByCurrency } from '../invoices/api';
+import { fetchClinicBalancesByCurrency, createInvoiceFromOrder } from '../invoices/api';
 import { formatMoney, type Currency } from '../../core/money/currency';
-import { DENTY_DESTINATIONS, type DentyContext } from './context';
+import { DENTY_DESTINATIONS, type DentyContext, type PanelGroup } from './context';
 import { useDentyStore } from './store/dentyStore';
 import { getActiveViewer } from '../viewer-3d/viewerBridge';
-import { describeOcclusion } from '../viewer-3d/lib/occlusion';
+// DİKKAT: `describeOcclusion`'ı STATİK import ETME.
+// occlusion.ts `import * as THREE from 'three'` + `three-mesh-bvh` çekiyor.
+// Bu dosya giriş paketinde olduğu için statik import three.js'i (~0,83 MB,
+// giriş paketinin %10'u) herkese indirtiyordu — üstelik viewer-3d diğer tüm
+// çağrı yerlerinde (Viewer3DLazy, dinamik import) doğru şekilde lazy'ydi;
+// bu tek satır o çabayı boşa çıkarıyordu.
+// Aşağıda çağrı anında dinamik yükleniyor; o an görüntüleyici zaten açık
+// olduğu için three zaten belleğe gelmiş olur, ek gecikme yok.
 import type { ActionCard, ToolDef, ToolKit } from './types';
 
 /** Onay (kullanıcı kartı) gerektiren yazma araçları. */
-export const WRITE_TOOLS = new Set(['siparisOlustur', 'siparisDuzenle', 'siparisIptal', 'destekTalebiAc', 'mesajGonder']);
+export const WRITE_TOOLS = new Set([
+  'siparisOlustur', 'siparisDuzenle', 'siparisIptal', 'destekTalebiAc', 'mesajGonder',
+  // Lab/yönetici yazma araçları — hepsi onay kartından geçer
+  'asamaIlerlet', 'teknisyenAta', 'faturaKes', 'notEkle',
+]);
 
 /**
  * Genel salt-okunur sorgu için izin verilen tablolar (whitelist).
  * RLS, kullanıcının yalnızca görebildiği satırları döndürür — Denty yetki aşamaz.
  */
-const READ_TABLES: Record<string, { desc: string; search?: string }> = {
+type ReadTable = { desc: string; search?: string; panels?: PanelGroup[] };
+
+const LAB_SIDE: PanelGroup[] = ['(lab)', '(admin)'];
+
+const READ_TABLES: Record<string, ReadTable> = {
   work_orders:      { desc: 'Siparişler / iş emirleri', search: 'patient_name' },
   invoices:         { desc: 'Faturalar', search: 'invoice_number' },
   payments:         { desc: 'Ödemeler' },
@@ -48,7 +64,30 @@ const READ_TABLES: Record<string, { desc: string; search?: string }> = {
   order_messages:   { desc: 'Sipariş sohbet mesajları' },
   notifications:    { desc: 'Bildirimler' },
   order_stages:     { desc: 'Sipariş üretim aşamaları' },
+  // ── Yalnız lab/yönetici tarafı ──────────────────────────────────────────
+  order_items:      { desc: 'Sipariş kalemleri (iş tipi, diş, fiyat)', panels: LAB_SIDE },
+  stock_items:      { desc: 'Stok kalemleri (miktar, kritik seviye)', search: 'name', panels: LAB_SIDE },
+  lab_stations:     { desc: 'Üretim istasyonları', search: 'name', panels: LAB_SIDE },
+  provas:           { desc: 'Prova randevuları', panels: LAB_SIDE },
+  order_reviews:    { desc: 'Sipariş değerlendirmeleri (puan)', panels: LAB_SIDE },
+  expenses:         { desc: 'Giderler', panels: ['(admin)'] },
+  employees:        { desc: 'Personel kayıtları', search: 'full_name', panels: ['(admin)'] },
+  deliveries:       { desc: 'Teslimatlar / kurye görevleri', panels: ['(lab)', '(admin)', '(courier)'] },
 };
+
+/** Panelde okunabilir tablolar — RLS zaten satır bazında kısıtlar; bu liste
+ *  modele "neyi sorabilirsin"i anlatır ve alakasız tabloyu görmesini engeller. */
+export function readTablesFor(panel: PanelGroup | null): Record<string, ReadTable> {
+  const out: Record<string, ReadTable> = {};
+  for (const [name, meta] of Object.entries(READ_TABLES)) {
+    if (!meta.panels || (panel && meta.panels.includes(panel))) out[name] = meta;
+  }
+  return out;
+}
+
+export function readTableCatalog(panel: PanelGroup | null): string {
+  return Object.entries(readTablesFor(panel)).map(([t, m]) => `${t} (${m.desc})`).join(', ');
+}
 
 export const READ_TABLE_CATALOG = Object.entries(READ_TABLES)
   .map(([t, m]) => `${t} (${m.desc})`)
@@ -140,6 +179,36 @@ const TOOL_DEFS: ToolDef[] = [
   {
     name: 'taramaTeshis',
     description: 'Açık 3D görüntüleyicideki taramaların kalite teşhisini döner: üçgen sayısı, açık (delik) kenar, non-manifold kenar, ters normal oranı. "bu taramada sorun/delik var mı, mesh-repair gerekir mi" sorularında kullan. Yalnız 3D görüntüleyici açıkken. Salt-okunur.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'gunlukOzet',
+    description:
+      'Laboratuvarın GÜNLÜK DURUM ÖZETİ: gecikmiş sipariş, bugün teslim edilecek, planlama bekleyen, kritik stok ve faturası kesilmemiş teslimat sayıları + ilk birkaç örnek. "bugün ne var", "durum nedir", "özet geç" sorularında ilk bunu çağır. Salt-okunur.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'asamaDurumu',
+    description:
+      'Bir siparişin ÜRETİM AŞAMALARINI döner (sıra, aşama adı, durum, atanan teknisyen). "hangi aşamada", "kimin üzerinde", "nerede kaldı" sorularında kullan. Sipariş no verilmezse açık siparişi kullanır. Salt-okunur.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        siparis_no: { type: 'string', description: 'Sipariş numarası (örn. LAB-2026-0118). Boşsa açık sipariş kullanılır.' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'istasyonYuku',
+    description:
+      'İstasyon başına BEKLEYEN/DEVAM EDEN iş sayısını döner — hangi istasyonun tıkalı olduğunu gösterir. "istasyonlarda kaç iş var", "nerede birikme var" sorularında kullan. Salt-okunur.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'stokDurumu',
+    description:
+      'Kritik seviyenin altındaki stok kalemlerini döner (kalan miktar / minimum). "stok durumu", "neyimiz bitiyor" sorularında kullan. Salt-okunur.',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
@@ -248,6 +317,55 @@ const TOOL_DEFS: ToolDef[] = [
         siparis_id: { type: 'string', description: 'Alternatif: sipariş UUID.' },
       },
       required: [],
+    },
+  },
+  {
+    name: 'asamaIlerlet',
+    description:
+      'Bir siparişin AKTİF üretim aşamasını tamamlar ve sıradaki aşamayı başlatır (admin_complete_stage). Yalnız lab yöneticisi/admin. Aşama belirtilmezse aktif aşama kullanılır. YAZMA — onay kartı çıkar.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        siparis_no: { type: 'string', description: 'Sipariş numarası. Boşsa açık sipariş kullanılır.' },
+        asama_adi:  { type: 'string', description: 'Belirli bir aşamayı tamamlamak için aşama adı (opsiyonel).' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'teknisyenAta',
+    description:
+      'Siparişi bir teknisyene atar (work_orders.assigned_to). Teknisyen adı kısmi verilebilir; birden çok eşleşirse liste döner ve işlem yapılmaz. YAZMA — onay kartı çıkar.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        siparis_no:   { type: 'string', description: 'Sipariş numarası. Boşsa açık sipariş kullanılır.' },
+        teknisyen_adi:{ type: 'string', description: 'Teknisyen adı (kısmi olabilir).' },
+      },
+      required: ['teknisyen_adi'],
+    },
+  },
+  {
+    name: 'faturaKes',
+    description:
+      'Teslim edilmiş bir siparişten fatura oluşturur (create_invoice_from_order). Sipariş teslim edilmemişse veya faturası zaten varsa uyarı döner. YAZMA — onay kartı çıkar.',
+    input_schema: {
+      type: 'object',
+      properties: { siparis_no: { type: 'string', description: 'Sipariş numarası. Boşsa açık sipariş kullanılır.' } },
+      required: [],
+    },
+  },
+  {
+    name: 'notEkle',
+    description:
+      'Siparişe LAB İÇİ not ekler (work_orders.lab_notes sonuna tarihli satır olarak eklenir; mevcut not silinmez). Hekime görünmez. YAZMA — onay kartı çıkar.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        siparis_no: { type: 'string', description: 'Sipariş numarası. Boşsa açık sipariş kullanılır.' },
+        not:        { type: 'string', description: 'Eklenecek not metni.' },
+      },
+      required: ['not'],
     },
   },
   {
@@ -390,6 +508,13 @@ function titleCaseTr(s: string): string {
 }
 
 /** Onay kartı içeriğini üretir (saf fonksiyon — UI'da gösterilir). */
+/** Lab yöneticisi mi? Yazma araçları için istemci tarafı ön kontrol —
+ *  asıl yetki RPC'lerin içinde (_assert_stage_manager / is_lab_user) zorlanır. */
+function isLabManager(ctx: DentyContext): boolean {
+  if (ctx.userType === 'admin') return true;
+  return ctx.userType === 'lab' && (ctx.role === 'manager' || ctx.role === 'admin');
+}
+
 export function describeAction(name: string, input: any): ActionCard {
   if (name === 'siparisOlustur') {
     const rows: { label: string; value: string }[] = [];
@@ -429,6 +554,28 @@ export function describeAction(name: string, input: any): ActionCard {
     if (input?.notlar) rows.push({ label: 'Not', value: String(input.notlar) });
     return { toolName: name, title: 'Yeni sipariş oluştur', rows };
   }
+  // ── Lab/yönetici yazma araçları ──────────────────────────────────────────
+  if (name === 'asamaIlerlet' || name === 'teknisyenAta' || name === 'faturaKes' || name === 'notEkle') {
+    const ref = input?.siparis_no ? `#${String(input.siparis_no).replace(/^#/, '')}` : 'Açık sipariş';
+    const rows: { label: string; value: string }[] = [{ label: 'Sipariş', value: ref }];
+    if (name === 'asamaIlerlet') {
+      rows.push({ label: 'Aşama', value: input?.asama_adi ? String(input.asama_adi) : 'Aktif aşama' });
+      rows.push({ label: 'Sonuç', value: 'Tamamlanır, sıradaki aşama başlar' });
+      return { toolName: name, title: 'Aşamayı ilerlet', rows };
+    }
+    if (name === 'teknisyenAta') {
+      rows.push({ label: 'Teknisyen', value: String(input?.teknisyen_adi ?? '-') });
+      return { toolName: name, title: 'Teknisyen ata', rows };
+    }
+    if (name === 'faturaKes') {
+      rows.push({ label: 'İşlem', value: 'Teslim edilmiş siparişten fatura oluşturulur' });
+      return { toolName: name, title: 'Fatura kes', rows };
+    }
+    rows.push({ label: 'Not', value: String(input?.not ?? '-') });
+    rows.push({ label: 'Görünürlük', value: 'Yalnız lab içi' });
+    return { toolName: name, title: 'Lab notu ekle', rows };
+  }
+
   if (name === 'siparisDuzenle' || name === 'siparisIptal') {
     const ref = input?.siparis_no
       ? `#${String(input.siparis_no).replace(/^#/, '')}`
@@ -528,6 +675,58 @@ async function resolveOrderRef(
   return { row: data[0] };
 }
 
+
+/**
+ * Araç meta'sı — hangi panelde geçerli, hangi izni ister.
+ * `panels` yoksa her panelde geçerlidir. Model YALNIZ geçerli araçları görür:
+ * böylece klinik kullanıcıya lab aracı, teknisyene fatura aracı önerilmez ve
+ * prompt boşuna şişmez. (Anthropic tool şemasına ek alan gönderilmez — bu tablo
+ * yalnız istemci tarafında filtreleme içindir.)
+ */
+const TOOL_META: Record<string, { panels?: PanelGroup[]; requires?: 'orders' | 'support' | 'messages' }> = {
+  // Her panelde
+  goturBeni:      {},
+  siparisAra:     {},
+  veriOku:        {},
+  kapanisAnalizi: {},
+  taramaTeshis:   {},
+  // Klinik tarafı
+  cariDurum:      { panels: ['(clinic)', '(doctor)'] },
+  hekimAra:       { panels: ['(clinic)', '(doctor)'] },
+  siparisOlustur: { panels: ['(clinic)', '(doctor)', '(admin)', '(lab)'] },
+  siparisDuzenle: { panels: ['(clinic)', '(doctor)', '(admin)', '(lab)'] },
+  siparisIptal:   { panels: ['(clinic)', '(doctor)'] },
+  // Lab / yönetici
+  gunlukOzet:     { panels: ['(lab)', '(admin)'] },
+  asamaDurumu:    { panels: ['(lab)', '(admin)', '(station)'] },
+  istasyonYuku:   { panels: ['(lab)', '(admin)'] },
+  stokDurumu:     { panels: ['(lab)', '(admin)'] },
+  asamaIlerlet:   { panels: ['(lab)', '(admin)'] },
+  teknisyenAta:   { panels: ['(lab)', '(admin)'] },
+  faturaKes:      { panels: ['(lab)', '(admin)'] },
+  notEkle:        { panels: ['(lab)', '(admin)'] },
+  // İzin gerektirenler
+  destekTalebiAc: { requires: 'support' },
+  mesajGonder:    { requires: 'messages' },
+};
+
+/** Panele + izne göre modele tanıtılacak araçlar. */
+export function toolDefsFor(ctx: DentyContext): ToolDef[] {
+  return TOOL_DEFS.filter((d) => {
+    const meta = TOOL_META[d.name];
+    if (!meta) return true;
+    if (meta.panels && (!ctx.panel || !meta.panels.includes(ctx.panel))) return false;
+    if (meta.requires && !ctx.perms[meta.requires]) return false;
+    return true;
+  }).map((d) =>
+    // veriOku'nun tablo listesi panele göre daralır
+    d.name === 'veriOku'
+      ? { ...d, input_schema: { ...d.input_schema, properties: { ...d.input_schema.properties,
+          tablo: { ...d.input_schema.properties.tablo, description: `Okunacak tablo. İzinli tablolar: ${readTableCatalog(ctx.panel)}.` } } } }
+      : d,
+  );
+}
+
 export function useDentyToolkit(ctx: DentyContext): ToolKit {
   const router = useRouter();
   const profile = useAuthStore((s) => s.profile);
@@ -537,7 +736,7 @@ export function useDentyToolkit(ctx: DentyContext): ToolKit {
   const navigate = useCallback((hedef: string): string => {
     const dest = DENTY_DESTINATIONS[hedef];
     if (!dest) return `Bilinmeyen hedef: "${hedef}".`;
-    if (!dest.panels.includes(ctx.panel)) return `"${dest.label}" bu panelde mevcut değil.`;
+    if (!ctx.panel || !dest.panels.includes(ctx.panel)) return `"${dest.label}" bu panelde mevcut değil.`;
     const path = dest.path ? `/${ctx.panel}/${dest.path}` : `/${ctx.panel}`;
     try { router.push(path as any); return `Kullanıcı "${dest.label}" ekranına yönlendirildi.`; }
     catch (e: any) { return `Yönlendirme başarısız: ${e?.message ?? 'hata'}`; }
@@ -564,8 +763,9 @@ export function useDentyToolkit(ctx: DentyContext): ToolKit {
   // ── Salt-okunur: genel veri okuma (whitelist + RLS) ──────────────────────
   const readData = useCallback(async (input: any): Promise<string> => {
     const table = String(input?.tablo ?? '').trim();
-    const meta = READ_TABLES[table];
-    if (!meta) return `"${table}" okunamıyor. İzinli tablolar: ${Object.keys(READ_TABLES).join(', ')}.`;
+    const allowed = readTablesFor(ctx.panel);
+    const meta = allowed[table];
+    if (!meta) return `"${table}" bu panelde okunamıyor. İzinli tablolar: ${Object.keys(allowed).join(', ')}.`;
     const limit = Math.min(Math.max(Number(input?.limit) || 10, 1), 15);
     let q = supabase.from(table).select('*').limit(limit);
     if (input?.esit_kolon && input?.esit_deger !== undefined && input?.esit_deger !== '') {
@@ -878,6 +1078,7 @@ export function useDentyToolkit(ctx: DentyContext): ToolKit {
     if (!v) return '3D görüntüleyici şu an açık değil. Önce bir siparişin 3D taramalarını aç.';
     const res = await v.analyzeOcclusion();
     if (!res) return 'Kapanış analizi için üst VE alt çene taraması gerekli — şu an ikisi birden yüklü görünmüyor.';
+    const { describeOcclusion } = await import('../viewer-3d/lib/occlusion');
     return 'Kapanış analizi tamam → ' + describeOcclusion(res);
   }, []);
 
@@ -891,6 +1092,184 @@ export function useDentyToolkit(ctx: DentyContext): ToolKit {
     ).join('\n');
   }, []);
 
+
+  // ── Salt-okunur: lab & yönetici panelleri ────────────────────────────────
+  /** Günün tek bakışta durumu — dashboard'un sorduğu soruların aynısı. */
+  const dailySummary = useCallback(async (): Promise<string> => {
+    const today = new Date().toISOString().slice(0, 10);
+    try {
+      const [overdueRes, todayRes, triageRes, stockRes, unbilledRes] = await Promise.all([
+        supabase.from('work_orders')
+          .select('order_number, patient_name, delivery_date')
+          .lt('delivery_date', today).neq('status', 'teslim_edildi').neq('status', 'iptal')
+          .order('delivery_date').limit(5),
+        supabase.from('work_orders')
+          .select('order_number, patient_name')
+          .eq('delivery_date', today).neq('status', 'teslim_edildi').neq('status', 'iptal').limit(5),
+        supabase.from('work_orders')
+          .select('order_number', { count: 'exact' })
+          .is('triaged_at', null).neq('status', 'iptal').limit(5),
+        supabase.from('stock_items').select('name, quantity, min_quantity').limit(200),
+        supabase.from('v_unbilled_work_orders').select('order_number, totals_by_currency').limit(5),
+      ]);
+      const overdue = overdueRes.data ?? [];
+      const todayList = todayRes.data ?? [];
+      const triage = triageRes.data ?? [];
+      const low = (stockRes.data ?? []).filter((i: any) =>
+        Number(i.min_quantity ?? 0) > 0 && Number(i.quantity ?? 0) < Number(i.min_quantity));
+      const unbilled = unbilledRes.data ?? [];
+
+      const lines: string[] = ['GÜNLÜK ÖZET:'];
+      lines.push(`• Gecikmiş: ${overdue.length}${overdue.length ? ' → ' + overdue.map((o: any) => `#${o.order_number} (${o.patient_name ?? '-'}, ${o.delivery_date})`).join(', ') : ''}`);
+      lines.push(`• Bugün teslim: ${todayList.length}${todayList.length ? ' → ' + todayList.map((o: any) => `#${o.order_number}`).join(', ') : ''}`);
+      lines.push(`• Planlama bekleyen: ${triageRes.count ?? triage.length}`);
+      lines.push(`• Kritik stok: ${low.length}${low.length ? ' → ' + low.slice(0, 5).map((i: any) => `${i.name} (${i.quantity}/${i.min_quantity})`).join(', ') : ''}`);
+      lines.push(`• Faturasız teslimat: ${unbilled.length}${unbilled.length ? ' → ' + unbilled.map((u: any) => `#${u.order_number}`).join(', ') : ''}`);
+      lines.push('(Sayılar kullanıcının yetkisi/RLS kapsamındadır.)');
+      return lines.join('\n');
+    } catch (e: any) { return `Özet alınamadı: ${e?.message ?? String(e)}`; }
+  }, []);
+
+  /** Bir siparişin aşama zinciri — kim, hangi durumda. */
+  const stageStatus = useCallback(async (input: any): Promise<string> => {
+    const ref = await resolveOrderRef({ siparis_no: input?.siparis_no }, ctx.orderId);
+    if ('error' in ref) return ref.error;
+    const { data, error } = await supabase
+      .from('order_stages')
+      .select('sequence_order, stage_name, status, assigned_to, started_at, completed_at, lane')
+      .eq('work_order_id', ref.row.id)
+      .order('sequence_order');
+    if (error) return `Aşamalar okunamadı: ${error.message}`;
+    if (!data || !data.length) return `#${ref.row.order_number} için aşama tanımlı değil (henüz planlanmamış olabilir).`;
+    // Atanan teknisyenlerin adını tek sorguda çöz
+    const ids = Array.from(new Set(data.map((r: any) => r.assigned_to).filter(Boolean)));
+    const names: Record<string, string> = {};
+    if (ids.length) {
+      const { data: people } = await supabase.from('profiles').select('id, full_name').in('id', ids);
+      (people ?? []).forEach((p: any) => { names[p.id] = p.full_name; });
+    }
+    const rows = data.map((r: any) =>
+      `${r.sequence_order}. ${r.stage_name} — ${r.status}${r.lane ? ` (şerit ${r.lane})` : ''}${r.assigned_to ? ` · ${names[r.assigned_to] ?? 'atanmış'}` : ''}`);
+    return `#${ref.row.order_number} (${ref.row.patient_name ?? '-'}) aşamaları:\n` + rows.join('\n');
+  }, [ctx.orderId]);
+
+  /** İstasyon başına bekleyen/devam eden iş sayısı. */
+  const stationLoad = useCallback(async (): Promise<string> => {
+    const { data, error } = await supabase
+      .from('order_stages')
+      .select('stage_name, status')
+      .in('status', ['bekliyor', 'aktif'])
+      .limit(500);
+    if (error) return `İstasyon yükü okunamadı: ${error.message}`;
+    if (!data || !data.length) return 'Bekleyen veya devam eden aşama yok.';
+    const byStation: Record<string, { bekleyen: number; devam: number }> = {};
+    data.forEach((r: any) => {
+      const k = r.stage_name ?? 'bilinmiyor';
+      byStation[k] = byStation[k] ?? { bekleyen: 0, devam: 0 };
+      if (r.status === 'aktif') byStation[k].devam++; else byStation[k].bekleyen++;
+    });
+    return 'İstasyon yükü (bekleyen / aktif):\n' + Object.entries(byStation)
+      .sort((a, b) => (b[1].bekleyen + b[1].devam) - (a[1].bekleyen + a[1].devam))
+      .map(([k, v]) => `• ${k}: ${v.bekleyen} bekleyen · ${v.devam} aktif`)
+      .join('\n');
+  }, []);
+
+  /** Kritik seviyenin altındaki stok kalemleri. */
+  const stockStatus = useCallback(async (): Promise<string> => {
+    const { data, error } = await supabase
+      .from('stock_items').select('name, quantity, min_quantity, unit').limit(300);
+    if (error) return `Stok okunamadı: ${error.message}`;
+    const low = (data ?? []).filter((i: any) =>
+      Number(i.min_quantity ?? 0) > 0 && Number(i.quantity ?? 0) < Number(i.min_quantity));
+    if (!low.length) return 'Kritik seviyenin altında stok kalemi yok.';
+    return `Kritik stok (${low.length} kalem):\n` + low
+      .map((i: any) => `• ${i.name}: ${i.quantity}${i.unit ? ' ' + i.unit : ''} (min ${i.min_quantity})`)
+      .join('\n');
+  }, []);
+
+
+  // ── Yazma: lab & yönetici (hepsi onay kartından geçer) ───────────────────
+  /** Aktif aşamayı tamamla → sıradaki aşama otomatik başlar (admin_complete_stage). */
+  const advanceStage = useCallback(async (input: any): Promise<string> => {
+    if (!isLabManager(ctx)) return 'Bu işlem için laboratuvar yöneticisi yetkisi gerekiyor.';
+    const ref = await resolveOrderRef({ siparis_no: input?.siparis_no }, ctx.orderId);
+    if ('error' in ref) return ref.error;
+    const { data: stages, error } = await supabase
+      .from('order_stages')
+      .select('id, sequence_order, stage_name, status')
+      .eq('work_order_id', ref.row.id)
+      .order('sequence_order');
+    if (error) return `Aşamalar okunamadı: ${error.message}`;
+    const wanted = String(input?.asama_adi ?? '').trim().toLocaleLowerCase('tr');
+    const target = wanted
+      ? (stages ?? []).find((st: any) => String(st.stage_name ?? '').toLocaleLowerCase('tr').includes(wanted))
+      : (stages ?? []).find((st: any) => st.status === 'aktif');
+    if (!target) {
+      return wanted
+        ? `#${ref.row.order_number} içinde "${input.asama_adi}" adlı aşama yok.`
+        : `#${ref.row.order_number} için aktif aşama yok (planlanmamış veya tamamlanmış olabilir).`;
+    }
+    if (target.status === 'tamamlandi' || target.status === 'skipped') {
+      return `"${target.stage_name}" zaten ${target.status === 'skipped' ? 'atlanmış' : 'tamamlanmış'}.`;
+    }
+    const res = await adminCompleteStage(target.id);
+    if (!res.ok) return `Aşama ilerletilemedi: ${res.error}`;
+    return `#${ref.row.order_number} — "${target.stage_name}" tamamlandı, sıradaki aşama başlatıldı.`;
+  }, [ctx.orderId, ctx.userType, ctx.role]);
+
+  /** Siparişi teknisyene ata — isim kısmi, çok eşleşmede işlem yapmaz. */
+  const assignTech = useCallback(async (input: any): Promise<string> => {
+    if (!isLabManager(ctx)) return 'Bu işlem için laboratuvar yöneticisi yetkisi gerekiyor.';
+    const name = String(input?.teknisyen_adi ?? '').trim();
+    if (!name) return 'Hangi teknisyene atanacak?';
+    const ref = await resolveOrderRef({ siparis_no: input?.siparis_no }, ctx.orderId);
+    if ('error' in ref) return ref.error;
+    const term = sanitizeIlikeTerm(name);
+    const { data: people, error } = await supabase
+      .from('profiles').select('id, full_name, role')
+      .eq('user_type', 'lab').ilike('full_name', `%${term}%`).limit(5);
+    if (error) return `Teknisyen aranamadı: ${error.message}`;
+    if (!people || !people.length) return `"${name}" adında bir lab kullanıcısı bulunamadı.`;
+    if (people.length > 1) {
+      return 'Birden çok kişi eşleşti, hangisi: ' + people.map((p: any) => p.full_name).join(', ');
+    }
+    const { error: upErr } = await assignTechnician(ref.row.id, people[0].id);
+    if (upErr) return `Atama başarısız: ${upErr.message}`;
+    return `#${ref.row.order_number} ${people[0].full_name} adlı teknisyene atandı.`;
+  }, [ctx.orderId, ctx.userType, ctx.role]);
+
+  /** Teslim edilmiş siparişten fatura oluştur. */
+  const createInvoice = useCallback(async (input: any): Promise<string> => {
+    if (!isLabManager(ctx)) return 'Bu işlem için laboratuvar yöneticisi yetkisi gerekiyor.';
+    const ref = await resolveOrderRef({ siparis_no: input?.siparis_no }, ctx.orderId);
+    if ('error' in ref) return ref.error;
+    if (ref.row.status !== 'teslim_edildi') {
+      return `#${ref.row.order_number} henüz teslim edilmemiş (durum: ${ref.row.status}). Fatura yalnız teslim edilmiş siparişten kesilir.`;
+    }
+    const { data, error } = await createInvoiceFromOrder(ref.row.id);
+    if (error) return `Fatura oluşturulamadı: ${(error as any).message ?? String(error)}`;
+    const no = (data as any)?.invoice_number;
+    return `#${ref.row.order_number} için fatura oluşturuldu${no ? ': ' + no : ''}.`;
+  }, [ctx.orderId, ctx.userType, ctx.role]);
+
+  /** Lab içi nota tarihli satır ekle (mevcut not korunur). */
+  const appendNote = useCallback(async (input: any): Promise<string> => {
+    if (!isLabManager(ctx)) return 'Bu işlem için laboratuvar yöneticisi yetkisi gerekiyor.';
+    const text = String(input?.not ?? '').trim();
+    if (!text) return 'Not metni boş.';
+    const ref = await resolveOrderRef({ siparis_no: input?.siparis_no }, ctx.orderId);
+    if ('error' in ref) return ref.error;
+    const { data: row, error: readErr } = await supabase
+      .from('work_orders').select('lab_notes').eq('id', ref.row.id).maybeSingle();
+    if (readErr) return `Not okunamadı: ${readErr.message}`;
+    const stamp = new Date().toLocaleDateString('tr-TR');
+    const line = `[${stamp} · ${ctx.userName}] ${text}`;
+    const merged = [(row as any)?.lab_notes, line].filter(Boolean).join('\n');
+    const { error } = await supabase.from('work_orders').update({ lab_notes: merged }).eq('id', ref.row.id);
+    if (error) return `Not eklenemedi: ${error.message}`;
+    return `#${ref.row.order_number} lab notuna eklendi.`;
+  }, [ctx.orderId, ctx.userName, ctx.userType, ctx.role]);
+
   const execute = useCallback(async (name: string, input: any): Promise<string> => {
     switch (name) {
       case 'goturBeni':     return navigate(String(input?.hedef ?? ''));
@@ -900,6 +1279,14 @@ export function useDentyToolkit(ctx: DentyContext): ToolKit {
       case 'hekimAra':      return searchDoctors(input?.sorgu);
       case 'kapanisAnalizi':return runOcclusion();
       case 'taramaTeshis':  return scanDiagnostics();
+      case 'gunlukOzet':    return dailySummary();
+      case 'asamaDurumu':   return stageStatus(input);
+      case 'istasyonYuku':  return stationLoad();
+      case 'stokDurumu':    return stockStatus();
+      case 'asamaIlerlet':  return advanceStage(input);
+      case 'teknisyenAta':  return assignTech(input);
+      case 'faturaKes':     return createInvoice(input);
+      case 'notEkle':       return appendNote(input);
       case 'siparisOlustur':return createOrder(input);
       case 'siparisDuzenle':return editOrder(input);
       case 'siparisIptal':  return cancelOrder(input);
@@ -907,7 +1294,9 @@ export function useDentyToolkit(ctx: DentyContext): ToolKit {
       case 'mesajGonder':   return sendOrderMessage(input);
       default:              return `Bilinmeyen araç: ${name}`;
     }
-  }, [navigate, search, readData, accountBalance, searchDoctors, runOcclusion, scanDiagnostics, createOrder, editOrder, cancelOrder, openTicket, sendOrderMessage]);
+  }, [navigate, search, readData, accountBalance, searchDoctors, runOcclusion, scanDiagnostics, dailySummary, stageStatus, stationLoad, stockStatus, advanceStage, assignTech, createInvoice, appendNote, createOrder, editOrder, cancelOrder, openTicket, sendOrderMessage]);
 
-  return useMemo(() => ({ defs: TOOL_DEFS, execute }), [execute]);
+  // Model YALNIZ bu panelde geçerli araçları görür (TOOL_META filtresi)
+  const defs = useMemo(() => toolDefsFor(ctx), [ctx.panel, ctx.perms.support, ctx.perms.messages]);
+  return useMemo(() => ({ defs, execute }), [defs, execute]);
 }

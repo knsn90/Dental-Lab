@@ -27,6 +27,7 @@ const CATEGORY_ACCENT: Record<ExpenseCategory, string> = {
   personel:'#2563EB',
   ekipman: '#0891B2',
   vergi:   '#D97706',
+  kurye:   '#0EA5E9',
   diger:   '#6B6B6B',
 };
 
@@ -48,7 +49,7 @@ function tr(amount: number, currency = 'TRY'): string {
             : currency === 'EUR' ? '€'
             : currency === 'GBP' ? '£'
             : currency + ' ';
-  return sym + amount.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return sym + (Number(amount) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function fmtDate(iso: string): string {

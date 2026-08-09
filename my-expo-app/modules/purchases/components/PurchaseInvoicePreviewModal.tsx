@@ -25,6 +25,7 @@ import {
   type PurchaseInvoiceLine,
 } from '../api';
 import { formatMoney } from '../../../core/money/currency';
+import { openPurchaseInvoiceFile } from '../api';
 
 const SANS = Platform.OS === 'web'
   ? { fontFamily: 'Arial, Helvetica, sans-serif' as const }
@@ -105,6 +106,18 @@ export function PurchaseInvoicePreviewModal({
   // ETTN — purchase_invoice id'sinden 8-4-4-4-12 UUID formatı
   const ettn = (header?.id ?? '').toLowerCase();
 
+  /**
+   * Satır toplamı ile fatura tutarı tutuyor mu?
+   *
+   * Satırlar stok giriş hareketlerinden gelir; başlıktaki tutar ise faturayı
+   * kaydederken girilir. İkisi bağımsız yazıldığı için biri eksik/hatalı
+   * girildiğinde fatura "tutarı doğru ama içeriği yanlış" halde kalıyor ve
+   * çıktı alındığında fark ancak elle toplayınca görülüyordu.
+   * Tolerans 0.02 — kuruş yuvarlamaları uyarı üretmesin.
+   */
+  const lineSum = lines.reduce((a, l) => a + (Number(l.quantity) || 0) * (Number(l.unit_cost_at_time) || 0), 0);
+  const lineMismatch = !loading && Math.abs(lineSum - Number(subtotal || 0)) > 0.02;
+
   // Asgari satır sayısı — boş satırlar grid'i doldursun
   const MIN_ROWS = 18;
   const emptyRows = Math.max(0, MIN_ROWS - lines.length);
@@ -164,10 +177,9 @@ export function PurchaseInvoicePreviewModal({
             )}
             {header?.invoice_file_url ? (
               <Pressable
-                onPress={() => {
-                  if (Platform.OS === 'web' && header.invoice_file_url) {
-                    window.open(header.invoice_file_url, '_blank');
-                  }
+                onPress={async () => {
+                  const err = await openPurchaseInvoiceFile(header.invoice_file_url);
+                  if (err) console.warn('[purchase-pdf]', err);
                 }}
                 style={({ hovered }: any) => ({
                   flexDirection: 'row', alignItems: 'center', gap: 6,
@@ -275,7 +287,7 @@ export function PurchaseInvoicePreviewModal({
                     {isForeignCurrency && (
                       <MetaRow
                         label="Döviz Kuru:"
-                        value={`1 ${currency} = ${exchangeRate.toLocaleString('tr-TR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })} ${baseCurrency}`}
+                        value={`1 ${currency} = ${(Number(exchangeRate) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })} ${baseCurrency}`}
                         last
                       />
                     )}
@@ -288,6 +300,25 @@ export function PurchaseInvoicePreviewModal({
                 {/* ETTN */}
                 <Text style={{ ...SANS, fontSize: 10, color: INK, marginBottom: 8 }}>
                   <Text style={{ fontWeight: '700' }}>ETTN: </Text>
+
+              {lineMismatch ? (
+                <View style={{
+                  flexDirection: 'row', gap: 8, alignItems: 'flex-start',
+                  marginTop: 10, paddingHorizontal: 12, paddingVertical: 10,
+                  borderRadius: 8, backgroundColor: 'rgba(217,75,75,0.10)',
+                  borderWidth: 1, borderColor: 'rgba(217,75,75,0.35)',
+                }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#9B2C2C' }}>!</Text>
+                  <Text style={{ flex: 1, fontSize: 11, lineHeight: 16, color: '#9B2C2C' }}>
+                    Satır toplamı fatura tutarını tutmuyor:{' '}
+                    <Text style={{ fontWeight: '700' }}>{formatMoney(lineSum, currency, { fractionDigits: 2 })}</Text>
+                    {' ≠ '}
+                    <Text style={{ fontWeight: '700' }}>{formatMoney(subtotal, currency, { fractionDigits: 2 })}</Text>
+                    . Fatura kalemleri eksik veya birim fiyatlar hatalı girilmiş; bu haliyle
+                    çıktı almayın.
+                  </Text>
+                </View>
+              ) : null}
                   {ettn || '—'}
                 </Text>
 
@@ -318,7 +349,7 @@ export function PurchaseInvoicePreviewModal({
                         <TD text={String(idx + 1)} w={28} />
                         <TD text={l.item_id ? l.item_id.slice(0, 8).toUpperCase() : ''} w={70} />
                         <TD text={l.item_name ?? '—'} flex={3} align="left" />
-                        <TD text={`${q.toLocaleString('tr-TR', { maximumFractionDigits: 3 })}${l.unit ? ' ' + l.unit : ''}`} w={56} align="right" />
+                        <TD text={`${(Number(q) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 3 })}${l.unit ? ' ' + l.unit : ''}`} w={56} align="right" />
                         <TD text={formatMoney(p, currency, { fractionDigits: 2 })} w={64} align="right" />
                         <TD text="%0" w={56} align="right" />
                         <TD text={formatMoney(0, currency, { fractionDigits: 2 })} w={60} align="right" />

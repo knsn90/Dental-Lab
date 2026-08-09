@@ -3,6 +3,7 @@
  * AuthShell ile beyaz tema, mor accent.
  */
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { safeBack } from '../../../core/util/safeBack';
 import {
   View, Text, Pressable, TextInput, Platform, Animated,
 } from 'react-native';
@@ -112,7 +113,7 @@ export function VerifyPhoneScreen() {
       footerLink={{
         text: 'Yanlış telefon mu?',
         linkText: 'Geri Dön',
-        onPress: () => router.back(),
+        onPress: () => safeBack('/(auth)/login'),
       }}
     >
       <Animated.View style={{ transform: [{ translateX: shakeX }] }}>

@@ -8,6 +8,7 @@
  * kullanıcı zaten login olmuş olmalı (Supabase session gerekli).
  */
 import React, { useEffect, useRef, useState } from 'react';
+import { safeBack } from '../core/util/safeBack';
 import {
   View, Text, StyleSheet, TouchableOpacity, Platform, ScrollView,
 } from 'react-native';
@@ -149,7 +150,7 @@ export default function CheckinPage() {
             time={result.time ?? '—'}
             name={result.employee ?? ''}
             gpsSkipped={gpsSkipped}
-            onClose={() => router.back()}
+            onClose={() => safeBack('/')}
           />
         )}
 
@@ -160,7 +161,7 @@ export default function CheckinPage() {
             name={result.employee ?? ''}
             workMinutes={result.work_minutes}
             gpsSkipped={gpsSkipped}
-            onClose={() => router.back()}
+            onClose={() => safeBack('/')}
           />
         )}
 
@@ -169,7 +170,7 @@ export default function CheckinPage() {
             message={errorMsg}
             isOutOfRange={result?.error === 'out_of_range'}
             onRetryWithoutGps={retryWithoutGps}
-            onClose={() => router.back()}
+            onClose={() => safeBack('/')}
           />
         )}
       </ScrollView>

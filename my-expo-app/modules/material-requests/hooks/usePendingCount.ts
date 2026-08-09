@@ -8,6 +8,7 @@
  */
 import { useEffect, useState } from 'react';
 import { supabase } from '../../../core/api/supabase';
+import { subscribeShared } from '../../../core/api/sharedChannel';
 import { useAuthStore } from '../../../core/store/authStore';
 
 export function useMaterialRequestPending(): number {
@@ -35,11 +36,15 @@ export function useMaterialRequestPending(): number {
       } catch { /* ignore */ }
     };
     tick();
-    const ch = supabase
-      .channel(`mat_req_pending_${userType}_${userRole}_${Date.now()}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'material_requests' }, () => tick())
-      .subscribe();
-    return () => { cancelled = true; supabase.removeChannel(ch); };
+    // Kanal adı SABİT ve paylaşımlı. Eskiden ada `Date.now()` ekleniyordu; bu,
+    // her mount'ta yeni bir realtime aboneliği yaratıp `realtime.subscription`
+    // tablosunu şişiriyordu (bkz. core/api/sharedChannel.ts başlığındaki ölçüm).
+    const unsubscribe = subscribeShared(
+      `mat_req_pending:${status}`,
+      [{ event: '*', schema: 'public', table: 'material_requests' }],
+      () => { if (!cancelled) tick(); },
+    );
+    return () => { cancelled = true; unsubscribe(); };
   }, [status, userType, userRole]);
 
   return count;

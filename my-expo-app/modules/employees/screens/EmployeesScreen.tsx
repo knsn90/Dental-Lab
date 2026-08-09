@@ -12,7 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View, Text, ScrollView, Pressable, TextInput,
   Modal, ActivityIndicator, Alert, RefreshControl,
-  useWindowDimensions, Platform,
+  useWindowDimensions, Platform, Animated, Easing, Dimensions,
 } from 'react-native';
 import { toast } from '../../../core/ui/Toast';
 import { supabase } from '../../../core/api/supabase';
@@ -37,8 +37,9 @@ import {
   Plus, Search, X, Inbox, Pencil, Trash2,
   UserPlus, UserX, UserCheck, Users, Phone, Mail, Clock,
   CircleCheck, Banknote, Landmark, CreditCard,
-  ChevronRight, CircleDollarSign, CheckCircle, Check,
+  ChevronRight, CircleDollarSign, CheckCircle, Check, MoreHorizontal, SlidersHorizontal, ChevronDown,
 } from 'lucide-react-native';
+import { confirmAsync } from '../../../core/util/confirm';
 
 // Yetkinlik sabitleri
 const SKILL_STAGES: Stage[] = ['TRIAGE', 'DESIGN', 'CAM', 'MILLING', 'SINTER', 'FINISH', 'QC'];
@@ -146,6 +147,104 @@ function FieldLabel({ children }: { children: string }) {
 // ═════════════════════════════════════════════════════════════════════
 // MAIN
 // ═════════════════════════════════════════════════════════════════════
+// ─── Satır aksiyon menüsü ("⋯") ──────────────────────────────────────────
+//
+// NEDEN: her satırda üç ayrı ikon (düzenle / pasife al / sil) duruyordu.
+// Liste "yönetim paneli" gibi görünüyordu ve en yıkıcı işlem (sil) sürekli
+// tek tıklık mesafedeydi. Yaygın yol görünür kalır, gerisi bir kademe altta.
+//
+// Menü TETİKLEYİCİDEN açılır: konumu butonun ekrandaki yerinden ölçülür ve
+// büyüme kaynağı sağ-üst köşedir; nereden çıktığı belli olsun. Dışına basınca
+// kapanır, yıkıcı seçenek renk ve ayraçla ayrılır.
+const ROW_MENU_W = 190;
+
+function RowActionsMenu({ items }: {
+  items: { label: string; icon: any; onPress: () => void; danger?: boolean }[];
+}) {
+  const btnRef = useRef<any>(null);
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const anim = useRef(new Animated.Value(0)).current;
+
+  const show = () => {
+    const node = btnRef.current;
+    if (node?.measureInWindow) {
+      node.measureInWindow((x: number, y: number, w: number, h: number) => {
+        const win = Dimensions.get('window');
+        const left = Math.max(8, Math.min(x + w - ROW_MENU_W, win.width - ROW_MENU_W - 8));
+        setPos({ top: y + h + 6, left });
+        setOpen(true);
+        anim.setValue(0);
+        Animated.timing(anim, { toValue: 1, duration: 140, easing: Easing.out(Easing.ease), useNativeDriver: true }).start();
+      });
+    } else {
+      setOpen(true);
+      anim.setValue(1);
+    }
+  };
+
+  return (
+    <>
+      <Pressable
+        ref={btnRef}
+        onPress={show}
+        accessibilityRole="button"
+        accessibilityLabel="İşlemler"
+        style={({ pressed }: any) => ({
+          width: 30, height: 30, borderRadius: 8,
+          backgroundColor: DS.ink[50], alignItems: 'center', justifyContent: 'center',
+          opacity: pressed ? 0.6 : 1,
+          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
+        })}
+      >
+        <MoreHorizontal size={15} color={DS.ink[500]} strokeWidth={1.8} />
+      </Pressable>
+
+      <Modal visible={open} transparent animationType="none" onRequestClose={() => setOpen(false)}>
+        <Pressable style={{ flex: 1 }} onPress={() => setOpen(false)}>
+          <Animated.View
+            style={{
+              position: 'absolute', top: pos.top, left: pos.left, width: ROW_MENU_W,
+              backgroundColor: '#FFFFFF', borderRadius: 14, paddingVertical: 6,
+              borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+              opacity: anim,
+              transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) }],
+              ...(Platform.OS === 'web'
+                ? { boxShadow: '0 12px 32px rgba(15,23,42,0.16)', transformOrigin: 'top right' } as any
+                : { shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 24, shadowOffset: { width: 0, height: 12 }, elevation: 8 }),
+            }}
+          >
+            {items.map((it, i) => {
+              const Icon = it.icon;
+              return (
+                <React.Fragment key={it.label}>
+                  {it.danger && i > 0 && (
+                    <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.06)', marginVertical: 4 }} />
+                  )}
+                  <Pressable
+                    onPress={() => { setOpen(false); it.onPress(); }}
+                    style={({ pressed }: any) => ({
+                      flexDirection: 'row', alignItems: 'center', gap: 10,
+                      paddingHorizontal: 14, paddingVertical: 9,
+                      opacity: pressed ? 0.6 : 1,
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
+                    })}
+                  >
+                    <Icon size={14} color={it.danger ? CHIP_TONES.danger.fg : DS.ink[500]} strokeWidth={1.8} />
+                    <Text style={{ fontSize: 13, fontWeight: '500', color: it.danger ? CHIP_TONES.danger.fg : DS.ink[900] }}>
+                      {it.label}
+                    </Text>
+                  </Pressable>
+                </React.Fragment>
+              );
+            })}
+          </Animated.View>
+        </Pressable>
+      </Modal>
+    </>
+  );
+}
+
 export function EmployeesScreen() {
   const isEmbedded = useContext(HubContext);
   const { width } = useWindowDimensions();
@@ -164,6 +263,10 @@ export function EmployeesScreen() {
   const [editEmp,       setEditEmp]       = useState<Employee | null>(null);
   const [addUserOpen,   setAddUserOpen]   = useState(false);   // LabUsersManagement formu
   const [filterActive, setFilterActive] = useState(true);
+  // Pozisyon filtresi — null = hepsi. (Departman filtresi YOK: employees
+  // tablosunda department kolonu bulunmuyor, uydurma alan eklenmedi.)
+  const [roleFilter, setRoleFilter] = useState<EmployeeRole | null>(null);
+  const [filterOpen, setFilterOpen] = useState(false);
   const [search, setSearch] = useState('');
 
   // ── Confirmation dialog ─────────────────────────────────────
@@ -191,6 +294,7 @@ export function EmployeesScreen() {
 
   const filtered = useMemo(() => {
     let list = filterActive ? employees.filter(e => e.is_active) : employees;
+    if (roleFilter) list = list.filter(e => e.role === roleFilter);
     if (search) {
       const sl = search.toLowerCase();
       list = list.filter(e =>
@@ -199,7 +303,11 @@ export function EmployeesScreen() {
       );
     }
     return list;
-  }, [employees, filterActive, search]);
+  }, [employees, filterActive, roleFilter, search]);
+
+  // Filtre düğmesinin etiketi: varsayılan dışına çıkıldıysa ne süzüldüğü yazsın.
+  const filterHasAny = roleFilter !== null || filterActive === false;
+  const filterLabel  = roleFilter ? ROLE_LABELS[roleFilter] : (filterActive ? 'Filtre' : 'Tümü');
 
   // Synthetic profile (auth-only) ekipı için profile id döndürür
   const syntheticProfileId = (emp: Employee): string | null => {
@@ -342,54 +450,94 @@ export function EmployeesScreen() {
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={DS.ink[300]} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── F1 HeroCard — Ekip özeti (theme.primary bg + white blobs) ── */}
+        {/* ── Ekip özeti şeridi ──
+            Eskiden ~250px'lik bir hero bloktu: tek bir sayı (aktif personel) ve
+            iki buton için ekranın dörtte biri. Sayı + toplam + aksiyonlar TEK
+            satıra alındı, yükseklik ~125px'e indi. Dekoratif blob'lar da küçüldü:
+            kart küçüldükçe süsün de ölçeği düşmeli, yoksa zemini yutuyor. */}
         <View style={{
           borderRadius: 20, overflow: 'hidden',
-          backgroundColor: theme.primary, padding: isDesktop ? 22 : 18,
+          backgroundColor: theme.primary,
+          paddingHorizontal: isDesktop ? 22 : 18,
+          paddingVertical: isDesktop ? 18 : 16,
           position: 'relative',
         }}>
-          {/* White decorative blobs */}
-          <View style={{ position: 'absolute', top: -50, right: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.20)' }} />
-          <View style={{ position: 'absolute', bottom: -60, left: -30, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(255,255,255,0.12)' }} />
+          <View pointerEvents="none" style={{ position: 'absolute', top: -46, right: -34, width: 130, height: 130, borderRadius: 65, backgroundColor: 'rgba(255,255,255,0.18)' }} />
+          <View pointerEvents="none" style={{ position: 'absolute', bottom: -52, left: -26, width: 110, height: 110, borderRadius: 55, backgroundColor: 'rgba(255,255,255,0.10)' }} />
 
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
-            <View style={{ flex: 1, minWidth: 220 }}>
-              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)', marginBottom: 8 }}>
-                Aktif Personel
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+            {/* Sol — kicker + iki metrik yan yana */}
+            <View style={{ minWidth: 210 }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>
+                Ekip
               </Text>
-              <Text
-                style={{ ...DISPLAY, fontWeight: '300', fontSize: isDesktop ? 44 : 36, color: '#FFFFFF', letterSpacing: -1.2, lineHeight: isDesktop ? 48 : 40 }}
-                numberOfLines={1}
-              >
-                {activeCount}
-              </Text>
-              <Text style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.78)', marginTop: 4 }}>
-                {employees.length} toplam kayıt
-              </Text>
+              {/* Yalnız "6" bağlamsız kalıyordu: oran hem payı hem paydayı tek
+                  okumada verir. Payda daha küçük ve saydam — hangisinin asıl
+                  sayı olduğu tipografiden anlaşılsın, ayrı etiket gerekmesin. */}
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 6 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+                  <Text style={{ ...DISPLAY, fontWeight: '300', fontSize: isDesktop ? 34 : 29, color: '#FFFFFF', letterSpacing: -1, lineHeight: isDesktop ? 36 : 31 }}>
+                    {activeCount}
+                  </Text>
+                  <Text style={{ ...DISPLAY, fontWeight: '300', fontSize: isDesktop ? 22 : 19, color: 'rgba(255,255,255,0.60)', letterSpacing: -0.5, lineHeight: isDesktop ? 26 : 23 }}>
+                    {` / ${employees.length}`}
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.88)' }}>Aktif Personel</Text>
+              </View>
             </View>
-            <View style={{ width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.18)' }}>
-              <UserPlus size={20} color="#FFFFFF" strokeWidth={1.6} />
-            </View>
+
+            {/* Sağ — aksiyonlar. Basınca geri bildirim parmağın inişinde. */}
+            {canManage && (
+              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                <Pressable
+                  onPress={() => { setEditEmp(null); setFormOpen(true); }}
+                  style={({ pressed, hovered }: any) => ({
+                    flexDirection: 'row', alignItems: 'center', gap: 6,
+                    paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999,
+                    backgroundColor: hovered ? '#F5F5F5' : '#FFFFFF',
+                    opacity: pressed ? 0.75 : 1,
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  })}
+                >
+                  <UserPlus size={13} color={DS.ink[900]} strokeWidth={2} />
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: DS.ink[900] }}>Personel Ekle</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setAddUserOpen(true)}
+                  style={({ pressed, hovered }: any) => ({
+                    flexDirection: 'row', alignItems: 'center', gap: 6,
+                    paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999,
+                    backgroundColor: hovered ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.16)',
+                    opacity: pressed ? 0.75 : 1,
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  })}
+                >
+                  <UserPlus size={13} color="#FFFFFF" strokeWidth={2} />
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>Hesap ile Ekle</Text>
+                </Pressable>
+              </View>
+            )}
           </View>
 
-          {/* KPI strip — F1 stat cards */}
+          {/* Maaş KPI şeridi — gerçek veri taşır, kaldırılmadı; yalnız sıkıştırıldı. */}
           {canViewSalaries && (
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
               {([
-                { label: 'Bu Ay Maaş',     value: fmtMoney(totalSalary)                      },
-                { label: 'Ödenmemiş',      value: `${unpaidCount} kişi`                      },
-                { label: 'Bekleyen Avans', value: fmtMoney(totalAdvances)                    },
+                { label: 'Bu Ay Maaş',     value: fmtMoney(totalSalary)   },
+                { label: 'Ödenmemiş',      value: `${unpaidCount} kişi`   },
+                { label: 'Bekleyen Avans', value: fmtMoney(totalAdvances) },
               ] as const).map(stat => (
                 <View key={stat.label} style={{
                   flex: 1, minWidth: 110,
-                  paddingVertical: 10, paddingHorizontal: 12, borderRadius: 14,
+                  paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12,
                   backgroundColor: 'rgba(255,255,255,0.16)',
                 }}>
                   <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>
                     {stat.label}
                   </Text>
                   <Text
-                    style={{ ...DISPLAY, fontWeight: '300', fontSize: 16, color: '#FFFFFF', letterSpacing: -0.3, lineHeight: 20, marginTop: 4 }}
+                    style={{ ...DISPLAY, fontWeight: '300', fontSize: 15, color: '#FFFFFF', letterSpacing: -0.3, lineHeight: 19, marginTop: 3 }}
                     numberOfLines={1}
                   >
                     {stat.value}
@@ -398,85 +546,150 @@ export function EmployeesScreen() {
               ))}
             </View>
           )}
-
-          {/* CTAs — beyaz pill butonlar */}
-          {canManage && (
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
-              <Pressable
-                onPress={() => { setEditEmp(null); setFormOpen(true); }}
-                style={({ hovered }: any) => ({
-                  flexDirection: 'row', alignItems: 'center', gap: 6,
-                  paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999,
-                  backgroundColor: hovered ? '#F5F5F5' : '#FFFFFF',
-                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                })}
-              >
-                <UserPlus size={13} color={DS.ink[900]} strokeWidth={2} />
-                <Text style={{ fontSize: 12, fontWeight: '700', color: DS.ink[900] }}>Personel Ekle</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setAddUserOpen(true)}
-                style={({ hovered }: any) => ({
-                  flexDirection: 'row', alignItems: 'center', gap: 6,
-                  paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9999,
-                  backgroundColor: hovered ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.16)',
-                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                })}
-              >
-                <UserPlus size={13} color="#FFFFFF" strokeWidth={2} />
-                <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>Hesap ile Ekle</Text>
-              </Pressable>
-            </View>
-          )}
         </View>
 
-        {/* ── Filter pills ────────────────────────────────────── */}
-        <View style={{ flexDirection: 'row', gap: 6 }}>
-          {[
-            { key: true,  label: `Aktif (${activeCount})` },
-            { key: false, label: `Tümü (${employees.length})` },
-          ].map(f => {
-            const active = filterActive === f.key;
-            return (
-              <Pressable
-                key={String(f.key)}
-                onPress={() => setFilterActive(f.key)}
-                style={{
-                  paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
-                  borderWidth: 1,
-                  borderColor: active ? DS.ink[900] : 'rgba(0,0,0,0.08)',
-                  backgroundColor: active ? DS.ink[50] : '#FFF',
-                  cursor: 'pointer' as any,
-                }}
-              >
-                <Text style={{ fontSize: 12, fontWeight: active ? '600' : '500', color: active ? DS.ink[900] : DS.ink[500] }}>
-                  {f.label}
+        {/* Aktif/Tümü pill şeridi kaldırıldı — aynı durum artık Filtre
+            menüsünde yaşıyor; iki yerde aynı state'i yönetmek karışıklık. */}
+
+        {/* ── Arama + Filtre ─────────────────────────────────── */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <View style={{
+            flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10,
+            height: 44, paddingHorizontal: 14, borderRadius: 14,
+            borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: '#FFF',
+          }}>
+            <Search size={15} color={DS.ink[400]} strokeWidth={1.8} />
+            <TextInput
+              style={{ flex: 1, fontSize: 14, color: DS.ink[900], outline: 'none' as any }}
+              placeholder="Ad veya pozisyon ara..."
+              placeholderTextColor={DS.ink[400]}
+              value={search}
+              onChangeText={setSearch}
+            />
+            {search.length > 0 && (
+              <Pressable onPress={() => setSearch('')} style={{ cursor: 'pointer' as any }}>
+                <X size={14} color={DS.ink[400]} strokeWidth={2} />
+              </Pressable>
+            )}
+          </View>
+
+          {/* Filtre — aktif filtre varsa düğme bunu ÜSTÜNDE taşır; menüyü açıp
+              bakmadan neyin süzüldüğü görünsün. */}
+          <Pressable
+            onPress={() => setFilterOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Filtre"
+            style={({ pressed }: any) => ({
+              flexDirection: 'row', alignItems: 'center', gap: 8,
+              height: 44, paddingHorizontal: 14, borderRadius: 14,
+              borderWidth: 1,
+              borderColor: filterHasAny ? DS.ink[900] : 'rgba(0,0,0,0.08)',
+              backgroundColor: filterHasAny ? DS.ink[50] : '#FFF',
+              opacity: pressed ? 0.7 : 1,
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
+            })}
+          >
+            <SlidersHorizontal size={15} color={filterHasAny ? DS.ink[900] : DS.ink[400]} strokeWidth={1.8} />
+            <Text style={{ fontSize: 13, fontWeight: filterHasAny ? '600' : '500', color: filterHasAny ? DS.ink[900] : DS.ink[500] }}>
+              {filterLabel}
+            </Text>
+            <ChevronDown size={14} color={filterHasAny ? DS.ink[900] : DS.ink[400]} strokeWidth={2} />
+          </Pressable>
+        </View>
+
+        {/* Filtre menüsü — Pozisyon + Durum */}
+        <Modal visible={filterOpen} transparent animationType="fade" onRequestClose={() => setFilterOpen(false)}>
+          <Pressable
+            onPress={() => setFilterOpen(false)}
+            style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.28)', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+          >
+            <Pressable onPress={() => {}} style={{
+              width: '100%', maxWidth: 360, backgroundColor: '#FFF', borderRadius: 20, padding: 18, gap: 16,
+              ...(Platform.OS === 'web' ? { boxShadow: '0 20px 48px rgba(15,23,42,0.22)' } as any : {}),
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={{ flex: 1, fontSize: 15, fontWeight: '700', color: DS.ink[900] }}>Filtre</Text>
+                <Pressable onPress={() => setFilterOpen(false)} style={{ padding: 4, cursor: 'pointer' as any }}>
+                  <X size={16} color={DS.ink[400]} strokeWidth={2} />
+                </Pressable>
+              </View>
+
+              <View style={{ gap: 8 }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', color: DS.ink[400] }}>
+                  Pozisyon
                 </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {([null, ...ROLES] as (EmployeeRole | null)[]).map(r => {
+                    const on = roleFilter === r;
+                    return (
+                      <Pressable
+                        key={r ?? 'hepsi'}
+                        onPress={() => setRoleFilter(r)}
+                        style={({ pressed }: any) => ({
+                          paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
+                          borderWidth: 1,
+                          borderColor: on ? DS.ink[900] : 'rgba(0,0,0,0.08)',
+                          backgroundColor: on ? DS.ink[50] : '#FFF',
+                          opacity: pressed ? 0.7 : 1,
+                          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
+                        })}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: on ? '600' : '500', color: on ? DS.ink[900] : DS.ink[500] }}>
+                          {r ? ROLE_LABELS[r] : 'Hepsi'}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
 
-        {/* ── Search — §05.5 ──────────────────────────────────── */}
-        <View style={{
-          flexDirection: 'row', alignItems: 'center', gap: 10,
-          height: 44, paddingHorizontal: 14, borderRadius: 14,
-          borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: '#FFF',
-        }}>
-          <Search size={15} color={DS.ink[400]} strokeWidth={1.8} />
-          <TextInput
-            style={{ flex: 1, fontSize: 14, color: DS.ink[900], outline: 'none' as any }}
-            placeholder="Ad veya pozisyon ara..."
-            placeholderTextColor={DS.ink[400]}
-            value={search}
-            onChangeText={setSearch}
-          />
-          {search.length > 0 && (
-            <Pressable onPress={() => setSearch('')} style={{ cursor: 'pointer' as any }}>
-              <X size={14} color={DS.ink[400]} strokeWidth={2} />
+              <View style={{ gap: 8 }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', color: DS.ink[400] }}>
+                  Durum
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  {[
+                    { key: true,  label: `Aktif (${activeCount})` },
+                    { key: false, label: `Tümü (${employees.length})` },
+                  ].map(f => {
+                    const on = filterActive === f.key;
+                    return (
+                      <Pressable
+                        key={String(f.key)}
+                        onPress={() => setFilterActive(f.key)}
+                        style={({ pressed }: any) => ({
+                          paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
+                          borderWidth: 1,
+                          borderColor: on ? DS.ink[900] : 'rgba(0,0,0,0.08)',
+                          backgroundColor: on ? DS.ink[50] : '#FFF',
+                          opacity: pressed ? 0.7 : 1,
+                          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
+                        })}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: on ? '600' : '500', color: on ? DS.ink[900] : DS.ink[500] }}>
+                          {f.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {filterHasAny && (
+                <Pressable
+                  onPress={() => { setRoleFilter(null); setFilterActive(true); }}
+                  style={({ pressed }: any) => ({
+                    alignSelf: 'flex-start', paddingVertical: 6,
+                    opacity: pressed ? 0.6 : 1,
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
+                  })}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: DS.ink[500] }}>Filtreleri temizle</Text>
+                </Pressable>
+              )}
             </Pressable>
-          )}
-        </View>
+          </Pressable>
+        </Modal>
 
         {/* ── Employee list ───────────────────────────────────── */}
         {filtered.length === 0 ? (
@@ -530,9 +743,12 @@ export function EmployeesScreen() {
                       cursor: 'pointer' as any,
                     }}
                   >
-                    <View style={{ flex: 2.5, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                      <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: role.bg, alignItems: 'center', justifyContent: 'center' }}>
-                        <Text style={{ fontSize: 13, fontWeight: '800', color: role.fg }}>{initials}</Text>
+                    <View style={{ flex: 2.5, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                      {/* 36 → 48: satırın en solundaki kimlik işareti fazla ufaktı.
+                          Yarıçap da ölçekle birlikte büyüdü (10 → 14), yoksa
+                          büyüyen karede köşeler orantısız keskin kalıyor. */}
+                      <View style={{ width: 48, height: 48, borderRadius: 14, backgroundColor: role.bg, alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ fontSize: 15, fontWeight: '800', color: role.fg, letterSpacing: 0.2 }}>{initials}</Text>
                       </View>
                       <View>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -582,33 +798,16 @@ export function EmployeesScreen() {
                     )}
                     {canManage ? (
                       <View style={{ flex: 1, flexDirection: 'row', gap: 4 }}>
-                        <Pressable
-                          onPress={() => { setEditEmp(emp); setFormOpen(true); }}
-                          style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: DS.ink[50], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
-                        >
-                          <Pencil size={13} color={DS.ink[500]} strokeWidth={1.6} />
-                        </Pressable>
-                        {emp.is_active ? (
-                          <Pressable
-                            onPress={() => handleDeactivate(emp)}
-                            style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: DS.ink[50], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
-                          >
-                            <UserX size={13} color={DS.ink[500]} strokeWidth={1.6} />
-                          </Pressable>
-                        ) : (
-                          <Pressable
-                            onPress={() => handleReactivate(emp)}
-                            style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: CHIP_TONES.success.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
-                          >
-                            <UserCheck size={13} color={CHIP_TONES.success.fg} strokeWidth={1.8} />
-                          </Pressable>
-                        )}
-                        <Pressable
-                          onPress={() => handleDelete(emp)}
-                          style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: CHIP_TONES.danger.bg, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
-                        >
-                          <Trash2 size={13} color={CHIP_TONES.danger.fg} strokeWidth={1.6} />
-                        </Pressable>
+                        {/* Üç ikon → tek "⋯" menüsü (bkz. RowActionsMenu). */}
+                        <RowActionsMenu
+                          items={[
+                            { label: 'Düzenle', icon: Pencil, onPress: () => { setEditEmp(emp); setFormOpen(true); } },
+                            emp.is_active
+                              ? { label: 'Pasife Al', icon: UserX,     onPress: () => handleDeactivate(emp) }
+                              : { label: 'Aktif Et',  icon: UserCheck, onPress: () => handleReactivate(emp) },
+                            { label: 'Sil', icon: Trash2, onPress: () => handleDelete(emp), danger: true },
+                          ]}
+                        />
                       </View>
                     ) : (
                       // Yetki yok — sadece görüntüleme rozeti
@@ -632,8 +831,8 @@ export function EmployeesScreen() {
                 style={{ ...cardSolid, padding: 16, opacity: emp.is_active ? 1 : 0.5 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: role.bg, alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ fontSize: 15, fontWeight: '800', color: role.fg }}>{initials}</Text>
+                  <View style={{ width: 50, height: 50, borderRadius: 15, backgroundColor: role.bg, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 16, fontWeight: '800', color: role.fg, letterSpacing: 0.2 }}>{initials}</Text>
                   </View>
                   <View style={{ flex: 1 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -779,22 +978,16 @@ function EmployeeDetailPanel({ employee, onSalaryAdd, onAdvAdd, onRefresh }: {
   const role = ROLE_COLORS[employee.role];
   const initials = employee.full_name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 
-  const handleDelSalary = (id: string) => {
-    Alert.alert('Maaş Kaydını Sil', 'Bu ödeme kaydı silinecek.', [
-      { text: 'İptal', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: async () => {
-        await deleteSalaryPayment(id); refetch(); onRefresh();
-      }},
-    ]);
+  const handleDelSalary = async (id: string) => {
+    if (!(await confirmAsync('Maaş Kaydını Sil', 'Bu ödeme kaydı silinecek.',
+      { confirmText: 'Sil', cancelText: 'İptal', destructive: true }))) return;
+    await deleteSalaryPayment(id); refetch(); onRefresh();
   };
 
-  const handleDelAdv = (id: string) => {
-    Alert.alert('Avansı Sil', 'Bu avans kaydı silinecek?', [
-      { text: 'İptal', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: async () => {
-        await deleteAdvance(id); refetch(); onRefresh();
-      }},
-    ]);
+  const handleDelAdv = async (id: string) => {
+    if (!(await confirmAsync('Avansı Sil', 'Bu avans kaydı silinecek?',
+      { confirmText: 'Sil', cancelText: 'İptal', destructive: true }))) return;
+    await deleteAdvance(id); refetch(); onRefresh();
   };
 
   const handleMarkDeducted = async (id: string) => {
@@ -1163,35 +1356,35 @@ function EmployeeFormModal({ visible, employee, onClose, onSaved }: {
       }
     }
 
-    // Lab kullanicisi olarak auth hesabi olustur
+    // Lab kullanicisi olarak auth hesabi olustur — service-role edge fn ile.
+    // supabase.auth.signUp KULLANMA: onay e-postası tetikler ("Error sending
+    // confirmation email") + yeni kullanıcıyla oturum açıp yöneticinin session'ını
+    // bozar + lab_id'yi doğru miras almaz. admin-create-user: email_confirm=true
+    // (mail atmaz), oturum korunur, lab_id caller'dan miras alınır.
     if (wantsAuth) {
       // role -> profiles.role: technician | manager (yonetici = mesul müdür)
       const profileRole = role === 'yonetici' ? 'manager' : 'technician';
-      const signUpRes = await supabase.auth.signUp({
-        email: email.trim(),
-        password,
-        options: {
-          data: {
-            user_type: 'lab',
-            role: profileRole,
-            full_name: name.trim(),
-            phone: phone || undefined,
-            approval_status: 'approved',
-          },
+      const { data: fnData, error: fnErr } = await supabase.functions.invoke('admin-create-user', {
+        body: {
+          email: email.trim(),
+          password,
+          full_name: name.trim(),
+          user_type: 'lab',
+          role: profileRole,
+          phone: phone || undefined,
         },
       });
-      if (signUpRes.error) {
+      if (fnErr || (fnData as any)?.error) {
+        const rawMsg = (fnData as any)?.error ?? fnErr?.message ?? 'Bilinmeyen hata';
+        const friendly =
+          /already (been )?registered|user already exists|email.*exists/i.test(rawMsg)
+            ? 'Bu e-posta zaten kullanılıyor. Farklı bir e-posta deneyin.'
+          : /password.*(short|weak)|en az 6/i.test(rawMsg)
+            ? 'Şifre çok zayıf — en az 6 karakter olmalı.'
+          : rawMsg;
         setSaving(false);
-        toast.error(`Personel eklendi, ancak giriş hesabı oluşturulamadı: ${signUpRes.error.message}`);
+        toast.error(`Personel eklendi, ancak giriş hesabı oluşturulamadı: ${friendly}`);
         return;
-      }
-      if (signUpRes.data.user?.id) {
-        await supabase.from('profiles').update({
-          full_name: name.trim(),
-          phone: phone || null,
-          approval_status: 'approved',
-          is_active: true,
-        }).eq('id', signUpRes.data.user.id);
       }
     }
 

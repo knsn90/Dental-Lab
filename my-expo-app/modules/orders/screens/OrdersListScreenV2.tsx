@@ -15,7 +15,7 @@ import { localeTag } from '../../../core/i18n';
  *   - Teknisyen atama modalı
  *   - Sayfa başlığı entegrasyonu (PatternsShell)
  */
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 
 // ── Footer "PLANLAMA BEKLİYOR" yazısı için subtle pulse (web only) ──
 function injectFooterPulseKeyframes() {
@@ -42,7 +42,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useSegments } from 'expo-router';
-import { Search, X, SlidersHorizontal, ArrowUpDown, ChevronRight, Flame, Clock, LayoutList, Columns3, UserCheck, Pencil, Archive, Trash2, RotateCcw, AlertCircle, ShieldAlert, ListChecks, Camera, CornerDownRight } from 'lucide-react-native';
+import { Search, X, SlidersHorizontal, ArrowUpDown, ChevronRight, Flame, Clock, LayoutList, Columns3, UserCheck, Pencil, Archive, Trash2, RotateCcw, AlertCircle, ShieldAlert, ListChecks, Camera, CornerDownRight, Inbox } from 'lucide-react-native';
+import { RowActionsMenu, type RowAction } from '../../../core/ui/RowActionsMenu';
 import { ScanWorkOrderModal } from '../components/ScanWorkOrderModal';
 // Admin düzenleme artık yeni-sipariş SİHİRBAZINI (aynı 4 adım) düzenleme modunda açar.
 const NewOrderEditWizard: any = React.lazy(() => import('./NewOrderScreen').then((m) => ({ default: (m as any).NewOrderScreen })));
@@ -51,6 +52,7 @@ import { titleCaseTR } from '../../../core/utils/textCase';
 
 import { useAuthStore } from '../../../core/store/authStore';
 import { supabase } from '../../../core/api/supabase';
+import { bootMark } from '../../../core/debug/bootTrace';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
@@ -75,6 +77,34 @@ import { ActivityIndicator } from '../../../core/ui/teethCompat';
 
 // ── Panel detection helper ─────────────────────────────────────────
 type PanelKind = 'lab' | 'clinic' | 'doctor' | 'admin';
+
+/**
+ * Satır sonu işlemleri — masaüstü satırı ve mobil kart AYNI listeyi kullanır.
+ *
+ * Eskiden iki yerde üç ayrı ikon elle yazılıydı; biri güncellenip diğeri
+ * unutulduğunda aynı sipariş iki görünümde farklı işlem seti sunuyordu.
+ */
+function rowActions(
+  order: WorkOrder,
+  onEdit?: (o: WorkOrder) => void,
+  onArchive?: (o: WorkOrder) => void,
+  onDelete?: (o: WorkOrder) => void,
+): RowAction[] {
+  const isArchived = !!(order as any).is_archived;
+  const out: RowAction[] = [];
+  if (onEdit)    out.push({ key: 'edit',    label: 'Düzenle', icon: Pencil, onPress: () => onEdit(order) });
+  if (onArchive) out.push({
+    key: 'archive',
+    label: isArchived ? 'Geri yükle' : 'Pasife al',
+    icon: isArchived ? RotateCcw : Archive,
+    tone: 'warning',
+    onPress: () => onArchive(order),
+  });
+  // Sil her zaman SON — menüde ayırıcıyla ayrılır (RowActionsMenu).
+  if (onDelete)  out.push({ key: 'delete', label: 'Kalıcı sil', icon: Trash2, tone: 'danger', onPress: () => onDelete(order) });
+  return out;
+}
+
 function detectPanel(segments: string[]): PanelKind {
   const seg = segments?.[0] ?? '';
   if (seg === '(clinic)') return 'clinic';
@@ -274,7 +304,45 @@ export function OrdersListScreenV2() {
     return orders;
   }, [orders, isTechnician, profile?.id]);
 
+  // MOUNT/UNMOUNT izleme: `render #1`in tekrar tekrar çıkması bileşenin yeniden
+  // MONTE edildiğini gösteriyor (useRef sıfırlanıyor). Kim söküyor, onu bulmak için.
+  useEffect(() => {
+    bootMark('OrdersList MOUNT');
+    return () => bootMark('OrdersList UNMOUNT');
+  }, []);
+
   const today = new Date().toISOString().split('T')[0];
+
+  // GEÇİCİ TEŞHİS: ekran saniyede ~60 kez render ediliyor. Hangi DEĞERİN
+  // değiştiğini bulmak için önceki render ile karşılaştırıp yalnız FARKI yazar;
+  // fark yoksa "referans değişimi" (yeni nesne kimliği) demektir.
+  const _prevRef = useRef<Record<string, any> | null>(null);
+  const _renderNo = useRef(0);
+  {
+    _renderNo.current += 1;
+    const snap: Record<string, any> = {
+      panel, isDesktop, viewMode, statusFilter, loading, isAdmin,
+      showArchived, urgentOnly, overdueOnly, search,
+      ordersLen: orders.length,
+      ordersRef: orders,          // kimlik karşılaştırması
+      profileRef: profile,
+      windowW: typeof window !== 'undefined' ? window.innerWidth : 0,
+      windowH: typeof window !== 'undefined' ? window.innerHeight : 0,
+    };
+    const prev = _prevRef.current;
+    if (prev) {
+      const changed = Object.keys(snap).filter(k => !Object.is(prev[k], snap[k]));
+      if (_renderNo.current % 20 === 0 || changed.length) {
+        bootMark(`OrdersList render #${_renderNo.current}`, {
+          degisen: changed.length ? changed.join(', ') : '(HİÇBİRİ — üstten geliyor)',
+          w: snap.windowW, h: snap.windowH,
+        });
+      }
+    } else {
+      bootMark('OrdersList render #1', { panel, isDesktop, orders: orders.length });
+    }
+    _prevRef.current = snap;
+  }
 
   const filtered = useMemo(() => {
     const list = visibleOrders.filter(o => {
@@ -309,9 +377,13 @@ export function OrdersListScreenV2() {
     return counts;
   }, [visibleOrders]);
 
-  // Durum sekmeleri — lab panelinde sona "Manuel" (WhatsApp/kağıt inbox) eklenir.
+  // Durum sekmeleri — lab VE admin panelinde sona "Manuel" (WhatsApp/kağıt
+  // inbox) eklenir. Admin'de ayrı bir kenar çubuğu girdisi vardı; manuel gelen
+  // sipariş de sipariştir, kendi sayfasını hak etmiyor.
   const statusFilters = useMemo<{ value: WorkOrderStatus | 'all' | 'manual'; label: string }[]>(
-    () => (panel === 'lab' ? [...STATUS_FILTERS, { value: 'manual', label: 'Manuel' }] : STATUS_FILTERS),
+    () => (panel === 'lab' || panel === 'admin'
+      ? [...STATUS_FILTERS, { value: 'manual', label: 'Manuel' }]
+      : STATUS_FILTERS),
     [panel],
   );
 
@@ -420,19 +492,32 @@ export function OrdersListScreenV2() {
               {statusFilters.map(f => {
                 const active = statusFilter === f.value && !urgentOnly && !overdueOnly;
                 const count = f.value === 'manual' ? paperInboxCount : (statusCounts[f.value] ?? 0);
+                // "Manuel" bir DURUM değil, ayrı bir gelen kutusu. Sona eklenince
+                // "Teslim"den sonraki bir statü gibi okunup gözden kaçıyordu:
+                // ayraç + ikon ile durum çiplerinden ayrıldı.
+                const isManualTab = f.value === 'manual';
                 return (
-                  <Pressable
-                    key={f.value}
-                    onPress={() => { setStatusFilter(f.value); setUrgentOnly(false); setOverdueOnly(false); }}
-                    className={`flex-row items-center gap-1.5 px-3 py-1.5 rounded-full ${active ? 'bg-ink-900' : ''}`}
-                  >
-                    <Text className={`text-[12px] font-semibold ${active ? 'text-white' : 'text-ink-500'}`}>
-                      {f.label}
-                    </Text>
-                    <Text className={`text-[10px] font-bold ${active ? 'text-white/60' : 'text-ink-400'}`}>
-                      {count}
-                    </Text>
-                  </Pressable>
+                  <React.Fragment key={f.value}>
+                    {isManualTab && (
+                      <View style={{ width: 1, alignSelf: 'stretch', marginHorizontal: 5, marginVertical: 4, backgroundColor: 'rgba(0,0,0,0.10)' }} />
+                    )}
+                    <Pressable
+                      onPress={() => { setStatusFilter(f.value); setUrgentOnly(false); setOverdueOnly(false); }}
+                      className={`flex-row items-center gap-1.5 px-3 py-1.5 rounded-full ${active ? 'bg-ink-900' : ''}`}
+                    >
+                      {isManualTab && (
+                        <Inbox size={12} color={active ? '#FFFFFF' : '#6B6B6B'} strokeWidth={2} />
+                      )}
+                      <Text className={`text-[12px] font-semibold ${active ? 'text-white' : 'text-ink-500'}`}>
+                        {f.label}
+                      </Text>
+                      {(count > 0 || !isManualTab) && (
+                        <Text className={`text-[10px] font-bold ${active ? 'text-white/60' : 'text-ink-400'}`}>
+                          {count}
+                        </Text>
+                      )}
+                    </Pressable>
+                  </React.Fragment>
                 );
               })}
             </View>
@@ -487,21 +572,9 @@ export function OrdersListScreenV2() {
               </Pressable>
             )}
 
-            {/* Manuel inbox artık "Manuel" durum sekmesi olarak sunuluyor (yukarıdaki strip). */}
-
-            {/* Kağıt sipariş tara — klinikler kağıt formla sipariş veriyorsa OCR */}
-            {Platform.OS === 'web' && (
-              <Pressable
-                onPress={() => setScanOpen(true)}
-                className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full"
-                style={{ backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: 'rgba(37,99,235,0.25)' }}
-              >
-                <Camera size={12} color="#2563EB" strokeWidth={1.8} />
-                <Text className="text-[12px] font-semibold" style={{ color: '#2563EB' }}>
-                  Kağıt Sipariş Tara
-                </Text>
-              </Pressable>
-            )}
+            {/* Manuel inbox + "Kağıt Sipariş Tara" artık Manuel sekmesinin
+                İÇİNDE (aşağıda). Üst şeritte her sekmede görünüyordu; oysa
+                yalnız manuel sipariş akışına ait bir eylem. */}
           </ScrollView>
 
           {/* Search */}
@@ -689,7 +762,33 @@ export function OrdersListScreenV2() {
       {/* ── Content ────────────────────────────────────────────────── */}
       {statusFilter === 'manual' ? (
         // Manuel sekmesi — WhatsApp/kağıt (pending_paper_orders) inbox'u satır-içi.
-        <PendingPaperOrdersScreen />
+        <View style={{ flex: 1 }}>
+          {/* Kağıt sipariş tarama bu akışın giriş noktası: sekmenin başında,
+              gelen kutusunun hemen üstünde durur. */}
+          {Platform.OS === 'web' && (
+            <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4, flexDirection: 'row' }}>
+              <Pressable
+                onPress={() => setScanOpen(true)}
+                style={({ pressed, hovered }: any) => ({
+                  flexDirection: 'row', alignItems: 'center', gap: 7,
+                  paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999,
+                  backgroundColor: hovered ? '#DBEAFE' : '#EFF6FF',
+                  borderWidth: 1, borderColor: 'rgba(37,99,235,0.25)',
+                  opacity: pressed ? 0.75 : 1,
+                  ...(Platform.OS === 'web'
+                    ? { cursor: 'pointer', transitionProperty: 'background-color', transitionDuration: '120ms' } as any
+                    : {}),
+                })}
+              >
+                <Camera size={13} color="#2563EB" strokeWidth={1.9} />
+                <Text className="text-[12.5px] font-semibold" style={{ color: '#2563EB' }}>
+                  Kağıt Sipariş Tara
+                </Text>
+              </Pressable>
+            </View>
+          )}
+          <PendingPaperOrdersScreen />
+        </View>
       ) : isDesktop && viewMode === 'kanban' ? (
         <KanbanBoard orders={visibleOrders} userGroup={(panelGroup || '(lab)') as any} onStatusAdvance={onStatusAdvance} />
       ) : (
@@ -723,13 +822,15 @@ export function OrdersListScreenV2() {
             const pulledParentIds = new Set<string>();
             const triagePendingOrders: any[] = [];
             pendingBase.forEach(rev => {
-              const parentId = (rev as any).revision_of_id as string | undefined;
+              // Ebeveyn bağı: revizyon → revision_of_id, devam siparişi → continues_order_id
+              const parentId = ((rev as any).revision_of_id ?? (rev as any).continues_order_id) as string | undefined;
               const parent = parentId ? byId.get(parentId) : undefined;
+              const isCont = !(rev as any).revision_of_id && !!(rev as any).continues_order_id;
               if (parent && !isTriagePending(parent) && !pulledParentIds.has(parent.id)) {
                 pulledParentIds.add(parent.id);
                 triagePendingOrders.push({ ...(parent as any), __revParent: true });
               }
-              triagePendingOrders.push(parentId && parent ? { ...(rev as any), __revChild: true } : rev);
+              triagePendingOrders.push(parentId && parent ? { ...(rev as any), __revChild: true, __continuation: isCont } : rev);
             });
 
             // Ana listede de revizyonlar orijinallerinin ALTINA yuvalanır.
@@ -739,7 +840,8 @@ export function OrdersListScreenV2() {
               const kids = new Map<string, any[]>();
               const roots: any[] = [];
               list.forEach(o => {
-                const pid = o.revision_of_id as string | undefined;
+                // Ebeveyn bağı: revizyon → revision_of_id, devam siparişi → continues_order_id
+                const pid = (o.revision_of_id ?? o.continues_order_id) as string | undefined;
                 if (pid && ids.has(pid)) {
                   if (!kids.has(pid)) kids.set(pid, []);
                   kids.get(pid)!.push(o);
@@ -751,7 +853,7 @@ export function OrdersListScreenV2() {
               roots.forEach(r => {
                 const cs = kids.get(r.id);
                 out.push(cs?.length ? { ...r, __revParent: true } : r);
-                cs?.forEach(c => out.push({ ...c, __revChild: true }));
+                cs?.forEach(c => out.push({ ...c, __revChild: true, __continuation: !c.revision_of_id && !!c.continues_order_id }));
               });
               return out;
             };
@@ -1204,6 +1306,18 @@ const MobileOrderCard = React.memo(function MobileOrderCard({ order, isManager, 
   const canAssign = isManager && order.status === 'alindi' && !order.assigned_to;
   const needsTriage = order.status === 'alindi' && !(order as any).triaged_at;
 
+  // #8 operasyonel detay: diş sayısı (tooth_numbers dizisi)
+  const toothCount = Array.isArray((order as any).tooth_numbers) ? (order as any).tooth_numbers.length : 0;
+  // #9 üretim ilerlemesi (liste sorgusundan: skipped hariç toplam + tamamlanan)
+  const stagesTotal = (order as any).stages_total ?? 0;
+  const stagesDone  = (order as any).stages_done ?? 0;
+  const isDone = order.status === 'teslim_edildi';
+  const progressPct = isDone ? 100 : (stagesTotal > 0 ? Math.round((stagesDone / stagesTotal) * 100) : 0);
+  // #3 durum-renkli sol accent: geciken=kırmızı · tamamlanan=yeşil(sakin) · duraklatılan=amber · diğer=aşama rengi
+  const barColor = isLate ? '#DC2626' : isDone ? '#2D9A6B' : onHold ? '#E89B2A' : stageColor;
+
+  const patientTitle = order.patient_name ? titleCaseTR(order.patient_name) : '—';
+
   return (
     <Pressable
       onPress={() => onPress(order)}
@@ -1218,8 +1332,8 @@ const MobileOrderCard = React.memo(function MobileOrderCard({ order, isManager, 
           : (isDark ? 'none' : '0 1px 4px rgba(0,0,0,0.04)'),
       }}
     >
-      {/* Stage dot or Planlama indicator */}
-      <View className="pt-1">
+      {/* #3 Durum-renkli sol accent bar (triage → planlama ikonu korunur) */}
+      <View className="pt-0.5">
         {needsTriage ? (
           <View
             className="w-7 h-7 rounded-full items-center justify-center"
@@ -1229,34 +1343,55 @@ const MobileOrderCard = React.memo(function MobileOrderCard({ order, isManager, 
           </View>
         ) : (
           <View
-            className="w-3 h-3 rounded-full"
-            style={{ backgroundColor: isLate ? '#DC2626' : stageColor }}
+            style={{ width: 4, alignSelf: 'stretch', minHeight: 40, borderRadius: 2, backgroundColor: barColor, opacity: isDone ? 0.5 : 1 }}
           />
         )}
       </View>
 
       {/* Body */}
       <View className="flex-1 gap-1 min-w-0">
+        {/* #4 Hiyerarşi: HASTA birincil başlık */}
         <View className="flex-row items-center gap-2">
           <Text
             className="text-[15px] font-semibold flex-1"
             style={isLate ? { color: '#DC2626' } : { color: T.ink }}
             numberOfLines={1}
           >
-            {order.work_type}
+            {patientTitle}
           </Text>
-        </View>
-        <Text className="text-[12px]" style={{ color: T.ink2 }} numberOfLines={1}>
-          <Text className="font-semibold" style={{ color: T.ink }}>#{order.order_number}</Text>
-          {`  ·  ${order.patient_name ? titleCaseTR(order.patient_name) : '—'}  ·  ${order.doctor?.full_name ?? '—'}`}
-        </Text>
-        <View className="flex-row items-center gap-2 mt-0.5">
-          {/* ACİL / YENİ küçük etiketler */}
           {order.is_urgent && (
             <Text style={{ fontSize: 8.5, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', color: '#9C2E2E' }}>
               Acil
             </Text>
           )}
+        </View>
+
+        {/* Restorasyon tipi · hekim */}
+        <Text className="text-[12.5px]" style={{ color: T.ink }} numberOfLines={1}>
+          {order.work_type}
+          <Text style={{ color: T.ink3 }}>{`   ·   ${order.doctor?.full_name ?? '—'}`}</Text>
+        </Text>
+
+        {/* Sipariş no · #8 diş sayısı · #9 üretim ilerlemesi */}
+        <View className="flex-row items-center gap-2 mt-0.5">
+          <Text className="text-[11px]" style={{ color: T.ink3, fontFamily: 'monospace' }} numberOfLines={1}>
+            #{order.order_number}
+          </Text>
+          {toothCount > 0 && (
+            <Text className="text-[11px]" style={{ color: T.ink3 }}>{`· ${toothCount} diş`}</Text>
+          )}
+          {!needsTriage && stagesTotal > 0 && (
+            <View className="flex-row items-center gap-1.5" style={{ marginLeft: 2 }}>
+              <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+                <View style={{ width: `${progressPct}%`, height: '100%', borderRadius: 2, backgroundColor: barColor }} />
+              </View>
+              <Text style={{ fontSize: 10, fontWeight: '600', color: T.ink3 }}>{isDone ? `${stagesTotal}/${stagesTotal}` : `${stagesDone}/${stagesTotal}`}</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Durum rozeti + teslim */}
+        <View className="flex-row items-center gap-2 mt-0.5">
           <OrderStatusInfo order={order as any} size={13} />
           {needsTriage ? (
             <View className="px-2 py-0.5 rounded flex-row items-center gap-1" style={{ backgroundColor: '#D97706' }}>
@@ -1280,35 +1415,7 @@ const MobileOrderCard = React.memo(function MobileOrderCard({ order, isManager, 
       {/* Right */}
       <View className="items-end justify-center gap-1.5">
         {isAdmin ? (
-          <View style={{ flexDirection: 'row', gap: 6 }}>
-            {onEdit && (
-              <Pressable
-                onPress={(e: any) => { e?.stopPropagation?.(); onEdit(order); }}
-                style={{ width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(31,86,137,0.12)' }}
-              >
-                <Pencil size={12} color="#1F5689" strokeWidth={1.8} />
-              </Pressable>
-            )}
-            {onArchive && (
-              <Pressable
-                onPress={(e: any) => { e?.stopPropagation?.(); onArchive(order); }}
-                style={{ width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(217,119,6,0.14)' }}
-              >
-                {(order as any).is_archived
-                  ? <RotateCcw size={12} color="#92400E" strokeWidth={1.8} />
-                  : <Archive size={12} color="#92400E" strokeWidth={1.8} />
-                }
-              </Pressable>
-            )}
-            {onDelete && (
-              <Pressable
-                onPress={(e: any) => { e?.stopPropagation?.(); onDelete(order); }}
-                style={{ width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(156,46,46,0.12)' }}
-              >
-                <Trash2 size={12} color="#9C2E2E" strokeWidth={1.8} />
-              </Pressable>
-            )}
-          </View>
+          <RowActionsMenu actions={rowActions(order, onEdit, onArchive, onDelete)} size={28} />
         ) : canAssign ? (
           <Pressable
             onPress={e => { (e as any).stopPropagation?.(); onAssign(order); }}
@@ -1498,15 +1605,15 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
         className="flex-row items-start gap-1"
       >
         {(order as any).__revChild && (
-          <CornerDownRight size={13} color="#9C5E0E" strokeWidth={2.2} style={{ marginTop: 1, flexShrink: 0 }} />
+          <CornerDownRight size={13} color={(order as any).__continuation ? '#3563A8' : '#9C5E0E'} strokeWidth={2.2} style={{ marginTop: 1, flexShrink: 0 }} />
         )}
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={{ fontSize: 11, fontFamily: 'monospace', color: T.ink3 }} numberOfLines={1}>
             #{order.order_number}
           </Text>
           {(order as any).__revChild && (
-            <Text style={{ fontSize: 9, fontWeight: '700', color: '#9C5E0E', letterSpacing: 0.4, marginTop: 1 }}>
-              REVİZYON
+            <Text style={{ fontSize: 9, fontWeight: '700', color: (order as any).__continuation ? '#3563A8' : '#9C5E0E', letterSpacing: 0.4, marginTop: 1 }}>
+              {(order as any).__continuation ? 'DEVAM SİPARİŞİ' : 'REVİZYON'}
             </Text>
           )}
           {(order as any).__revParent && (
@@ -1549,7 +1656,9 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
       {/* Vaka — revizyonda başına "Revizyon -" öneki */}
       <Text style={{ flex: 1.8, minWidth: 0, fontSize: 13, color: T.ink }} numberOfLines={1}>
         {(order as any).__revChild && (
-          <Text style={{ fontWeight: '700', color: '#9C5E0E' }}>Revizyon - </Text>
+          <Text style={{ fontWeight: '700', color: (order as any).__continuation ? '#3563A8' : '#9C5E0E' }}>
+            {(order as any).__continuation ? 'Devam - ' : 'Revizyon - '}
+          </Text>
         )}
         {order.work_type}
       </Text>
@@ -1632,41 +1741,9 @@ const DesktopRow = React.memo(function DesktopRow({ order, isManager, isAdmin, i
 
       {/* Action */}
       <View style={{ width: 92 }} className="flex-row items-center justify-end gap-1">
-        {/* Admin inline action ikonları (Düzenle / Pasife / Sil) */}
-        {isAdmin && (
-          <>
-            {onEdit && (
-              <Pressable
-                onPress={(e: any) => { e?.stopPropagation?.(); onEdit(order); }}
-                style={{ width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(31,86,137,0.12)' }}
-                {...(Platform.OS === 'web' ? { title: 'Düzenle' } : {})}
-              >
-                <Pencil size={11} color="#1F5689" strokeWidth={1.8} />
-              </Pressable>
-            )}
-            {onArchive && (
-              <Pressable
-                onPress={(e: any) => { e?.stopPropagation?.(); onArchive(order); }}
-                style={{ width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(217,119,6,0.14)' }}
-                {...(Platform.OS === 'web' ? { title: (order as any).is_archived ? 'Geri yükle' : 'Pasife al' } : {})}
-              >
-                {(order as any).is_archived
-                  ? <RotateCcw size={11} color="#92400E" strokeWidth={1.8} />
-                  : <Archive size={11} color="#92400E" strokeWidth={1.8} />
-                }
-              </Pressable>
-            )}
-            {onDelete && (
-              <Pressable
-                onPress={(e: any) => { e?.stopPropagation?.(); onDelete(order); }}
-                style={{ width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(156,46,46,0.12)' }}
-                {...(Platform.OS === 'web' ? { title: 'Kalıcı sil' } : {})}
-              >
-                <Trash2 size={11} color="#9C2E2E" strokeWidth={1.8} />
-              </Pressable>
-            )}
-          </>
-        )}
+        {/* Admin işlemleri tek «⋯» menüsünde — üç ayrı ikon satırın sağından
+            ~90px yiyordu ve yıkıcı «Sil» her satırda tek tıkla erişilebilirdi. */}
+        {isAdmin && <RowActionsMenu actions={rowActions(order, onEdit, onArchive, onDelete)} size={26} />}
         {!isAdmin && (canAssign ? (
           <Pressable
             onPress={e => { (e as any).stopPropagation?.(); onAssign(order); }}

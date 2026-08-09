@@ -14,7 +14,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, ScrollView, Pressable, Image,
   useWindowDimensions, Animated,
-  Platform, RefreshControl, Easing,
+  Platform, RefreshControl, Easing, StyleSheet,
 } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -29,11 +29,13 @@ import { useStockAlert } from '../../core/hooks/useStockAlert';
 import { useTranslation } from 'react-i18next';
 import { localeTag } from '../../core/i18n';
 import { supabase } from '../../core/api/supabase';
+import { useRealtimeRefresh } from '../../core/hooks/useRealtimeRefresh';
 import { DS } from '../../core/theme/dsTokens';
 import { useIsDesktop } from '../../core/layout/PatternsShell';
 import { usePageTitleStore } from '../../core/store/pageTitleStore';
 import { useAuthStore } from '../../core/store/authStore';
 import { HomeB1, type PriorityOrder, type KpiItem, defaultInsight } from '../../core/ui/HomeB1';
+import { AlertPillX } from '../../core/ui/AlertPillX';
 import { AdminMobileDashboard } from '../../modules/admin/components/AdminMobileDashboard';
 import { resolveOrderStatus } from '../../modules/dashboard/components/RecentOrdersMobile';
 import { mapRevisionCases, flattenRevisionCases } from '../../modules/orders/revisionGroups';
@@ -45,6 +47,7 @@ import { useDashboardCache } from '../../core/store/dashboardCacheStore';
 import { useNewOrderModalStore } from '../../core/store/newOrderModalStore';
 import { ActivityIndicator } from '../../core/ui/teethCompat';
 import { FaceScanQuickAction } from '../../modules/orders/components/FaceScanQuickAction';
+import { serviceUnitQty, serviceUnitLabel, resolveUnitForWorkType } from '../../core/util/serviceUnits';
 
 // ── Display font — Patterns: Inter Tight Light (300), tight tracking ──
 const SERIF = {
@@ -361,6 +364,11 @@ function StatPill({ label, value, bg, color }: { label: string; value: string | 
 }
 
 /** Big Stat — Patterns hero right side */
+/** Hero KPI'ları arasındaki saç teli ayraç — sayı bloğu kadar yüksek. */
+function StatDivider() {
+  return <View style={{ width: StyleSheet.hairlineWidth, alignSelf: 'stretch', marginVertical: 2, backgroundColor: 'rgba(0,0,0,0.10)' }} />;
+}
+
 function BigStat({ value, label }: { value: string | number; label: string }) {
   const isNum = typeof value === 'number';
   const numStyle = { ...SERIF, fontSize: DS.size.h2, letterSpacing: -0.025 * DS.size.h2, lineHeight: DS.size.h2, color: DS.ink[900] };
@@ -507,7 +515,9 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, latestOrder, router 
   }, [dotAnim, glowAnim, breatheAnim]);
 
   const dotOpacity = dotAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.3] });
-  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.12] });
+  // Bulanıklık ışığı geniş alana yayıp kontrastı düşürüyor; parıltı aralığı
+  // 0–0.12'den 0–0.30'a çıkarıldı, yoksa kart soluk/ölü görünüyor.
+  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.30] });
   const glowScale = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1.2] });
   const breatheScale = breatheAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] });
 
@@ -858,21 +868,51 @@ function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDeskto
         minHeight: isDesktop ? undefined : 160,
         transform: [{ scale: scaleAnim }],
       }}>
-        {/* Decorative floating circle */}
-        <Animated.View style={{
-          position: 'absolute', top: -20, right: -20,
-          width: 140, height: 140, borderRadius: 70,
-          backgroundColor: 'rgba(255,255,255,0.18)',
-          transform: [{ translateY: floatY }],
-        }} />
-        {/* Glow pulse circle */}
-        <Animated.View style={{
-          position: 'absolute', top: -40, right: -40,
-          width: 180, height: 180, borderRadius: 90,
-          backgroundColor: 'rgba(255,255,255,1)',
-          opacity: glowOpacity,
-          transform: [{ scale: glowScale }],
-        }} pointerEvents="none" />
+        {/* Yüzen ışık lekeleri — web'de BULANIK (aurora hissi).
+            Bulanıklık ışığı yaydığı için opaklıklar YÜKSELTİLDİ: ilk denemede
+            eski değerlerle bırakılınca kart soluk ve cansız kaldı. Blur da
+            kısıldı (26→16 / 40→30) — fazlası lekeyi tamamen düz bir sise
+            çeviriyor ve kartın derinliği kayboluyor.
+            `filter` yalnız web'de; native'de RN desteklemiyor, orada net daire
+            kalır. Taşan bulanıklığı kartın `overflow: hidden`'ı kırpar.
+            `willChange` şart: bulanık katman her karede yeniden
+            rasterleştirilirse animasyon pahalıya gelir. */}
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: 'absolute', top: -20, right: -20,
+            width: 140, height: 140, borderRadius: 70,
+            backgroundColor: '#CFE0F5',
+            opacity: 0.55,
+            transform: [{ translateY: floatY }],
+            ...(Platform.OS === 'web' ? ({ filter: 'blur(18px)', mixBlendMode: 'screen', willChange: 'transform' } as any) : {}),
+          }}
+        />
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: 'absolute', top: -40, right: -40,
+            width: 180, height: 180, borderRadius: 90,
+            backgroundColor: 'rgba(255,255,255,1)',
+            opacity: glowOpacity,
+            transform: [{ scale: glowScale }],
+            ...(Platform.OS === 'web' ? ({ filter: 'blur(30px)', mixBlendMode: 'screen', willChange: 'transform, opacity' } as any) : {}),
+          }}
+        />
+        {/* Karşı köşede ikinci, daha geniş leke — tek leke bulanıklaşınca kart
+            tek renkli bir zemine dönüyordu; bu, aurora'daki renk dalgalanmasının
+            yerini tutan derinliği geri veriyor. */}
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: 'absolute', bottom: -60, left: -40,
+            width: 200, height: 200, borderRadius: 100,
+            backgroundColor: '#F2C879',
+            opacity: 0.42,
+            transform: [{ translateY: Animated.multiply(floatY, -1) }],
+            ...(Platform.OS === 'web' ? ({ filter: 'blur(40px)', mixBlendMode: 'screen', willChange: 'transform' } as any) : {}),
+          }}
+        />
         {/* Content */}
         <View style={{ position: 'relative' }}>
           <Text style={{
@@ -902,140 +942,10 @@ function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDeskto
   );
 }
 
-// ── Animated Overdue Alert Card — danger gradient + pulse + glow ──
-// ── Planlama Bekleyen — newly received orders waiting to be planned ──
-function PlanningWaitingCard({ count, onPress }: { count: number; onPress: () => void }) {
-  const { t } = useTranslation();
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const glowAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.loop(Animated.sequence([
-      Animated.timing(glowAnim, { toValue: 1, duration: 2400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      Animated.timing(glowAnim, { toValue: 0, duration: 2400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-    ])).start();
-  }, [glowAnim]);
-
-  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.06, 0.18] });
-  const glowScale   = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1.2] });
-
-  return (
-    <Pressable onPress={onPress} style={{ flex: 1 }}
-      onHoverIn={() => Animated.spring(scaleAnim, { toValue: 1.015, friction: 8, tension: 200, useNativeDriver: true }).start()}
-      onHoverOut={() => Animated.spring(scaleAnim, { toValue: 1, friction: 8, tension: 200, useNativeDriver: true }).start()}
-    >
-      <Animated.View style={{
-        borderRadius: DS.radius.xl, overflow: 'hidden',
-        // @ts-ignore web gradient — lighter coral (informational tone)
-        backgroundImage: 'linear-gradient(135deg, #C2410C 0%, #EA580C 50%, #F97316 100%)',
-        backgroundColor: '#C2410C',
-        transform: [{ scale: scaleAnim }],
-        position: 'relative',
-      }}>
-        <Animated.View style={{
-          position: 'absolute', top: -30, right: -30,
-          width: 160, height: 160, borderRadius: 80,
-          backgroundColor: '#FDBA74',
-          opacity: glowOpacity, transform: [{ scale: glowScale }],
-        }} pointerEvents="none" />
-
-        <View style={{ paddingHorizontal: 20, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-          <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' }}>
-            <Inbox size={18} color="#FFEDD5" strokeWidth={1.8} />
-          </View>
-
-          <View style={{ flex: 1 }}>
-            <View className="flex-row items-center" style={{ gap: 6 }}>
-              <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: '#FFEDD5' }} />
-              <Text style={{ fontSize: 9, fontWeight: '700', color: '#FFEDD5', letterSpacing: 0.7, textTransform: 'uppercase' }}>{t('admin.status.newWorkKicker')}</Text>
-              <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.5, lineHeight: 24, color: '#FFF', marginLeft: 4 }}>
-                {count}
-              </Text>
-              <Text style={{ fontSize: 13, color: '#FFEDD5', marginLeft: 2 }}>{t('admin.status.awaitingPlanning')}</Text>
-            </View>
-          </View>
-
-          <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' }}>
-            <ArrowUpRight size={14} color="#FFEDD5" strokeWidth={1.8} />
-          </View>
-        </View>
-      </Animated.View>
-    </Pressable>
-  );
-}
-
-function AnimatedOverdueCard({ count, onPress }: { count: number; onPress: () => void }) {
-  const { t } = useTranslation();
-  const pulseAnim = useRef(new Animated.Value(0)).current;
-  const glowAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    Animated.loop(Animated.sequence([
-      Animated.timing(pulseAnim, { toValue: 1, duration: 1000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      Animated.timing(pulseAnim, { toValue: 0, duration: 1000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      Animated.delay(600),
-    ])).start();
-    Animated.loop(Animated.sequence([
-      Animated.timing(glowAnim, { toValue: 1, duration: 2400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      Animated.timing(glowAnim, { toValue: 0, duration: 2400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-    ])).start();
-  }, [pulseAnim, glowAnim]);
-
-  const dotOpacity = pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.3] });
-  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.06, 0.18] });
-  const glowScale = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1.2] });
-
-  return (
-    <Pressable onPress={onPress} style={{ flex: 1 }}
-      onHoverIn={() => Animated.spring(scaleAnim, { toValue: 1.015, friction: 8, tension: 200, useNativeDriver: true }).start()}
-      onHoverOut={() => Animated.spring(scaleAnim, { toValue: 1, friction: 8, tension: 200, useNativeDriver: true }).start()}
-    >
-      <Animated.View style={{
-        borderRadius: DS.radius.xl, overflow: 'hidden',
-        // @ts-ignore web gradient — deep burnt coral (urgent tone)
-        backgroundImage: 'linear-gradient(135deg, #5C1A0B 0%, #7C2D12 50%, #9A3412 100%)',
-        backgroundColor: '#5C1A0B',
-        transform: [{ scale: scaleAnim }],
-        position: 'relative',
-      }}>
-        {/* Ambient glow */}
-        <Animated.View style={{
-          position: 'absolute', top: -30, right: -30,
-          width: 160, height: 160, borderRadius: 80,
-          backgroundColor: '#F97316',
-          opacity: glowOpacity, transform: [{ scale: glowScale }],
-        }} pointerEvents="none" />
-
-        <View style={{ paddingHorizontal: 20, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-          {/* Pulsing icon */}
-          <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' }}>
-            <Animated.View style={{ opacity: dotOpacity }}>
-              <AlertTriangle size={18} color="#FED7AA" strokeWidth={1.8} />
-            </Animated.View>
-          </View>
-
-          <View style={{ flex: 1 }}>
-            <View className="flex-row items-center" style={{ gap: 6 }}>
-              <Animated.View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: '#FED7AA', opacity: dotOpacity }} />
-              <Text style={{ fontSize: 9, fontWeight: '500', color: '#FED7AA', letterSpacing: 0.5, textTransform: 'uppercase' }}>Acil</Text>
-              <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.5, lineHeight: 24, color: '#FFF', marginLeft: 4 }}>
-                {count}
-              </Text>
-              <Text style={{ fontSize: 13, color: '#FED7AA', marginLeft: 2 }}>{t('admin.status.overdueOrder')}</Text>
-            </View>
-          </View>
-
-          <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' }}>
-            <ArrowUpRight size={14} color="#FED7AA" strokeWidth={1.8} />
-          </View>
-        </View>
-      </Animated.View>
-    </Pressable>
-  );
-}
-
 // ── Bugünkü Görevler — Dark card ──
+// Zemin DS.exec.surfaceAlt'ın (#243041) %10 beyazla karışmış hâli: yandaki
+// kartlarla ağırlık yarışına girmesin diye açıldı. Token'a dokunulmadı.
+const TASKS_SURFACE = '#3A4554';
 function TasksCard({
   tasks,
 }: {
@@ -1045,9 +955,9 @@ function TasksCard({
   const doneCount = tasks.filter(task => task.done).length;
   return (
     <View style={{
-      backgroundColor: DS.exec.surfaceAlt,
+      backgroundColor: TASKS_SURFACE,
       // @ts-ignore web gradient
-      backgroundImage: `linear-gradient(135deg, ${DS.exec.surfaceAlt} 0%, ${DS.exec.primaryDeep}33 100%)`,
+      backgroundImage: `linear-gradient(135deg, ${TASKS_SURFACE} 0%, ${DS.exec.primaryDeep}33 100%)`,
       borderRadius: DS.radius.xl, padding: 22,
       flex: 1, gap: 0,
     }}>
@@ -1140,21 +1050,35 @@ function StatusDistCard({ byStatus }: { byStatus: { label: string; count: number
 }
 
 // ── Work Type Card ──
-function WorkTypeCard({ data }: { data: { label: string; count: number }[] }) {
+function WorkTypeCard({ data }: { data: { label: string; count: number; unit?: string | null }[] }) {
   const { t } = useTranslation();
   if (!data.length) return null;
   const rows  = data.slice(0, 5);
+  // `total` YALNIZ şerit oranları için — gösterilmiyor. Farklı birimlerin
+  // toplamı anlamsızdır; oran hesabı için ortak bir payda gerektiği için var.
   const total = data.reduce((s, d) => s + d.count, 0) || 1;
   const live  = rows.filter(w => w.count > 0);
   const zeros = rows.filter(w => w.count === 0).map(w => w.label);
+
+  // Birim başına kırılım: "47 üye · 4 çene · 2 adet"
+  const perUnit = new Map<string, number>();
+  for (const w of data) {
+    const u = serviceUnitLabel(w.unit);
+    perUnit.set(u, (perUnit.get(u) ?? 0) + w.count);
+  }
+  const unitBreakdown = Array.from(perUnit.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([u, n]) => `${n} ${u}`)
+    .join(' · ');
   return (
     <SpineCard
       title={t('admin.dashboard.workTypeDistribution')}
-      value={total}
-      // NOT: "üye" = diş protez birimi (1 diş = 1 üye), üyelik değil — sayaç
-      // diş sayar (bkz. wtMap += teeth). EN "Units" / DE "Einheiten" ile aynı.
-      unit={t('admin.dashboard.totalMembers')}
-      segments={live.map((w, i) => ({ color: WORKTYPE_RAMP[rows.indexOf(w)], pct: w.count / total }))}
+      // Başlıkta TEK toplam YOK — birimler toplanamaz.
+      // Eskiden "87 Üye" yazıyordu ama o 87'nin içinde çene bazlı plaklar ve
+      // adet bazlı model/tasarım işleri de diş sayılarak toplanmıştı.
+      // Artık her birim kendi kırılımında: "47 üye · 4 çene · 2 adet".
+      value={unitBreakdown}
+      segments={live.map((w) => ({ color: WORKTYPE_RAMP[rows.indexOf(w)], pct: w.count / total }))}
       zeros={zeros}
     >
       {live.map(w => (
@@ -1163,7 +1087,8 @@ function WorkTypeCard({ data }: { data: { label: string; count: number }[] }) {
           color={WORKTYPE_RAMP[rows.indexOf(w)]}
           label={w.label}
           value={w.count}
-          meta={`${Math.round((w.count / total) * 100)}%`}
+          // Satırın kendi birimi — "13 üye", "4 çene", "2 adet".
+          meta={`${serviceUnitLabel(w.unit)} · ${Math.round((w.count / total) * 100)}%`}
         />
       ))}
     </SpineCard>
@@ -1260,7 +1185,9 @@ export default function AdminDashboard() {
   const [totalLabUsers, setLabUsers]      = useState(cache?.totalLabUsers ?? 0);
   const [todayDelivery, setTodayDelivery] = useState(cache?.todayDelivery ?? 0);
   const [byStatus, setByStatus]           = useState<{ label: string; count: number; key: string }[]>(cache?.byStatus ?? []);
-  const [byWorkType, setByWorkType]       = useState<{ label: string; count: number }[]>(cache?.byWorkType ?? []);
+  // `unit` = hizmetin sayım birimi (üye/çene/adet…). Kart satır başına bunu
+  // gösteriyor; birimler toplanmadığı için tipte taşınması şart.
+  const [byWorkType, setByWorkType]       = useState<{ label: string; count: number; unit?: string | null }[]>(cache?.byWorkType ?? []);
   const [monthly, setMonthly]             = useState<{ label: string; count: number }[]>(cache?.monthly ?? []);
   const [recentOrders, setRecentOrders]   = useState<any[]>(cache?.recentOrders ?? []);
   const [upcoming, setUpcoming]           = useState<any[]>(cache?.upcoming ?? []);
@@ -1369,7 +1296,7 @@ export default function AdminDashboard() {
       .from('work_orders')
       // hold_status + revizyon alanları: durum etiketi ve vaka gruplaması için
       // gerekli (bu sorgu ikisini de seçmiyordu → revizyonlar köksüz görünüyordu)
-      .select('id, order_number, work_type, status, hold_status, delivery_date, doctor_id, patient_name, revision_of_id, revision_no')
+      .select('id, order_number, work_type, status, hold_status, delivery_date, doctor_id, patient_name, revision_of_id, revision_no, continues_order_id')
       .order('created_at', { ascending: false })
       .limit(8);
     if (error) { console.error('[AdminDashboard] loadRecent error:', error); return; }
@@ -1406,6 +1333,7 @@ export default function AdminDashboard() {
       delivery_date: o.delivery_date, is_urgent: o.is_urgent ?? false,
       revision_of_id: o.revision_of_id ?? null,
       revision_no: o.revision_no ?? null,
+      continues_order_id: o.continues_order_id ?? null,
       doctor_name: nameMap[o.doctor_id] ?? '--',
       clinic_logo_url: logoOf[clinicOf[o.doctor_id] ?? ''] ?? null,
     })));
@@ -1419,7 +1347,7 @@ export default function AdminDashboard() {
     const in3DaysStr = in3Days.toISOString().split('T')[0];
 
     // 3 sorgu paralel — eskiden seri idi (~3× round-trip).
-    const [mainRes, todayRes, upcomingRes] = await Promise.all([
+    const [mainRes, todayRes, upcomingRes, servicesRes] = await Promise.all([
       supabase
         .from('work_orders')
         .select('id, work_type, status, delivery_date, created_at, tooth_numbers')
@@ -1434,6 +1362,9 @@ export default function AdminDashboard() {
         .select('id, order_number, status, delivery_date, doctor_id')
         .gte('delivery_date', today).lte('delivery_date', in3DaysStr)
         .neq('status', 'teslim_edildi').neq('status', 'iptal').order('delivery_date'),
+      // Hizmet birimleri — "İş Tipi Dağılımı" her işi KENDİ biriminde saysın diye.
+      // (Gece plağı çene, kron üye, model baskısı adet… bkz. core/util/serviceUnits)
+      supabase.from('lab_services').select('name, unit'),
     ]);
 
     const data = mainRes.data;
@@ -1449,7 +1380,15 @@ export default function AdminDashboard() {
       const wc: Record<string, number> = {};
       const wcDone: Record<string, number> = {};
       weekDays.forEach(wd => { wc[wd.date] = 0; wcDone[wd.date] = 0; });
-      const wtMap: Record<string, number> = {};
+      // Hizmet adı → birim eşlemi (küçük harf, kırpılmış). service_id üretimde
+      // boş olduğu için isimle eşleşiyoruz (bkz. serviceUnits.ts notu).
+      const unitByService = new Map<string, string | null>(
+        (servicesRes.data ?? []).map((s: any) => [
+          String(s.name ?? '').trim().toLocaleLowerCase('tr-TR'),
+          s.unit ?? null,
+        ]),
+      );
+      const wtMap: Record<string, { count: number; unit: string | null }> = {};
       let overdueN = 0, todayDeliveryN = 0;
 
       for (const o of data) {
@@ -1469,7 +1408,14 @@ export default function AdminDashboard() {
         if (o.work_type && teeth > 0) {
           // work_type diş başına tekrarlı olabilir ("X, X, X…") — tekilleştir
           const wt = Array.from(new Set(String(o.work_type).split(',').map((s: string) => s.trim()).filter(Boolean))).join(', ');
-          wtMap[wt] = (wtMap[wt] ?? 0) + teeth;
+          // Miktar İŞİN KENDİ BİRİMİNDE. Eskiden burada koşulsuz `teeth`
+          // toplanıyordu; gece plağı gibi ÇENE bazlı işler de diş sayıldığı için
+          // tek plak 16 "üye" görünüp listenin başına geçiyordu.
+          const unit = resolveUnitForWorkType(wt, unitByService);
+          wtMap[wt] = {
+            count: (wtMap[wt]?.count ?? 0) + serviceUnitQty(unit, o.tooth_numbers ?? []),
+            unit,
+          };
         }
         if (o.delivery_date < today && o.status !== 'teslim_edildi') overdueN++;
         if (o.delivery_date === today && o.status !== 'teslim_edildi') todayDeliveryN++;
@@ -1478,7 +1424,12 @@ export default function AdminDashboard() {
       setMonthly(monthBuckets.map(b => ({ label: monthsShort[b.m], count: b.count })));
       setWeekCounts(wc);
       setWeekDone(wcDone);
-      setByWorkType(Object.entries(wtMap).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([label, count]) => ({ label, count })));
+      setByWorkType(
+        Object.entries(wtMap)
+          .sort((a, b) => b[1].count - a[1].count)
+          .slice(0, 5)
+          .map(([label, v]) => ({ label, count: v.count, unit: v.unit })),
+      );
       setOverdue(overdueN);
       setTodayDelivery(todayDeliveryN);
     }
@@ -1572,13 +1523,21 @@ export default function AdminDashboard() {
     setRefreshing(false);
   };
 
+  // Canlı: sipariş/aşama/profil değişiminde özet sayaçlarını debounce'lu tazele (spinner'sız).
+  useRealtimeRefresh('admin_dashboard_rt', ['work_orders', 'order_stages', 'profiles'], () => {
+    Promise.all([loadRecent(), loadPipeline(), loadExtra(), loadProfiles(), loadFinance()]);
+  });
+
   const today = todayStr();
 
   // Derived stats
   const totalActive = totalOrders - (byStatus.find(s => s.key === 'teslim_edildi')?.count ?? 0);
-  const totalPipe = Object.values(pipelineCounts).reduce((s, v) => s + v, 0) || 1;
+  // pipeCount: yüzdenin gerçek paydası (0 olabilir) — "1 / 9" bağlamı bundan yazılır.
+  const pipeCount = Object.values(pipelineCounts).reduce((s, v) => s + v, 0);
+  const totalPipe = pipeCount || 1;
+  const deliveredPipe = pipelineCounts['teslim_edildi'] ?? 0;
   const productionPct = Math.round(((pipelineCounts['uretimde'] ?? 0) / totalPipe) * 100);
-  const deliveryPct   = Math.round(((pipelineCounts['teslim_edildi'] ?? 0) / totalPipe) * 100);
+  const deliveryPct   = Math.round((deliveredPipe / totalPipe) * 100);
 
   // Latest active order for AnimatedAktifVakaCard
   const latestOrder = recentOrders.find(o => o.status !== 'teslim_edildi') ?? recentOrders[0];
@@ -1813,14 +1772,16 @@ export default function AdminDashboard() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={P} />}
     >
       {/* ════════ HERO ════════ */}
-      <View className="mb-5">
+      {/* Alt boşluk 16 — hero ile altındaki ilk kart arasındaki mesafe sabit. */}
+      <View style={{ marginBottom: 16 }}>
         <View className={`${isDesktop ? 'flex-row justify-between items-end' : ''}`} style={{ gap: 32, paddingTop: 8 }}>
           {/* Left: greeting + stat pills */}
           <View style={{ flex: 1 }}>
+            {/* Selamlama sayfanın konusu değil; bilgi öndedir. 56/40 → 28/24. */}
             <Text style={{
-              ...SERIF, fontSize: isDesktop ? 56 : 40,
-              letterSpacing: -0.025 * (isDesktop ? 56 : 40),
-              lineHeight: isDesktop ? 56 : 42,
+              ...SERIF, fontSize: isDesktop ? 28 : 24,
+              letterSpacing: -0.025 * (isDesktop ? 28 : 24),
+              lineHeight: isDesktop ? 32 : 28,
               color: INK,
             }}>
               {t('dashboard.greetingName', { name: '' }).replace(/\s*\.?\s*$/, '')}{' '}
@@ -1831,37 +1792,48 @@ export default function AdminDashboard() {
             <View className="flex-row flex-wrap items-center" style={{ gap: 14, marginTop: 14 }}>
               <StatPill label={t('admin.dashboard.production')} value={`${productionPct}%`} bg={INK} color="#FFF" />
               <StatPill label={t('admin.dashboard.active')} value={totalActive} bg={P} color="#FFF" />
-              {overdueCount > 0 && (
-                <StatPill label={t('admin.dashboard.overdue')} value={overdueCount} bg="rgba(217,75,75,0.12)" color="#9C2E2E" />
-              )}
               <StatPill label={t('admin.dashboard.today')} value={todayOrders} bg="rgba(0,0,0,0.08)" color={INK} />
+              {/* Geciken + planlanacak AYNI satırda: StatPill ile eşit ölçülü
+                  rozetler. İkinci bir şerit yok; renk tek başına yeter. */}
+              {overdueCount > 0 && (
+                <AlertPillX
+                  icon={AlertTriangle}
+                  count={overdueCount}
+                  label={t('admin.dashboard.overdue')}
+                  color={CLR.red}
+                  labelColor="#9C2E2E"
+                  pulse
+                  onPress={() => router.push('/(admin)/orders' as any)}
+                />
+              )}
+              {planningPending > 0 && (
+                <AlertPillX
+                  icon={Layers}
+                  count={planningPending}
+                  label={t('admin.status.toPlanShort')}
+                  color={CLR.orange}
+                  labelColor="#9C5E0E"
+                  pulse
+                  onPress={() => router.push('/(admin)/orders?status=alindi' as any)}
+                />
+              )}
               <FaceScanQuickAction accentColor={P} compact />
             </View>
+
           </View>
 
-          {/* Right: big stats */}
-          <View className="flex-row" style={{ gap: 32, alignItems: 'flex-end' }}>
+          {/* Right: big stats — kart yok, aralarında yalnız saç teli ayraç.
+              alignSelf: sol kolon daha uzun olduğunda KPI bloğu tepede kalıp
+              altında boşluk bırakıyordu. */}
+          <View className="flex-row" style={{ gap: 24, alignItems: 'flex-end', alignSelf: 'flex-end' }}>
             <BigStat value={totalOrders} label={t('admin.dashboard.totalOrders')} />
+            <StatDivider />
             <BigStat value={totalDoctors} label={t('admin.dashboard.doctor')} />
+            <StatDivider />
             <BigStat value={totalLabUsers} label={t('admin.dashboard.labUser')} />
           </View>
         </View>
       </View>
-
-      {/* ════════ OVERDUE + PLANLAMA BEKLEYEN ════════ */}
-      {(overdueCount > 0 || planningPending > 0) && (
-        <View className={isDesktop ? 'flex-row' : ''} style={{ gap: 16, marginBottom: 16 }}>
-          {overdueCount > 0 && (
-            <AnimatedOverdueCard count={overdueCount} onPress={() => router.push('/(admin)/orders' as any)} />
-          )}
-          {planningPending > 0 && (
-            <PlanningWaitingCard
-              count={planningPending}
-              onPress={() => router.push('/(admin)/orders?status=alindi' as any)}
-            />
-          )}
-        </View>
-      )}
 
       {/* ════════ 4-CARD GRID ════════ */}
       <View
@@ -1911,8 +1883,12 @@ export default function AdminDashboard() {
             </Pressable>
           </View>
           <PercentRingHero value={deliveryPct} size={140} darkText />
-          <Text style={{ fontSize: 9, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.08 * 9, marginTop: 10 }}>
-            {t('admin.dashboard.delivered')}
+          {/* Yüzde tek başına "neyin %11'i?" sorusunu bırakıyordu — payı/paydayı yaz. */}
+          <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[700], marginTop: 10 }}>
+            {t('admin.dashboard.ordersOfTotal', { done: deliveredPipe, total: pipeCount })}
+          </Text>
+          <Text style={{ fontSize: 9, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.08 * 9, marginTop: 3 }}>
+            {t('admin.dashboard.deliveredAllTime')}
           </Text>
           {/* Mini pipeline stats */}
           <View className="flex-row" style={{ gap: 8, marginTop: 12 }}>
@@ -2006,11 +1982,11 @@ export default function AdminDashboard() {
                       {/* Vaka grubu: orijinal üstte, revizyonlar altında girintili
                           (siparişler sayfasıyla aynı dil) */}
                       <View className="flex-row items-center" style={{ flex: 1.2, minWidth: 0, gap: 6, paddingLeft: (order as any).__revChild ? 14 : 0 }}>
-                        {(order as any).__revChild && <CornerDownRight size={12} color="#9C5E0E" strokeWidth={2} style={{ flexShrink: 0 }} />}
+                        {(order as any).__revChild && <CornerDownRight size={12} color={(order as any).__continuation ? '#3563A8' : '#9C5E0E'} strokeWidth={2} style={{ flexShrink: 0 }} />}
                         <View style={{ minWidth: 0 }}>
                           <Text style={{ fontSize: 12, fontWeight: '800', color: P }} numberOfLines={1}>#{order.order_number}</Text>
                           {(order as any).__revChild ? (
-                            <Text style={{ fontSize: 8.5, fontWeight: '700', color: '#9C5E0E', letterSpacing: 0.4 }}>REVİZYON</Text>
+                            <Text style={{ fontSize: 8.5, fontWeight: '700', color: (order as any).__continuation ? '#3563A8' : '#9C5E0E', letterSpacing: 0.4 }}>{(order as any).__continuation ? 'DEVAM' : 'REVİZYON'}</Text>
                           ) : (order as any).__revParent ? (
                             <Text style={{ fontSize: 8.5, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.4 }}>ORİJİNAL</Text>
                           ) : null}
@@ -2039,7 +2015,7 @@ export default function AdminDashboard() {
                       </View>
                       {isDesktop && (
                         <Text style={{ flex: 2, fontSize: 11, color: DS.ink[500] }} numberOfLines={1}>{(order as any).__revChild && (
-                      <Text style={{ fontWeight: '700', color: '#9C5E0E' }}>Revizyon - </Text>
+                      <Text style={{ fontWeight: '700', color: (order as any).__continuation ? '#3563A8' : '#9C5E0E' }}>{(order as any).__continuation ? 'Devam - ' : 'Revizyon - '}</Text>
                     )}{order.work_type || '--'}</Text>
                       )}
                       <View style={{ flex: 1.4 }}>

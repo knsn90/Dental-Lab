@@ -9,6 +9,7 @@ import {
 import Svg, { Path, Circle, Line, Polyline } from 'react-native-svg';
 import { User as UserIcon } from 'lucide-react-native';
 import { useAuthStore } from '../../../core/store/authStore';
+import { useAnimatedKeyboardHeight } from '../../../core/ui/useAnimatedKeyboardHeight';
 import { useOrderChatInbox } from '../hooks/useOrderChatInbox';
 import { useChatMessages } from '../hooks/useChatMessages';
 import { uploadChatAttachment, isWithinDeleteWindow } from '../chatApi';
@@ -202,22 +203,28 @@ function composeChatLabels(item: {
 }
 
 // ── Avatar with unread badge overlay ─────────────────────────────────
-function Avatar({ name, color, unreadCount, size = 48, statusColor, avatarUrl }: {
+function Avatar({ name, color, unreadCount, size = 48, statusColor, avatarUrl, logoMode }: {
   name?: string | null; color: string; unreadCount?: number; size?: number; statusColor?: string;
   avatarUrl?: string | null;
+  /** Klinik logosu: profil fotoğrafı gibi kırpılmaz — beyaz zemine sığdırılır. */
+  logoMode?: boolean;
 }) {
   const showBadge = (unreadCount ?? 0) > 0;
   return (
     <View style={{ width: size, height: size, position: 'relative' }}>
       <View style={[
         avs.circle,
-        { width: size, height: size, borderRadius: size / 2, backgroundColor: color },
+        { width: size, height: size, borderRadius: size / 2,
+          backgroundColor: (avatarUrl && logoMode) ? '#FFFFFF' : color },
+        (avatarUrl && logoMode) ? { borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' } : null,
       ]}>
         {avatarUrl ? (
           <Image
             source={{ uri: avatarUrl }}
-            style={{ width: size, height: size, borderRadius: size / 2 }}
-            resizeMode="cover"
+            style={logoMode
+              ? { width: size * 0.74, height: size * 0.74 }
+              : { width: size, height: size, borderRadius: size / 2 }}
+            resizeMode={logoMode ? 'contain' : 'cover'}
           />
         ) : (
           <Text style={[avs.text, { fontSize: size * 0.32 }]}>{initials(name)}</Text>
@@ -282,6 +289,14 @@ function ChatListItem({ item, selected, currentUserId, viewerType, accentColor, 
   const avatarSeed    = senderName ?? item.work_order_id ?? '';
   const avatarBg      = colorFor(avatarSeed);
 
+  // Lab tarafı (admin · müdür · teknisyen) için karşı taraf HER ZAMAN kliniktir →
+  // sohbetin kimliği kliniğin logosu olsun. Logo yoksa (veya RLS gizlerse) eski
+  // davranışa düşer: son gönderenin fotoğrafı, o da yoksa baş harfler.
+  const isLabSide     = viewerType === 'lab' || viewerType === 'admin';
+  const clinicLogo    = (item.clinic_logo as string | null) ?? null;
+  const shownAvatar   = (isLabSide && clinicLogo) ? clinicLogo : senderAvatar;
+  const avatarName    = (isLabSide && item.clinic_name) ? item.clinic_name : (senderName ?? title);
+
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -289,8 +304,9 @@ function ChatListItem({ item, selected, currentUserId, viewerType, accentColor, 
       style={[cl.row, selected && { backgroundColor: hexA(accentColor, 0.08) }]}
     >
       <Avatar
-        name={senderName ?? title}
-        avatarUrl={senderAvatar}
+        name={avatarName}
+        avatarUrl={shownAvatar}
+        logoMode={!!(isLabSide && clinicLogo)}
         color={avatarBg}
         unreadCount={item.unread_for_me}
         statusColor={statusCfg?.color}
@@ -566,9 +582,10 @@ function MessageBubble({ msg, isMine, accentColor, showAvatar, senderColor, onIm
   const isPending  = msg.approval_status === 'pending';
   const isRejected = msg.approval_status === 'rejected';
 
-  // Profil RLS bloklarsa sender null gelir — generic ikon + "Kullanıcı" fallback.
+  const isWhatsApp = msg.external_source === 'whatsapp';
+  // Profil RLS bloklarsa sender null gelir — WhatsApp'ta external_sender, yoksa "Kullanıcı".
   const senderMissing = !msg.sender?.full_name;
-  const senderLabel   = msg.sender?.full_name ?? 'Kullanıcı';
+  const senderLabel   = msg.sender?.full_name ?? msg.external_sender ?? 'Kullanıcı';
 
   return (
     <View style={[mb.row, isMine ? mb.rowMine : mb.rowOther]}>
@@ -625,6 +642,16 @@ function MessageBubble({ msg, isMine, accentColor, showAvatar, senderColor, onIm
               );
             })() : null}
           </Text>
+        )}
+        {isWhatsApp && (
+          <View style={{
+            alignSelf: isMine ? 'flex-end' : 'flex-start',
+            marginBottom: 3, marginHorizontal: 4,
+            paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999,
+            backgroundColor: 'rgba(37,211,102,0.14)',
+          }}>
+            <Text style={{ fontSize: 9.5, fontWeight: '700', color: '#128C7E', letterSpacing: 0.2 }}>WhatsApp</Text>
+          </View>
         )}
         <View style={[
           mb.bubble,
@@ -970,6 +997,10 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
   const workType    = formatWorkTypeCompact(selectedOrder.work_type) || 'İş emri';
   const avatarBg    = colorFor(selectedOrder.work_order_id);
   const statusCfg   = STATUS_CONFIG[selectedOrder.status as WorkOrderStatus];
+  // Lab tarafında sohbetin kimliği klinik → başlıkta da logosu görünsün.
+  const headerLogo  = (viewerType === 'lab' || viewerType === 'admin')
+    ? ((selectedOrder.clinic_logo as string | null) ?? null)
+    : null;
 
   // Pinned summary chips (sadece dolu olanlar gösterilir)
   const teethStr = Array.isArray(selectedOrder.tooth_numbers) && selectedOrder.tooth_numbers.length > 0
@@ -1105,8 +1136,14 @@ export function ChatDetail({ selectedOrder, accentColor, currentUserId, viewerTy
             <Icon name="arrow-left" size={18} color={TEXT} strokeWidth={2} />
           </TouchableOpacity>
         )}
-        <View style={[cd.headerAvatar, { backgroundColor: avatarBg }]}>
-          <Text style={cd.headerAvatarText}>{initials(headerTitle)}</Text>
+        <View style={[
+          cd.headerAvatar,
+          { backgroundColor: headerLogo ? '#FFFFFF' : avatarBg },
+          headerLogo ? { borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' } : null,
+        ]}>
+          {headerLogo
+            ? <Image source={{ uri: headerLogo }} style={cd.headerAvatarImg} resizeMode="contain" />
+            : <Text style={cd.headerAvatarText}>{initials(headerTitle)}</Text>}
           {statusCfg && (
             <View style={[cd.headerStatusDot, { backgroundColor: statusCfg.color }]} />
           )}
@@ -1550,6 +1587,7 @@ const cd = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: BORDER,
   },
   headerAvatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  headerAvatarImg: { width: 30, height: 30 },
   headerAvatarText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
   headerStatusDot: { position: 'absolute', right: -1, bottom: -1, width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: SURFACE },
   headerTitle: { fontSize: 15, fontWeight: '800', color: TEXT, letterSpacing: -0.2 },
@@ -2155,9 +2193,12 @@ const p = StyleSheet.create({
   split: { flex: 1, flexDirection: 'row' },
   left:  {
     width: 320,
-    backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.80)' : SURFACE,
+    // Sohbet listesi tam beyaz. Eskiden yarı saydamdı (0.80) ve arkadaki blur'lu
+    // zemin sızdığı için gri görünüyordu; başlık kendi 0.80'ini üstüne bindirdiği
+    // için de başlık beyaz, liste gri kalıyordu.
+    backgroundColor: SURFACE,
     borderRightWidth: 1,
-    borderRightColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.30)' : BORDER,
+    borderRightColor: Platform.OS === 'web' ? 'rgba(0,0,0,0.06)' : BORDER,
   },
   right: {
     flex: 1,
@@ -2167,8 +2208,8 @@ const p = StyleSheet.create({
   listHeader: {
     paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10,
     borderBottomWidth: 1,
-    borderBottomColor: Platform.OS === 'web' ? 'rgba(241,245,249,0.65)' : BORDER,
-    backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.80)' : SURFACE,
+    borderBottomColor: BORDER,
+    backgroundColor: SURFACE,
   },
   listTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
   listTitle:   { fontSize: 18, fontWeight: '800', color: TEXT, letterSpacing: -0.4 },
@@ -2222,6 +2263,10 @@ function MessagesBottomSheet({
   onClose: () => void;
   mounted: boolean;
 }) {
+  // Sheet sabit yükseklikli + bottom:0 olduğu için klavye onu örtüyordu; içteki
+  // KeyboardAvoidingView'un da itecek boşluğu yoktu. Sheet'i klavye kadar
+  // yukarı kaldırmak tek doğru çözüm.
+  const { height: kbHeight } = useAnimatedKeyboardHeight();
   const { height } = useWindowDimensions();
   const BlurView = (() => { try { return require('expo-blur').BlurView; } catch { return null; } })();
   const backdrop = useRef(new Animated.Value(0)).current;
@@ -2284,7 +2329,8 @@ function MessagesBottomSheet({
         <Animated.View
           style={{
             position: 'absolute',
-            left: 0, right: 0, bottom: 0,
+            left: 0, right: 0,
+            bottom: kbHeight,
             height: sheetMaxHeight,
             transform: [{ translateY: sheetY }],
             backgroundColor: 'transparent',

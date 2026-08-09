@@ -216,7 +216,8 @@ function BreakdownModal({
 // ─── Utility ─────────────────────────────────────────────────────────────────
 
 /** "1.250.000" → "1,25M" gibi kompakt format */
-function formatCompact(n: number): string {
+function formatCompact(nRaw: number): string {
+  const n = Number(nRaw) || 0;   // undefined/NaN → 0 (ham toLocaleString çökmesi)
   if (Math.abs(n) >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
   if (Math.abs(n) >= 1_000)     return (n / 1_000).toFixed(1) + 'K';
   return n.toLocaleString('tr-TR', { maximumFractionDigits: 0 });

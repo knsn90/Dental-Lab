@@ -79,7 +79,7 @@ function esc(v: unknown): string {
 }
 
 function fmtMoney(n: number, currency = 'TRY'): string {
-  return n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + currency;
+  return (Number(n) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + currency;
 }
 
 function fmtMonth(iso: string): string {

@@ -14,7 +14,9 @@ import {
 } from 'lucide-react-native';
 import Svg, { Defs, Pattern, Rect, Line } from 'react-native-svg';
 import { MOBILE_PANEL_THEMES, useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { DS } from '../../../core/theme/dsTokens';
 import { HeroGlowOverlay } from '../../../core/ui/mobile/HeroGlowOverlay';
+import { AlertPillX } from '../../../core/ui/AlertPillX';
 import { Ring } from '../../../core/ui/mobile/Ring';
 import { AnimatedNumber } from '../../../core/ui/mobile/AnimatedNumber';
 import { NewOrderCTACard } from '../../../core/ui/mobile/NewOrderCTACard';
@@ -22,6 +24,8 @@ import { FaceScanQuickAction, useFaceScanAvailable } from '../../orders/componen
 import { useAuthStore } from '../../../core/store/authStore';
 
 import { UnreadMessagesCard } from '../../../core/ui/mobile/UnreadMessagesCard';
+import { RecentOrdersMobile, type RecentOrderItem } from './RecentOrdersMobile';
+
 const CLINIC = MOBILE_PANEL_THEMES.klinik;
 
 function clinicTodayLabel(): string {
@@ -61,6 +65,7 @@ export interface ClinicMobileDashboardProps {
   weekTotal?: number;
   // List
   delayed?: ClinicDelayedCase[];
+  recentOrders?: RecentOrderItem[];
   // Actions
   onNewOrder?: () => void;
   onScan?: () => void;
@@ -69,6 +74,8 @@ export interface ClinicMobileDashboardProps {
   onMessages?: () => void;
   onNotifications?: () => void;
   onOpenOrder?: (id: string) => void;
+  onOpenOrderById?: (dbId: string) => void;
+  onAllOrders?: () => void;
   // Refresh
   refreshing?: boolean;
   onRefresh?: () => void;
@@ -147,36 +154,22 @@ export function ClinicMobileDashboard(props: ClinicMobileDashboardProps) {
         />
       )}
 
-      {/* ═══ ACİL — geciken sipariş bildirim bannerı (kırmızı) ═══ */}
+      {/* ═══ DURUM ŞERİDİ — geciken sipariş (kompakt pill) ═══
+          Eskiden 72px'lik tam genişlik kırmızı banner'dı; tek geciken sipariş
+          için ekranın en değerli alanını harcıyordu. Masaüstü panolarıyla aynı
+          dil: AlertPillX. */}
       {(props.overdueCount ?? 0) > 0 && (
-        <Pressable
-          onPress={() => router.push('/(clinic)/orders' as any)}
-          style={{
-            marginHorizontal: 16, marginBottom: 16, borderRadius: 20, overflow: 'hidden',
-            backgroundColor: '#9A1F1F',
-            flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
-          }}
-        >
-          <View style={{
-            width: 44, height: 44, borderRadius: 14,
-            backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
-            alignItems: 'center', justifyContent: 'center',
-          }}>
-            <AlertTriangle size={20} color="#FFFFFF" strokeWidth={1.9} />
-          </View>
-          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-            <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(255,255,255,0.72)', letterSpacing: 1, textTransform: 'uppercase' }}>● ACİL</Text>
-            <Text style={{ fontSize: 22, fontWeight: '700', color: '#FFFFFF', ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}) }}>{props.overdueCount}</Text>
-            <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.85)' }}>geciken sipariş</Text>
-          </View>
-          <View style={{
-            width: 34, height: 34, borderRadius: 17,
-            backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.20)',
-            alignItems: 'center', justifyContent: 'center',
-          }}>
-            <ArrowUpRight size={16} color="#FFFFFF" strokeWidth={2} />
-          </View>
-        </Pressable>
+        <View style={{ marginHorizontal: 16, marginBottom: 16, flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+          <AlertPillX
+            icon={AlertTriangle}
+            count={props.overdueCount ?? 0}
+            label="Geciken"
+            color={DS.clinic.danger}
+            labelColor="#9C2E2E"
+            pulse
+            onPress={() => router.push('/(clinic)/orders' as any)}
+          />
+        </View>
       )}
 
       {/* ═══ Aktif takip card (panel-themed dark) — clinic-wide pipeline ═══ */}
@@ -477,6 +470,15 @@ export function ClinicMobileDashboard(props: ClinicMobileDashboardProps) {
           })}
         </View>
       )}
+
+      {/* ═══ Son Siparişler — desktop tablonun mobil karşılığı ═══ */}
+      <RecentOrdersMobile
+        items={props.recentOrders ?? []}
+        accent={CLINIC.primary}
+        accentDark={CLINIC.accentDark}
+        onOpenOrder={(id) => props.onOpenOrderById?.(id)}
+        onAllOrders={props.onAllOrders}
+      />
     </ScrollView>
   );
 }

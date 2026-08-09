@@ -3,6 +3,7 @@ import { View, Text, Platform, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DS } from '../../theme/dsTokens';
 import { HubContext } from '../HubContext';
+import { PAGE_PADDING } from '../pageMetrics';
 
 const DisplayFont = Platform.OS === 'web'
   ? 'Inter Tight, Inter, system-ui, sans-serif'
@@ -32,7 +33,7 @@ export function MobilePageTitle({
   const pad = (topInset ? Math.max(insets.top, 8) : 0) + 72;
 
   return (
-    <View style={{ paddingHorizontal: 24, paddingTop: pad, paddingBottom: 8 }}>
+    <View style={{ paddingHorizontal: PAGE_PADDING, paddingTop: pad, paddingBottom: 8 }}>
       <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 26, letterSpacing: -0.6, color: DS.ink[900] }}>
         {title}
       </Text>

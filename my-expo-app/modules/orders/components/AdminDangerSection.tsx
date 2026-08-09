@@ -9,11 +9,13 @@
  */
 
 import React, { useState } from 'react';
-import { View, Text, Pressable, Platform, Modal, TextInput } from 'react-native';
+import { View, Text, Pressable, Platform, Modal, TextInput, useWindowDimensions } from 'react-native';
 import { ShieldAlert, Archive, RotateCcw, Trash2, AlertCircle, X, Pencil, ChevronRight } from 'lucide-react-native';
 import { archiveOrder, restoreOrder, hardDeleteOrder } from '../api';
 import { toast } from '../../../core/ui/Toast';
-import { OrderEditSheet } from './OrderEditSheet';
+import { useSegments } from 'expo-router';
+// Admin düzenleme artık yeni-sipariş SİHİRBAZINI (aynı 4 adım) düzenleme modunda açar.
+const NewOrderEditWizard: any = React.lazy(() => import('../screens/NewOrderScreen').then((m) => ({ default: (m as any).NewOrderScreen })));
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 
 interface Props {
@@ -26,6 +28,9 @@ interface Props {
 }
 
 export function AdminDangerSection({ orderId, order, isArchived, onArchived, onDeleted, onEdited }: Props) {
+  const segs = useSegments() as string[];
+  const editPanel = ((segs?.[0] ?? '').replace(/[()]/g, '') || 'lab') as any; // '(lab)' → 'lab'
+  const { width: winW } = useWindowDimensions();
   const [confirmType, setConfirmType] = useState<null | 'archive' | 'restore' | 'delete'>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -131,14 +136,23 @@ export function AdminDangerSection({ orderId, order, isArchived, onArchived, onD
         </View>
       </View>
 
-      {/* Kapsamlı düzenleme — admin/lab (gate yok, tüm alanlar) */}
-      <OrderEditSheet
-        visible={editOpen}
-        order={order}
-        mode="admin"
-        onClose={() => setEditOpen(false)}
-        onSaved={() => { setEditOpen(false); onEdited?.(); }}
-      />
+      {/* Kapsamlı düzenleme — yeni-sipariş sihirbazı (aynı 4 adım), bilgi dolu, popup */}
+      {editOpen && (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setEditOpen(false)}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', alignItems: 'center', justifyContent: 'center', padding: winW >= 768 ? 24 : 0 }}>
+            <View style={{ width: '100%', maxWidth: 1120, flex: 1, maxHeight: winW >= 768 ? '94%' : '100%', borderRadius: winW >= 768 ? 20 : 0, overflow: 'hidden', backgroundColor: '#F1F5F9', ...(Platform.OS === 'web' ? ({ boxShadow: '0 24px 60px rgba(15,23,42,0.28)' } as any) : {}) }}>
+              <React.Suspense fallback={<View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color="#0A0A0A" /></View>}>
+                <NewOrderEditWizard
+                  panel={editPanel}
+                  editOrderId={orderId}
+                  onClose={() => setEditOpen(false)}
+                  onSaved={() => { setEditOpen(false); onEdited?.(); }}
+                />
+              </React.Suspense>
+            </View>
+          </View>
+        </Modal>
+      )}
 
       {/* Confirmation modal */}
       {confirmType && (

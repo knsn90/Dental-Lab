@@ -12,17 +12,20 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { View, Text, Pressable, ScrollView, Platform, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  Bell, QrCode, Flame, FileCheck, CheckCircle2, ClipboardList, User as UserIcon,
+  Bell, QrCode, FileCheck, ClipboardList, User as UserIcon,
 } from 'lucide-react-native';
 import { useMobileTokens, MOBILE_PANEL_THEMES } from '../../../core/theme/mobileDesignTokens';
 import { Ring } from '../../../core/ui/mobile/Ring';
 import { AnimatedNumber } from '../../../core/ui/mobile/AnimatedNumber';
 import { NewOrderCTACard } from '../../../core/ui/mobile/NewOrderCTACard';
-import { FaceScanQuickAction, useFaceScanAvailable } from '../../orders/components/FaceScanQuickAction';
 import { useAuthStore } from '../../../core/store/authStore';
 
 import { UnreadMessagesCard } from '../../../core/ui/mobile/UnreadMessagesCard';
+import { RecentOrdersMobile, type RecentOrderItem } from '../../dashboard/components/RecentOrdersMobile';
+import { GradientFill, RadialGlow } from '../../../core/ui/gradients';
+
 const EXEC = MOBILE_PANEL_THEMES.exec;
 
 // Desktop ile aynı format: "Pazartesi, 12 Mayıs"
@@ -31,15 +34,6 @@ function adminTodayLabel(t: (key: string) => string): string {
   const days   = t('admin.days.long').split(', ');
   const months = t('admin.months.long').split(', ');
   return `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]}`;
-}
-
-export interface DelayedCase {
-  id: string;
-  name: string;
-  clinic: string;
-  stage: string;
-  remain: string;
-  kind: 'qc' | 'delay';
 }
 
 export interface AdminMobileDashboardProps {
@@ -63,8 +57,13 @@ export interface AdminMobileDashboardProps {
   weekBars?: number[];
   weekRange?: string;
   weekTotal?: number;
+  /** Pazartesi'den başlayan 7 gün etiketi. Verilmezse i18n listesi kullanılır —
+   *  ama o liste PAZAR ile başlıyor, veri ise Pazartesi ile; hizasız kalır. */
+  weekLabels?: string[];
+  /** Bugünün sütun indeksi. Verilmezse son sütun varsayılır (eski sabit davranış). */
+  weekTodayIndex?: number;
   // Delayed
-  delayed?: DelayedCase[];
+  recentOrders?: RecentOrderItem[];
   // Actions
   onNewOrder?:     () => void;
   onScan?:         () => void;
@@ -73,6 +72,8 @@ export interface AdminMobileDashboardProps {
   onMessages?:     () => void;
   onNotifications?: () => void;
   onOpenOrder?:    (id: string) => void;
+  onOpenOrderById?: (dbId: string) => void;
+  onAllOrders?:    () => void;
   // Refresh
   refreshing?: boolean;
   onRefresh?: () => void;
@@ -80,10 +81,10 @@ export interface AdminMobileDashboardProps {
 
 export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
   const { t } = useTranslation();
-  const faceScanOk = useFaceScanAvailable();
   const router = useRouter();
   const { profile } = useAuthStore();
   const T = useMobileTokens();
+  const insets = useSafeAreaInsets();
 
   const firstName = profile?.full_name?.split(' ')[0] ?? '';
   const greeting  = props.greeting ?? (firstName ? t('dashboard.greetingName', { name: firstName }) : t('dashboard.greeting'));
@@ -96,7 +97,6 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
     timer:  props.liveTimer ?? '00:00:00',
   };
   const week    = props.weekBars ?? [0,0,0,0,0,0,0];
-  const delayed = props.delayed ?? [];
   const pendingApprovals = props.pendingApprovalsCount ?? 0;
   const overdue = props.overdueCount ?? 0;
 
@@ -112,7 +112,7 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
         flexDirection: 'row',
         alignItems: 'flex-start',
         paddingHorizontal: 20,
-        paddingTop: 96,
+        paddingTop: Math.max(insets.top, 8) + 72,
         paddingBottom: 18,
         gap: 12,
       }}>
@@ -151,30 +151,24 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
           onPress={props.onNewOrder}
           kicker={live.total > 0 ? t('admin.cta.ordersToday', { total: live.total }) : t('admin.cta.newOrder')}
           title={t('admin.cta.createNewOrder')}
-          rightSlot={faceScanOk ? <FaceScanQuickAction variant="card" accentColor={EXEC.primary} /> : undefined}
         />
       )}
 
-      {/* ═══ Canlı üretim (F2 hero gradient — primary → amber) ═══ */}
+      {/* ═══ Canlı üretim (F2 hero gradient — primary → amber) ═══
+           Gradyan + ışımalar web ve native'de AYNI (SVG ile) — bkz core/ui/gradients */}
       <View style={{
         marginHorizontal: 16, marginBottom: 16,
         borderRadius: 24, padding: 18,
         backgroundColor: EXEC.primary, overflow: 'hidden',
-        ...(Platform.OS === 'web' ? { backgroundImage: `linear-gradient(135deg, ${EXEC.primary} 0%, #E89B2A 100%)` } as any : {}),
       }}>
+        <GradientFill from={EXEC.primary} to="#E89B2A" angle={135} />
         {/* Yumuşak, büyük ışık daireleri — kenara doğru tam şeffafa çözülür (keskin görünmez) */}
-        <View pointerEvents="none" style={{
-          position: 'absolute', top: -90, right: -70, width: 300, height: 300, borderRadius: 150,
-          ...(Platform.OS === 'web'
-            ? { backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.20), rgba(255,255,255,0) 68%)' } as any
-            : { backgroundColor: 'rgba(255,255,255,0.08)' }),
-        }} />
-        <View pointerEvents="none" style={{
-          position: 'absolute', bottom: -100, left: -60, width: 260, height: 260, borderRadius: 130,
-          ...(Platform.OS === 'web'
-            ? { backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.12), rgba(255,255,255,0) 70%)' } as any
-            : { backgroundColor: 'rgba(255,255,255,0.05)' }),
-        }} />
+        <View pointerEvents="none" style={{ position: 'absolute', top: -90, right: -70, width: 300, height: 300 }}>
+          <RadialGlow color="#FFFFFF" opacity={0.20} stopAt={68} />
+        </View>
+        <View pointerEvents="none" style={{ position: 'absolute', bottom: -100, left: -60, width: 260, height: 260 }}>
+          <RadialGlow color="#FFFFFF" opacity={0.12} stopAt={70} />
+        </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <View style={{
@@ -245,29 +239,21 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
 
       {/* ═══ KPI 2-grid ═══ */}
       <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingBottom: 16 }}>
-        {/* Revenue uses string for currency display, so it stays as static Text inside Kpi-like card */}
-        <View style={{
-          flex: 1, borderRadius: 22, padding: 14,
-          backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline,
-        }}>
-          <Text style={{ fontSize: 10.5, fontWeight: '600', color: T.ink3, letterSpacing: 1, textTransform: 'uppercase' }}>
-            {t('admin.dashboard.monthlyRevenue')}
-          </Text>
-          <Text style={{
-            fontSize: 24, fontWeight: '400', color: T.ink, letterSpacing: -0.4, marginTop: 4,
-            ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
-          }} numberOfLines={1}>
-            {props.monthlyRevenue ?? '—'}
-          </Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
-            {!!props.monthlyDelta && (
-              <Text style={{ fontSize: 11, fontWeight: '600', color: T.jade }}>
-                {props.monthlyDelta}
-              </Text>
-            )}
-            <Text style={{ fontSize: 10.5, color: T.ink3 }}>{t('admin.dashboard.revenueTarget')}</Text>
-          </View>
-        </View>
+        {/* Onay bekleyen — "Aylık gelir" placeholder'ının yerine geldi (o kart hiç
+            bağlanmamıştı, hep '—' gösteriyordu). Veri zaten yükleniyor; kart
+            dokunulabilir ve onaylar ekranına gider. Kasıtlı olarak BEYAZ kalır:
+            yanındaki "Aktif sipariş" kartı dolu/koyu olduğu için ikisi birden
+            dolu olursa grid ağırlaşıyor. */}
+        <Kpi
+          label={t('admin.dashboard.pendingApprovals')}
+          numericValue={pendingApprovals}
+          sub={pendingApprovals > 0
+            ? t('admin.dashboard.approvalsActionNeeded')
+            : t('admin.dashboard.approvalsClear')}
+          accent={EXEC.primary}
+          icon={FileCheck}
+          onPress={props.onApprovals}
+        />
 
         <Kpi
           label={t('admin.dashboard.activeOrders')}
@@ -284,6 +270,7 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
       {/* ═══ Mesajlar kartı — okunmamışı öne çıkarır (panel accent) ═══ */}
       <UnreadMessagesCard
         accent={EXEC.primary}
+        showClinicLogo
         onOpenOrder={(id) => router.push(`/(admin)/order/${id}` as any)}
         onOpenInbox={() => router.push('/(admin)/messages' as any)}
       />
@@ -304,7 +291,11 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
         </View>
         {/* Admin: hatched-rail pill kolonları — coral accent */}
         {(() => {
-          const SCALE_MAX = 20;
+          // Sabit 20 tavanı yoğun haftalarda tüm sütunları doldurup farkı yok
+          // ediyordu; haftanın kendi tepesine göre büyüsün (20 = alt sınır).
+          const SCALE_MAX = Math.max(20, ...week);
+          const labels = props.weekLabels ?? t('admin.days.short').split(', ');
+          const todayIdx = props.weekTodayIndex ?? 6;
           const FILL_LIGHT = `${EXEC.primary}55`;
           const FILL_DARK  = EXEC.primary;
           const RAIL_BG    = `${EXEC.primary}08`;
@@ -312,9 +303,9 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
 
           return (
             <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-end', height: 110, paddingHorizontal: 2, paddingTop: 6 }}>
-              {t('admin.days.short').split(', ').map((d, i) => {
+              {labels.map((d, i) => {
                 const n = week[i] ?? 0;
-                const today = i === 6;
+                const today = i === todayIdx;
                 const pct = n > 0 ? Math.min(Math.max((n / SCALE_MAX) * 100, 8), 100) : 0;
                 const empty = n === 0;
                 return (
@@ -342,7 +333,7 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
                       </View>
                     </View>
                     <Text style={{ fontSize: 10, fontWeight: today ? '700' : '500', color: today ? T.ink : T.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                      {d[0]}
+                      {d}
                     </Text>
                   </View>
                 );
@@ -352,100 +343,14 @@ export function AdminMobileDashboard(props: AdminMobileDashboardProps) {
         })()}
       </View>
 
-      {/* ═══ Geciken vakalar — list or positive empty state ═══ */}
-      <View style={{ paddingHorizontal: 20, paddingTop: 4, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Text style={{
-          fontSize: 16, fontWeight: '500', color: T.ink, letterSpacing: -0.2,
-          ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
-        }}>
-          {t('admin.dashboard.delayedCases')}
-        </Text>
-        {delayed.length > 0 && (
-          <Pressable onPress={() => router.push('/(admin)/orders' as any)}>
-            <Text style={{ fontSize: 12, color: EXEC.accentDark, fontWeight: '500' }}>{t('admin.dashboard.viewAll')}</Text>
-          </Pressable>
-        )}
-      </View>
-
-      {/* Empty state */}
-      {delayed.length === 0 && (
-        <View style={{
-          marginHorizontal: 16, marginBottom: 16,
-          padding: 16, borderRadius: 18,
-          backgroundColor: `${EXEC.primary}14`,
-          borderWidth: 1, borderColor: `${EXEC.primary}28`,
-          flexDirection: 'row', alignItems: 'center', gap: 12,
-        }}>
-          <View style={{
-            width: 36, height: 36, borderRadius: 12,
-            backgroundColor: `${EXEC.primary}22`,
-            alignItems: 'center', justifyContent: 'center',
-          }}>
-            <CheckCircle2 size={18} color={EXEC.primary} strokeWidth={1.9} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 13.5, fontWeight: '600', color: T.ink, letterSpacing: -0.1 }}>
-              {t('admin.dashboard.noDelayedCases')}
-            </Text>
-            <Text style={{ fontSize: 11.5, color: T.ink3, marginTop: 2 }}>
-              {t('admin.dashboard.productionOnTrack')}
-            </Text>
-          </View>
-        </View>
-      )}
-
-      {/* List */}
-      {delayed.length > 0 && (
-        <View style={{ paddingHorizontal: 16, paddingBottom: 14, gap: 8 }}>
-          {delayed.slice(0, 3).map(o => (
-            <Pressable key={o.id} onPress={() => props.onOpenOrder?.(o.id)}>
-              {({ pressed }: any) => (
-                <View style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 12,
-                  padding: 12, borderRadius: 18,
-                  backgroundColor: T.card, borderWidth: 1, borderColor: T.hairline,
-                  opacity: pressed ? 0.92 : 1,
-                }}>
-                  <View style={{
-                    width: 36, height: 36, borderRadius: 10,
-                    backgroundColor: T.rubySoft,
-                    alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    <Flame size={18} color={T.ruby} strokeWidth={1.6} />
-                  </View>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                      <Text
-                        style={{ fontSize: 14, fontWeight: '600', color: T.ink, flexShrink: 1 }}
-                        numberOfLines={1}
-                      >
-                        {o.name}
-                      </Text>
-                      <Text style={{ fontSize: 10, color: T.ink3, fontFamily: T.mono, flexShrink: 0 }}>
-                        {o.id}
-                      </Text>
-                    </View>
-                    <Text style={{ fontSize: 11.5, color: T.ink3, marginTop: 2 }} numberOfLines={1}>
-                      {o.clinic} · {o.stage}
-                    </Text>
-                  </View>
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={{
-                      fontSize: 13, fontWeight: '600', color: T.ruby,
-                      ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : {}),
-                    }}>
-                      {o.remain}
-                    </Text>
-                    <Text style={{ fontSize: 9.5, color: T.ink3, letterSpacing: 0.5, textTransform: 'uppercase' }}>
-                      {o.kind === 'qc' ? t('admin.delayedCase.qcIssue') : t('admin.delayedCase.delay')}
-                    </Text>
-                  </View>
-                </View>
-              )}
-            </Pressable>
-          ))}
-        </View>
-      )}
+      {/* ═══ Son Siparişler — desktop tablonun mobil karşılığı ═══ */}
+      <RecentOrdersMobile
+        items={props.recentOrders ?? []}
+        accent={EXEC.primary}
+        accentDark={EXEC.accentDark}
+        onOpenOrder={(id) => props.onOpenOrderById?.(id)}
+        onAllOrders={props.onAllOrders}
+      />
     </ScrollView>
   );
 }
@@ -502,8 +407,8 @@ function _mix(hex: string, target: number, t: number): string {
 const deepen  = (hex: string, t: number) => _mix(hex, 0x000000, t);
 const lighten = (hex: string, t: number) => _mix(hex, 0xFFFFFF, t);
 
-function Kpi({ label, numericValue, delta, deltaColor, sub, dark, accent, icon: Icon }:
-  { label: string; numericValue: number; delta?: string; deltaColor?: string; sub?: string; dark?: boolean; accent?: string; icon?: any }) {
+function Kpi({ label, numericValue, delta, deltaColor, sub, dark, accent, icon: Icon, onPress }:
+  { label: string; numericValue: number; delta?: string; deltaColor?: string; sub?: string; dark?: boolean; accent?: string; icon?: any; onPress?: () => void }) {
   const T = useMobileTokens();
   const acc = accent ?? '#4771AB';
   const fill = !!dark;
@@ -518,11 +423,17 @@ function Kpi({ label, numericValue, delta, deltaColor, sub, dark, accent, icon: 
   const deltaColorFinal = fill ? onAcc : (deltaColor ?? T.ink2);
   const iconBg = fill ? `${onAcc}2E` : `${acc}1A`;
   const iconColor = fill ? onAcc : acc;
+  // Dokunulabilir varyant: object style ZORUNLU (NativeWind v4 fonksiyon-stilli
+  // Pressable'da backgroundColor'ı native'de düşürüyor).
+  const Wrap: any = onPress ? Pressable : View;
   return (
-    <View style={{
+    <Wrap
+      {...(onPress ? { onPress, android_ripple: { color: `${acc}1A` } } : {})}
+      style={{
       flex: 1, borderRadius: 24, padding: 16, overflow: 'hidden',
       backgroundColor: fill ? fillDeep : T.card,
       borderWidth: fill ? 0 : 1, borderColor: T.hairline,
+      ...(onPress && Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
       ...(fill && Platform.OS === 'web'
         ? ({ backgroundImage: `linear-gradient(150deg, ${fillTop} 0%, ${acc} 48%, ${fillDeep} 100%)` } as any)
         : {}),
@@ -560,6 +471,6 @@ function Kpi({ label, numericValue, delta, deltaColor, sub, dark, accent, icon: 
           </Text>
         )}
       </View>
-    </View>
+    </Wrap>
   );
 }

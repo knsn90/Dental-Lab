@@ -15,7 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ReceiptText, CreditCard, ShieldAlert, Plus,
-  Zap, Check, Trash2, X, Truck,
+  Zap, Check, Trash2, X, Truck, MessageCircle,
 } from 'lucide-react-native';
 
 import { HubContext } from '../../../core/ui/HubContext';
@@ -24,9 +24,11 @@ import { ConfirmDialog, type ConfirmState } from '../../../core/ui/ConfirmDialog
 import { DS } from '../../../core/theme/dsTokens';
 import {
   fetchCredentials, upsertCredential, deleteCredential, activateCredential, testCredential,
-  EFATURA_PROVIDERS, PAYMENT_PROVIDERS, COURIER_PROVIDERS,
+  sendWhatsAppTest, subscribeWhatsAppWebhook,
+  EFATURA_PROVIDERS, PAYMENT_PROVIDERS, COURIER_PROVIDERS, MESSAGING_PROVIDERS,
   type IntegrationType, type ProviderCredential, type ProviderDefinition,
 } from '../api';
+import { AddressAutocompleteField } from '../components/AddressAutocompleteField';
 
 const DISPLAY = {
   fontFamily: 'Inter Tight, Inter, system-ui, sans-serif',
@@ -57,9 +59,10 @@ export function IntegrationsScreen({ accentColor = '#4771AB' }: Props) {
 
   useEffect(() => { load(); }, []);
 
-  const efatura = items.filter(i => i.type === 'efatura');
-  const payment = items.filter(i => i.type === 'payment');
-  const courier = items.filter(i => i.type === 'courier');
+  const efatura   = items.filter(i => i.type === 'efatura');
+  const payment   = items.filter(i => i.type === 'payment');
+  const courier   = items.filter(i => i.type === 'courier');
+  const messaging = items.filter(i => i.type === 'messaging');
 
   const handleDelete = (r: ProviderCredential) => {
     setConfirm({
@@ -78,7 +81,7 @@ export function IntegrationsScreen({ accentColor = '#4771AB' }: Props) {
   };
 
   const handleTest = async (r: ProviderCredential) => {
-    const result = await testCredential(r.id, r.type, r.provider, r.credentials);
+    const result = await testCredential(r.id, r.type, r.provider, r.credentials, r.environment);
     if (result.ok) toast.success(result.message);
     else {
       const netErr = /failed to fetch|network|load failed|send a request/i.test(result.message ?? '');
@@ -96,31 +99,6 @@ export function IntegrationsScreen({ accentColor = '#4771AB' }: Props) {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={safeEdges}>
       <ScrollView contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 60 }}>
-
-        {/* Güvenlik notu */}
-        <View style={{
-          flexDirection: 'row', alignItems: 'flex-start', gap: 12,
-          padding: 14, borderRadius: 14,
-          backgroundColor: 'rgba(217,119,6,0.08)',
-          borderWidth: 1, borderColor: 'rgba(217,119,6,0.18)',
-        }}>
-          <View style={{
-            width: 32, height: 32, borderRadius: 10,
-            backgroundColor: 'rgba(217,119,6,0.15)',
-            alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-          }}>
-            <ShieldAlert size={16} color="#D97706" strokeWidth={1.8} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: '#92400E', marginBottom: 2 }}>
-              Production API Anahtarları
-            </Text>
-            <Text style={{ fontSize: 12, color: '#78350F', lineHeight: 18 }}>
-              Sandbox key'leri buraya girilebilir. Production key'leri için Edge Function üzerinden
-              Supabase Secrets kullanılmalı.
-            </Text>
-          </View>
-        </View>
 
         {/* e-Fatura */}
         <Section
@@ -159,6 +137,20 @@ export function IntegrationsScreen({ accentColor = '#4771AB' }: Props) {
           providers={COURIER_PROVIDERS}
           onAdd={() => setEditor({ open: true, type: 'courier', record: null })}
           onEdit={(r) => setEditor({ open: true, type: 'courier', record: r })}
+          onActivate={handleActivate}
+          onDelete={handleDelete}
+          onTest={handleTest}
+        />
+
+        {/* WhatsApp · Mesajlaşma — kliniklerden fotoğraf/kağıt sipariş almak için (lab-bazlı) */}
+        <Section
+          title="WhatsApp · Mesajlaşma"
+          IconCmp={MessageCircle}
+          accentColor={accentColor}
+          credentials={messaging}
+          providers={MESSAGING_PROVIDERS}
+          onAdd={() => setEditor({ open: true, type: 'messaging', record: null })}
+          onEdit={(r) => setEditor({ open: true, type: 'messaging', record: r })}
           onActivate={handleActivate}
           onDelete={handleDelete}
           onTest={handleTest}
@@ -341,12 +333,19 @@ function CredentialEditor({
 }) {
   const providers = type === 'efatura' ? EFATURA_PROVIDERS
     : type === 'courier' ? COURIER_PROVIDERS
+    : type === 'messaging' ? MESSAGING_PROVIDERS
     : PAYMENT_PROVIDERS;
   const [providerKey, setProviderKey] = useState<string>('demo');
   const [environment, setEnvironment] = useState<'sandbox' | 'production'>('sandbox');
   const [credentials, setCredentials] = useState<Record<string, any>>({});
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  // WhatsApp test mesajı
+  const [waTestTo, setWaTestTo]     = useState('');
+  const [waTestText, setWaTestText] = useState('Sipariş alındı ✅');
+  const [waTplName, setWaTplName]   = useState('');
+  const [waSending, setWaSending]   = useState<null | 'text' | 'template'>(null);
+  const [waSubscribing, setWaSubscribing] = useState(false);
 
   const def = useMemo(() => providers.find(p => p.key === providerKey), [providers, providerKey]);
 
@@ -399,6 +398,35 @@ function CredentialEditor({
     onSaved();
   };
 
+  const sendWa = async (kind: 'text' | 'template') => {
+    const to = waTestTo.trim();
+    if (!to) { toast.error('Alıcı numara gir'); return; }
+    if (!credentials?.phone_number_id || !credentials?.access_token) {
+      toast.error('Önce Phone Number ID + Access Token gir'); return;
+    }
+    setWaSending(kind);
+    const res = await sendWhatsAppTest(
+      credentials, to,
+      kind === 'template'
+        ? { template: true, templateName: waTplName.trim() || undefined }
+        : { text: waTestText },
+    );
+    setWaSending(null);
+    if (res.ok) toast.success(res.message);
+    else toast.error(res.message);
+  };
+
+  const subscribeWa = async () => {
+    if (!credentials?.business_account_id || !credentials?.access_token) {
+      toast.error('Önce Business Account ID + Access Token gir'); return;
+    }
+    setWaSubscribing(true);
+    const res = await subscribeWhatsAppWebhook(credentials);
+    setWaSubscribing(false);
+    if (res.ok) toast.success(res.message);
+    else toast.error(res.message);
+  };
+
   const FL: any = { fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textTransform: 'uppercase', color: DS.ink[700], marginBottom: 6 };
   const INP: any = {
     height: 44, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
@@ -425,7 +453,7 @@ function CredentialEditor({
             borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
           }}>
             <Text style={{ ...DISPLAY, flex: 1, fontSize: 26, lineHeight: 30, letterSpacing: -0.6, color: DS.ink[900] }}>
-              {record ? 'Sağlayıcıyı Düzenle' : `Yeni ${type === 'efatura' ? 'e-Fatura' : type === 'courier' ? 'Kurye' : 'POS'} Sağlayıcı`}
+              {record ? 'Sağlayıcıyı Düzenle' : `Yeni ${type === 'efatura' ? 'e-Fatura' : type === 'courier' ? 'Kurye' : type === 'messaging' ? 'WhatsApp' : 'POS'} Sağlayıcı`}
             </Text>
             <Pressable
               onPress={onClose}
@@ -524,7 +552,7 @@ function CredentialEditor({
                 }}>
                   <ShieldAlert size={13} color="#DC2626" strokeWidth={1.8} />
                   <Text style={{ flex: 1, fontSize: 11, color: '#991B1B', lineHeight: 16 }}>
-                    Production key'leri client tarafına asla bırakma. Edge Function yapılandır.
+                    Canlı ortam seçildi — gerçek işlem/mesaj gönderilir. Bilgileriniz güvenle saklanır.
                   </Text>
                 </View>
               )}
@@ -557,6 +585,20 @@ function CredentialEditor({
                       );
                     })}
                   </View>
+                ) : f.type === 'address' ? (
+                  <AddressAutocompleteField
+                    value={credentials[f.key] ?? ''}
+                    onChangeText={v => setCredentials(c => ({ ...c, [f.key]: v }))}
+                    onSelect={(addr, lat, lng) => setCredentials(c => ({
+                      ...c,
+                      [f.key]: addr,
+                      ...(f.latKey && lat != null ? { [f.latKey]: lat } : {}),
+                      ...(f.lngKey && lng != null ? { [f.lngKey]: lng } : {}),
+                    }))}
+                    placeholder={f.placeholder}
+                    inputStyle={INP}
+                    accentColor={accentColor}
+                  />
                 ) : (
                   <TextInput
                     style={INP}
@@ -576,6 +618,108 @@ function CredentialEditor({
                 )}
               </View>
             ))}
+
+            {/* WhatsApp webhook otomatik bağla */}
+            {type === 'messaging' && providerKey === 'whatsapp-cloud' && (
+              <View style={{
+                padding: 12, borderRadius: 12, gap: 8,
+                backgroundColor: 'rgba(5,150,105,0.06)',
+                borderWidth: 1, borderColor: 'rgba(5,150,105,0.18)',
+              }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.7, textTransform: 'uppercase', color: '#047857' }}>
+                  Gelen mesaj bağlantısı
+                </Text>
+                <Text style={{ fontSize: 11, color: DS.ink[500], lineHeight: 15 }}>
+                  Kliniklerin gönderdiği fotoğrafların sisteme düşmesi için WhatsApp numarasını
+                  otomatik webhook'a bağlar (Meta panelinde ayar gerekmez).
+                </Text>
+                <Pressable
+                  disabled={waSubscribing}
+                  onPress={subscribeWa}
+                  style={{
+                    paddingVertical: 10, borderRadius: 999, alignItems: 'center',
+                    backgroundColor: '#059669', opacity: waSubscribing ? 0.5 : 1,
+                    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+                  }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>
+                    {waSubscribing ? 'Bağlanıyor…' : 'Webhook’u otomatik bağla'}
+                  </Text>
+                </Pressable>
+              </View>
+            )}
+
+            {/* WhatsApp test mesajı gönder */}
+            {type === 'messaging' && providerKey === 'whatsapp-cloud' && (
+              <View style={{
+                padding: 12, borderRadius: 12, gap: 8,
+                backgroundColor: 'rgba(37,99,235,0.05)',
+                borderWidth: 1, borderColor: 'rgba(37,99,235,0.14)',
+              }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.7, textTransform: 'uppercase', color: '#1D4ED8' }}>
+                  Test mesajı gönder
+                </Text>
+                <TextInput
+                  style={INP}
+                  value={waTestTo}
+                  onChangeText={setWaTestTo}
+                  placeholder="Alıcı numara (ör. +905342649620)"
+                  placeholderTextColor={DS.ink[400]}
+                  keyboardType="phone-pad"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <TextInput
+                  style={INP}
+                  value={waTestText}
+                  onChangeText={setWaTestText}
+                  placeholder="Mesaj metni (serbest metin için)"
+                  placeholderTextColor={DS.ink[400]}
+                />
+                <TextInput
+                  style={INP}
+                  value={waTplName}
+                  onChangeText={setWaTplName}
+                  placeholder="Şablon adı (boş = hello_world)"
+                  placeholderTextColor={DS.ink[400]}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <Pressable
+                    disabled={!!waSending}
+                    onPress={() => sendWa('text')}
+                    style={{
+                      flex: 1, paddingVertical: 9, borderRadius: 999, alignItems: 'center',
+                      backgroundColor: accentColor, opacity: waSending ? 0.5 : 1,
+                      ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>
+                      {waSending === 'text' ? 'Gönderiliyor…' : 'Metin gönder'}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    disabled={!!waSending}
+                    onPress={() => sendWa('template')}
+                    style={{
+                      flex: 1, paddingVertical: 9, borderRadius: 999, alignItems: 'center',
+                      borderWidth: 1.5, borderColor: accentColor, opacity: waSending ? 0.5 : 1,
+                      ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: accentColor }}>
+                      {waSending === 'template' ? 'Gönderiliyor…' : 'Şablon gönder'}
+                    </Text>
+                  </Pressable>
+                </View>
+                <Text style={{ fontSize: 10, color: DS.ink[400], lineHeight: 14 }}>
+                  İlk temas serbest metinle olmaz (Meta 24s kuralı). Kendi numaranızdan göndermek için
+                  Meta'da onaylı bir şablon oluşturup adını yukarı yazın. "hello_world" yalnız Meta'nın
+                  hazır test numaralarında çalışır.
+                </Text>
+              </View>
+            )}
 
             {/* Notlar */}
             <View>

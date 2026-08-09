@@ -10,11 +10,18 @@ import { toast } from '../../../core/ui/Toast';
 import { AppIcon } from '../../../core/ui/AppIcon';
 import { STAGE_CHECKLIST, STAGE_LABEL, STAGE_COLOR, type Stage } from '../stages';
 import { MaterialConsumptionModal } from './MaterialConsumptionModal';
+import { StageMaterialModal } from './StageMaterialModal';
 
 interface Props {
   visible:           boolean;
   stage:             Stage;
   workOrderId:       string;
+  /**
+   * Aktif order_stages.id — varsa malzeme adımı aşama-farkında
+   * StageMaterialModal ile açılır (bayrağa göre miktarsız seçim veya
+   * miktar girişli onay). Yoksa eski MaterialConsumptionModal'a düşülür.
+   */
+  stageId?:          string | null;
   managerId:         string;
   doctorId?:         string | null;
   /** İş emrinin requires_design_approval flag'i — DESIGN için modal'a default gelir */
@@ -25,7 +32,7 @@ interface Props {
 }
 
 export function StageChecklistModal({
-  visible, stage, workOrderId, managerId, doctorId,
+  visible, stage, workOrderId, stageId = null, managerId, doctorId,
   requiresDoctorApproval = false,
   onClose, onApproved,
 }: Props) {
@@ -94,14 +101,14 @@ export function StageChecklistModal({
     setSaving(false);
 
     if (stage === 'DESIGN' && needsDoctor) {
-      // Token üret + doktora otomatik mesaj gönder (in-app inbox)
-      const origin = typeof window !== 'undefined' ? window.location.origin : 'https://lab.esenkim.com';
+      // Token üret + hekime bildir.
+      // NOT: eski 'generate_and_send_doctor_approval' RPC'si DB'de YOK (çağrı hata
+      // veriyordu). Doğru muhatap request_design_approval: token üretir + durumu
+      // 'pending' yapar; bildirimi work_orders_notify_design_approval trigger'ı atar.
+      // Aynı RPC modules/orders/api.ts:426'da da kullanılıyor (çalışan yol).
+      const origin = typeof window !== 'undefined' ? window.location.origin : 'https://siman.app';
       const { data: token, error: tokErr } = await supabase
-        .rpc('generate_and_send_doctor_approval', {
-          p_work_order_id: workOrderId,
-          p_manager_id:    managerId,
-          p_base_url:      origin,
-        });
+        .rpc('request_design_approval', { p_work_order_id: workOrderId });
       if (tokErr) {
         toast.error('Onay isteği gönderilemedi: ' + tokErr.message);
         return;
@@ -228,7 +235,25 @@ export function StageChecklistModal({
       </Pressable>
 
       {/* ── Material consumption confirmation step ─────────────────────── */}
-      {consumptionOpen && consumeContext && (
+      {/* Aşama kimliği varsa aşama-farkında modal: stok picker, fire alanı,
+          paket içeriği ve idempotency anahtarı buradan gelir. Aşama geçişini
+          caller yönettiği için advanceStage=false. */}
+      {consumptionOpen && stageId && (
+        <StageMaterialModal
+          visible
+          stageId={stageId}
+          accentColor={stageColor}
+          advanceStage={false}
+          onClose={() => setConsumptionOpen(false)}
+          onConfirmed={() => {
+            setConsumptionOpen(false);
+            toast.success('Materyaller düşüldü, sonraki aşamaya geçiliyor');
+            onApproved();
+          }}
+        />
+      )}
+
+      {consumptionOpen && !stageId && consumeContext && (
         <MaterialConsumptionModal
           visible
           workOrderId={workOrderId}

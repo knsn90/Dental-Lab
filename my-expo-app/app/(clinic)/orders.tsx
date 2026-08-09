@@ -3,9 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { View, Text } from 'react-native';
 import { useAuthStore } from '../../core/store/authStore';
 import { resolveClinicPerms } from '../../modules/clinic/permissions';
-import { lazyRoute } from '../../core/_lazyRoute';
-
-const OrdersListScreenV2 = lazyRoute(() => import('../../modules/orders/screens/OrdersListScreenV2'), 'OrdersListScreenV2');
+// Statik import — lazy hâlde ekran "Yükleniyor…"da donup yalnız gezinme/yenileme
+// ile açılıyordu (chunk 200, modül hazır, React yeniden denemiyor).
+import { OrdersListScreenV2 } from '../../modules/orders/screens/OrdersListScreenV2';
 
 export default function ClinicOrdersRoute() {
   const { t } = useTranslation();

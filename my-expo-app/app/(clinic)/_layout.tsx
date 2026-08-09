@@ -6,7 +6,7 @@ const CommandPalette: any = React.lazy(() => import('../../core/ui/CommandPalett
 const ScanB6Mobile: any = React.lazy(() => import('../../modules/orders/screens/ScanB6Mobile').then(m => ({ default: (m as any).ScanB6Mobile })));
 const MoreMenuSheet: any = React.lazy(() => import('../../core/ui/mobile/MoreMenuSheet').then(m => ({ default: (m as any).MoreMenuSheet })));
 import { Modal, Text, View } from 'react-native';
-import { Slot, Tabs, useRouter, usePathname } from 'expo-router';
+import { Slot, Tabs, useRouter, usePathname, Redirect } from 'expo-router';
 import {
   Home, ClipboardList, QrCode, MessageCircle, User, Plus, MoreHorizontal, Search, Users,
   Stethoscope as Stethoscope2, Truck as Truck2, Settings as Settings2,
@@ -28,6 +28,15 @@ import { usePendingApprovalsCount } from '../../modules/orders/hooks/usePendingA
 import { useColorThemeStore, applyColorThemeWeb } from '../../core/store/colorThemeStore';
 import { useScanStore } from '../../core/store/scanStore';
 import { useNewOrderModalStore } from '../../core/store/newOrderModalStore';
+import { supabase } from '../../core/api/supabase';
+import { OnboardingOverlay } from '../../core/onboarding/OnboardingOverlay';
+import { PaymentReminderGate } from '../../core/finance/PaymentReminderGate';
+import { useOnboardingStore } from '../../core/onboarding/onboardingStore';
+import { useTourTarget } from '../../core/onboarding/useTourTarget';
+import { CLINIC_TOUR_STEPS } from '../../core/onboarding/tourSteps';
+
+// Klinik ilk-giriş turu — hekim deseniyle aynı, tek sefer (modül guard).
+let clinicTourChecked = false;
 
 
 // Klinik paneli teması — patterns dili: sage yeşil
@@ -65,6 +74,48 @@ export default function ClinicLayout() {
   const perms = resolveClinicPerms(profile as any);
   const isClinicAdmin = profile?.user_type === 'clinic_admin';
 
+  // ── İlk-giriş coach-mark turu hedefleri + tetikleme (hekim ile aynı motor) ──
+  const newOrderTargetRef = useTourTarget('tour-new-order');
+  const ordersTargetRef   = useTourTarget('tour-orders');
+  const messagesTargetRef = useTourTarget('tour-messages');
+  const getItemRef = React.useCallback(
+    (routeName: string) =>
+      routeName === 'new'    ? newOrderTargetRef :
+      routeName === 'orders' ? ordersTargetRef   :
+      undefined,
+    [newOrderTargetRef, ordersTargetRef],
+  );
+  // Panel-aware "yeni sipariş aç" opener — interaktif form turu bunu çağırır.
+  useEffect(() => {
+    useOnboardingStore.getState().registerRef('no-open', {
+      open: () => {
+        if (isDesktop) {
+          if (!pathname.endsWith('/new-order')) router.push('/(clinic)/new-order' as any);
+        } else {
+          setNewOrderOpen(true);
+        }
+      },
+    });
+    return () => useOnboardingStore.getState().unregisterRef('no-open');
+  }, [isDesktop, router, setNewOrderOpen, pathname]);
+
+  useEffect(() => {
+    if (clinicTourChecked) return;
+    if (!profile || !['clinic_admin', 'clinic_secretary'].includes(profile.user_type)) return;
+    clinicTourChecked = true;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data, error } = await supabase.rpc('should_show_clinic_onboarding');
+        if (cancelled || error || !data) return;
+        setTimeout(() => {
+          if (!cancelled) useOnboardingStore.getState().start(CLINIC_TOUR_STEPS, 'mark_clinic_onboarded');
+        }, 800);
+      } catch { /* noop */ }
+    })();
+    return () => { cancelled = true; };
+  }, [profile]);
+
   // Nav item'ları yetkilere göre filtrele — sıra: Özet · Siparişler · Kullanıcılar ·
   // Mali İşlemler · Kurye Takip · Destek · Mesajlar · Ayarlar
   const CLINIC_NAV = [
@@ -90,8 +141,11 @@ export default function ClinicLayout() {
   ];
 
   // Klinik kullanıcısı (admin veya sekreter) değilse layout chrome'unu gösterme
-  if (!profile || !['clinic_admin', 'clinic_secretary'].includes(profile.user_type)) {
-    return <Slot />;
+  if (!profile) {
+    return <Slot />;  // profil yükleniyor (optimistic) → kabuk
+  }
+  if (!['clinic_admin', 'clinic_secretary'].includes(profile.user_type)) {
+    return <Redirect href="/" />;  // yanlış panel → doğru panele yönlendir
   }
 
   if (isDesktop) {
@@ -111,6 +165,8 @@ export default function ClinicLayout() {
           hideSidebarMessages
           panelType="clinic_admin"
           newOrderHref="/(clinic)/new-order"
+          tourRefs={{ newOrder: newOrderTargetRef, orders: ordersTargetRef, messages: messagesTargetRef }}
+          tourOrdersHref="/(clinic)/orders"
         />
         <React.Suspense fallback={null}>
           <MessagesPopup
@@ -119,6 +175,13 @@ export default function ClinicLayout() {
             accentColor={accentColor}
           />
         </React.Suspense>
+
+        {/* İlk-giriş coach-mark turu (klinik) — desktop'ta ortalı kartlara düşer */}
+        <OnboardingOverlay />
+
+        {/* Vadesi geçmiş ödeme hatırlatması — masaüstü dalı da monte etmeli;
+            bu dal ayrı return ettiği için mobil daldaki mount buraya ULAŞMAZ. */}
+        <PaymentReminderGate />
       </>
     );
   }
@@ -133,7 +196,9 @@ export default function ClinicLayout() {
       : []),
     // Mesaj artık üst bardaki (TopActionBar) butonda — bu slot Ara oldu.
     { routeName: 'search',   label: t('clinic.tabs.search'),  icon: Search },
-    { routeName: 'more',     label: t('clinic.tabs.more'), icon: MoreHorizontal, onPress: () => setMoreOpen(true) },
+    // Mesajlar + Onaylar bu menünün içinde → bekleyen toplam burada rozetlenir
+    { routeName: 'more',     label: t('clinic.tabs.more'), icon: MoreHorizontal, onPress: () => setMoreOpen(true),
+      badgeCount: (totalUnread + pendingApprovals) > 0 ? (totalUnread + pendingApprovals) : undefined },
   ];
   // Navbar "Ara" → sayfa araması (PillTabBar morph)
   const SEARCH_ITEMS = CLINIC_NAV.map((n: any) => ({ label: n.label, href: n.href, sublabel: n.sectionLabel }));
@@ -191,6 +256,7 @@ export default function ClinicLayout() {
             accentColor={accentColor}
             searchItems={SEARCH_ITEMS}
             onSearchNavigate={(href) => router.push(href as any)}
+            getItemRef={getItemRef}
           />
         )}
       </View>
@@ -247,8 +313,14 @@ export default function ClinicLayout() {
       </React.Suspense>
 
       {/* Sağ üst kalıcı aksiyon butonları (mobile only) — QR · Bell · Profile */}
-      {!hideTopActionBar && <TopActionBar routePrefix="/(clinic)" accentColor={accentColor} />}
+      {!hideTopActionBar && <TopActionBar routePrefix="/(clinic)" accentColor={accentColor} messagesRef={messagesTargetRef} />}
       {!hideTopActionBar && <PanelTopHeader />}
+
+      {/* İlk-giriş coach-mark turu (klinik) — sadece ilk girişte */}
+      <OnboardingOverlay />
+
+      {/* Vadesi geçmiş ödeme hatırlatması — bakiye yoksa hiçbir şey çizmez */}
+      <PaymentReminderGate />
 
       {/* Command Palette — mobile search FAB üzerinden de erişilebilir */}
       <React.Suspense fallback={null}>

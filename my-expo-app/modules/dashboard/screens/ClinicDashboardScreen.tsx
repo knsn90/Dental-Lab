@@ -12,9 +12,9 @@
  */
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
-  View, Text, ScrollView, Pressable,
+  View, Text, ScrollView, Pressable, Platform,
   useWindowDimensions, RefreshControl,
-  Animated, Easing,
+  Animated, Easing, StyleSheet,
 } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,9 +22,10 @@ import { useRouter } from 'expo-router';
 import {
   Package, Plus, Clock, CheckCircle, Activity, Users,
   Calendar, TrendingUp, AlertTriangle, ArrowUpRight,
-  ArrowRight, Check, Layers,
+  ArrowRight, Check, Layers, CornerDownRight,
 } from 'lucide-react-native';
 import { useAuthStore } from '../../../core/store/authStore';
+import { supabase } from '../../../core/api/supabase';
 import { useNewOrderModalStore } from '../../../core/store/newOrderModalStore';
 import { useClinicOrders } from '../../clinic/hooks/useClinicOrders';
 import { isOrderOverdue, STATUS_CONFIG } from '../../orders/constants';
@@ -34,12 +35,17 @@ import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 import { FaceScanQuickAction } from '../../orders/components/FaceScanQuickAction';
 import { titleCaseTR } from '../../../core/utils/textCase';
 import { PendingReviewsCard } from '../../reviews/components/PendingReviewsCard';
+import { AlertPillX } from '../../../core/ui/AlertPillX';
+import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 import { shortClinicName } from '../../../core/utils/clinicName';
 import { fetchClinicBalances } from '../../invoices/api';
 import type { ClinicBalance } from '../../invoices/types';
 import { baseSymbol, getBaseCurrency } from '../../../core/money/baseCurrency';
 import { rateToBase } from '../../../core/money/rateCache';
 import { CURRENCY_META, type Currency } from '../../../core/money/currency';
+import { resolveOrderStatus } from '../components/RecentOrdersMobile';
+import { mapRevisionCases, flattenRevisionCases } from '../../orders/revisionGroups';
+import { useRevisionParents } from '../../orders/hooks/useRevisionParents';
 
 // ── Display font ──
 const SERIF = {
@@ -64,8 +70,13 @@ const CLR = {
 
 const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
   alindi:          { label: 'Alındı',          color: DS.ink[500],  bg: 'rgba(0,0,0,0.05)' },
+  atama_bekleniyor:{ label: 'Atama Bekliyor',  color: DS.ink[500], bg: 'rgba(0,0,0,0.05)' },
+  asamada:         { label: 'Üretimde',        color: '#9C5E0E',   bg: 'rgba(232,155,42,0.15)' },
   uretimde:        { label: 'Üretimde',        color: '#9C5E0E',   bg: 'rgba(232,155,42,0.15)' },
   kalite_kontrol:  { label: 'Kalite Kontrol',  color: '#1F5689',   bg: 'rgba(74,143,201,0.12)' },
+  kurye_bekleniyor:{ label: 'Kurye Bekleniyor',color: '#1F5689',   bg: 'rgba(74,143,201,0.12)' },
+  kuryede:         { label: 'Kuryede',         color: '#1F5689',   bg: 'rgba(74,143,201,0.12)' },
+  iptal:           { label: 'İptal',           color: '#B91C1C',   bg: 'rgba(220,38,38,0.10)' },
   teslimata_hazir: { label: 'Kuryeye Teslim Edildi', color: '#1F6B47',   bg: 'rgba(45,154,107,0.12)' },
   teslim_edildi:   { label: 'Teslim Edildi',   color: DS.ink[400],  bg: 'rgba(0,0,0,0.04)' },
 };
@@ -218,6 +229,11 @@ function StatPill({ label, value, bg, color }: { label: string; value: string; b
   );
 }
 
+/** Hero KPI'ları arasındaki saç teli ayraç — sayı bloğu kadar yüksek. */
+function StatDivider() {
+  return <View style={{ width: StyleSheet.hairlineWidth, alignSelf: 'stretch', marginVertical: 2, backgroundColor: 'rgba(0,0,0,0.10)' }} />;
+}
+
 function BigStat({ value, label }: { value: string | number; label: string }) {
   return (
     <View style={{ alignItems: 'flex-end' }}>
@@ -309,7 +325,9 @@ function AnimatedAktifVakaCard({ isDesktop, pipelineCounts, planningWaitingCount
   }, [dotAnim, glowAnim, breatheAnim]);
 
   const dotOpacity = dotAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.3] });
-  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.12] });
+  // Bulanıklık ışığı geniş alana yayıp kontrastı düşürüyor; parıltı aralığı
+  // 0–0.12'den 0–0.30'a çıkarıldı, yoksa kart soluk/ölü görünüyor.
+  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.30] });
   const glowScale = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1.2] });
   const breatheScale = breatheAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] });
 
@@ -456,69 +474,6 @@ function ProductionBarChart({ data }: { data: { label: string; count: number }[]
         );
       })}
     </View>
-  );
-}
-
-// ── Animated Overdue Alert Card ──
-function AnimatedOverdueCard({ count, onPress }: { count: number; onPress: () => void }) {
-  const pulseAnim = useRef(new Animated.Value(0)).current;
-  const glowAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    Animated.loop(Animated.sequence([
-      Animated.timing(pulseAnim, { toValue: 1, duration: 1000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      Animated.timing(pulseAnim, { toValue: 0, duration: 1000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      Animated.delay(600),
-    ])).start();
-    Animated.loop(Animated.sequence([
-      Animated.timing(glowAnim, { toValue: 1, duration: 2400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      Animated.timing(glowAnim, { toValue: 0, duration: 2400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-    ])).start();
-  }, [pulseAnim, glowAnim]);
-
-  const dotOpacity = pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.3] });
-  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.06, 0.18] });
-  const glowScale = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1.2] });
-
-  return (
-    <Pressable onPress={onPress}
-      onHoverIn={() => Animated.spring(scaleAnim, { toValue: 1.015, friction: 8, tension: 200, useNativeDriver: true }).start()}
-      onHoverOut={() => Animated.spring(scaleAnim, { toValue: 1, friction: 8, tension: 200, useNativeDriver: true }).start()}
-    >
-      <Animated.View style={{
-        borderRadius: DS.radius.xl, overflow: 'hidden', marginBottom: 14,
-        // @ts-ignore web gradient
-        backgroundImage: 'linear-gradient(135deg, #7F1D1D 0%, #991B1B 50%, #B91C1C 100%)',
-        backgroundColor: '#7F1D1D',
-        transform: [{ scale: scaleAnim }], position: 'relative',
-      }}>
-        <Animated.View style={{
-          position: 'absolute', top: -30, right: -30, width: 160, height: 160, borderRadius: 80,
-          backgroundColor: '#EF4444', opacity: glowOpacity, transform: [{ scale: glowScale }],
-        }} pointerEvents="none" />
-        <View style={{ paddingHorizontal: 20, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-          <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' }}>
-            <Animated.View style={{ opacity: dotOpacity }}>
-              <AlertTriangle size={18} color="#FCA5A5" strokeWidth={1.8} />
-            </Animated.View>
-          </View>
-          <View style={{ flex: 1 }}>
-            <View className="flex-row items-center" style={{ gap: 6 }}>
-              <Animated.View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: '#FCA5A5', opacity: dotOpacity }} />
-              <Text style={{ fontSize: 9, fontWeight: '500', color: '#FCA5A5', letterSpacing: 0.5, textTransform: 'uppercase' }}>Acil</Text>
-              <Text style={{ ...SERIF, fontSize: 22, letterSpacing: -0.5, lineHeight: 24, color: '#FFF', marginLeft: 4 }}>
-                {count}
-              </Text>
-              <Text style={{ fontSize: 13, color: '#FCA5A5', marginLeft: 2 }}>geciken sipariş</Text>
-            </View>
-          </View>
-          <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' }}>
-            <ArrowUpRight size={14} color="#FCA5A5" strokeWidth={1.8} />
-          </View>
-        </View>
-      </Animated.View>
-    </Pressable>
   );
 }
 
@@ -682,8 +637,47 @@ function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDeskto
         backgroundColor: P, minHeight: isDesktop ? undefined : 160,
         transform: [{ scale: scaleAnim }],
       }}>
-        <Animated.View style={{ position: 'absolute', top: -20, right: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.18)', transform: [{ translateY: floatY }] }} />
-        <Animated.View style={{ position: 'absolute', top: -40, right: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,1)', opacity: glowOpacity, transform: [{ scale: glowScale }] }} pointerEvents="none" />
+        {/* Yüzen ışık lekeleri — web'de BULANIK (aurora hissi).
+            `filter` yalnız web'de var; native'de RN desteklemiyor, orada net
+            daire olarak kalır. Bulanıklık kenara taştığı için kartın
+            `overflow: hidden`'ı onu kırpar — istenen davranış.
+            `willChange: transform` şart: bulanık katman her karede yeniden
+            rasterleştirilirse animasyon pahalıya gelir; katman terfi edilince
+            tarayıcı yalnız transform'u uygular. */}
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: 'absolute', top: -20, right: -20, width: 140, height: 140, borderRadius: 70,
+            backgroundColor: '#ABEFC7',
+            opacity: 0.55,
+            transform: [{ translateY: floatY }],
+            ...(Platform.OS === 'web' ? ({ filter: 'blur(18px)', mixBlendMode: 'screen', willChange: 'transform' } as any) : {}),
+          }}
+        />
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: 'absolute', top: -40, right: -40, width: 180, height: 180, borderRadius: 90,
+            backgroundColor: 'rgba(255,255,255,1)',
+            opacity: glowOpacity,
+            transform: [{ scale: glowScale }],
+            ...(Platform.OS === 'web' ? ({ filter: 'blur(30px)', mixBlendMode: 'screen', willChange: 'transform, opacity' } as any) : {}),
+          }}
+        />
+        {/* Karşı köşede ikinci, daha geniş leke — tek leke bulanıklaşınca kart
+            tek renkli bir zemine dönüyordu; bu, aurora'daki renk dalgalanmasının
+            yerini tutan derinliği geri veriyor. */}
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: 'absolute', bottom: -60, left: -40,
+            width: 200, height: 200, borderRadius: 100,
+            backgroundColor: '#74E1A8',
+            opacity: 0.42,
+            transform: [{ translateY: Animated.multiply(floatY, -1) }],
+            ...(Platform.OS === 'web' ? ({ filter: 'blur(40px)', mixBlendMode: 'screen', willChange: 'transform' } as any) : {}),
+          }}
+        />
         <View style={{ position: 'relative' }}>
           <Text style={{ fontSize: 11, fontWeight: '500', letterSpacing: 1.1, textTransform: 'uppercase', color: '#FFF', marginBottom: 14 }}>Hızlı işlem</Text>
           <Text style={{ ...SERIF, fontSize: 32, letterSpacing: -0.64, lineHeight: 35, color: '#FFF', marginBottom: 16 }}>Yeni sipariş{'\n'}oluştur</Text>
@@ -700,17 +694,21 @@ function AnimatedCTACard({ onPress, isDesktop }: { onPress: () => void; isDeskto
 }
 
 // ── Tasks Card (dark) ──
+// Zemin SURFACE_ALT'ın (#2F313F) %10 beyazla karışmış hâli: yandaki kartlarla
+// ağırlık yarışına girmesin diye açıldı. SURFACE_ALT'a dokunulmadı — o rengi
+// AnimatedAktifVakaCard da kullanıyor.
+const TASKS_SURFACE = '#444652';
 function TasksCard({ tasks }: { tasks: { icon: React.FC<any>; label: string; time: string; done: boolean; onPress?: () => void }[] }) {
   const doneCount = tasks.filter(t => t.done).length;
   return (
     <View style={{
-      backgroundColor: SURFACE_ALT,
+      backgroundColor: TASKS_SURFACE,
       // @ts-ignore web gradient
-      backgroundImage: `linear-gradient(135deg, ${SURFACE_ALT} 0%, ${P_DEEP}33 100%)`,
+      backgroundImage: `linear-gradient(135deg, ${TASKS_SURFACE} 0%, ${P_DEEP}33 100%)`,
       borderRadius: DS.radius.xl, padding: 22, flex: 1, gap: 0,
     }}>
       <View className="flex-row items-center justify-between" style={{ marginBottom: 14 }}>
-        <Text style={{ fontSize: 14, fontWeight: '500', color: '#FFF' }}>Bugünkü görevler</Text>
+        <Text style={{ fontSize: 14, fontWeight: '500', color: '#FFF' }}>Bugünkü İşler</Text>
         <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{doneCount}/{tasks.length}</Text>
       </View>
       <View style={{ gap: 10, flex: 1 }}>
@@ -1002,6 +1000,22 @@ export function ClinicDashboardScreen() {
 
   const firstName = profile?.full_name?.split(' ')[0] ?? '';
   const clinicName = shortClinicName(profile?.clinic_name) || 'Kliniğiniz';
+  // Kliniğe kayıtlı hekim sayısı (doctors tablosu, clinic_id) — "Hekim" KPI'ı.
+  // Önceki mantık siparişlerden sayıyordu (yanlış); kayıtlı hekim doğrusu budur.
+  const clinicId = (profile as any)?.clinic_id ?? null;
+  const [doctorsCount, setDoctorsCount] = useState(0);
+  useEffect(() => {
+    if (!clinicId) { setDoctorsCount(0); return; }
+    let alive = true;
+    (async () => {
+      const { count } = await supabase
+        .from('doctors')
+        .select('id', { count: 'exact', head: true })
+        .eq('clinic_id', clinicId);
+      if (alive) setDoctorsCount(count ?? 0);
+    })();
+    return () => { alive = false; };
+  }, [clinicId]);
   // Mali durum (cari hesap) — RLS kliniği kendi satırına kısıtlar
   const [finance, setFinance] = useState<ClinicBalance | null>(null);
   useEffect(() => {
@@ -1049,9 +1063,12 @@ export function ClinicDashboardScreen() {
     [orders],
   );
 
-  const totalPipe = Object.values(pipelineCounts).reduce((s, v) => s + v, 0) || 1;
+  // pipeCount: yüzdenin gerçek paydası (0 olabilir) — "1 / 9" bağlamı bundan yazılır.
+  const pipeCount = Object.values(pipelineCounts).reduce((s, v) => s + v, 0);
+  const totalPipe = pipeCount || 1;
+  const deliveredPipe = pipelineCounts['teslim_edildi'] ?? 0;
   const productionPct = Math.round(((pipelineCounts['uretimde'] ?? 0) / totalPipe) * 100);
-  const deliveryPct = Math.round(((pipelineCounts['teslim_edildi'] ?? 0) / totalPipe) * 100);
+  const deliveryPct = Math.round((deliveredPipe / totalPipe) * 100);
 
   // Monthly trend — her diş 1 üye olarak sayılır (tooth_numbers.length toplamı)
   const monthly = useMemo(() => {
@@ -1147,6 +1164,13 @@ export function ClinicDashboardScreen() {
   // ══════════════════════════════════════════════════════════════
   //  MOBILE — Variant B Home (B1)
   // ══════════════════════════════════════════════════════════════
+  // Revizyon alt-listesi: penceredeki revizyonun ebeveyni pencere dışındaysa ek
+  // sorguyla tamamlanır. Hook KOŞULSUZ çağrılmalı → isDesktop dalından önce.
+  const revParents = useRevisionParents(recentOrders);
+  const recentWithParents = revParents.length ? [...recentOrders, ...revParents] : recentOrders;
+  // Masaüstü tablo için vaka sırası (anchor + altında eski revizyonlar)
+  const recentRows = flattenRevisionCases(recentWithParents);
+
   if (!isDesktop) {
     const { ClinicMobileDashboard } = require('../components/ClinicMobileDashboard');
     const { NotificationsSheet } = require('../../../core/ui/mobile/NotificationsSheet');
@@ -1213,9 +1237,33 @@ export function ClinicDashboardScreen() {
       };
     });
 
+    // Son Siparişler — mobil kart listesi (başlık = hasta adı; klinik siparişi verir)
+    const toRecentItem = (o: any) => {
+      const st = resolveOrderStatus(o.status, o.hold_status);
+      const isOverdue = !!o.delivery_date && o.delivery_date < today && o.status !== 'teslim_edildi' && o.status !== 'iptal';
+      const pName = o.patient_name ? titleCaseTR(o.patient_name) : '—';
+      return {
+        id: String(o.id),
+        no: String(o.order_number ?? ''),
+        title: pName,
+        initials: initials(pName),
+        workType: o.work_type || '—',
+        statusLabel: st.label,
+        statusColor: st.color,
+        statusBg: st.bg,
+        delivery: o.delivery_date ? fmtDate(o.delivery_date) : '',
+        overdue: isOverdue,
+      };
+    };
+    // Gruplama slice'tan ÖNCE: 6 satır = 6 VAKA (aynı vakanın üyeleri yer yemesin)
+    const recentForMobile = mapRevisionCases(recentWithParents, toRecentItem).slice(0, 6);
+
     return (
       <>
         <ClinicMobileDashboard
+          recentOrders={recentForMobile}
+          onOpenOrderById={(dbId: string) => router.push(`/(clinic)/order/${dbId}` as any)}
+          onAllOrders={() => router.push('/(clinic)/orders' as any)}
           clinicName={clinicName}
           liveActive={activeCount}
           liveTotal={total}
@@ -1225,6 +1273,7 @@ export function ClinicDashboardScreen() {
           overdueCount={overdueCount}
           thisMonthNew={thisMonthCount}
           pendingApprovalsCount={notifApprovals.length}
+          doctorsCount={doctorsCount}
           weekBars={weekBars}
           weekRange={weekRange}
           weekTotal={weekBars.reduce((a, b) => a + b, 0)}
@@ -1262,20 +1311,23 @@ export function ClinicDashboardScreen() {
     <ScrollView
       className="flex-1"
       contentContainerStyle={{
-        padding: isDesktop ? 10 : 16,
+        // Sayfa kenarı tek kaynaktan (PAGE_PADDING = 16). Desktop'ta 10'du.
+        paddingHorizontal: PAGE_PADDING,
         paddingTop: isDesktop ? 10 : insets.top + 8,
         paddingBottom: 120,
       }}
       refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={P} />}
     >
       {/* ════════ HERO ════════ */}
-      <View className="mb-5">
+      {/* Alt boşluk 16 — hero ile altındaki ilk kart arasındaki mesafe sabit. */}
+      <View style={{ marginBottom: 16 }}>
         <View className={`${isDesktop ? 'flex-row justify-between items-end' : ''}`} style={{ gap: 32, paddingTop: 8 }}>
           <View style={{ flex: 1 }}>
+            {/* Selamlama sayfanın konusu değil; bilgi öndedir. 56/40 → 28/24. */}
             <Text style={{
-              ...SERIF, fontSize: isDesktop ? 56 : 40,
-              letterSpacing: -0.025 * (isDesktop ? 56 : 40),
-              lineHeight: isDesktop ? 56 : 42, color: INK,
+              ...SERIF, fontSize: isDesktop ? 28 : 24,
+              letterSpacing: -0.025 * (isDesktop ? 28 : 24),
+              lineHeight: isDesktop ? 32 : 28, color: INK,
             }}>
               Merhaba,{' '}
               <Text style={{ fontStyle: 'italic', color: DS.ink[400] }}>{clinicName}</Text>
@@ -1286,27 +1338,37 @@ export function ClinicDashboardScreen() {
             <View className="flex-row flex-wrap items-center" style={{ gap: 14, marginTop: 14 }}>
               <StatPill label="Üretim" value={`${productionPct}%`} bg={INK} color="#FFF" />
               <StatPill label="Aktif" value={`${activeCount}`} bg={P} color="#FFF" />
-              {overdueCount > 0 && <StatPill label="Geciken" value={`${overdueCount}`} bg="rgba(217,75,75,0.12)" color="#9C2E2E" />}
+              {/* "Geciken" burada yok — aşağıdaki kırmızı aksiyon pill'i aynı sayıyı
+                  hem söylüyor hem tıklanabilir yapıyor; iki kez yazmak gürültü. */}
               <StatPill label="Bu ay" value={`${thisMonthNew}`} bg="rgba(0,0,0,0.08)" color={INK} />
+              {/* Geciken + değerlendirilecek AYNI satırda: eşit ölçülü rozetler. */}
+              {overdueCount > 0 && (
+                <AlertPillX
+                  icon={AlertTriangle}
+                  count={overdueCount}
+                  label="Geciken"
+                  color={CLR.red}
+                  labelColor="#9C2E2E"
+                  pulse
+                  onPress={() => router.push('/(clinic)/orders' as any)}
+                />
+              )}
+              <PendingReviewsCard raterRole="clinic" compact />
               <FaceScanQuickAction accentColor={P} compact />
             </View>
+
           </View>
-          <View className="flex-row" style={{ gap: 32, alignItems: 'flex-end' }}>
-            <BigStat value={total} label="Toplam sipariş" />
-            <BigStat value={doctorCount} label="Hekim" />
+          {/* Kart yok — üç sayı serbest dursun; aralarında yalnız saç teli
+              kalınlığında bir ayraç. alignSelf: sol kolon daha uzun olduğunda
+              KPI bloğu tepede kalıp altında boşluk bırakıyordu. */}
+          <View className="flex-row" style={{ gap: 24, alignItems: 'flex-end', alignSelf: 'flex-end' }}>
+            <BigStat value={total} label="Toplam" />
+            <StatDivider />
+            <BigStat value={doctorsCount} label="Hekim" />
+            <StatDivider />
             <BigStat value={delivered} label="Teslim" />
           </View>
         </View>
-      </View>
-
-      {/* ════════ OVERDUE ALERT ════════ */}
-      {overdueCount > 0 && (
-        <AnimatedOverdueCard count={overdueCount} onPress={() => router.push('/(clinic)/orders' as any)} />
-      )}
-
-      {/* ════════ DEĞERLENDİRİLECEK İŞLER (Faz 2) ════════ */}
-      <View style={{ marginBottom: 14 }}>
-        <PendingReviewsCard raterRole="clinic" />
       </View>
 
       {/* ════════ 4-CARD GRID ════════ */}
@@ -1338,7 +1400,13 @@ export function ClinicDashboardScreen() {
             </Pressable>
           </View>
           <PercentRingHero value={deliveryPct} size={140} darkText />
-          <Text style={{ fontSize: 9, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.72, marginTop: 10 }}>Teslim</Text>
+          {/* Yüzde tek başına "neyin %11'i?" sorusunu bırakıyordu — payı/paydayı yaz. */}
+          <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[700], marginTop: 10 }}>
+            {deliveredPipe} / {pipeCount} sipariş
+          </Text>
+          <Text style={{ fontSize: 9, color: DS.ink[500], textTransform: 'uppercase', letterSpacing: 0.72, marginTop: 3 }}>
+            Teslim edilen · tüm zamanlar
+          </Text>
           <View className="flex-row" style={{ gap: 8, marginTop: 12 }}>
             <View className="items-center rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: DS.ink[100] }}>
               <Text style={{ fontSize: 10, fontWeight: '500', color: DS.ink[500] }}>{pipelineCounts['uretimde'] ?? 0} üretimde</Text>
@@ -1381,9 +1449,9 @@ export function ClinicDashboardScreen() {
         </View>
         {recentOrders.length === 0
           ? <Text className="p-6 text-center" style={{ fontSize: 13, color: DS.ink[400] }}>{loading ? 'Yükleniyor...' : 'Henüz sipariş yok'}</Text>
-          : recentOrders.map((order, idx) => {
+          : recentRows.map((order: any, idx: number) => {
               const overdue = order.delivery_date < today && order.status !== 'teslim_edildi' && order.status !== 'iptal';
-              const isLast = idx === recentOrders.length - 1;
+              const isLast = idx === recentRows.length - 1;
               const drName = (order as any).patient_name ? titleCaseTR((order as any).patient_name) : '--';
               return (
                 <Pressable key={order.id} className="flex-row items-center" style={{
@@ -1391,14 +1459,19 @@ export function ClinicDashboardScreen() {
                   borderBottomWidth: !isLast ? 1 : 0, borderBottomColor: 'rgba(0,0,0,0.04)',
                   backgroundColor: overdue ? 'rgba(217,75,75,0.06)' : undefined,
                 }} onPress={() => router.push(`/(clinic)/order/${order.id}` as any)}>
-                  <Text style={{ flex: 1.2, fontSize: 12, fontWeight: '800', color: P }} numberOfLines={1}>#{order.order_number}</Text>
+                  <View style={{ flex: 1.2, flexDirection: 'row', alignItems: 'center', gap: 5, paddingLeft: order.__revChild ? 14 : 0 }}>
+                    {order.__revChild && <CornerDownRight size={12} color={(order as any).__continuation ? '#3563A8' : '#9C5E0E'} strokeWidth={2} />}
+                    <Text style={{ fontSize: 12, fontWeight: '800', color: P, flexShrink: 1 }} numberOfLines={1}>#{order.order_number}</Text>
+                  </View>
                   <View className="flex-row items-center" style={{ flex: 2, gap: 8 }}>
                     <View className="items-center justify-center rounded-full" style={{ width: 28, height: 28, backgroundColor: hexA(P, 0.1), borderWidth: 1, borderColor: hexA(P, 0.15) }}>
                       <Text style={{ fontSize: 9, fontWeight: '800', color: P }}>{initials(drName)}</Text>
                     </View>
                     <Text style={{ fontSize: 13, fontWeight: '600', color: INK }} numberOfLines={1}>{drName}</Text>
                   </View>
-                  {isDesktop && <Text style={{ flex: 2, fontSize: 11, color: DS.ink[500] }} numberOfLines={1}>{order.work_type || '--'}</Text>}
+                  {isDesktop && <Text style={{ flex: 2, fontSize: 11, color: DS.ink[500] }} numberOfLines={1}>{(order as any).__revChild && (
+                      <Text style={{ fontWeight: '700', color: (order as any).__continuation ? '#3563A8' : '#9C5E0E' }}>{(order as any).__continuation ? 'Devam - ' : 'Revizyon - '}</Text>
+                    )}{order.work_type || '--'}</Text>}
                   <View style={{ flex: 1.4 }}><StatusBadge status={order.status} /></View>
                   {isDesktop && <Text style={{ flex: 1, fontSize: 11, fontWeight: overdue ? '700' : '500', textAlign: 'right', color: overdue ? '#9C2E2E' : DS.ink[400] }}>{fmtDate(order.delivery_date)}</Text>}
                 </Pressable>

@@ -45,7 +45,7 @@ Deno.serve(async (req: Request) => {
     const inheritedLabId = callerProfile.lab_id ?? null;
 
     const body = await req.json();
-    const { email, password, full_name, user_type, role, phone, address, clinic_type, specialty, department, level, monthly_salary, clinic_permissions } = body;
+    const { email, password, full_name, user_type, role, phone, address, clinic_type, specialty, department, level, monthly_salary, clinic_permissions, skip_doctor_row } = body;
     let { clinic_name, clinic_id } = body;
 
     // Lab müdürü admin (exec) hesabı AÇAMAZ; yalnız kendi ekibi + klinik hesapları
@@ -176,8 +176,11 @@ Deno.serve(async (req: Request) => {
         if (newClinic) targetClinicId = newClinic.id;
       }
 
-      // doctors tablosuna sadece gerçek hekim ekle — clinic_admin yönetici, hekim değil
-      if (targetClinicId && user_type === 'doctor') {
+      // doctors tablosuna sadece gerçek hekim ekle — clinic_admin yönetici, hekim değil.
+      // skip_doctor_row=true: caller (ör. DoctorModal) `doctors` satırını ZATEN
+      // createDoctor ile oluşturdu (specialty/notes/tckn dâhil) → burada ikinci
+      // satır açma, aksi halde hekim listede çift görünür.
+      if (targetClinicId && user_type === 'doctor' && !skip_doctor_row) {
         await adminClient.from('doctors').insert({
           full_name,
           phone: phone ?? null,

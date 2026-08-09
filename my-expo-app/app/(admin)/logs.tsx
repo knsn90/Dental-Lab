@@ -13,7 +13,7 @@ import { SlideTabBar } from '../../core/ui/SlideTabBar';
 import { AppIcon } from '../../core/ui/AppIcon';
 import { ActivityIndicator } from '../../core/ui/teethCompat';
 
-type LogTab = 'all' | 'users' | 'doctors';
+type LogTab = 'all' | 'users' | 'technicians' | 'clinics' | 'doctors';
 
 interface ActivityLog {
   id: string;
@@ -42,7 +42,27 @@ function timeAgo(dateStr: string, t: (k: string, o?: any) => string, lang: strin
   return date.toLocaleDateString(localeTag(lang), { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+// Normalize eski/ham actor_type değerlerini sabit kümeye indir
+function normType(t: string): string {
+  if (t === 'clinic_admin' || t === 'clinic_secretary') return 'clinic';
+  return t;
+}
+
 function actionMeta(action: string): { icon: string; color: string; bg: string } {
+  if (action.includes('Giriş'))
+    return { icon: 'log-in',                color: '#2563EB', bg: '#DBEAFE' };
+  if (action.includes('Mesaj'))
+    return { icon: 'message-circle',        color: '#0891B2', bg: '#CFFAFE' };
+  if (action.includes('Dosya'))
+    return { icon: 'paperclip',             color: '#7C3AED', bg: '#EDE9FE' };
+  if (action.includes('Malzeme'))
+    return { icon: 'package',               color: '#B45309', bg: '#FEF3C7' };
+  if (action.includes('Aşama'))
+    return { icon: 'swap-horizontal',       color: '#4338CA', bg: '#E0E7FF' };
+  if (action.includes('iptal'))
+    return { icon: 'close-circle-outline',  color: '#DC2626', bg: '#FEF2F2' };
+  if (action.includes('talebi'))
+    return { icon: 'clipboard-check',       color: '#0369A1', bg: '#E0F2FE' };
   if (action.includes('oluşturdu') || action.includes('oluşturuldu'))
     return { icon: 'plus-circle-outline',   color: '#059669', bg: '#D1FAE5' };
   if (action.includes('aktif edildi'))
@@ -51,7 +71,7 @@ function actionMeta(action: string): { icon: string; color: string; bg: string }
     return { icon: 'trash-can-outline',     color: '#DC2626', bg: '#FEF2F2' };
   if (action.includes('→') || action.includes('Durumu'))
     return { icon: 'swap-horizontal',       color: '#7C3AED', bg: '#EDE9FE' };
-  if (action.includes('güncelledi') || action.includes('güncellendi'))
+  if (action.includes('düzenledi') || action.includes('güncelledi') || action.includes('güncellendi'))
     return { icon: 'pencil-circle-outline', color: '#0F172A', bg: '#F1F5F9' };
   return   { icon: 'information-outline',  color: '#64748B', bg: '#F1F5F9' };
 }
@@ -61,10 +81,14 @@ function actionMeta(action: string): { icon: string; color: string; bg: string }
 function LogRow({ log, isLast }: { log: ActivityLog; isLast: boolean }) {
   const { t, i18n } = useTranslation();
   const meta = actionMeta(log.action);
+  const at = normType(log.actor_type);
   const badge =
-    log.actor_type === 'admin'  ? { label: t('admin.logs.actor.admin'), bg: '#FEF3C7', text: '#92400E' } :
-    log.actor_type === 'doctor' ? { label: t('admin.logs.actor.doctor'), bg: '#DBEAFE', text: '#1D4ED8' } :
-                                  { label: t('admin.logs.actor.lab'),   bg: '#DCFCE7', text: '#166534' };
+    at === 'admin'      ? { label: t('admin.logs.actor.admin'),      bg: '#FEF3C7', text: '#92400E' } :
+    at === 'doctor'     ? { label: t('admin.logs.actor.doctor'),     bg: '#DBEAFE', text: '#1D4ED8' } :
+    at === 'clinic'     ? { label: t('admin.logs.actor.clinic'),     bg: '#E0F2FE', text: '#0369A1' } :
+    at === 'technician' ? { label: t('admin.logs.actor.technician'), bg: '#E0E7FF', text: '#4338CA' } :
+    at === 'courier'    ? { label: t('admin.logs.actor.courier'),    bg: '#FEF3C7', text: '#B45309' } :
+                          { label: t('admin.logs.actor.lab'),        bg: '#DCFCE7', text: '#166534' };
 
   return (
     <View style={[lr.row, !isLast && lr.rowBorder]}>
@@ -152,16 +176,21 @@ export default function AdminLogsScreen() {
 
   const q = search.trim().toLowerCase();
   const filtered = logs.filter(l => {
-    if (tab === 'users'   && l.actor_type === 'doctor') return false;
-    if (tab === 'doctors' && l.actor_type !== 'doctor') return false;
+    const at = normType(l.actor_type);
+    if (tab === 'users'       && !(at === 'admin' || at === 'lab' || at === 'courier')) return false;
+    if (tab === 'technicians' && at !== 'technician') return false;
+    if (tab === 'clinics'     && at !== 'clinic')     return false;
+    if (tab === 'doctors'     && at !== 'doctor')     return false;
     if (!q) return true;
     return l.actor_name.toLowerCase().includes(q) || l.action.toLowerCase().includes(q) || l.entity_label?.toLowerCase().includes(q);
   });
 
   const TABS: { key: LogTab; label: string }[] = [
-    { key: 'all',     label: t('admin.logs.tab.all') },
-    { key: 'users',   label: t('admin.logs.tab.users') },
-    { key: 'doctors', label: t('admin.logs.tab.doctors') },
+    { key: 'all',         label: t('admin.logs.tab.all') },
+    { key: 'users',       label: t('admin.logs.tab.users') },
+    { key: 'technicians', label: t('admin.logs.tab.technicians') },
+    { key: 'clinics',     label: t('admin.logs.tab.clinics') },
+    { key: 'doctors',     label: t('admin.logs.tab.doctors') },
   ];
 
   return (

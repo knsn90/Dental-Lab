@@ -24,6 +24,7 @@ import { CURRENCY_META, type Currency } from '../../../core/money/currency';
 import { type CurrencyTotal, groupByCurrency } from '../../../core/money/aggregations';
 
 import { HubContext } from '../../../core/ui/HubContext';
+import { InvoiceDetailScreen } from './InvoiceDetailScreen';
 import { DS } from '../../../core/theme/dsTokens';
 import { useInvoices, useInvoiceStats, useUnbilledWorkOrders } from '../hooks/useInvoices';
 import { createBulkInvoice, bulkRecordPayment } from '../api';
@@ -33,6 +34,7 @@ import {
 } from '../types';
 import { useClinics } from '../../clinics/hooks/useClinics';
 import { downloadCsv, csvMoney, csvDate } from '../../../core/util/csvExport';
+import { normalizeDoctorName } from '../../../core/utils/textCase';
 
 // ── Patterns tokens ─────────────────────────────────────────────────
 const DISPLAY = {
@@ -84,6 +86,16 @@ function fmtMoney(n: number | string | null | undefined, currency = 'TRY'): stri
   return sym + v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+/** Faturalanmamış siparişin para birimi → tutar çiftleri (büyükten küçüğe).
+ *  View'ın totals_by_currency'si yoksa (migration öncesi) estimated_total'a düşer. */
+function ccyPairs(order: any): Array<[string, number]> {
+  const map = (order?.totals_by_currency ?? null) as Record<string, any> | null;
+  const pairs = map
+    ? Object.entries(map).map(([c, v]) => [c, Number(v) || 0] as [string, number])
+    : [['TRY', Number(order?.estimated_total) || 0] as [string, number]];
+  return pairs.filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+}
+
 function fmtShort(n: number, currency = 'TRY'): string {
   const sym = CURRENCY_META[currency as Currency]?.symbol ?? '₺';
   if (Math.abs(n) >= 1_000_000) return sym + (n / 1_000_000).toFixed(1) + 'M';
@@ -107,9 +119,18 @@ export function InvoicesListScreen() {
   const segments = useSegments();
   const panelBase = String(segments?.[0] ?? '(lab)');
   const invoiceHref = (id: string) => `/${panelBase}/invoice/${id}`;
+  /**
+   * Fatura hub içinde açılır — ayrı route'a gitmek finans kenar çubuğunu
+   * kaybettiriyor ve geri dönüldüğünde liste/filtre sıfırlanıyordu.
+   */
+  const [openInvoiceId, setOpenInvoiceId] = useState<string | null>(null);
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1024;
   const isEmbedded = useContext(HubContext);
+  const openInvoice = (id: string) => {
+    if (isEmbedded) setOpenInvoiceId(id);
+    else router.push(`/${panelBase}/invoice/${id}` as any);
+  };
 
   const [statusFilter, setStatusFilter] = useState<InvoiceStatus | 'all'>('all');
   const [search, setSearch] = useState('');
@@ -144,6 +165,15 @@ export function InvoicesListScreen() {
   }, [invoices, statusFilter, search, overdueOnly, today]);
 
   const onRefresh = () => { refetch(); refetchStats(); };
+
+  if (openInvoiceId) {
+    return (
+      <InvoiceDetailScreen
+        invoiceId={openInvoiceId}
+        onBack={() => setOpenInvoiceId(null)}
+      />
+    );
+  }
 
   return (
     <View style={{ flex: 1 }}>
@@ -352,14 +382,14 @@ export function InvoicesListScreen() {
             </View>
             {filtered.map((inv, i) => (
               <InvoiceRow key={inv.id} invoice={inv} isLast={i === filtered.length - 1}
-                onPress={() => router.push(invoiceHref(inv.id) as any)} />
+                onPress={() => openInvoice(inv.id)} />
             ))}
           </View>
         ) : (
           /* Mobile: card list */
           filtered.map(inv => (
             <InvoiceCard key={inv.id} invoice={inv}
-              onPress={() => router.push(invoiceHref(inv.id) as any)} />
+              onPress={() => openInvoice(inv.id)} />
           ))
         )}
       </ScrollView>
@@ -368,7 +398,7 @@ export function InvoicesListScreen() {
       <BulkInvoiceModal
         visible={bulkOpen}
         onClose={() => setBulkOpen(false)}
-        onCreated={(id) => { setBulkOpen(false); router.push(invoiceHref(id) as any); }}
+        onCreated={(id) => { setBulkOpen(false); openInvoice(id); }}
       />
       <BulkPaymentModal
         visible={bulkPayOpen}
@@ -487,7 +517,7 @@ function InvoiceRow({ invoice, isLast, onPress }: {
         </Text>
         {invoice.doctor?.full_name && (
           <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }} numberOfLines={1}>
-            Dr. {invoice.doctor.full_name}
+            {normalizeDoctorName(invoice.doctor.full_name)}
           </Text>
         )}
       </View>
@@ -549,7 +579,7 @@ function InvoiceCard({ invoice, onPress }: { invoice: Invoice; onPress: () => vo
           <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>{invoice.invoice_number}</Text>
           <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 2 }} numberOfLines={1}>
             {invoice.clinic?.name ?? '—'}
-            {invoice.doctor?.full_name ? ` · Dr. ${invoice.doctor.full_name}` : ''}
+            {invoice.doctor?.full_name ? ` · ${normalizeDoctorName(invoice.doctor.full_name)}` : ''}
           </Text>
         </View>
         <View style={{ alignItems: 'flex-end', gap: 6 }}>
@@ -611,7 +641,7 @@ function EmptyState({ hasFilter }: { hasFilter: boolean }) {
         <Inbox size={36} strokeWidth={1.4} color={DS.ink[300]} />
       )}
       <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[900] }}>
-        {hasFilter ? 'Sonuc bulunamadi' : 'Henuz fatura yok'}
+        {hasFilter ? 'Sonuç bulunamadı' : 'Henüz fatura yok'}
       </Text>
       <Text style={{ fontSize: 13, color: DS.ink[400], textAlign: 'center', maxWidth: 300 }}>
         {hasFilter
@@ -658,10 +688,15 @@ function BulkInvoiceModal({
     );
   }, [orders, orderSearch]);
 
-  const selectedTotal = useMemo(() => {
-    return orders
+  // Seçili siparişlerin toplamı — para birimi başına ("7,00 € · ₺1.250,00").
+  // Farklı dövizleri tek sayıda toplamak yanlış rakam üretiyordu.
+  const selectedTotalLabelOrders = useMemo(() => {
+    const acc: Record<string, number> = {};
+    orders
       .filter(o => selectedOrders.has(o.work_order_id))
-      .reduce((sum, o) => sum + Number(o.estimated_total ?? 0), 0);
+      .forEach(o => ccyPairs(o).forEach(([c, v]) => { acc[c] = (acc[c] ?? 0) + v; }));
+    const pairs = Object.entries(acc).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+    return pairs.length ? pairs.map(([c, v]) => fmtMoney(v, c)).join(' · ') : '—';
   }, [orders, selectedOrders]);
 
   const toggleOrder = (id: string) => {
@@ -830,7 +865,7 @@ function BulkInvoiceModal({
                     >
                       <Check size={13} strokeWidth={2} color={CHIP_TONES.info.text} />
                       <Text style={{ fontSize: 11, fontWeight: '600', color: CHIP_TONES.info.text }}>
-                        {allSel ? 'Kaldir' : 'Tumu'}
+                        {allSel ? 'Kaldır' : 'Tümü'}
                       </Text>
                     </Pressable>
                   )}
@@ -840,7 +875,7 @@ function BulkInvoiceModal({
                   <View style={{ alignItems: 'center', paddingVertical: 32, gap: 8 }}>
                     <CircleCheck size={28} strokeWidth={1.4} color={CHIP_TONES.success.text} />
                     <Text style={{ fontSize: 13, color: DS.ink[400] }}>
-                      {orderSearch ? 'Sonuc yok' : 'Faturalanmamis siparis yok'}
+                      {orderSearch ? 'Sonuç yok' : 'Faturalanmamis siparis yok'}
                     </Text>
                   </View>
                 ) : (
@@ -911,10 +946,10 @@ function BulkInvoiceModal({
           }}>
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 12, color: DS.ink[500] }}>
-                {selectedOrders.size > 0 ? `${selectedOrders.size} siparis` : 'Secim yok'}
+                {selectedOrders.size > 0 ? `${selectedOrders.size} siparis` : 'Seçim yok'}
               </Text>
               <Text style={{ ...DISPLAY, fontSize: 18, letterSpacing: -0.3, color: DS.ink[900] }}>
-                {selectedTotal > 0 ? fmtMoney(selectedTotal) : '—'}
+                {selectedTotalLabelOrders}
               </Text>
             </View>
             <Pressable
@@ -1049,7 +1084,11 @@ function BulkOrderRow({ order, selected, onToggle }: {
         </Text>
       </View>
       <Text style={{ ...DISPLAY, fontSize: 14, letterSpacing: -0.3, color: DS.ink[900] }}>
-        {Number(order.estimated_total) > 0 ? fmtMoney(order.estimated_total) : '—'}
+        {/* Kalemin KENDİ para birimi — birden çok döviz varsa alt alta değil,
+            yan yana ("7,00 € · ₺1.250,00"). ₺ varsayımı kaldırıldı. */}
+        {ccyPairs(order).length === 0
+          ? '—'
+          : ccyPairs(order).map(([c, a]) => fmtMoney(a, c)).join(' · ')}
       </Text>
     </Pressable>
   );
@@ -1121,7 +1160,7 @@ function BulkPaymentModal({
     }
     const amt = Number(amount.replace(',', '.'));
     if (!Number.isFinite(amt) || amt <= 0) {
-      toast.error('Gecerli bir tutar girin.');
+      toast.error('Geçerli bir tutar girin.');
       return;
     }
     setSaving(true);
@@ -1133,7 +1172,7 @@ function BulkPaymentModal({
     });
     setSaving(false);
     if (error) {
-      toast.error((error as any)?.message ?? 'Islem gerceklestirilemedi.');
+      toast.error((error as any)?.message ?? 'İşlem gerçekleştirilemedi.');
       return;
     }
     onDone();
@@ -1201,7 +1240,7 @@ function BulkPaymentModal({
                   )}
                 </View>
                 <Text style={{ fontSize: 12, fontWeight: '600', color: CHIP_TONES.info.text }}>
-                  {selected.size === sortedInvoices.length && sortedInvoices.length > 0 ? 'Tumunu kaldir' : 'Tumunu sec'}
+                  {selected.size === sortedInvoices.length && sortedInvoices.length > 0 ? 'Tümünü kaldır' : 'Tümünü seç'}
                 </Text>
               </Pressable>
               <Text style={{ fontSize: 11, color: DS.ink[400] }}>{sortedInvoices.length} fatura</Text>
@@ -1349,7 +1388,7 @@ function BulkPaymentModal({
                     }}
                     value={notes}
                     onChangeText={setNotes}
-                    placeholder="Odeme notu..."
+                    placeholder="Ödeme notu..."
                     placeholderTextColor={DS.ink[400]}
                   />
                 </View>

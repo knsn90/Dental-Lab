@@ -7,6 +7,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { View, Text, Pressable, ScrollView, useWindowDimensions } from 'react-native';
 import {
   LayoutDashboard, BookOpen, Clock, AlertCircle, CreditCard, ListChecks,
@@ -50,7 +51,21 @@ export function ClinicFinanceHubScreen() {
   const [clinicId, setClinicId] = useState<string | null>(null);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState<string | null>(null);
-  const [tab, setTab]           = useState<TabKey>('overview');
+  // Sekme URL'e yazılır: yenilemede/paylaşımda aynı sekme açılsın.
+  const params = useLocalSearchParams<{ tab?: string }>();
+  const router = useRouter();
+  const [tab, setTabRaw] = useState<TabKey>(
+    (TABS.some(x => x.key === params.tab) ? params.tab : 'overview') as TabKey,
+  );
+  const setTab = useCallback((k: TabKey) => {
+    setTabRaw(k);
+    try { router.setParams({ tab: k } as any); } catch { /* native fallback */ }
+  }, [router]);
+  useEffect(() => {
+    const q = typeof params.tab === 'string' ? params.tab : null;
+    if (q && TABS.some(x => x.key === q) && q !== tab) setTabRaw(q as TabKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.tab]);
 
   useEffect(() => {
     let alive = true;

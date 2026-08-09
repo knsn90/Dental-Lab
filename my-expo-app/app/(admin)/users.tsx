@@ -25,6 +25,7 @@ import { Profile } from '../../lib/types';
 
 import { AppIcon } from '../../core/ui/AppIcon';
 import { ActivityIndicator } from '../../core/ui/teethCompat';
+import { confirmAsync } from '../../core/util/confirm';
 
 type FilterType = 'all' | 'admin' | 'lab' | 'doctor' | 'clinic_admin';
 type StatusFilter = 'all' | 'active' | 'inactive';
@@ -230,23 +231,24 @@ export default function AdminUsersScreen() {
     } finally { setUpdatingId(null); }
   };
 
-  const handleDeleteUser = (profile: Profile) => {
-    Alert.alert('Kullanıcıyı Sil', `"${profile.full_name}" adlı kullanıcıyı silmek istediğinizden emin misiniz?\nBu işlem geri alınamaz.`, [
-      { text: 'İptal', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: async () => {
-        setUpdatingId(profile.id);
-        try {
-          const { data, error: fnError } = await supabase.functions.invoke('admin-delete-user', { body: { userId: profile.id } });
-          if (fnError || data?.error) Alert.alert('Hata', data?.error ?? fnError?.message ?? 'Silme işlemi başarısız');
-          else {
-            setProfiles(prev => prev.filter(p => p.id !== profile.id));
-            if (selectedId === profile.id) { setSelectedId(null); setStats(null); }
-          }
-        } catch (e: any) {
-          Alert.alert('Hata', e.message ?? 'Bir hata oluştu');
-        } finally { setUpdatingId(null); }
-      }},
-    ]);
+  const handleDeleteUser = async (profile: Profile) => {
+    const ok = await confirmAsync(
+      'Kullanıcıyı Sil',
+      `"${profile.full_name}" adlı kullanıcıyı silmek istediğinizden emin misiniz?\nBu işlem geri alınamaz.`,
+      { confirmText: 'Sil', cancelText: 'İptal', destructive: true },
+    );
+    if (!ok) return;
+    setUpdatingId(profile.id);
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke('admin-delete-user', { body: { userId: profile.id } });
+      if (fnError || data?.error) Alert.alert('Hata', data?.error ?? fnError?.message ?? 'Silme işlemi başarısız');
+      else {
+        setProfiles(prev => prev.filter(p => p.id !== profile.id));
+        if (selectedId === profile.id) { setSelectedId(null); setStats(null); }
+      }
+    } catch (e: any) {
+      Alert.alert('Hata', e.message ?? 'Bir hata oluştu');
+    } finally { setUpdatingId(null); }
   };
 
   const q = search.trim().toLowerCase();

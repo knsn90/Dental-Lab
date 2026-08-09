@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { QrCode, Bell, User as UserIcon, Search, MessageCircle, LogOut, ChevronRight, BellOff, Check, Monitor, Sun, Moon } from 'lucide-react-native';
 import { LiquidGlassView, isLiquidGlassSupported } from '@callstack/liquid-glass';
+import { PulseRing } from '../PulseRing';
 import { useScanStore } from '../../store/scanStore';
 import { useUiOverlayStore } from '../../store/uiOverlayStore';
 import { useNotifications, useNotificationsActions } from '../../store/notificationsStore';
@@ -19,6 +20,7 @@ import { useCommandPalette } from '../../store/commandPaletteStore';
 import { useAuthStore } from '../../store/authStore';
 import { useOrderChatInbox } from '../../../modules/orders/hooks/useOrderChatInbox';
 import { ProfileMenu as SharedProfileMenu } from './ProfileMenu';
+import { confirmAsync } from '../../util/confirm';
 
 // MessagesPopup — lazy (modül katmanı, circular import riskini önler)
 const MessagesPopup: any = React.lazy(() =>
@@ -34,9 +36,14 @@ interface Props {
   notificationsRoute?: string;
   /** Panel accent rengi — Mesajlar popup başlığı/vurguları için */
   accentColor?: string;
+  /**
+   * OPTIONAL — onboarding tour target hook for the Messages button. Only the
+   * doctor layout passes this; other panels leave it undefined → no-op.
+   */
+  messagesRef?: (node: any) => void;
 }
 
-export function TopActionBar({ routePrefix, notificationsRoute, accentColor }: Props) {
+export function TopActionBar({ routePrefix, notificationsRoute, accentColor, messagesRef }: Props) {
   const { width } = useWindowDimensions();
   const isNarrow = width < 768;
   const insets = useSafeAreaInsets();
@@ -68,23 +75,18 @@ export function TopActionBar({ routePrefix, notificationsRoute, accentColor }: P
     setProfileMenuOpen(false);
     router.push(`${routePrefix}/profile` as any);
   };
-  const onMenuLogout = () => {
+  const onMenuLogout = async () => {
     setProfileMenuOpen(false);
-    Alert.alert(
+    // Alert.alert çok-butonlu hâli react-native-web'de NO-OP: butonlar yok
+    // sayılıyor, onPress hiç çalışmıyor. PWA'da "Çıkış Yap" sessizce ölüyordu.
+    const ok = await confirmAsync(
       'Çıkış Yap',
       'Hesabınızdan çıkış yapmak istediğinize emin misiniz?',
-      [
-        { text: 'Vazgeç', style: 'cancel' },
-        {
-          text: 'Çıkış Yap',
-          style: 'destructive',
-          onPress: async () => {
-            try { await useAuthStore.getState().signOut(); }
-            catch { /* noop */ }
-          },
-        },
-      ],
+      { confirmText: 'Çıkış Yap', destructive: true },
     );
+    if (!ok) return;
+    try { await useAuthStore.getState().signOut(); }
+    catch { /* noop */ }
   };
 
   return (
@@ -101,7 +103,7 @@ export function TopActionBar({ routePrefix, notificationsRoute, accentColor }: P
         }}
       >
         <TopBtn icon={QrCode} onPress={onScan} />
-        <TopBtn icon={MessageCircle} onPress={onMessages} badgeCount={chatUnread} />
+        <TopBtn icon={MessageCircle} onPress={onMessages} badgeCount={chatUnread} btnRef={messagesRef} />
         <TopBtn icon={Bell} onPress={onNotifications} badgeCount={unreadCount} />
         <TopBtn icon={UserIcon} onPress={onProfile} />
       </View>
@@ -501,7 +503,7 @@ function formatNotifTime(iso: string): string {
   }
 }
 
-function TopBtn({ icon: Icon, onPress, badgeCount }: { icon: any; onPress?: () => void; badgeCount?: number }) {
+function TopBtn({ icon: Icon, onPress, badgeCount, btnRef }: { icon: any; onPress?: () => void; badgeCount?: number; btnRef?: (node: any) => void }) {
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const surface  = isDark ? '#1B1916'                : '#FFFFFF';
   const border   = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(20,16,12,0.08)';
@@ -524,6 +526,8 @@ function TopBtn({ icon: Icon, onPress, badgeCount }: { icon: any; onPress?: () =
       };
 
   const badge = badgeCount && badgeCount > 0 ? (
+    <>
+    <PulseRing size={20} color="#EF4444" top={-5} right={-5} />
     <View style={{
       position: 'absolute', top: -5, right: -5,
       minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5,
@@ -536,13 +540,14 @@ function TopBtn({ icon: Icon, onPress, badgeCount }: { icon: any; onPress?: () =
         {badgeCount > 99 ? '99+' : String(badgeCount)}
       </Text>
     </View>
+    </>
   ) : null;
 
   // iOS 26+ liquid glass: opaque neutral parent bg + LiquidGlassView with
   // matching tintColor (same pattern as PillTabBar's search button).
   if (LIQUID_GLASS) {
     return (
-      <Pressable onPress={onPress} hitSlop={8}>
+      <Pressable ref={btnRef} onPress={onPress} hitSlop={8}>
         {({ pressed }: any) => (
           // Dış sarmal — overflow YOK, badge buradan taşabilir (kırpılmaz)
           <View style={{ width: 38, height: 38, position: 'relative', opacity: pressed ? 0.7 : 1 }}>
@@ -578,7 +583,7 @@ function TopBtn({ icon: Icon, onPress, badgeCount }: { icon: any; onPress?: () =
 
   // Fallback — solid surface (web / older iOS / Android)
   return (
-    <Pressable onPress={onPress} hitSlop={8}>
+    <Pressable ref={btnRef} onPress={onPress} hitSlop={8}>
       {({ pressed }: any) => (
         <View
           style={{

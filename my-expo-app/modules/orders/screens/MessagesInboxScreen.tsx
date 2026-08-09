@@ -143,6 +143,10 @@ function InboxRow({ item, accent, currentUserId, side, onPress }: InboxRowProps)
   // Avatar = başlığa göre seed (klinik/hasta) — tutarlı renk
   const isMine       = !!item.last_sender_id && item.last_sender_id === currentUserId;
   const senderAvatar = isMine ? null : (item.last_sender_avatar as string | null) ?? null;
+  // Lab tarafında (admin · müdür · teknisyen) karşı taraf hep klinik → logosu
+  // avatar olsun. Logo yoksa son gönderenin fotoğrafı, o da yoksa baş harfler.
+  const clinicLogo   = (item.clinic_logo as string | null) ?? null;
+  const shownAvatar  = (side === 'lab' && clinicLogo) ? clinicLogo : senderAvatar;
   const displayName  = title;
   const avatarSeed   = title || item.work_order_id || '';
   const avatarBg     = colorFor(avatarSeed);
@@ -150,9 +154,17 @@ function InboxRow({ item, accent, currentUserId, side, onPress }: InboxRowProps)
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.75} style={row.wrap}>
       {/* Avatar — son gönderen profil */}
-      <View style={[row.avatar, { backgroundColor: avatarBg, overflow: 'hidden' }]}>
-        {senderAvatar ? (
-          <Image source={{ uri: senderAvatar }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+      <View style={[
+        row.avatar,
+        { backgroundColor: (shownAvatar && shownAvatar === clinicLogo) ? '#FFFFFF' : avatarBg, overflow: 'hidden' },
+        (shownAvatar && shownAvatar === clinicLogo) ? { borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' } : null,
+      ]}>
+        {shownAvatar ? (
+          <Image
+            source={{ uri: shownAvatar }}
+            style={shownAvatar === clinicLogo ? { width: '74%', height: '74%' } : { width: '100%', height: '100%' }}
+            resizeMode={shownAvatar === clinicLogo ? 'contain' : 'cover'}
+          />
         ) : (
           <Text style={row.avatarText}>{initials(displayName)}</Text>
         )}

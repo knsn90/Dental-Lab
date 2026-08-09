@@ -103,8 +103,11 @@ async function callClaude(
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-5',
+        // El yazısı + işaretli kutu okumasında en yüksek doğruluk için Opus 5.
+        model: 'claude-opus-5',
         max_tokens: maxTokens,
+        // NOT: Opus 5'te `temperature` DEPRECATED (400 verir) → gönderilmez.
+        // Determinizm için tool_use şeması + net promptla en-olası okuma zorlanır.
         messages: [{ role: 'user', content }],
       }),
     });
@@ -116,6 +119,156 @@ async function callClaude(
   if (!resp || !resp.ok) throw new Error(`Claude API error ${lastErr}`);
   const json = await resp.json();
   return json?.content?.[0]?.text ?? '';
+}
+
+// ── Yapısal çıktı şeması (tool_use) ──────────────────────────────────────────
+// Pass 2/3'te serbest-metin JSON + regex yerine Claude'u bu şemayı doldurmaya
+// ZORLARIZ (tool_choice). Böylece geçersiz-JSON riski biter ve alan tipleri
+// (tooth_numbers integer[], urgency/confidence enum) şemayla garanti edilir.
+const CONF_ENUM = { type: 'string', enum: ['high', 'medium', 'low', 'missing'] };
+const WORK_ORDER_TOOL = {
+  name: 'emit_work_order',
+  description: 'Diş laboratuvarı iş emri formundan çıkarılan yapısal veri.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      clinic_id:       { type: ['string', 'null'], description: 'QR kodundaki uuid (WORKORDER:<uuid>) veya null' },
+      doctor_name:     { type: ['string', 'null'] },
+      patient_name:    { type: ['string', 'null'] },
+      order_date:      { type: ['string', 'null'], description: 'YYYY-MM-DD' },
+      delivery_date:   { type: ['string', 'null'], description: 'YYYY-MM-DD' },
+      urgency:         { type: ['string', 'null'], enum: ['normal', 'acil', 'cok_acil', null] },
+      tooth_numbers:   { type: 'array', items: { type: 'integer' }, description: 'FDI diş numaraları; işaretli yoksa []' },
+      work_type:       { type: ['string', 'null'] },
+      shade:           { type: ['string', 'null'], description: 'Vita kodu (A1/A2/…) veya el yazısı renk' },
+      impression_type: { type: ['string', 'null'], enum: ['Klasik', 'Dijital', 'Putty', null] },
+      notes:           { type: ['string', 'null'] },
+      confidence: {
+        type: 'object',
+        properties: {
+          clinic_id: CONF_ENUM, doctor_name: CONF_ENUM, patient_name: CONF_ENUM,
+          order_date: CONF_ENUM, delivery_date: CONF_ENUM, urgency: CONF_ENUM,
+          tooth_numbers: CONF_ENUM, work_type: CONF_ENUM, shade: CONF_ENUM,
+          impression_type: CONF_ENUM, notes: CONF_ENUM,
+        },
+        required: ['clinic_id', 'doctor_name', 'patient_name', 'order_date', 'delivery_date',
+                   'urgency', 'tooth_numbers', 'work_type', 'shade', 'impression_type', 'notes'],
+      },
+      overall_note: { type: ['string', 'null'] },
+      alternatives: {
+        type: 'object',
+        description: 'Düşük güvenli alanlar için 2-3 aday okuma (olasılığa göre sıralı)',
+        properties: {
+          patient_name:  { type: 'array', items: { type: 'string' } },
+          doctor_name:   { type: 'array', items: { type: 'string' } },
+          shade:         { type: 'array', items: { type: 'string' } },
+          work_type:     { type: 'array', items: { type: 'string' } },
+          notes:         { type: 'array', items: { type: 'string' } },
+          order_date:    { type: 'array', items: { type: 'string' } },
+          delivery_date: { type: 'array', items: { type: 'string' } },
+        },
+      },
+    },
+    required: ['clinic_id', 'doctor_name', 'patient_name', 'order_date', 'delivery_date',
+               'urgency', 'tooth_numbers', 'work_type', 'shade', 'impression_type', 'notes', 'confidence'],
+  },
+};
+
+/**
+ * Claude Vision'ı YAPISAL çıktıya zorlar (tool_use). Dönen `input` doğrudan
+ * ParsedWorkOrder şeklindedir — regex/JSON.parse yok. Model callClaude ile
+ * aynı (temperature GÖNDERİLMEZ); sadece tools + tool_choice eklenir.
+ */
+async function callClaudeTool(
+  fileBase64: string,
+  mimeType: string,
+  apiKey: string,
+  prompt: string,
+  maxTokens = 2048,
+): Promise<ParsedWorkOrder | null> {
+  const isImage = mimeType.startsWith('image/');
+  const content: any[] = [
+    { type: isImage ? 'image' : 'document', source: { type: 'base64', media_type: mimeType, data: fileBase64 } },
+    { type: 'text', text: prompt },
+  ];
+
+  let resp: Response | null = null;
+  let lastErr = '';
+  for (let attempt = 0; attempt < 3; attempt++) {
+    resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-5',
+        max_tokens: maxTokens,
+        // Opus 5: `temperature` DEPRECATED → gönderilmez (bkz. callClaude).
+        tools: [WORK_ORDER_TOOL],
+        tool_choice: { type: 'tool', name: WORK_ORDER_TOOL.name },
+        messages: [{ role: 'user', content }],
+      }),
+    });
+    if (resp.ok) break;
+    lastErr = `${resp.status}: ${(await resp.text()).slice(0, 300)}`;
+    if (resp.status < 500 && resp.status !== 429) break;
+    await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+  }
+  if (!resp || !resp.ok) throw new Error(`Claude API error ${lastErr}`);
+  const json = await resp.json();
+  const toolBlock = (json?.content ?? []).find((b: any) => b?.type === 'tool_use' && b?.name === WORK_ORDER_TOOL.name);
+  return (toolBlock?.input as ParsedWorkOrder) ?? null;
+}
+
+/**
+ * DÜZ METİN iş emri (WhatsApp'tan fotoğrafsız, yazıyla gelen) → yapısal JSON.
+ * Görüntü YOK; tek Claude çağrısı, WORK_ORDER_TOOL şemasıyla zorunlu yapısal çıktı.
+ * Metin okunaklı olduğundan confidence genelde "high" olur.
+ */
+async function parseTextOrder(orderText: string, apiKey: string, senderNote = ''): Promise<ParsedWorkOrder | null> {
+  const prompt = `Aşağıdaki DÜZ METİN bir diş laboratuvarı İŞ EMRİ (WhatsApp'tan yazıyla geldi, fotoğraf YOK).
+Metindeki bilgileri WORK_ORDER şemasındaki alanlara çıkar. Metin okunaklı yazıldığından
+okunan alanların confidence'ı genelde "high"; metinde HİÇ geçmeyen alan null + "missing".
+
+Kurallar:
+- shade/renk: "A2", "3M3" (3D-Master), "BL2" gibi kodlar geçerli — aynen yaz.
+- tooth_numbers: FDI numaraları; metinde yazılan diş no'larını al ("36-46" → metindeki haliyle
+  geçen numaraları ver, uydurma/aralık şişirme yapma).
+- work_type: "implant üstü zirkonyum" gibi ifadelerde en yakın kategoriyi seç (Zirkonyum vb.).
+- İmplant sistemi/marka (ör. Neodent), özel istekler → notes alanına yaz.
+- clinic_id yalnızca metinde uuid varsa; klinik ADI clinic_id DEĞİLDİR (adı doctor/notes bağlamında bırak).
+${senderNote ? '\nGönderenin ek notu (dikkate al): ' + senderNote : ''}
+
+=== İŞ EMRİ METNİ ===
+${orderText}`;
+
+  let resp: Response | null = null;
+  let lastErr = '';
+  for (let attempt = 0; attempt < 3; attempt++) {
+    resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-opus-5',
+        max_tokens: 2048,
+        tools: [WORK_ORDER_TOOL],
+        tool_choice: { type: 'tool', name: WORK_ORDER_TOOL.name },
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+    if (resp.ok) break;
+    lastErr = `${resp.status}: ${(await resp.text()).slice(0, 300)}`;
+    if (resp.status < 500 && resp.status !== 429) break;
+    await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+  }
+  if (!resp || !resp.ok) throw new Error(`Claude API error ${lastErr}`);
+  const json = await resp.json();
+  const toolBlock = (json?.content ?? []).find((b: any) => b?.type === 'tool_use' && b?.name === WORK_ORDER_TOOL.name);
+  const parsed = (toolBlock?.input as ParsedWorkOrder) ?? null;
+  if (parsed) parsed.raw_transcription = orderText;
+  return parsed;
 }
 
 /**
@@ -135,6 +288,7 @@ async function parseWithClaude(
   fileBase64: string,
   mimeType: string,
   apiKey: string,
+  senderNote = '',
 ): Promise<ParsedWorkOrder | null> {
   // ─── PASS 1: Pure OCR transcription ─────────────────────────
   const ocrPrompt = `Bu bir DENTAL LAB (diş laboratuvarı) iş emri formu — el yazısı + matbu içerik karışık.
@@ -246,7 +400,18 @@ Sadece JSON döndür, başka metin yazma.
 ═══════════════════════════════════════════════════════════════
 ${transcription}
 ═══════════════════════════════════════════════════════════════
-
+${senderNote ? `
+═══════════════════════════════════════════════════════════════
+GÖNDERENİN WHATSAPP MESAJI (fotoğrafın yanında/ayrı yazdığı metin — forma AİT DEĞİL,
+ek talep/bilgi):
+═══════════════════════════════════════════════════════════════
+${senderNote}
+═══════════════════════════════════════════════════════════════
+Bu mesajı DA dikkate al: içinde aciliyet ("acil"/"çok acil"), renk (A2, B1…),
+teslim tarihi, hasta/doktor adı, iş tipi veya özel talep varsa ilgili alanları buradan
+DOLDUR/DÜZELT (formda işaretli değer varsa onunla çelişme; mesaj ek bilgi verir).
+Mesajdaki serbest talepleri "notes" alanına da EKLE (formdaki notlarla birleştir).
+` : ''}
 Şimdi yukarıdaki transkripsiyon BİLGİSİNİ ve doğrudan GÖRÜNTÜYÜ birlikte kullanarak structured JSON üret.
 Transkripsiyon Pass 1 olarak yapıldı — okunan metni yapısal alanlara map et.
 Görüntüyü de göz önünde bulundur (transkripsiyondaki olası hataları görüntüden düzelt).
@@ -310,22 +475,14 @@ GÜVEN SEVİYESİ:
 - Hiçbir alanı uydurma. Emin değilsen null + confidence düşük.
 - confidence alanı ZORUNLU — her field için doldur.`;
 
-  let structuredText = '';
+  let parsedPass2: ParsedWorkOrder | null;
   try {
-    structuredText = await callClaude(fileBase64, mimeType, apiKey, structPrompt, 2048);
+    // tool_use → şema-garantili obje; regex/JSON.parse yok.
+    parsedPass2 = await callClaudeTool(fileBase64, mimeType, apiKey, structPrompt, 2048);
   } catch (e: any) {
     throw new Error('Structured extraction failed: ' + (e?.message ?? 'unknown'));
   }
-
-  const m = structuredText.match(/\{[\s\S]*\}/);
-  if (!m) return null;
-
-  let parsedPass2: ParsedWorkOrder;
-  try {
-    parsedPass2 = JSON.parse(m[0]) as ParsedWorkOrder;
-  } catch {
-    return null;
-  }
+  if (!parsedPass2) return null;
 
   // ─── PASS 3: SELF-VERIFICATION (Critic) ───────────────────────
   // Claude'a kendi extraction'unu görüntüye karşı doğrulattır.
@@ -379,15 +536,9 @@ GÖREVİN İKİ AŞAMADA:
 SADECE JSON döndür.`;
 
     try {
-      const criticText = await callClaude(fileBase64, mimeType, apiKey, criticPrompt, 2048);
-      const cm = criticText.match(/\{[\s\S]*\}/);
-      if (cm) {
-        try {
-          const refined = JSON.parse(cm[0]) as ParsedWorkOrder;
-          // Pass 3 sonucu Pass 2'nin üstüne yazar — daha güvenilir kabul edilir
-          parsedPass2 = refined;
-        } catch { /* fallback Pass 2'ye */ }
-      }
+      const refined = await callClaudeTool(fileBase64, mimeType, apiKey, criticPrompt, 2048);
+      // Pass 3 sonucu Pass 2'nin üstüne yazar — daha güvenilir kabul edilir
+      if (refined) parsedPass2 = refined;
     } catch {
       // Pass 3 başarısız → Pass 2 sonucuyla devam
     }
@@ -413,15 +564,44 @@ Deno.serve(async (req: Request) => {
     const body = await req.json();
     const fileBase64: string | undefined = body.file_base64;
     const mimeType: string = body.mime_type ?? 'application/pdf';
-    if (!fileBase64) throw new Error('file_base64 zorunlu');
-
-    const validMimes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
-    if (!validMimes.includes(mimeType)) throw new Error(`Desteklenmeyen dosya tipi: ${mimeType}`);
+    // Fotoğrafsız, DÜZ METİN iş emri (WhatsApp yazısı). file_base64 yoksa buradan üretilir.
+    const orderText = String(body.text ?? '').trim();
+    // Gönderenin fotoğrafla birlikte/ayrı yazdığı serbest metin (opsiyonel bağlam).
+    const senderNote = String(body.sender_note ?? '').replace(/[\t\r]+/g, ' ').trim().slice(0, 2000);
+    if (!fileBase64 && !orderText) throw new Error('file_base64 veya text zorunlu');
 
     const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
     if (!apiKey) throw new Error('ANTHROPIC_API_KEY tanımlı değil');
 
-    const data = await parseWithClaude(fileBase64, mimeType === 'image/jpg' ? 'image/jpeg' : mimeType, apiKey);
+    // ── mode:'classify' → görsel bir İŞ EMRİ FORMU mu yoksa FOTOĞRAF mı? (tek hızlı çağrı) ──
+    if (String(body.mode ?? '') === 'classify') {
+      if (!fileBase64) throw new Error('classify için file_base64 gerekli');
+      const nmime = mimeType === 'image/jpg' ? 'image/jpeg' : mimeType;
+      const CLASSIFY_PROMPT = `Bu görsel bir diş laboratuvarı İŞ EMRİ FORMU mu, yoksa bir FOTOĞRAF / EKRAN GÖRÜNTÜSÜ mü?
+FORM = matbu başlıklar + elle doldurulmuş alanlar / işaretli kutucuklar olan kağıt iş emri belgesi.
+FOTO = ağız içi klinik fotoğraf, diş/alçı model fotoğrafı, CAD tasarım ekran görüntüsü, panoramik/periapikal röntgen,
+       ya da forma benzemeyen herhangi bir görsel.
+SADECE tek kelime yaz: form   VEYA   foto`;
+      let kindRaw = '';
+      try { kindRaw = (await callClaude(fileBase64, nmime, apiKey, CLASSIFY_PROMPT, 16)).toLowerCase(); }
+      catch { kindRaw = ''; }
+      const kind = /foto|photo|görüntü|goruntu|ekran|röntgen|rontgen|model|ağız|agiz/.test(kindRaw) ? 'photo'
+                 : /form|emri|belge/.test(kindRaw) ? 'form'
+                 : 'form'; // belirsizse güvenli taraf: iş emri say (sipariş kaybolmasın)
+      return new Response(JSON.stringify({ ok: true, kind, raw: kindRaw.slice(0, 40) }), {
+        headers: { ...corsHeaders, 'content-type': 'application/json' },
+      });
+    }
+
+    let data: ParsedWorkOrder | null;
+    if (fileBase64) {
+      const validMimes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
+      if (!validMimes.includes(mimeType)) throw new Error(`Desteklenmeyen dosya tipi: ${mimeType}`);
+      data = await parseWithClaude(fileBase64, mimeType === 'image/jpg' ? 'image/jpeg' : mimeType, apiKey, senderNote);
+    } else {
+      // Düz metin → fotoğrafsız iş emri
+      data = await parseTextOrder(orderText, apiKey, senderNote);
+    }
     if (!data) throw new Error('OCR sonuçtan JSON çıkarılamadı');
 
     return new Response(JSON.stringify({ ok: true, data }), {

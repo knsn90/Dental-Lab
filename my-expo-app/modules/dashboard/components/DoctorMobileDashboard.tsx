@@ -19,6 +19,8 @@ import { FaceScanQuickAction, useFaceScanAvailable } from '../../orders/componen
 import { useAuthStore } from '../../../core/store/authStore';
 
 import { UnreadMessagesCard } from '../../../core/ui/mobile/UnreadMessagesCard';
+import { RecentOrdersMobile, type RecentOrderItem } from './RecentOrdersMobile';
+
 const DOCTOR = MOBILE_PANEL_THEMES.doctor;
 
 function doctorTodayLabel(): string {
@@ -56,6 +58,7 @@ export interface DoctorMobileDashboardProps {
   weekTotal?: number;
   // List
   delayed?: DoctorDelayedCase[];
+  recentOrders?: RecentOrderItem[];
   // Actions
   onNewOrder?: () => void;
   onScan?: () => void;
@@ -65,6 +68,8 @@ export interface DoctorMobileDashboardProps {
   onMessages?: () => void;
   onNotifications?: () => void;
   onOpenOrder?: (id: string) => void;
+  onOpenOrderById?: (dbId: string) => void;
+  onAllOrders?: () => void;
   // Refresh
   refreshing?: boolean;
   onRefresh?: () => void;
@@ -428,6 +433,15 @@ export function DoctorMobileDashboard(props: DoctorMobileDashboardProps) {
       )}
 
       {/* Quick actions removed — QR & Onaylar are now top icons, Mesaj is in tab bar */}
+
+      {/* ═══ Son Siparişler — desktop tablonun mobil karşılığı ═══ */}
+      <RecentOrdersMobile
+        items={props.recentOrders ?? []}
+        accent={DOCTOR.primary}
+        accentDark={DOCTOR.accentDark}
+        onOpenOrder={(id) => props.onOpenOrderById?.(id)}
+        onAllOrders={props.onAllOrders}
+      />
     </ScrollView>
   );
 }

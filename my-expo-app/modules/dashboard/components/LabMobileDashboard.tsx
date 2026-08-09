@@ -20,8 +20,8 @@ import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { Ring } from '../../../core/ui/mobile/Ring';
 import { AnimatedNumber } from '../../../core/ui/mobile/AnimatedNumber';
 import { NewOrderCTACard } from '../../../core/ui/mobile/NewOrderCTACard';
-import { FaceScanQuickAction, useFaceScanAvailable } from '../../orders/components/FaceScanQuickAction';
 import { useAuthStore } from '../../../core/store/authStore';
+import { RecentOrdersMobile, type RecentOrderItem } from './RecentOrdersMobile';
 
 const LAB = MOBILE_PANEL_THEMES.lab;
 
@@ -60,6 +60,7 @@ export interface LabMobileDashboardProps {
   weekTotal?: number;
   // Lists
   delayed?: LabDelayedCase[];
+  recentOrders?: RecentOrderItem[];
   // Actions
   onNewOrder?: () => void;
   onScan?: () => void;
@@ -67,13 +68,14 @@ export interface LabMobileDashboardProps {
   onNotifications?: () => void;
   onProfile?: () => void;
   onOpenOrder?: (id: string) => void;
+  onOpenOrderById?: (dbId: string) => void;
+  onAllOrders?: () => void;
   // Refresh
   refreshing?: boolean;
   onRefresh?: () => void;
 }
 
 export function LabMobileDashboard(props: LabMobileDashboardProps) {
-  const faceScanOk = useFaceScanAvailable();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { profile } = useAuthStore();
@@ -93,6 +95,7 @@ export function LabMobileDashboard(props: LabMobileDashboardProps) {
   };
   const week    = props.weekBars ?? [0,0,0,0,0,0,0];
   const delayed = props.delayed  ?? [];
+  const recent  = props.recentOrders ?? [];
   const overdue = props.overdueCount ?? 0;
 
   return (
@@ -139,7 +142,6 @@ export function LabMobileDashboard(props: LabMobileDashboardProps) {
           accentColor={LAB.primary}
           onPress={props.onNewOrder}
           kicker={(props.weekCompleted ?? 0) > 0 ? t('dashboard.weekDoneKicker', { count: props.weekCompleted }) : t('dashboard.newOrderKicker')}
-          rightSlot={faceScanOk ? <FaceScanQuickAction variant="card" accentColor={LAB.primary} /> : undefined}
         />
       )}
 
@@ -261,6 +263,7 @@ export function LabMobileDashboard(props: LabMobileDashboardProps) {
       {/* ═══ Mesajlar kartı — okunmamışı öne çıkarır (panel accent) ═══ */}
       <UnreadMessagesCard
         accent={LAB.primary}
+        showClinicLogo
         onOpenOrder={(id) => router.push(`/(lab)/order/${id}` as any)}
         onOpenInbox={() => router.push('/(lab)/messages' as any)}
       />
@@ -483,6 +486,15 @@ export function LabMobileDashboard(props: LabMobileDashboardProps) {
           })}
         </View>
       )}
+
+      {/* ═══ Son Siparişler — desktop tablonun mobil karşılığı (paylaşılan bileşen) ═══ */}
+      <RecentOrdersMobile
+        items={recent}
+        accent={LAB.primary}
+        accentDark={LAB.accentDark}
+        onOpenOrder={(id) => props.onOpenOrderById?.(id)}
+        onAllOrders={props.onAllOrders}
+      />
     </ScrollView>
   );
 }

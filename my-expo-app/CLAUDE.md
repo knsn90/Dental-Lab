@@ -31,6 +31,25 @@ gelmeden devam edilmez.
 
 ---
 
+## 🚀 Deploy Kuralı (ZORUNLU)
+
+**Kullanıcı açıkça "deploy" (veya "deploy et / yayınla / online güncelle")
+DEMEDİKÇE deploy YAPMA.** Her değişiklikten sonra otomatik deploy etme.
+
+- Değişiklikleri yap → `tsc --noEmit` ile doğrula → **BEKLE**. Değişiklikleri
+  biriktir; yalnız kullanıcı "deploy" dediğinde biriken her şeyi tek seferde yayınla.
+- Deploy komutu (kullanıcı "deploy" deyince, tekrar sormadan çalıştırılır):
+  ```bash
+  cd ~/Desktop/DentalSoftware/my-expo-app
+  rm -rf dist .expo .vercel/output node_modules/.cache
+  NODE_OPTIONS="--max-old-space-size=8192" npm run deploy
+  ```
+  Sonra `curl -s -o /dev/null -w "%{http_code}" https://siman.app/` → **200** doğrula.
+- Deploy sırasında localhost (expo start) kısa süre kapanır; deploy bitince
+  otomatik geri başlat.
+
+---
+
 ## 🎯 Stack
 
 - **Expo + React Native + react-native-web** — tek codebase, hem web hem mobile
@@ -55,6 +74,33 @@ export function MyScreen() {
 - `size`: `sm` (form, 720px) · `md` (980px) · `lg` (default, 1280px) · `xl` (geniş tablo, 1440px)
 - Mobile'da otomatik tam genişlik
 - Desktop'ta otomatik ortalama + padding
+- **Hub içinde yatay dolgu eklemez** — `HubContext` true iken sayfa kenarını hub verir
+
+### 1b. Sayfa kenarı: `PAGE_PADDING` (ZORUNLU)
+
+**Sayfa kenarı için çıplak sayı YAZMA.** Tek kaynak `core/ui/pageMetrics.ts`:
+
+```tsx
+import { PAGE_PADDING, PAGE_BLEED } from 'core/ui/pageMetrics';
+
+<ScrollView contentContainerStyle={{ paddingHorizontal: PAGE_PADDING }}>
+  {/* tam-genişlik şerit kenara taşacaksa: */}
+  <View style={{ marginHorizontal: PAGE_BLEED }}><TabStrip /></View>
+</ScrollView>
+```
+
+`PAGE_PADDING 16` · `PAGE_BLEED -16` · `CARD_GAP 12` · `CARD_PADDING 18`
+
+**İki tuzak — ikisi de bu projede gerçekten yaşandı:**
+
+1. **Komşu dosyadan kopyalama.** Değer her ekranda elle yazıldığı için 17 farklı
+   sayı birikti; aynı ekranda başlık 24, sekmeler 16, kartlar 12 oldu. Komşu
+   yanlışsa kopyalamak hatayı çoğaltır — **sözleşmeye bak, komşuya değil.**
+2. **Hub içinde çift dolgu.** Hub kabı 16 verirken ekran bir 16 daha eklerse
+   kartlar 32'de kalır ve başlıkla hizalanmaz. Hub'a gömülü ekranda yatay dolgu
+   **ekleme**; `useContext(HubContext)` ile sıfırla.
+
+Ayrıntı ve gerçek vaka: `docs/DESIGN_LANGUAGE.md` §3.
 
 ### 2. Canonical bileşenleri kullan
 
@@ -227,10 +273,12 @@ text-info    bg-info    → #0EA5E9
 3. **Default Tailwind blue/indigo kullanma** — proje accent'leri var
 4. **`shadow-md` gibi flat shadow** — `shadow-card` veya `shadow-cardLite`
 5. **Sabit width değerleri** — responsive kullan
-6. **Maksimum 4 nested View** — flatten et
-7. **Mobile-only düşünme** — her ekran web'de de güzel olmalı
-8. **NativeWind + StyleSheet karıştırma** — bir komponentte tek yöntem
-9. **Sabit/tek panel rengi & zemini** — kart, buton, arka plan rengini hardcode etme; her panel kendi paletini kullansın (bkz. §7 Panel-tutarlılığı kuralı). Paylaşılan ekranlar `usePanelTheme()` ile accent + zemin almalı.
+6. **Sayfa kenarına çıplak sayı yazma** — `PAGE_PADDING` kullan (bkz. §1b)
+7. **Hub içinde yatay dolgu ekleme** — kenar boşluğu ikiye katlanır
+8. **Maksimum 4 nested View** — flatten et
+9. **Mobile-only düşünme** — her ekran web'de de güzel olmalı
+10. **NativeWind + StyleSheet karıştırma** — bir komponentte tek yöntem
+11. **Sabit/tek panel rengi & zemini** — kart, buton, arka plan rengini hardcode etme; her panel kendi paletini kullansın (bkz. §7 Panel-tutarlılığı kuralı). Paylaşılan ekranlar `usePanelTheme()` ile accent + zemin almalı.
 
 ## 🎨 Pattern Showcase
 
@@ -281,6 +329,7 @@ modules/<modulename>/
 ## ✅ Yeni Ekran Çıktısı Checklist
 
 - [ ] `<ResponsiveCanvas size="...">` ile sarılı
+- [ ] Sayfa kenarı `PAGE_PADDING` (çıplak sayı yok) · hub içindeyse yatay dolgu eklenmemiş
 - [ ] StyleSheet yerine className
 - [ ] `bg-page` page bg, `bg-surface` card bg
 - [ ] Mobile'da test edilebilir + desktop'ta güzel

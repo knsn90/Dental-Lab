@@ -1,4 +1,7 @@
 import { localeTag } from '../../../core/i18n';
+import { safeBack } from '../../../core/util/safeBack';
+import { openFileUrl } from '../../../core/util/openFile';
+import { toast } from '../../../core/ui/Toast';
 // modules/triage/screens/PlanReviewScreen.tsx
 // Plan Önizleme & Onay — planlama bekleyen sipariş açılınca ilk bu ekran gelir.
 // Gerçek veriyle çalışır; onayda mevcut triage_order RPC'sini çağırır.
@@ -9,7 +12,7 @@ import { View, Text, Pressable, ScrollView, Platform, Modal, TextInput, useWindo
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useSegments } from 'expo-router';
 import {
-  ListChecks, GripVertical, X, Plus, AlertTriangle, Sparkles, ChevronUp, ChevronDown,
+  ListChecks, GripVertical, X, Plus, AlertTriangle, Sparkles, ChevronUp, ChevronDown, ChevronRight, Download,
   Play, FileText, Stethoscope, Cpu, UserCheck, ChevronDown as Caret, Check, ArrowLeft, Layers, Box, MessageSquare, Save, Clock, Eye,
 } from 'lucide-react-native';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
@@ -19,7 +22,7 @@ import { ChatDetail } from '../../orders/components/MessagesPopup';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import {
   fetchTriageData, matchTemplate, saveTriagePlan, autoAssignTech, isQualified, createTemplate,
-  summarizePlanTiming, fmtDuration, fetchAutoTriage, approveTriagePlan, signWorkOrderFile,
+  summarizePlanTiming, fmtDuration, fetchAutoTriage, approveTriagePlan, signWorkOrderFile, setOrderItemLanes,
   type TriageStation, type TriageTech, type TriageData, type PlanLine,
 } from '../api';
 import { getStationKind, type StationKind } from '../../orders/stations/registry';
@@ -31,6 +34,7 @@ import { LivingToothChart } from '../../orders/components/LivingToothChart';
 import type { WorkOrder } from '../../orders/types';
 // Uygulama-içi görsel önizleme (zoom + ileri/geri + safe-area) — sipariş detayı kalıbı.
 import { ImageLightbox } from '../../../core/ui/ImageLightbox';
+import { useBottomActionBar } from '../../../core/store/uiOverlayStore';
 
 function is3DFileFmt(path: string): 'stl' | 'ply' | 'obj' | null {
   const ext = (path ?? '').toLowerCase().split('.').pop();
@@ -41,6 +45,20 @@ function isImagePath(path: string): boolean {
   const ext = (path ?? '').toLowerCase().split('.').pop() ?? '';
   return ['jpg','jpeg','png','gif','webp','bmp','heic','heif','svg','avif'].includes(ext);
 }
+
+// Dosya kategorisi — Taramalar (3D/zip) · Fotoğraflar (görsel) · Belgeler (diğer)
+type FileCat = 'scan' | 'photo' | 'doc';
+function fileCategoryOf(s: string): FileCat {
+  const p = (s || '').toLowerCase();
+  if (/\.(stl|ply|obj|zip|3mf|dcm)$/.test(p)) return 'scan';
+  if (/\.(jpe?g|png|webp|gif|bmp|heic|heif|avif|svg)$/.test(p)) return 'photo';
+  return 'doc';
+}
+const FILE_CAT_META: { key: FileCat; label: string }[] = [
+  { key: 'scan',  label: 'Taramalar' },
+  { key: 'photo', label: 'Fotoğraflar' },
+  { key: 'doc',   label: 'Belgeler' },
+];
 
 const INK = DS.ink;
 const DISPLAY = Platform.select({ web: 'Inter Tight, Inter, sans-serif', default: 'InterTight_300Light' }) as string;
@@ -70,6 +88,9 @@ interface Row {
 }
 
 export function PlanReviewScreen({ orderId }: { orderId: string }) {
+  // Altta yapışkan aksiyon çubuğu (Tek Tıkla Uygula / Onayla) var → Simanty
+  // FAB'ı üstüne kaysın, "Onayla" butonunu kapatmasın.
+  useBottomActionBar(84);
   const router = useRouter();
   const segments = useSegments() as string[];
   const panelGroup = segments?.[0] && segments[0].startsWith('(') ? segments[0] : '(lab)';
@@ -88,10 +109,15 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // Dosya kategorisi aç/kapa (varsayılan: KAPALI)
+  const [openFileCats, setOpenFileCats] = useState<Record<string, boolean>>({});
   const [pickerFor, setPickerFor] = useState<string | null>(null); // teknisyen seçici açık olan stationId
   const [chatOpen, setChatOpen] = useState(false);                   // sipariş yazışması modal'ı
   const [dragIndex, setDragIndex] = useState<number | null>(null);   // sürüklenen aktif satır
   const [overIndex, setOverIndex] = useState<number | null>(null);   // üzerine gelinen satır
+  // Çok-şerit sürükle-bırak: hangi şeritte hangi satır sürükleniyor/üzerine geliniyor
+  const [dragLane, setDragLane] = useState<{ lane: number; index: number } | null>(null);
+  const [overLane, setOverLane] = useState<{ lane: number; index: number } | null>(null);
   const [tplOpen, setTplOpen] = useState(false);                      // "Şablon kaydet" modalı
   const [tplName, setTplName] = useState('');
   const [tplSaving, setTplSaving] = useState(false);
@@ -101,10 +127,20 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
   const [autoTriage, setAutoTriage] = useState(false);           // Faz 5c: oto-triaj ayarı
   const [matchedTpl, setMatchedTpl] = useState(false);           // Faz 5c: şablon güvenle eşleşti mi
 
+  // ── Faz 2: paralel iş şeritleri — İZOLE state. laneCount>1 iken devreye girer;
+  //    tek-şerit yolu (rows/handlers/render/save) HİÇ değişmez. laneRows istasyonu
+  //    tekrar edebilsin diye `uid` ile anahtarlanır (aynı istasyon 2 şeritte olabilir).
+  const [laneCount, setLaneCount] = useState(1);
+  const [laneRows, setLaneRows] = useState<{ uid: string; stationId: string; lane: number; technicianId: string | null }[]>([]);
+  const [itemLanes, setItemLanes] = useState<Record<string, number>>({});
+  const laneUidRef = useRef(0);
+
   // 3D önizleme — tekil dosya + tümünü katmanlı (OrderDetailScreenV2 kalıbı)
   type ViewerMesh = { id: string; name: string; url: string; format: 'stl'|'ply'|'obj'; textureUrl?: string | null };
   const [viewer3DFile, setViewer3DFile] = useState<ViewerMesh | null>(null);
   const [viewerAll, setViewerAll] = useState<ViewerMesh[] | null>(null);
+  // ZIP'ten açılan viewer'da indirme kaynağı (mesh yerine kaynak zip insin)
+  const [zipSource, setZipSource] = useState<{ url: string; name: string } | null>(null);
   // 2D görsel önizleme — uygulama-içi lightbox (yeni sekme yerine)
   const [imageViewer, setImageViewer] = useState<{ url: string; name: string } | null>(null);
   // HTML tasarım (exocad vb.) → uygulama-içi iframe
@@ -143,7 +179,8 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
   const openFilePreview = useCallback(async (f: { id: string; name: string; storage_path: string; signed_url: string | null }) => {
     const fmt = is3DFileFmt(f.storage_path) ?? is3DFileFmt(f.name);
     const url = (await signWorkOrderFile(f.storage_path)) ?? f.signed_url;
-    if (!url) return;
+    // İmzalı URL üretilemedi (ör. storage RLS erişimi yok) → sessiz kalma, bildir.
+    if (!url) { toast.error('Dosyaya erişilemedi. Yetki veya dosya sorunu olabilir.'); return; }
     if (fmt && Platform.OS === 'web') { setViewer3DFile({ id: f.id, name: f.name, url, format: fmt }); return; }
     // Görsel → uygulama-içi lightbox (zoom + ileri/geri + safe-area)
     if (isImagePath(f.name || f.storage_path) && Platform.OS === 'web') { setImageViewer({ url, name: f.name }); return; }
@@ -165,6 +202,13 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
         zipUrlsRef.current = r.objectUrls;
         if (r.files.length > 0) {
           setZipImages(r.images.length ? r.images : null);
+          {
+            const base = f.storage_path.split('/').pop() ?? 'tarama.zip';
+            const realExt = base.includes('.') ? base.split('.').pop()!.toLowerCase() : 'zip';
+            let zn = (f.name?.trim() || base);
+            if (realExt && !zn.toLowerCase().endsWith('.' + realExt)) zn = `${zn}.${realExt}`;
+            setZipSource({ url, name: zn });   // indirme → kaynak zip
+          }
           setViewerAll(r.files);
         } else if (r.images.length > 0) {
           setZipImages(r.images);
@@ -176,8 +220,33 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
       finally { setExtractingId(null); }
       return;
     }
-    if (Platform.OS === 'web' && typeof window !== 'undefined') window.open(url, '_blank');
+    openFileUrl(url);
   }, []);
+
+  // Ham dosyayı indir — Supabase `download` parametresi ile (ZIP zip olarak iner, açılmaz).
+  const forceDownload = useCallback(async (f: { id: string; name: string; storage_path: string; signed_url: string | null }) => {
+    const signed = (await signWorkOrderFile(f.storage_path)) ?? f.signed_url;
+    if (!signed) { toast.error('Dosyaya erişilemedi. Birazdan tekrar deneyin.'); return; }
+    const base = f.storage_path.split('/').pop() ?? 'file';
+    const realExt = base.includes('.') ? base.split('.').pop()!.toLowerCase() : '';
+    let name = (f.name?.trim() || base);
+    if (realExt && !name.toLowerCase().endsWith('.' + realExt)) name = `${name}.${realExt}`;
+    const dlUrl = signed + (signed.includes('?') ? '&' : '?') + 'download=' + encodeURIComponent(name);
+    if (Platform.OS !== 'web' || typeof document === 'undefined') { openFileUrl(dlUrl); return; }
+    try {
+      const a = document.createElement('a');
+      a.href = dlUrl; a.download = name; a.rel = 'noopener';
+      document.body.appendChild(a); a.click();
+      setTimeout(() => { try { document.body.removeChild(a); } catch {} }, 100);
+    } catch { try { window.open(dlUrl, '_blank'); } catch {} }
+  }, []);
+
+  // Kategori grupları — Taramalar / Fotoğraflar / Belgeler (boş olanlar gizli)
+  const fileGroups = useMemo(() => {
+    const by: Record<FileCat, any[]> = { scan: [], photo: [], doc: [] };
+    for (const f of (data?.files ?? [])) by[fileCategoryOf(f.name || f.storage_path)].push(f);
+    return FILE_CAT_META.map(m => ({ ...m, files: by[m.key] })).filter(g => g.files.length > 0);
+  }, [data?.files]);
 
   // Tümünü katmanlı aç — her 3D dosya için taze URL üret, sonra viewer'ı aç.
   const openAllLayered = useCallback(async () => {
@@ -185,6 +254,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
       id: f.id, name: f.name, format: f.format,
       url: (await signWorkOrderFile(f.storage_path)) ?? f.url,
     })));
+    setZipSource(null);
     setViewerAll(signed.filter(s => s.url));
   }, [all3DFiles]);
   const autoRanRef = useRef(false);                              // oto-triaj bir kez çalışsın
@@ -319,8 +389,114 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
     });
   };
 
+  // ── Faz 2: şerit düzenleyici (yalnız çok-şerit yolunda kullanılır) ───────────
+  const newLaneUid = () => `lr${(laneUidRef.current += 1)}`;
+  const laneStations = (lane: number) => laneRows.filter(r => r.lane === lane);
+  const itemLaneOf = (id: string) => itemLanes[id] ?? 1;
+
+  // Çok-şeride geç / yeni şerit ekle. İlk geçişte mevcut aktif plan = şerit 1;
+  // yeni şerit = şerit 1'in klonu (operatör her şeridi kendine göre kırpar).
+  const addLane = () => {
+    const next = laneCount + 1;
+    let base = laneRows;
+    if (laneCount === 1) {
+      base = activeRows.map(r => ({ uid: newLaneUid(), stationId: r.stationId, lane: 1, technicianId: r.technicianId }));
+    }
+    const clones = base.filter(r => r.lane === 1)
+      .map(r => ({ uid: newLaneUid(), stationId: r.stationId, lane: next, technicianId: r.technicianId }));
+    setLaneRows([...base, ...clones]);
+    const il: Record<string, number> = { ...itemLanes };
+    (data?.items ?? []).forEach(it => { if (il[it.id] == null) il[it.id] = 1; });
+    setItemLanes(il);
+    setLaneCount(next);
+  };
+
+  // Tek şeride dön — laneRows'u at; dokunulmamış `rows` (single-lane) devralır.
+  const resetToSingleLane = () => { setLaneRows([]); setItemLanes({}); setLaneCount(1); };
+
+  const removeLane = (lane: number) => {
+    if (laneCount <= 2) { resetToSingleLane(); return; }
+    setLaneRows(prev => prev.filter(r => r.lane !== lane).map(r => (r.lane > lane ? { ...r, lane: r.lane - 1 } : r)));
+    setItemLanes(prev => { const n = { ...prev }; for (const k of Object.keys(n)) { if (n[k] === lane) n[k] = 1; else if (n[k] > lane) n[k] -= 1; } return n; });
+    setLaneCount(c => c - 1);
+  };
+
+  const removeLaneRow = (uid: string) => setLaneRows(prev => prev.filter(r => r.uid !== uid));
+  const setLaneRowTech = (uid: string, techId: string | null) => { setLaneRows(prev => prev.map(r => (r.uid === uid ? { ...r, technicianId: techId } : r))); setPickerFor(null); };
+  const addStationToLane = (stationId: string, lane: number) => {
+    const st = stationById.get(stationId);
+    setLaneRows(prev => [...prev, { uid: newLaneUid(), stationId, lane, technicianId: st ? autoAssignTech(st, data?.technicians ?? []) : null }]);
+  };
+  const moveLaneRow = (uid: string, lane: number, dir: -1 | 1) => setLaneRows(prev => {
+    const arr = prev.filter(r => r.lane === lane);
+    const rest = prev.filter(r => r.lane !== lane);
+    const idx = arr.findIndex(r => r.uid === uid);
+    const j = idx + dir;
+    if (idx < 0 || j < 0 || j >= arr.length) return prev;
+    const na = [...arr]; [na[idx], na[j]] = [na[j], na[idx]];
+    return [...rest, ...na];
+  });
+  // Şerit-içi sürükle-bırak sıralama (from → to, aynı şerit içinde)
+  const reorderLaneRows = (lane: number, from: number, to: number) => setLaneRows(prev => {
+    const arr = prev.filter(r => r.lane === lane);
+    const rest = prev.filter(r => r.lane !== lane);
+    if (from < 0 || to < 0 || from >= arr.length || to >= arr.length || from === to) return prev;
+    const na = [...arr];
+    const [moved] = na.splice(from, 1);
+    na.splice(to, 0, moved);
+    return [...rest, ...na];
+  });
+  const cycleItemLane = (id: string) => setItemLanes(prev => ({ ...prev, [id]: ((prev[id] ?? 1) % laneCount) + 1 }));
+
   const handleSave = async (opts?: { approve?: boolean }) => {
     setError('');
+
+    // Faz 2: ÇOK-ŞERİT kaydı — her şerit kendi 1..n sequence'ı, lane damgalı satırlar.
+    // Tek-şerit (laneCount===1) yola hiç girmez → bugünkü davranış birebir korunur.
+    if (laneCount > 1) {
+      const lines: PlanLine[] = [];
+      for (let lane = 1; lane <= laneCount; lane++) {
+        laneStations(lane).forEach((r, i) => {
+          const st = stationById.get(r.stationId);
+          if (!st) return;
+          lines.push({
+            station_id: r.stationId, sequence_order: i + 1,
+            status: i === 0 ? 'aktif' : 'bekliyor', skipped_reason: null,
+            technician_id: r.technicianId, is_critical: st.is_critical,
+            parallel_group: null, lane,
+          });
+        });
+      }
+      if (lines.length === 0) { setError('Her şeritte en az 1 aşama olmalı'); return false; }
+      // Her şeritte en az 1 aşama var mı? (boş şerit = anlamsız)
+      for (let lane = 1; lane <= laneCount; lane++) {
+        if (!lines.some(l => l.lane === lane)) { setError(`Şerit ${lane}'de aşama yok`); return false; }
+      }
+      // Her şeride en az 1 kalem atanmış mı? Atanmayan kalemler bir şeridi boş
+      // bırakır → hero/çalışma listesinde "Şerit N" fallback + yanlış yüzde olur.
+      // (Kalem yoksa legacy sipariş — atama kontrolü atlanır.)
+      const planItems = data?.items ?? [];
+      if (planItems.length > 0) {
+        for (let lane = 1; lane <= laneCount; lane++) {
+          if (!planItems.some(it => itemLaneOf(it.id) === lane)) {
+            setError(`Şerit ${lane}'e işlem atanmadı — üstteki işlem çipine dokunup şeridini seç`);
+            return false;
+          }
+        }
+      }
+      setSaving(true);
+      const { error: rpcErr } = await saveTriagePlan(orderId, lines, laneRows[0]?.technicianId ?? null);
+      if (rpcErr) { setSaving(false); setError(rpcErr.message ?? 'Kayıt hatası'); return false; }
+      await setOrderItemLanes(orderId, (data?.items ?? []).map(it => ({ id: it.id, lane: itemLaneOf(it.id) })));
+      if (opts?.approve) {
+        const { error: apErr } = await approveTriagePlan(orderId);
+        if (apErr) { setSaving(false); setError(apErr.message ?? 'Onay hatası'); return false; }
+      }
+      setSaving(false);
+      router.replace(`/${panelGroup}/order/${orderId}` as any);
+      return true;
+    }
+
     if (activeRows.length === 0) { setError('En az 1 aşama aktif olmalı'); return false; }
     setSaving(true);
 
@@ -432,7 +608,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
     <View style={{ flex: 1, backgroundColor: PAGE }}>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 20 + insets.top, paddingBottom: (isNarrow ? 300 : 130) + insets.bottom, width: '100%' }}>
         {/* Geri + başlık */}
-        <Pressable onPress={() => router.back()} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 14, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+        <Pressable onPress={() => safeBack('/')} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 14, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
           <ArrowLeft size={16} color={INK[500]} strokeWidth={2} />
           <Text style={{ fontSize: 13, color: INK[500], fontWeight: '600' }}>Geri</Text>
         </Pressable>
@@ -613,9 +789,9 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                     {m.attachment_name ? (
                       <Pressable
                         onPress={() => {
-                          if (!m.attachment_url || Platform.OS !== 'web') return;
-                          if (isImagePath(m.attachment_name ?? '')) { setImageViewer({ url: m.attachment_url, name: m.attachment_name ?? '' }); return; }
-                          window.open(m.attachment_url, '_blank');
+                          if (!m.attachment_url) return;
+                          if (Platform.OS === 'web' && isImagePath(m.attachment_name ?? '')) { setImageViewer({ url: m.attachment_url, name: m.attachment_name ?? '' }); return; }
+                          openFileUrl(m.attachment_url);
                         }}
                         style={{ flexDirection: 'row', alignItems: 'center', gap: 4, ...(Platform.OS === 'web' && m.attachment_url ? { cursor: 'pointer' } as any : {}) }}
                       >
@@ -654,14 +830,36 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
               {(data?.files.length ?? 0) === 0 ? (
                 <Text style={{ fontSize: 12, color: INK[400], fontStyle: 'italic' }}>Dosya yok.</Text>
               ) : (
-                data!.files.map(f => {
+                fileGroups.map((g) => {
+                  const isCollapsed = !openFileCats[g.key];
+                  const catColor = g.key === 'photo' ? '#10B981' : g.key === 'scan' ? A : INK[500];
+                  return (
+                  <View key={g.key} style={{ marginBottom: 2 }}>
+                    {/* Kategori başlığı — tıklayınca aç/kapa (varsayılan kapalı) */}
+                    <Pressable
+                      onPress={() => setOpenFileCats(s => ({ ...s, [g.key]: !s[g.key] }))}
+                      hitSlop={4}
+                      style={({ hovered }: any) => ({
+                        flexDirection: 'row', alignItems: 'center', gap: 7,
+                        paddingHorizontal: 8, paddingVertical: 7, borderRadius: 8,
+                        backgroundColor: hovered ? tint(A, 0.06) : 'transparent',
+                        ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                      })}
+                    >
+                      {isCollapsed ? <ChevronRight size={14} color={INK[500]} strokeWidth={2} /> : <ChevronDown size={14} color={INK[500]} strokeWidth={2} />}
+                      <Text style={{ flex: 1, fontSize: 11, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase', color: INK[500] }}>{g.label}</Text>
+                      <View style={{ minWidth: 20, height: 18, paddingHorizontal: 6, borderRadius: 9, backgroundColor: tint(catColor, 0.14), alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ fontSize: 10, fontWeight: '800', color: catColor }}>{g.files.length}</Text>
+                      </View>
+                    </Pressable>
+                    {!isCollapsed && g.files.map(f => {
                   const previewable = !!(f.storage_path || f.signed_url); // tıklamada taze imzalanır
                   const isZip = isArchiveExt(f.name || f.storage_path);
                   const isBusy = extractingId === f.id;
                   return (
                   <View
                     key={f.id}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 8, paddingVertical: 6, borderRadius: 10 }}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 8, paddingLeft: 26, paddingVertical: 6, borderRadius: 10 }}
                   >
                     <View style={{ width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(f.is3d || isZip ? A : INK[400], 0.12) }}>
                       {f.is3d || isZip ? <Box size={14} color={A_DEEP} strokeWidth={1.8} /> : <FileText size={14} color={INK[500]} strokeWidth={1.8} />}
@@ -689,6 +887,24 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                         ? <ActivityIndicator size="small" color={A_DEEP} />
                         : <Eye size={13} color={previewable ? A_DEEP : INK[400]} strokeWidth={1.9} />}
                     </Pressable>
+                    {/* İndir butonu — ham dosya (ZIP zip olarak iner) */}
+                    <Pressable
+                      onPress={() => forceDownload(f)}
+                      disabled={!previewable}
+                      hitSlop={6}
+                      // @ts-ignore web tooltip
+                      title="İndir"
+                      style={({ hovered }: any) => ({
+                        width: 26, height: 26, borderRadius: 7, alignItems: 'center', justifyContent: 'center',
+                        backgroundColor: hovered && previewable ? tint(A, 0.14) : 'transparent', opacity: previewable ? 1 : 0.4,
+                        ...(Platform.OS === 'web' && previewable ? { cursor: 'pointer' } as any : {}),
+                      })}
+                    >
+                      <Download size={13} color={previewable ? A_DEEP : INK[400]} strokeWidth={1.9} />
+                    </Pressable>
+                  </View>
+                  );
+                })}
                   </View>
                   );
                 })
@@ -699,12 +915,51 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
           {/* Sağ: pipeline */}
           <View style={{ flex: 1, minWidth: isNarrow ? 0 : 320, width: isNarrow ? '100%' : undefined, gap: 10 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: INK[700] }}>Üretim Akışı · {activeRows.length} aşama</Text>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: INK[700] }}>
+                Üretim Akışı{laneCount > 1 ? ` · ${laneCount} iş şeridi` : ` · ${activeRows.length} aşama`}
+              </Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Sparkles size={12} color={A_DEEP} strokeWidth={2} />
                 <Text style={{ fontSize: 11, color: INK[500] }}>İstasyon varsayılan teknisyeni + canlı iş yükü</Text>
               </View>
             </View>
+
+            {/* Faz 2: iş şeridi kontrolü — aynı siparişte farklı işlemler bağımsız yürür.
+                Yalnız 2+ işlem (order_items) varken veya zaten çok-şerit iken görünür. */}
+            {((data?.items?.length ?? 0) > 1 || laneCount > 1) && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                <Pressable onPress={addLane}
+                  style={({ hovered }: any) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: hovered ? tint(A, 0.18) : tint(A, 0.10), borderWidth: 1, borderColor: tint(A, 0.28), ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) })}>
+                  <Plus size={13} color={A_DEEP} strokeWidth={2.2} />
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: A_DEEP }}>İş şeridi ekle</Text>
+                </Pressable>
+                {laneCount > 1 && (
+                  <Pressable onPress={resetToSingleLane} style={Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : undefined}>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: INK[500] }}>Tek şeride dön</Text>
+                  </Pressable>
+                )}
+                <Text style={{ fontSize: 11, color: INK[400] }}>
+                  {laneCount > 1 ? 'İşlem çipine dokunup şeridini değiştir' : 'Farklı işlemleri ayrı şeritlerde yürüt'}
+                </Text>
+              </View>
+            )}
+
+            {/* Faz 2: işlem→şerit çipleri (yalnız çok-şerit) */}
+            {laneCount > 1 && (data?.items?.length ?? 0) > 0 && (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {(data?.items ?? []).map(it => (
+                  <Pressable key={it.id} onPress={() => cycleItemLane(it.id)}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingLeft: 10, paddingRight: 6, paddingVertical: 6, borderRadius: 999, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.10)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: INK[700] }} numberOfLines={1}>
+                      {it.name}{it.tooth_numbers?.length ? ` (${it.tooth_numbers.join(',')})` : ''}
+                    </Text>
+                    <View style={{ minWidth: 22, height: 20, paddingHorizontal: 6, borderRadius: 999, backgroundColor: tint(A, 0.16), alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: A_DEEP }}>Ş{itemLaneOf(it.id)}</Text>
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+            )}
 
             {/* Faz 3: tahmini süre + SLA özeti */}
             {(planTiming.anyDuration || planTiming.anySla) && (() => {
@@ -758,7 +1013,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
               </View>
             ) : null}
 
-            {activeRows.map((r, i) => {
+            {laneCount === 1 && activeRows.map((r, i) => {
               const st = stationById.get(r.stationId);
               if (!st) return null;
               const tech = r.technicianId ? techById.get(r.technicianId) ?? null : null;
@@ -787,8 +1042,8 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
               );
             })}
 
-            {/* Havuz: + Aşama ekle */}
-            {poolRows.length > 0 && (
+            {/* Havuz: + Aşama ekle (tek-şerit) */}
+            {laneCount === 1 && poolRows.length > 0 && (
               <View style={{ borderRadius: 16, borderWidth: 1, borderStyle: 'dashed', borderColor: INK[300], padding: 12, gap: 8, marginTop: 2 }}>
                 <Text style={{ fontSize: 10, fontWeight: '700', color: INK[400], letterSpacing: 0.8, textTransform: 'uppercase' }}>+ Aşama Ekle</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -807,18 +1062,77 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
                 </View>
               </View>
             )}
+
+            {/* Faz 2: ÇOK-ŞERİT — her işlem grubu kendi ardışık aşama dizisi (bağımsız yürür) */}
+            {laneCount > 1 && Array.from({ length: laneCount }, (_, k) => k + 1).map((lane) => {
+              const arr = laneStations(lane);
+              const inLane = new Set(arr.map(r => r.stationId));
+              const addable = (data?.stations ?? []).filter(s => !inLane.has(s.id));
+              return (
+                <View key={`lane-${lane}`} style={{ gap: 8, borderRadius: 16, borderWidth: 1, borderColor: tint(A, 0.20), backgroundColor: tint(A, 0.03), padding: 12 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text style={{ fontSize: 11.5, fontWeight: '800', color: A_DEEP, letterSpacing: 0.6 }}>İŞ ŞERİDİ {lane}</Text>
+                    <Pressable onPress={() => removeLane(lane)} style={Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : undefined}>
+                      <X size={15} color={INK[400]} strokeWidth={2} />
+                    </Pressable>
+                  </View>
+                  {arr.length === 0 ? (
+                    <Text style={{ fontSize: 12, color: INK[400] }}>Bu şeride aşağıdan aşama ekleyin.</Text>
+                  ) : arr.map((r, i) => {
+                    const st = stationById.get(r.stationId);
+                    if (!st) return null;
+                    const tech = r.technicianId ? techById.get(r.technicianId) ?? null : null;
+                    return (
+                      <StageRow
+                        key={r.uid}
+                        st={st} idx={i} first={i === 0} last={i === arr.length - 1}
+                        tech={tech} accent={A} accentDeep={A_DEEP}
+                        technicians={data?.technicians ?? []}
+                        parallelGroup={null} parallelOn={false} onToggleParallel={() => {}}
+                        pickerOpen={pickerFor === r.uid}
+                        onTogglePicker={() => setPickerFor(p => p === r.uid ? null : r.uid)}
+                        onAssign={(tid) => setLaneRowTech(r.uid, tid)}
+                        onRemove={() => removeLaneRow(r.uid)}
+                        onUp={() => moveLaneRow(r.uid, lane, -1)}
+                        onDown={() => moveLaneRow(r.uid, lane, 1)}
+                        dragging={dragLane?.lane === lane && dragLane.index === i}
+                        isOver={overLane?.lane === lane && overLane.index === i && !!dragLane && !(dragLane.lane === lane && dragLane.index === i)}
+                        onDragStart={() => setDragLane({ lane, index: i })}
+                        onDragEnter={() => setOverLane({ lane, index: i })}
+                        onDrop={() => { if (dragLane && dragLane.lane === lane) reorderLaneRows(lane, dragLane.index, i); setDragLane(null); setOverLane(null); }}
+                        onDragEnd={() => { setDragLane(null); setOverLane(null); }}
+                      />
+                    );
+                  })}
+                  {addable.length > 0 && (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
+                      {addable.map(s => (
+                        <Pressable key={s.id} onPress={() => addStationToLane(s.id, lane)}
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.10)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                          <Plus size={12} color={INK[500]} strokeWidth={2} />
+                          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: s.color }} />
+                          <Text style={{ fontSize: 12, fontWeight: '600', color: INK[700] }}>{s.name}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              );
+            })}
           </View>
         </View>
       </ScrollView>
 
       {/* Sticky özet + onay */}
       {(() => {
-        const assignedTechs = Array.from(new Set(activeRows.map(r => r.technicianId).filter(Boolean) as string[]))
+        // Faz 2: çok-şeritte özet laneRows'tan; tek-şeritte activeRows'tan (aynı şekil).
+        const planRows = laneCount > 1 ? laneRows : activeRows;
+        const assignedTechs = Array.from(new Set(planRows.map(r => r.technicianId).filter(Boolean) as string[]))
           .map(id => techById.get(id)).filter(Boolean) as TriageTech[];
-        const firstStation = activeRows[0] ? (stationById.get(activeRows[0].stationId)?.name ?? '—') : '—';
+        const firstStation = planRows[0] ? (stationById.get(planRows[0].stationId)?.name ?? '—') : '—';
         // Planlama (üretime başlatma) yetkisi: yalnız müdür veya admin
         const isPlanner = (profile as any)?.role === 'manager' || (profile as any)?.user_type === 'admin';
-        const canStart = !saving && activeRows.length > 0 && isPlanner;
+        const canStart = !saving && planRows.length > 0 && isPlanner;
         return (
         <View style={{ position: Platform.OS === 'web' ? ('sticky' as any) : 'absolute', left: 0, right: 0, bottom: isNarrow ? (Math.max(insets.bottom, 8) + 70) : 0, paddingHorizontal: 16, paddingTop: 16, paddingBottom: isNarrow ? 12 : 16 + insets.bottom, backgroundColor: 'transparent' }}>
           <View style={{
@@ -827,7 +1141,7 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
           }}>
             {/* Özet — hairline ayraçlı (mobilde sarar) */}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, flexWrap: 'wrap', flexShrink: 1 }}>
-            <FooterStat icon={<Layers size={13} color={A} strokeWidth={2} />} label="Aşama" value={String(activeRows.length)} />
+            <FooterStat icon={<Layers size={13} color={A} strokeWidth={2} />} label={laneCount > 1 ? 'Şerit·Aşama' : 'Aşama'} value={laneCount > 1 ? `${laneCount}·${planRows.length}` : String(planRows.length)} />
             <View style={{ width: 1, height: 30, backgroundColor: 'rgba(255,255,255,0.10)' }} />
             <FooterStat icon={<Play size={12} color={A} strokeWidth={2} />} label="İlk istasyon" value={firstStation} />
             <View style={{ width: 1, height: 30, backgroundColor: 'rgba(255,255,255,0.10)' }} />
@@ -972,7 +1286,8 @@ export function PlanReviewScreen({ orderId }: { orderId: string }) {
             files={viewerAll}
             referenceImages={zipImages ?? referenceImages}
             title={`${viewerAll.length} dosya birlikte`}
-            onClose={() => { setViewerAll(null); setZipImages(null); revokeZipUrls(); }}
+            sourceDownload={zipSource ?? undefined}
+            onClose={() => { setViewerAll(null); setZipImages(null); setZipSource(null); revokeZipUrls(); }}
           />
         </React.Suspense>
       )}

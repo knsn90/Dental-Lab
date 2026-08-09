@@ -7,7 +7,7 @@ const ScanB6Mobile: any = React.lazy(() => import('../../modules/orders/screens/
 const MoreMenuSheet: any = React.lazy(() => import('../../core/ui/mobile/MoreMenuSheet').then(m => ({ default: (m as any).MoreMenuSheet })));
 import { Modal, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Slot, Tabs, useRouter, usePathname } from 'expo-router';
+import { Slot, Tabs, useRouter, usePathname, Redirect } from 'expo-router';
 import { C as Colors } from '../../core/theme/colors';
 import { PatternsShell, useIsDesktop } from '../../core/layout/PatternsShell';
 import { PillTabBar, type PillTabItem } from '../../core/ui/mobile/PillTabBar';
@@ -30,9 +30,21 @@ import { useOrderChatInbox } from '../../modules/orders/hooks/useOrderChatInbox'
 import { usePendingApprovalsCount } from '../../modules/orders/hooks/usePendingApprovalsCount';
 import { useColorThemeStore, applyColorThemeWeb } from '../../core/store/colorThemeStore';
 
+import { supabase } from '../../core/api/supabase';
+import { OnboardingOverlay } from '../../core/onboarding/OnboardingOverlay';
+import { PaymentReminderGate } from '../../core/finance/PaymentReminderGate';
+import { useOnboardingStore } from '../../core/onboarding/onboardingStore';
+import { useTourTarget } from '../../core/onboarding/useTourTarget';
+import { DOCTOR_TOUR_STEPS } from '../../core/onboarding/tourSteps';
+
 
 // Patterns doctor teması — sage yeşili (clinic ile aynı palet)
 const DOCTOR_DEFAULT_ACCENT = '#32BB78';
+
+// First-login coach-mark tour — checked once per session (module guard so a
+// layout remount doesn't re-fire). Only runs for doctors with a null
+// doctor_onboarded_at (RPC decides).
+let doctorTourChecked = false;
 
 function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
   return <Text style={{ fontSize: focused ? 24 : 22, opacity: focused ? 1 : 0.6 }}>{emoji}</Text>;
@@ -66,6 +78,55 @@ export default function DoctorLayout() {
   const accentColor = getTheme('doctor').primary;
   const T = useMobileTokens();
 
+  // ─── First-login coach-mark tour ──────────────────────────────────────────
+  // Target ref-callbacks (stable per id). Wired into the pill tab bar (FAB +
+  // "orders" cell) and the TopActionBar messages button via optional props —
+  // other panels never receive these, so they stay isolated.
+  const newOrderTargetRef = useTourTarget('tour-new-order');
+  const ordersTargetRef   = useTourTarget('tour-orders');
+  const messagesTargetRef = useTourTarget('tour-messages');
+  const getItemRef = React.useCallback(
+    (routeName: string) =>
+      routeName === 'new'    ? newOrderTargetRef :
+      routeName === 'orders' ? ordersTargetRef   :
+      undefined,
+    [newOrderTargetRef, ordersTargetRef],
+  );
+
+  // Panel-aware "yeni sipariş aç" opener — interaktif form turu bunu çağırır.
+  // Masaüstünde route'a git, mobilde modal aç.
+  useEffect(() => {
+    useOnboardingStore.getState().registerRef('no-open', {
+      open: () => {
+        if (isDesktop) {
+          // Zaten form rotasındaysak tekrar push etme (remount döngüsü olmasın).
+          if (!pathname.endsWith('/new-order')) router.push('/(doctor)/new-order' as any);
+        } else {
+          setNewOrderOpen(true);
+        }
+      },
+    });
+    return () => useOnboardingStore.getState().unregisterRef('no-open');
+  }, [isDesktop, router, setNewOrderOpen, pathname]);
+
+  useEffect(() => {
+    if (doctorTourChecked) return;
+    if (!profile || profile.user_type !== 'doctor') return;  // non-doctors never trigger
+    doctorTourChecked = true;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data, error } = await supabase.rpc('should_show_doctor_onboarding');
+        if (cancelled || error || !data) return;
+        // Delay so the tab bar / top bar mount and refs register before spotlight.
+        setTimeout(() => {
+          if (!cancelled) useOnboardingStore.getState().start(DOCTOR_TOUR_STEPS);
+        }, 800);
+      } catch { /* noop */ }
+    })();
+    return () => { cancelled = true; };
+  }, [profile]);
+
   const DOCTOR_NAV = [
     { label: t('nav.items.home'),     href: '/(doctor)',                 iconName: 'home' },
     { label: t('nav.items.myOrders'), href: '/(doctor)/orders',          iconName: 'list-check',     matchPrefix: true },
@@ -77,8 +138,11 @@ export default function DoctorLayout() {
   ];
 
   // Hekim olmayan kullanıcı bu layout'a düştüyse sidebar gösterme
-  if (!profile || profile.user_type !== 'doctor') {
-    return <Slot />;
+  if (!profile) {
+    return <Slot />;  // profil yükleniyor (optimistic) → kabuk
+  }
+  if (profile.user_type !== 'doctor') {
+    return <Redirect href="/" />;  // yanlış panel → doğru panele yönlendir
   }
 
   if (isDesktop) {
@@ -97,6 +161,8 @@ export default function DoctorLayout() {
           messagesUnreadCount={totalUnread}
           panelType="doctor"
           newOrderHref="/(doctor)/new-order"
+          tourRefs={{ newOrder: newOrderTargetRef, orders: ordersTargetRef, messages: messagesTargetRef }}
+          tourOrdersHref="/(doctor)/orders"
         />
         <React.Suspense fallback={null}>
           <MessagesPopup
@@ -105,6 +171,13 @@ export default function DoctorLayout() {
             accentColor={accentColor}
           />
         </React.Suspense>
+
+        {/* First-login coach-mark tour — desktop falls back to centered cards */}
+        <OnboardingOverlay />
+
+        {/* Vadesi geçmiş ödeme hatırlatması — masaüstü dalı ayrı return ediyor,
+            mobil daldaki mount buraya ULAŞMAZ. */}
+        <PaymentReminderGate />
       </>
     );
   }
@@ -140,7 +213,7 @@ export default function DoctorLayout() {
             expo-router render edilmiş çocuk rotası bulamayıp durumunu kaybeder ve
             index'e sıfırlanır (alt sayfada yenileyince özete dönme hatası).
             Lazy kardeşler kendi sınırlarında durur. */}
-      <View style={{ flex: 1, backgroundColor: T.bg }}>
+      <View style={{ flex: 1, backgroundColor: isDark ? '#0E0E0E' : MOBILE_PANEL_THEMES.doctor.bgPage }}>
         {/* MobileHeader kaldırıldı — DoctorMobileDashboard kendi başlığını taşıyor */}
         <Tabs
           screenOptions={{
@@ -171,6 +244,7 @@ export default function DoctorLayout() {
             accentColor={DOCTOR_THEME.primary}
             searchItems={SEARCH_ITEMS}
             onSearchNavigate={(href) => router.push(href as any)}
+            getItemRef={getItemRef}
           />
         )}
       </View>
@@ -226,7 +300,7 @@ export default function DoctorLayout() {
       </React.Suspense>
 
       {/* Sağ üst kalıcı aksiyon butonları (mobile only) — QR · Bell · Profile */}
-      {!hideTopActionBar && <TopActionBar routePrefix="/(doctor)" accentColor={accentColor} />}
+      {!hideTopActionBar && <TopActionBar routePrefix="/(doctor)" accentColor={accentColor} messagesRef={messagesTargetRef} />}
       {!hideTopActionBar && <PanelTopHeader />}
 
       {/* Command Palette — mobile search FAB üzerinden de erişilebilir */}
@@ -237,6 +311,12 @@ export default function DoctorLayout() {
           accentColor={accentColor}
         />
       </React.Suspense>
+
+      {/* First-login coach-mark tour — top-most; renders null unless active */}
+      <OnboardingOverlay />
+
+      {/* Vadesi geçmiş ödeme hatırlatması — bakiye yoksa hiçbir şey çizmez */}
+      <PaymentReminderGate />
     </>
   );
 }

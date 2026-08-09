@@ -1,6 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
-import { decode } from 'base64-arraybuffer';
 import { supabase } from './supabase';
 
 const BUCKET = 'work-order-photos';
@@ -46,19 +45,34 @@ export async function uploadPhoto(
     return { storagePath: '', error: `Fotoğraf ${MAX_SIZE_MB}MB'dan küçük olmalıdır.` };
   }
 
-  // Read as base64
-  const base64 = await FileSystem.readAsStringAsync(uri, {
-    encoding: 'base64' as any,
-  });
-
   const ext = uri.split('.').pop()?.toLowerCase() ?? 'jpg';
   const fileName = `${Date.now()}.${ext}`;
   const storagePath = `orders/${workOrderId}/${fileName}`;
+  const contentType = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+
+  // Gövde seçimi — projede StageFileUpload/reviews ile aynı desen.
+  //
+  // Eskiden dosya base64 string olarak okunup decode ediliyordu; bu, dosyayı
+  // bellekte AYNI ANDA iki kez tutuyordu (base64 ~1.33× + çözülmüş buffer 1×
+  // ≈ 2.33× dosya boyutu). 5 MB sınırı sayesinde pratikte çökme üretmiyordu
+  // ama gereksiz bellek baskısıydı.
+  //
+  // FormData + {uri} verildiğinde React Native'in ağ katmanı dosyayı doğrudan
+  // diskten akıtır — JS tarafında hiç tam buffer oluşmaz.
+  let body: any;
+  if (typeof window !== 'undefined' &&
+      (uri.startsWith('blob:') || uri.startsWith('data:') || uri.startsWith('http'))) {
+    body = await (await fetch(uri)).blob();
+  } else {
+    const fd = new FormData();
+    fd.append('file', { uri, name: fileName, type: contentType } as any);
+    body = fd;
+  }
 
   const { error: uploadError } = await supabase.storage
     .from(BUCKET)
-    .upload(storagePath, decode(base64), {
-      contentType: `image/${ext === 'jpg' ? 'jpeg' : ext}`,
+    .upload(storagePath, body, {
+      contentType,
       upsert: false,
     });
 

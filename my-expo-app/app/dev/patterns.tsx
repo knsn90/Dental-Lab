@@ -2,8 +2,9 @@
  * /dev/patterns — Tasarım Sistemi Stil Rehberi
  *
  *   Lab management handoff bundle'ına göre yeniden düzenlendi:
- *   • Krem zemin + Instrument Serif italic display
- *   • 3 panel teması: Lab (Saffron), Klinik (Sage), Yönetim (Mercan)
+ *   • Panele göre değişen zemin + Inter Tight 300 (light) display
+ *   • 6 panel teması: Lab (Safran), Klinik (Zümrüt), Yönetim (Kobalt),
+ *     Teknisyen (Mavi), Analitik (Erik), Depo (Petrol)
  *   • Büyük yumuşak köşeler, glassmorphism, ince modern hatlar
  */
 import React, { useEffect, useRef, useState } from 'react';
@@ -102,10 +103,10 @@ function PatternsDesktopContent() {
       </View>
 
       {/* ═════ 01 — RENK SİSTEMİ (3 PANEL) ═════ */}
-      <SecHeader eyebrow="01 · Renk Sistemi" title="Üç panel, üç kişilik" desc="Her panel kendi rengiyle gelir. Aynı bileşenler, farklı kimlikler." />
+      <SecHeader eyebrow="01 · Renk Sistemi" title="Altı panel, altı kişilik" desc="Her panel kendi rengiyle gelir. Aynı bileşenler, farklı kimlikler. Lab & Klinik & Yönetim & Teknisyen canlı; Analitik & Depo ileride." />
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 24, marginBottom: 80 }}>
-        {(['lab', 'clinic', 'exec', 'tech'] as DsTheme[]).map((k, i) => {
+        {(['lab', 'clinic', 'exec', 'tech', 'plum', 'teal'] as DsTheme[]).map((k, i) => {
           const t = dsTheme(k);
           return (
             <View key={k} style={{ flex: 1, minWidth: 320, backgroundColor: t.bg, borderRadius: 24, padding: 28, overflow: 'hidden' }}>
@@ -119,9 +120,12 @@ function PatternsDesktopContent() {
                 {t.name}
               </Text>
               <Text style={{ fontSize: 13, color: '#3C3C3C', marginBottom: 32, lineHeight: 19 }}>
-                {k === 'lab'    && 'Üretim takibi, sipariş yönetimi, teknisyen panelleri için ana operasyon teması.'}
-                {k === 'clinic' && 'Doktorlar ve klinikler için sağlıklı, sakin ve güvenilir hisli arayüz.'}
-                {k === 'exec'   && 'Yönetici dashboard\'ları, finans ve raporlama için premium ve sıcak görünüm.'}
+                {k === 'lab'    && 'Üretim takibi, sipariş yönetimi ve ana operasyon paneli için safran teması.'}
+                {k === 'clinic' && 'Doktorlar ve klinikler için sağlıklı, sakin ve güvenilir hisli zümrüt arayüz.'}
+                {k === 'exec'   && 'Yönetici dashboard\'ları, finans ve raporlama için sakin ve kurumsal kobalt görünüm.'}
+                {k === 'tech'   && 'Teknisyen / istasyon paneli — yoğun ekran kullanımı için göz dostu açık mavi.'}
+                {k === 'plum'   && 'Analitik / raporlama paneli için ayrılmış erik teması (ileride kullanılacak).'}
+                {k === 'teal'   && 'Depo / stok / lojistik paneli için ayrılmış petrol teması (ileride kullanılacak).'}
               </Text>
 
               {/* Color swatches */}
@@ -153,7 +157,7 @@ function PatternsDesktopContent() {
       </View>
 
       {/* ═════ 02 — TİPOGRAFİ ═════ */}
-      <SecHeader eyebrow="02 · Tipografi" title="Tek aile, ince ve modern" desc="Display başlıklarda Instrument Serif (italic vurguyla). UI için Inter Tight." />
+      <SecHeader eyebrow="02 · Tipografi" title="Tek aile, ince ve modern" desc="Tüm başlık ve gövde tek ailede: Inter Tight. Display başlıklar 300 (light) + negatif tracking; gövde 400–600." />
 
       <View style={{ backgroundColor: '#FFF', borderRadius: 24, padding: 40, marginBottom: 80, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' }}>
         <TypeRow label="DISPLAY · 88/0.95"  variant="display" sample={<Text>Hoş geldiniz, <Text style={{ color: DS.ink[400] }}>doktor</Text></Text>} />
@@ -953,6 +957,54 @@ function PatternsDesktopContent() {
             );
           })}
         </View>
+      </View>
+
+      {/* ═════ 11.9 — DAĞILIM KARTLARI (stacked bar + legend) ═════ */}
+      <SecHeader
+        eyebrow="11.9 · Dağılım Kartları"
+        title="Yığılmış şerit + lejant"
+        desc="Dashboard özet kartları: başlıkta sağda büyük metrik, tek yığılmış oranlı şerit, altında noktalı lejant (etiket · değer · yüzde). Sıfır olan kalemler alt satırda toplanır."
+      />
+
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 24, marginBottom: 40 }}>
+        {/* Finansal Özet — finans varyantı (karışık lejant) */}
+        <DistCard title="Finansal Özet" metric="0%" metricLabel="tahsil" style={{ flex: 1, minWidth: 340 }}
+          segments={[{ color: '#E89B2A', ratio: 1 }]}>
+          <DistLegendRow dot="#2D9A6B" label="Bu Ay Tahsilat" value="0 €"     pct="0%" />
+          <DistLegendRow dot="#E89B2A" label="Bekleyen Fatura" value="1.037 €" pct="100%" />
+          <DistLegendRow                  label="Ödenen Fatura Adedi" value="0" />
+        </DistCard>
+
+        {/* Statü Dağılımı — 3 renkli şerit + footer meta */}
+        <DistCard title="Statü Dağılımı" metric="18" metricLabel="Toplam sipariş" style={{ flex: 1, minWidth: 340 }}
+          segments={[
+            { color: DS.ink[500], ratio: 2 },
+            { color: '#8A5A2B',   ratio: 2 },
+            { color: DS.ink[300], ratio: 14 },
+          ]}
+          footer="Kalite Kontrol · Kuryeye Teslim Edildi — 0">
+          <DistLegendRow dot={DS.ink[500]} label="Alındı"        value="2"  pct="11%" />
+          <DistLegendRow dot="#8A5A2B"     label="Üretimde"      value="2"  pct="11%" />
+          <DistLegendRow dot={DS.ink[300]} label="Teslim Edildi" value="14" pct="78%" />
+        </DistCard>
+      </View>
+
+      {/* İş Tipi Dağılımı — 5 renkli palet */}
+      <View style={{ marginBottom: 80 }}>
+        <DistCard title="İş Tipi Dağılımı" metric="80" metricLabel="Üye"
+          segments={[
+            { color: '#33456B', ratio: 32 },
+            { color: '#2D9A6B', ratio: 28 },
+            { color: DS.plum.primary, ratio: 8 },
+            { color: '#4A8FC9', ratio: 6 },
+            { color: DS.plum.primaryDeep, ratio: 6 },
+          ]}>
+          <DistLegendRow dot="#33456B"            label="3D baskı Gece Plağı"        value="32" pct="40%" />
+          <DistLegendRow dot="#2D9A6B"            label="3D baskı geçici kron / köprü" value="28" pct="35%" />
+          <DistLegendRow dot={DS.plum.primary}    label="Dijital Gülüş tasarımı"     value="8"  pct="10%" />
+          <DistLegendRow dot="#4A8FC9"            label="Inlay / Onlay Cam Seramik, Ti-Base Zirkon Kron / Köprü" value="6" pct="8%" />
+          <DistLegendRow dot={DS.plum.primaryDeep} label="PMMA geçici kron / köprü"  value="6"  pct="8%" />
+        </DistCard>
       </View>
 
       {/* ═════ 12 — SİPARİŞ DETAY PATTERNLERİ ═════ */}
@@ -1950,7 +2002,7 @@ function TypeRow({ label, sample, size, sansSerif, noBorder, variant }: {
       <View style={{ width: 180 }}>
         <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[500] }}>{label}</Text>
         <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 4 }}>
-          {sansSerif ? 'Inter Tight · Regular' : 'Instrument Serif · Light'}
+          {sansSerif ? 'Inter Tight · Regular' : 'Inter Tight · Light 300'}
         </Text>
       </View>
       <View style={{ flex: 1, minWidth: 240 }}>
@@ -2628,6 +2680,64 @@ const cardSolid = {
   // @ts-ignore
   boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)',
 };
+
+// ─── DistCard — Dağılım kartı (yığılmış oranlı şerit + noktalı lejant) ────────
+//   Dashboard özet kartlarının standardı. Başlıkta sağda büyük metrik, tek
+//   yığılmış şerit (oranlar segments[].ratio'dan), altında lejant satırları.
+function DistCard({ title, metric, metricLabel, segments, footer, children, style }: {
+  title: string;
+  metric: string;
+  metricLabel: string;
+  segments: { color: string; ratio: number }[];
+  footer?: string;
+  children: React.ReactNode;
+  style?: any;
+}) {
+  const total = segments.reduce((s, x) => s + x.ratio, 0) || 1;
+  return (
+    <View style={[cardSolid, { padding: 26 }, style]}>
+      {/* Başlık + sağda büyük metrik */}
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
+        <Text style={{ fontSize: 17, fontWeight: '600', letterSpacing: -0.2, color: DS.ink[900] }}>{title}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+          <Text style={{ ...DISPLAY, fontSize: 30, letterSpacing: -0.9, color: DS.ink[900] }}>{metric}</Text>
+          <Text style={{ fontSize: 12, color: DS.ink[400] }}>{metricLabel}</Text>
+        </View>
+      </View>
+
+      {/* Yığılmış oranlı şerit */}
+      <View style={{ flexDirection: 'row', gap: 3, height: 8, marginBottom: 18 }}>
+        {segments.map((s, i) => (
+          <View key={i} style={{ flex: s.ratio / total, backgroundColor: s.color, borderRadius: 4 }} />
+        ))}
+      </View>
+
+      {/* Lejant */}
+      <View style={{ gap: 12 }}>{children}</View>
+
+      {/* Footer meta (sıfır kalemler) */}
+      {footer ? (
+        <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 16 }}>{footer}</Text>
+      ) : null}
+    </View>
+  );
+}
+
+// ─── DistLegendRow — lejant satırı (nokta · etiket · değer · yüzde) ───────────
+function DistLegendRow({ dot, label, value, pct }: {
+  dot?: string; label: string; value: string; pct?: string;
+}) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      {dot
+        ? <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: dot }} />
+        : <View style={{ width: 8 }} />}
+      <Text style={{ flex: 1, minWidth: 0, fontSize: 14, color: DS.ink[700] }} numberOfLines={1}>{label}</Text>
+      <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[900] }}>{value}</Text>
+      {pct ? <Text style={{ fontSize: 12, color: DS.ink[400], width: 40, textAlign: 'right' }}>{pct}</Text> : null}
+    </View>
+  );
+}
 const cardFlat = {
   backgroundColor: 'rgba(255,255,255,0.5)', borderRadius: 24, padding: 22,
   borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',

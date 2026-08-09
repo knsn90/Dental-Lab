@@ -162,16 +162,25 @@ serve(async (req) => {
   const failed = results.filter(r => !r.ok).length;
 
   // 4. notifications.delivered güncelle
+  // best-effort — PostgrestBuilder'da .catch() YOK (yalnız then), zincirlemek
+  // TypeError atar → try/catch kullan. Ayrıca delivered ÜZERİNE YAZILMAMALI:
+  // diğer kanalların (email/native push) kaydını silmemek için MERGE edilir.
   if (body.notificationId && sent > 0) {
-    await supabase.rpc('jsonb_merge_delivered' as any, {
-      p_id: body.notificationId,
-      p_patch: { browser_push: { ts: new Date().toISOString(), count: sent } },
-    }).catch(() => null);
-    // RPC yoksa direct update
-    await supabase.from('notifications')
-      .update({ delivered: { browser_push: { ts: new Date().toISOString(), count: sent } } })
-      .eq('id', body.notificationId)
-      .catch(() => null);
+    const patch = { browser_push: { ts: new Date().toISOString(), count: sent } };
+    try {
+      const { error } = await supabase.rpc('jsonb_merge_delivered' as any, {
+        p_id: body.notificationId, p_patch: patch,
+      });
+      if (error) throw error;
+    } catch {
+      try {
+        const { data: cur } = await supabase.from('notifications')
+          .select('delivered').eq('id', body.notificationId).maybeSingle();
+        await supabase.from('notifications')
+          .update({ delivered: { ...((cur as any)?.delivered ?? {}), ...patch } })
+          .eq('id', body.notificationId);
+      } catch { /* delivered izleme opsiyonel */ }
+    }
   }
 
   return json({ ok: true, sent, failed, totalSubs: tokens.length });

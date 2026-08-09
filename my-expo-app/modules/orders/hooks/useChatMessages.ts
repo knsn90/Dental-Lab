@@ -31,7 +31,7 @@ function writeMsgCache(workOrderId: string, items: OrderMessage[]) {
   } catch { /* quota / disabled */ }
 }
 
-export function useChatMessages(workOrderId: string, currentUserId?: string | null) {
+export function useChatMessages(workOrderId: string, currentUserId?: string | null, archiveOrderIds?: string[]) {
   // İlk render → cache varsa anında dolu
   const initial = workOrderId ? readMsgCache(workOrderId) : null;
   const [messages, setMessages] = useState<OrderMessage[]>(initial ?? []);
@@ -47,7 +47,16 @@ export function useChatMessages(workOrderId: string, currentUserId?: string | nu
     try {
       // Cache yoksa spinner; varsa sessiz arka plan refresh
       if (!readMsgCache(workOrderId)) setLoading(true);
-      const { data, error } = await fetchMessages(workOrderId);
+      // Revizyon siparişinde ORİJİNALİN mesaj geçmişi de gelir. Çağıran vermediyse
+      // hook kendi çözer → popup/mobil/detay tüm sohbet yüzeyleri tek yerden düzelir.
+      let archive = archiveOrderIds;
+      if (!archive) {
+        const { data: wo } = await supabase
+          .from('work_orders').select('revision_of_id').eq('id', workOrderId).maybeSingle();
+        const pid = (wo as any)?.revision_of_id as string | undefined;
+        archive = pid ? [pid] : [];
+      }
+      const { data, error } = await fetchMessages(workOrderId, archive);
       if (error) {
         console.warn('[chat] fetchMessages error:', error.message);
         if (!readMsgCache(workOrderId)) setMessages([]);
@@ -62,7 +71,7 @@ export function useChatMessages(workOrderId: string, currentUserId?: string | nu
     } finally {
       setLoading(false);
     }
-  }, [workOrderId]);
+  }, [workOrderId, JSON.stringify(archiveOrderIds ?? [])]);
 
   // Mesajları otomatik "okundu" işaretle
   const markRead = useCallback(async () => {

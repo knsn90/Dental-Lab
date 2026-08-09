@@ -37,10 +37,11 @@ const SRV_KEY      = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const ANON_KEY     = Deno.env.get('SUPABASE_ANON_KEY')!;
 
 interface ReqBody {
-  action:        'test' | 'places_search' | 'calculate' | 'create' | 'edit' | 'cancel' | 'track';
+  action:        'test' | 'places_search' | 'calculate' | 'create' | 'edit' | 'cancel' | 'track' | 'bank_cards';
   auth_token?:   string;                 // yalnız 'test'
   environment?:  'sandbox' | 'production';
   work_order_id?: string;
+  extra_work_order_ids?: string[];       // aynı kuryeyle gönderilen ek işler (aynı klinik): tek sipariş, çok teslimat satırı; matter'a no'ları yazılır
   order_id?:     string;
   query?:        string;                 // places_search: arama metni (boşsa klinik ünvanı)
   dest_address?: string;                 // calculate/create override
@@ -48,6 +49,25 @@ interface ReqBody {
   dest_lng?:     string;
   dest_phone?:   string;
   notes?:        string;
+  // ── Gönderi seçenekleri (panel formunun karşılığı) ──
+  service_type?:  string;                // order.type: 'standard' | 'endofday' | 'vip_delivery'
+  vehicle_type_id?: number;              // 8 = motor (20kg). Araba id'si henüz doğrulanmadı.
+  total_weight_kg?: number;              // toplam ağırlık
+  insurance_amount?: number;             // güvence bedeli (₺)
+  promo_code?:    string;                // indirim kodu
+  content_note?:  string;                // içerik etiketi ("Lab sarf malzemesi" vb.) → teslim noktası notu
+  required_start_datetime?:  string;     // İleri zamanlı: en erken varış (ISO 8601 +03:00)
+  required_finish_datetime?: string;     // İleri zamanlı: en geç varış
+  dest_name?:      string;               // teslim noktası alıcı adı override
+  dest_building_no?: string;             // teslim adres detayı
+  dest_floor?:     string;
+  dest_apartment?: string;
+  dest_intercom?:  string;
+  loaders_count?:  number;               // yükleme/boşaltma yardımcı sayısı
+  notify_recipient?: boolean;            // SMS ile alıcıyı bildir (varsayılan true)
+  payment_method?: string;               // 'cash' (varsayılan) | 'bank_card'
+  bank_card_id?:   number;               // bank_card seçilince zorunlu (/bank-cards'tan)
+  direction?:      string;               // 'lab_to_clinic' (alım lab) | 'clinic_to_lab' (alım klinik)
 }
 
 serve(async (req) => {
@@ -164,12 +184,56 @@ serve(async (req) => {
         : null;
       if (found) { bbkStatus = found.status ?? null; courier = courier ?? found.courier ?? null; }
     }
+
+    // Kurye kimliğini teslimat kaydına kalıcılaştır — geçmiş gönderilerde
+    // (teslim/iptal) API'siz gösterim için. Konum bilerek yazılmaz (bayat olur),
+    // yalnız ad/telefon/avatar. Service role → RLS'i atlar, kim bakarsa baksın dolar.
+    if (courier) {
+      const name = [courier.name, courier.surname].filter(Boolean).join(' ').trim() || null;
+      const phone = courier.phone ?? null;
+      const photo = courier.photo_url ?? null;
+      if (name || phone || photo) {
+        try {
+          await admin.from('deliveries')
+            .update({ ext_courier_name: name, ext_courier_phone: phone, ext_courier_photo: photo })
+            .eq('external_tracking_no', String(body.order_id))
+            .eq('mode', 'external');
+        } catch { /* kalıcılaştırma başarısız olsa da takip yanıtı bozulmasın */ }
+      }
+    }
+
     return json({ ok: true, bbk_status: bbkStatus, delivery_status: mapStatus(bbkStatus), courier });
+  }
+
+  // ── bank_cards ── hesabın kayıtlı banka kartlarını listeler (bank_card ödemesi için).
+  if (body.action === 'bank_cards') {
+    const r = await bbkGet(env, token, '/bank-cards');
+    if (r.ok && r.data?.is_successful !== false) {
+      const raw = r.data?.bank_cards ?? r.data?.cards ?? (Array.isArray(r.data) ? r.data : []);
+      const cards = (Array.isArray(raw) ? raw : []).map((c: any) => ({
+        id:    c?.id ?? c?.bank_card_id ?? c?.card_id ?? null,
+        name:  c?.name ?? c?.title ?? c?.card_name ?? c?.holder_name ?? null,
+        last4: c?.last_four ?? c?.last4 ?? (c?.number ? String(c.number).replace(/\s/g, '').slice(-4) : (c?.masked_number ? String(c.masked_number).slice(-4) : null)),
+        brand: c?.brand ?? c?.type ?? c?.bank_name ?? null,
+      })).filter((c: any) => c.id != null);
+      return json({ ok: true, cards });
+    }
+    return json({ ok: false, message: bbkErr(r) });
   }
 
   // ── calculate / create ──
   if (!body.work_order_id) return json({ ok: false, message: 'work_order_id gerekli' });
   const dst = await resolveDest(admin, body.work_order_id);
+
+  // Aynı kuryeyle giden ek işler (aynı klinik): rota/fiyat değişmez, sadece
+  // sipariş konusuna (matter) tüm sipariş no'ları yazılır ki kurye ne taşıdığını görsün.
+  let orderLabel = String(dst.order_number ?? body.work_order_id);
+  const extraIds = Array.isArray(body.extra_work_order_ids) ? body.extra_work_order_ids.filter(Boolean) : [];
+  if (extraIds.length) {
+    const { data: extras } = await admin.from('work_orders').select('order_number').in('id', extraIds);
+    const nums = (extras ?? []).map((x: any) => x.order_number).filter(Boolean);
+    if (nums.length) orderLabel += ', ' + nums.join(', ');
+  }
 
   // Teslim adresi: override (lab Google Places'ten onayladı) > klinik kaydı
   const destAddr  = (body.dest_address ?? '').trim() || dst.address;
@@ -184,33 +248,82 @@ serve(async (req) => {
     return json({ ok: false, message: 'Alış adresi/telefonu eksik — Entegrasyonlar → Kurye ayarından girin.' });
   }
 
-  const destPoint: any = { address: destAddr, contact_person: { name: destName, phone: destPhone } };
-  if (body.dest_lat && body.dest_lng) { destPoint.latitude = body.dest_lat; destPoint.longitude = body.dest_lng; }
-  if (body.notes) destPoint.comment = body.notes;
+  // İçerik notu + serbest not → sipariş KONUSUNA (matter) yazılır.
+  // NOT: BanaBiKurye point objesinde `comment` alanı YOK (API "unknown" der →
+  // invalid_parameters, tüm sipariş reddedilir). Bu yüzden nota matter'a taşınır.
+  const pointComment = [body.content_note?.trim(), body.notes?.trim()].filter(Boolean).join(' · ') || undefined;
+
+  // İki uç: klinik/hekim (adres aramasından çözülen değişken uç) ve laboratuvar (sabit).
+  // Adres detayı / alıcı override / içerik notu klinik ucuna aittir.
+  const clinicPoint: any = {
+    address: destAddr,
+    contact_person: { name: (body.dest_name?.trim() || destName), phone: destPhone },
+  };
+  if (body.dest_lat && body.dest_lng) { clinicPoint.latitude = body.dest_lat; clinicPoint.longitude = body.dest_lng; }
+  if (body.dest_building_no?.trim()) clinicPoint.building_number  = body.dest_building_no.trim();
+  if (body.dest_floor?.trim())       clinicPoint.floor_number     = body.dest_floor.trim();
+  if (body.dest_apartment?.trim())   clinicPoint.apartment_number = body.dest_apartment.trim();
+  if (body.dest_intercom?.trim())    clinicPoint.intercom_code    = body.dest_intercom.trim();
+
+  const labPoint: any = {
+    address: cred.pickup_address,
+    contact_person: { name: cred.pickup_contact_name || 'Laboratuvar', phone: pickupPhone },
+    ...(cred.pickup_lat && cred.pickup_lng ? { latitude: cred.pickup_lat, longitude: cred.pickup_lng } : {}),
+  };
+
+  // Yön: klinikten alım → alım klinik, teslim lab (noktalar ters). Aksi → lab→klinik.
+  const incoming = body.direction === 'clinic_to_lab';
+  const pickupPoint   = incoming ? clinicPoint : labPoint;
+  const deliveryPoint = incoming ? labPoint    : clinicPoint;
+
+  // İleri zamanlı: zaman penceresi TESLİM noktasına. endofday bunu YASAKLAR (API kuralı).
+  const svcType = body.service_type || 'standard';
+  if (svcType !== 'endofday' && body.required_start_datetime) {
+    deliveryPoint.required_start_datetime = body.required_start_datetime;
+    if (body.required_finish_datetime) deliveryPoint.required_finish_datetime = body.required_finish_datetime;
+  }
 
   const orderBody: any = {
-    type: 'standard',
-    matter: `Siman teslimat — ${dst.order_number ?? body.work_order_id}${dst.clinic ? ' · ' + dst.clinic : ''}`,
-    vehicle_type_id: 8,
-    is_contact_person_notification_enabled: true,
-    points: [
-      {
-        address: cred.pickup_address,
-        contact_person: { name: cred.pickup_contact_name || 'Laboratuvar', phone: pickupPhone },
-        ...(cred.pickup_lat && cred.pickup_lng ? { latitude: cred.pickup_lat, longitude: cred.pickup_lng } : {}),
-      },
-      destPoint,
-    ],
+    type: svcType,
+    matter: [`Siman teslimat — ${orderLabel}${dst.clinic ? ' · ' + dst.clinic : ''}`, pointComment].filter(Boolean).join(' · ').slice(0, 250),
+    vehicle_type_id: body.vehicle_type_id ?? 8,
+    is_contact_person_notification_enabled: body.notify_recipient !== false,
+    points: [pickupPoint, deliveryPoint],
   };
+  if (body.total_weight_kg != null)  orderBody.total_weight_kg = body.total_weight_kg;
+  if (body.insurance_amount != null) orderBody.insurance_amount = body.insurance_amount;
+  if (body.promo_code?.trim())       orderBody.promo_code = body.promo_code.trim();
+  if (body.loaders_count && body.loaders_count > 0) orderBody.loaders_count = body.loaders_count;
+  // Ödeme şekli: yalnız varsayılandan farklıysa gönder (cash zaten hesap varsayılanı).
+  if (body.payment_method && body.payment_method !== 'cash') {
+    orderBody.payment_method = body.payment_method;
+    if (body.bank_card_id != null) orderBody.bank_card_id = body.bank_card_id;
+  }
 
   const path = body.action === 'create' ? '/create-order' : '/calculate-order';
   const r = await bbkPost(env, token, path, orderBody);
-  if (!r.ok || r.data?.is_successful === false) return json({ ok: false, message: bbkErr(r) });
+  if (!r.ok || r.data?.is_successful === false) {
+    console.error('[bbk] ' + path + ' FAILED status=', r.status, ' resp=', JSON.stringify(r.data)?.slice(0, 800), ' sent=', JSON.stringify(orderBody)?.slice(0, 800));
+    return json({ ok: false, message: bbkErr(r), debug: { status: r.status, resp: r.data, sent: orderBody } });
+  }
   const order = r.data?.order ?? r.data;
+  // Kalem dökümü — panelin fiyat satırlarının karşılığı (calculate-order breakdown).
+  const num = (v: any) => (v == null ? null : Number(v));
+  const breakdown = order ? {
+    delivery:       num(order.delivery_fee_amount),
+    weight:         num(order.weight_fee_amount),
+    insurance:      num(order.insurance_fee_amount),
+    loading:        num(order.loading_fee_amount),
+    money_transfer: num(order.money_transfer_fee_amount),
+    cod:            num(order.cod_fee_amount),
+    return:         num(order.return_fee_amount),
+    waiting:        num(order.waiting_fee_amount),
+  } : null;
   return json({
     ok: true,
     environment: env,
     price:      order?.payment_amount ?? null,
+    breakdown,
     order_id:   order?.order_id ?? null,
     order_name: order?.order_name ?? null,
     status:     order?.status ?? null,
@@ -286,7 +399,30 @@ async function bbkPost(env: string, token: string, path: string, payload: unknow
 }
 function bbkErr(r: any): string {
   if (r?.netErr) return 'Ağ hatası: ' + r.netErr;
-  if (Array.isArray(r?.data?.errors) && r.data.errors.length) return String(r.data.errors[0]?.message ?? r.data.errors[0]);
+  const d = r?.data;
+  if (d && typeof d === 'object') {
+    // BanaBiKurye çeşitli şekiller döndürebilir: errors[], error, messages,
+    // validation_errors{field:[msg]}. Hepsini "alan: mesaj" olarak düzleştir.
+    const parts: string[] = [];
+    const push = (e: any, key?: string) => {
+      if (e == null) return;
+      if (typeof e === 'string' || typeof e === 'number') { parts.push(key ? `${key}: ${e}` : String(e)); return; }
+      if (Array.isArray(e)) { e.forEach((x) => push(x, key)); return; }
+      if (typeof e === 'object') {
+        const msg = e.message ?? e.msg ?? e.detail ?? e.description ?? null;
+        const fld = e.field ?? e.parameter ?? e.name ?? key ?? null;
+        if (msg) parts.push(fld ? `${fld}: ${msg}` : String(msg));
+        else Object.entries(e).forEach(([k, v]) => push(v, k));
+      }
+    };
+    push(d.errors ?? d.error ?? d.messages ?? null);
+    // Alan bazlı hatalar: { points: [null, {comment:["unknown"]}] } gibi → "comment: unknown"
+    push(d.parameter_errors ?? d.validation_errors ?? null);
+    if (parts.length) return parts.slice(0, 8).join(' · ');
+    if (d.message) return String(d.message);
+    // Bilinmeyen şekil → ham JSON (kısaltılmış) ki hangi alanın sorunlu olduğu görülsün.
+    try { return JSON.stringify(d).slice(0, 500); } catch { /* */ }
+  }
   return `HTTP ${r?.status ?? '?'}`;
 }
 function normPhone(raw: string): string {

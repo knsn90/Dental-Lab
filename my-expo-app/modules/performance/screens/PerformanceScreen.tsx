@@ -9,6 +9,8 @@
  *           §03 pill buttons, Lucide icons.
  */
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { router, useSegments } from 'expo-router';
+import { RemakeQualityCard } from '../components/RemakeQualityCard';
 import {
   View, Text, ScrollView, Pressable,
   Platform, useWindowDimensions,
@@ -148,6 +150,8 @@ function profitTone(p: number) {
 // MAIN
 // ═══════════════════════════════════════════════════════════════════════
 export function PerformanceScreen() {
+  // Sipariş linki AKTİF panelde açılsın (admin panelinden lab'a atmasın)
+  const panelBase = String((useSegments() as string[])?.[0] ?? '(lab)');
   const { profile } = useAuthStore();
   const { width }   = useWindowDimensions();
   const isWide      = width >= 900;
@@ -324,6 +328,12 @@ export function PerformanceScreen() {
       showsVerticalScrollIndicator={false}
     >
       <MobilePageTitle title="Performans" subtitle="Teknisyen ve üretim metrikleri" />
+
+      {/* Yeniden-yapım (remake) kalite panosu — kendi dönem filtresi var */}
+      <RemakeQualityCard
+        accentColor={accentColor}
+        onOpenOrder={(oid) => router.push(`/${panelBase}/order/${oid}` as any)}
+      />
       {/* ── F1 HeroCard — Performans özeti ── */}
       {totals && !loading && (
         <View style={{

@@ -34,6 +34,9 @@ export interface StockItemLite {
   unit_cost: number | null;
   units_per_tooth: number | null;
   consume_at_stage: string | null;
+  pack_size?: number | null;
+  content_unit?: string | null;
+  currency?: string | null;
 }
 
 export interface StationContext {
@@ -65,6 +68,15 @@ export interface EstimatedMaterialLine {
 
   unit_cost: number;
   current_stock: number | null;  // null = stub (henüz item seçilmemiş)
+
+  /** Paket içeriği (örn 50). Doluysa actual_qty/waste_qty content_unit (gr) cinsindedir,
+   *  stoktan kesirli adet (qty ÷ pack_size) düşer. NULL = paketsiz (adet=adet). */
+  pack_size?: number | null;
+  content_unit?: string | null;
+  /** Kalemin stok/sayım birimi (Adet, Kutu…) — paketli satırda "≈ N adet düşecek" için. */
+  stock_unit?: string | null;
+  /** Kalemin maliyet para birimi (EUR/USD/TRY…). unit_cost bu para biriminde. */
+  currency?: string | null;
 
   /** Hangi kaynaktan geldi (debug + UI rozeti için) */
   source: 'item-formula' | 'station-rule' | 'manual';
@@ -125,20 +137,27 @@ export function estimateStageMaterials(
     });
     const best = catItems[0];
     const qty = +(best.units_per_tooth! * order.tooth_count).toFixed(3);
+    // Paketli kalemde tüketim içerik biriminde (gr) → satır birimi content_unit
+    const packaged = !!best.pack_size && best.pack_size > 0;
+    const lineUnit = packaged ? (best.content_unit ?? best.unit) : best.unit;
 
     lines.push({
       item_id: best.id,
       item_name: best.name,
       category: best.category,
-      unit: best.unit,
+      unit: lineUnit,
       estimated_qty: qty,
       actual_qty: qty,
       waste_qty: 0,
       waste_reason: null,
       unit_cost: best.unit_cost ?? 0,
       current_stock: best.quantity,
+      pack_size: best.pack_size ?? null,
+      content_unit: best.content_unit ?? null,
+      stock_unit: best.unit ?? null,
+      currency: best.currency ?? null,
       source: 'item-formula',
-      note: `${best.units_per_tooth} ${best.unit ?? ''}/diş × ${order.tooth_count}`,
+      note: `${best.units_per_tooth} ${lineUnit ?? ''}/diş × ${order.tooth_count}`,
     });
     if (cat !== '__other__') usedCategories.add(cat);
   }
@@ -188,14 +207,22 @@ export function createManualLine(): EstimatedMaterialLine {
     waste_reason: null,
     unit_cost: 0,
     current_stock: null,
+    pack_size: null,
+    content_unit: null,
+    stock_unit: null,
+    currency: null,
     source: 'manual',
     note: null,
   };
 }
 
-/** Toplam beklenen maliyet (actual + waste) */
+/** Toplam beklenen maliyet (actual + waste). Paketli satırda birim maliyet
+ *  içerik birimi başınadır (unit_cost ÷ pack_size). */
 export function totalLineCost(line: EstimatedMaterialLine): number {
-  return (line.actual_qty + line.waste_qty) * line.unit_cost;
+  const perUnit = (line.pack_size && line.pack_size > 0)
+    ? line.unit_cost / line.pack_size
+    : line.unit_cost;
+  return (line.actual_qty + line.waste_qty) * perUnit;
 }
 
 export function totalEstimateCost(lines: EstimatedMaterialLine[]): number {

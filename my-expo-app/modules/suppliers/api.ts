@@ -52,6 +52,11 @@ export interface SupplierTransaction {
   rate_at_time: number;
   amount_base: number | null;
   base_currency_at_time: Currency;
+  // Cari (tedarikçinin kendi) para birimi tarafı — 1 birim CARİ kaç birim işlem
+  // para birimi (1 EUR = 38,50 ₺ → 38.5); amount_account = amount / rate.
+  amount_account: number | null;
+  account_rate_at_time: number | null;
+  account_currency_at_time: Currency | null;
   related_movement_id: string | null;
   invoice_no: string | null;
   payment_method: PaymentMethod | null;
@@ -71,11 +76,21 @@ export interface SupplierBalance {
   lab_id: string;
   name: string;
   default_currency: Currency;
+  /**
+   * DİKKAT: baz para biriminde toplam. Lab'ın baz parası TRY→EUR değiştiği ve
+   * geçmiş yeniden yazılmadığı için bu alan iki para birimini karıştırır —
+   * ekranda KULLANMAYIN. Tedarikçi bakiyesi için balance_account kullanın.
+   */
   balance_base: number;          // pozitif = borcumuz, negatif = alacağımız
   balance_original: number;      // tedarikçinin kendi para birimindeki net bakiye (EUR/USD…)
   total_purchases: number;
   total_payments: number;
   total_returns: number;
+  // Cari para birimi (default_currency) cinsinden — TÜM hareketler dahil
+  balance_account: number;
+  total_purchases_account: number;
+  total_payments_account: number;
+  total_returns_account: number;
   purchase_count: number;
   last_transaction_date: string | null;
 }
@@ -123,7 +138,9 @@ export async function listBalances(): Promise<{ data: SupplierBalance[] | null; 
   const { data, error } = await supabase
     .from('supplier_balances')
     .select('*')
-    .order('balance_base', { ascending: false });
+    // balance_base sıralamada da yanıltıcı: baz para birimi TRY→EUR değişti,
+    // eski satırların baz tutarı TRY. Hesap para birimindeki bakiye tutarlı.
+    .order('balance_account', { ascending: false });
   return { data: data as SupplierBalance[] | null, error };
 }
 
@@ -164,6 +181,9 @@ export async function recordTransaction(input: {
   bankName?: string | null;
   referenceNo?: string | null;
   iban?: string | null;
+  /** Elle girilen cari kuru: 1 birim CARİ para birimi kaç birim işlem para birimi
+   *  (1 EUR = 38,50 ₺ → 38.5). Verilmezse RPC otomatik kuru kullanır. */
+  accountRate?: number | null;
 }): Promise<{ ok: boolean; id?: string; error?: string }> {
   const { data, error } = await supabase.rpc('record_supplier_transaction', {
     p_lab_id: input.labId,
@@ -179,6 +199,7 @@ export async function recordTransaction(input: {
     p_bank_name: input.bankName ?? null,
     p_reference_no: input.referenceNo ?? null,
     p_iban: input.iban ?? null,
+    p_account_rate: input.accountRate ?? null,
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true, id: data as string };
@@ -205,19 +226,37 @@ export async function updateTransaction(
     bankName?: string | null;
     referenceNo?: string | null;
     iban?: string | null;
+    /** Cari (hesap) para birimi kuru — 1 birim cari kaç birim işlem parası.
+     *  Verilirse account_rate_at_time GÜNCELLENİR. Daha önce bu alan yoktu:
+     *  modalda kur değiştirilse bile kayıtlı eski kur yeniden kullanılıyor,
+     *  değişiklik sessizce kayboluyordu. */
+    accountRate?: number | null;
   },
 ): Promise<{ ok: boolean; error?: string }> {
-  // amount değiştiyse mevcut rate_at_time'ı çekip amount_base'i yenile
   const updates: any = {};
-  if (patch.amount != null) {
+  // Tutar VEYA kur değiştiyse türetilmiş alanlar yeniden hesaplanmalı.
+  // Kur tek başına da değişebilir (tutar aynı kalıp yalnız kur düzeltilebilir).
+  if (patch.amount != null || patch.accountRate != null) {
     const { data: cur } = await supabase
       .from('supplier_transactions')
-      .select('rate_at_time')
+      .select('amount, rate_at_time, account_rate_at_time')
       .eq('id', id)
       .single();
+    const amount = patch.amount ?? Number((cur as any)?.amount ?? 0);
     const rate = Number((cur as any)?.rate_at_time ?? 1);
-    updates.amount = patch.amount;
-    updates.amount_base = patch.amount * rate;
+    // Yeni kur geldiyse onu kullan; gelmediyse kaydın kendi snapshot'ı korunur.
+    const nextAcctRate = patch.accountRate != null && Number(patch.accountRate) > 0
+      ? Number(patch.accountRate)
+      : (Number((cur as any)?.account_rate_at_time ?? 1) || 1);
+
+    if (patch.amount != null) {
+      updates.amount = amount;
+      // amount_base işlem→baz kuruyla ilgili; cari kuru değişince DOKUNULMAZ.
+      updates.amount_base = amount * rate;
+    }
+    if (patch.accountRate != null) updates.account_rate_at_time = nextAcctRate;
+    // Cari bakiye bu alandan hesaplanıyor → her iki durumda da tazelenir.
+    updates.amount_account = amount / nextAcctRate;
   }
   if (patch.paymentMethod !== undefined)    updates.payment_method = patch.paymentMethod;
   if (patch.invoiceNo !== undefined)        updates.invoice_no = patch.invoiceNo;

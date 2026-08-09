@@ -524,8 +524,18 @@ export function TriageModal({
         : null,
     });
 
+    if (rpcErr) { setSaving(false); setError(rpcErr.message ?? 'Kayıt hatası'); return; }
+
+    // Planlamayı kaydetmek = onaylamak. triage_order tüm aşamaları 'bekliyor'a
+    // alıp durumu 'alindi'de bırakır; işi fiilen başlatan approve_triage'dır
+    // (her şeridin ilk aşamasını aktifleştirir, durumu 'asamada' yapar).
+    // Eskiden bu ikinci adım sipariş detayındaki ayrı bir butondaydı — kullanıcı
+    // için tekrar eden bir onaydı ve iş başladıktan sonra bile görünüp aktif
+    // aşamanın yanına ikinci bir aşama açabiliyordu. Artık tek adım.
+    const { error: approveErr } = await supabase.rpc('approve_triage', { p_order_id: orderId });
     setSaving(false);
-    if (rpcErr) { setError(rpcErr.message ?? 'Kayıt hatası'); return; }
+    if (approveErr) { setError(approveErr.message ?? 'Plan kaydedildi ama başlatılamadı'); return; }
+
     onSaved();
   };
 

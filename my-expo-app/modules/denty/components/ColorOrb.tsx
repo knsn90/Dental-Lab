@@ -30,6 +30,20 @@ const SPARKS = [
   { x: 50, y: 33, r: 0.8, d: 0.9 }, { x: 58, y: 56, r: 0.9, d: 1.5 },
 ];
 
+/**
+ * Pastel kimlik paleti — TEK kaynak.
+ *
+ * Önceki tonlar (#29D4F0 turkuaz, #2E6BFF mavi, #9A5CFF mor) çok doygundu; orb
+ * sayfanın geri kalanının yanında neon gibi duruyordu. Palet iki ana tona
+ * indirildi, ara tonlar bunlardan türetildi.
+ */
+const C_BLUE   = '#5FA8FF';   // ana mavi
+const C_VIOLET = '#7B61FF';   // ana mor
+const C_SKY    = '#9FD4FF';   // açık mavi vurgu (eski turkuazın yerine)
+const C_MIST   = '#DCEBFF';   // çekirdek merkezi / ince çizgiler
+const C_HALO_B = '95,168,255';   // C_BLUE, rgba için
+const C_HALO_V = '123,97,255';   // C_VIOLET, rgba için
+
 export interface ColorOrbProps {
   size?: number;
   state?: AIState;
@@ -107,35 +121,35 @@ export function ColorOrb({ size = 24, state = 'idle', spinDuration }: ColorOrbPr
     const rings = tiny ? '' : `
       <g opacity="0.5">
         <g>${spinT(false, spin * 1.15)}
-          <ellipse cx="50" cy="50" rx="46" ry="17" transform="rotate(18 50 50)" fill="none" stroke="#EAF8FF" stroke-opacity="0.55" stroke-width="0.8"/>
-          <ellipse cx="50" cy="50" rx="43" ry="13" transform="rotate(-30 50 50)" fill="none" stroke="#7FE0FF" stroke-opacity="0.6" stroke-width="0.8"/>
+          <ellipse cx="50" cy="50" rx="46" ry="17" transform="rotate(18 50 50)" fill="none" stroke="#EDF4FF" stroke-opacity="0.55" stroke-width="0.8"/>
+          <ellipse cx="50" cy="50" rx="43" ry="13" transform="rotate(-30 50 50)" fill="none" stroke="#9FD4FF" stroke-opacity="0.6" stroke-width="0.8"/>
         </g>
         <g>${spinT(true, spin * 1.5)}
-          <ellipse cx="50" cy="50" rx="40" ry="22" transform="rotate(72 50 50)" fill="none" stroke="#EAF8FF" stroke-opacity="0.35" stroke-width="0.7"/>
+          <ellipse cx="50" cy="50" rx="40" ry="22" transform="rotate(72 50 50)" fill="none" stroke="#EDF4FF" stroke-opacity="0.35" stroke-width="0.7"/>
         </g>
       </g>`;
     const tooth = `
-      <path d="${TOOTH}" fill="#BFEFFF" filter="url(#${i('tg')})" opacity="0.85"/>
+      <path d="${TOOTH}" fill="#CFE4FF" filter="url(#${i('tg')})" opacity="0.85"/>
       <path d="${TOOTH}" fill="url(#${i('tooth')})"/>
       <path d="${TOOTH}" fill="none" stroke="#fff" stroke-opacity="0.55" stroke-width="0.6"/>`;
     const sparks = tiny || reduce ? '' : SPARKS.map((s) =>
-      `<circle cx="${s.x}" cy="${s.y}" r="${s.r}" fill="#EAF8FF">
+      `<circle cx="${s.x}" cy="${s.y}" r="${s.r}" fill="#EDF4FF">
         <animate attributeName="opacity" values="0.15;1;0.15" dur="2.4s" begin="${s.d}s" repeatCount="indefinite"/>
       </circle>`).join('');
 
     const svg = `<svg width="${size}" height="${size}" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <radialGradient id="${i('core')}" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stop-color="#9CEBFF" stop-opacity="1"/>
-          <stop offset="34%" stop-color="#3F8BFF" stop-opacity="0.95"/>
-          <stop offset="68%" stop-color="#6A52FF" stop-opacity="0.5"/>
-          <stop offset="100%" stop-color="#6A52FF" stop-opacity="0"/>
+          <stop offset="0%" stop-color="${C_MIST}" stop-opacity="1"/>
+          <stop offset="34%" stop-color="${C_BLUE}" stop-opacity="0.9"/>
+          <stop offset="68%" stop-color="${C_VIOLET}" stop-opacity="0.45"/>
+          <stop offset="100%" stop-color="${C_VIOLET}" stop-opacity="0"/>
         </radialGradient>
-        ${lobeGrad('cyan', '#29D4F0')}${lobeGrad('blue', '#2E6BFF')}${lobeGrad('violet', '#9A5CFF')}${lobeGrad('cyan2', '#5EE0FF')}
+        ${lobeGrad('cyan', C_SKY)}${lobeGrad('blue', C_BLUE)}${lobeGrad('violet', C_VIOLET)}${lobeGrad('cyan2', C_MIST)}
         <radialGradient id="${i('tooth')}" cx="44%" cy="36%" r="70%">
           <stop offset="0%" stop-color="#FFFFFF"/>
-          <stop offset="55%" stop-color="#E6F7FF"/>
-          <stop offset="100%" stop-color="#A8E0FF"/>
+          <stop offset="55%" stop-color="#F0F6FF"/>
+          <stop offset="100%" stop-color="${C_SKY}"/>
         </radialGradient>
         <filter id="${i('soft')}" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="${blurBig}"/></filter>
         <filter id="${i('softCore')}" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="${blurBig * 0.6}"/></filter>
@@ -163,17 +177,31 @@ export function ColorOrb({ size = 24, state = 'idle', spinDuration }: ColorOrbPr
 
     const haloAnim = reduce ? '' : `denty-orb-halo ${p.pulseDur * 1.6}ms ease-in-out infinite`;
     const floatAnim = reduce ? '' : `denty-orb-float ${p.floatDur}ms ease-in-out infinite`;
-    const cssVars: any = { '--orb-fy': `-${p.floatY * (size / 100) * 2.4}px`, '--orb-gmin': p.glowMin, '--orb-gmax': p.glowMax };
+    // Hale nabzı ×0.6: gradyanı zayıflatıp opaklık tepesini eski değerinde
+    // bırakmak, parlama anında yine aynı baskınlığa dönmek olurdu.
+    // p.glowMin/Max'e DOKUNULMAZ — onları çekirdek de kullanıyor.
+    const cssVars: any = {
+      '--orb-fy': `-${p.floatY * (size / 100) * 2.4}px`,
+      '--orb-gmin': p.glowMin * 0.6,
+      '--orb-gmax': p.glowMax * 0.6,
+    };
 
     return React.createElement('div', {
       style: { position: 'relative', width: size, height: size, lineHeight: 0, ...cssVars },
     } as any,
+      // Dış hale — %40 zayıflatıldı ve yarıçapı kısaldı.
+      //
+      // Önce: 144% kutu · mavi 0.70 / mor 0.40 · saçılma 70%'e kadar.
+      // Orbun kendisinden daha geniş bir mor-mavi ışık bulutu yayıyor, sayfanın
+      // sağ alt köşesini boyuyordu. Renkler ×0.6 (istenen −%40), kutu 144→118,
+      // saçılma sonu 70→60 ve blur size×0.12→0.09: ışık orbun hemen çevresinde
+      // kalıyor, uzağa taşmıyor.
       React.createElement('div', {
         className: 'denty-orb-halo',
         style: {
-          position: 'absolute', left: '-22%', top: '-22%', width: '144%', height: '144%', borderRadius: '50%',
-          background: 'radial-gradient(circle at 50% 50%, rgba(70,150,255,0.7) 0%, rgba(140,90,255,0.4) 40%, transparent 70%)',
-          filter: `blur(${Math.max(size * 0.12, 9)}px)`, animation: haloAnim, pointerEvents: 'none',
+          position: 'absolute', left: '-9%', top: '-9%', width: '118%', height: '118%', borderRadius: '50%',
+          background: `radial-gradient(circle at 50% 50%, rgba(${C_HALO_B},0.42) 0%, rgba(${C_HALO_V},0.24) 34%, transparent 60%)`,
+          filter: `blur(${Math.max(size * 0.09, 7)}px)`, animation: haloAnim, pointerEvents: 'none',
         } as any,
       }),
       React.createElement('div', {
@@ -206,30 +234,42 @@ export function ColorOrb({ size = 24, state = 'idle', spinDuration }: ColorOrbPr
 
   return (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      {/* Yumuşak ışıma halesi — native'de blur olmadığı için radial gradyan
+          (kenar şeffaflığa erir, sert daire yok).
+          Web ile AYNI kısma uygulandı: yarıçap 1.6→1.25, opaklıklar ×0.6.
+          İki platform ayrı ayarlanırsa aynı ürün iki farklı parlaklıkta görünür. */}
       <Animated.View
         pointerEvents="none"
-        style={{
-          position: 'absolute', width: size * 1.44, height: size * 1.44, borderRadius: size * 0.72,
-          backgroundColor: 'rgba(80,150,255,0.5)', opacity: coreOpacity, transform: [{ scale: scaleV }],
-        }}
-      />
+        style={{ position: 'absolute', width: size * 1.25, height: size * 1.25, opacity: coreOpacity, transform: [{ scale: scaleV }] }}
+      >
+        <Svg width="100%" height="100%" viewBox="0 0 100 100">
+          <Defs>
+            <RadialGradient id={id('halo')} cx="50%" cy="50%" r="50%">
+              <Stop offset="0%" stopColor={C_BLUE} stopOpacity="0.3" />
+              <Stop offset="52%" stopColor={C_VIOLET} stopOpacity="0.13" />
+              <Stop offset="100%" stopColor={C_VIOLET} stopOpacity="0" />
+            </RadialGradient>
+          </Defs>
+          <Circle cx={50} cy={50} r={50} fill={`url(#${id('halo')})`} />
+        </Svg>
+      </Animated.View>
       <Animated.View style={{ width: size, height: size, transform: [{ translateY }, { scale: scaleV }] }}>
         <Svg width={size} height={size} viewBox="0 0 100 100">
           <Defs>
             <RadialGradient id={id('core')} cx="50%" cy="50%" r="50%">
-              <Stop offset="0%" stopColor="#9CEBFF" stopOpacity="1" />
-              <Stop offset="34%" stopColor="#3F8BFF" stopOpacity="0.95" />
-              <Stop offset="68%" stopColor="#6A52FF" stopOpacity="0.5" />
-              <Stop offset="100%" stopColor="#6A52FF" stopOpacity="0" />
+              <Stop offset="0%" stopColor={C_MIST} stopOpacity="1" />
+              <Stop offset="34%" stopColor={C_BLUE} stopOpacity="0.9" />
+              <Stop offset="68%" stopColor={C_VIOLET} stopOpacity="0.45" />
+              <Stop offset="100%" stopColor={C_VIOLET} stopOpacity="0" />
             </RadialGradient>
-            {lobe('cyan', '#29D4F0')}
-            {lobe('blue', '#2E6BFF')}
-            {lobe('violet', '#9A5CFF')}
-            {lobe('cyan2', '#5EE0FF')}
+            {lobe('cyan', C_SKY)}
+            {lobe('blue', C_BLUE)}
+            {lobe('violet', C_VIOLET)}
+            {lobe('cyan2', C_MIST)}
             <RadialGradient id={id('tooth')} cx="44%" cy="36%" r="70%">
               <Stop offset="0%" stopColor="#FFFFFF" />
-              <Stop offset="55%" stopColor="#E6F7FF" />
-              <Stop offset="100%" stopColor="#A8E0FF" />
+              <Stop offset="55%" stopColor="#F0F6FF" />
+              <Stop offset="100%" stopColor={C_SKY} />
             </RadialGradient>
             <Filter id={id('soft')} x="-50%" y="-50%" width="200%" height="200%"><FeGaussianBlur stdDeviation={blurBig} /></Filter>
             <Filter id={id('softCore')} x="-50%" y="-50%" width="200%" height="200%"><FeGaussianBlur stdDeviation={blurBig * 0.6} /></Filter>
@@ -252,22 +292,22 @@ export function ColorOrb({ size = 24, state = 'idle', spinDuration }: ColorOrbPr
           {!tiny && (
             <>
               <AnimatedG rotation={rotDeg as any} originX={50} originY={50} opacity={0.5}>
-                <Ellipse cx="50" cy="50" rx="46" ry="17" transform="rotate(18 50 50)" fill="none" stroke="#EAF8FF" strokeOpacity="0.55" strokeWidth="0.8" />
-                <Ellipse cx="50" cy="50" rx="43" ry="13" transform="rotate(-30 50 50)" fill="none" stroke="#7FE0FF" strokeOpacity="0.6" strokeWidth="0.8" />
+                <Ellipse cx="50" cy="50" rx="46" ry="17" transform="rotate(18 50 50)" fill="none" stroke="#EDF4FF" strokeOpacity="0.55" strokeWidth="0.8" />
+                <Ellipse cx="50" cy="50" rx="43" ry="13" transform="rotate(-30 50 50)" fill="none" stroke="#9FD4FF" strokeOpacity="0.6" strokeWidth="0.8" />
               </AnimatedG>
               <AnimatedG rotation={rotRev as any} originX={50} originY={50} opacity={0.35}>
-                <Ellipse cx="50" cy="50" rx="40" ry="22" transform="rotate(72 50 50)" fill="none" stroke="#EAF8FF" strokeOpacity="0.5" strokeWidth="0.7" />
+                <Ellipse cx="50" cy="50" rx="40" ry="22" transform="rotate(72 50 50)" fill="none" stroke="#EDF4FF" strokeOpacity="0.5" strokeWidth="0.7" />
               </AnimatedG>
             </>
           )}
 
           {/* Diş — her boyutta (kimlik) */}
-          <Path d={TOOTH} fill="#BFEFFF" filter={`url(#${id('tg')})`} opacity={0.85} />
+          <Path d={TOOTH} fill="#CFE4FF" filter={`url(#${id('tg')})`} opacity={0.85} />
           <Path d={TOOTH} fill={`url(#${id('tooth')})`} />
           <Path d={TOOTH} fill="none" stroke="#fff" strokeOpacity="0.55" strokeWidth="0.6" />
 
           {!tiny && SPARKS.map((s, idx) => (
-            <Circle key={idx} cx={s.x} cy={s.y} r={s.r} fill="#EAF8FF" opacity={0.7} />
+            <Circle key={idx} cx={s.x} cy={s.y} r={s.r} fill="#EDF4FF" opacity={0.7} />
           ))}
         </Svg>
       </Animated.View>

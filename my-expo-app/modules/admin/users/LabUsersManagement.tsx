@@ -24,6 +24,7 @@ import {
   Eye,
   EyeOff,
   Check,
+  ChevronDown,
   ChevronRight,
   AlertCircle,
   Save,
@@ -132,11 +133,102 @@ interface UserStats {
 }
 
 // ── PatternsToggle ──────────────────────────────────────────────────────────
+// 44×24 → 36×20: kart minimal ama toggle en dikkat çeken öğeydi.
+// Renk geçişi 140ms — açma/kapama anında sertçe zıplamasın.
 function PatternsToggle({ on, onPress, accentColor }: { on: boolean; onPress: () => void; accentColor: string }) {
   return (
-    <Pressable onPress={onPress} style={{ width: 44, height: 24, borderRadius: 999, backgroundColor: on ? accentColor : 'rgba(0,0,0,0.12)', padding: 2, justifyContent: 'center' }}>
-      <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#FFF', alignSelf: on ? 'flex-end' : 'flex-start', ...THUMB_SHADOW }} />
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }: any) => ({
+        width: 36, height: 20, borderRadius: 999,
+        backgroundColor: on ? accentColor : 'rgba(0,0,0,0.14)',
+        padding: 2, justifyContent: 'center',
+        transform: [{ scale: pressed ? 0.94 : 1 }],
+        ...(Platform.OS === 'web'
+          ? { cursor: 'pointer', transitionProperty: 'background-color, transform', transitionDuration: '140ms' } as any
+          : {}),
+      })}
+    >
+      <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: '#FFF', alignSelf: on ? 'flex-end' : 'flex-start', ...THUMB_SHADOW }} />
     </Pressable>
+  );
+}
+
+/**
+ * Filtre açılır menüsü — rol sayısından bağımsız sabit genişlik.
+ * Seçili değer düğmenin üstünde yazar; menüyü açmadan neyin süzüldüğü okunur.
+ */
+function FilterDropdown({ label, value, options, selectedKey, onSelect, accentColor }: {
+  label: string;
+  value: string | null;
+  options: { key: string; label: string; count: number }[];
+  selectedKey: string;
+  onSelect: (k: string) => void;
+  accentColor: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const on = value != null;
+  return (
+    <>
+      <Pressable
+        onPress={() => setOpen(true)}
+        style={({ pressed, hovered }: any) => ({
+          flexDirection: 'row', alignItems: 'center', gap: 6,
+          height: 36, paddingHorizontal: 12, borderRadius: 10,
+          backgroundColor: on ? `${accentColor}14` : hovered ? 'rgba(0,0,0,0.04)' : 'transparent',
+          borderWidth: 1, borderColor: on ? `${accentColor}55` : 'rgba(0,0,0,0.08)',
+          opacity: pressed ? 0.75 : 1,
+          ...(Platform.OS === 'web'
+            ? { cursor: 'pointer', transitionProperty: 'background-color, border-color', transitionDuration: '130ms' } as any
+            : {}),
+        })}
+      >
+        <Text style={{ fontSize: 12.5, fontWeight: on ? '700' : '500', color: on ? accentColor : '#6B6B6B' }}>
+          {value ?? label}
+        </Text>
+        <ChevronDown size={13} color={on ? accentColor : '#9A9A9A'} strokeWidth={2} />
+      </Pressable>
+
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <Pressable
+          onPress={() => setOpen(false)}
+          style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.28)', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+        >
+          <Pressable onPress={() => {}} style={{
+            width: '100%', maxWidth: 320, maxHeight: '70%', backgroundColor: '#FFFFFF', borderRadius: 18, paddingVertical: 8,
+            ...(Platform.OS === 'web' ? { boxShadow: '0 20px 48px rgba(15,23,42,0.22)' } as any : {}),
+          }}>
+            <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: '#9A9A9A', paddingHorizontal: 16, paddingVertical: 8 }}>
+              {label}
+            </Text>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {options.map(opt => {
+                const sel = selectedKey === opt.key;
+                return (
+                  <Pressable
+                    key={opt.key}
+                    onPress={() => { onSelect(opt.key); setOpen(false); }}
+                    style={({ pressed, hovered }: any) => ({
+                      flexDirection: 'row', alignItems: 'center', gap: 8,
+                      paddingHorizontal: 16, paddingVertical: 10,
+                      backgroundColor: sel ? `${accentColor}10` : hovered ? 'rgba(0,0,0,0.03)' : 'transparent',
+                      opacity: pressed ? 0.7 : 1,
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                    })}
+                  >
+                    <Text style={{ flex: 1, fontSize: 13, fontWeight: sel ? '700' : '500', color: sel ? accentColor : '#0A0A0A' }}>
+                      {opt.label}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: '#9A9A9A' }}>{opt.count}</Text>
+                    {sel && <Check size={14} color={accentColor} strokeWidth={2.4} />}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
   );
 }
 
@@ -426,8 +518,9 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
         style={{
           backgroundColor: '#FFFFFF',
           borderRadius: 16,
-          padding: 14,
-          paddingLeft: 16,
+          // 14 → 10: kart ~90px'ten ~74px'e indi, aynı ekrana %20 daha çok kişi.
+          padding: 10,
+          paddingLeft: 14,
           flexDirection: 'row',
           alignItems: 'center',
           gap: 12,
@@ -445,33 +538,56 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
         } as any}
       >
         {/* Avatar */}
-        <View style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden', backgroundColor: `${P}14` }}>
-          {(prof as any).avatar_url
-            ? <Image source={{ uri: (prof as any).avatar_url }} style={{ width: 40, height: 40, borderRadius: 12 }} />
-            : <Text style={{ fontSize: 14, fontWeight: '600', color: P }}>{initials(prof.full_name)}</Text>}
+        {/* Avatar rengi ROLDEN gelir: 20 kayıtta hepsi aynı tondayken liste tek
+            bir gri-mavi şeride dönüşüyordu; renk rolü bir bakışta ayırır. */}
+        <View style={{ position: 'relative', flexShrink: 0 }}>
+          <View style={{ width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', backgroundColor: badge.avatarBg }}>
+            {(prof as any).avatar_url
+              ? <Image source={{ uri: (prof as any).avatar_url }} style={{ width: 38, height: 38, borderRadius: 12 }} />
+              : <Text style={{ fontSize: 13.5, fontWeight: '700', color: badge.avatarText }}>{initials(prof.full_name)}</Text>}
+          </View>
+          {/* Durum noktası. NOT: bu "çevrim içi" DEĞİL — canlılık verisi (son
+              görülme) henüz tutulmuyor. Gösterdiği şey hesabın aktif/pasif
+              olması; davet bekleyen (hesabı olmayan) kayıtta amber. */}
+          <View
+            style={{
+              position: 'absolute', right: -2, bottom: -2,
+              width: 11, height: 11, borderRadius: 6,
+              borderWidth: 2, borderColor: '#FFFFFF',
+              backgroundColor: isSynthetic ? '#E89B2A' : (prof.is_active ?? true) ? '#2D9A6B' : '#C4C4C4',
+            }}
+          />
         </View>
         {/* Info */}
-        <View className="flex-1" style={{ minWidth: 0, gap: 4 }}>
+        <View className="flex-1" style={{ minWidth: 0, gap: 3 }}>
           <Text style={{ fontSize: 15, fontWeight: '600', color: '#0A0A0A', letterSpacing: -0.2 }} numberOfLines={1}>{prof.full_name}</Text>
+          {/* Okuma sırası: KİM → NE → NEREDE → NASIL ULAŞILIR.
+              Eskiden rol rozeti, klinik rozeti ve e-posta tek satırda ve neredeyse
+              aynı ağırlıktaydı; 20 kayıtta hepsi tek bir gri şeride dönüşüyordu.
+              Rol tek başına kalır (birincil sınıflandırma), klinik ve e-posta
+              rozetsiz ve daha soluk bir alt satıra iner. */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <View style={{ borderRadius: 100, paddingHorizontal: 8, paddingVertical: 2.5, backgroundColor: badge.bg }}>
-              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.3, color: badge.text }}>{badge.label}</Text>
+            <View style={{ borderRadius: 100, paddingHorizontal: 9, paddingVertical: 3, backgroundColor: badge.bg }}>
+              <Text style={{ fontSize: 10.5, fontWeight: '700', letterSpacing: 0.3, color: badge.text }}>{badge.label}</Text>
             </View>
-            {/* Klinik adı rozeti — clinic_admin / clinic_secretary / doctor için */}
-            {!!(prof as any).clinic_name && ['clinic_admin', 'clinic_secretary', 'doctor'].includes(prof.user_type ?? '') && (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 100, paddingHorizontal: 8, paddingVertical: 2.5, backgroundColor: 'rgba(15,23,42,0.06)' }}>
-                <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: '#6BA888' }} />
-                <Text style={{ fontSize: 10, fontWeight: '600', color: '#0F172A', letterSpacing: 0.1 }} numberOfLines={1}>
-                  {(prof as any).clinic_name}
-                </Text>
-              </View>
-            )}
             {!!(prof as any).is_unregistered && (
               <View style={{ borderRadius: 100, paddingHorizontal: 7, paddingVertical: 2, backgroundColor: 'rgba(245,158,11,0.12)' }}>
                 <Text style={{ fontSize: 10, fontWeight: '600', color: '#92400E' }}>Hesap yok</Text>
               </View>
             )}
-            <Text style={{ fontSize: 12, color: '#9A9A9A', flexShrink: 1 }} numberOfLines={1}>{prof.email ?? '—'}</Text>
+          </View>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            {!!(prof as any).clinic_name && ['clinic_admin', 'clinic_secretary', 'doctor'].includes(prof.user_type ?? '') && (
+              <>
+                <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: '#6BA888' }} />
+                <Text style={{ fontSize: 12, color: '#6B6B6B', flexShrink: 1, maxWidth: 320 }} numberOfLines={1}>
+                  {(prof as any).clinic_name}
+                </Text>
+                <Text style={{ fontSize: 12, color: '#D4D4D4' }}>·</Text>
+              </>
+            )}
+            <Text style={{ fontSize: 12, color: '#AFAFAF', flexShrink: 1 }} numberOfLines={1}>{prof.email ?? '—'}</Text>
           </View>
           {isLabUser && (() => {
             const lvl = ((prof as any).skill_level ?? 'mid') as SkillLevel;
@@ -489,7 +605,10 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
             );
           })()}
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        {/* Aksiyon grubu: durum | düzenle · sil.
+            Eskiden üç kontrol serbest duruyordu ve toggle'ın neyi açıp
+            kapattığı yazmıyordu. Etiket + ayraç ile gruplandı. */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 }}>
           {isSynthetic ? (
             <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.04)' }}>
               <Text style={{ fontSize: 10, color: '#9A9A9A' }}>Ekip'ten yönet</Text>
@@ -499,24 +618,53 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
               {updatingId === prof.id ? (
                 <ActivityIndicator size="small" color={P} />
               ) : (
-                <PatternsToggle
-                  on={prof.is_active ?? true}
-                  onPress={() => handleToggleActive(prof)}
-                  accentColor={P}
-                />
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                  <Text style={{
+                    fontSize: 11, fontWeight: '600', minWidth: 34, textAlign: 'right',
+                    color: (prof.is_active ?? true) ? '#2D9A6B' : '#9A9A9A',
+                  }}>
+                    {(prof.is_active ?? true) ? 'Aktif' : 'Pasif'}
+                  </Text>
+                  <PatternsToggle
+                    on={prof.is_active ?? true}
+                    onPress={() => handleToggleActive(prof)}
+                    accentColor={P}
+                  />
+                </View>
               )}
-              <Pressable
-                onPress={() => setEditingProfile(prof)}
-                style={{ width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.04)' }}
-              >
-                <Pencil size={13} color="#9A9A9A" strokeWidth={1.6} />
-              </Pressable>
-              <Pressable
-                onPress={() => handleDeleteUser(prof)}
-                style={{ width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.04)' }}
-              >
-                <Trash2 size={13} color="#DC2626" strokeWidth={1.6} />
-              </Pressable>
+              <View style={{ width: 1, height: 18, backgroundColor: 'rgba(0,0,0,0.08)', marginHorizontal: 4 }} />
+              {/* ✎ ve 🗑 tek kapta: iki ayrı yüzen düğme kopuk duruyordu. */}
+              <View style={{
+                flexDirection: 'row', alignItems: 'center',
+                borderRadius: 9, overflow: 'hidden',
+                backgroundColor: 'rgba(0,0,0,0.04)',
+              }}>
+                <Pressable
+                  onPress={() => setEditingProfile(prof)}
+                  accessibilityLabel="Düzenle"
+                  style={({ pressed, hovered }: any) => ({
+                    width: 28, height: 28, alignItems: 'center', justifyContent: 'center',
+                    backgroundColor: hovered ? 'rgba(0,0,0,0.06)' : 'transparent',
+                    opacity: pressed ? 0.6 : 1,
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer', transitionProperty: 'background-color', transitionDuration: '120ms' } as any : {}),
+                  })}
+                >
+                  <Pencil size={13} color="#6B6B6B" strokeWidth={1.7} />
+                </Pressable>
+                <View style={{ width: 1, height: 16, backgroundColor: 'rgba(0,0,0,0.07)' }} />
+                <Pressable
+                  onPress={() => handleDeleteUser(prof)}
+                  accessibilityLabel="Sil"
+                  style={({ pressed, hovered }: any) => ({
+                    width: 28, height: 28, alignItems: 'center', justifyContent: 'center',
+                    backgroundColor: hovered ? 'rgba(220,38,38,0.10)' : 'transparent',
+                    opacity: pressed ? 0.6 : 1,
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer', transitionProperty: 'background-color', transitionDuration: '120ms' } as any : {}),
+                  })}
+                >
+                  <Trash2 size={13} color="#DC2626" strokeWidth={1.7} />
+                </Pressable>
+              </View>
             </>
           )}
         </View>
@@ -570,7 +718,7 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
   // Pozisyon renk/etiket haritası — lab rollerine göre
   const LAB_ROLE_BADGE: Record<LabRole, { bg: string; text: string }> = {
     manager:      { bg: `${P}18`,               text: P },
-    technician:   { bg: 'rgba(0,0,0,0.05)',      text: '#6B6B6B' },
+    technician:   { bg: 'rgba(59,130,246,0.12)', text: '#1E4FA3' },
     accounting:   { bg: 'rgba(5,150,105,0.12)',  text: '#065F46' },
     courier:      { bg: 'rgba(234,122,76,0.12)', text: '#7A3A1F' },
     service:      { bg: 'rgba(139,92,246,0.12)', text: '#5B21B6' },
@@ -580,18 +728,18 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
 
   const typeBadge = (profile: Profile) => {
     if (profile.user_type === 'admin')
-      return { bg: '#0F172A22', text: '#0F172A', label: 'Admin',  avatarBg: `${P}14`, avatarText: P, roleLabel: 'Admin' };
+      return { bg: '#0F172A22', text: '#0F172A', label: 'Admin',  avatarBg: '#0F172A18', avatarText: '#0F172A', roleLabel: 'Admin' };
     if (profile.user_type === 'doctor')
-      return { bg: '#D1FAE5', text: '#065F46', label: 'Hekim',    avatarBg: `${P}14`, avatarText: P, roleLabel: 'Hekim' };
+      return { bg: '#D1FAE5', text: '#065F46', label: 'Hekim',    avatarBg: '#D1FAE5', avatarText: '#065F46', roleLabel: 'Hekim' };
     if (profile.user_type === 'clinic_admin')
-      return { bg: 'rgba(107,168,136,0.18)', text: '#3F7458', label: 'Yönetici', avatarBg: `${P}14`, avatarText: P, roleLabel: 'Klinik Yöneticisi' };
+      return { bg: 'rgba(107,168,136,0.18)', text: '#3F7458', label: 'Yönetici', avatarBg: 'rgba(107,168,136,0.18)', avatarText: '#3F7458', roleLabel: 'Klinik Yöneticisi' };
     if ((profile.user_type as string) === 'clinic_secretary')
-      return { bg: 'rgba(124,58,237,0.16)',  text: '#5B21B6', label: 'Sekreter', avatarBg: `${P}14`, avatarText: P, roleLabel: 'Klinik Sekreteri' };
+      return { bg: 'rgba(124,58,237,0.16)',  text: '#5B21B6', label: 'Sekreter', avatarBg: 'rgba(124,58,237,0.16)', avatarText: '#5B21B6', roleLabel: 'Klinik Sekreteri' };
     if (profile.user_type === 'lab' && profile.role) {
       const r = profile.role as LabRole;
       const colors = LAB_ROLE_BADGE[r] ?? { bg: 'rgba(0,0,0,0.05)', text: '#6B6B6B' };
       const label  = LAB_ROLE_LABELS[r] ?? r;
-      return { ...colors, label, avatarBg: `${P}14`, avatarText: P, roleLabel: label };
+      return { ...colors, label, avatarBg: colors.bg, avatarText: colors.text, roleLabel: label };
     }
     return { bg: '#FEF3C7', text: '#92400E', label: 'Bilinmiyor', avatarBg: `${P}14`, avatarText: P, roleLabel: 'Bilinmeyen' };
   };
@@ -614,48 +762,64 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
 
         {/* Tabs + search + actions — single row */}
         <View className="flex-row items-center gap-2 mb-5">
-          {/* Inline tab pills */}
-          <View className="flex-row items-center gap-1">
-            {TYPE_TABS.map(tab => {
-              const active = typeFilter === tab.key;
-              return (
-                <Pressable
-                  key={tab.key}
-                  onPress={() => setTypeFilter(tab.key as FilterType)}
-                  className="px-3.5 py-1.5 rounded-lg"
-                  style={{
-                    backgroundColor: active ? `${P}18` : 'transparent',
-                    // @ts-ignore web
-                    cursor: 'pointer',
-                  }}
-                >
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: active ? P : '#9A9A9A' }}>
-                    {tab.label} {tab.count > 0 ? tab.count : ''}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          {/* Rol + Durum açılır menü.
+              Roller çip olarak dizilince satır zaten sıkışıktı; katalogda 10 rol
+              var ve yenisi eklendikçe taşacaktı. Açılır menü rol sayısından
+              bağımsız sabit genişlik verir; seçili filtre düğmenin üstünde
+              görünür, menüyü açmadan ne süzüldüğü okunur. */}
+          <FilterDropdown
+            label="Rol"
+            value={typeFilter === 'all' ? null : (TYPE_TABS.find(t => t.key === typeFilter)?.label ?? null)}
+            accentColor={P}
+            options={TYPE_TABS.map(t => ({ key: String(t.key), label: t.label, count: t.count }))}
+            selectedKey={String(typeFilter)}
+            onSelect={(k) => setTypeFilter(k as FilterType)}
+          />
+          <FilterDropdown
+            label="Durum"
+            value={statusFilter === 'all' ? null : statusFilter === 'active' ? 'Aktif' : 'Pasif'}
+            accentColor={P}
+            options={[
+              { key: 'all',      label: 'Tümü',  count: profiles.length },
+              { key: 'active',   label: 'Aktif', count: profiles.filter(pp => pp.is_active).length },
+              { key: 'inactive', label: 'Pasif', count: profiles.filter(pp => !pp.is_active).length },
+            ]}
+            selectedKey={statusFilter}
+            onSelect={(k) => setStatusFilter(k as StatusFilter)}
+          />
 
           <View className="flex-1" />
 
-          {/* Search toggle */}
-          <Pressable
-            onPress={() => setSearchExpanded(!searchExpanded)}
-            className="w-9 h-9 rounded-[10px] items-center justify-center"
-            style={{ backgroundColor: (searchExpanded || search.length > 0) ? `${P}14` : 'transparent' }}
+          {/* Arama — ikon-toggle değil, doğrudan alan: en çok kullanılan kontrol
+              bir tık arkasında duruyordu. */}
+          <View
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 8,
+              paddingHorizontal: 12, height: 36, borderRadius: 10, width: 230,
+              backgroundColor: '#FFFFFF',
+              borderWidth: 1, borderColor: searchFocused ? P : 'rgba(0,0,0,0.08)',
+              ...(Platform.OS === 'web'
+                ? { boxShadow: searchFocused ? `0 0 0 3px ${P}22` : 'none', transitionProperty: 'border-color, box-shadow', transitionDuration: '130ms' } as any
+                : {}),
+            }}
           >
-            <Search size={18} color={(searchExpanded || search.length > 0) ? P : '#64748B'} strokeWidth={1.8} />
-          </Pressable>
-
-          {/* Filter button */}
-          <Pressable
-            onPress={() => { setDraftStatus(statusFilter); setShowFilter(true); }}
-            className="w-8 h-8 rounded-lg items-center justify-center"
-            style={{ backgroundColor: activeFilterCount > 0 ? `${P}14` : 'transparent' }}
-          >
-            <SlidersHorizontal size={15} color={activeFilterCount > 0 ? P : '#9A9A9A'} strokeWidth={1.8} />
-          </Pressable>
+            <Search size={15} color={searchFocused ? P : '#AEAEB2'} strokeWidth={1.7} />
+            <TextInput
+              style={{ flex: 1, fontSize: 13, color: '#0F172A', outlineStyle: 'none' } as any}
+              value={search}
+              onChangeText={setSearch}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
+              placeholder="Kullanıcı ara…"
+              placeholderTextColor="#AEAEB2"
+              returnKeyType="search"
+            />
+            {search.length > 0 && (
+              <Pressable onPress={() => setSearch('')}>
+                <XCircle size={15} color="#AEAEB2" strokeWidth={1.6} />
+              </Pressable>
+            )}
+          </View>
 
           {/* Add user button */}
           <Pressable
@@ -667,40 +831,6 @@ export function LabUsersManagement({ accentColor = '#2563EB', labOnly = false }:
             <Text style={{ fontSize: 12, fontWeight: '600', color: '#FFFFFF' }}>Yeni Kullanıcı</Text>
           </Pressable>
         </View>
-
-        {/* Search bar */}
-        {(searchExpanded || search.length > 0) && (
-          <View className="mb-3">
-            <View
-              className="flex-row items-center gap-2 px-3 rounded-[14px]"
-              style={{
-                backgroundColor: '#FFFFFF',
-                borderWidth: 1,
-                borderColor: searchFocused ? P : 'rgba(0,0,0,0.08)',
-                height: 44,
-                ...CARD_SHADOW,
-              }}
-            >
-              <Search size={16} color={searchFocused ? P : '#AEAEB2'} strokeWidth={1.6} />
-              <TextInput
-                style={{ flex: 1, fontSize: 14, color: '#0F172A', height: 44, outlineStyle: 'none' } as any}
-                value={search}
-                onChangeText={setSearch}
-                onFocus={() => setSearchFocused(true)}
-                onBlur={() => setSearchFocused(false)}
-                placeholder="Kullanıcı ara..."
-                placeholderTextColor="#AEAEB2"
-                returnKeyType="search"
-                autoFocus={searchExpanded && search.length === 0}
-              />
-              {search.length > 0 && (
-                <Pressable onPress={() => { setSearch(''); setSearchExpanded(false); }}>
-                  <XCircle size={16} color="#AEAEB2" strokeWidth={1.6} />
-                </Pressable>
-              )}
-            </View>
-          </View>
-        )}
 
         {/* Grid: list + detail */}
         <View style={[{ gap: 24 }, isWide && { flexDirection: 'row', alignItems: 'flex-start' }]}>

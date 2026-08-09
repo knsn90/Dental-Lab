@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { FaceScanQuickAction, useFaceScanAvailable } from '../../modules/orders/components/FaceScanQuickAction';
 const NewOrderScreen: any = React.lazy(() => import('../../modules/orders/screens/NewOrderScreen').then(m => ({ default: (m as any).NewOrderScreen })));
 const MessagesPopup: any = React.lazy(() => import('../../modules/orders/components/MessagesPopup').then(m => ({ default: (m as any).MessagesPopup })));
 const CommandPalette: any = React.lazy(() => import('../../core/ui/CommandPalette').then(m => ({ default: (m as any).CommandPalette })));
@@ -11,7 +12,7 @@ import {
   Home, Briefcase, ClipboardList, QrCode, MessageCircle, User, Plus, MoreHorizontal, Search,
   Landmark as Landmark2, FileSpreadsheet as FileSpreadsheet2, Banknote as Banknote2,
   Package as Package2, Building2 as Building22, Truck as Truck2,
-  CheckCircle2 as CheckCircle22, Camera as Camera2, Users as Users2, Settings as Settings2,
+  CheckCircle2 as CheckCircle22, Camera as Camera2, Users as Users2, Settings as Settings2, ScanFace,
 } from 'lucide-react-native';
 
 import { PatternsShell, useIsDesktop } from '../../core/layout/PatternsShell';
@@ -52,7 +53,7 @@ export default function LabLayout() {
   // header'larını taşıyor — global TopActionBar onlarla çakışmasın.
   // NOT: expo-router usePathname route group parens'i döndürmez → "/order/..." vs.
   const hideTopActionBar =
-    /^\/(order|invoice|statement|delivery)\//.test(pathname);
+    /^\/(order|invoice|purchase-invoice|expense|statement|delivery)\//.test(pathname);
   const { approvals: pendingDesign } = useDesignPending();
   const pendingMaterial = useMaterialRequestPending();
   const pendingCount = pendingDesign.length + pendingMaterial;
@@ -121,6 +122,10 @@ export default function LabLayout() {
   // re-mount sebebiyle resetlenmesine yol açıyordu. Supabase realtime + manuel
   // pull-to-refresh zaten güncel veri sağlar — bu listener kaldırıldı.
 
+  // Yüz tarama navbar butonu — HOOK'LAR erken return'lerin ÜSTÜNDE kalmalı.
+  const faceScanOk = useFaceScanAvailable();
+  const [faceScanOpen, setFaceScanOpen] = React.useState(false);
+
   // ── Early returns now happen AFTER all hooks ──────────────────────────────
   // Teknisyen yanlışlıkla /(lab)'a düşerse direkt /(station)'a yönlendir.
   if (profile?.user_type === 'lab' && profile?.role === 'technician') {
@@ -135,8 +140,11 @@ export default function LabLayout() {
   // NOT: loading'i koşuldan çıkardık. Aksi halde token refresh / arka plan
   // refetch sırasında shell unmount olup sidebar kayboluyor, sonra remount
   // ediliyor (tüm data baştan yükleniyor).
-  if (!profile || (profile.user_type !== 'lab' && profile.user_type !== 'admin')) {
-    return <Slot />;
+  if (!profile) {
+    return <Slot />;  // profil yükleniyor (optimistic) → kabuk
+  }
+  if (profile.user_type !== 'lab' && profile.user_type !== 'admin') {
+    return <Redirect href="/" />;  // yanlış panel → doğru panele yönlendir
   }
 
   // Sıra: Bugün · Siparişler · Kağıt Siparişler · Onaylar · Sağlık Kurumları ·
@@ -149,9 +157,6 @@ export default function LabLayout() {
     { label: t('nav.items.orders'),       emoji: '📋', href: '/(lab)/all-orders',       iconName: 'list-check', matchPrefix: true,
       sectionLabel: t('nav.sections.work'),
       badgeCount: pendingActionCount > 0 ? pendingActionCount : undefined,
-      requiresPermission: 'view_orders' },
-    { label: t('nav.items.paperOrders'), emoji: '📷', href: '/(lab)/pending-paper',    iconName: 'inbox',          matchPrefix: false,
-      badgeCount: pendingPaperCount > 0 ? pendingPaperCount : undefined,
       requiresPermission: 'view_orders' },
     { label: t('nav.items.approvals'),          emoji: '✅', href: '/(lab)/approvals',         iconName: 'check-circle',   matchPrefix: true,
       badgeCount: pendingCount > 0 ? pendingCount : undefined,
@@ -184,6 +189,8 @@ export default function LabLayout() {
 
     // ── Yardım / İletişim / Hesap ─────────────────────────────────────────
     { label: t('nav.items.support'),           emoji: '💬', href: '/(lab)/support',           iconName: 'help-circle',    matchPrefix: true, sectionLabel: t('nav.sections.help') },
+    { label: t('nav.items.waSupport'),         emoji: '💬', href: '/(lab)/wa-support',        iconName: 'whatsapp', matchPrefix: false,
+      requiresPermission: 'manage_settings' },
     { label: t('nav.items.messages'),         emoji: '✉️', href: '/(lab)/messages',          iconName: 'messages-square', matchPrefix: false,
       onPress: () => setMessagesOpen(true),
       badgeCount: chatUnread > 0 ? chatUnread : undefined },
@@ -235,12 +242,16 @@ export default function LabLayout() {
 
   const PILL_TABS: PillTabItem[] = ([
     { routeName: 'index',      label: t('nav.items.summary'),     icon: Home },
-    { routeName: 'all-orders', requires: 'view_orders',    label: t('nav.items.cases'), icon: ClipboardList },
+    // Yeni gelen siparişler (alindi / atama_bekleniyor) → sipariş ikonunda rozet
+    { routeName: 'all-orders', requires: 'view_orders',    label: t('nav.items.cases'), icon: ClipboardList, badgeCount: pendingActionCount > 0 ? pendingActionCount : undefined },
     { routeName: 'approvals',  requires: 'view_approvals', label: t('nav.items.approvals'), icon: CheckCircle22, badgeCount: pendingCount > 0 ? pendingCount : undefined },
     // Mesaj artık üst bardaki (TopActionBar) butonda — bu slot Ara oldu.
     { routeName: 'search',     label: t('nav.items.search'),     icon: Search },
-    // "Daha" → ekstra menüleri bottom sheet'te açar
-    { routeName: 'more',       label: t('nav.items.more'),    icon: MoreHorizontal, onPress: () => setMoreOpen(true) },
+    // "Daha" → ekstra menüleri bottom sheet'te açar. Mesajlar bu menünün içinde
+    // olduğu için okunmamış mesaj sayısı burada rozetlenir.
+    // Yalnız TrueDepth'li iPhone'da görünür — desteklenmeyen cihazda slot yer kaplamaz
+    ...(faceScanOk ? [{ routeName: 'face-scan', label: 'Yüz Tara', icon: ScanFace, onPress: () => setFaceScanOpen(true) }] : []),
+    { routeName: 'more',       label: t('nav.items.more'),    icon: MoreHorizontal, onPress: () => setMoreOpen(true), badgeCount: chatUnread > 0 ? chatUnread : undefined },
   ] as any[]).filter((it: any) => !permLoaded || !it.requires || canPerm(it.requires));
   const SEARCH_ITEMS = filteredNavForPalette.map((n: any) => ({ label: n.label, href: n.href, sublabel: n.sectionLabel }));
   const FAB_ITEM: PillTabItem = {
@@ -280,14 +291,20 @@ export default function LabLayout() {
           }}
         >
         <Tabs.Screen name="index" options={{ title: 'Bugün' }} />
+        <Tabs.Screen name="wa-support" options={{ href: null }} />
         <Tabs.Screen name="all-orders" options={{ title: 'Tüm İşler' }} />
-        <Tabs.Screen name="pending-paper" options={{ title: 'Kağıt Sipariş Inbox', href: null }} />
+        <Tabs.Screen name="pending-paper" options={{ title: 'Manuel Sipariş Inbox', href: null }} />
         <Tabs.Screen name="production"  options={{ title: 'Üretim Panosu' }} />
         <Tabs.Screen name="deliveries"    options={{ title: 'Teslimatlar' }} />
         <Tabs.Screen name="courier"       options={{ title: 'Kurye Paneli' }} />
         {/* delivery/[id] nested — auto-discover; declaring inside Tabs triggers filter crash */}
         <Tabs.Screen name="analytics"     options={{ title: 'Analitik' }} />
         <Tabs.Screen name="stock"        options={{ title: 'Stok & Depo' }} />
+        <Tabs.Screen name="material-mapping" options={{ title: 'Malzeme Eşleştirme', href: null }} />
+        <Tabs.Screen name="consumption-profile" options={{ title: 'Tüketim Profili', href: null }} />
+        <Tabs.Screen name="inventory-verification" options={{ title: 'Envanter Doğrulama', href: null }} />
+        <Tabs.Screen name="consumption-audit" options={{ title: 'Tüketim Denetimi', href: null }} />
+        <Tabs.Screen name="fifo-reorder" options={{ title: 'FIFO & Sipariş', href: null }} />
         <Tabs.Screen name="workflows"    options={{ title: 'İş Akışları' }} />
         {/* suppliers route Settings hub içinden açılır — tabs'ta gizli */}
         <Tabs.Screen name="suppliers"    options={{ title: 'Tedarikçiler', href: null }} />
@@ -386,6 +403,17 @@ export default function LabLayout() {
           accentColor={accentColor}
         />
       </React.Suspense>
+
+      {/* Yüz tarama — navbar butonundan tetiklenen headless sipariş seçici.
+          Buton PILL_TABS içinde; bu bileşen sadece modalı render eder. */}
+      {faceScanOk && (
+        <FaceScanQuickAction
+          variant="headless"
+          accentColor={accentColor}
+          open={faceScanOpen}
+          onOpenChange={setFaceScanOpen}
+        />
+      )}
 
       {/* Search button moved to TopActionBar (top-right) */}
 

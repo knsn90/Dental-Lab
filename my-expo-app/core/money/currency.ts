@@ -363,3 +363,56 @@ export function formatMoneyWithBase(
   if (currency === baseCurrency || baseAmount == null) return main;
   return `${main} (≈ ${formatMoney(baseAmount, baseCurrency, { fractionDigits: 0 })})`;
 }
+
+/**
+ * Kur + kaynağı. Ödeme ekranında "hangi kuru kullanıyorum?" sorusunu
+ * görünür kılar: TCMB mi, elle mi girilmiş, yoksa yer tutucu mu.
+ *
+ * Neden gerekli: kur yer tutucuysa (kurulum tohumu) TL ile kapatılmış hesap
+ * açık görünüyor ve kimse sebebini anlamıyordu. Artık ekran söylüyor.
+ */
+export function useExchangeRateInfo(
+  currency: Currency | null | undefined,
+  baseCurrency: Currency = 'TRY',
+  atDate?: string | Date,
+): { rate: number | null; source: string | null; effectiveDate: string | null; isPlaceholder: boolean; loading: boolean } {
+  const profile = useAuthStore(s => s.profile);
+  const labId = (profile as any)?.lab_id ?? null;
+  const [state, setState] = useState<{
+    rate: number | null; source: string | null; effectiveDate: string | null; isPlaceholder: boolean;
+  }>({ rate: null, source: null, effectiveDate: null, isPlaceholder: false });
+  const [loading, setLoading] = useState(false);
+
+  const dateKey = atDate
+    ? (typeof atDate === 'string' ? atDate : atDate.toISOString().slice(0, 10))
+    : new Date().toISOString().slice(0, 10);
+
+  useEffect(() => {
+    if (!currency || !labId) return;
+    if (currency === baseCurrency) {
+      setState({ rate: 1, source: 'same', effectiveDate: dateKey, isPlaceholder: false });
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    supabase
+      .rpc('get_currency_rate_info', {
+        p_lab_id: labId, p_currency: currency,
+        p_base_currency: baseCurrency, p_at_date: dateKey,
+      })
+      .then(({ data }) => {
+        if (cancelled) return;
+        const row = Array.isArray(data) ? data[0] : data;
+        setState({
+          rate: row?.rate != null ? Number(row.rate) : null,
+          source: row?.source ?? null,
+          effectiveDate: row?.effective_date ?? null,
+          isPlaceholder: !!row?.is_placeholder,
+        });
+        setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [currency, baseCurrency, dateKey, labId]);
+
+  return { ...state, loading };
+}

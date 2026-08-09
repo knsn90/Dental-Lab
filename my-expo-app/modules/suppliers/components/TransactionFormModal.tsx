@@ -12,7 +12,7 @@ import {
 import { useAuthStore } from '../../../core/store/authStore';
 import { MoneyInput } from '../../../core/money/MoneyInput';
 import { DatePicker } from '../../../core/ui/DatePicker';
-import type { Currency } from '../../../core/money/currency';
+import { type Currency, useExchangeRate , useExchangeRateInfo } from '../../../core/money/currency';
 import { supabase } from '../../../core/api/supabase';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
@@ -50,6 +50,47 @@ export function TransactionFormModal({ visible, type, supplier, editing = null, 
   const [parsing, setParsing] = useState(false);
   const [parseInfo, setParseInfo] = useState<string | null>(null);
 
+  // ── Cari (hesap) para birimine çevirme — elle kur ────────────────────────
+  // acctRate = 1 birim CARİ para birimi kaç birim İŞLEM para birimi (1 EUR = 38,50 ₺).
+  // Tek doğruluk kaynağı acctRate; karşılık alanı ondan türetilir. Kullanıcı
+  // karşılığı yazarsa kur anında geri hesaplanır (iki yönlü).
+  const acctCurrency = (supplier.default_currency ?? 'TRY') as Currency;
+  const needsRate = currency !== acctCurrency;
+  const [acctRate, setAcctRate] = useState('');
+  const [acctAmtDraft, setAcctAmtDraft] = useState<string | null>(null);
+
+  const amtNum = parseFloat(amount.replace(',', '.'));
+  const rateNum = parseFloat(acctRate.replace(',', '.'));
+  const acctAmtComputed = Number.isFinite(amtNum) && Number.isFinite(rateNum) && rateNum > 0
+    ? amtNum / rateNum : null;
+  const acctAmtShown = acctAmtDraft ?? (acctAmtComputed != null
+    ? acctAmtComputed.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : '');
+
+  // Otomatik kur ile ön-doldur (kullanıcı üzerine yazabilir).
+  // Kaynak da okunur: TCMB mi, yer tutucu mu — ekranda söylenir.
+  const txInfo   = useExchangeRateInfo(currency, 'TRY', date);
+  const acctInfo = useExchangeRateInfo(acctCurrency, 'TRY', date);
+  const rateTxBase   = txInfo.rate;
+  const rateAcctBase = acctInfo.rate;
+  const ratePlaceholder = txInfo.isPlaceholder || acctInfo.isPlaceholder;
+  const rateSourceLabel = (() => {
+    const src = txInfo.source === 'same' ? acctInfo.source : txInfo.source;
+    const eff = txInfo.source === 'same' ? acctInfo.effectiveDate : txInfo.effectiveDate;
+    if (!src) return null;
+    if (src === 'tcmb')   return `TCMB · ${eff ?? ''}`;
+    if (src === 'manual') return `Elle girilen kur · ${eff ?? ''}`;
+    if (src === 'system') return 'Yer tutucu kur';
+    return null;
+  })();
+  useEffect(() => {
+    if (!visible || !needsRate) return;
+    if (acctRate) return;                       // kullanıcı zaten girdi
+    if (!rateTxBase || !rateAcctBase) return;
+    const auto = rateAcctBase / rateTxBase;
+    if (Number.isFinite(auto) && auto > 0) setAcctRate(auto.toFixed(4));
+  }, [visible, needsRate, rateTxBase, rateAcctBase, acctRate]);
+
   useEffect(() => {
     if (!visible) return;
     if (editing) {
@@ -74,6 +115,8 @@ export function TransactionFormModal({ visible, type, supplier, editing = null, 
       setDueDate('');
     }
     setError('');
+    setAcctRate(editing?.account_rate_at_time != null ? String(editing.account_rate_at_time) : '');
+    setAcctAmtDraft(null);
     setParseInfo(null); setParsing(false);
   }, [visible, type, supplier, editing]);
 
@@ -132,6 +175,10 @@ export function TransactionFormModal({ visible, type, supplier, editing = null, 
   const handleSave = async () => {
     const amt = parseFloat(amount.replace(',', '.'));
     if (!amt || amt <= 0) { setError('Geçerli bir tutar girin'); return; }
+    if (needsRate && !(rateNum > 0)) {
+      setError(`Cari ${acctCurrency} tutulduğu için kur gerekli — 1 ${acctCurrency} kaç ${currency}?`);
+      return;
+    }
     setSaving(true); setError('');
 
     if (isEdit && editing) {
@@ -145,6 +192,8 @@ export function TransactionFormModal({ visible, type, supplier, editing = null, 
         bankName: bankName.trim() || null,
         referenceNo: referenceNo.trim() || null,
         iban: iban.trim().replace(/\s+/g, '') || null,
+        // Kur da gönderilmeli — yoksa düzenlemede girilen kur yok sayılıyordu.
+        accountRate: needsRate ? rateNum : null,
       });
       setSaving(false);
       if (!result.ok) { setError(result.error ?? 'Güncelleme hatası'); return; }
@@ -166,6 +215,7 @@ export function TransactionFormModal({ visible, type, supplier, editing = null, 
       bankName: bankName.trim() || null,
       referenceNo: referenceNo.trim() || null,
       iban: iban.trim().replace(/\s+/g, '') || null,
+      accountRate: needsRate ? rateNum : null,
     });
     setSaving(false);
     if (!result.ok) { setError(result.error ?? 'Kayıt hatası'); return; }
@@ -273,6 +323,84 @@ export function TransactionFormModal({ visible, type, supplier, editing = null, 
                 autoFocus
               />
             </View>
+
+            {/* Cari para birimine çevirme — işlem para birimi cariden farklıysa */}
+            {needsRate && (
+              <View style={{
+                gap: 10, padding: 12, borderRadius: 12,
+                backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F7F7F5',
+                borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.10)' : '#EAEAEA',
+              }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.8, color: T.ink3, textTransform: 'uppercase' }}>
+                  Cari karşılığı ({acctCurrency})
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 10.5, color: T.ink3, marginBottom: 4 }}>
+                      KUR — 1 {acctCurrency} = ? {currency}
+                    </Text>
+                    <TextInput
+                      value={acctRate}
+                      onChangeText={(t) => { setAcctRate(t); setAcctAmtDraft(null); }}
+                      keyboardType="decimal-pad"
+                      placeholder="0,0000"
+                      placeholderTextColor={T.ink3}
+                      style={{
+                        borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.16)' : '#DDD',
+                        borderRadius: 10, paddingHorizontal: 10, paddingVertical: 9,
+                        fontSize: 14, color: T.ink,
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#FFF',
+                        ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
+                      }}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 10.5, color: T.ink3, marginBottom: 4 }}>
+                      TUTAR ({acctCurrency})
+                    </Text>
+                    <TextInput
+                      value={acctAmtShown}
+                      onChangeText={(t) => {
+                        setAcctAmtDraft(t);
+                        const eur = parseFloat(t.replace(/\./g, '').replace(',', '.'));
+                        if (Number.isFinite(amtNum) && Number.isFinite(eur) && eur > 0) {
+                          setAcctRate(String(Number((amtNum / eur).toFixed(6))));
+                        }
+                      }}
+                      keyboardType="decimal-pad"
+                      placeholder="0,00"
+                      placeholderTextColor={T.ink3}
+                      style={{
+                        borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.16)' : '#DDD',
+                        borderRadius: 10, paddingHorizontal: 10, paddingVertical: 9,
+                        fontSize: 14, fontWeight: '700', color: T.ink,
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#FFF',
+                        ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
+                      }}
+                    />
+                  </View>
+                </View>
+                <Text style={{ fontSize: 11, color: T.ink3, lineHeight: 16 }}>
+                  Cari {acctCurrency} tutulur. Kur, işlem tarihinin Merkez Bankası kurundan
+                  gelir; elle değiştirebilirsin — iki alandan birini yazınca diğeri
+                  hesaplanır. Bu kur işlemle birlikte kaydedilir.
+                  {rateSourceLabel ? `  (${rateSourceLabel})` : ''}
+                </Text>
+                {ratePlaceholder ? (
+                  <View style={{
+                    flexDirection: 'row', gap: 8, marginTop: 6,
+                    paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8,
+                    backgroundColor: 'rgba(217,75,75,0.10)',
+                  }}>
+                    <Text style={{ flex: 1, fontSize: 11, lineHeight: 16, color: '#9B2C2C' }}>
+                      Bu tarih için gerçek kur kaydı yok — gösterilen değer kurulum sırasında
+                      konmuş bir yer tutucu. Ödemeyi bununla kaydederseniz hesap kapanmış
+                      görünmez. Faturanın kurunu elle girin.
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            )}
 
             {/* Date */}
             <View style={{ flexDirection: 'row', gap: 12 }}>

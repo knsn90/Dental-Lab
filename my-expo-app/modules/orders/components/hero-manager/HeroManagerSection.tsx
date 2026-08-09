@@ -12,6 +12,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, TextInput, TouchableOpacity, Text, ActivityIndicator, Platform } from 'react-native';
+import { confirmAsync } from '../../../../core/util/confirm';
 
 import { supabase } from '../../../../core/api/supabase';
 import { toast } from '../../../../core/ui/Toast';
@@ -105,9 +106,7 @@ export function HeroManagerSection(props: HeroManagerSectionProps) {
     if (!currentStage) return;
     const next = getNextStage(currentStage, doctorApprovalRequired, managerReviewRequired);
     if (!next) { toast.warning('Sonraki stage yok'); return; }
-    if (typeof window !== 'undefined' && !window.confirm(
-      `⚠ Bu işlem checklist'i atlar.\n${STAGE_LABEL[currentStage]} → ${STAGE_LABEL[next]}\n\nDevam edilsin mi?`
-    )) return;
+    if (!(await confirmAsync('Checklist Atlanacak', `${STAGE_LABEL[currentStage]} → ${STAGE_LABEL[next]}\n\nBu işlem checklist'i atlar. Devam edilsin mi?`, { confirmText: 'İlerlet', destructive: true }))) return;
     setBusy('force');
     const { error } = await supabase.rpc('force_advance_stage', {
       p_work_order_id: workOrderId, p_manager_id: managerId, p_next_stage: next,
@@ -119,9 +118,7 @@ export function HeroManagerSection(props: HeroManagerSectionProps) {
   }
 
   async function skipToQC() {
-    if (typeof window !== 'undefined' && !window.confirm(
-      '⚠ Üretim atlanacak ve iş direkt QC\'ye gidecek. Devam edilsin mi?'
-    )) return;
+    if (!(await confirmAsync('Üretim Atlanacak', 'İş direkt QC\'ye gidecek. Devam edilsin mi?', { confirmText: 'QC\'ye Atla', destructive: true }))) return;
     setBusy('qc');
     const { error } = await supabase.rpc('skip_to_qc', {
       p_work_order_id: workOrderId, p_manager_id: managerId,

@@ -43,6 +43,8 @@ export interface FilesUploadModalProps {
   onPickVideo: (label: string) => void;
   onPickScan:  (label: string) => void;
   onPickPdf:   (label: string) => void;
+  /** Opsiyonel — tarayıcıdan çıkan ZIP/arşiv seçtirir. Verilmezse ZIP kartı gizli. */
+  onPickZip?:  (label: string) => void;
 
   onPreview?:  (att: UploadAttachment) => void;
   onRemove?:   (id: string) => void;
@@ -124,6 +126,8 @@ const SMILE_PHOTO_LABELS: ReadonlyArray<string> = ['Ekartörlü Fotoğraf', 'Gü
 const SMILE_VIDEO_LABEL = 'Gülüş Videosu';
 // Tarama Verileri — hepsi "… Taraması" formatında, parantezsiz
 const SCAN_LABELS:       ReadonlyArray<string> = ['Üst Çene Taraması', 'Alt Çene Taraması', 'Kapanış Taraması', 'Diş Eti Taraması'];
+// Tarayıcıdan çıkan tek ZIP/arşiv (çoklu STL/PLY + meta) — Tarama Verileri grubunda.
+const SCAN_ZIP_LABEL = 'Tarama Arşivi (ZIP)';
 const IMPLANT_SCAN_LABEL = 'Scan Body Taraması';
 const SCAN_PARTS_PHOTO_LABEL = 'Tarama Parçaları Görseli';
 const PDF_LABEL          = 'PDF Belgesi';
@@ -131,7 +135,7 @@ const REF_PHOTO_LABEL    = 'Referans Fotoğrafı';
 
 export function FilesUploadModal({
   visible, onClose, accentColor, attachments,
-  onPickPhoto, onPickVideo, onPickScan, onPickPdf,
+  onPickPhoto, onPickVideo, onPickScan, onPickPdf, onPickZip,
   onPreview, onRemove, onDownload, onPreviewAll3D, count3D = 0,
   occlusionCta, implantBrandSlot, implantSectionContent,
   title = 'Dosya Yükleme',
@@ -429,7 +433,7 @@ export function FilesUploadModal({
   const uploadedGroups = React.useMemo(() => {
     const cats: Array<{ title: string; color: string; labels: string[] }> = [
       ...(extraGroups ?? []).map(g => ({ title: g.title, color: g.color, labels: g.items.map(i => i.label) })),
-      { title: 'Tarama Verileri',   color: '#0EA5E9', labels: [...SCAN_LABELS] },
+      { title: 'Tarama Verileri',   color: '#0EA5E9', labels: [...SCAN_LABELS, SCAN_ZIP_LABEL] },
       { title: 'Gülüş Tasarımı',    color: P,         labels: [...SMILE_PHOTO_LABELS, SMILE_VIDEO_LABEL] },
       { title: 'İmplant Bilgileri', color: '#8B5CF6', labels: [IMPLANT_SCAN_LABEL, SCAN_PARTS_PHOTO_LABEL] },
       { title: 'Ek Dosyalar',       color: '#F59E0B', labels: [PDF_LABEL, REF_PHOTO_LABEL] },
@@ -531,6 +535,7 @@ export function FilesUploadModal({
                 </View>
                 <View style={s.uploadCardRow}>
                   {SCAN_LABELS.map(label => renderScanCard(label, '#0EA5E9', 'cube-outline'))}
+                  {onPickZip && renderSlot(SCAN_ZIP_LABEL, '#0EA5E9', 'folder-zip-outline', () => onPickZip(SCAN_ZIP_LABEL))}
                 </View>
                 {occlusionCta}
               </View>

@@ -29,7 +29,7 @@ interface Props {
 }
 
 function fmtMoney(n: number): string {
-  return baseSymbol() + n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return baseSymbol() + (Number(n) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export function PaymentLinkPanel({ invoiceId, balance, onChanged }: Props) {
@@ -261,9 +261,9 @@ function CreateLinkModal({
 }
 
 const s = StyleSheet.create({
-  card: { backgroundColor: CardSpec.bg, borderRadius: CardSpec.radius, borderWidth: 1, borderColor: CardSpec.border, padding: 16, gap: 12, ...Shadows.card } as any,
-  head: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  iconBox: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  card: { backgroundColor: CardSpec.bg, borderRadius: CardSpec.radius, borderWidth: 1, borderColor: CardSpec.border, padding: 13, gap: 10, ...Shadows.card } as any,
+  head: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  iconBox: { width: 28, height: 28, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 14, fontWeight: '800', color: '#0F172A' },
   providerHint: { fontSize: 11, color: '#94A3B8', marginTop: 2 },
 

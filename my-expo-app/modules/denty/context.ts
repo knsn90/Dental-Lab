@@ -9,12 +9,37 @@ import { useAuthStore } from '../../core/store/authStore';
 import { usePermissionStore } from '../../core/store/permissionStore';
 import { getActiveViewer } from '../viewer-3d/viewerBridge';
 import { useDentyStore, attachmentKindLabel } from './store/dentyStore';
+import { panelPrompt } from './prompts';
 
-export type PanelGroup = '(lab)' | '(clinic)' | '(doctor)' | '(admin)' | '(station)';
+export type PanelGroup = '(lab)' | '(clinic)' | '(doctor)' | '(admin)' | '(station)' | '(courier)';
+
+/** Simanty'nin çalıştığı paneller. Bunların dışındaki bir route'ta (auth, platform,
+ *  dev, public link…) asistan HİÇ görünmez — eskiden bilinmeyen route sessizce
+ *  '(lab)' sayılıyordu ve kuryede yanlış panele yönlendirme üretiyordu. */
+export const DENTY_PANELS: PanelGroup[] = ['(lab)', '(clinic)', '(doctor)', '(admin)', '(station)', '(courier)'];
+
+export function isDentyPanel(seg?: string | null): seg is PanelGroup {
+  return !!seg && (DENTY_PANELS as string[]).includes(seg);
+}
+
+/**
+ * Simanty'nin rol etiketi (FAB tooltip'i ve panel başlığı — aynı metin).
+ *
+ * Eski "Yapay zekâ asistanın" karaktersizdi. Sabit "Laboratuvar AI Asistanı"
+ * da olmaz: aynı asistan klinik ve hekim panellerinde de çıkıyor, orada yanlış
+ * olurdu. "Operasyon Asistanı" ise diş hekimliği bağlamında ameliyat çağrışımı
+ * yaptığı için elendi.
+ */
+export function dentyRoleLabel(panel?: string | null): string {
+  if (panel === '(clinic)' || panel === '(doctor)') return 'Klinik AI Asistanı';
+  if (panel === '(station)') return 'Üretim AI Asistanı';
+  if (panel === '(courier)') return 'Lojistik AI Asistanı';
+  return 'Laboratuvar AI Asistanı';
+}
 
 /** Denty'nin yönlendirebileceği bilinen hedefler (panel grubuna göre çözülür). */
 export const DENTY_DESTINATIONS: Record<string, { path: string; label: string; panels: PanelGroup[] }> = {
-  panoyu_ac:        { path: '',             label: 'Ana pano / özet ekranı',          panels: ['(lab)', '(clinic)', '(doctor)', '(admin)', '(station)'] },
+  panoyu_ac:        { path: '',             label: 'Ana pano / özet ekranı',          panels: ['(lab)', '(clinic)', '(doctor)', '(admin)', '(station)', '(courier)'] },
   yeni_siparis:     { path: 'new-order',    label: 'Yeni iş emri / sipariş girişi',   panels: ['(lab)', '(clinic)', '(doctor)', '(admin)'] },
   siparisler:       { path: 'orders',       label: 'Sipariş listesi',                 panels: ['(lab)', '(clinic)', '(doctor)', '(admin)'] },
   mesajlar:         { path: 'messages',     label: 'Mesajlar / sohbet kutusu',        panels: ['(lab)', '(clinic)', '(doctor)', '(admin)'] },
@@ -23,7 +48,8 @@ export const DENTY_DESTINATIONS: Record<string, { path: string; label: string; p
 };
 
 export interface DentyContext {
-  panel: PanelGroup;
+  /** null = Simanty'nin desteklemediği bir route (asistan gizlenir). */
+  panel: PanelGroup | null;
   panelLabel: string;
   route: string;
   orderId: string | null;
@@ -40,6 +66,7 @@ const PANEL_LABELS: Record<string, string> = {
   '(doctor)': 'Hekim paneli',
   '(admin)': 'Yönetici paneli',
   '(station)': 'Teknisyen / istasyon paneli',
+  '(courier)': 'Kurye paneli',
 };
 
 export function useDentyContext(): DentyContext {
@@ -49,7 +76,7 @@ export function useDentyContext(): DentyContext {
   const can = usePermissionStore((s) => s.can);
   const attachments = useDentyStore((s) => s.attachments);
 
-  const panel = (segments?.[0] && segments[0].startsWith('(') ? segments[0] : '(lab)') as PanelGroup;
+  const panel: PanelGroup | null = isDentyPanel(segments?.[0]) ? (segments[0] as PanelGroup) : null;
   const route = '/' + (segments ?? []).join('/');
   const orderId = (params?.id as string) ?? null;
 
@@ -70,8 +97,11 @@ export function useDentyContext(): DentyContext {
   const weekday = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'][now.getDay()];
   const todayHuman = `${pad(now.getDate())}.${pad(now.getMonth() + 1)}.${now.getFullYear()}`;
 
+  const isClientPanel = panel === '(clinic)' || panel === '(doctor)';
+  const isLabSide = panel === '(lab)' || panel === '(admin)';
+
   const destForPanel = Object.entries(DENTY_DESTINATIONS)
-    .filter(([, d]) => d.panels.includes(panel))
+    .filter(([, d]) => !!panel && d.panels.includes(panel))
     .map(([key, d]) => `  - "${key}": ${d.label}`)
     .join('\n');
 
@@ -102,40 +132,35 @@ export function useDentyContext(): DentyContext {
     destForPanel,
     '  - siparisAra(sorgu): kullanıcının siparişlerinde salt-okunur arama.',
     '  - veriOku(tablo, ara?, esit_kolon?, esit_deger?, limit?): GENEL salt-okunur veri aracı. Özel araçların kapsamadığı her soruda (faturalar, ödemeler, klinikler, bildirimler, destek talepleri, aşamalar vb.) bunu kullan. İzinli tablolar aracın açıklamasında listeli. Kullanıcı bir şey sorduğunda "bilmiyorum" demeden ÖNCE uygun tabloda veriOku ile bakmayı dene.',
-    '  - cariDurum(): kliniğin cari hesap/bakiye durumunu getirir (borç, faturalanan, ödenen, vadesi geçen). "cari", "bakiye", "borcum" sorularında kullan.',
-    '  - hekimAra(sorgu): kliniğin hekimlerini listeler (KLİNİK hesabında sipariş açarken hekim seçmek için; dönen id\'yi siparisOlustur\'a hekim_id ver).',
+    // Araç listesi PANELE göre daralır — modele vermediğimiz aracı prompt'ta
+    // anlatmak, olmayan aracı çağırmasına ve boş yere hata almasına yol açıyordu.
+    ...(isClientPanel ? [
+      '  - cariDurum(): kliniğin cari hesap/bakiye durumunu getirir (borç, faturalanan, ödenen, vadesi geçen). "cari", "bakiye", "borcum" sorularında kullan.',
+      '  - hekimAra(sorgu): kliniğin hekimlerini listeler (KLİNİK hesabında sipariş açarken hekim seçmek için; dönen id\'yi siparisOlustur\'a hekim_id ver).',
+    ] : []),
+    ...(isLabSide ? [
+      '  - gunlukOzet(): gecikmiş · bugün teslim · planlama bekleyen · kritik stok · faturasız teslimat sayıları ve örnekleri. "bugün ne var / durum nedir" sorularında İLK bunu çağır.',
+      '  - istasyonYuku(): istasyon başına bekleyen ve devam eden iş sayısı — nerede birikme var.',
+      '  - stokDurumu(): kritik seviyenin altındaki stok kalemleri.',
+    ] : []),
+    ...(isLabSide || panel === '(station)' ? [
+      '  - asamaDurumu(siparis_no?): bir siparişin aşama zinciri — sıra, durum, atanan teknisyen. Sipariş no verilmezse açık sipariş kullanılır.',
+    ] : []),
     ...(viewer ? [
       '  - kapanisAnalizi(): AÇIK 3D görüntüleyicide üst↔alt çene kapanış (oklüzyon) analizi — temas/boşluk ısı haritası + özet (temas %, en sıkı/ortalama mm). "kapanış nasıl, temas yeterli mi" sorularında kullan.',
       '  - taramaTeshis(): AÇIK 3D görüntüleyicideki taramaların kalite teşhisi (üçgen, delik kenarı, ters normal, non-manifold). "bu taramada sorun/delik var mı, mesh-repair gerekir mi" sorularında kullan.',
     ] : []),
     '  Yazma (onay kartı çıkar):',
-    '  - siparisOlustur(...): yeni iş emri — yeni-sipariş formundaki TÜM bilgileri toplar. HEKİM hesabında hekim otomatik kendisidir. KLİNİK hesabında ÖNCE hekimAra ile hekimi bul, sonra hekim_id ile çağır.',
-    '  - siparisDuzenle(...): mevcut bir siparişi düzenler (yalnız değişen alanlar). Kapı kuralına dikkat (aşağıda).',
-    '  - siparisIptal(...): bir siparişi iptal eder — yalnız planlamaya girmemiş siparişlerde.',
+    ...(isClientPanel || isLabSide ? [
+      '  - siparisOlustur(...): yeni iş emri — yeni-sipariş formundaki TÜM bilgileri toplar. HEKİM hesabında hekim otomatik kendisidir. KLİNİK hesabında ÖNCE hekimAra ile hekimi bul, sonra hekim_id ile çağır.',
+      '  - siparisDuzenle(...): mevcut bir siparişi düzenler (yalnız değişen alanlar). Kapı kuralına dikkat (aşağıda).',
+    ] : []),
+    ...(isClientPanel ? [
+      '  - siparisIptal(...): bir siparişi iptal eder — yalnız planlamaya girmemiş siparişlerde.',
+    ] : []),
     '',
-    'SİPARİŞ DÜZENLEME / İPTAL AKIŞI (kapı kuralı — çok önemli):',
-    '- Sipariş üretim PLANLAMASINA girip girmediğine göre davranış değişir. Planlama başladıysa work_orders.triaged_at DOLU olur; boşsa planlama başlamamıştır.',
-    '- Düzenlemeden ÖNCE siparişin durumunu öğren (veriOku work_orders veya siparisAra ile bul, triaged_at\'e bak) ve kullanıcıya durumu söyle:',
-    '  • Planlama BAŞLAMAMIŞSA: değişiklik ANINDA uygulanır; iptal de mümkündür. "Hemen güncelliyorum" de.',
-    '  • Planlama BAŞLAMIŞSA: değişiklik doğrudan uygulanmaz → bir DEĞİŞİKLİK TALEBİ oluşur ve LABORATUVAR ONAYINDAN sonra geçerli olur; İPTAL artık mümkün DEĞİL. Kullanıcıya "Bu sipariş üretime alınmış; değişiklik lab onayına gönderilecek" de.',
-    '- siparisDuzenle YALNIZCA değişen alanları alır (kısmi). Kalemleri değiştiriyorsan is_kalemleri içinde TÜM kalemleri ver (kısmi verirsen diğerleri silinir); değiştirmiyorsan is_kalemleri hiç verme.',
-    '- Hangi sipariş olduğu belli değilse (açık sipariş yoksa) önce sipariş numarasını netleştir. Bu araçları çağırınca da onay kartı çıkar — kullanıcı onaylayınca uygulanır.',
+    panelPrompt(panel),
     '',
-    'YENİ SİPARİŞ TOPLAMA AKIŞI (çok önemli — doğal sohbetle topla, form gibi sıralama):',
-    '- Formda 4 adım var; sen bunları tek tek madde madde SORMA, sohbet içinde doğal cümlelerle topla. Her seferde en fazla 1-2 şey sor.',
-    '- Toplaman gerekenler:',
-    '  1) HASTA: ad + soyad (zorunlu). Ayrıca mümkünse cinsiyet, TC/pasaport no, doğum tarihi (YYYY-AA-GG), uyruk, telefon — bunları da dostça iste ama hasta kaçamak yaparsa üstelemeden geç.',
-    '  2) HEKİM: klinik hesabındaysan hangi hekim? (hekimAra ile bul).',
-    '  3) DİŞ + İŞ KALEMLERİ: hangi dişler (FDI) ve ne yapılacak. Farklı dişlere farklı iş tipi/renk varsa AYRI kalem olarak "is_kalemleri" içinde ver. Detayı İŞ TİPİNE GÖRE KOŞULLU sor:',
-    '     • Kron/köprü/veneer/e.max/inley → Vita RENK sor (örn. A2).',
-    '     • İmplant işleri → implant_sistem (Straumann/Nobel/Osstem/Zimmer/Dentsply/Megagen), implant_tur, abutment, vida sor.',
-    '     • Hareketli/tam protez → materyal (Akrilik/Krom-Kobalt/Flexible) sor.',
-    '     • Cerrahi şablon / gece plağı / diğer → ekstra detay sorma.',
-    '  4) VAKA DETAYLARI: ölçüm yöntemi (manuel mi dijital mi?), model tipi (manuel: silikon/aljinat/fiziksel/wax-up…; dijital: dijital tarama/STL/CAD), acil mi, teslim tarihi (normal en erken bugün+3, acil bugün+1), teslim yöntemi (kurye/kargo/elden), üretim öncesi tasarım onayı istensin mi.',
-    '  5) NOT: hekim/lab notu (opsiyonel).',
-    '- Zorunlu minimum: en az bir diş+iş tipi kalemi ve teslim tarihi. Diğerleri eksikse dostça sor; hasta ısrarla vermezse sadece elindekiyle devam et.',
-    '- DOSYA/TARAMA: Kullanıcı, mesaj kutusunun yanındaki ATAÇ (📎) simgesinden dosya (üst/alt çene taraması, STL, fotoğraf, PDF, video) ekleyebilir. İliştirilen dosyalar "GÜNCEL BAĞLAM"da listelenir; sipariş oluşturulunca OTOMATİK yüklenir — sen ayrı bir araç çağırmazsın. Dijital ölçüm / STL-CAD işlerinde tarama dosyası eklemesini nazikçe hatırlat; henüz dosya iliştirilmemişse "ataç simgesinden ekleyebilirsin" de.',
-    '- Yeterince bilgi toplayınca siparisOlustur\'u çağır; onay kartında kullanıcı gözden geçirip "Onayla" der. Onaylayınca iliştirilen dosyalar da yüklenir.',
     '  - destekTalebiAc(...): üretim/destek ekibine talep açar.',
     '  - mesajGonder(mesaj): yalnızca bir sipariş AÇIKKEN o siparişin sohbetine mesaj atar.',
     'Araç çağırmadan önce kısa bir cümleyle ne yapacağını söyle.',
@@ -147,7 +172,7 @@ export function useDentyContext(): DentyContext {
     '',
     'GÜNCEL BAĞLAM:',
     `- Kullanıcı: ${userName} (${userType}${role ? ', rol: ' + role : ''})`,
-    `- Aktif panel: ${PANEL_LABELS[panel] ?? panel}`,
+    `- Aktif panel: ${(panel && PANEL_LABELS[panel]) ?? 'bilinmiyor'}`,
     `- Bulunduğu ekran (route): ${route}`,
     orderId ? `- Açık sipariş ID: ${orderId}` : '- Açık sipariş yok',
     `- Yetkiler: sipariş yönetimi=${perms.orders ? 'var' : 'yok'}, destek=${perms.support ? 'var' : 'yok'}, mesaj=${perms.messages ? 'var' : 'yok'}`,
@@ -161,7 +186,7 @@ export function useDentyContext(): DentyContext {
 
   return {
     panel,
-    panelLabel: PANEL_LABELS[panel] ?? panel,
+    panelLabel: (panel && PANEL_LABELS[panel]) ?? '',
     route,
     orderId,
     userName,

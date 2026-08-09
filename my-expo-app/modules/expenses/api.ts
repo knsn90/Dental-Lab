@@ -3,7 +3,7 @@ import { groupByCurrency, type CurrencyTotal } from '../../core/money/aggregatio
 import { getBaseCurrency } from '../../core/money/baseCurrency';
 import type { Currency } from '../../core/money/currency';
 
-export type ExpenseCategory = 'malzeme' | 'kira' | 'personel' | 'ekipman' | 'vergi' | 'diger';
+export type ExpenseCategory = 'malzeme' | 'kira' | 'personel' | 'ekipman' | 'vergi' | 'kurye' | 'diger';
 export type ExpensePaymentMethod = 'nakit' | 'kart' | 'havale' | 'cek' | 'diger';
 
 export interface Expense {
@@ -19,6 +19,54 @@ export interface Expense {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  // Çoklu döviz (20260507080000_finance_currency)
+  currency?: string | null;
+  rate_at_time?: number | null;
+  amount_base?: number | null;
+  base_currency_at_time?: string | null;
+  /** Gideri doğuran kayıt — kurye teslimatı, maaş ödemesi, avans. */
+  delivery_id?: string | null;
+  salary_payment_id?: string | null;
+  advance_id?: string | null;
+}
+
+/**
+ * Gider detayında gösterilen teslimat kaydı.
+ * Kurye giderini DOĞURAN hareket budur: amaç, yön, rota, ücret ve zaman damgaları
+ * gider satırının tek satırlık açıklamasında kaybolan her şeyi taşır.
+ */
+export interface ExpenseDelivery {
+  id: string;
+  work_order_id: string | null;
+  status: string;
+  mode: string | null;
+  purpose: string | null;
+  direction: string | null;
+  external_provider: string | null;
+  external_tracking_no: string | null;
+  external_tracking_code: string | null;
+  fee_amount: number | null;
+  fee_currency: string | null;
+  fee_source: string | null;
+  stage_snapshot: string | null;
+  assigned_at: string | null;
+  picked_up_at: string | null;
+  delivered_at: string | null;
+  cancelled_at: string | null;
+  cancel_reason: string | null;
+  origin_name: string | null;
+  origin_address: string | null;
+  destination_name: string | null;
+  destination_address: string | null;
+  destination_phone: string | null;
+  recipient_name: string | null;
+  recipient_note: string | null;
+  notes: string | null;
+  ext_courier_name: string | null;
+  ext_courier_phone: string | null;
+  /** İç kurye — deliveries.courier_id profiles(id)'ye bakar (couriers'a DEĞİL). */
+  courier: { full_name: string | null; phone: string | null } | null;
+  work_order: { id: string; order_number: string | null; status: string | null } | null;
 }
 
 export interface CreateExpenseParams {
@@ -40,6 +88,7 @@ export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   personel: 'Personel',
   ekipman:  'Ekipman',
   vergi:    'Vergi / Sigorta',
+  kurye:    'Kurye',
   diger:    'Diğer',
 };
 
@@ -49,6 +98,7 @@ export const EXPENSE_CATEGORY_ICONS: Record<ExpenseCategory, string> = {
   personel: 'account-group',
   ekipman:  'tools',
   vergi:    'bank',
+  kurye:    'truck-delivery',
   diger:    'dots-horizontal-circle',
 };
 
@@ -58,6 +108,7 @@ export const EXPENSE_CATEGORY_COLORS: Record<ExpenseCategory, string> = {
   personel: '#F59E0B',
   ekipman:  '#10B981',
   vergi:    '#EF4444',
+  kurye:    '#0EA5E9',
   diger:    '#64748B',
 };
 
@@ -77,6 +128,66 @@ export async function fetchExpenses(filters?: {
   if (filters?.date_to)   q = q.lte('expense_date', filters.date_to);
 
   return q.returns<Expense[]>();
+}
+
+/**
+ * Tek bir gideri, onu doğuran kayıtla birlikte getirir.
+ *
+ * İki adımda okunur (tek gömülü sorgu yerine): teslimat gömmesi hem `courier_id`
+ * hem `work_order_id` üzerinden ikinci seviye join ister; ayrı sorgu hem RLS
+ * hatalarını yalıtır hem de teslimat okunamazsa giderin kendisinin yine
+ * görünmesini sağlar.
+ */
+export async function fetchExpenseDetail(id: string): Promise<{
+  expense: Expense | null;
+  delivery: ExpenseDelivery | null;
+  createdByName: string | null;
+  error: string | null;
+}> {
+  const { data: exp, error } = await supabase
+    .from('expenses').select('*').eq('id', id).maybeSingle();
+  if (error || !exp) {
+    return { expense: null, delivery: null, createdByName: null, error: error?.message ?? 'Gider bulunamadı' };
+  }
+
+  const expense = exp as Expense;
+  let delivery: ExpenseDelivery | null = null;
+  let createdByName: string | null = null;
+
+  const jobs: Promise<void>[] = [];
+
+  if (expense.delivery_id) {
+    jobs.push((async () => {
+      const { data } = await supabase
+        .from('deliveries')
+        .select(`
+          id, work_order_id, status, mode, purpose, direction,
+          external_provider, external_tracking_no, external_tracking_code,
+          fee_amount, fee_currency, fee_source, stage_snapshot,
+          assigned_at, picked_up_at, delivered_at, cancelled_at, cancel_reason,
+          origin_name, origin_address,
+          destination_name, destination_address, destination_phone,
+          recipient_name, recipient_note, notes,
+          ext_courier_name, ext_courier_phone,
+          courier:courier_id ( full_name, phone ),
+          work_order:work_order_id ( id, order_number, status )
+        `)
+        .eq('id', expense.delivery_id!)
+        .maybeSingle();
+      if (data) delivery = data as unknown as ExpenseDelivery;
+    })());
+  }
+
+  if (expense.created_by) {
+    jobs.push((async () => {
+      const { data } = await supabase
+        .from('profiles').select('full_name').eq('id', expense.created_by!).maybeSingle();
+      createdByName = (data as any)?.full_name ?? null;
+    })());
+  }
+
+  await Promise.all(jobs);
+  return { expense, delivery, createdByName, error: null };
 }
 
 export async function createExpense(params: CreateExpenseParams) {

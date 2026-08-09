@@ -7,6 +7,7 @@
     "icon": "./assets/images/icon.png",
     "scheme": "dental-lab",
     "userInterfaceStyle": "light",
+    "backgroundColor": "#FFFFFF",
     "splash": {
       "image": "./assets/images/splash.png",
       "resizeMode": "contain",
@@ -14,6 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
+      "icon": "./assets/images/icon-ios.png",
       "bundleIdentifier": "com.nexadent.app",
       "infoPlist": {
         "NSCameraUsageDescription": "İş emri fotoğrafı çekmek, QR okutmak ve 3D yüz tarama (gülüş tasarımı için) yapmak amacıyla kamera erişimi gerekiyor.",

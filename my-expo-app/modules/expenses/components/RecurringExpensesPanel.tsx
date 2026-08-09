@@ -43,7 +43,7 @@ const CATEGORIES: { key: RecurringExpense['category']; label: string }[] = [
 const FREQ_OPTS: RecurringFrequency[] = ['weekly','monthly','quarterly','yearly'];
 
 function fmtMoney(n: number): string {
-  return baseSymbol() + n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return baseSymbol() + (Number(n) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export function RecurringExpensesPanel({ visible, onClose, onAfterGenerate }: Props) {

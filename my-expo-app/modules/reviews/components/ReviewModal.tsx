@@ -149,7 +149,7 @@ export function ReviewModal({ visible, onClose, workOrderId, orderLabel, existin
     const setter = kind === 'clinical' ? setClinicalPhotos : setPhotos;
     const newPaths: string[] = [];
     for (const a of r.assets.slice(0, 6)) {
-      const { path, error: upErr } = await uploadReviewPhoto(workOrderId, { uri: a.uri, mimeType: a.mimeType, fileName: a.fileName }, kind);
+      const { path, error: upErr } = await uploadReviewPhoto(workOrderId, { uri: a.uri, mimeType: a.mimeType, fileName: a.fileName, fileSize: a.fileSize }, kind);
       if (path) newPaths.push(path); else if (upErr) setError(upErr.message ?? 'Foto yüklenemedi');
     }
     if (newPaths.length) {

@@ -8,7 +8,7 @@ import { useTranslation } from 'react-i18next';
 const MessagesPopup: any = React.lazy(() => import('../../modules/orders/components/MessagesPopup').then(m => ({ default: (m as any).MessagesPopup })));
 const ScanB6Mobile: any = React.lazy(() => import('../../modules/orders/screens/ScanB6Mobile').then(m => ({ default: (m as any).ScanB6Mobile })));
 import { useOrderChatInbox } from '../../modules/orders/hooks/useOrderChatInbox';
-import { Tabs, Slot, useRouter } from 'expo-router';
+import { Tabs, Slot, useRouter, Redirect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Home, ListChecks, QrCode, History, User, Search, Inbox, Wrench, Wallet, CalendarDays, ChevronRight } from 'lucide-react-native';
 import { CommandPalette } from '../../core/ui/CommandPalette';
@@ -18,6 +18,7 @@ import { PillTabBar, type PillTabItem } from '../../core/ui/mobile/PillTabBar';
 import { TopActionBar } from '../../core/ui/mobile/TopActionBar';
 import { PanelTopHeader } from '../../core/ui/mobile/PanelTopHeader';
 import { MOBILE_PANEL_THEMES, useMobileTokens } from '../../core/theme/mobileDesignTokens';
+import { useThemeModeStore } from '../../core/store/themeModeStore';
 import { useAuthStore } from '../../core/store/authStore';
 import { usePermissionStore } from '../../core/store/permissionStore';
 import { useScanStore } from '../../core/store/scanStore';
@@ -31,6 +32,7 @@ export default function StationLayout() {
   const router = useRouter();
   const isDesktop = useIsDesktop();
   const T = useMobileTokens();
+  const isDark = useThemeModeStore(s => s.resolvedDark);
   const { profile, loading } = useAuthStore();
   const { fetchForPanel } = usePermissionStore();
   const canCreateOrder = usePermissionStore(s => s.can('manage_order_create'));
@@ -77,8 +79,11 @@ export default function StationLayout() {
     .flatMap((n: any) => (n.children?.length ? n.children : [n]))
     .filter((n: any) => n.href && !String(n.href).startsWith('#'));
 
-  if (!profile || profile.user_type !== 'lab') {
-    return <Slot />;
+  if (!profile) {
+    return <Slot />;  // profil yükleniyor (optimistic) → kabuk
+  }
+  if (profile.user_type !== 'lab') {
+    return <Redirect href="/" />;  // yanlış panel → doğru panele yönlendir
   }
 
   if (isDesktop) {
@@ -129,12 +134,12 @@ export default function StationLayout() {
             expo-router render edilmiş çocuk rotası bulamayıp durumunu kaybeder ve
             index'e sıfırlanır (alt sayfada yenileyince özete dönme hatası).
             Lazy kardeşler kendi sınırlarında durur. */}
-    <View style={{ flex: 1, backgroundColor: T.bg }}>
+    <View style={{ flex: 1, backgroundColor: isDark ? '#0E0E0E' : TEKNISYEN.bgPage }}>
       <StatusBar style="dark" />
       <Tabs
         screenOptions={{
           headerShown: false,
-          sceneStyle: { backgroundColor: T.bg },
+          sceneStyle: { backgroundColor: 'transparent' },
           tabBarStyle: { display: 'none' },
         }}
       >

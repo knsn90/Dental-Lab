@@ -214,7 +214,7 @@ export function buildOrderPrintHtml(input: PrintOrderInput): string {
 
   const genderIco = patient.gender === 'erkek' ? ICONS.male : ICONS.female;
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>İş Emri · ${escapeHtml(orderNumber)}</title>
+  return `<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8"><title>İş Emri · ${escapeHtml(orderNumber)}</title>
 <style>
 @page{size:A5 portrait;margin:7mm 7mm}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -223,7 +223,10 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
 .topbar{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px}
 .brand{display:flex;align-items:center;gap:10px}
 .brand svg{width:24px;height:24px}
-.brand img{width:48px;height:48px;object-fit:contain;display:block}
+/* Logo çoğu labda GENİŞ bir sözcük-işareti. 48x48 kare kutuya sokunca
+   yükseklik boşa gidiyor, marka pul kadar kalıyordu. Yüksekliği sabitle,
+   genişliği serbest bırak. */
+.brand img{height:34px;width:auto;max-width:150px;object-fit:contain;display:block}
 .brandName{font-size:13px;font-weight:800;letter-spacing:0.6px;color:#0F172A;line-height:1}
 .brandSub{font-size:6.5px;font-weight:700;color:#64748B;letter-spacing:2.6px;margin-top:3px}
 .qrBox{text-align:center;flex-shrink:0}
@@ -232,9 +235,25 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
 .qrBox img.qrImg{display:block;width:54px;height:54px;border:1px solid #E2E8F0;border-radius:5px;padding:3px;background:#fff;box-sizing:content-box;object-fit:contain}
 .qrBox .qrLbl{margin-top:3px;font-size:6.5px;font-weight:800;color:#0F172A;letter-spacing:1px}
 .qrBox .qrCap{display:none}
-.hdrText{margin-bottom:8px}
 .eb{font-size:7px;font-weight:700;color:#64748B;letter-spacing:1.3px;text-transform:uppercase}
-.ttl{margin-top:2px;font-size:18px;font-weight:400;letter-spacing:-0.4px;color:#0F172A;line-height:1.05}
+/* ── Hero ─────────────────────────────────────────────────────────
+   Kâğıda bakan kişinin ilk sorusu "bu kimin işi?" — o yüzden sayfanın
+   en büyük elemanı hasta adı. İş emri numarası, hekim, klinik ve aciliyet
+   onun etrafında toplanır; QR da burada, ayrı bir kat açmadan. */
+.hero{display:flex;align-items:flex-start;gap:10px;border:1px solid #E2E8F0;border-radius:8px;padding:9px 11px;margin-bottom:6px}
+.heroMain{flex:1;min-width:0}
+.heroName{font-size:21px;font-weight:700;letter-spacing:-0.6px;line-height:1.08;color:#0F172A}
+.heroBadge{display:inline-block;vertical-align:middle;margin-left:7px;background:#DC2626;color:#fff;padding:2px 9px;border-radius:9999px;font-size:9px;font-weight:800;letter-spacing:1px}
+.heroSub{margin-top:4px;font-size:8.5px;color:#475569;line-height:1.45}
+.heroSub b{color:#0F172A;font-weight:700}
+/* ── Özet şeridi — "ne yapılacak, ne zaman" tek bakışta ── */
+.factStrip{display:flex;border:1px solid #E2E8F0;border-radius:8px;overflow:hidden;margin-bottom:6px}
+.fact{flex:1;min-width:0;padding:6px 9px;border-right:1px solid #F1F5F9}
+.fact:last-child{border-right:none}
+.factL{font-size:6.5px;font-weight:700;color:#64748B;letter-spacing:0.9px;text-transform:uppercase;margin-bottom:2px}
+.factV{font-size:9.5px;font-weight:700;color:#0F172A;line-height:1.2;word-break:break-word}
+.factV .pill{display:inline-block;background:#DCFCE7;color:#166534;padding:1px 6px;border-radius:9999px;font-size:7.5px;font-weight:800}
+.factV .pillUrgent{background:#FEE2E2;color:#991B1B}
 .metaRow{display:flex;gap:0;border-top:1px solid #E2E8F0;border-bottom:1px solid #E2E8F0;padding:5px 0;margin-bottom:8px}
 .metaCell{flex:1;padding:0 7px;border-right:1px solid #F1F5F9;min-width:0}
 .metaCell:last-child{border-right:none}
@@ -314,50 +333,41 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
         ? `<img src="${escapeHtml(lab.logoUrl)}" alt="${escapeHtml(lab.name)}" />`
         : ICONS.tooth.replace('width="14"','width="24"').replace('height="14"','height="24"')}
       ${(logoOnly && lab.logoUrl) ? '' : `<div>
-        <div class="brandName">${escapeHtml((lab.name || 'NEXADENT').toUpperCase())}</div>
+        <div class="brandName">${escapeHtml((lab.name || 'NEXADENT').toLocaleUpperCase('tr-TR'))}</div>
         <div class="brandSub">LABORATORY</div>
       </div>`}
+    </div>
+    <div style="text-align:right">
+      <div class="eb">İş Emri</div>
+      <div style="font-size:12px;font-weight:800;letter-spacing:0.2px;color:#0F172A;line-height:1.15">${escapeHtml(orderNumber)}</div>
+      <div style="font-size:7.5px;color:#94A3B8;margin-top:1px">${fmtDateTime(createdAt)}</div>
+    </div>
+  </div>
+
+  <!-- Hero: kâğıdın cevapladığı ilk soru "bu kimin işi?" -->
+  <div class="hero">
+    <div class="heroMain">
+      <div class="eb">Hasta</div>
+      <div class="heroName">${escapeHtml(patient.name || '—')}${isUrgent ? '<span class="heroBadge">ACİL</span>' : ''}</div>
+      <div class="heroSub">
+        ${patient.gender && patient.gender !== 'belirtilmedi' ? `${patient.gender === 'erkek' ? 'Erkek' : 'Kadın'} &middot; ` : ''}
+        ${doctor.name ? `<b>${escapeHtml(doctor.name)}</b>` : ''}${clinic.name ? ` &middot; ${escapeHtml(clinic.name)}` : ''}
+        ${doctor.phone ? `<br>${escapeHtml(doctor.phone)}` : ''}
+      </div>
     </div>
     <div class="qrBox">
       ${qrSvgHtml
         || (qrUrl ? `<img class="qrImg" src="https://api.qrserver.com/v1/create-qr-code/?size=160x160&margin=2&bgcolor=ffffff&color=0a0a0a&data=${encodeURIComponent(qrUrl)}" alt="QR" />` : '<div class="qrPlaceholder"></div>')}
       <div class="qrLbl">VAKA QR</div>
-      <div class="qrCap">Tarayın ve vaka detaylarına ulaşın.</div>
     </div>
   </div>
 
-  <div class="hdrText">
-    <div class="eb">Dijital Vaka Özeti · Digital Case Summary</div>
-    <div class="ttl">İş Emri${isUrgent ? ' <span style="font-size:11px;background:#DC2626;color:#fff;padding:3px 10px;border-radius:9999px;font-weight:700;letter-spacing:1px;vertical-align:middle;margin-left:8px">ACİL</span>' : ''}</div>
-  </div>
-
-  <div class="metaRow">
-    <div class="metaCell"><div class="ml">İş Emri No</div><div class="mv">${escapeHtml(orderNumber)}</div></div>
-    <div class="metaCell"><div class="ml">Oluşturulma</div><div class="mv">${fmtDateTime(createdAt)}</div></div>
-    <div class="metaCell"><div class="ml">Kaynak</div><div class="mv">${escapeHtml(lab.name || 'Nexadent')}</div></div>
-    <div class="metaCell"><div class="ml">Klinik</div><div class="mv">${escapeHtml(clinic.name)}</div></div>
-  </div>
-
-  <div class="row">
-    <div class="col">
-      <div class="card">
-        <div class="ch">${ICONS.clinic} Klinik &amp; Hekim Bilgileri</div>
-        <div class="cardBody">
-          ${clinic.name ? `<div class="cr">${ICONS.clinic}<div class="cl">Klinik</div><div class="cv">${escapeHtml(clinic.name)}</div></div>` : ''}
-          ${doctor.name ? `<div class="cr">${ICONS.doctor}<div class="cl">Diş Hekimi</div><div class="cv">${escapeHtml(doctor.name)}</div></div>` : ''}
-          ${doctor.phone ? `<div class="cr">${ICONS.phone}<div class="cl">Telefon</div><div class="cv">${escapeHtml(doctor.phone)}</div></div>` : ''}
-        </div>
-      </div>
-    </div>
-    <div class="col">
-      <div class="card">
-        <div class="ch">${ICONS.person} Hasta Bilgileri</div>
-        <div class="cardBody">
-          ${patient.name ? `<div class="cr">${ICONS.person}<div class="cl">Ad Soyad</div><div class="cv">${escapeHtml(patient.name)}</div></div>` : ''}
-          ${patient.gender && patient.gender !== 'belirtilmedi' ? `<div class="cr">${genderIco}<div class="cl">Cinsiyet</div><div class="cv">${patient.gender === 'erkek' ? 'Erkek' : 'Kadın'}</div></div>` : ''}
-        </div>
-      </div>
-    </div>
+  <!-- Özet şeridi: ne yapılacak, hangi malzemeyle, ne zaman teslim -->
+  <div class="factStrip">
+    <div class="fact"><div class="factL">İşlem</div><div class="factV">${escapeHtml(ops.length > 0 ? (ops[0].workType || ops[0].material || '—') : '—')}${ops.length > 0 ? ` <span style="font-weight:600;color:#64748B">· ${ops.length} diş</span>` : ''}</div></div>
+    <div class="fact"><div class="factL">Materyal</div><div class="factV">${materyalList.length > 0 ? escapeHtml(materyalList.join(', ')) : '—'}</div></div>
+    <div class="fact"><div class="factL">Teslim</div><div class="factV">${fmtDate(deliveryDate)}<br><span style="font-weight:600;font-size:8px;color:#64748B">${escapeHtml(teslimSekli)}</span></div></div>
+    <div class="fact"><div class="factL">Öncelik</div><div class="factV"><span class="pill ${isUrgent ? 'pillUrgent' : ''}">${oncelikLabel}</span></div></div>
   </div>
 
   ${ops.length > 0 ? `<div class="card teethCard">
@@ -373,22 +383,8 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
 
   <div class="row4">
     <div class="card kv">
-      <h>${ICONS.material} Materyal</h>
-      ${materyalList.length > 0
-        ? `<div class="kvChips">${materyalList.map(m => `<span class="chip">${escapeHtml(m)}</span>`).join('')}</div>`
-        : '<div class="opEmpty">—</div>'}
-    </div>
-    <div class="card kv">
       <h>${ICONS.gear} Üretim Yöntemi</h>
       <div class="kvChips">${uretimList.map(u => `<span class="chip">${escapeHtml(u)}</span>`).join('')}</div>
-    </div>
-    <div class="card kv">
-      <h>${ICONS.truck} Teslimat Bilgisi</h>
-      <div class="deliveryGrid">
-        <div class="dRow"><span class="dLbl">Tahmini Teslim</span><span class="dVal">${fmtDate(deliveryDate)}</span></div>
-        <div class="dRow"><span class="dLbl">Teslim Şekli</span><span class="dVal">${escapeHtml(teslimSekli)}</span></div>
-        <div class="dRow"><span class="dLbl">Öncelik</span><span class="dVal"><span class="pill ${isUrgent ? 'pillUrgent' : ''}">${oncelikLabel}</span></span></div>
-      </div>
     </div>
   </div>
 

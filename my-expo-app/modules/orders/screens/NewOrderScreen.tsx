@@ -1,4 +1,5 @@
 import { localeTag } from '../../../core/i18n';
+import { openFileUrl } from '../../../core/util/openFile';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable,
@@ -22,6 +23,7 @@ if (Platform.OS === 'web') {
 const WebPortal = ({ children }: { children: React.ReactNode }) =>
   _portal ? (_portal(children) as React.ReactElement) : <>{children}</>;
 import { useRouter } from 'expo-router';
+import { safeBack } from '../../../core/util/safeBack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MOBILE_PANEL_THEMES, type MobilePanel, useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
@@ -34,12 +36,20 @@ import { BrandedQR } from '../../../core/ui/BrandedQR';
 const QRCodeSvg = require('react-native-qrcode-svg').default;
 import { useAuthStore } from '../../../core/store/authStore';
 import { usePermissionStore } from '../../../core/store/permissionStore';
-import { createWorkOrder, addOrderItem } from '../api';
+import { createWorkOrder, addOrderItem, updateOrderAdmin, updateOrderClient, isOrderPrePlanning, type ClientOrderEditFields, type ClientOrderEditItem } from '../api';
+import { createChangeRequest } from '../changeRequests';
+import type { OrderPrefill, OrderEditPrefill } from '../prefillFromOrder';
+import { fetchOrderEditPrefill } from '../prefillFromOrder';
+import { useNewOrderModalStore } from '../../../core/store/newOrderModalStore';
+import { useOnboardingStore } from '../../../core/onboarding/onboardingStore';
+import { useTourTarget } from '../../../core/onboarding/useTourTarget';
+import { OnboardingOverlay } from '../../../core/onboarding/OnboardingOverlay';
 import { sendMessage, uploadChatAttachment, AttachmentType } from '../chatApi';
 import { supabase } from '../../../core/api/supabase';
 import { getActiveLabId } from '../../../core/store/activeLabStore';
 import { CURRENCY_META } from '../../../core/money/currency';
 import { DentyFAB } from '../../denty/components/DentyFAB';
+import { useSuppressDentyFab } from '../../../core/store/uiOverlayStore';
 import { fetchClinics, fetchAllDoctors, createClinic, createDoctor } from '../../clinics/api';
 import { titleCaseTR } from '../../../core/utils/textCase';
 import { toast } from '../../../core/ui/Toast';
@@ -130,8 +140,51 @@ interface ToothOp {
   material_price: number;
   /** Fiyat listesindeki para birimi (lab_services.currency) — gösterimde kullanılır. */
   currency?: string;
+  /** Fiyat listesindeki birim (lab_services.unit): 'Çene' | 'Vaka' | 'Seans' | 'Adet' | …
+   *  Fiyatlama çarpanını belirler: Çene→çene sayısı, Vaka/Seans→1, diğer→diş sayısı. */
+  price_unit?: string | null;
   /** Aynı diş için birden fazla işlem ayırt etmek için transient uid (DB'ye yazılmaz). */
   __uid?: string;
+}
+
+/** Diş numaralarından çene sayısı (üst 11–28, alt 31–48). */
+function archCountOf(teeth: number[]): number {
+  const up = teeth.some(t => t >= 11 && t <= 28);
+  const lo = teeth.some(t => t >= 31 && t <= 48);
+  return (up ? 1 : 0) + (lo ? 1 : 0);
+}
+/** Fiyat birimine göre bir grubun çarpanı: Çene→çene sayısı, Vaka/Seans→1, diğer→diş sayısı. */
+function priceUnitQty(priceUnit: string | null | undefined, teeth: number[]): number {
+  const u = (priceUnit ?? '').toLocaleLowerCase('tr-TR');
+  if (u === 'çene') return Math.max(1, archCountOf(teeth));
+  if (u === 'vaka' || u === 'seans') return 1;
+  return teeth.length;
+}
+/** İş listesi miktar etiketi (ör. "1 çene", "2 çene", "vaka", "16 adet"). */
+function unitQtyLabel(priceUnit: string | null | undefined, teeth: number[]): string {
+  const u = (priceUnit ?? '').toLocaleLowerCase('tr-TR');
+  if (u === 'çene') { const q = Math.max(1, archCountOf(teeth)); return `${q} çene`; }
+  if (u === 'vaka') return 'vaka';
+  if (u === 'seans') return 'seans';
+  return `${teeth.length} adet`;
+}
+/** confirmed tooth_ops → birim-farkında toplam (labor + material). */
+function toothOpsTotals(ops: ToothOp[]): { labor: number; material: number; grand: number } {
+  const map = new Map<string, { price: number; material: number; unit?: string | null; teeth: number[] }>();
+  for (const o of ops) {
+    if (!o.work_type) continue;
+    const k = [o.work_type, o.shade, o.material, o.implant_system, o.implant_type, o.abutment, o.screw, o.price, o.material_price, o.price_unit].join('||');
+    let g = map.get(k);
+    if (!g) { g = { price: o.price || 0, material: o.material_price || 0, unit: o.price_unit, teeth: [] }; map.set(k, g); }
+    g.teeth.push(o.tooth);
+  }
+  let labor = 0, material = 0;
+  for (const g of map.values()) {
+    const q = priceUnitQty(g.unit, Array.from(new Set(g.teeth)));
+    labor += g.price * q;
+    material += g.material * q;
+  }
+  return { labor, material, grand: labor + material };
 }
 
 // Uid generator — same tooth için ikinci/üçüncü op ayırt etmek için
@@ -174,12 +227,15 @@ interface FormData {
   delivery_method: 'kurye' | 'elden' | 'kargo' | '';
   implant_brand: string;
   scan_bodies_delivered: boolean;
+  /** Devam siparişi bağı — dolu ise bu sipariş, teslim edilmiş bir işin planlı
+   *  devamıdır (ör. geçici→nihai). Kaydederken payload'a eklenir. Revizyon değil. */
+  continues_order_id?: string;
 }
 
 const BLANK_OP: Omit<ToothOp, 'tooth'> = {
   work_type: '', shade: '',
   implant_system: '', implant_type: '', abutment: '', screw: '',
-  material: '', price: 0, material_price: 0,
+  material: '', price: 0, material_price: 0, price_unit: null,
 };
 
 const INITIAL_FORM: FormData = {
@@ -204,7 +260,80 @@ const INITIAL_FORM: FormData = {
   delivery_method: '',
   implant_brand: '',
   scan_bodies_delivered: false,
+  continues_order_id: undefined,
 };
+
+/**
+ * "Bu siparişten yeni oluştur" — OrderPrefill'i form başlangıç değerine çevirir.
+ * INITIAL_FORM üzerine yalnız vaka kurgusu yazılır; hasta kimliği, tarih,
+ * aciliyet, notlar ve ekler bilinçli olarak boş bırakılır (bkz. prefillFromOrder).
+ */
+function applyPrefill(p: OrderPrefill): FormData {
+  const base: FormData = {
+    ...INITIAL_FORM,
+    clinic_id:                p.clinic_id,
+    doctor_id:                p.doctor_id,
+    model_type:               p.model_type,
+    machine_type:             (p.machine_type || 'milling') as MachineType,
+    measurement_type:         p.measurement_type as FormData['measurement_type'],
+    delivery_method:          p.delivery_method,
+    tags:                     [...p.tags],
+    lab_notes_visible:        p.lab_notes_visible,
+    doctor_approval_required: p.doctor_approval_required,
+    tooth_ops: p.tooth_ops.map(o => ({
+      ...o,
+      __uid: `${o.tooth}-${o.work_type}-${Math.random().toString(36).slice(2, 8)}`,
+    })),
+    pending_items: p.pending_items.map(it => ({ ...it })) as FormData['pending_items'],
+  };
+
+  // Devam siparişi — hasta bilgisini de taşı + bağı forma yaz (varsa). Plain kopyada
+  // bu alanlar undefined → base olduğu gibi döner (hasta boş, davranış değişmez).
+  if (p.continues_order_id) base.continues_order_id = p.continues_order_id;
+  // Devam siparişinde hekim notu taşınır (aynı hasta, aynı vaka).
+  if (p.source_notes) base.notes = p.source_notes;
+  if (p.patient_prefill) {
+    const pp = p.patient_prefill;
+    base.patient_first_name = pp.first_name;
+    base.patient_last_name  = pp.last_name;
+    base.patient_id         = pp.id;
+    base.patient_gender     = pp.gender;
+    base.patient_dob        = pp.dob ? new Date(pp.dob) : null;
+    base.patient_nationality = pp.nationality;
+    base.patient_country    = pp.country;
+    base.patient_city       = pp.city;
+  }
+  return base;
+}
+
+/**
+ * DÜZENLEME — mevcut siparişi forma doldurur. applyPrefill'den farkı: hasta kimliği,
+ * teslim tarihi, aciliyet ve notlar da yüklenir (yerinde güncelleme için).
+ */
+function applyEditPrefill(p: OrderEditPrefill): FormData {
+  const base = applyPrefill(p);
+  const nameParts = (p.patient_name || '').trim().split(/\s+/);
+  const first = nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : (nameParts[0] ?? '');
+  const last  = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
+  return {
+    ...base,
+    patient_first_name: first,
+    patient_last_name: last,
+    patient_id: p.patient_id,
+    patient_gender: p.patient_gender,
+    patient_dob: p.patient_dob ? new Date(p.patient_dob) : null,
+    patient_phone: p.patient_phone,
+    patient_nationality: p.patient_nationality,
+    patient_country: p.patient_country,
+    patient_city: p.patient_city,
+    is_urgent: p.is_urgent,
+    delivery_date: p.delivery_date ? new Date(p.delivery_date) : (null as unknown as Date),
+    notes: p.notes,
+    lab_notes: p.lab_notes,
+    implant_brand: p.implant_brand,
+    scan_bodies_delivered: p.scan_bodies_delivered,
+  };
+}
 
 // ── Auto-save draft (Gmail taslak mantığı) ─────────────────────────────
 const DRAFT_KEY        = 'newOrderDraft:v1';
@@ -441,9 +570,19 @@ export function NewOrderScreen({
   doctorMode = false,
   clinicMode = false,
   panel,
+  prefill,
+  editOrderId,
+  onSaved,
 }: {
   accentColor?: string;
   onClose?: () => void;
+  /**
+   * Verilirse → DÜZENLEME modu: NewOrderScreen mevcut siparişi (hasta kimliği dâhil)
+   * ön-doldurur, taslak-autosave devre dışı, Kaydet siparişi GÜNCELLER (yeni oluşturmaz).
+   */
+  editOrderId?: string;
+  /** Düzenleme kaydı başarıyla uygulandıktan sonra çağrılır (liste/detay yenileme). */
+  onSaved?: () => void;
   /**
    * Doktor panelinden çağrıldığında klinik+hekim seçimi gizlenir,
    * doctor_id otomatik olarak giriş yapan hekimin profile.id'si ile doldurulur,
@@ -460,11 +599,26 @@ export function NewOrderScreen({
    * Verilmezse doctorMode/clinicMode'dan türetilir.
    */
   panel?: NewOrderPanel;
+  /**
+   * "Bu siparişten yeni oluştur" başlangıç değerleri (modules/orders/prefillFromOrder).
+   * Verilmezse davranış birebir eskisi gibi — kaydedilmiş taslak varsa o yüklenir.
+   * Verilirse taslak yok sayılır ve form vaka kurgusuyla dolu açılır (hasta boş).
+   */
+  prefill?: OrderPrefill | null;
 }) {
   // Panel kimliğini türet — açıkça verilmemişse mode flag'lerinden çıkar
   const resolvedPanel: NewOrderPanel = panel
     ?? (doctorMode ? 'doctor' : clinicMode ? 'clinic' : 'lab');
   const theme = PANEL_THEMES[resolvedPanel];
+
+  // Düzenleme modu — mevcut siparişi yerinde günceller (yeni oluşturmaz).
+  const isEdit = !!editOrderId;
+  // Simanty yeni sipariş OLUŞTURMA formunu doldurur; mevcut siparişi
+  // düzenleyemez. Düzenleme sihirbazı açıkken FAB gizlenir — modalın üstünde
+  // durup (kök FAB zIndex 9999) Kaydet düğmesiyle çakışıyordu.
+  useSuppressDentyFab(isEdit);
+  const [editReady, setEditReady] = useState(!isEdit); // düzenlemede prefill gelene kadar false
+  const [editOrderRow, setEditOrderRow] = useState<{ triaged_at?: string | null; status?: string | null } | null>(null);
 
   // Fiyat görünürlüğü: admin/klinik/hekim panelleri her zaman görür;
   // lab/istasyon kullanıcıları yalnız view_order_pricing izniyle görür.
@@ -499,7 +653,23 @@ export function NewOrderScreen({
   // Mobilde iki-sütunlu alan satırları tek sütuna düşsün (dar ekranda input daralmasın)
   const twoColStyle = isDesktop ? styles.twoCol : styles.twoColStack;
 
+  // ── "Siparişten kopyala" prefill'i ────────────────────────────────────
+  // Prop öncelikli; verilmemişse global modal store'dan TEK KULLANIMLIK okunur
+  // (openWithPrefill ile set edilir). Böylece 5 panelin layout'una dokunmadan
+  // modal prefill ile açılabiliyor; okunduktan sonra temizlenir ki bir sonraki
+  // "Yeni sipariş" boş açılsın.
+  const [effectivePrefill] = useState<OrderPrefill | null>(
+    () => prefill ?? useNewOrderModalStore.getState().prefill ?? null
+  );
+  useEffect(() => {
+    if (!prefill && effectivePrefill) useNewOrderModalStore.getState().clearPrefill();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [step, setStep] = useState<Step>(() => {
+    // Düzenleme / kopyalama ile açıldıysa taslağın kaldığı adıma değil, baştan başla.
+    if (editOrderId) return 1;
+    if (effectivePrefill) return 1;
     if (Platform.OS === 'web') {
       try {
         // Önce kalıcı (localStorage) sonra session — re-mount/reload sonrası kaldığı yerden devam
@@ -513,6 +683,7 @@ export function NewOrderScreen({
   // Native (iOS/Android) — AsyncStorage'dan step restore et (async, mount sonrası)
   useEffect(() => {
     if (Platform.OS === 'web') return;
+    if (effectivePrefill) return;   // kopyalama ile açıldı → taslak adımını geri yükleme
     let active = true;
     (async () => {
       try {
@@ -537,6 +708,42 @@ export function NewOrderScreen({
     }
     setStep(s);
   };
+
+  // ─── Onboarding turu (interaktif form gezisi) ─────────────────────────────
+  // Hepsi ADDITIVE: tur aktif değilken hiçbir etkisi yok. Yalnız hekim/klinik
+  // panelinde çalışır. Bölüm ref'leri spotlight hedefidir; controller ref'i
+  // overlay'e sihirbaz adımını değiştirtir; overlayHost modal açıkken spotlight'ı
+  // modal-içi overlay'e devreder (fullScreen modal kök overlay'i örter).
+  const tourGuided = doctorMode || clinicMode;
+  const tourRefClinic  = useTourTarget('tour-no-clinic');
+  const tourRefPatient = useTourTarget('tour-no-patient');
+  const tourRefTeeth   = useTourTarget('tour-no-teeth');
+  const tourRefWork    = useTourTarget('tour-no-work');
+  const tourRefHow     = useTourTarget('tour-no-how');
+  const tourRefSummary = useTourTarget('tour-no-summary');
+  // Alan-alan (field-level) hedefler — adım 1'i tek tek doldurmaya yardımcı olur.
+  const tourFldDoctor  = useTourTarget('tour-fld-doctor');
+  const tourFldName    = useTourTarget('tour-fld-name');
+  const tourFldDob     = useTourTarget('tour-fld-dob');
+  const tourFldGender  = useTourTarget('tour-fld-gender');
+  const tourRefChat    = useTourTarget('tour-no-chat');
+  const tourRefFiles   = useTourTarget('tour-no-files');
+  // goToStep'in en güncel sürümünü stabil bir sarmalayıcıyla yayınla.
+  const goToStepRef = useRef(goToStep);
+  goToStepRef.current = goToStep;
+  useEffect(() => {
+    if (!tourGuided) return;
+    const store = useOnboardingStore.getState();
+    store.registerRef('no-form-controller', { goToStep: (n: number) => goToStepRef.current(n as Step) });
+    // Tur çalışıyorken bu modal spotlight'ı devralır.
+    if (store.active) store.setOverlayHost('newOrder');
+    return () => {
+      const s = useOnboardingStore.getState();
+      s.unregisterRef('no-form-controller');
+      s.setOverlayHost('root');
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tourGuided]);
 
   // Sayfa başlığını set et
   const setPageTitle = usePageTitleStore(s => s.setTitle);
@@ -563,6 +770,12 @@ export function NewOrderScreen({
   const [selectedTeeth, setSelectedTeeth] = useState<number[]>([]);
 
   const [form, setForm] = useState<FormData>(() => {
+    // Düzenleme modu: form boş başlar, prefill mount effect'inde async yüklenir
+    // (taslak asla okunmaz/karışmaz).
+    if (editOrderId) return INITIAL_FORM;
+    // "Siparişten kopyala" — açık bir kullanıcı eylemi olduğu için kaydedilmiş
+    // taslağın önüne geçer. Hasta alanları INITIAL_FORM'dan boş gelir.
+    if (effectivePrefill) return applyPrefill(effectivePrefill);
     if (Platform.OS === 'web') {
       try {
         // Öncelik: kalıcı localStorage taslağı (Gmail draft mantığı)
@@ -596,6 +809,58 @@ export function NewOrderScreen({
     return INITIAL_FORM;
   });
   const [loading, setLoading] = useState(false);
+
+  // ── Düzenleme prefill'i (async) — mevcut siparişi forma doldur ──
+  useEffect(() => {
+    if (!editOrderId) return;
+    let alive = true;
+    (async () => {
+      const p = await fetchOrderEditPrefill(editOrderId);
+      if (!alive) return;
+      if (!p) { toast.error('Sipariş yüklenemedi.'); onClose?.(); return; }
+      const base = applyEditPrefill(p);
+      // Mevcut ekleri forma "yüklenmiş" olarak doldur — düzenlemede dosyalar
+      // sıfırlanmış görünmesin / tekrar yükleme istenmesin (DB'de zaten korunuyor).
+      try {
+        const { data: photos } = await supabase
+          .from('work_order_photos')
+          .select('id, storage_path, caption')
+          .eq('work_order_id', editOrderId)
+          .order('created_at', { ascending: true });
+        const list = (photos ?? []) as any[];
+        if (list.length) {
+          const paths = list.map(ph => ph.storage_path).filter(Boolean);
+          const urlMap: Record<string, string> = {};
+          if (paths.length) {
+            const { data: signed } = await supabase.storage.from('work-order-photos').createSignedUrls(paths, 3600);
+            (signed ?? []).forEach((s: any) => { if (s?.path && s?.signedUrl) urlMap[s.path] = s.signedUrl; });
+          }
+          base.attachments = list.map((ph): AttachedFile => {
+            const ext = String(ph.storage_path || '').split('.').pop()?.toLowerCase() ?? '';
+            const kind: FileKind =
+              ext === 'pdf' ? 'pdf'
+              : ['mp4', 'mov', 'webm', 'm4v'].includes(ext) ? 'video'
+              : ext === 'stl' ? 'stl'
+              : ext === 'ply' ? 'ply'
+              : ['jpg', 'jpeg', 'png', 'webp', 'heic', 'gif'].includes(ext) ? 'photo'
+              : 'other';
+            return {
+              id: ph.id, name: ph.caption || 'Dosya', uri: urlMap[ph.storage_path] || '',
+              kind, size: 0, scope: 'case',
+              storage_path: ph.storage_path, upload_status: 'done', upload_progress: 100,
+            };
+          });
+        }
+      } catch { /* ekler yüklenemese de düzenleme çalışsın */ }
+      if (!alive) return;
+      setForm(base);
+      setEditOrderRow({ triaged_at: p.triaged_at, status: p.status });
+      setStep(1);
+      setEditReady(true);
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editOrderId]);
 
   // ── Submit-time dosya upload progress state ──
   // Submit sırasında her dosya için ayrı progress bar gösterilir.
@@ -649,6 +914,12 @@ export function NewOrderScreen({
   // ScanWorkOrderModal sessionStorage'a 'ocr_work_order' yazıp NewOrderScreen'e yönlendiriyor.
   // İlk mount'ta okunur, form'a uygulanır ve key silinir.
   const [ocrBanner, setOcrBanner] = useState<string | null>(null);
+  // WhatsApp botunda adım-adım siparişte toplanan medya (paper-orders/wa-pending yolları);
+  // onaylanıp work_order oluşunca work-order-photos'a taşınır (aşağıda submit sonrası).
+  const pendingWaMediaRef = useRef<any[] | null>(null);
+  // Manuel/kağıt sipariş onayından geldiyse: sipariş BAŞARIYLA oluşunca bu pending kaydı
+  // 'approved' + work_order_id yapılır (o ana kadar manuel kutuda kalır, kaybolmaz).
+  const pendingPaperIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined' || !window.sessionStorage) return;
     let raw: string | null = null;
@@ -668,6 +939,11 @@ export function NewOrderScreen({
         impression_type: string | null;
         notes: string | null;
       };
+
+      // WhatsApp botundan gelen ek medyayı yakala (varsa) — submit sonrası taşınır.
+      pendingWaMediaRef.current = Array.isArray((ocr as any).wa_media) ? (ocr as any).wa_media : null;
+      // Manuel kutu onayından geldiyse pending_id — sipariş oluşunca 'approved' yapılır.
+      pendingPaperIdRef.current = (ocr as any).__pending_id ?? null;
 
       // Hasta adı parse — son kelime soyad, geri kalanı ad
       let pFirst = '', pLast = '';
@@ -757,6 +1033,7 @@ export function NewOrderScreen({
 
   // ── Draft save timestamp (UI göstergesinde kullanılır) ──
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(() => {
+    if (editOrderId) return null;   // düzenleme → taslak göstergesi yok
     if (Platform.OS === 'web') {
       try {
         const t = localStorage.getItem(DRAFT_TS_KEY);
@@ -770,6 +1047,8 @@ export function NewOrderScreen({
   //    sorulmadıysa kullanıcıya sor: devam et mi yeni mi başla?
   const [draftPromptOpen, setDraftPromptOpen] = useState<boolean>(() => {
     if (Platform.OS !== 'web') return false;
+    if (editOrderId) return false;        // düzenleme → taslak sorusu yok
+    if (effectivePrefill) return false;   // kopyalama ile açıldı → taslak sorusu sorma
     try {
       const hasDraft     = !!localStorage.getItem(DRAFT_KEY);
       const alreadyAsked = sessionStorage.getItem('new_order_draft_prompted') === '1';
@@ -790,6 +1069,7 @@ export function NewOrderScreen({
 
   // Form değiştiğinde debounced olarak draft persist et (web: localStorage, native: AsyncStorage)
   useEffect(() => {
+    if (isEdit) return;   // düzenleme modu: yeni-sipariş taslağına dokunma
     if (skipFirstDraftSaveRef.current) {
       skipFirstDraftSaveRef.current = false;
       return;
@@ -843,6 +1123,8 @@ export function NewOrderScreen({
   const nativeDraftCheckedRef = useRef(false);
   useEffect(() => {
     if (Platform.OS === 'web') return;
+    if (isEdit) return;             // düzenleme → taslak yükleme yok
+    if (effectivePrefill) return;   // kopyalama ile açıldı → taslak formu geri yükleme
     if (nativeDraftCheckedRef.current) return;
     nativeDraftCheckedRef.current = true;
     (async () => {
@@ -957,6 +1239,7 @@ export function NewOrderScreen({
       .filter(o => !!o.work_type)
       .map(o => o.tooth);
   });
+  // ── "Son siparişlerden seç" ──────────────────────────────────────────
   const lastConfirmedOpRef = useRef<Omit<ToothOp, 'tooth'>>({ ...BLANK_OP });
   const [opResetKey, setOpResetKey] = useState(0);
 
@@ -1027,7 +1310,11 @@ export function NewOrderScreen({
   const [materialPrices, setMaterialPrices] = useState<Record<string, number>>(cached?.materialPrices ?? {});
   // Klinik-özel fiyat listesi: serviceId → kliniğe özel fiyat (override varsa).
   // Yoksa genel katalog fiyatı (lab_services.price) kullanılır.
-  const [clinicPriceMap, setClinicPriceMap] = useState<Record<string, number>>({});
+  /** Klinik-özel fiyat: FİYAT + PARA BİRİMİ birlikte taşınır.
+   *  Eskiden yalnız sayı tutuluyordu; klinik listesi USD olsa bile katalogdan
+   *  gelen EUR sembolü gösteriliyordu (ölçüldü: "Dent Hekim" 24 kalem USD,
+   *  katalog EUR → ekranda €). Fiyatla para birimi ayrılamaz. */
+  const [clinicPriceMap, setClinicPriceMap] = useState<Record<string, { price: number; currency?: string | null }>>({});
 
   useEffect(() => {
     // Doctor mode: clinic/doctor fetch'i atla
@@ -1080,41 +1367,98 @@ export function NewOrderScreen({
   // Seçili klinik için klinik-özel fiyat listesini (clinic_price_overrides) çek.
   // custom_price varsa onu, yoksa discount_percent'i katalog fiyatına uygular.
   // Klinik seçili değilse / override yoksa → genel katalog fiyatı kullanılır.
+  // clinicPriceMap'i YALNIZ gerçekten değiştiyse güncelle — her fire'da yeni {} / yeni
+  // obje set etmek (özellikle klinik seçilmemiş WhatsApp/OCR siparişinde) gereksiz
+  // render zinciri (effectiveServices → WorkTypeSelector …) üretip #185'i besleyebilir.
+  const applyClinicPriceMap = useCallback((next: Record<string, { price: number; currency?: string | null }>) => {
+    setClinicPriceMap(prev => {
+      const pk = Object.keys(prev), nk = Object.keys(next);
+      if (pk.length === nk.length && pk.every(k =>
+        prev[k]?.price === next[k]?.price && (prev[k]?.currency ?? null) === (next[k]?.currency ?? null)
+      )) return prev;
+      return next;
+    });
+  }, []);
   useEffect(() => {
     const clinicId = form.clinic_id;
-    if (!clinicId) { setClinicPriceMap({}); return; }
+    if (!clinicId) { applyClinicPriceMap({}); return; }
     const labId = (profile as any)?.lab_id ?? profile?.id ?? null;
     let cancelled = false;
     (async () => {
       try {
         let q = supabase
           .from('clinic_price_overrides')
-          .select('service_id, custom_price, discount_percent')
+          .select('service_id, custom_price, discount_percent, currency')
           .eq('clinic_id', clinicId);
         if (labId) q = q.eq('lab_id', labId);
         const { data, error } = await q;
         if (error || cancelled) return;
         const base: Record<string, number> = {};
         services.forEach(s => { base[s.id] = Number(s.price) || 0; });
-        const map: Record<string, number> = {};
+        const map: Record<string, { price: number; currency?: string | null }> = {};
         ((data ?? []) as any[]).forEach(ov => {
           if (ov.custom_price != null) {
-            map[ov.service_id] = Number(ov.custom_price);
+            // Özel FİYAT: para birimi de override'dan gelir (USD listesi gibi).
+            map[ov.service_id] = { price: Number(ov.custom_price), currency: ov.currency ?? null };
           } else if (ov.discount_percent != null && Number(ov.discount_percent) > 0) {
+            // İskonto: katalog fiyatının yüzdesi → para birimi KATALOĞUN kalır.
             const catalog = base[ov.service_id] ?? 0;
-            map[ov.service_id] = Math.round(catalog * (100 - Number(ov.discount_percent)) / 100 * 100) / 100;
+            map[ov.service_id] = { price: Math.round(catalog * (100 - Number(ov.discount_percent)) / 100 * 100) / 100 };
           }
         });
-        if (!cancelled) setClinicPriceMap(map);
-      } catch { if (!cancelled) setClinicPriceMap({}); }
+        if (!cancelled) applyClinicPriceMap(map);
+      } catch { if (!cancelled) applyClinicPriceMap({}); }
     })();
     return () => { cancelled = true; };
-  }, [form.clinic_id, services, profile]);
+  }, [form.clinic_id, services, profile, applyClinicPriceMap]);
+
+  // ── Devam siparişinde ASIL işin dosyaları ────────────────────────────────
+  // KOPYALANMAZ: yeni satır açılmaz, aynı dosya iki kez kaydedilmez. Sipariş
+  // detayında `StageFileUpload` zaten ebeveynin dosyalarını salt-okunur
+  // devralıyor; sihirbazda ise sipariş henüz oluşmadığı için o kod çalışmıyordu
+  // ve kullanıcı "Henüz dosya eklenmedi" görüyordu. Burada yalnızca GÖSTERİM
+  // için ebeveynin listesi çekilir.
+  const [inheritedFiles, setInheritedFiles] = useState<{ id: string; name: string; path: string }[]>([]);
+  // Devam siparişinde hasta bilgisi ana siparişten doldurulur. Alanlar KİLİTLİ
+  // gelir ki iki kayıt zamanla birbirinden ayrışmasın (aynı hasta, iki farklı
+  // yazım). Kilit kalıcı değil: gerçek bir düzeltme gerekiyorsa açılabilir.
+  const [patientLocked, setPatientLocked] = useState(false);
+  useEffect(() => {
+    setPatientLocked(!!effectivePrefill?.patient_prefill);
+  }, [effectivePrefill?.patient_prefill]);
+  useEffect(() => {
+    const parentId = effectivePrefill?.continues_order_id;
+    if (!parentId) { setInheritedFiles([]); return; }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('work_order_photos')
+        .select('id, storage_path, caption')
+        .eq('work_order_id', parentId)
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (cancelled) return;
+      setInheritedFiles(((data ?? []) as any[]).map(r => {
+        const parts = String(r.storage_path).split('/');
+        const fname = parts[parts.length - 1] ?? r.storage_path;
+        return {
+          id: r.id,
+          path: r.storage_path,
+          name: (r.caption ?? '').trim() || decodeURIComponent(fname.split('-').slice(1).join('-') || fname),
+        };
+      }));
+    })();
+    return () => { cancelled = true; };
+  }, [effectivePrefill?.continues_order_id]);
 
   // İş türü seçicisine geçilecek servisler — klinik-özel fiyat varsa onunla,
   // yoksa genel katalog fiyatıyla. Çip görünümü + seçim + kayıt hepsi bunu kullanır.
   const effectiveServices = useMemo(
-    () => services.map(s => (clinicPriceMap[s.id] != null ? { ...s, price: clinicPriceMap[s.id] } : s)),
+    () => services.map(s => {
+      const ov = clinicPriceMap[s.id];
+      if (ov == null) return s;
+      return { ...s, price: ov.price, currency: ov.currency ?? s.currency };
+    }),
     [services, clinicPriceMap]
   );
 
@@ -1154,7 +1498,10 @@ export function NewOrderScreen({
     const DIGITAL_FILE_REQUIRED = ['dijital_tarama', 'stl_dosyasi', 'cad_dosyasi', 'baski_3d_model'];
     if (form.measurement_type === 'digital' && DIGITAL_FILE_REQUIRED.includes(form.model_type)) {
       const hasFile = (form.attachments ?? []).some(a => ['stl', 'ply', 'other', 'pdf'].includes(a.kind));
-      if (!hasFile) e.attachments = 'Bu model tipi için dosya yüklemelisiniz (STL / CAD / 3D)';
+      // Devam siparişinde ASIL işin dosyaları miras alınır (continues_order_id) →
+      // yeniden yükleme zorunlu değil; asıl işte dosya varsa kural gevşer.
+      const inheritsFiles = !!effectivePrefill?.continues_order_id && !!effectivePrefill?.has_source_files;
+      if (!hasFile && !inheritsFiles) e.attachments = 'Bu model tipi için dosya yüklemelisiniz (STL / CAD / 3D)';
     }
     if (!form.delivery_date)     e.delivery_date     = 'Teslim tarihi seçin';
     else {
@@ -1211,6 +1558,9 @@ export function NewOrderScreen({
     // Faz 1: 3-kademe fiyat çözümleyicisini çağır (clinic override > promotion > catalog)
     let resolvedPrice = service.price;
     let priceSource: string = 'catalog';
+    // Para birimi fiyatla BİRLİKTE taşınır — resolve_item_price zaten döndürüyor,
+    // eskiden atılıyordu ve 7 EUR ekranda ₺7 oluyordu.
+    let resolvedCurrency: string = (service as any).currency ?? 'TRY';
     try {
       const labId = getActiveLabId() ?? (profile as any)?.lab_id ?? profile?.id ?? null;
       if (labId && service.id) {
@@ -1225,6 +1575,7 @@ export function NewOrderScreen({
           if (row.price != null) {
             resolvedPrice = Number(row.price);
             priceSource = row.source ?? 'catalog';
+            if (row.currency) resolvedCurrency = String(row.currency);
           }
         }
       }
@@ -1232,7 +1583,7 @@ export function NewOrderScreen({
 
     set('pending_items')([
       ...form.pending_items,
-      { service_id: service.id, name: service.name, price: resolvedPrice, quantity: 1, price_source: priceSource } as any,
+      { service_id: service.id, name: service.name, price: resolvedPrice, currency: resolvedCurrency, quantity: 1, price_source: priceSource } as any,
     ]);
   };
 
@@ -1631,6 +1982,43 @@ export function NewOrderScreen({
     setTimeout(() => { try { document.body.removeChild(input); } catch {} }, 60_000);
   };
 
+  // ── ZIP / arşiv picker — tarayıcıdan çıkan sıkıştırılmış tarama arşivi ──────
+  // Çoğu hekim ağız-içi tarayıcının ürettiği ZIP'i (birden çok STL/PLY + meta)
+  // tek dosya olarak yüklemek istiyor. kind='other' → 3D olarak açılmaz, dosya
+  // olarak saklanır; lab indirir/açar.
+  const openSpecificZipPicker = async (label: string) => {
+    if (Platform.OS !== 'web') {
+      try {
+        const result = await DocumentPicker.getDocumentAsync({
+          type: '*/*',
+          multiple: true,
+          copyToCacheDirectory: true,
+        });
+        if (result.canceled || !result.assets?.length) return;
+        for (const asset of result.assets) await addAttachmentAndUploadFromUri(label, asset, 'other');
+      } catch (err: any) {
+        console.warn('[zip-picker] iOS fail:', err?.message ?? err);
+        try { toast.error('Arşiv seçimi başarısız'); } catch {}
+      }
+      return;
+    }
+    // @ts-ignore
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.accept = '.zip,.rar,.7z,application/zip,application/x-zip-compressed,application/x-rar-compressed,application/x-7z-compressed';
+    input.onchange = (e: any) => {
+      const files: FileList = e.target.files;
+      if (!files || files.length === 0) return;
+      Array.from(files as any).forEach((file: any) => addAttachmentAndUpload(label, file, 'other'));
+    };
+    // @ts-ignore
+    document.body.appendChild(input);
+    input.click();
+    // @ts-ignore
+    setTimeout(() => { try { document.body.removeChild(input); } catch {} }, 60_000);
+  };
+
   // Apply patch to current edit target.
   //   • İkinci işlem modu (secondaryOpUids[] dolu) → sadece o uid'lere patch
   //   • Normal: seçili + henüz confirmed olmayan tüm dişlere uygula (grup edit)
@@ -1658,7 +2046,95 @@ export function NewOrderScreen({
     goToStep((step < 4 ? (step + 1) as Step : step));
   };
 
+  // ── DÜZENLEME kaydet — yeni oluşturmaz, mevcut siparişi günceller ──
+  // Kalemler yeni-sipariş ile AYNI kodlamayla üretilir (opGroupMap + notes: "Marka:…·Renk:…")
+  // ki tekrar düzenlemede prefill parse'ı bozulmasın. Ekler/ses/sohbet düzenlemede korunur
+  // (bu akış yalnız hasta + iş kalemleri + vaka alanlarını günceller).
+  const handleSaveEdit = async () => {
+    if (!editOrderId || loading) return;
+    setSubmitError('');
+
+    const toothNumbers = Array.from(new Set(form.tooth_ops.map(o => o.tooth)));
+    const workType =
+      Array.from(new Set(form.tooth_ops.map(o => o.work_type).filter(Boolean))).join(', ') ||
+      (form.pending_items.length > 0 ? Array.from(new Set(form.pending_items.map(i => i.name).filter(Boolean))).join(', ') : 'Belirtilmedi');
+    const shade = form.tooth_ops.find(o => o.shade)?.shade || null;
+
+    // Kalemler — diş-işlemi grupları (yeni-sipariş ile birebir kodlama) + serbest servis kalemleri
+    const items: ClientOrderEditItem[] = [];
+    {
+      const opGroupMap = new Map<string, { ops: ToothOp[]; teeth: number[]; name: string; price: number }>();
+      form.tooth_ops.forEach(o => {
+        if (!o.work_type) return;
+        const k = [o.work_type, o.shade, o.material, o.implant_system, o.implant_type, o.abutment, o.screw].join('||');
+        if (!opGroupMap.has(k)) opGroupMap.set(k, { ops: [], teeth: [], name: o.work_type, price: o.price || 0 });
+        const g = opGroupMap.get(k)!;
+        g.ops.push(o); g.teeth.push(o.tooth);
+      });
+      for (const g of opGroupMap.values()) {
+        const teethUnique = Array.from(new Set(g.teeth)).sort((a, b) => a - b);
+        const rep = g.ops[0];
+        const noteParts: string[] = [];
+        if (rep.implant_system) noteParts.push(`Marka: ${rep.implant_system}`);
+        if (rep.implant_type)   noteParts.push(`Tür: ${rep.implant_type}`);
+        if (rep.abutment)       noteParts.push(`Abutment: ${rep.abutment}`);
+        if (rep.screw)          noteParts.push(`Vida: ${rep.screw}`);
+        if (rep.material)       noteParts.push(`Materyal: ${rep.material}`);
+        if (rep.shade)          noteParts.push(`Renk: ${rep.shade}`);
+        items.push({
+          name: g.name,
+          price: g.price,
+          quantity: priceUnitQty(rep.price_unit, teethUnique),
+          tooth_numbers: teethUnique,
+          notes: noteParts.length ? noteParts.join(' · ') : null,
+        });
+      }
+      form.pending_items.forEach((it: any) => {
+        if (!it?.name) return;
+        items.push({ name: it.name, price: Number(it.price) || 0, quantity: Number(it.quantity) || 1, tooth_numbers: [], notes: null });
+      });
+    }
+    if (items.length === 0) { setSubmitError('En az bir iş kalemi gerekli.'); return; }
+
+    const cleanedFullName = [titleCaseTR(form.patient_first_name), titleCaseTR(form.patient_last_name)].filter(Boolean).join(' ');
+    const fields: ClientOrderEditFields = {
+      patient_name: cleanedFullName || null,
+      patient_id: form.patient_id || null,
+      patient_gender: form.patient_gender !== 'belirtilmedi' ? form.patient_gender : null,
+      patient_dob: form.patient_dob ? form.patient_dob.toISOString().split('T')[0] : null,
+      patient_nationality: form.patient_nationality || null,
+      patient_country: form.patient_country || null,
+      patient_city: form.patient_city || null,
+      work_type: workType,
+      shade,
+      model_type: form.model_type || null,
+      delivery_method: form.delivery_method || null,
+      delivery_date: form.delivery_date instanceof Date ? form.delivery_date.toISOString().split('T')[0] : null,
+      is_urgent: form.is_urgent,
+      notes: form.notes || null,
+      tooth_numbers: toothNumbers,
+    };
+
+    // Kaydet yolu: lab/admin panel → doğrudan admin güncelleme; hekim/klinik →
+    // planlama öncesi doğrudan, sonrası değişiklik talebi (lab onayı).
+    const adminEdit = resolvedPanel === 'lab' || resolvedPanel === 'admin' || resolvedPanel === 'station';
+    const requestMode = !adminEdit && !isOrderPrePlanning(editOrderRow);
+
+    setLoading(true);
+    const { error } = adminEdit
+      ? await updateOrderAdmin(editOrderId, fields, items)
+      : requestMode
+        ? await createChangeRequest(editOrderId, fields, items)
+        : await updateOrderClient(editOrderId, fields, items);
+    setLoading(false);
+    if (error) { setSubmitError(`${requestMode ? 'Talep gönderilemedi' : 'Kaydedilemedi'}: ${(error as any).message ?? 'hata'}`); return; }
+    toast.success(requestMode ? 'Değişiklik talebin gönderildi — lab onayına düştü.' : 'Sipariş güncellendi ✓');
+    onSaved?.();
+    onClose?.();
+  };
+
   const handleSubmit = async () => {
+    if (isEdit) return handleSaveEdit();
     if (!profile) return;
     setLoading(true);
 
@@ -1773,12 +2249,26 @@ export function NewOrderScreen({
       patient_city: form.patient_city || undefined,
       lab_notes_visible: form.lab_notes_visible,
       scan_bodies_delivered: form.scan_bodies_delivered,
+      continues_order_id: form.continues_order_id || undefined,
     });
 
     if (error || !order) {
       setSubmitError((error as any)?.message ?? 'İş emri oluşturulamadı.');
       setLoading(false);
       return;
+    }
+
+    // Manuel/kağıt sipariş onayından geldiyse: sipariş ARTIK oluştu → pending kaydı
+    // 'approved' + work_order_id yap (bu ana kadar manuel kutuda kalmıştı, kaybolmadı).
+    if (pendingPaperIdRef.current) {
+      const pid = pendingPaperIdRef.current;
+      pendingPaperIdRef.current = null;
+      void supabase.from('pending_paper_orders').update({
+        status: 'approved',
+        work_order_id: order.id,
+        reviewed_by: profile.id,
+        reviewed_at: new Date().toISOString(),
+      }).eq('id', pid);
     }
 
     // Create order items
@@ -1788,6 +2278,7 @@ export function NewOrderScreen({
         service_id: item.service_id,
         name: item.name,
         price: item.price,
+        currency: (item as any).currency,
         quantity: item.quantity,
       });
     }
@@ -1795,12 +2286,14 @@ export function NewOrderScreen({
     // Tooth-ops'tan da order_item üret — her grup (work_type + detay) için 1 item.
     // Bu sayede sipariş detayında diş şeması farklı işlemleri farklı renkle gösterir.
     {
-      const opGroupMap = new Map<string, { ops: ToothOp[]; teeth: number[]; name: string; price: number }>();
+      const opGroupMap = new Map<string, { ops: ToothOp[]; teeth: number[]; name: string; price: number; currency?: string }>();
       form.tooth_ops.forEach(o => {
         if (!o.work_type) return;
         const k = [o.work_type, o.shade, o.material, o.implant_system, o.implant_type, o.abutment, o.screw].join('||');
         if (!opGroupMap.has(k)) {
-          opGroupMap.set(k, { ops: [], teeth: [], name: o.work_type, price: o.price || 0 });
+          // currency: fiyat listesinden gelen para birimi (ToothOp.currency) —
+          // artık kaleme de yazılıyor, aksi halde ekranda ₺ varsayılıyordu.
+          opGroupMap.set(k, { ops: [], teeth: [], name: o.work_type, price: o.price || 0, currency: o.currency });
         }
         const g = opGroupMap.get(k)!;
         g.ops.push(o);
@@ -1822,7 +2315,10 @@ export function NewOrderScreen({
           work_order_id: order.id,
           name: g.name,
           price: g.price,
-          quantity: g.ops.length,
+          currency: g.currency,
+          // Çene/Vaka/Seans birimli hizmetlerde miktar diş sayısı DEĞİL, birim çarpanıdır
+          // (gece plağı çene başına: üst çene 16 diş → 1 çene → qty 1).
+          quantity: priceUnitQty(rep.price_unit, teethUnique),
           tooth_numbers: teethUnique,
           notes: noteParts.length ? noteParts.join(' · ') : undefined,
         });
@@ -1867,7 +2363,10 @@ export function NewOrderScreen({
             const resp = await fetch(a.uri);
             const blob = await resp.blob();
             const safeName = a.name.replace(/[^\w.-]+/g, '_').slice(0, 80);
-            storagePath = `${order.id}/${Date.now()}-${safeName}`;
+            // 'orders/' öneki ŞART — storage RLS (wop_select_orders) yalnız
+            // orders/<work_order_id>/... yolunu lab tarafına açar. Öneksiz
+            // '<order_id>/...' hiçbir politikayla eşleşmez → dosya erişilemez kalır.
+            storagePath = `orders/${order.id}/${Date.now()}-${safeName}`;
             const contentType = blob.type || 'application/octet-stream';
 
             let upErrMsg: string | null = null;
@@ -1935,6 +2434,42 @@ export function NewOrderScreen({
       if (attachFailures > 0) {
         toast.error(`${attachFailures} dosya yüklenemedi (${attachSuccess} başarılı)`);
       }
+    }
+
+    // ─── WhatsApp botundan (adım-adım sipariş) toplanan medyayı dosyalara taşı ──
+    // finalizeNewOrder bunları paper-orders/<lab>/wa-pending/... altında bırakıp pending
+    // kaydın ocr_data.wa_media[]'ine yazmıştı; sipariş onaylanınca work-order-photos'a kopyalanır.
+    const waMedia = pendingWaMediaRef.current;
+    if (waMedia && waMedia.length && Platform.OS === 'web') {
+      const waLabId = (order as any)?.lab_id ?? (profile as any)?.lab_id ?? null;
+      let waMoved = 0;
+      for (const wm of waMedia) {
+        try {
+          const srcPath = String(wm?.storage_path ?? wm?.path ?? '');
+          if (!srcPath) continue;
+          const { data: blob, error: dlErr } = await supabase.storage.from('paper-orders').download(srcPath);
+          if (dlErr || !blob) { console.error('[wa-media] download fail', srcPath, dlErr?.message); continue; }
+          const ext = String(wm?.ext || srcPath.split('.').pop() || 'jpg').slice(0, 8);
+          const destPath = `orders/${order.id}/wa-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+          const contentType = (blob as any).type || wm?.mime || 'application/octet-stream';
+          const { error: upErr } = await supabase.storage
+            .from('work-order-photos')
+            .upload(destPath, blob, { contentType, upsert: false });
+          if (upErr) { console.error('[wa-media] upload fail', upErr.message); continue; }
+          const { error: dbErr } = await supabase.from('work_order_photos').insert({
+            work_order_id: order.id, storage_path: destPath, uploaded_by: profile.id,
+            lab_id: waLabId, caption: wm?.caption || 'WhatsApp', external_source: 'whatsapp',
+          });
+          if (dbErr) {
+            console.error('[wa-media] db insert fail', dbErr.message);
+            void supabase.storage.from('work-order-photos').remove([destPath]);
+            continue;
+          }
+          waMoved++;
+        } catch (e: any) { console.error('[wa-media] transfer error', e?.message); }
+      }
+      pendingWaMediaRef.current = null;
+      if (waMoved > 0) toast.success(`${waMoved} WhatsApp dosyası siparişe eklendi`);
     }
 
     // ─── Form'da yazılan chat mesajlarını order_messages tablosuna persist et ──
@@ -2811,15 +3346,14 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
 
       <NOPageChrome
         step={step}
-        title={theme.title}
+        title={isEdit ? 'Siparişi Düzenle' : theme.title}
         hekim={selectedDoctor?.full_name}
         hasta={form.patient_first_name ? `${form.patient_first_name} ${form.patient_last_name}`.trim() : undefined}
         toothCount={form.tooth_ops.length || undefined}
         onCancel={() => {
-          // Modal olarak açıldıysa onClose'u çağır; route olarak açıldıysa back/replace
+          // Modal olarak açıldıysa onClose'u çağır; route olarak açıldıysa geri
           if (onClose) { onClose(); return; }
-          if (router.canGoBack()) router.back();
-          else router.replace(orderListPath as any);
+          safeBack(orderListPath);
         }}
         // Step 1: yalnızca Mesaj + X. Step 2+: Upload butonu da görünür.
         onUpload={step >= 2 ? () => setUploadModalOpen(true) : undefined}
@@ -2830,13 +3364,15 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
         uploadCount={form.attachments.length}
         accent={P}
         bgColor={pageBg}
+        chatRef={tourGuided ? tourRefChat : undefined}
+        uploadRef={tourGuided ? tourRefFiles : undefined}
         onStepPress={(s) => goToStep(s as Step)}
         onBack={step > 1 ? () => goToStep((step - 1) as Step) : undefined}
         onNext={step < 4 ? handleNext : handleSubmit}
-        nextLabel={step < 4 ? 'İleri' : (isDesktop ? theme.submitLabel : 'Gönder')}
+        nextLabel={step < 4 ? 'İleri' : (isEdit ? 'Kaydet' : (isDesktop ? theme.submitLabel : 'Gönder'))}
         actionPrimary={step === 4 ? 'success' : 'dark'}
-        loading={loading}
-        savedTime={lastSavedAt ? fmtDraftTime(lastSavedAt) : undefined}
+        loading={loading || (isEdit && !editReady)}
+        savedTime={isEdit ? undefined : (lastSavedAt ? fmtDraftTime(lastSavedAt) : undefined)}
         rightPanel={undefined}
       >
 
@@ -2873,7 +3409,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
           <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: isDesktop ? 8 : 10 }}>
 
             {/* ── Kart 1: Klinik & hekim ── */}
-            <View style={isDesktop ? { flex: 1 } : undefined}>
+            <View ref={tourRefClinic} style={isDesktop ? { flex: 1 } : undefined}>
               <NOCard>
                 <NOCardHead num={1} title="Klinik & hekim" sub="Vakanın bağlı olduğu klinik ve hekim" accent={P} />
 
@@ -2884,15 +3420,19 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                       value={profile?.clinic_name ?? 'Klinik belirtilmemiş'}
                       iconVariant="clinic"
                     />
-                    <SearchableDropdown
-                      label="Diş hekimi"
-                      placeholder={allDoctors.length > 0 ? 'Kliniğinizdeki hekimi seçin' : 'Kliniğinizde hekim bulunmuyor'}
-                      options={allDoctors.map(d => ({ id: d.id, label: d.full_name, sublabel: (d as any).phone ?? undefined }))}
-                      selectedId={form.doctor_id}
-                      onSelect={set('doctor_id')}
-                      required
-                      error={fe('doctor_id')}
-                    />
+                    <View ref={tourFldDoctor}>
+                      <SearchableDropdown
+                        label="Diş hekimi"
+                        placeholder={allDoctors.length > 0 ? 'Hekimi seçin veya ekleyin' : 'Hekim bulunmuyor — yeni ekleyin'}
+                        options={allDoctors.map(d => ({ id: d.id, label: d.full_name, sublabel: (d as any).phone ?? undefined }))}
+                        selectedId={form.doctor_id}
+                        onSelect={set('doctor_id')}
+                        onAddNew={async (name) => { setDoctorModal({ visible: true, prefill: name }); }}
+                        addNewLabel="Yeni diş hekimi ekle"
+                        required
+                        error={fe('doctor_id')}
+                      />
+                    </View>
                   </View>
                 ) : doctorMode ? (
                   <View style={{ gap: 12 }}>
@@ -2914,7 +3454,11 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                     <SearchableDropdown
                       label="Klinik"
                       placeholder="Klinik seçin veya ekleyin"
-                      options={clinics.filter(c => c.is_active).map(c => ({ id: c.id, label: c.name, sublabel: c.phone ?? undefined }))}
+                      // Klinik logosu varsa baş harfler yerine logo görünür
+                      options={clinics.filter(c => c.is_active).map(c => ({
+                        id: c.id, label: c.name, sublabel: c.phone ?? undefined,
+                        imageUrl: (c as any).logo_url ?? undefined,
+                      }))}
                       selectedId={form.clinic_id}
                       onSelect={(id) => { set('clinic_id')(id); set('doctor_id')(''); }}
                       onAddNew={async (name) => {
@@ -2928,7 +3472,14 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                       placeholder={form.clinic_id ? 'Diş hekimi seçin veya ekleyin' : 'Önce klinik seçin'}
                       disabled={!form.clinic_id}
                       disabledHint="Önce klinik seçin"
-                      options={filteredDoctors.map(d => ({ id: d.id, label: d.full_name, sublabel: d.clinic?.name ?? undefined }))}
+                      // Klinik yetkilisi de hekim olabilir → alt etikette rolü belli olsun
+                      options={filteredDoctors.map(d => ({
+                        id: d.id,
+                        label: d.full_name,
+                        sublabel: (d as any).is_clinic_admin
+                          ? [d.clinic?.name, 'klinik yetkilisi'].filter(Boolean).join(' · ')
+                          : (d.clinic?.name ?? undefined),
+                      }))}
                       selectedId={form.doctor_id}
                       onSelect={set('doctor_id')}
                       onAddNew={async (name) => {
@@ -2958,17 +3509,47 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
             </View>
 
             {/* ── Kart 2: Hasta bilgileri ── */}
-            <View style={isDesktop ? { flex: 1.6 } : undefined}>
+            <View ref={tourRefPatient} style={isDesktop ? { flex: 1.6 } : undefined}>
               <NOCard>
                 <NOCardHead
                   num={2}
                   title="Hasta bilgileri"
-                  sub="Mevcut hastayı seç veya yeni ekle"
-                  badge="Yeni"
+                  sub={patientLocked ? 'Ana siparişten geldi' : 'Mevcut hastayı seç veya yeni ekle'}
+                  badge={patientLocked ? 'Devam' : 'Yeni'}
                   accent={P}
                 />
 
+                {/* Devam siparişi: hasta bilgisi ana siparişin kaydından gelir.
+                    Kilitli tutulur ki aynı hasta iki farklı yazımla kaydedilmesin;
+                    gerçek bir düzeltme gerekiyorsa "Düzenle" ile açılır. */}
+                {patientLocked && (
+                  <View style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 10,
+                    padding: 10, marginBottom: 12, borderRadius: 10,
+                    backgroundColor: 'rgba(53,99,168,0.08)',
+                    borderWidth: 1, borderColor: 'rgba(53,99,168,0.20)',
+                  }}>
+                    <AppIcon name={'lock-closed-outline' as any} size={14} color="#3563A8" />
+                    <Text style={{ flex: 1, fontSize: 11.5, color: '#2A4E85', lineHeight: 16 }}>
+                      Hasta bilgileri ana siparişten alındı. Aynı vakanın devamı olduğu için kilitli.
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => setPatientLocked(false)}
+                      style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: '#3563A8' }}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>Düzenle</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                <View
+                  pointerEvents={patientLocked ? 'none' : 'auto'}
+                  style={patientLocked ? { opacity: 0.55 } : undefined}
+                >
+
                 {/* Satır 1: Ad + Soyad */}
+                <View ref={tourFldName}>
                 <TwoCol stack={!isDesktop}>
                   <Field label="Ad" value={form.patient_first_name}
                     onChangeText={set('patient_first_name')} placeholder="Ad" flex
@@ -2977,8 +3558,10 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                     onChangeText={set('patient_last_name')} placeholder="Soyad" flex
                     required error={fe('patient_last_name')} />
                 </TwoCol>
+                </View>
 
                 {/* Satır 2: TC / Pasaport + Doğum tarihi */}
+                <View ref={tourFldDob}>
                 <TwoCol stack={!isDesktop}>
                   <Field label="TC / Pasaport No" value={form.patient_id}
                     onChangeText={set('patient_id')} placeholder="TC veya Pasaport No" flex />
@@ -2994,8 +3577,10 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                     accentColor={P}
                   />
                 </TwoCol>
+                </View>
 
                 {/* Satır 3: Cinsiyet + Uyruk */}
+                <View ref={tourFldGender}>
                 <TwoCol stack={!isDesktop}>
                   <View style={{ flex: 1 }}>
                     <NOLabel required>Cinsiyet</NOLabel>
@@ -3016,6 +3601,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                     onSelect={set('patient_nationality')}
                   />
                 </TwoCol>
+                </View>
 
                 {/* Satır 4: İkamet ülkesi + İkamet şehri + Telefon (3 kolon desktop) */}
                 <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: 12, marginTop: 12 }}>
@@ -3050,6 +3636,8 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                   </View>
                 </View>
 
+                </View>{/* /hasta alanları kilidi */}
+
               </NOCard>
             </View>
 
@@ -3073,7 +3661,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
           <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: 12, marginBottom: 12 }}>
 
             {/* ── Kart 1: Çalışma yöntemi ── */}
-            <View style={isDesktop ? { flex: 1 } : undefined}>
+            <View ref={tourRefHow} style={isDesktop ? { flex: 1 } : undefined}>
               <NOCard>
                 <NOCardHead num={1} title="Çalışma yöntemi" sub="Ölçüm ve model tipi" accent={P} />
                 <View style={{ gap: 12 }}>
@@ -3186,10 +3774,13 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
           <NOCard>
             <NOCardHead num={3} title="Dosyalar & ölçüm" sub="STL, PLY, JPG, PDF — maks 200 MB" badge={form.attachments.length > 0 ? `${form.attachments.length} dosya · ${formatBytes(form.attachments.reduce((s, a) => s + (a.size || 0), 0))}` : undefined} accent={P} />
 
-            {/* Dijital ölçüm + dosya zorunlu model tipi uyarısı */}
+            {/* Dijital ölçüm + dosya zorunlu model tipi uyarısı.
+                Devam siparişi asıl işten dosya miras alıyorsa (continues_order_id +
+                has_source_files) engelleyici uyarı yerine bilgilendirme gösterilir. */}
             {form.measurement_type === 'digital'
               && ['dijital_tarama', 'stl_dosyasi', 'cad_dosyasi', 'baski_3d_model'].includes(form.model_type)
-              && form.attachments.length === 0 && (
+              && form.attachments.length === 0
+              && !(effectivePrefill?.continues_order_id && effectivePrefill?.has_source_files) && (
               <View style={{
                 flexDirection: 'row', alignItems: 'center', gap: 10,
                 padding: 12, marginBottom: 12,
@@ -3205,6 +3796,28 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                   </Text>
                   <Text style={{ fontSize: 11, color: fe('attachments') ? '#7F1D1D' : '#78350F', marginTop: 1 }}>
                     Dijital ölçüm seçtiniz — STL / CAD / 3D dosyası yüklemeden bir sonraki adıma geçemezsiniz.
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {/* Devam siparişi — asıl işin taramaları devralınacak (bilgilendirme) */}
+            {form.measurement_type === 'digital'
+              && ['dijital_tarama', 'stl_dosyasi', 'cad_dosyasi', 'baski_3d_model'].includes(form.model_type)
+              && form.attachments.length === 0
+              && !!effectivePrefill?.continues_order_id && !!effectivePrefill?.has_source_files && (
+              <View style={{
+                flexDirection: 'row', alignItems: 'center', gap: 10,
+                padding: 12, marginBottom: 12, borderRadius: 12,
+                backgroundColor: 'rgba(16,185,129,0.10)', borderWidth: 1, borderColor: 'rgba(16,185,129,0.25)',
+              }}>
+                <AppIcon name={'checkmark-circle-outline' as any} size={16} color="#0F6E50" />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#0F6E50' }}>
+                    Asıl işin dosyaları devralınacak
+                  </Text>
+                  <Text style={{ fontSize: 11, color: '#115E45', marginTop: 1 }}>
+                    Bu bir devam siparişi — geçici işin taramaları otomatik devralınır. İstersen yeni dosya da ekleyebilirsin.
                   </Text>
                 </View>
               </View>
@@ -3249,7 +3862,44 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                   <Text style={fus.subLabel}>YÜKLENEN DOSYALAR</Text>
                   <Text style={fus.subHint}>Tüm ekler ve ön izleme</Text>
                 </View>
-                {form.attachments.length === 0 ? (
+                {/* ── Ana siparişten devralınan dosyalar (salt okunur) ──
+                    Kopyalanmaz: burada yalnız GÖSTERİLİR, yeni kayıt açılmaz.
+                    Sipariş oluşunca detay ekranı aynı listeyi ebeveynden okur. */}
+                {inheritedFiles.length > 0 && (
+                  <View style={{ marginBottom: 14 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                      <AppIcon name={'link-outline' as any} size={13} color="#0F6E50" />
+                      <Text style={{ fontSize: 10.5, fontFamily: F.semibold, letterSpacing: 0.8, color: '#0F6E50' }}>
+                        ANA SİPARİŞTEN DEVRALINAN
+                      </Text>
+                      <Text style={{ fontSize: 10.5, color: '#94A3B8' }}>{inheritedFiles.length} dosya</Text>
+                    </View>
+                    <View style={{ gap: 6 }}>
+                      {inheritedFiles.map(f => (
+                        <View
+                          key={f.id}
+                          style={{
+                            flexDirection: 'row', alignItems: 'center', gap: 9,
+                            paddingVertical: 8, paddingHorizontal: 10, borderRadius: 10,
+                            backgroundColor: 'rgba(16,185,129,0.06)',
+                            borderWidth: 1, borderColor: 'rgba(16,185,129,0.20)',
+                          }}
+                        >
+                          <AppIcon name={'document-outline' as any} size={15} color="#0F6E50" />
+                          <Text style={{ flex: 1, fontSize: 12, color: '#115E45' }} numberOfLines={1}>{f.name}</Text>
+                          <Text style={{ fontSize: 9.5, fontFamily: F.semibold, color: '#0F6E50', letterSpacing: 0.4 }}>
+                            DEVRALINDI
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                    <Text style={{ fontSize: 10.5, color: '#94A3B8', marginTop: 6, lineHeight: 15 }}>
+                      Bu dosyalar ana siparişte duruyor; kopyalanmaz, yeni siparişte de görünür.
+                    </Text>
+                  </View>
+                )}
+
+                {form.attachments.length === 0 && inheritedFiles.length === 0 ? (
                   <View style={{ paddingVertical: 30, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center' }}>
                     <View style={{
                       width: 40, height: 40, borderRadius: 12,
@@ -3268,7 +3918,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                         : 'Yukarıdaki "Dosya Yükleme" alanından ekleyin'}
                     </Text>
                   </View>
-                ) : (
+                ) : form.attachments.length === 0 ? null : (
                   <>
                     {([
                       // prefixes: yeni etiketler + legacy isim'ler (eski caption'lı dosyalar da gruba düşsün)
@@ -3406,6 +4056,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
             onPickVideo={(label) => openSpecificVideoPicker(label)}
             onPickScan={(label)  => openSpecificScanPicker(label)}
             onPickPdf={(label)   => openSpecificPdfPicker(label)}
+            onPickZip={(label)   => openSpecificZipPicker(label)}
             onPreview={(att) => {
               const a = form.attachments.find(x => x.id === att.id);
               if (a) openFilePreview(a);
@@ -3436,7 +4087,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
           <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: 12, alignItems: 'stretch' }}>
 
             {/* ── Kart 1: Diş seçimi ── */}
-            <View style={isDesktop ? { flex: 1.4 } : undefined}>
+            <View ref={tourRefTeeth} style={isDesktop ? { flex: 1.4 } : undefined}>
               <NOCard>
                 <NOCardHead
                   num={1}
@@ -3566,7 +4217,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
             </View>
 
             {/* ── Sağ kolon: İş detayı + İş listesi ── */}
-            <View style={isDesktop ? { flex: 1, gap: 12 } : { gap: 12 }}>
+            <View ref={tourRefWork} style={isDesktop ? { flex: 1, gap: 12 } : { gap: 12 }}>
 
               {/* Kart 2: İş detayı */}
               {(() => {
@@ -3680,13 +4331,13 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                 const confirmed = [...form.tooth_ops]
                   .filter(o => confirmedTeeth.includes(o.tooth))
                   .sort((a, b) => a.tooth - b.tooth);
-                const totalPrice = confirmed.reduce((s, o) => s + (o.price || 0) + (o.material_price || 0), 0);
+                const totalPrice = toothOpsTotals(confirmed).grand;
 
                 // Aynı işlem değerlerine sahip op'ları grupla
                 const groupKeyOf = (o: ToothOp) => [
                   o.work_type, o.shade, o.material,
                   o.implant_system, o.implant_type, o.abutment, o.screw,
-                  o.price, o.material_price,
+                  o.price, o.material_price, o.price_unit,
                 ].join('||');
                 const groupMap = new Map<string, { key: string; ops: ToothOp[]; teeth: number[] }>();
                 confirmed.forEach(o => {
@@ -3746,7 +4397,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                           const op = g.ops[0]; // grup üyeleri özdeş özelliklere sahip
                           const detail = [op.material, op.shade].filter(Boolean).join(' · ');
                           const unitCost = (op.price || 0) + (op.material_price || 0);
-                          const groupCost = unitCost * g.ops.length;
+                          const groupCost = unitCost * priceUnitQty(op.price_unit, g.teeth);
                           const isEditing = g.teeth.some(t => selectedTeeth.includes(t));
                           const teethLabel = formatTeethRange(g.teeth);
                           return (
@@ -3776,7 +4427,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                                   {teethLabel}
                                 </Text>
                                 {g.ops.length > 1 && (
-                                  <Text style={{ fontSize: 10, color: NO.inkMute }}>· {g.ops.length} adet</Text>
+                                  <Text style={{ fontSize: 10, color: NO.inkMute }}>· {unitQtyLabel(op.price_unit, g.teeth)}</Text>
                                 )}
                               </View>
                               {/* İşlem detay */}
@@ -3944,7 +4595,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
             <NOEmText>Hepsi hazır.</NOEmText> Bir kez daha bakalım.
           </NOStepHeader>
 
-          <View style={{ gap: 12 }}>
+          <View ref={tourRefSummary} style={{ gap: 12 }}>
 
             {/* ── Urgent banner ── */}
             {form.is_urgent && (
@@ -3966,7 +4617,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
               const ops = form.tooth_ops.filter(o => confirmedTeeth.includes(o.tooth));
               const toothCount = ops.length;
               const fileCount = form.attachments.length;
-              const grandTotal = ops.reduce((s, o) => s + (o.material_price || 0) + (o.price || 0), 0);
+              const grandTotal = toothOpsTotals(ops).grand;
               const deliveryStr = form.delivery_date ? form.delivery_date.toLocaleDateString(localeTag()) : '—';
               const patientStr  = form.patient_first_name
                 ? `${form.patient_first_name} ${form.patient_last_name}`.trim()
@@ -4092,15 +4743,13 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
             {/* ── Kart 2: İş listesi özeti — aynı işlemler tek satırda gruplanır ── */}
             {(() => {
               const ops = form.tooth_ops.filter(o => confirmedTeeth.includes(o.tooth)).sort((a, b) => a.tooth - b.tooth);
-              const totalMat = ops.reduce((s, o) => s + (o.material_price || 0), 0);
-              const totalLabor = ops.reduce((s, o) => s + (o.price || 0), 0);
-              const grandTotal = totalMat + totalLabor;
+              const { labor: totalLabor, material: totalMat, grand: grandTotal } = toothOpsTotals(ops);
 
               // Gruplama — aynı op signature → tek satır
               const groupKeyOf = (o: ToothOp) => [
                 o.work_type, o.shade, o.material,
                 o.implant_system, o.implant_type, o.abutment, o.screw,
-                o.price, o.material_price,
+                o.price, o.material_price, o.price_unit,
               ].join('||');
               const gMap = new Map<string, { key: string; ops: ToothOp[]; teeth: number[] }>();
               ops.forEach(o => {
@@ -4145,7 +4794,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                         const op = g.ops[0];
                         const detail = [op.material, op.shade].filter(Boolean).join(' · ');
                         const unitCost = (op.price || 0) + (op.material_price || 0);
-                        const groupCost = unitCost * g.ops.length;
+                        const groupCost = unitCost * priceUnitQty(op.price_unit, g.teeth);
                         const teethLabel = formatTeethRange(g.teeth);
                         return (
                           <View key={g.key + '|' + i} style={{
@@ -4162,7 +4811,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                                 {teethLabel}
                               </Text>
                               {g.ops.length > 1 && (
-                                <Text style={{ fontSize: 8, color: NO.inkMute, marginTop: 1 }}>{g.ops.length} adet</Text>
+                                <Text style={{ fontSize: 8, color: NO.inkMute, marginTop: 1 }}>{unitQtyLabel(op.price_unit, g.teeth)}</Text>
                               )}
                             </View>
                             <View style={{ flex: 1 }}>
@@ -4262,10 +4911,12 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
 
       </NOPageChrome>{/* NOPageChrome */}
 
-      {/* Denty FAB — modal modunda (onClose) root FAB kapalı kaldığı için burada
-          mount edilir; diğer tüm sayfalardaki yüzen "Denty'ye sor" pill'iyle aynı.
-          DentyFAB kendi içinde panel'i (klinik/hekim) zaten kontrol eder. */}
-      {onClose && <DentyFAB />}
+      {/* Denty FAB — NATIVE'de modal (pageSheet) kök FAB'ı örttüğü için burada
+          ayrıca mount edilir. WEB'de gerekmez: kök FAB zIndex 9999 ile modalın
+          ÜSTÜNDE çizilir, buradaki ikinci mount ekranda çift hap gösteriyordu.
+          Düzenlemede hiç gösterilmez — asistan sipariş OLUŞTURMA formunu
+          doldurur, mevcut siparişi düzenleyemez (bkz. useSuppressDentyFab). */}
+      {onClose && !isEdit && Platform.OS !== 'web' && <DentyFAB />}
 
 {/* Canonical clinic add modal — sağlık kurumları ekranıyla aynı form */}
       <CanonicalClinicModal
@@ -4287,7 +4938,8 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
         visible={doctorModal.visible}
         editingDoctor={null}
         clinics={clinics as any}
-        defaultClinicId={form.clinic_id || ''}
+        // Klinik modunda klinik seçilmez → hekim, kullanıcının kendi kliniğine eklenir.
+        defaultClinicId={form.clinic_id || (clinicMode ? ((profile as any)?.clinic_id || allDoctors[0]?.clinic_id || clinics[0]?.id || '') : '')}
         accentColor={P}
         onClose={() => setDoctorModal({ visible: false, prefill: '' })}
         onSuccess={() => setDoctorModal({ visible: false, prefill: '' })}
@@ -4356,11 +5008,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                 </View>
                 <TouchableOpacity
                   style={[fpv.openBtn, { borderColor: '#EF4444' }]}
-                  onPress={() => {
-                    if (typeof window !== 'undefined' && previewFile.uri) {
-                      window.open(previewFile.uri, '_blank');
-                    }
-                  }}
+                  onPress={() => { openFileUrl(previewFile.uri); }}
                 >
                   <AppIcon name={'open-in-new' as any} size={14} color="#EF4444" />
                   <Text style={[fpv.openBtnText, { color: '#EF4444' }]}>PDF'yi aç</Text>
@@ -4377,11 +5025,7 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
                 )}
                 <TouchableOpacity
                   style={fpv.openBtn}
-                  onPress={() => {
-                    if (typeof window !== 'undefined' && previewFile?.uri) {
-                      window.open(previewFile.uri, '_blank');
-                    }
-                  }}
+                  onPress={() => { openFileUrl(previewFile?.uri); }}
                 >
                   <AppIcon name={'open-in-new' as any} size={14} color="#64748B" />
                   <Text style={[fpv.openBtnText, { color: '#64748B' }]}>Yeni sekmede aç</Text>
@@ -4436,6 +5080,10 @@ html,body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Interaktif form turu — fullScreen modal kök overlay'i örttüğü için
+          spotlight burada, formun ÜSTÜNDE çizilir. Tur aktif değilken null. */}
+      {tourGuided && <OnboardingOverlay host="newOrder" />}
 
     </SafeAreaView>
   );
@@ -6291,7 +6939,10 @@ function DoctorAddModal({
               <SearchableDropdown
                 label=""
                 placeholder="Klinik ara veya ekle..."
-                options={localClinics.filter(c => c.is_active).map(c => ({ id: c.id, label: c.name, sublabel: c.phone ?? undefined }))}
+                options={localClinics.filter(c => c.is_active).map(c => ({
+                  id: c.id, label: c.name, sublabel: c.phone ?? undefined,
+                  imageUrl: (c as any).logo_url ?? undefined,
+                }))}
                 selectedId={selectedClinicId}
                 onSelect={setSelectedClinicId}
                 onAddNew={async (name) => {
@@ -6830,7 +7481,7 @@ function WorkTypeSelector({
     const isSame = op.work_type === svc.name;
     setPendingMain(null);
     if (isSame) {
-      updateToothOp({ work_type: '', shade: '', implant_system: '', implant_type: '', abutment: '', screw: '', material: '', price: 0 });
+      updateToothOp({ work_type: '', shade: '', implant_system: '', implant_type: '', abutment: '', screw: '', material: '', price: 0, price_unit: null });
       return;
     }
     const fresh: Partial<ToothOp> = {
@@ -6838,6 +7489,7 @@ function WorkTypeSelector({
       shade: '', implant_system: '', implant_type: '', abutment: '', screw: '', material: '',
       price: Number(svc.price) || 0,
       currency: svc.currency,
+      price_unit: svc.unit ?? null,   // Çene/Vaka/Seans → fiyat çarpanını belirler
     };
     updateToothOp(fresh);
     // OP_CATEGORY'de surgical/other ise (yerleşik harita) auto-confirm

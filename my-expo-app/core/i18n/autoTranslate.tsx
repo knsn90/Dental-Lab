@@ -8,9 +8,11 @@
 import React from 'react';
 import { Text as RNText, TextInput as RNTextInput } from 'react-native';
 import i18n, { isRTL } from './index';
-import enDict from './locales/auto.en.json';
-import deDict from './locales/auto.de.json';
-import faDict from './locales/auto.fa.json';
+// Sözlükler DİNAMİK yüklenir — statik import ETME.
+// auto.en/de/fa.json toplam ~925 KB ve üçü birden giriş paketine giriyordu:
+// `core/i18n` tek başına 8,16 MB'lık paketin 1,39 MB'ı, yani %17'siydi.
+// Kullanıcıların çoğu Türkçe; onlar için sözlük HİÇ gerekmiyor (autoT `tr`de
+// no-op). Diğer diller sözlüğü açılışta arka planda çeker.
 
 // Arapça/Farsça betik aralığı — metin gerçekten RTL karakter içeriyor mu?
 // (Para "₺125", ID, tarih gibi salt-LTR içerik yön almaz → düzen bozulmaz.)
@@ -25,11 +27,32 @@ function withRTLStyle(existing: any): any {
   return existing != null ? [RTL_TEXT_STYLE, existing] : RTL_TEXT_STYLE;
 }
 
-const DICTS: Record<string, Record<string, string>> = {
-  en: enDict as Record<string, string>,
-  de: deDict as Record<string, string>,
-  fa: faDict as Record<string, string>,
-};
+const DICTS: Record<string, Record<string, string>> = {};
+const dictLoading = new Set<string>();
+
+/**
+ * Aktif dilin sözlüğünü (yoksa) arka planda yükler.
+ * Yüklenene kadar autoT kaynak metni (Türkçe) döndürür — çeviri kaybolmaz,
+ * yalnız ilk anda gecikir. Yükleme bitince `languageChanged` yayınlanır ve
+ * react-i18next tüketicileri yeniden render eder.
+ */
+function ensureDict(lng?: string): void {
+  const l = lng ?? i18n.language;
+  if (!l || l === 'tr' || DICTS[l] || dictLoading.has(l)) return;
+  const load =
+    l === 'en' ? () => import('./locales/auto.en.json') :
+    l === 'de' ? () => import('./locales/auto.de.json') :
+    l === 'fa' ? () => import('./locales/auto.fa.json') : null;
+  if (!load) return;
+  dictLoading.add(l);
+  load()
+    .then((m: any) => {
+      DICTS[l] = (m?.default ?? m) as Record<string, string>;
+      try { (i18n as any).emit?.('languageChanged', l); } catch { /* yoksay */ }
+    })
+    .catch((e) => console.warn('[i18n] sözlük yüklenemedi:', l, e?.message))
+    .finally(() => dictLoading.delete(l));
+}
 
 // ── Farsça rakamlar (۰–۹) ────────────────────────────────────────────────
 // Yalnız Farsça (fa) modda, RENDER edilen metindeki Batı rakamlarını (0-9)
@@ -172,6 +195,11 @@ export function installAutoTranslate(): void {
     };
     dbg.createElement = true;
   } catch { /* yoksay */ }
+
+  // Aktif dilin sözlüğünü şimdi çek, dil değişimlerinde de takip et.
+  // Türkçede hiçbir şey indirilmez (ensureDict `tr`de erken döner).
+  ensureDict();
+  try { (i18n as any).on?.('languageChanged', (l: string) => ensureDict(l)); } catch { /* yoksay */ }
 
   try { (globalThis as any).__autoTr = dbg; } catch { /* yoksay */ }
 }

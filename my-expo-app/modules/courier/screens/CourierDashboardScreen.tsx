@@ -32,6 +32,7 @@ import { useScanStore } from '../../../core/store/scanStore';
 import { fetchMyDeliveries, type CourierDelivery } from '../api';
 import { PremiumKPI } from '../components/PremiumKPI';
 import { CourierLiveMap } from '../CourierLiveMap';
+import { formatAddress } from '../../../core/util/formatAddress';
 
 const TH = DS.tech;
 const DISPLAY = {
@@ -282,7 +283,7 @@ function MobileView({ profile, items, dash, loading, router, onRefresh, onScan, 
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 }}>
               <MapPin size={12} color="rgba(255,255,255,0.85)" />
               <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.85)', flex: 1, lineHeight: 18 }} numberOfLines={2}>
-                {dash.active.destination_address ?? '—'}
+                {formatAddress(dash.active.destination_address) || '—'}
               </Text>
             </View>
           ) : (
@@ -485,7 +486,7 @@ function PreviewDeliveryCard({ index, delivery, onPress }: { index: number; deli
             {delivery.destination_name ?? delivery.order_number ?? '—'}
           </Text>
           <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 2 }} numberOfLines={1}>
-            {delivery.destination_address ?? '—'}
+            {formatAddress(delivery.destination_address) || '—'}
           </Text>
         </View>
 
@@ -588,7 +589,7 @@ function DesktopView({ profile, items, dash, loading, router, onRefresh, onScan,
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14 }}>
                   <MapPin size={14} color="rgba(255,255,255,0.85)" />
                   <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.85)', flex: 1, lineHeight: 19 }} numberOfLines={2}>
-                    {dash.active.destination_address ?? '—'}
+                    {formatAddress(dash.active.destination_address) || '—'}
                   </Text>
                 </View>
               </View>
@@ -697,7 +698,7 @@ function DesktopView({ profile, items, dash, loading, router, onRefresh, onScan,
                   <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
                     {d.destination_name ?? d.order_number ?? '—'}
                   </Text>
-                  <Text style={{ flex: 2, fontSize: 12, color: DS.ink[500] }} numberOfLines={1}>{d.destination_address ?? '—'}</Text>
+                  <Text style={{ flex: 2, fontSize: 12, color: DS.ink[500] }} numberOfLines={1}>{formatAddress(d.destination_address) || '—'}</Text>
                   <Text style={{ flex: 1, fontSize: 12, color: DS.ink[700] }} numberOfLines={1}>{d.destination_phone ?? '—'}</Text>
                   <Text style={{ flex: 1, fontSize: 11, color: DS.ink[500] }}>{fmtElapsedFrom(d.assigned_at)} önce</Text>
                   <View style={{ flex: 1 }}><Chip label={STATUS_LABEL[d.status] ?? d.status} color={STATUS_COLOR[d.status] ?? DS.ink[500]} /></View>
@@ -750,7 +751,7 @@ function DesktopView({ profile, items, dash, loading, router, onRefresh, onScan,
                   <Check size={14} color={SUCCESS} strokeWidth={2.4} />
                 </View>
                 <Text style={{ flex: 2, fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>{d.destination_name ?? '—'}</Text>
-                <Text style={{ flex: 2, fontSize: 12, color: DS.ink[500] }} numberOfLines={1}>{d.destination_address ?? '—'}</Text>
+                <Text style={{ flex: 2, fontSize: 12, color: DS.ink[500] }} numberOfLines={1}>{formatAddress(d.destination_address) || '—'}</Text>
                 <Text style={{ flex: 1, fontSize: 12, color: DS.ink[700] }}>
                   {d.delivered_at ? new Date(d.delivered_at).toLocaleTimeString(localeTag(i18n.language), { hour: '2-digit', minute: '2-digit' }) : '—'}
                 </Text>
@@ -847,7 +848,7 @@ function DeliveryRow({ index, delivery, onPress }: { index: number; delivery: Co
           </Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
             <MapPin size={10} color={DS.ink[400]} />
-            <Text style={{ fontSize: 11, color: DS.ink[500], flex: 1 }} numberOfLines={1}>{delivery.destination_address ?? '—'}</Text>
+            <Text style={{ fontSize: 11, color: DS.ink[500], flex: 1 }} numberOfLines={1}>{formatAddress(delivery.destination_address) || '—'}</Text>
           </View>
         </View>
         <View style={{ alignItems: 'flex-end', gap: 4 }}>

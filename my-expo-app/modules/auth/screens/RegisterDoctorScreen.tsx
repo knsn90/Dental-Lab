@@ -3,12 +3,14 @@
  * AuthShell ile beyaz tema, mor accent.
  */
 import React, { useState, useRef } from 'react';
+import { safeBack } from '../../../core/util/safeBack';
 import { View, Text, Pressable, Platform, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Mail, Lock, Eye, EyeOff, User as UserIcon, Phone, Building2, AlertCircle, ChevronLeft } from 'lucide-react-native';
 import { signUpDoctor } from '../api';
 import { AddressFields, AddressData, buildAddressString } from '../components/AddressFields';
 import { AuthShell, AuthInput, AuthButton, AUTH, AUTH_FONT } from '../components/AuthShell';
+import { ConsentGate, EMPTY_CONSENTS, hasRequiredConsents, type ConsentState } from '../components/ConsentGate';
 import { ClinicNameAutocomplete } from '../components/ClinicNameAutocomplete';
 import { PasswordChecklist } from '../components/PasswordChecklist';
 
@@ -26,6 +28,8 @@ export function RegisterDoctorScreen() {
   const [address, setAddress] = useState<AddressData>({ il: '', ilce: '', mahalle: '', sokak: '' });
   const [addressErrors, setAddressErrors] = useState<Partial<Record<keyof AddressData, string>>>({});
   const [loading, setLoading]     = useState(false);
+  const [consents, setConsents]   = useState<ConsentState>(EMPTY_CONSENTS);
+  const [consentError, setConsentError] = useState(false);
   const [errors, setErrors]       = useState<Partial<typeof form>>({});
   const [errorMsg, setErrorMsg]   = useState('');
   const [showPass, setShowPass]   = useState(false);
@@ -62,7 +66,10 @@ export function RegisterDoctorScreen() {
     if (form.password.length < 8) e.password = 'Şifre en az 8 karakter olmalı';
     if (form.password !== form.passwordConfirm) e.passwordConfirm = 'Şifreler eşleşmiyor';
     setErrors(e); setAddressErrors(ae);
-    const hasErrors = Object.keys(e).length > 0 || Object.keys(ae).length > 0;
+    // P0-5 · R-01 — zorunlu onaylar olmadan kayıt yok.
+    const consentsOk = hasRequiredConsents(consents);
+    setConsentError(!consentsOk);
+    const hasErrors = Object.keys(e).length > 0 || Object.keys(ae).length > 0 || !consentsOk;
     if (hasErrors) triggerShake();
     return !hasErrors;
   };
@@ -71,6 +78,7 @@ export function RegisterDoctorScreen() {
     if (!validate()) return;
     setLoading(true); setErrorMsg('');
     const { error } = await signUpDoctor({
+      consents,
       email: form.email.trim().toLowerCase(),
       password: form.password,
       full_name: form.full_name.trim(),
@@ -121,7 +129,7 @@ export function RegisterDoctorScreen() {
       <Animated.View style={{ transform: [{ translateX: shakeX }] }}>
         {/* Back */}
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => safeBack('/(auth)/login')}
           style={({ hovered }: any) => ({
             flexDirection: 'row', alignItems: 'center', gap: 4,
             alignSelf: 'flex-start', marginBottom: 16,
@@ -237,6 +245,8 @@ export function RegisterDoctorScreen() {
         <PasswordChecklist password={form.password} accent="#7A9B85" />
 
         <View style={{ marginTop: 8 }}>
+          <ConsentGate value={consents} onChange={setConsents} showError={consentError} />
+
           <AuthButton label="Hesap Oluştur" onPress={handleRegister} loading={loading} />
         </View>
       </Animated.View>

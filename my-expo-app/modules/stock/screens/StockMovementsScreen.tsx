@@ -26,11 +26,13 @@ import {
   TrendingUp, TrendingDown, Activity, Clock,
 } from 'lucide-react-native';
 import { supabase } from '../../../core/api/supabase';
+import { useAuthStore } from '../../../core/store/authStore';
 import { DS } from '../../../core/theme/dsTokens';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { CenteredLoader } from '../../../core/ui/CenteredLoader';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
+import { formatQty as fmtQty, formatQtyDual as fmtQtyDual } from '../../../core/util/formatQty';
 
 const DISPLAY = {
   fontFamily: 'Inter Tight, Inter, system-ui, sans-serif',
@@ -52,6 +54,8 @@ interface Movement {
   is_reversed?: boolean;
   user?:        { full_name: string } | null;
   created_at:   string;
+  /** Paketli kalemde çift gösterim için (1 Adet = pack_size × content_unit) */
+  stock_items?: { pack_size: number | null; content_unit: string | null } | null;
 }
 
 const TYPE_CFG: Record<MoveType, { label: string; color: string; bg: string; Icon: any; sign: string }> = {
@@ -97,6 +101,8 @@ const BUCKET_LABEL: Record<string, string> = {
 // Screen
 // ═════════════════════════════════════════════════════════════════
 export function StockMovementsScreen({ accentColor = '#6366F1' }: { accentColor?: string }) {
+  const { profile: authProfile } = useAuthStore();
+  const labId = (authProfile as any)?.lab_id ?? authProfile?.id ?? null;
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
   const T = useMobileTokens();
@@ -117,9 +123,11 @@ export function StockMovementsScreen({ accentColor = '#6366F1' }: { accentColor?
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     try {
-      const { data, error } = await supabase
+      let q = supabase
         .from('stock_movements')
-        .select('id, item_name, type, quantity, unit, note, source, stage, is_reversed, created_at')
+        .select('id, item_name, type, quantity, unit, note, source, stage, is_reversed, created_at, stock_items(pack_size, content_unit)');
+      if (labId) q = q.eq('lab_id', labId);   // RLS'e ek savunma
+      const { data, error } = await q
         .order('created_at', { ascending: false })
         .limit(300);
       if (error) {
@@ -129,7 +137,11 @@ export function StockMovementsScreen({ accentColor = '#6366F1' }: { accentColor?
         setItems([]);
       } else {
         setTableExists(true);
-        setItems((data ?? []) as Movement[]);
+        // PostgREST gömülü ilişkiyi dizi olarak döndürüyor; tek kalem olduğu için düzleştiriyoruz
+        setItems(((data ?? []) as any[]).map(r => ({
+          ...r,
+          stock_items: Array.isArray(r.stock_items) ? (r.stock_items[0] ?? null) : r.stock_items,
+        })) as Movement[]);
       }
     } catch {
       setItems([]);
@@ -137,7 +149,7 @@ export function StockMovementsScreen({ accentColor = '#6366F1' }: { accentColor?
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [labId]);
 
   useEffect(() => {
     load();
@@ -273,7 +285,7 @@ export function StockMovementsScreen({ accentColor = '#6366F1' }: { accentColor?
                         </Text>
                       </View>
                       <Text style={{ ...DISPLAY, fontSize: 20, color: '#FFFFFF', letterSpacing: -0.5, lineHeight: 22 }}>
-                        {stat.value}
+                        {fmtQty(stat.value)}
                       </Text>
                     </View>
                   );
@@ -487,7 +499,7 @@ function DesktopRow({ m }: { m: Movement }) {
       {/* Quantity */}
       <View style={{ flex: 1, alignItems: 'flex-end' }}>
         <Text style={[s.rowQty, { color: cfg.color }]}>
-          {cfg.sign}{m.quantity}{m.unit ? ` ${m.unit}` : ''}
+          {cfg.sign}{fmtQtyDual(m.quantity, m.unit, m.stock_items?.pack_size, m.stock_items?.content_unit)}
         </Text>
       </View>
 
@@ -531,9 +543,13 @@ function MobileCard({ m }: { m: Movement }) {
         </View>
         <View style={{ alignItems: 'flex-end' }}>
           <Text style={[s.cardQty, { color: cfg.color }]}>
-            {cfg.sign}{m.quantity}
+            {cfg.sign}{fmtQty(m.quantity)}
           </Text>
-          {m.unit && <Text style={s.rowUnit}>{m.unit}</Text>}
+          <Text style={s.rowUnit}>
+            {m.stock_items?.pack_size && m.stock_items?.content_unit
+              ? `${m.unit ?? ''} · ${fmtQty(m.quantity * m.stock_items.pack_size)} ${m.stock_items.content_unit}`
+              : (m.unit ?? '')}
+          </Text>
         </View>
       </View>
       <Text style={s.cardTime}>{fmtTime(m.created_at)}</Text>

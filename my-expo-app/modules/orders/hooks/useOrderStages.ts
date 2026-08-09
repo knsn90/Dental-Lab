@@ -11,6 +11,8 @@ export type StageStatus = 'bekliyor' | 'aktif' | 'tamamlandi' | 'onaylandi' | 'r
 export interface StageInfo {
   id: string;
   sequence_order: number;
+  /** Faz 2+: işlem şeridi (paralel iş grubu). Yoksa 1 = tek şerit. */
+  lane?: number;
   status: StageStatus;
   is_critical: boolean;
   assigned_at: string | null;
@@ -45,6 +47,7 @@ export function useOrderStages(workOrderId: string | undefined) {
       .select(`
         id,
         sequence_order,
+        lane,
         status,
         is_critical,
         assigned_at,
@@ -103,6 +106,31 @@ export function useOrderStages(workOrderId: string | undefined) {
     s => s.status === 'onaylandi' || s.status === 'tamamlandi',
   ).length;
 
+  // ── Faz 4: paralel şeritler ────────────────────────────────────────────────
+  // executionStages'i lane'e göre grupla. Her şerit kendi aktif aşaması +
+  // ilerlemesiyle bağımsız. Tek şerit (hepsi lane 1) → lanes.length===1 → UI
+  // bugünkü tekil görünümü kullanır (NO-OP).
+  const laneNos = Array.from(new Set(executionStages.map(s => s.lane ?? 1))).sort((a, b) => a - b);
+  const lanes = laneNos.map((lane) => {
+    const ls = executionStages.filter(s => (s.lane ?? 1) === lane);
+    const active = ls.find(s => s.status === 'aktif') ?? null;
+    // "Şu an" aşaması: aktif varsa o, yoksa ilk tamamlanmamış (durakladi/bekliyor
+    // vb. dahil) → şerit nerede çalışıldığını gösterir ("Bekliyor" yerine istasyon).
+    const current = active
+      ?? ls.find(s => s.status !== 'tamamlandi' && s.status !== 'onaylandi') ?? null;
+    const done = ls.filter(s => s.status === 'onaylandi' || s.status === 'tamamlandi').length;
+    return {
+      lane,
+      stages: ls,
+      activeStage: active,
+      currentStage: current,
+      completedCount: done,
+      totalStages: ls.length,
+      progressPct: ls.length > 0 ? Math.round((done / ls.length) * 100) : 0,
+    };
+  });
+  const isMultiLane = laneNos.length > 1;
+
   return {
     stages: executionStages,        // UI'da yalnız aktif rota gösterilir
     allStages: stages,              // gerekirse skipped'ları da kapsayan tam liste
@@ -112,6 +140,8 @@ export function useOrderStages(workOrderId: string | undefined) {
     pendingStages,
     completedCount,
     totalStages: executionStages.length,
+    lanes,                          // Faz 4: şerit-başına { stages, activeStage, completedCount, totalStages, progressPct }
+    isMultiLane,
     refetch: fetchStages,
   };
 }

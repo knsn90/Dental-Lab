@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   TextInput, KeyboardAvoidingView, Platform, ScrollView,
@@ -30,6 +30,9 @@ export default function ResetPasswordScreen() {
     });
     return () => listener.subscription.unsubscribe();
   }, []);
+
+  // Enter ile ilerleme: 1. şifreden 2.'ye, 2.'den gönder.
+  const pass2Ref = useRef<TextInput>(null);
 
   const handleReset = async () => {
     setError('');
@@ -84,6 +87,8 @@ export default function ResetPasswordScreen() {
                     placeholder="En az 6 karakter"
                     placeholderTextColor="#94A3B8"
                     secureTextEntry={!showPass}
+                    returnKeyType="next"
+                    onSubmitEditing={() => pass2Ref.current?.focus()}
                     // @ts-ignore
                     outlineStyle="none"
                   />
@@ -96,11 +101,14 @@ export default function ResetPasswordScreen() {
                 <Text style={[s.label, { marginTop: 12 }]}>ŞİFRE TEKRAR</Text>
                 <TextInput
                   style={s.input}
+                  ref={pass2Ref}
                   value={password2}
                   onChangeText={v => { setPassword2(v); setError(''); }}
                   placeholder="Şifreyi tekrar girin"
                   placeholderTextColor="#94A3B8"
                   secureTextEntry={!showPass}
+                  returnKeyType="go"
+                  onSubmitEditing={handleReset}
                   // @ts-ignore
                   outlineStyle="none"
                 />

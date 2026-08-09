@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import {
   UserCheck, Clock, Phone, Building2, X, Check,
-  Undo2, CheckCircle2, XCircle, History,
+  Undo2, CheckCircle2, XCircle, History, ChevronDown,
 } from 'lucide-react-native';
 import { toast } from '../../core/ui/Toast';
 import { supabase } from '../../core/api/supabase';
@@ -180,21 +180,40 @@ export function PendingApprovalsScreen() {
           <View style={{ padding: isDesktop ? 24 : 12, paddingTop: 8, gap: 10 }}>
             {/* ── Pending section ── */}
             {pendingCount === 0 ? (
-              <View style={{
-                alignItems: 'center', justifyContent: 'center',
-                gap: 8, paddingVertical: 36, paddingHorizontal: 18,
-                borderRadius: R.lg, borderWidth: 1, borderStyle: 'dashed' as any,
-                borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.10)', backgroundColor: 'transparent',
-              }}>
-                <View style={{ width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.06)' }}>
-                  <UserCheck size={22} color="#1F6B47" strokeWidth={1.6} />
+              /* Kesikli çerçeve "buraya bırak" anlamına gelir; burası bir bırakma
+                 alanı değil, boş bir liste. Sayfa genişliğinde 200px'lik kesikli
+                 kutu yerine ortalanmış, sınırlı genişlikte sakin bir yüzey. */
+              <View style={{ alignItems: 'center', paddingVertical: 24 }}>
+                <View style={{
+                  alignItems: 'center', gap: 10,
+                  paddingVertical: 32, paddingHorizontal: 28,
+                  borderRadius: 24, width: '100%', maxWidth: 420,
+                  backgroundColor: T.card,
+                  borderWidth: 1,
+                  borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)',
+                  ...(Platform.OS === 'web'
+                    ? { boxShadow: isDark ? '0 4px 16px rgba(0,0,0,0.35)' : '0 4px 16px rgba(15,23,42,0.05)' } as any
+                    : null),
+                }}>
+                  <View style={{
+                    width: 56, height: 56, borderRadius: 28,
+                    alignItems: 'center', justifyContent: 'center',
+                    backgroundColor: 'rgba(45,154,107,0.10)',
+                  }}>
+                    <UserCheck size={24} color="#2D9A6B" strokeWidth={1.6} />
+                  </View>
+                  {/* Büyük punto → negatif tracking, sıkı satır yüksekliği */}
+                  <Text style={{
+                    fontSize: 20, fontWeight: '300', color: T.ink,
+                    letterSpacing: -0.5, lineHeight: 24,
+                    ...(Platform.OS === 'web' ? { fontFamily: T.display } as any : null),
+                  }}>
+                    Bekleyen kayıt yok
+                  </Text>
+                  <Text style={{ fontSize: 12.5, color: T.ink3, textAlign: 'center', lineHeight: 18, maxWidth: 300 }}>
+                    Yeni hekim kaydı geldiğinde burada görünür.
+                  </Text>
                 </View>
-                <Text style={{ fontSize: 14, fontWeight: '700', color: T.ink }}>
-                  Bekleyen kayıt yok
-                </Text>
-                <Text style={{ fontSize: 11.5, color: T.ink3, textAlign: 'center', lineHeight: 16, maxWidth: 320 }}>
-                  Yeni hekim kaydı geldiğinde burada görünür.
-                </Text>
               </View>
             ) : (
               <>
@@ -239,10 +258,13 @@ export function PendingApprovalsScreen() {
               <>
                 <Pressable
                   onPress={() => setShowHistory(!showHistory)}
-                  style={({ hovered }: any) => ({
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: showHistory }}
+                  style={({ pressed }: any) => ({
                     flexDirection: 'row', alignItems: 'center', gap: 8,
-                    marginTop: 10, paddingVertical: 8, paddingHorizontal: 4,
+                    marginTop: 10, paddingVertical: 10, paddingHorizontal: 4,
                     borderTopWidth: 1, borderTopColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.06)',
+                    opacity: pressed ? 0.7 : 1,
                     ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                   })}
                 >
@@ -250,9 +272,10 @@ export function PendingApprovalsScreen() {
                   <Text style={{ fontSize: 10.5, fontWeight: '800', color: T.ink2, letterSpacing: 0.8, textTransform: 'uppercase', flex: 1 }}>
                     Son işlemler · {historyCount}
                   </Text>
-                  <Text style={{ fontSize: 14, color: T.ink3, fontWeight: '600' }}>
-                    {showHistory ? '−' : '+'}
-                  </Text>
+                  {/* Metin "+/−" değil ikon: proje kuralı line ikon, glif değil. */}
+                  <View style={{ transform: [{ rotate: showHistory ? '180deg' : '0deg' }] }}>
+                    <ChevronDown size={14} color={T.ink3} strokeWidth={2} />
+                  </View>
                 </Pressable>
 
                 {showHistory && (

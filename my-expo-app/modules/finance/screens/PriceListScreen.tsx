@@ -1,4 +1,5 @@
 import { localeTag } from '../../../core/i18n';
+import { confirmAsync } from '../../../core/util/confirm';
 /**
  * PriceListScreen — Mali İşlemler > Fiyat Listesi
  *
@@ -738,7 +739,7 @@ function buildPriceListPdfHtml(opts: {
   /** Klinik bazlı özel fiyat listesi başlığı (varsa) */
   clinicName?: string;
   /** Override map: service_id → effective price (varsa fiyat olarak göster) */
-  overrides?: Record<string, { customPrice: number | null; discountPercent: number | null }>;
+  overrides?: Record<string, { customPrice: number | null; discountPercent: number | null; currency?: string | null }>;
   /** ── Tasarım/İçerik özelleştirme (opsiyonel — verilmezse mevcut varsayılan) ── */
   accent?: string;
   accentSoft?: string;
@@ -777,6 +778,8 @@ function buildPriceListPdfHtml(opts: {
   };
   const accentSoft = opts.accentSoft ?? hexToRgba(accent, 0.08);
   const escape = (s: string) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const ccySymbol = (c?: string | null) =>
+    c === 'EUR' ? '€' : c === 'USD' ? '$' : c === 'GBP' ? '£' : '₺';
   const fmtPrice = (sv: LabService) => {
     const placeholder = '<span style="color:#94A3B8;letter-spacing:2px">_____________</span>';
     if (!showPrices) return placeholder;
@@ -787,18 +790,28 @@ function buildPriceListPdfHtml(opts: {
     if (sv.price_type === 'percent') return `%${(Number(sv.price) || 0).toLocaleString('tr-TR')}${u}`;
     // Override varsa effective price hesapla
     const ov = overrides?.[sv.id];
-    let effective = Number(sv.price) || 0;
+    const base = Number(sv.price) || 0;
+    let effective = base;
     let isCustom = false;
     if (ov) {
-      if (ov.customPrice != null) { effective = ov.customPrice; isCustom = true; }
-      else if (ov.discountPercent != null) { effective = effective * (1 - ov.discountPercent / 100); isCustom = true; }
+      if (ov.customPrice != null) { effective = Number(ov.customPrice) || 0; isCustom = true; }
+      else if (ov.discountPercent != null) { effective = base * (1 - ov.discountPercent / 100); isCustom = true; }
     }
     if (effective === 0) return placeholder;
-    const sym = sv.currency === 'EUR' ? '€' : sv.currency === 'USD' ? '$' : sv.currency === 'GBP' ? '£' : '₺';
-    const priceStr = `${sym}${effective.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}`;
+    // Para birimi override'ın kendi para biriminden gelir — klinik özel fiyatı
+    // USD kaydedilip standart hizmet EUR olduğunda PDF € basıyordu (yanlış tutar).
+    const sym = ccySymbol(isCustom ? (ov?.currency || sv.currency) : sv.currency);
+    const baseSym = ccySymbol(sv.currency);
+    const priceStr = `${sym}${(Number(effective) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 })}`;
     if (isCustom && ov?.discountPercent != null) {
-      const baseStr = `${sym}${(Number(sv.price) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 })}`;
+      const baseStr = `${baseSym}${base.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}`;
       return `${priceStr}${u} <span style="font-size:9px;color:#94A3B8;text-decoration:line-through;margin-left:6px">${baseStr}</span> <span style="font-size:9px;color:${accent};font-weight:700;margin-left:4px">-%${ov.discountPercent}</span>`;
+    }
+    // Özel fiyat standarttan farklıysa (tutar ya da para birimi) bunu göster —
+    // aksi halde klinik listesi standart listeyle birebir aynı görünüyordu.
+    if (isCustom && (effective !== base || sym !== baseSym)) {
+      const baseStr = `${baseSym}${base.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}`;
+      return `${priceStr}${u} <span style="font-size:9px;color:#94A3B8;text-decoration:line-through;margin-left:6px">${baseStr}</span>`;
     }
     return priceStr + u;
   };
@@ -838,6 +851,29 @@ function buildPriceListPdfHtml(opts: {
     return a.localeCompare(b, 'tr');
   });
 
+  // Sütun başlığındaki para birimi — satırlar kendi sembolünü bastığı için tek
+  // bir para birimi varsaymak yanılttıcı olabilir (klinik özel fiyatı USD,
+  // standart hizmet EUR iken başlık "FİYAT (EUR)" diyordu). Gerçekten basılan
+  // para birimleri sayılır; birden fazlaysa başlık nötr kalır.
+  const usedCcy = new Set<string>();
+  active.forEach(sv => {
+    if (sv.price_type === 'free' || sv.price_type === 'percent') return;
+    const ov = overrides?.[sv.id];
+    const isCustom = !!ov && (ov.customPrice != null || ov.discountPercent != null);
+    const eff = ov?.customPrice != null
+      ? Number(ov.customPrice) || 0
+      : ov?.discountPercent != null
+        ? (Number(sv.price) || 0) * (1 - ov.discountPercent / 100)
+        : Number(sv.price) || 0;
+    if (eff === 0) return;                       // "____" basılan satır sayılmaz
+    usedCcy.add((isCustom ? (ov?.currency || sv.currency) : sv.currency) || 'TRY');
+  });
+  const priceHeader = !showPrices || usedCcy.size === 0
+    ? `FİYAT (${escape(currency)})`
+    : usedCcy.size === 1
+      ? `FİYAT (${escape(Array.from(usedCcy)[0])})`
+      : 'FİYAT';
+
   const sectionLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
   const sections = ordered.map((cat, idx) => {
     const letter = sectionLetters[idx] ?? '';
@@ -849,7 +885,7 @@ function buildPriceListPdfHtml(opts: {
           <thead>
             <tr>
               <th class="thName">HİZMET</th>
-              <th class="thPrice">FİYAT (${escape(currency)})</th>
+              <th class="thPrice">${priceHeader}</th>
             </tr>
           </thead>
           <tbody>
@@ -1096,14 +1132,14 @@ function StandardTab() {
   };
 
   // Kullanılmayan varsayılan kategorileri gizle
-  const handleCleanupEmpty = () => {
+  const handleCleanupEmpty = async () => {
     if (emptyDefaultCats.length === 0) {
       const msg = 'Temizlenecek boş kategori yok.';
       if (Platform.OS === 'web') window.alert(msg); else Alert.alert('Bilgi', msg);
       return;
     }
     const msg = `Şu boş kategoriler önerilenden kaldırılsın mı?\n\n• ${emptyDefaultCats.join('\n• ')}\n\nYeni bir hizmet eklerken bu kategoriler artık önerilmez. Geri getirmek için bir hizmete adını yazıp atayabilirsin.`;
-    const ok = Platform.OS === 'web' ? window.confirm(msg) : true;
+    const ok = await confirmAsync('Boş Kategorileri Kaldır', msg, { confirmText: 'Kaldır' });
     if (!ok) return;
     persistHidden(new Set([...hiddenCats, ...emptyDefaultCats]));
   };
@@ -1157,9 +1193,7 @@ function StandardTab() {
     ]));
     if (existing.includes(trimmed) && trimmed !== source) {
       // Mevcut kategoriye taşımaya izin ver; sadece uyar
-      const ok = Platform.OS === 'web'
-        ? window.confirm(`"${trimmed}" zaten mevcut. Seçili ${serviceIds.length} hizmet bu kategoriye taşınsın mı?`)
-        : true;
+      const ok = await confirmAsync('Kategoriye Taşı', `"${trimmed}" zaten mevcut. Seçili ${serviceIds.length} hizmet bu kategoriye taşınsın mı?`, { confirmText: 'Taşı' });
       if (!ok) return;
     }
     setServices(prev => prev.map(sv => serviceIds.includes(sv.id) ? { ...sv, category: trimmed } : sv));
@@ -1604,7 +1638,7 @@ function StandardTab() {
           {filtered.length === 0 && (
             <View style={s.empty}>
               <Tag size={36} color={DS.ink[300]} strokeWidth={1.4} />
-              <Text style={s.emptyTitle}>{search ? 'Sonuc bulunamadi' : 'Henuz hizmet eklenmemis'}</Text>
+              <Text style={s.emptyTitle}>{search ? 'Sonuç bulunamadı' : 'Henüz hizmet eklenmemiş'}</Text>
               {!search && (
                 <Pressable style={s.emptyBtn as any} onPress={openAdd}>
                   <Text style={s.emptyBtnText}>Ilk hizmeti ekle</Text>
@@ -1926,8 +1960,12 @@ function CustomTab() {
 
   // Klinik özel liste override map'i (builder'a geçilir)
   const overrideMap = React.useMemo(() => {
-    const m: Record<string, { customPrice: number | null; discountPercent: number | null }> = {};
-    overrides.forEach(o => { m[o.service_id] = { customPrice: o.custom_price, discountPercent: o.discount_percent }; });
+    const m: Record<string, { customPrice: number | null; discountPercent: number | null; currency?: string | null }> = {};
+    // currency de taşınır: özel fiyat USD kaydedilip hizmet EUR iken PDF
+    // hizmetin sembolünü basıyor, tutarı yanlış para biriminde gösteriyordu.
+    overrides.forEach(o => {
+      m[o.service_id] = { customPrice: o.custom_price, discountPercent: o.discount_percent, currency: o.currency };
+    });
     return m;
   }, [overrides]);
 
@@ -2040,9 +2078,7 @@ function CustomTab() {
       if (typeof window !== 'undefined') window.alert('Tüm hizmetler zaten bu kliniğe aktarılmış.');
       return;
     }
-    const ok = typeof window !== 'undefined'
-      ? window.confirm(`${toAdd.length} hizmet standart fiyatıyla "${selectedClinic.name}" kliniğine kopyalanacak. Sonra tek tek düzenleyebilirsin.`)
-      : true;
+    const ok = await confirmAsync('Kliniğe Kopyala', `${toAdd.length} hizmet standart fiyatıyla "${selectedClinic.name}" kliniğine kopyalanacak. Sonra tek tek düzenleyebilirsin.`, { confirmText: 'Kopyala' });
     if (!ok) return;
     setImporting(true);
     const rows = toAdd.map((sv) => ({
@@ -2088,7 +2124,7 @@ function CustomTab() {
           {clinics.length === 0 ? (
             <View style={s.empty}>
               <Building2 size={36} color={DS.ink[300]} strokeWidth={1.4} />
-              <Text style={s.emptyTitle}>Henuz klinik eklenmemis</Text>
+              <Text style={s.emptyTitle}>Henüz klinik eklenmemiş</Text>
             </View>
           ) : (
             clinics.map((c) => {
@@ -2195,8 +2231,8 @@ function CustomTab() {
                           <View style={{ flexDirection: 'row', gap: 8, marginTop: 3, alignItems: 'center' }}>
                             {effPrice != null ? (
                               <>
-                                <Text style={s.overridePrice}>{effPrice.toLocaleString('tr-TR')} {priceSym(override?.custom_price != null ? (override.currency || sv.currency) : sv.currency)}</Text>
-                                <Text style={s.standardPrice}>{sv.price.toLocaleString('tr-TR')} {priceSym(sv.currency)}</Text>
+                                <Text style={s.overridePrice}>{(Number(effPrice) || 0).toLocaleString('tr-TR')} {priceSym(override?.custom_price != null ? (override.currency || sv.currency) : sv.currency)}</Text>
+                                <Text style={s.standardPrice}>{(Number(sv.price) || 0).toLocaleString('tr-TR')} {priceSym(sv.currency)}</Text>
                                 {override?.discount_percent != null && (
                                   <View style={s.discountBadge}>
                                     <Text style={s.discountText}>-{override.discount_percent}%</Text>
@@ -2204,7 +2240,7 @@ function CustomTab() {
                                 )}
                               </>
                             ) : (
-                              <Text style={s.stdPriceLabel}>Standart: {sv.price.toLocaleString('tr-TR')} {priceSym(sv.currency)}</Text>
+                              <Text style={s.stdPriceLabel}>Standart: {(Number(sv.price) || 0).toLocaleString('tr-TR')} {priceSym(sv.currency)}</Text>
                             )}
                           </View>
                         </View>
@@ -2238,7 +2274,7 @@ function CustomTab() {
                 <View style={m.svcInfoCard}>
                   <Text style={m.svcInfoLabel}>Hizmet</Text>
                   <Text style={m.svcInfoName}>{editSvc.name}</Text>
-                  <Text style={m.svcInfoPrice}>Standart: {editSvc.price.toLocaleString('tr-TR')} {editSvc.currency}</Text>
+                  <Text style={m.svcInfoPrice}>Standart: {(Number(editSvc.price) || 0).toLocaleString('tr-TR')} {editSvc.currency}</Text>
                 </View>
               )}
 
@@ -2309,7 +2345,7 @@ function CustomTab() {
                   style={[m.fieldInput, { minHeight: 72, textAlignVertical: 'top' }] as any}
                   value={oForm.notes}
                   onChangeText={(v) => setOForm((f) => ({ ...f, notes: v }))}
-                  placeholder="Istege bagli aciklama..."
+                  placeholder="İsteğe bağlı açıklama..."
                   placeholderTextColor={DS.ink[300]}
                   multiline
                 />
@@ -2471,7 +2507,7 @@ function PromotionsTab() {
         {promos.length === 0 && (
           <View style={s.empty}>
             <Tag size={36} color={DS.ink[300]} strokeWidth={1.4} />
-            <Text style={s.emptyTitle}>Henuz promosyon eklenmemis</Text>
+            <Text style={s.emptyTitle}>Henüz promosyon eklenmemiş</Text>
             <Text style={s.emptySubtitle}>Kampanya veya toplu iskonto olusturun</Text>
             <Pressable style={s.emptyBtn as any} onPress={openAdd}>
               <Text style={s.emptyBtnText}>Ilk kampanyayi ekle</Text>
@@ -2618,7 +2654,7 @@ function PromotionsTab() {
                 <Text style={m.sectionTitle}>Gecerlilik Tarihleri</Text>
                 <View style={m.twoCol}>
                   <View style={{ flex: 1 }}>
-                    <Text style={m.fieldLabel}>Baslangic</Text>
+                    <Text style={m.fieldLabel}>Başlangıç</Text>
                     <DatePicker
                       value={form.starts_at}
                       onChange={(v) => setForm((f) => ({ ...f, starts_at: v }))}
@@ -2626,7 +2662,7 @@ function PromotionsTab() {
                     />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={m.fieldLabel}>Bitis</Text>
+                    <Text style={m.fieldLabel}>Bitiş</Text>
                     <DatePicker
                       value={form.ends_at}
                       onChange={(v) => setForm((f) => ({ ...f, ends_at: v }))}
@@ -2994,7 +3030,7 @@ function PriceListBuilderModal({
   /** Klinik özel liste modu — verilirse başlık klinik teklifi olur. */
   clinicName?: string;
   /** service_id → effective price override (klinik özel fiyatlar). */
-  overrides?: Record<string, { customPrice: number | null; discountPercent: number | null }>;
+  overrides?: Record<string, { customPrice: number | null; discountPercent: number | null; currency?: string | null }>;
   /** Para birimi varsayılanı (klinik listeleri için TRY). */
   defaultCurrency?: string;
 }) {
@@ -3024,8 +3060,15 @@ function PriceListBuilderModal({
   const [showPrices, setShowPrices] = useState<boolean>(pricedMode);
   const [generating, setGenerating] = useState(false);
 
+  // Fiyat kaynağı — klinik özel listesi mi, standart liste mi.
+  // Aynı klinik için iki belge de üretilebilsin diye (özel teklif ↔ standart
+  // liste). Kalıcı kaydedilmez: buton "özel liste" diyerek açıldığında
+  // varsayılan hep özel olsun.
+  const hasOverrides = !!overrides && Object.keys(overrides).length > 0;
+  const [useOverrides, setUseOverrides] = useState<boolean>(true);
+
   // Giriş seçeneğine göre fiyat modunu senkronla (her açılışta)
-  useEffect(() => { if (visible) setShowPrices(pricedMode); }, [visible, pricedMode]);
+  useEffect(() => { if (visible) { setShowPrices(pricedMode); setUseOverrides(true); } }, [visible, pricedMode]);
 
   // Form değiştikçe localStorage'a yaz
   useEffect(() => {
@@ -3056,6 +3099,12 @@ function PriceListBuilderModal({
 
   const palette = CATALOG_PALETTES.find(p => p.id === accentId) ?? CATALOG_PALETTES[0];
 
+  // Standart kaynağa geçilince klinik adı da düşer: belge artık o kliniğe özel
+  // bir teklif değil, herkese verilen standart liste. Başlık/eyebrow buna göre
+  // varsayılana döner.
+  const activeOverrides = hasOverrides && useOverrides ? overrides : undefined;
+  const activeClinicName = hasOverrides && !useOverrides ? undefined : clinicName;
+
   const buildHtml = () => {
     const includeCategories = dynamicCategories.filter(c => !excludedCats[c]);
     return buildPriceListPdfHtml({
@@ -3064,8 +3113,8 @@ function PriceListBuilderModal({
       services,
       showPrices,
       currency,
-      clinicName,
-      overrides,
+      clinicName: activeClinicName,
+      overrides: activeOverrides,
       accent: palette.accent,
       accentSoft: palette.accentSoft,
       title: title.trim() || undefined,
@@ -3109,9 +3158,12 @@ function PriceListBuilderModal({
       const target = (doc.querySelector('.doc') as HTMLElement | null) ?? doc.body;
       const html2pdfMod: any = await import('html2pdf.js');
       const html2pdf = html2pdfMod.default ?? html2pdfMod;
-      const baseName = clinicName ? `${lab.name || 'Lab'}_${clinicName}` : (lab.name || 'Lab');
+      // Aynı klinik için iki belge de indirilebildiğinden ad kaynağı belirtir —
+      // yoksa "…_FiyatListesi_2026-08.pdf" ikisinde de aynı olup üzerine yazardı.
+      const baseName = activeClinicName ? `${lab.name || 'Lab'}_${activeClinicName}` : (lab.name || 'Lab');
       const safeName = baseName.replace(/[^\wÀ-ſĞğŞşİıÇçÜüÖö -]/g, '').trim() || 'FiyatListesi';
-      const fileName = `${safeName}_FiyatListesi_${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}.pdf`;
+      const kind = activeOverrides ? 'OzelFiyatListesi' : 'FiyatListesi';
+      const fileName = `${safeName}_${kind}_${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}.pdf`;
 
       await html2pdf()
         .from(target)
@@ -3152,7 +3204,9 @@ function PriceListBuilderModal({
           <View style={{ paddingHorizontal: 22, paddingVertical: 16, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Text style={{ fontSize: 17, fontWeight: '700', color: DS.ink[900] }}>{clinicName ? `${clinicName} — Özel Liste` : 'Fiyat Listesi Oluşturucu'}</Text>
+                <Text style={{ fontSize: 17, fontWeight: '700', color: DS.ink[900] }}>
+                  {clinicName ? `${clinicName} — ${useOverrides ? 'Özel Liste' : 'Standart Liste'}` : 'Fiyat Listesi Oluşturucu'}
+                </Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 9999, backgroundColor: 'rgba(16,185,129,0.10)' }}>
                   <Check size={9} color="#059669" strokeWidth={3} />
                   <Text style={{ fontSize: 9.5, fontWeight: '700', color: '#059669', letterSpacing: 0.4 }}>OTOMATİK KAYIT</Text>
@@ -3168,6 +3222,37 @@ function PriceListBuilderModal({
           </View>
 
           <ScrollView style={{ flexGrow: 0 }} contentContainerStyle={{ padding: 16 }}>
+            {/* Fiyat kaynağı — yalnız klinik özel fiyatı varken anlamlı */}
+            {hasOverrides && (
+              <View style={sectionBox}>
+                <Text style={sectionTitle}>Fiyat Kaynağı</Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  {([
+                    { key: true,  label: 'Klinik özel fiyatları', desc: `${clinicName ?? 'Klinik'} için belirlenen fiyatlar` },
+                    { key: false, label: 'Standart fiyatlar',     desc: 'Herkese verilen genel liste' },
+                  ] as const).map(opt => {
+                    const active = useOverrides === opt.key;
+                    return (
+                      <Pressable
+                        key={String(opt.key)}
+                        onPress={() => setUseOverrides(opt.key)}
+                        style={({ hovered }: any) => ({
+                          flex: 1, padding: 12, borderRadius: 12,
+                          borderWidth: active ? 2 : 1,
+                          borderColor: active ? palette.accent : DS.ink[200],
+                          backgroundColor: active ? palette.accentSoft : (hovered ? DS.ink[50] : '#FFFFFF'),
+                          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                        })}
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: active ? palette.accent : DS.ink[900] }}>{opt.label}</Text>
+                        <Text style={{ fontSize: 11, color: DS.ink[500], marginTop: 3 }}>{opt.desc}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+
             {/* Fiyat modu */}
             <View style={sectionBox}>
               <Text style={sectionTitle}>Fiyat Gösterimi</Text>
@@ -3652,8 +3737,8 @@ function CatalogBuilderModal({
                 <Text style={{ fontSize: 11.5, fontWeight: '700', color: PRIMARY }}>{aiBusy ? 'Üretiliyor…' : 'AI ile Doldur'}</Text>
               </Pressable>
               <Pressable
-                onPress={() => {
-                  const ok = Platform.OS === 'web' ? window.confirm('Katalog ayarlarını sıfırla?') : true;
+                onPress={async () => {
+                  const ok = await confirmAsync('Katalog Ayarları', 'Katalog ayarlarını sıfırla?', { confirmText: 'Sıfırla', destructive: true });
                   if (!ok) return;
                   if (typeof window !== 'undefined') {
                     try { window.localStorage.removeItem(storageKey); } catch {}

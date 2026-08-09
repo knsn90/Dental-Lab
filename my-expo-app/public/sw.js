@@ -13,7 +13,7 @@
 //
 // Production deploy'da CACHE sabitini bump etmek ZORUNLU (eski cache'ler silinir).
 
-const CACHE = 'siman-shell-v2';
+const CACHE = 'siman-shell-v3';
 const SHELL = [
   '/',
   '/manifest.webmanifest',
@@ -38,9 +38,11 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
-      // Eski cache'leri sil
+      // Eski cache'leri sil. Localhost'ta HEPSİNİ sil — dev'de bayat bundle
+      // servis edilmesin (aşağıdaki fetch handler da localhost'ta devre dışı).
+      const isDev = ['localhost', '127.0.0.1', '[::1]'].includes(self.location.hostname);
       const keys = await caches.keys();
-      await Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)));
+      await Promise.all(keys.filter((k) => isDev || k !== CACHE).map((k) => caches.delete(k)));
       // Tüm açık sekmeleri yeni SW'a bağla
       await self.clients.claim();
       // Her sekmeye "yeni sürüm aktif oldu" mesajı gönder — istemci toast gösterebilir
@@ -55,8 +57,14 @@ self.addEventListener('message', (event) => {
   if (event?.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
+// Geliştirme sunucusu (Metro) bundle URL'leri SABİT — hash yok. Stale-while-
+// revalidate bu durumda her yenilemede BİR ÖNCEKİ build'i gösteriyor ("kodu
+// değiştirdim ama ekran değişmedi" tuzağı). Localhost'ta SW hiç araya girmesin.
+const IS_DEV_HOST = ['localhost', '127.0.0.1', '[::1]'].includes(self.location.hostname);
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
+  if (IS_DEV_HOST) return;              // dev → her zaman direkt network
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
   if (url.hostname.includes('supabase.co')) return;
@@ -76,19 +84,40 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Same-origin statik asset — STALE-WHILE-REVALIDATE
+  // HASH'Lİ PAKETLER — SW HİÇ ARAYA GİRMEZ.
+  //
+  // NEDEN: /_expo/static/... dosyaları içerik hash'i taşıyor ve sunucudan
+  // `cache-control: public, max-age=31536000, immutable` ile geliyor; tarayıcının
+  // kendi HTTP cache'i bunları zaten kusursuz yönetiyor. SW'nin buraya karışması
+  // hiçbir şey kazandırmıyor, ama bir şey KAYBETTİRİYOR: istek askıda kalırsa
+  // `import()` sözü hiç çözülmüyor ve lazy sayfa (Siparişler) sonsuza kadar
+  // "Yükleniyor…" gösteriyor. Kullanıcı dakikalarca bekliyor, yalnız sayfayı
+  // yenileyince açılıyor — ölçülen davranış tam buydu.
+  if (url.pathname.startsWith('/_expo/')) return;
+
+  // Same-origin diğer statik asset (ikon, manifest, font) — STALE-WHILE-REVALIDATE
   if (url.origin === self.location.origin) {
     event.respondWith(
       caches.match(request).then((cached) => {
-        const networkFetch = fetch(request).then((res) => {
+        if (cached) {
+          // Arka planda yenile, cevabı beklemeden cache'i ver.
+          fetch(request).then((res) => {
+            if (res && res.status === 200) {
+              const copy = res.clone();
+              caches.open(CACHE).then((c) => c.put(request, copy)).catch(() => null);
+            }
+          }).catch(() => null);
+          return cached;
+        }
+        // Cache YOK → ağa git. Ağ da hata verirse `undefined` DÖNDÜRÜLEMEZ:
+        // respondWith(undefined) isteği bozar. Gerçek bir hata cevabı üretiyoruz.
+        return fetch(request).then((res) => {
           if (res && res.status === 200) {
             const copy = res.clone();
             caches.open(CACHE).then((c) => c.put(request, copy)).catch(() => null);
           }
           return res;
-        }).catch(() => cached);
-        // Cache varsa anında ver, arka planda yenile
-        return cached || networkFetch;
+        }).catch(() => new Response('', { status: 504, statusText: 'offline' }));
       }),
     );
   }

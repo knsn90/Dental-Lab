@@ -21,7 +21,7 @@ import { supabase } from '../api/supabase';
 export type NotificationCategory =
   | 'new_order'    | 'order_status'    | 'chat'      | 'approval'
   | 'payment'      | 'stock'           | 'delivery'  | 'paper_order'
-  | 'material_request';
+  | 'material_request' | 'order_watch' | 'stage_critical' | 'stock_count';
 
 export type NotificationChannel = 'in_app' | 'browser_push' | 'email' | 'whatsapp';
 
@@ -53,6 +53,13 @@ const DEFAULT_PREFS: NotificationPrefs = {
     delivery:     { in_app: true,  browser_push: false, email: true,  whatsapp: false },
     paper_order:  { in_app: true,  browser_push: true,  email: false, whatsapp: false },
     material_request: { in_app: true, browser_push: true,  email: false, whatsapp: false },
+    // Günlük geciken + beklemedeki iş digest'i (yalnız admin/lab-manager alır) — önemli: in-app + push + email açık, whatsapp opt-in.
+    order_watch:  { in_app: true,  browser_push: true,  email: true,  whatsapp: false },
+    // Kritik aşama tamamlandı (hekim/klinik/müdür/admin) — önemli kilometre taşı: in-app + push + email açık.
+    stage_critical: { in_app: true, browser_push: true, email: true, whatsapp: false },
+    // Fiziksel sayım hatırlatması (yalnız admin/lab-manager) — aksiyon gerektirir,
+    // ayda birkaç kez çıkar: in-app + push + email açık, whatsapp kapalı.
+    stock_count:  { in_app: true,  browser_push: true,  email: true,  whatsapp: false },
   },
 };
 
@@ -82,6 +89,11 @@ interface State {
   setChannel: (ch: NotificationChannel, on: boolean) => Promise<void>;
   /** Kategori × kanal toggle */
   setCategoryChannel: (cat: NotificationCategory, ch: NotificationChannel, on: boolean) => Promise<void>;
+  /**
+   * Toplu kategori × kanal toggle ("Tümünü Aç/Kapat").
+   * Tek persist yapar — tek tek çağırmak N ayrı profiles UPDATE'i üretiyordu.
+   */
+  setCategoriesBulk: (cats: NotificationCategory[], chs: NotificationChannel[], on: boolean) => Promise<void>;
   /** Modüllerin kullanacağı karar fonksiyonu */
   shouldNotify: (cat: NotificationCategory, ch: NotificationChannel) => boolean;
 }
@@ -149,6 +161,20 @@ export const useNotificationPrefs = create<State>((set, get) => ({
         [cat]: { ...catState, [ch]: on },
       },
     };
+    set({ prefs: next });
+    await persist(_currentUserId, next);
+  },
+
+  setCategoriesBulk: async (cats, chs, on) => {
+    const cur = get().prefs;
+    const categories = { ...cur.categories };
+    for (const cat of cats) {
+      const catState = categories[cat] ?? DEFAULT_PREFS.categories[cat];
+      const nextCat = { ...catState };
+      for (const ch of chs) nextCat[ch] = on;
+      categories[cat] = nextCat;
+    }
+    const next: NotificationPrefs = { ...cur, categories };
     set({ prefs: next });
     await persist(_currentUserId, next);
   },

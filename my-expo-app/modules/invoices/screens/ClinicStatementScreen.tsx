@@ -1,4 +1,5 @@
 import { localeTag } from '../../../core/i18n';
+import { safeBack } from '../../../core/util/safeBack';
 /**
  * ClinicStatementScreen — Klinik Hesap Ekstresi (Patterns Design Language)
  *
@@ -14,21 +15,21 @@ import {
   Platform, useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useSegments } from 'expo-router';
 import {
   ArrowLeft, Printer, Download, FileSpreadsheet,
   Calendar, Search, X, Filter, ArrowUpRight, ArrowDownLeft,
   Minus, Banknote, CreditCard, Landmark, FileText,
-  Inbox, Building2, ChevronDown,
+  Inbox, Building2, ChevronDown, FileClock, ChevronRight,
 } from 'lucide-react-native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 
 import { DS } from '../../../core/theme/dsTokens';
-import { fetchInvoicesForClinic, fetchClinicBalance } from '../api';
+import { fetchInvoicesForClinic, fetchClinicBalance, fetchUnbilledWorkOrders, createInvoiceFromOrder, fetchClinicPriceCurrency } from '../api';
 import { buildStatementLines, buildStatementHtml } from '../buildStatementHtml';
 import type { StatementLine } from '../buildStatementHtml';
-import type { Invoice, InvoiceStatus, PaymentMethod, ClinicBalance } from '../types';
+import type { Invoice, InvoiceStatus, PaymentMethod, ClinicBalance, UnbilledWorkOrder } from '../types';
 import {
   INVOICE_STATUS_LABELS,
   PAYMENT_METHOD_LABELS,
@@ -99,6 +100,30 @@ function origSuffix(cur?: string, amt?: number): string {
   if (!cur || cur === 'TRY' || amt == null || !Number.isFinite(amt)) return '';
   const sym = CURRENCY_META[cur as Currency]?.symbol ?? cur;
   return ` (${sym}${amt.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`;
+}
+/**
+ * Faturalanmamış işin para birimi → tutar haritası.
+ * totals_by_currency migration 20260721100000 öncesi kayıtlarda yok →
+ * ham estimated_total'ı ₺ kabul ederek geriye dönük uyum sağlar.
+ */
+/** Cari hesaba henüz girmemiş kalem: ya faturasız iş ya da taslak fatura. */
+type PendingRow = {
+  key: string;
+  kind: 'order' | 'draft';
+  workOrderId?: string;
+  invoiceId?: string;
+  title: string;
+  ref: string;
+  subtitle: string;
+  date: string | null;
+  amount: number;
+};
+
+function unbilledTotals(o: UnbilledWorkOrder): Record<string, number> {
+  const t = o.totals_by_currency;
+  if (t && Object.keys(t).length > 0) return t;
+  const raw = Number(o.estimated_total) || 0;
+  return raw > 0 ? { TRY: raw } : {};
 }
 function fmtDateShort(d: string | null | undefined): string {
   if (!d) return '—';
@@ -189,6 +214,10 @@ export function ClinicStatementScreen() {
   useBaseCurrency();
   const router = useRouter();
   const { clinicId } = useLocalSearchParams<{ clinicId: string }>();
+  // Bu ekran hem /(lab)/statement hem /(admin)/statement altında mount ediliyor.
+  // Grup adını sabitlemek kullanıcıyı diğer panele atar → FinanceHubScreen ile
+  // aynı desen: aktif grubu segment'ten oku.
+  const panelBase = String((useSegments() as string[])?.[0] ?? '(lab)');
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1024;
   const insets = useSafeAreaInsets();
@@ -199,6 +228,7 @@ export function ClinicStatementScreen() {
   // Data
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [clinicInfo, setClinicInfo] = useState<ClinicBalance | null>(null);
+  const [unbilled, setUnbilled] = useState<UnbilledWorkOrder[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filters
@@ -212,7 +242,13 @@ export function ClinicStatementScreen() {
   const [exporting, setExporting] = useState(false);
 
   // Seçili para birimi — ekstre tek dövizde gösterilir (katı per-currency).
+  // Başlangıç değeri geçicidir; aşağıdaki "akıllı varsayılan" efekti veri
+  // gelince doğru dövizi seçer. Kullanıcı sekmeye bastıktan sonra bir daha
+  // müdahale edilmez (ccyPinned).
   const [selectedCcy, setSelectedCcy] = useState<string>('TRY');
+  const [ccyPinned, setCcyPinned] = useState(false);
+  /** Kliniğin fiyat listesi para birimi — varsayılan sekmenin ilk tercihi. */
+  const [priceCcy, setPriceCcy] = useState<string | null>(null);
 
   useEffect(() => {
     if (!clinicId) return;
@@ -222,15 +258,25 @@ export function ClinicStatementScreen() {
     Promise.all([
       fetchInvoicesForClinic(clinicId),
       fetchClinicBalance(clinicId),
-    ]).then(([invRes, balRes]) => {
+      // Teslim edilmiş ama faturaya bağlanmamış işler — ekstrede görünmezdi.
+      fetchUnbilledWorkOrders(clinicId),
+      // Varsayılan sekmenin ilk tercihi; başarısız olursa null döner ve
+      // aşağıdaki sıralama bir sonraki ölçüte düşer.
+      fetchClinicPriceCurrency(clinicId).catch(() => null),
+    ]).then(([invRes, balRes, unbRes, pCcy]) => {
       if (cancelled) return;
       setInvoices((invRes.data ?? []) as Invoice[]);
       setClinicInfo((balRes.data ?? null) as ClinicBalance | null);
+      setUnbilled((unbRes.data ?? []) as UnbilledWorkOrder[]);
+      setPriceCcy((pCcy as string | null) ?? null);
       setLoading(false);
     });
 
     return () => { cancelled = true; };
   }, [clinicId]);
+
+  // Klinik değişince seçim yeniden hesaplansın.
+  useEffect(() => { setCcyPinned(false); }, [clinicId]);
 
   useEffect(() => {
     const name = clinicInfo?.clinic_name ?? 'Hesap Ekstresi';
@@ -239,38 +285,151 @@ export function ClinicStatementScreen() {
   }, [clinicInfo?.clinic_name]);
 
   // Faturalardaki para birimleri (katı per-currency — ekstre tek dövizde)
+  // + faturalanmamış işlerin para birimleri: aksi halde yalnız EUR işi olan
+  //   ama hiç EUR faturası olmayan klinikte o iş hiçbir sekmede görünmezdi.
   const currencies = useMemo(() => {
     const set = new Set<string>();
     for (const i of invoices) if (i.status !== 'iptal') set.add(i.currency || 'TRY');
+    for (const o of unbilled) for (const c of Object.keys(unbilledTotals(o))) set.add(c);
     const order = ['TRY', 'EUR', 'USD', 'GBP'];
     const arr = Array.from(set).sort((a, b) => order.indexOf(a) - order.indexOf(b));
     return arr.length ? arr : ['TRY'];
+  }, [invoices, unbilled]);
+
+  /** Para birimi başına kesilmiş (taslak/iptal olmayan) fatura sayısı. */
+  const postedCountByCcy = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const i of invoices) {
+      if (i.status === 'iptal' || i.status === 'taslak') continue;
+      const c = i.currency || 'TRY';
+      m[c] = (m[c] ?? 0) + 1;
+    }
+    return m;
   }, [invoices]);
 
+  // ── Akıllı varsayılan sekme ────────────────────────────────────────────────
+  //
+  // Eskiden körlemesine `currencies[0]` (TRY→EUR→USD sırasının ilki) seçiliyordu.
+  // Fiyatları USD olan bir klinikte ekran EUR'da açılıp "0 hareket" gösteriyordu;
+  // kullanıcı hesabın boş olduğunu sanıyordu. Sıralama:
+  //   1. Kliniğin fiyat listesi para birimi — hangi dövizle çalışıldığının en
+  //      doğrudan kanıtı, hiç fatura kesilmemişken bile bilinir.
+  //   2. Hareketi (kesilmiş faturası) olan ilk döviz — boş sekmeye düşme.
+  //   3. Mevcut sabit sıra — hepsi boşsa.
+  // Kullanıcı bir sekmeye bastıysa (ccyPinned) bir daha karışılmaz.
   useEffect(() => {
-    if (!currencies.includes(selectedCcy)) setSelectedCcy(currencies[0]);
-  }, [currencies]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (ccyPinned) {
+      // Seçili döviz listeden düştüyse (veri değişti) yine de geçerli bir şeye çek.
+      if (!currencies.includes(selectedCcy)) setSelectedCcy(currencies[0]);
+      return;
+    }
+    const preferred =
+      (priceCcy && currencies.includes(priceCcy) ? priceCcy : null)
+      ?? currencies.find(c => (postedCountByCcy[c] ?? 0) > 0)
+      ?? currencies[0];
+    if (preferred && preferred !== selectedCcy) setSelectedCcy(preferred);
+  }, [currencies, priceCcy, postedCountByCcy, ccyPinned]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const ccyInvoices = useMemo(
     () => invoices.filter(i => (i.currency || 'TRY') === selectedCcy),
     [invoices, selectedCcy],
   );
 
-  // Build statement (orijinal tutarda) — yalnız seçili dövizin faturaları
-  const allLines = useMemo(() => buildStatementLines(ccyInvoices, { original: true }), [ccyInvoices]);
+  // Taslak fatura henüz alacak DEĞİL — v_clinic_balance da taslağı hariç tutuyor.
+  // Ekstre satırları ve KPI'lar yalnız kesilmiş faturalardan hesaplanır; taslaklar
+  // aşağıdaki "Faturalanmamış İşler" bölümünde bekler.
+  const postedInvoices = useMemo(
+    () => ccyInvoices.filter(i => i.status !== 'taslak'),
+    [ccyInvoices],
+  );
+  const draftInvoices = useMemo(
+    () => ccyInvoices.filter(i => i.status === 'taslak'),
+    [ccyInvoices],
+  );
 
-  // KPI'lar seçili dövizde, ccyInvoices'tan hesaplanır (clinicInfo base'di → kullanılmaz)
+  // Seçili dövizde tutarı olan faturalanmamış işler + toplamları.
+  // DİKKAT: bu tutar BAKİYE'ye eklenmez — bakiye yalnız kesilmiş faturaları
+  // ifade eder; potansiyel geliri oraya karıştırmak muhasebeyi bozar.
+  const pendingRows = useMemo<PendingRow[]>(() => {
+    // (a) Hiç faturası olmayan teslim edilmiş işler
+    const fromOrders: PendingRow[] = unbilled
+      .map(o => ({
+        key: `wo:${o.work_order_id}`,
+        kind: 'order' as const,
+        workOrderId: o.work_order_id,
+        title: o.patient_name || 'İsimsiz hasta',
+        ref: o.order_number,
+        subtitle: [o.work_type, o.doctor_name].filter(Boolean).join(' · '),
+        date: (o.delivered_at ?? o.delivery_date)?.slice(0, 10) ?? null,
+        amount: Number(unbilledTotals(o)[selectedCcy]) || 0,
+      }))
+      .filter(r => r.amount > 0);
+
+    // (b) Oluşturulmuş ama henüz kesilmemiş taslak faturalar
+    const fromDrafts: PendingRow[] = draftInvoices.map(inv => ({
+      key: `inv:${inv.id}`,
+      kind: 'draft' as const,
+      invoiceId: inv.id,
+      title: inv.work_order?.patient_name || inv.doctor?.full_name || 'Taslak fatura',
+      ref: inv.invoice_number || 'Taslak',
+      subtitle: [inv.work_order?.order_number, inv.doctor?.full_name].filter(Boolean).join(' · '),
+      date: inv.issue_date ?? null,
+      amount: Number(inv.total) || 0,
+    }));
+
+    return [...fromDrafts, ...fromOrders]
+      .sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')));
+  }, [unbilled, draftInvoices, selectedCcy]);
+
+  const pendingTotal = useMemo(
+    () => pendingRows.reduce((s, r) => s + r.amount, 0),
+    [pendingRows],
+  );
+
+  // Satıra basınca: taslak varsa aç, yoksa taslağı üret ve aç.
+  // create_invoice_from_order idempotent — açık fatura varsa onu döner.
+  const [openingKey, setOpeningKey] = useState<string | null>(null);
+  const openPendingRow = useCallback(async (row: PendingRow) => {
+    if (openingKey) return;
+    if (row.kind === 'draft') {
+      router.push(`/${panelBase}/invoice/${row.invoiceId}` as any);
+      return;
+    }
+    setOpeningKey(row.key);
+    try {
+      const { data, error } = await createInvoiceFromOrder(row.workOrderId!);
+      if (error || !data) {
+        toast.error((error as any)?.message ?? 'Fatura taslağı oluşturulamadı');
+        return;
+      }
+      router.push(`/${panelBase}/invoice/${(data as Invoice).id}` as any);
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Fatura taslağı oluşturulamadı');
+    } finally {
+      setOpeningKey(null);
+    }
+  }, [openingKey, panelBase, router]);
+
+  // Ekstre defter satırından fatura detayına git (fatura & tahsilat satırı ilgili faturaya)
+  const openLine = useCallback((line: StatementLine) => {
+    if (line.id) router.push(`/${panelBase}/invoice/${line.id}` as any);
+  }, [panelBase, router]);
+
+  // Build statement (orijinal tutarda) — yalnız seçili dövizin faturaları
+  const allLines = useMemo(() => buildStatementLines(postedInvoices, { original: true }), [postedInvoices]);
+
+  // KPI'lar seçili dövizde, kesilmiş faturalardan hesaplanır (clinicInfo base'di → kullanılmaz)
   const kpis = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
     let billed = 0, paid = 0, overdue = 0;
-    for (const i of ccyInvoices) {
+    for (const i of postedInvoices) {
       if (i.status === 'iptal') continue;
       const t = Number(i.total || 0), pd = Number(i.paid_amount || 0);
       billed += t; paid += pd;
       if (i.due_date && i.due_date < today && pd < t) overdue += t - pd;
     }
     return { billed, paid, balance: billed - paid, overdue };
-  }, [ccyInvoices]);
+  }, [postedInvoices]);
 
   const filtered = useMemo(() => {
     return allLines.filter(l => {
@@ -360,7 +519,7 @@ export function ClinicStatementScreen() {
         borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
       }}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => safeBack('/')}
           style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center', cursor: 'pointer' as any }}
         >
           <ArrowLeft size={18} color={DS.ink[900]} strokeWidth={1.8} />
@@ -398,20 +557,34 @@ export function ClinicStatementScreen() {
             {currencies.map(cur => {
               const active = selectedCcy === cur;
               const sym = CURRENCY_META[(cur as Currency)]?.symbol ?? cur;
+              // Hareket sayısı rozette: boş sekmenin boş olduğu tıklamadan
+              // anlaşılsın. Kullanıcı "hesap görünmüyor" derken aslında yanlış
+              // sekmedeydi ve bunu ekranda gösteren hiçbir işaret yoktu.
+              const n = postedCountByCcy[cur] ?? 0;
               return (
                 <Pressable
                   key={cur}
-                  onPress={() => setSelectedCcy(cur)}
+                  onPress={() => { setCcyPinned(true); setSelectedCcy(cur); }}
                   style={{
                     flexDirection: 'row', alignItems: 'center', gap: 6,
                     paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, borderWidth: 1.5,
                     borderColor: active ? DS.ink[900] : 'rgba(0,0,0,0.08)',
                     backgroundColor: active ? DS.ink[900] : '#FFF',
+                    opacity: !active && n === 0 ? 0.55 : 1,
                     ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
                   }}
                 >
                   <Text style={{ fontSize: 13, fontWeight: '700', color: active ? '#FFF' : DS.ink[500] }}>{sym}</Text>
                   <Text style={{ fontSize: 12, fontWeight: '600', color: active ? '#FFF' : DS.ink[700] }}>{cur}</Text>
+                  <View style={{
+                    minWidth: 18, paddingHorizontal: 5, paddingVertical: 1, borderRadius: 999,
+                    backgroundColor: active ? 'rgba(255,255,255,0.22)' : DS.ink[100],
+                  }}>
+                    <Text style={{
+                      fontSize: 10, fontWeight: '700', textAlign: 'center',
+                      color: active ? '#FFF' : (n === 0 ? DS.ink[400] : DS.ink[700]),
+                    }}>{n}</Text>
+                  </View>
                 </Pressable>
               );
             })}
@@ -434,6 +607,86 @@ export function ClinicStatementScreen() {
             <Text style={{ fontSize: 11, fontWeight: '600', color: DS.ink[700], marginTop: 4 }}>{pct.toFixed(0)}%</Text>
           </View>
         </View>
+
+        {/* ── Faturalanmamış işler ─────────────────────────────
+            Teslim edilmiş ama faturaya bağlanmamış siparişler.
+            Bakiyeye DAHİL DEĞİL — ayrı, açıkça etiketli bölüm. */}
+        {pendingRows.length > 0 && (
+          <View style={{ ...tableCard, borderColor: 'rgba(232,155,42,0.35)' }}>
+            <View style={{
+              flexDirection: 'row', alignItems: 'center', gap: 10,
+              paddingHorizontal: 20, paddingVertical: 14,
+              backgroundColor: CHIP_TONES.warning.bg,
+              borderBottomWidth: 1, borderBottomColor: 'rgba(232,155,42,0.25)',
+            }}>
+              <FileClock size={17} color={CHIP_TONES.warning.fg} strokeWidth={1.8} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: CHIP_TONES.warning.fg }}>
+                  Faturalanmamış İşler
+                </Text>
+                <Text style={{ fontSize: 11, color: CHIP_TONES.warning.fg, opacity: 0.85, marginTop: 1 }}>
+                  Faturasını görmek ve kesmek için satıra dokun · bakiyeye dahil değil
+                </Text>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: CHIP_TONES.warning.fg }}>
+                  {fmtMoney(pendingTotal, selectedCcy)}
+                </Text>
+                <Text style={{ fontSize: 10, color: CHIP_TONES.warning.fg, opacity: 0.85 }}>
+                  {pendingRows.length} iş
+                </Text>
+              </View>
+            </View>
+
+            {pendingRows.map((row, i) => {
+              const busy = openingKey === row.key;
+              return (
+                <Pressable
+                  key={row.key}
+                  onPress={() => openPendingRow(row)}
+                  disabled={busy}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 12,
+                    paddingHorizontal: 20, paddingVertical: 13,
+                    borderBottomWidth: i === pendingRows.length - 1 ? 0 : 1,
+                    borderBottomColor: 'rgba(0,0,0,0.05)',
+                    opacity: busy ? 0.55 : 1,
+                    ...(Platform.OS === 'web' ? { cursor: busy ? 'default' : 'pointer' } as any : {}),
+                  }}
+                >
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>
+                      {row.title}
+                      <Text style={{ fontWeight: '500', color: DS.ink[400] }}>{`  ·  ${row.ref}`}</Text>
+                    </Text>
+                    <Text numberOfLines={1} style={{ fontSize: 11, color: DS.ink[500], marginTop: 2 }}>
+                      {row.subtitle || '—'}
+                    </Text>
+                  </View>
+
+                  {row.kind === 'draft' && (
+                    <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: STATUS_CHIP.taslak.bg }}>
+                      <Text style={{ fontSize: 10, fontWeight: '600', color: STATUS_CHIP.taslak.fg }}>Taslak</Text>
+                    </View>
+                  )}
+
+                  {isDesktop && (
+                    <Text style={{ fontSize: 11, color: DS.ink[400], width: 110, textAlign: 'right' }}>
+                      {fmtDateShort(row.date)}
+                    </Text>
+                  )}
+
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: DS.ink[900], textAlign: 'right', minWidth: 78 }}>
+                    {fmtMoney(row.amount, selectedCcy)}
+                  </Text>
+                  {busy
+                    ? <ActivityIndicator size="small" color={DS.ink[400]} />
+                    : <ChevronRight size={15} color={DS.ink[300]} strokeWidth={1.8} />}
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
 
         {/* ── Filters ──────────────────────────────────────── */}
         <View style={{ gap: 10 }}>
@@ -612,7 +865,8 @@ export function ClinicStatementScreen() {
 
             {/* Rows */}
             {filtered.map((line, i) => (
-              <StatementRow key={line.id ?? i} line={line} last={i === filtered.length - 1} currency={selectedCcy} />
+              <StatementRow key={line.id ?? i} line={line} last={i === filtered.length - 1} currency={selectedCcy}
+                onOpen={line.id ? () => openLine(line) : undefined} />
             ))}
 
             {/* Footer */}
@@ -648,14 +902,21 @@ export function ClinicStatementScreen() {
               const isInvoice = line.type === 'invoice';
               const Icon = isInvoice ? ArrowUpRight : ArrowDownLeft;
               const chip = isInvoice && line.status ? STATUS_CHIP[line.status as InvoiceStatus] : null;
+              const mTitle = [line.orderNo, line.patientName].filter(Boolean).join(' · ') || line.description;
+              const mSub = [line.clinicName, line.doctorName].filter(Boolean).join(' · ');
 
               return (
-                <View key={line.id ?? i} style={{
+                <Pressable key={line.id ?? i}
+                  onPress={line.id ? () => openLine(line) : undefined}
+                  disabled={!line.id}
+                  style={({ pressed }: any) => ({
                   flexDirection: 'row', alignItems: 'center', gap: 12,
                   paddingHorizontal: 16, paddingVertical: 12,
                   borderBottomWidth: i < filtered.length - 1 ? 1 : 0,
                   borderBottomColor: 'rgba(0,0,0,0.04)',
-                }}>
+                  backgroundColor: pressed && line.id ? '#FAFAFA' : 'transparent',
+                  ...(line.id && Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                })}>
                   <View style={{
                     width: 32, height: 32, borderRadius: 10,
                     backgroundColor: isInvoice ? CHIP_TONES.info.bg : CHIP_TONES.success.bg,
@@ -665,9 +926,12 @@ export function ClinicStatementScreen() {
                   </View>
 
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={{ fontSize: 13, fontWeight: '500', color: DS.ink[900] }} numberOfLines={1}>
-                      {line.description}
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+                      {mTitle}
                     </Text>
+                    {mSub ? (
+                      <Text style={{ fontSize: 11, color: DS.ink[400], marginTop: 1 }} numberOfLines={1}>{mSub}</Text>
+                    ) : null}
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
                       <Text style={{ fontSize: 11, color: DS.ink[400] }}>{fmtDateShort(line.date)}</Text>
                       {isInvoice && chip && line.status && (
@@ -696,7 +960,7 @@ export function ClinicStatementScreen() {
                       {fmtMoney(line.balance, selectedCcy)}
                     </Text>
                   </View>
-                </View>
+                </Pressable>
               );
             })}
 
@@ -719,19 +983,28 @@ export function ClinicStatementScreen() {
 }
 
 // ─── Desktop statement row ───────────────────────────────────────────
-function StatementRow({ line, last, currency }: { line: StatementLine; last: boolean; currency: string }) {
+function StatementRow({ line, last, currency, onOpen }: { line: StatementLine; last: boolean; currency: string; onOpen?: () => void }) {
   const isInvoice = line.type === 'invoice';
   const Icon = isInvoice ? ArrowUpRight : ArrowDownLeft;
   const chip = isInvoice && line.status ? STATUS_CHIP[line.status as InvoiceStatus] : null;
   const MIcon = !isInvoice && line.method ? METHOD_ICON[line.method as PaymentMethod] : null;
+  const clickable = !!onOpen;
+  // Başlık: sipariş no + hasta · Alt satır: klinik + hekim (yoksa description'a düş)
+  const rowTitle = [line.orderNo, line.patientName].filter(Boolean).join(' · ') || line.description;
+  const rowSub = [line.clinicName, line.doctorName].filter(Boolean).join(' · ');
 
   return (
-    <View style={{
-      flexDirection: 'row', alignItems: 'center',
-      paddingHorizontal: 20, paddingVertical: 12,
-      borderBottomWidth: last ? 0 : 1,
-      borderBottomColor: 'rgba(0,0,0,0.04)',
-    }}>
+    <Pressable
+      onPress={onOpen}
+      disabled={!clickable}
+      style={({ hovered }: any) => ({
+        flexDirection: 'row', alignItems: 'center',
+        paddingHorizontal: 20, paddingVertical: 12,
+        borderBottomWidth: last ? 0 : 1,
+        borderBottomColor: 'rgba(0,0,0,0.04)',
+        backgroundColor: hovered && clickable ? '#FAFAFA' : 'transparent',
+        ...(clickable && Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+      })}>
       <Text style={{ flex: 1.2, fontSize: 12, color: DS.ink[500], fontFamily: 'monospace' }}>
         {fmtDateShort(line.date)}
       </Text>
@@ -746,18 +1019,23 @@ function StatementRow({ line, last, currency }: { line: StatementLine; last: boo
         </View>
       </View>
 
-      <View style={{ flex: 3, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        <Text style={{ fontSize: 13, color: DS.ink[800] }} numberOfLines={1}>
-          {line.description}
-        </Text>
-        {!isInvoice && MIcon && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-            <MIcon size={10} color={DS.ink[400]} strokeWidth={1.6} />
-            <Text style={{ fontSize: 10, color: DS.ink[400] }}>
-              {line.method ? PAYMENT_METHOD_LABELS[line.method as PaymentMethod] : ''}
-            </Text>
-          </View>
-        )}
+      <View style={{ flex: 3, gap: 2, paddingRight: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }} numberOfLines={1}>
+            {rowTitle}
+          </Text>
+          {!isInvoice && MIcon && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+              <MIcon size={10} color={DS.ink[400]} strokeWidth={1.6} />
+              <Text style={{ fontSize: 10, color: DS.ink[400] }}>
+                {line.method ? PAYMENT_METHOD_LABELS[line.method as PaymentMethod] : ''}
+              </Text>
+            </View>
+          )}
+        </View>
+        {rowSub ? (
+          <Text style={{ fontSize: 11, color: DS.ink[400] }} numberOfLines={1}>{rowSub}</Text>
+        ) : null}
       </View>
 
       <View style={{ flex: 1 }}>
@@ -790,7 +1068,7 @@ function StatementRow({ line, last, currency }: { line: StatementLine; last: boo
       }}>
         {fmtMoney(line.balance, currency)}
       </Text>
-    </View>
+    </Pressable>
   );
 }
 

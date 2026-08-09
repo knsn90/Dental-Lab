@@ -240,16 +240,24 @@ export async function checkMukellef(vkn: string): Promise<MukellefCheckResult> {
   const result = await provider.checkMukellef(vkn);
 
   if (result.ok) {
-    // Upsert cache
-    await supabase.from('mukellef_cache').upsert({
-      vkn,
-      is_registered: result.is_registered,
-      alias:         result.alias ?? null,
-      title:         result.title ?? null,
-      tax_office:    result.tax_office ?? null,
-      provider:      provider.key,
-      checked_at:    new Date().toISOString(),
-    }, { onConflict: 'vkn' });
+    // Cache yazımı RPC üzerinden.
+    //
+    // GÜVENLİK (2026-08-02): mukellef_cache global paylaşımlı (lab_id yok) ve
+    // eskiden yazma politikası yalnız `auth.uid() IS NOT NULL` istiyordu — yani
+    // herhangi bir laptaki kurye/teknisyen istediği VKN'nin is_registered değerini
+    // değiştirip TÜM labların e_fatura/e_arsiv kararını bozabiliyordu.
+    // Artık doğrudan yazma yok; upsert_mukellef_cache send_einvoice/manage_finance
+    // izni arıyor. Yetkisiz kullanıcıda hata döner — sorgu sonucu yine kullanılır,
+    // sadece paylaşımlı cache güncellenmez.
+    const { error: cacheErr } = await supabase.rpc('upsert_mukellef_cache', {
+      p_vkn:           vkn,
+      p_is_registered: result.is_registered,
+      p_alias:         result.alias ?? null,
+      p_title:         result.title ?? null,
+      p_tax_office:    result.tax_office ?? null,
+      p_provider:      provider.key,
+    });
+    if (cacheErr) console.warn('[efatura] mükellef cache yazılamadı:', cacheErr.message);
 
     // Clinic varsa onun da efatura_registered cache'ini güncelle
     await supabase.from('clinics').update({

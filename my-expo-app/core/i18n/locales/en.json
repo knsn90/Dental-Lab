@@ -39,7 +39,7 @@
     "items": {
       "today": "Today",
       "orders": "Orders",
-      "paperOrders": "Paper orders",
+      "paperOrders": "Manual orders",
       "approvals": "Approvals",
       "clinics": "Clinics",
       "team": "Team",
@@ -57,7 +57,7 @@
       "search": "Search",
       "more": "More",
       "new": "New",
-      "paperInbox": "Paper inbox",
+      "paperInbox": "Manual inbox",
       "deliveries": "Deliveries",
       "map": "Map",
       "stats": "Stats",
@@ -70,7 +70,8 @@
       "panel": "Dashboard",
       "myJobs": "My jobs",
       "history": "History",
-      "requests": "Requests"
+      "requests": "Requests",
+      "waSupport": "WhatsApp Support"
     },
     "sections": {
       "work": "Work management",
@@ -410,6 +411,10 @@
       "logs": {
         "label": "Logs",
         "sub": "System activity records"
+      },
+      "workflows": {
+        "label": "Workflows",
+        "sub": "Production flow designer"
       }
     }
   },
@@ -465,9 +470,11 @@
       "qcShort": "QC",
       "ready": "Ready",
       "live": "LIVE",
-      "awaitingPlanning": "awaiting planning",
+      "awaitingPlanning": "orders arrived — start planning",
+      "newWorkKicker": "NEW WORK",
       "overdueOrder": "overdue order",
-      "urgent": "URGENT"
+      "urgent": "URGENT",
+      "toPlanShort": "To plan"
     },
     "months": {
       "short": "Jan, Feb, Mar, Apr, May, Jun, Jul, Aug, Sep, Oct, Nov, Dec",
@@ -497,7 +504,7 @@
       "deliveryRate": "Delivery rate",
       "delivered": "Delivered",
       "inProduction": "in production",
-      "todaysTasks": "Today's tasks",
+      "todaysTasks": "Pending actions",
       "recentOrders": "Recent orders",
       "viewAll": "View all →",
       "noOrders": "No orders yet",
@@ -516,13 +523,18 @@
       "ordersSummary": "{{total}} orders, {{active}} active{{overdue}}.",
       "liveProduction": "Live production",
       "monthlyRevenue": "Monthly revenue",
+      "pendingApprovals": "Pending approvals",
+      "approvalsActionNeeded": "Action needed",
+      "approvalsClear": "All clear",
       "revenueTarget": "Target ₺60K",
       "activeOrders": "Active orders",
       "overdueCount": "{{count}} overdue",
       "total": "Total {{total}}",
       "delayedCases": "Delayed cases",
       "noDelayedCases": "No delayed cases",
-      "productionOnTrack": "All production is on track."
+      "productionOnTrack": "All production is on track.",
+      "ordersOfTotal": "{{done}} / {{total}} orders",
+      "deliveredAllTime": "Delivered · all time"
     },
     "buttons": {
       "start": "Start"
@@ -543,12 +555,17 @@
       "actor": {
         "admin": "Admin",
         "doctor": "Doctor",
-        "lab": "Lab"
+        "lab": "Lab",
+        "clinic": "Clinic",
+        "technician": "Technician",
+        "courier": "Courier"
       },
       "tab": {
         "all": "All",
         "users": "Users",
-        "doctors": "Doctors"
+        "doctors": "Doctors",
+        "technicians": "Technicians",
+        "clinics": "Clinics"
       },
       "searchPlaceholder": "Search by name, action, or record…",
       "loading": "Loading logs…",

@@ -49,11 +49,14 @@ export interface ProviderDefinition {
 export interface ProviderField {
   key:         string;        // credentials JSONB içinde tutulur
   label:       string;
-  type:        'text' | 'password' | 'url' | 'select';
+  type:        'text' | 'password' | 'url' | 'select' | 'address';
   required?:   boolean;
   placeholder?:string;
   helpText?:   string;
   options?:    { value: string; label: string }[];
+  /** type='address': seçilen konumun enlem/boylamını yazacağı diğer alan key'leri */
+  latKey?:     string;
+  lngKey?:     string;
 }
 
 // ─── Provider katalogları ────────────────────────────────────────────────
@@ -251,9 +254,11 @@ export const MESSAGING_PROVIDERS: ProviderDefinition[] = [
         placeholder: 'EAA...',
         helpText: 'System User → permanent token oluştur (whatsapp_business_messaging + whatsapp_business_management izinleri).' },
       { key: 'verify_token', label: 'Webhook Verify Token', type: 'password',
-        helpText: 'Webhook setup\'ta Meta\'ya gireceğin gizli string. Senin belirleyeceğin herhangi bir değer.' },
+        helpText: 'Kendi belirleyeceğin gizli string. Meta → Webhook setup\'ta AYNISINI gir. '
+          + 'Callback URL: https://kjwjxqfdsxkxgcgophdy.supabase.co/functions/v1/whatsapp-webhook '
+          + '· "messages" alanına abone ol.' },
     ],
-    implemented: false,
+    implemented: true,
   },
   {
     key:   'twilio-whatsapp',
@@ -424,8 +429,10 @@ export const COURIER_PROVIDERS: ProviderDefinition[] = [
         { value: 'production', label: 'Canlı (production)' },
       ]},
       // Kurye ALIŞ noktası — lab adresi. Her çağrıda buradan kullanılır.
-      { key: 'pickup_address', label: 'Alış adresi (lab)', type: 'text', required: true,
-        placeholder: 'Cadde, no, ilçe/il', helpText: 'Kuryenin paketi alacağı lab adresi.' },
+      // type='address': Google Maps (Places) önerili; seçilince enlem/boylam otomatik dolar.
+      { key: 'pickup_address', label: 'Alış adresi (lab)', type: 'address', required: true,
+        latKey: 'pickup_lat', lngKey: 'pickup_lng',
+        placeholder: 'Adres ara — cadde, no, ilçe/il', helpText: 'Google Maps’ten seçin; konum (enlem/boylam) otomatik dolar.' },
       { key: 'pickup_phone', label: 'Alış telefonu', type: 'text', required: true,
         placeholder: '+90 5xx xxx xx xx', helpText: 'Kuryenin arayacağı lab telefonu.' },
       { key: 'pickup_contact_name', label: 'Alış kişi adı', type: 'text',
@@ -506,7 +513,18 @@ export async function getActiveCredential(type: IntegrationType) {
 }
 
 // ─── Test bağlantı (Demo için her zaman OK) ──────────────────────────────
-export async function testCredential(id: string, type: IntegrationType, provider: string, _credentials: Record<string, any>) {
+export async function testCredential(
+  id: string,
+  type: IntegrationType,
+  provider: string,
+  _credentials: Record<string, any>,
+  /** Kaydın ÜST DÜZEY environment kolonu — yetkili kaynak budur.
+   *  Eskiden yalnız credentials sözlüğüne bakılıyordu; o alan formda yoksa
+   *  sessizce 'sandbox'a düşüp production token'ıyla test edilince
+   *  "Bağlantı reddedildi: invalid_auth_token" veriyordu (ölçüldü: aynı token
+   *  production'da ok:true dönüyor). */
+  environment?: string | null,
+) {
   // Şimdilik basit sandbox: provider 'demo' ise her zaman ok.
   // Gerçek provider eklenince provider'ın kendi test endpoint'i çağrılır.
   if (provider === 'demo') {
@@ -522,12 +540,36 @@ export async function testCredential(id: string, type: IntegrationType, provider
         body: {
           action: 'test',
           auth_token:  _credentials?.auth_token,
-          environment: _credentials?.environment ?? 'sandbox',
+          environment: environment ?? _credentials?.environment ?? 'sandbox',
         },
       });
       const ok = !error && (data as any)?.ok === true;
       const msg = ok
         ? `Bağlantı başarılı${(data as any)?.client_name ? ' — ' + (data as any).client_name : ''}`
+        : ((data as any)?.message ?? error?.message ?? 'Bağlantı başarısız');
+      await supabase.rpc('record_provider_test', { p_id: id, p_ok: ok, p_message: msg });
+      return { ok, message: msg };
+    } catch (e: any) {
+      const msg = 'Test hatası: ' + (e?.message ?? String(e));
+      await supabase.rpc('record_provider_test', { p_id: id, p_ok: false, p_message: msg });
+      return { ok: false, message: msg };
+    }
+  }
+
+  // WhatsApp Business Cloud (Meta) — edge function ile Graph API doğrulaması.
+  // Token tarayıcıdan Graph API'ye CORS'a takılır → server-side test.
+  if (type === 'messaging' && provider === 'whatsapp-cloud') {
+    try {
+      const { data, error } = await supabase.functions.invoke('whatsapp-webhook', {
+        body: {
+          action:          'test',
+          phone_number_id: _credentials?.phone_number_id,
+          access_token:    _credentials?.access_token,
+        },
+      });
+      const ok = !error && (data as any)?.ok === true;
+      const msg = ok
+        ? ((data as any)?.message ?? 'Bağlantı başarılı')
         : ((data as any)?.message ?? error?.message ?? 'Bağlantı başarısız');
       await supabase.rpc('record_provider_test', { p_id: id, p_ok: ok, p_message: msg });
       return { ok, message: msg };
@@ -551,6 +593,56 @@ export async function testCredential(id: string, type: IntegrationType, provider
     p_message: 'Bu provider için test endpoint\'i henüz aktif değil (Edge Function gerekli)',
   });
   return { ok: false, message: 'Test endpoint\'i Edge Function ile etkinleştirilecek' };
+}
+
+// ─── WhatsApp test mesajı gönder (outbound doğrulama) ────────────────────
+// credentials form'dan gelir (phone_number_id + access_token). template=true →
+// hello_world onaylı şablonu (ilk temas için güvenli), aksi halde serbest metin
+// (yalnız alıcı son 24s içinde yazdıysa çalışır).
+export async function sendWhatsAppTest(
+  credentials: Record<string, any>,
+  to: string,
+  opts?: { text?: string; template?: boolean; templateName?: string; templateLang?: string },
+): Promise<{ ok: boolean; message: string }> {
+  try {
+    const { data, error } = await supabase.functions.invoke('whatsapp-webhook', {
+      body: {
+        action:          'send_test',
+        phone_number_id: credentials?.phone_number_id,
+        access_token:    credentials?.access_token,
+        to,
+        text:            opts?.text,
+        template:        opts?.template ?? false,
+        template_name:   opts?.templateName,
+        template_lang:   opts?.templateLang,
+      },
+    });
+    if (error) return { ok: false, message: error.message ?? 'Gönderilemedi' };
+    return { ok: (data as any)?.ok === true, message: (data as any)?.message ?? 'Yanıt yok' };
+  } catch (e: any) {
+    return { ok: false, message: e?.message ?? String(e) };
+  }
+}
+
+// WhatsApp webhook'u otomatik bağla (subscribed_apps + override_callback_uri).
+// Meta UI'ya girmeden callback URL + verify token + messages aboneliğini kurar.
+export async function subscribeWhatsAppWebhook(
+  credentials: Record<string, any>,
+): Promise<{ ok: boolean; message: string }> {
+  try {
+    const { data, error } = await supabase.functions.invoke('whatsapp-webhook', {
+      body: {
+        action:              'subscribe',
+        business_account_id: credentials?.business_account_id,
+        access_token:        credentials?.access_token,
+        verify_token:        credentials?.verify_token,
+      },
+    });
+    if (error) return { ok: false, message: error.message ?? 'Bağlanamadı' };
+    return { ok: (data as any)?.ok === true, message: (data as any)?.message ?? 'Yanıt yok' };
+  } catch (e: any) {
+    return { ok: false, message: e?.message ?? String(e) };
+  }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────

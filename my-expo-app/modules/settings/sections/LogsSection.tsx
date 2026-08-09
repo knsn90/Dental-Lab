@@ -12,7 +12,8 @@ import {
 } from 'react-native';
 import {
   Search, RefreshCw, PlusCircle, UserCheck, Trash2, ArrowLeftRight,
-  Pencil, Info, XCircle,
+  Pencil, Info, XCircle, LogIn, MessageCircle, Paperclip, Package,
+  ClipboardCheck, Ban,
 } from 'lucide-react-native';
 import { supabase } from '../../../core/api/supabase';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
@@ -20,7 +21,7 @@ import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 // ── Types ───────────────────────────────────────────────────────────────
-type LogTab = 'all' | 'users' | 'doctors';
+type LogTab = 'all' | 'users' | 'technicians' | 'clinics' | 'doctors';
 
 interface ActivityLog {
   id: string;
@@ -48,7 +49,27 @@ function timeAgo(dateStr: string): string {
   return date.toLocaleDateString(localeTag(), { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+// Normalize eski/ham actor_type değerlerini sabit kümeye indir
+function normType(t: string): string {
+  if (t === 'clinic_admin' || t === 'clinic_secretary') return 'clinic';
+  return t;
+}
+
 function actionIcon(action: string): { Icon: any; color: string; bg: string } {
+  if (action.includes('Giriş'))
+    return { Icon: LogIn,           color: '#2563EB', bg: '#DBEAFE' };
+  if (action.includes('Mesaj'))
+    return { Icon: MessageCircle,   color: '#0891B2', bg: '#CFFAFE' };
+  if (action.includes('Dosya'))
+    return { Icon: Paperclip,       color: '#7C3AED', bg: '#EDE9FE' };
+  if (action.includes('Malzeme'))
+    return { Icon: Package,         color: '#B45309', bg: '#FEF3C7' };
+  if (action.includes('Aşama'))
+    return { Icon: ArrowLeftRight,  color: '#4338CA', bg: '#E0E7FF' };
+  if (action.includes('iptal'))
+    return { Icon: Ban,             color: '#DC2626', bg: '#FEF2F2' };
+  if (action.includes('talebi'))
+    return { Icon: ClipboardCheck,  color: '#0369A1', bg: '#E0F2FE' };
   if (action.includes('oluşturdu') || action.includes('oluşturuldu'))
     return { Icon: PlusCircle,      color: '#059669', bg: '#D1FAE5' };
   if (action.includes('aktif edildi'))
@@ -57,7 +78,7 @@ function actionIcon(action: string): { Icon: any; color: string; bg: string } {
     return { Icon: Trash2,          color: '#DC2626', bg: '#FEF2F2' };
   if (action.includes('→') || action.includes('Durumu'))
     return { Icon: ArrowLeftRight,  color: '#7C3AED', bg: '#EDE9FE' };
-  if (action.includes('güncelledi') || action.includes('güncellendi'))
+  if (action.includes('düzenledi') || action.includes('güncelledi') || action.includes('güncellendi'))
     return { Icon: Pencil,          color: '#0F172A', bg: '#F1F5F9' };
   return   { Icon: Info,            color: '#64748B', bg: '#F1F5F9' };
 }
@@ -71,10 +92,14 @@ const CARD_SHADOW = Platform.select({
 function LogRow({ log, isLast }: { log: ActivityLog; isLast: boolean }) {
   const T = useMobileTokens();
   const { Icon, color, bg } = actionIcon(log.action);
+  const at = normType(log.actor_type);
   const badge =
-    log.actor_type === 'admin'  ? { label: 'Admin', bg: '#FEF3C7', text: '#92400E' } :
-    log.actor_type === 'doctor' ? { label: 'Hekim', bg: '#DBEAFE', text: '#1D4ED8' } :
-                                  { label: 'Lab',   bg: '#DCFCE7', text: '#166534' };
+    at === 'admin'      ? { label: 'Admin',     bg: '#FEF3C7', text: '#92400E' } :
+    at === 'doctor'     ? { label: 'Hekim',     bg: '#DBEAFE', text: '#1D4ED8' } :
+    at === 'clinic'     ? { label: 'Klinik',    bg: '#E0F2FE', text: '#0369A1' } :
+    at === 'technician' ? { label: 'Teknisyen', bg: '#E0E7FF', text: '#4338CA' } :
+    at === 'courier'    ? { label: 'Kurye',     bg: '#FEF3C7', text: '#B45309' } :
+                          { label: 'Lab',       bg: '#DCFCE7', text: '#166534' };
   return (
     <View className="flex-row gap-3 px-4 py-3" style={!isLast ? { borderBottomWidth: 1, borderBottomColor: T.hairline2 } : undefined}>
       <View className="w-8 h-8 rounded-lg items-center justify-center" style={{ backgroundColor: bg }}>
@@ -139,38 +164,50 @@ export function LogsSection({ accentColor = '#4771AB' }: Props) {
 
   const q = search.trim().toLowerCase();
   const filtered = logs.filter(l => {
-    if (tab === 'users'   && l.actor_type === 'doctor') return false;
-    if (tab === 'doctors' && l.actor_type !== 'doctor') return false;
+    const at = normType(l.actor_type);
+    if (tab === 'users'       && !(at === 'admin' || at === 'lab' || at === 'courier')) return false;
+    if (tab === 'technicians' && at !== 'technician') return false;
+    if (tab === 'clinics'     && at !== 'clinic')     return false;
+    if (tab === 'doctors'     && at !== 'doctor')     return false;
     if (!q) return true;
     return l.actor_name.toLowerCase().includes(q) || l.action.toLowerCase().includes(q) || l.entity_label?.toLowerCase().includes(q);
   });
 
   const TABS: { key: LogTab; label: string }[] = [
-    { key: 'all',     label: 'Tümü' },
-    { key: 'users',   label: 'Kullanıcılar' },
-    { key: 'doctors', label: 'Hekimler' },
+    { key: 'all',         label: 'Tümü' },
+    { key: 'users',       label: 'Kullanıcılar' },
+    { key: 'technicians', label: 'Teknisyenler' },
+    { key: 'clinics',     label: 'Klinikler' },
+    { key: 'doctors',     label: 'Hekimler' },
   ];
 
   return (
     <View className="flex-1">
       {/* Toolbar */}
-      <View className="flex-row items-center gap-2 px-7 pb-3">
-        {TABS.map(t => (
-          <Pressable
-            key={t.key}
-            onPress={() => setTab(t.key)}
-            className="px-3.5 py-1.5 rounded-lg"
-            style={{ backgroundColor: tab === t.key ? `${accentColor}18` : 'transparent' }}
-          >
-            <Text
-              className="text-[12px] font-semibold"
-              style={{ color: tab === t.key ? accentColor : T.ink3 }}
+      <View className="flex-row items-center px-7 pb-3">
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          className="flex-1"
+          contentContainerStyle={{ gap: 8, alignItems: 'center' }}
+        >
+          {TABS.map(t => (
+            <Pressable
+              key={t.key}
+              onPress={() => setTab(t.key)}
+              className="px-3.5 py-1.5 rounded-lg"
+              style={{ backgroundColor: tab === t.key ? `${accentColor}18` : 'transparent' }}
             >
-              {t.label}
-            </Text>
-          </Pressable>
-        ))}
-        <View className="ml-auto flex-row items-center gap-1.5">
+              <Text
+                className="text-[12px] font-semibold"
+                style={{ color: tab === t.key ? accentColor : T.ink3 }}
+              >
+                {t.label}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+        <View className="flex-row items-center gap-1.5 pl-2">
           <Pressable
             onPress={() => setSearchOpen(v => !v)}
             className="w-8 h-8 rounded-lg items-center justify-center"

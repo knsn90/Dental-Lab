@@ -3,6 +3,7 @@
  * AuthShell ile beyaz tema, mor accent.
  */
 import React, { useState, useRef } from 'react';
+import { safeBack } from '../../../core/util/safeBack';
 import { View, Text, Pressable, Platform, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
@@ -11,6 +12,7 @@ import {
 } from 'lucide-react-native';
 import { signUpLabUser, LabRole } from '../api';
 import { AuthShell, AuthInput, AuthButton, AUTH, AUTH_FONT } from '../components/AuthShell';
+import { ConsentGate, EMPTY_CONSENTS, hasRequiredConsents, type ConsentState } from '../components/ConsentGate';
 
 const ROLES: { value: LabRole; label: string; desc: string }[] = [
   { value: 'technician', label: 'Teknisyen',    desc: 'İş emirlerini üretir' },
@@ -24,6 +26,8 @@ export function RegisterLabScreen() {
     role: 'technician' as LabRole,
   });
   const [loading,    setLoading]    = useState(false);
+  const [consents, setConsents]   = useState<ConsentState>(EMPTY_CONSENTS);
+  const [consentError, setConsentError] = useState(false);
   const [errors,     setErrors]     = useState<Partial<Record<keyof typeof form, string>>>({});
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg,   setErrorMsg]   = useState('');
@@ -56,14 +60,19 @@ export function RegisterLabScreen() {
     if (form.password.length < 8) e.password = 'Şifre en az 8 karakter olmalı';
     if (form.password !== form.passwordConfirm) e.passwordConfirm = 'Şifreler eşleşmiyor';
     setErrors(e);
-    if (Object.keys(e).length) triggerShake();
-    return Object.keys(e).length === 0;
+    // P0-5 · R-01 — zorunlu onaylar olmadan kayıt yok.
+    const consentsOk = hasRequiredConsents(consents);
+    setConsentError(!consentsOk);
+    const hasErrors = Object.keys(e).length > 0 || !consentsOk;
+    if (hasErrors) triggerShake();
+    return !hasErrors;
   };
 
   const handleRegister = async () => {
     if (!validate()) return;
     setLoading(true); setErrorMsg(''); setSuccessMsg('');
     const { data, error } = await signUpLabUser({
+      consents,
       email: form.email.trim().toLowerCase(),
       password: form.password,
       full_name: form.full_name.trim(),
@@ -101,7 +110,7 @@ export function RegisterLabScreen() {
     >
       <Animated.View style={{ transform: [{ translateX: shakeX }] }}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => safeBack('/(auth)/login')}
           style={({ hovered }: any) => ({
             flexDirection: 'row', alignItems: 'center', gap: 4,
             alignSelf: 'flex-start', marginBottom: 16,
@@ -237,6 +246,8 @@ export function RegisterLabScreen() {
         />
 
         <View style={{ marginTop: 8 }}>
+          <ConsentGate value={consents} onChange={setConsents} showError={consentError} />
+
           <AuthButton label="Hesap Oluştur" onPress={handleRegister} loading={loading} />
         </View>
       </Animated.View>

@@ -425,6 +425,42 @@ function Swatch({ name, color }: { name: string; color: string }) {
   );
 }
 
+// ── MDistCard — mobil dağılım kartı (yığılmış şerit + lejant) ────────────────
+function MDistCard({ title, metric, metricLabel, segments, footer, children }: {
+  title: string; metric: string; metricLabel: string;
+  segments: { color: string; ratio: number }[]; footer?: string; children: React.ReactNode;
+}) {
+  const total = segments.reduce((s, x) => s + x.ratio, 0) || 1;
+  return (
+    <View style={{ backgroundColor: T.card, borderRadius: T.r3, padding: 18, borderWidth: 1, borderColor: T.hairline }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 14 }}>
+        <Text style={{ fontSize: 15, fontWeight: '600', color: T.ink }}>{title}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5 }}>
+          <Text style={{ fontSize: 24, fontWeight: '300', color: T.ink, fontFamily: T.display, letterSpacing: -0.7 }}>{metric}</Text>
+          <Text style={{ fontSize: 11, color: T.ink3 }}>{metricLabel}</Text>
+        </View>
+      </View>
+      <View style={{ flexDirection: 'row', gap: 3, height: 7, marginBottom: 14 }}>
+        {segments.map((s, i) => (
+          <View key={i} style={{ flex: s.ratio / total, backgroundColor: s.color, borderRadius: 4 }} />
+        ))}
+      </View>
+      <View style={{ gap: 10 }}>{children}</View>
+      {footer ? <Text style={{ fontSize: 11, color: T.ink3, marginTop: 12 }}>{footer}</Text> : null}
+    </View>
+  );
+}
+function MDistRow({ dot, label, value, pct }: { dot?: string; label: string; value: string; pct?: string }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      {dot ? <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: dot }} /> : <View style={{ width: 7 }} />}
+      <Text style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: T.ink2 }} numberOfLines={1}>{label}</Text>
+      <Text style={{ fontSize: 12.5, fontWeight: '700', color: T.ink }}>{value}</Text>
+      {pct ? <Text style={{ fontSize: 11, color: T.ink3, width: 34, textAlign: 'right' }}>{pct}</Text> : null}
+    </View>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 export default function PatternsMobileScreen() {
   const [activePanel, setActivePanel] = useState<'lab' | 'teknisyen' | 'klinik' | 'exec'>('teknisyen');
@@ -1243,6 +1279,38 @@ export default function PatternsMobileScreen() {
                 Tab bar wrapper + tüm card wrapper'lar: paddingHorizontal: 12 → tek hizada
               </Text>
             </View>
+          </Section>
+
+          {/* F7 — Dağılım kartı (yığılmış şerit + lejant) */}
+          <Section kicker="F7" title='DistCard — "Dağılım" kartı (yığılmış şerit + lejant)'>
+            <MDistCard title="Statü Dağılımı" metric="18" metricLabel="sipariş"
+              segments={[
+                { color: T.ink3, ratio: 2 },
+                { color: '#8A5A2B', ratio: 2 },
+                { color: '#D4D4D4', ratio: 14 },
+              ]}
+              footer="Kalite Kontrol · Kuryeye Teslim — 0">
+              <MDistRow dot={T.ink3}    label="Alındı"        value="2"  pct="11%" />
+              <MDistRow dot="#8A5A2B"   label="Üretimde"      value="2"  pct="11%" />
+              <MDistRow dot="#D4D4D4"   label="Teslim Edildi" value="14" pct="78%" />
+            </MDistCard>
+
+            <View style={{ height: 12 }} />
+
+            <MDistCard title="İş Tipi Dağılımı" metric="80" metricLabel="üye"
+              segments={[
+                { color: '#33456B', ratio: 32 },
+                { color: '#2D9A6B', ratio: 28 },
+                { color: '#8B5CB8', ratio: 8 },
+                { color: '#4A8FC9', ratio: 6 },
+                { color: '#6B3F94', ratio: 6 },
+              ]}>
+              <MDistRow dot="#33456B" label="3D baskı Gece Plağı"      value="32" pct="40%" />
+              <MDistRow dot="#2D9A6B" label="3D baskı geçici kron"     value="28" pct="35%" />
+              <MDistRow dot="#8B5CB8" label="Dijital Gülüş tasarımı"  value="8"  pct="10%" />
+              <MDistRow dot="#4A8FC9" label="Inlay / Onlay Cam Seramik" value="6"  pct="8%" />
+              <MDistRow dot="#6B3F94" label="PMMA geçici kron / köprü" value="6"  pct="8%" />
+            </MDistCard>
           </Section>
         </View>
       </ScrollView>

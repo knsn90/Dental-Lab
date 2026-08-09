@@ -55,6 +55,7 @@ import {
 import {
   Shield, Users, Wrench, Stethoscope, Building2, Truck,
   Check, Save, RotateCcw, Lock, User as UserIcon, Search, X, ChevronDown,
+  ChevronRight, AlertTriangle,
 } from 'lucide-react-native';
 import { useAuthStore } from '../../../core/store/authStore';
 import { toast } from '../../../core/ui/Toast';
@@ -93,6 +94,171 @@ const ROLE_CONFIG: { key: RoleKey; icon: React.ComponentType<any> }[] = [
 ];
 
 // ═════════════════════════════════════════════════════════════
+// ── Kritik yetki rozeti ──────────────────────────────────────────────────
+// Yanlış verildiğinde parasal/hukuki sonucu olan yetkiler (para görünürlüğü,
+// özlük verisi, yetki/ayar değiştirme) katalogda `critical` ile işaretli.
+function CriticalBadge() {
+  return (
+    <View style={{
+      flexDirection: 'row', alignItems: 'center', gap: 3,
+      paddingHorizontal: 6, paddingVertical: 1.5, borderRadius: 999,
+      backgroundColor: 'rgba(232,155,42,0.14)',
+    }}>
+      <AlertTriangle size={9} color="#9C5E0E" strokeWidth={2.4} />
+      <Text style={{ fontSize: 9, fontWeight: '800', color: '#9C5E0E', letterSpacing: 0.3 }}>KRİTİK</Text>
+    </View>
+  );
+}
+
+// ── İlerleme çubuğu ──────────────────────────────────────────────────────
+function MiniBar({ value, total, color }: { value: number; total: number; color: string }) {
+  const pct = total > 0 ? Math.round((value / total) * 100) : 0;
+  return (
+    <View style={{ width: 64, height: 4, borderRadius: 2, backgroundColor: 'rgba(0,0,0,0.07)', overflow: 'hidden' }}>
+      <View style={{ width: `${pct}%`, height: '100%', borderRadius: 2, backgroundColor: color }} />
+    </View>
+  );
+}
+
+/**
+ * Yetki kategorisi — rol bazlı ve kullanıcı bazlı modda AYNI bileşen.
+ * (Eskiden iki yerde birebir kopyalanmıştı; biri değişince diğeri kalıyordu.)
+ *
+ * Katlanabilir: 13 kategori × ~4 satır aynı anda açık olunca ekran okunmuyordu.
+ * Kolonlar sabit genişlikte hizalanır (Özellik | Görme | Yönetme).
+ */
+function PermissionCategory({
+  catLabel, features, isOn, onToggle, onToggleAll,
+  accentColor, isDesktop, expanded, onToggleExpanded, query, filter,
+}: {
+  catLabel: string;
+  features: typeof FEATURES;
+  isOn: (k: string) => boolean;
+  onToggle: (k: string) => void;
+  onToggleAll: (keys: string[], on: boolean) => void;
+  accentColor: string;
+  isDesktop: boolean;
+  expanded: boolean;
+  onToggleExpanded: () => void;
+  query: string;
+  filter: 'all' | 'on' | 'off' | 'critical';
+}) {
+  const q = query.trim().toLocaleLowerCase('tr-TR');
+
+  const keysOf = (f: typeof FEATURES[number]) => {
+    const out: string[] = [];
+    if (f.hasView)   out.push(`view_${f.key}`);
+    if (f.hasManage) out.push(`manage_${f.key}`);
+    return out;
+  };
+
+  // Arama + filtre yalnız GÖRÜNÜMÜ daraltır; sayaç ve toplu işlem kategorinin
+  // tamamı üzerinden çalışır (kullanıcı yanlışlıkla yarısını açmasın).
+  const visible = features.filter(f => {
+    if (q && !(`${f.label} ${f.desc ?? ''}`.toLocaleLowerCase('tr-TR').includes(q))) return false;
+    if (filter === 'critical') return !!f.critical;
+    if (filter === 'on')  return keysOf(f).some(k => isOn(k));
+    if (filter === 'off') return keysOf(f).some(k => !isOn(k));
+    return true;
+  });
+  if (visible.length === 0) return null;
+
+  const allKeys = features.flatMap(keysOf);
+  const activeCount = allKeys.filter(isOn).length;
+  const allOn = activeCount === allKeys.length;
+  const COL = isDesktop ? 84 : 60;
+
+  return (
+    <View style={cardSolid}>
+      {/* Başlık: ad · oran · çubuk · toplu işlem */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <Pressable
+          onPress={onToggleExpanded}
+          style={({ pressed }: any) => ({
+            flexDirection: 'row', alignItems: 'center', gap: 9, flex: 1, minWidth: 0,
+            opacity: pressed ? 0.7 : 1,
+            ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+          })}
+        >
+          <View style={{ transform: [{ rotate: expanded ? '90deg' : '0deg' }] }}>
+            <ChevronRight size={15} color={DS.ink[400]} strokeWidth={2.2} />
+          </View>
+          <Text style={{ fontSize: 15, fontWeight: '700', color: DS.ink[900], letterSpacing: -0.2 }}>{catLabel}</Text>
+          <Text style={{ fontSize: 12, color: DS.ink[400] }}>{activeCount}/{allKeys.length}</Text>
+          <MiniBar value={activeCount} total={allKeys.length} color={accentColor} />
+        </Pressable>
+
+        <Pressable
+          onPress={() => onToggleAll(allKeys, !allOn)}
+          style={({ pressed, hovered }: any) => ({
+            paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
+            backgroundColor: hovered ? 'rgba(0,0,0,0.04)' : 'transparent',
+            opacity: pressed ? 0.6 : 1,
+            ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+          })}
+        >
+          <Text style={{ fontSize: 11.5, fontWeight: '600', color: accentColor }}>
+            {allOn ? 'Tümünü kapat' : 'Tümünü aç'}
+          </Text>
+        </Pressable>
+      </View>
+
+      {expanded && (
+        <>
+          {/* Kolon başlıkları — satırlarla aynı sabit genişlik */}
+          <View style={{
+            flexDirection: 'row', alignItems: 'center',
+            paddingBottom: 8, marginTop: 14, marginBottom: 2,
+            borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
+          }}>
+            <Text style={{ flex: 1, fontSize: 10, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.5, textTransform: 'uppercase' }}>
+              Yetki
+            </Text>
+            <Text style={{ width: COL, textAlign: 'center', fontSize: 10, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.5, textTransform: 'uppercase' }}>
+              Görüntüle
+            </Text>
+            <Text style={{ width: COL, textAlign: 'center', fontSize: 10, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.5, textTransform: 'uppercase' }}>
+              Yönet
+            </Text>
+          </View>
+
+          {visible.map((f, idx) => (
+            <View
+              key={f.key}
+              style={{
+                flexDirection: 'row', alignItems: 'center',
+                paddingVertical: 12,
+                borderTopWidth: idx > 0 ? 1 : 0,
+                borderTopColor: 'rgba(0,0,0,0.04)',
+              }}
+            >
+              <View style={{ flex: 1, paddingRight: 12, gap: 2 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <Text style={{ fontSize: 13.5, fontWeight: '600', color: DS.ink[900] }}>{f.label}</Text>
+                  {f.critical && <CriticalBadge />}
+                </View>
+                {!!f.desc && (
+                  <Text style={{ fontSize: 11.5, color: DS.ink[400], lineHeight: 16 }}>{f.desc}</Text>
+                )}
+              </View>
+              <View style={{ width: COL, alignItems: 'center' }}>
+                {f.hasView
+                  ? <Toggle on={isOn(`view_${f.key}`)} onPress={() => onToggle(`view_${f.key}`)} accentColor={accentColor} />
+                  : <Text style={{ fontSize: 11, color: DS.ink[300] }}>—</Text>}
+              </View>
+              <View style={{ width: COL, alignItems: 'center' }}>
+                {f.hasManage
+                  ? <Toggle on={isOn(`manage_${f.key}`)} onPress={() => onToggle(`manage_${f.key}`)} accentColor={accentColor} />
+                  : <Text style={{ fontSize: 11, color: DS.ink[300] }}>—</Text>}
+              </View>
+            </View>
+          ))}
+        </>
+      )}
+    </View>
+  );
+}
+
 interface PermissionsScreenProps {
   /** When true, skip own sidebar/title — parent (SettingsHub) provides those */
   embedded?: boolean;
@@ -161,6 +327,11 @@ export function PermissionsScreen({ embedded = false, accentColor = '#4771AB' }:
   const [originalPerms, setOriginalPerms] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // Arama + filtre + katlanmış kategoriler. Varsayılan: HEPSİ AÇIK değil —
+  // 13 kategori × ~4 satır aynı anda ekranda okunmuyordu. İlk kategori açık.
+  const [permQuery, setPermQuery] = useState('');
+  const [permFilter, setPermFilter] = useState<'all' | 'on' | 'off' | 'critical'>('all');
+  const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set(['orders']));
   const [saved, setSaved] = useState(false);
 
   // ── User mode state ──
@@ -324,13 +495,12 @@ export function PermissionsScreen({ embedded = false, accentColor = '#4771AB' }:
     return false;
   })();
 
-  const toggleAllUserCategory = (keys: PermissionKey[]) => {
+  /** Toplu aç/kapat (kullanıcı bazlı) — yön çağırandan gelir. */
+  const setAllUserPerms = (keys: PermissionKey[], on: boolean) => {
     setUserSaved(false);
-    const allOn = keys.every(k => pendingUserPerms.has(k));
     setPendingUserPerms(prev => {
       const next = new Set(prev);
-      if (allOn) keys.forEach(k => next.delete(k));
-      else keys.forEach(k => next.add(k));
+      for (const k of keys) { if (on) next.add(k); else next.delete(k); }
       return next;
     });
   };
@@ -431,15 +601,12 @@ export function PermissionsScreen({ embedded = false, accentColor = '#4771AB' }:
     setSaved(false);
   };
 
-  const toggleAll = (category: string, keys: PermissionKey[]) => {
-    const allOn = keys.every(k => rolePerms.has(k));
+  /** Toplu aç/kapat — yön çağırandan gelir (eskiden kendi hesaplıyordu). */
+  const setAllPerms = (keys: PermissionKey[], on: boolean) => {
     setSaved(false);
     setRolePerms(prev => {
       const next = new Set(prev);
-      for (const k of keys) {
-        if (allOn) next.delete(k);
-        else next.add(k);
-      }
+      for (const k of keys) { if (on) next.add(k); else next.delete(k); }
       return next;
     });
   };
@@ -539,106 +706,90 @@ export function PermissionsScreen({ embedded = false, accentColor = '#4771AB' }:
         </View>
 
         {/* Feature-row layout: her satır → özellik + Görme + Yönetme toggle */}
+        {/* Rol özeti — kaç yetkinin kaçı açık, tek bakışta.
+            Eskiden yalnız "60 yetki aktif" yazıyordu; paydası olmadan bunun
+            çok mu az mı olduğu anlaşılmıyordu. */}
+        {(() => {
+          const total = FEATURES.reduce((n, f) => n + (f.hasView ? 1 : 0) + (f.hasManage ? 1 : 0), 0);
+          const pct = total > 0 ? Math.round((rolePerms.size / total) * 100) : 0;
+          return (
+            <View style={[cardSolid, { gap: 10 }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10 }}>
+                <Text style={{ fontSize: 10.5, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: DS.ink[400], flex: 1 }}>
+                  {ROLE_LABELS[activeRole] ?? activeRole}
+                </Text>
+                <Text style={{ ...DISPLAY, fontSize: 22, letterSpacing: -0.6, color: DS.ink[900] }}>{rolePerms.size}</Text>
+                <Text style={{ fontSize: 13, color: DS.ink[400], marginBottom: 2 }}>/ {total} yetki</Text>
+                <Text style={{ fontSize: 12, color: DS.ink[300], marginBottom: 2 }}>· %{pct}</Text>
+              </View>
+              <View style={{ height: 6, borderRadius: 3, backgroundColor: 'rgba(0,0,0,0.07)', overflow: 'hidden' }}>
+                <View style={{ width: `${pct}%`, height: '100%', borderRadius: 3, backgroundColor: accentColor }} />
+              </View>
+            </View>
+          );
+        })()}
+
+        {/* Arama + filtre — 73 yetkide gerekli */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <View style={{
+            flexDirection: 'row', alignItems: 'center', gap: 8,
+            height: 36, paddingHorizontal: 12, borderRadius: 10, flex: 1, minWidth: 200,
+            backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
+          }}>
+            <Search size={14} color={DS.ink[400]} strokeWidth={1.8} />
+            <TextInput
+              value={permQuery}
+              onChangeText={setPermQuery}
+              placeholder="Yetki ara…"
+              placeholderTextColor={DS.ink[400]}
+              style={{ flex: 1, fontSize: 13, color: DS.ink[900], ...(Platform.OS === 'web' ? { outline: 'none' } as any : {}) }}
+            />
+            {permQuery.length > 0 && (
+              <Pressable onPress={() => setPermQuery('')}><X size={13} color={DS.ink[400]} strokeWidth={2} /></Pressable>
+            )}
+          </View>
+          {([['all','Tümü'],['on','Açık'],['off','Kapalı'],['critical','Kritik']] as const).map(([k, lbl]) => {
+            const on = permFilter === k;
+            return (
+              <Pressable
+                key={k}
+                onPress={() => setPermFilter(k)}
+                style={({ pressed }: any) => ({
+                  paddingHorizontal: 11, paddingVertical: 7, borderRadius: 999,
+                  backgroundColor: on ? `${accentColor}14` : 'transparent',
+                  borderWidth: 1, borderColor: on ? `${accentColor}55` : 'rgba(0,0,0,0.08)',
+                  opacity: pressed ? 0.7 : 1,
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                })}
+              >
+                <Text style={{ fontSize: 11.5, fontWeight: on ? '700' : '500', color: on ? accentColor : DS.ink[500] }}>{lbl}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
         {(Object.keys(PERMISSION_CATEGORIES) as Array<keyof typeof PERMISSION_CATEGORIES>).map(catKey => {
           const catFeatures = FEATURES.filter(f => f.category === catKey);
           if (catFeatures.length === 0) return null;
-          const catLabel = PERMISSION_CATEGORIES[catKey];
-          const catKeys = catFeatures.flatMap(f => {
-            const out: string[] = [];
-            if (f.hasView)   out.push(`view_${f.key}`);
-            if (f.hasManage) out.push(`manage_${f.key}`);
-            return out;
-          });
-          const activeCount = catKeys.filter(k => rolePerms.has(k)).length;
-          const allOn = catKeys.every(k => rolePerms.has(k));
-          const someOn = catKeys.some(k => rolePerms.has(k));
-
           return (
-            <View key={catKey} style={cardSolid}>
-              {/* Kategori başlığı */}
-              <Pressable
-                onPress={() => toggleAll(catKey, catKeys as PermissionKey[])}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-                  marginBottom: 14,
-                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
-                }}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[900] }}>{catLabel}</Text>
-                  <View style={{
-                    paddingHorizontal: 6, paddingVertical: 1, borderRadius: 9999,
-                    backgroundColor: allOn ? CHIP_TONES.success.bg : someOn ? CHIP_TONES.warning.bg : DS.ink[100],
-                  }}>
-                    <Text style={{
-                      fontSize: 10, fontWeight: '700',
-                      color: allOn ? CHIP_TONES.success.fg : someOn ? CHIP_TONES.warning.fg : DS.ink[400],
-                    }}>
-                      {activeCount}/{catKeys.length}
-                    </Text>
-                  </View>
-                </View>
-                <Text style={{ fontSize: 11, color: DS.ink[400] }}>
-                  {allOn ? 'Tümünü Kapat' : 'Tümünü Aç'}
-                </Text>
-              </Pressable>
-
-              {/* Kolon başlıkları */}
-              <View style={{
-                flexDirection: 'row', alignItems: 'center',
-                paddingBottom: 8, marginBottom: 4,
-                borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
-              }}>
-                <Text style={{ flex: 1, fontSize: 10, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.4, textTransform: 'uppercase' }}>
-                  Özellik
-                </Text>
-                <Text style={{ width: isDesktop ? 80 : 56, textAlign: 'center', fontSize: 10, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.4, textTransform: 'uppercase' }}>
-                  Görme
-                </Text>
-                <Text style={{ width: isDesktop ? 80 : 56, textAlign: 'center', fontSize: 10, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.4, textTransform: 'uppercase' }}>
-                  Yönetme
-                </Text>
-              </View>
-
-              {/* Feature rows */}
-              {catFeatures.map((f, idx) => {
-                const viewKey   = `view_${f.key}`;
-                const manageKey = `manage_${f.key}`;
-                const viewOn    = f.hasView   && rolePerms.has(viewKey);
-                const manageOn  = f.hasManage && rolePerms.has(manageKey);
-                return (
-                  <View
-                    key={f.key}
-                    style={{
-                      flexDirection: 'row', alignItems: 'center',
-                      paddingVertical: 10,
-                      borderTopWidth: idx > 0 ? 1 : 0,
-                      borderTopColor: 'rgba(0,0,0,0.04)',
-                    }}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>
-                        {f.label}
-                      </Text>
-                    </View>
-                    <View style={{ width: isDesktop ? 80 : 56, alignItems: 'center' }}>
-                      {f.hasView ? (
-                        <Toggle on={viewOn} onPress={() => togglePerm(viewKey as PermissionKey)} accentColor={accentColor} />
-                      ) : (
-                        <Text style={{ fontSize: 10, color: DS.ink[300] }}>—</Text>
-                      )}
-                    </View>
-                    <View style={{ width: isDesktop ? 80 : 56, alignItems: 'center' }}>
-                      {f.hasManage ? (
-                        <Toggle on={manageOn} onPress={() => togglePerm(manageKey as PermissionKey)} accentColor={accentColor} />
-                      ) : (
-                        <Text style={{ fontSize: 10, color: DS.ink[300] }}>—</Text>
-                      )}
-                    </View>
-                  </View>
-                );
+            <PermissionCategory
+              key={catKey}
+              catLabel={PERMISSION_CATEGORIES[catKey]}
+              features={catFeatures}
+              isOn={(k) => rolePerms.has(k)}
+              onToggle={(k) => togglePerm(k as PermissionKey)}
+              onToggleAll={(keys, on) => setAllPerms(keys as PermissionKey[], on)}
+              accentColor={accentColor}
+              isDesktop={isDesktop}
+              expanded={expandedCats.has(catKey)}
+              onToggleExpanded={() => setExpandedCats(prev => {
+                const n = new Set(prev);
+                if (n.has(catKey)) n.delete(catKey); else n.add(catKey);
+                return n;
               })}
-            </View>
+              query={permQuery}
+              filter={permFilter}
+            />
           );
         })}
       </View>
@@ -898,108 +1049,25 @@ export function PermissionsScreen({ embedded = false, accentColor = '#4771AB' }:
         {(Object.keys(PERMISSION_CATEGORIES) as Array<keyof typeof PERMISSION_CATEGORIES>).map(catKey => {
           const catFeatures = FEATURES.filter(f => f.category === catKey);
           if (catFeatures.length === 0) return null;
-          const catLabel = PERMISSION_CATEGORIES[catKey];
-          const catKeys = catFeatures.flatMap(f => {
-            const out: string[] = [];
-            if (f.hasView)   out.push(`view_${f.key}`);
-            if (f.hasManage) out.push(`manage_${f.key}`);
-            return out;
-          });
-          const activeCount = catKeys.filter(k => pendingUserPerms.has(k)).length;
-          const allOn = catKeys.every(k => pendingUserPerms.has(k));
-          const someOn = catKeys.some(k => pendingUserPerms.has(k));
-
           return (
-            <View key={catKey} style={cardSolid}>
-              <Pressable
-                onPress={() => toggleAllUserCategory(catKeys as PermissionKey[])}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-                  marginBottom: 14,
-                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
-                }}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={{ fontSize: 14, fontWeight: '700', color: DS.ink[900] }}>{catLabel}</Text>
-                  <View style={{
-                    paddingHorizontal: 6, paddingVertical: 1, borderRadius: 9999,
-                    backgroundColor: allOn ? CHIP_TONES.success.bg : someOn ? CHIP_TONES.warning.bg : DS.ink[100],
-                  }}>
-                    <Text style={{
-                      fontSize: 10, fontWeight: '700',
-                      color: allOn ? CHIP_TONES.success.fg : someOn ? CHIP_TONES.warning.fg : DS.ink[400],
-                    }}>
-                      {activeCount}/{catKeys.length}
-                    </Text>
-                  </View>
-                </View>
-                <Text style={{ fontSize: 11, color: DS.ink[400] }}>
-                  {allOn ? 'Tümünü Kapat' : 'Tümünü Aç'}
-                </Text>
-              </Pressable>
-
-              {/* Kolon başlıkları */}
-              <View style={{
-                flexDirection: 'row', alignItems: 'center',
-                paddingBottom: 8, marginBottom: 4,
-                borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)',
-              }}>
-                <Text style={{ flex: 1, fontSize: 10, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.4, textTransform: 'uppercase' }}>
-                  Özellik
-                </Text>
-                <Text style={{ width: isDesktop ? 80 : 56, textAlign: 'center', fontSize: 10, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.4, textTransform: 'uppercase' }}>
-                  Görme
-                </Text>
-                <Text style={{ width: isDesktop ? 80 : 56, textAlign: 'center', fontSize: 10, fontWeight: '700', color: DS.ink[400], letterSpacing: 0.4, textTransform: 'uppercase' }}>
-                  Yönetme
-                </Text>
-              </View>
-
-              {catFeatures.map((f, idx) => {
-                const viewKey   = `view_${f.key}`;
-                const manageKey = `manage_${f.key}`;
-                const viewOn    = f.hasView   && pendingUserPerms.has(viewKey);
-                const manageOn  = f.hasManage && pendingUserPerms.has(manageKey);
-                const viewOverride   = f.hasView   && viewOn   !== userRoleDefaults.has(viewKey);
-                const manageOverride = f.hasManage && manageOn !== userRoleDefaults.has(manageKey);
-                return (
-                  <View
-                    key={f.key}
-                    style={{
-                      flexDirection: 'row', alignItems: 'center',
-                      paddingVertical: 10,
-                      borderTopWidth: idx > 0 ? 1 : 0,
-                      borderTopColor: 'rgba(0,0,0,0.04)',
-                    }}
-                  >
-                    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>
-                        {f.label}
-                      </Text>
-                      {(viewOverride || manageOverride) && (
-                        <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 9999, backgroundColor: `${accentColor}1A` }}>
-                          <Text style={{ fontSize: 9, fontWeight: '700', color: accentColor, letterSpacing: 0.3 }}>ÖZEL</Text>
-                        </View>
-                      )}
-                    </View>
-                    <View style={{ width: isDesktop ? 80 : 56, alignItems: 'center' }}>
-                      {f.hasView ? (
-                        <Toggle on={viewOn} onPress={() => toggleUserPerm(viewKey as PermissionKey)} accentColor={accentColor} />
-                      ) : (
-                        <Text style={{ fontSize: 10, color: DS.ink[300] }}>—</Text>
-                      )}
-                    </View>
-                    <View style={{ width: isDesktop ? 80 : 56, alignItems: 'center' }}>
-                      {f.hasManage ? (
-                        <Toggle on={manageOn} onPress={() => toggleUserPerm(manageKey as PermissionKey)} accentColor={accentColor} />
-                      ) : (
-                        <Text style={{ fontSize: 10, color: DS.ink[300] }}>—</Text>
-                      )}
-                    </View>
-                  </View>
-                );
+            <PermissionCategory
+              key={catKey}
+              catLabel={PERMISSION_CATEGORIES[catKey]}
+              features={catFeatures}
+              isOn={(k) => pendingUserPerms.has(k)}
+              onToggle={(k) => toggleUserPerm(k as PermissionKey)}
+              onToggleAll={(keys, on) => setAllUserPerms(keys as PermissionKey[], on)}
+              accentColor={accentColor}
+              isDesktop={isDesktop}
+              expanded={expandedCats.has(catKey)}
+              onToggleExpanded={() => setExpandedCats(prev => {
+                const n = new Set(prev);
+                if (n.has(catKey)) n.delete(catKey); else n.add(catKey);
+                return n;
               })}
-            </View>
+              query={permQuery}
+              filter={permFilter}
+            />
           );
         })}
       </View>

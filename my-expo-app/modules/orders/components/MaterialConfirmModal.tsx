@@ -21,6 +21,7 @@ import {
 } from 'lucide-react-native';
 import { useStageMaterialEstimate } from '../hooks/useStageMaterialEstimate';
 import type { EstimatedMaterialLine } from '../../../core/materials/estimation';
+import { convertQty, isConvertible } from '../../../core/materials/unitConvert';
 import { createStockItem } from '../api';
 import { supabase } from '../../../core/api/supabase';
 import { useAuthStore } from '../../../core/store/authStore';
@@ -127,11 +128,18 @@ interface Props {
   onClose: () => void;
   /** confirm sonrası — caller refetch yapar */
   onConfirmed: () => void;
+  /**
+   * true (varsayılan) → onay aşamayı tamamlar + sıradakini aktif eder.
+   * false → yalnız malzeme düşülür; aşama geçişini caller yönetir
+   * (istasyon kanban checklist akışı böyle çalışır).
+   */
+  advanceStage?: boolean;
 }
 
 // ── Component ────────────────────────────────────────────────────────
 export function MaterialConfirmModal({
   visible, stageId, accentColor = '#0A0A0A', onClose, onConfirmed,
+  advanceStage = true,
 }: Props) {
   const {
     state, lines, context, totalCost, invalidCount,
@@ -159,19 +167,30 @@ export function MaterialConfirmModal({
   // Picker'dan bir stok kalemi seçildi → satıra bağla (item_id dolar → onayda düşer)
   const applyPick = (idx: number, item: StockPick) => {
     const packaged = !!item.pack_size && item.pack_size > 0;
-    setLine(idx, {
+    const targetUnit = packaged ? (item.content_unit ?? item.unit) : item.unit;
+    const cur = lines[idx];
+    // Birim uyuşmazlığı düzeltmesi: tahmin (ör. istasyon kuralı "ml") ile kalemin
+    // birimi (ör. "L") farklıysa miktarı kalemin birimine çevir — aksi halde 4 ml
+    // tahmin, sessizce 4 L olarak düşülür (1000× fazla). Çevrilemezse OLDUĞU GİBİ bırak.
+    const patch: Partial<EstimatedMaterialLine> = {
       item_id: item.id,
       item_name: item.name,
       category: item.category,
-      // Paketli kalemde tüketim içerik biriminde (gr) girilir
-      unit: packaged ? (item.content_unit ?? item.unit) : item.unit,
+      unit: targetUnit,
       unit_cost: item.unit_cost ?? 0,
       current_stock: item.quantity,
       pack_size: item.pack_size ?? null,
       content_unit: item.content_unit ?? null,
       stock_unit: item.unit ?? null,
       currency: item.currency ?? null,
-    });
+    };
+    if (cur?.unit && targetUnit && isConvertible(cur.unit, targetUnit)) {
+      const a = convertQty(cur.actual_qty ?? 0, cur.unit, targetUnit);
+      const w = convertQty(cur.waste_qty ?? 0, cur.unit, targetUnit);
+      if (a != null) patch.actual_qty = a;
+      if (w != null) patch.waste_qty = w;
+    }
+    setLine(idx, patch);
     setPickerFor(null);
   };
 
@@ -236,7 +255,7 @@ export function MaterialConfirmModal({
         } as any),
       ).catch(() => {});
     } catch { /* noop — not düşme başarısız olsa da ilerlet */ }
-    confirm({ advanceStage: true });
+    confirm({ advanceStage });
   };
 
   return (
@@ -433,7 +452,7 @@ export function MaterialConfirmModal({
               <Text style={{ fontSize: 13, fontWeight: '500', color: INK[700] }}>İptal</Text>
             </Pressable>
             <Pressable
-              onPress={() => (nothingEntered ? confirmNoMaterial() : confirm({ advanceStage: true }))}
+              onPress={() => (nothingEntered ? confirmNoMaterial() : confirm({ advanceStage }))}
               disabled={!canConfirm}
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 7,
@@ -454,7 +473,9 @@ export function MaterialConfirmModal({
               <Text style={{ fontSize: 13, fontWeight: '600', color: nothingEntered ? INK[700] : '#FFF', letterSpacing: 0.2 }}>
                 {isSaving
                   ? 'Onaylanıyor…'
-                  : nothingEntered ? 'Malzeme kullanılmadı · İlerlet' : 'Onayla & İlerlet'}
+                  : nothingEntered
+                    ? (advanceStage ? 'Malzeme kullanılmadı · İlerlet' : 'Malzeme kullanılmadı')
+                    : (advanceStage ? 'Onayla & İlerlet' : 'Onayla')}
               </Text>
             </Pressable>
           </View>

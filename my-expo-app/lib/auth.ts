@@ -60,3 +60,17 @@ export async function signOut() {
 export async function fetchProfile(userId: string) {
   return supabase.from('profiles').select('*').eq('id', userId).single();
 }
+
+/**
+ * Kullanıcının KENDİ hesabını kalıcı siler (App Store 5.1.1(v) gereği).
+ * Kişisel veri + giriş silinir; iş/finans kayıtları kimliksiz korunur.
+ * Son yönetici/sahip ise `code` ile engellenir (önce devir gerekir).
+ *
+ * @returns { ok } veya { ok: false, error, code }
+ */
+export async function deleteMyAccount(): Promise<{ ok: true } | { ok: false; error: string; code?: string }> {
+  const { data, error } = await supabase.functions.invoke('delete-account', { body: {} });
+  if (error) return { ok: false, error: error.message ?? 'Hesap silinemedi.' };
+  if (data?.error) return { ok: false, error: String(data.error), code: data.code };
+  return { ok: true };
+}

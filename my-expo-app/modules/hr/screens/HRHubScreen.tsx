@@ -8,7 +8,7 @@
  *
  * Matches StockScreen hub layout pattern.
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, Pressable,
   useWindowDimensions, Platform,
@@ -23,7 +23,7 @@ import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import {
   Users, CalendarDays, Trophy, FolderOpen, Plus, Cpu, UserCog,
 } from 'lucide-react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { EmployeesScreen }   from '../../employees/screens/EmployeesScreen';
 import { HRScreen }          from './HRScreen';
@@ -52,8 +52,24 @@ type TabKey = typeof TABS[number]['key'];
 // ── Hub Screen ──
 export function HRHubScreen() {
   const params = useLocalSearchParams<{ tab?: string }>();
+  const router = useRouter();
   const initialTab: TabKey = (TABS.some(t => t.key === params.tab) ? params.tab : 'employees') as TabKey;
-  const [tab, setTab] = useState<TabKey>(initialTab);
+  const [tab, setTabRaw] = useState<TabKey>(initialTab);
+
+  // Sekme URL'e YAZILIR: yenilemede (F5) ya da bağlantı paylaşımında aynı
+  // sekme açılsın. Eskiden ?tab= yalnız OKUNUYORDU; state'e yazılmadığı için
+  // sayfa yenilenince her zaman ilk sekmeye ("Ekip") düşüyordu.
+  const setTab = useCallback((k: TabKey) => {
+    setTabRaw(k);
+    try { router.setParams({ tab: k } as any); } catch { /* native fallback */ }
+  }, [router]);
+
+  // Geri/ileri tuşu ya da dışarıdan gelen derin bağlantı state'i güncellesin.
+  useEffect(() => {
+    const t = typeof params.tab === 'string' ? params.tab : null;
+    if (t && TABS.some(x => x.key === t) && t !== tab) setTabRaw(t as TabKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.tab]);
   const { width } = useWindowDimensions();
   const isDesktop = width >= 900;
   const insets = useSafeAreaInsets();

@@ -14,9 +14,11 @@ import { useAuthStore } from '../../../core/store/authStore';
 import { DS } from '../../../core/theme/dsTokens';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
 import { CenteredLoader } from '../../../core/ui/CenteredLoader';
+import { FilterMenu } from '../../../core/ui/FilterMenu';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { baseSymbol, useBaseCurrency } from '../../../core/money/baseCurrency';
+import { PAGE_PADDING } from '../../../core/ui/pageMetrics';
 
 // ── Patterns tokens ─────────────────────────────────────────────────
 const DISPLAY = {
@@ -74,6 +76,14 @@ const RANGE_OPTIONS: { key: Range; label: string }[] = [
 ];
 
 const MATERIAL_TYPES = ['all', 'zirconia', 'emax', 'pmma', 'metal', 'glaze'];
+
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: 'efficiency', label: 'En düşük verim'  },
+  { key: 'waste',      label: 'En çok fire'     },
+  { key: 'used',       label: 'En çok kullanım' },
+  { key: 'profit',     label: 'En karlı'        },
+  { key: 'labor',      label: 'En çok süre'     },
+];
 
 const fmt = (n: number | null | undefined) => (Number(n) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 0 });
 const fmt1 = (n: number | null | undefined) => (Number(n) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 1 });
@@ -146,101 +156,33 @@ export function TechnicianPerformanceScreen() {
   return (
     <ScrollView
       style={{ flex: 1 }}
-      contentContainerStyle={{ paddingHorizontal: 12, paddingTop: isWide ? 4 : insets.top + 8, paddingBottom: 120, gap: 14 }}
+      contentContainerStyle={{ paddingHorizontal: PAGE_PADDING, paddingTop: isWide ? 4 : insets.top + 8, paddingBottom: 120, gap: 14 }}
       showsVerticalScrollIndicator={false}
     >
-      {/* Range filter */}
-      <View style={{ flexDirection: 'row', gap: 2, padding: 3, borderRadius: 9999, backgroundColor: T.cardSoft }}>
-        {RANGE_OPTIONS.map(opt => {
-          const active = range === opt.key;
-          return (
-            <Pressable
-              key={opt.key}
-              onPress={() => setRange(opt.key)}
-              style={[
-                {
-                  paddingHorizontal: 12, paddingVertical: 6,
-                  borderRadius: 9999,
-                  ...(Platform.OS === 'web' ? { cursor: 'pointer' as any } : {}),
-                },
-                active && {
-                  backgroundColor: T.card,
-                  // @ts-ignore web
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-                },
-              ]}
-            >
-              <Text style={[
-                { fontSize: 12, fontWeight: '500', color: T.ink3 },
-                active && { fontWeight: '600', color: T.ink },
-              ]}>{opt.label}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      {/* Material type filter */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink3, letterSpacing: 0.3, marginRight: 4 }}>Materyal:</Text>
+      {/* ── Filtre şeridi — tek satır ─────────────────────────────────
+          Dönem en sık değişen seçim, o yüzden açıkta (segment). Materyal ve
+          sıralama nadiren değişir; seçili değer tetikleyicide görünür, listeler
+          menüde durur. Üç satır → bir satır, hiçbir seçenek kaybolmadan. */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
         <View style={{ flexDirection: 'row', gap: 2, padding: 3, borderRadius: 9999, backgroundColor: T.cardSoft }}>
-          {MATERIAL_TYPES.map(t => {
-            const active = matType === t;
-            const label = t === 'all' ? 'Tümü' : t;
-            return (
-              <Pressable
-                key={t}
-                onPress={() => setMatType(t)}
-                style={[
-                  {
-                    paddingHorizontal: 12, paddingVertical: 6,
-                    borderRadius: 9999,
-                    ...(Platform.OS === 'web' ? { cursor: 'pointer' as any } : {}),
-                  },
-                  active && {
-                    backgroundColor: T.card,
-                    // @ts-ignore web
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-                  },
-                ]}
-              >
-                <Text style={[
-                  { fontSize: 12, fontWeight: '500', color: T.ink3 },
-                  active && { fontWeight: '600', color: T.ink },
-                ]}>{label}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
-
-      {/* Sort filter */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink3, letterSpacing: 0.3, marginRight: 4 }}>Sırala:</Text>
-        <View style={{ flexDirection: 'row', gap: 2, padding: 3, borderRadius: 9999, backgroundColor: T.cardSoft }}>
-          {([
-            { key: 'efficiency', label: 'En düşük verim' },
-            { key: 'waste',      label: 'En çok fire'    },
-            { key: 'used',       label: 'En çok kullanım'},
-            { key: 'profit',     label: 'En karlı'       },
-            { key: 'labor',      label: 'En çok süre'    },
-          ] as const).map(opt => {
-            const active = sortKey === opt.key;
+          {RANGE_OPTIONS.map(opt => {
+            const active = range === opt.key;
             return (
               <Pressable
                 key={opt.key}
-                onPress={() => setSortKey(opt.key)}
-                style={[
-                  {
-                    paddingHorizontal: 12, paddingVertical: 6,
-                    borderRadius: 9999,
-                    ...(Platform.OS === 'web' ? { cursor: 'pointer' as any } : {}),
-                  },
-                  active && {
+                onPress={() => setRange(opt.key)}
+                style={({ pressed }: any) => ({
+                  paddingHorizontal: 12, paddingVertical: 7,
+                  borderRadius: 9999,
+                  opacity: pressed && !active ? 0.55 : 1,
+                  transform: [{ scale: pressed ? 0.97 : 1 }],
+                  ...(active ? {
                     backgroundColor: T.card,
                     // @ts-ignore web
                     boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-                  },
-                ]}
+                  } : {}),
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' as any } : {}),
+                })}
               >
                 <Text style={[
                   { fontSize: 12, fontWeight: '500', color: T.ink3 },
@@ -250,6 +192,20 @@ export function TechnicianPerformanceScreen() {
             );
           })}
         </View>
+
+        <FilterMenu
+          label="Materyal"
+          items={MATERIAL_TYPES.map(t => ({ key: t, label: t === 'all' ? 'Tümü' : t }))}
+          active={matType}
+          onChange={setMatType}
+        />
+
+        <FilterMenu
+          label="Sırala"
+          items={SORT_OPTIONS.map(o => ({ key: o.key, label: o.label }))}
+          active={sortKey}
+          onChange={k => setSortKey(k as SortKey)}
+        />
       </View>
 
       {loading ? (

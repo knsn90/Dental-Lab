@@ -4,17 +4,26 @@ import { useRouter, usePathname } from 'expo-router';
 import { LayoutGrid, Building2, ScrollText, ShieldCheck, LogOut, LifeBuoy, Activity, Megaphone, CreditCard, Users, Settings, ShieldAlert, Plug, Search, ChevronDown } from 'lucide-react-native';
 import { supabase } from '../../core/api/supabase';
 import { SimanWordmark } from '../../core/ui/SimanWordmark';
+import { DS } from '../../core/theme/dsTokens';
+import { MOBILE_PANEL_THEMES } from '../../core/theme/mobileDesignTokens';
 import { listLabs } from './api';
 
-// Platform konsolu — Siman ışık teması, "exec/admin" (Kobalt) kimliği.
+// Platform konsolu — "exec/admin" (Kobalt) kimliği. Accent + zemin + statü
+// renkleri DS token'larından çözülür (CLAUDE.md §7); tinted nötr ink'ler
+// (ink2/ink3/hover/line) panelden bağımsız kalır. Değerler değişmedi, kaynak
+// hardcode hex'ten token'a taşındı.
+const X = DS.exec;
 export const C = {
-  bg: '#F7F9FC', card: '#FFFFFF', cardHover: '#F1F5F9', line: 'rgba(15,23,42,0.08)',
-  ink: '#172235', ink2: '#4C5A70', ink3: '#8494AD', accent: '#4771AB', accentDeep: '#314F7E',
-  soft: '#EAF2FB', green: '#2D9A6B', amber: '#E89B2A', red: '#D94B4B', violet: '#8B5CB8',
+  bg: MOBILE_PANEL_THEMES.exec.bgPage, // #F7F9FC — sayfa zemini (shell ile aynı)
+  card: X.surface, cardHover: '#F1F5F9', line: 'rgba(15,23,42,0.08)',
+  ink: X.accent, ink2: '#4C5A70', ink3: '#8494AD', accent: X.primary, accentDeep: X.primaryDeep,
+  soft: X.bg, green: X.success, amber: X.warning, red: X.danger, violet: DS.plum.primary,
 };
 export const FONT = Platform.OS === 'web' ? ('Inter Tight, Inter, system-ui, sans-serif' as any) : undefined;
 // İnce (300) display — tasarım dilinin imzası: büyük başlık/metrikler
 export const SERIF = { fontFamily: FONT, fontWeight: '300' as const };
+// Sayısal hizalama — metrik/sayı sütunları satırlar arası zıplamaz
+export const NUM = { fontVariant: ['tabular-nums'] as any };
 // Kart gölgesi (design system) — web'de yumuşak ambient derinlik
 export const CARD_SHADOW = Platform.OS === 'web' ? ({ boxShadow: '0 1px 3px rgba(15,23,42,0.05), 0 8px 24px rgba(15,23,42,0.06)' } as any) : {};
 
@@ -74,14 +83,15 @@ export function PlatformSidebar() {
             {sec.items.map((n) => {
               const on = n.key === active;
               const Icon = n.icon;
+              // Aktif = yumuşak accent dolgu + accent ikon/metin (uygulamanın
+              // TabButton deseni). Renkli sol-kenar çubuğu KALDIRILDI (anti-pattern).
               return (
                 <Pressable key={n.key} onPress={() => router.replace(n.href as any)}
-                  style={{ position: 'relative', flexDirection: 'row', alignItems: 'center', gap: 11, paddingLeft: 12, paddingRight: 10, paddingVertical: 9, borderRadius: 10, marginBottom: 2,
-                    backgroundColor: on ? C.soft : 'transparent',
-                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-                  {on ? <View style={{ position: 'absolute', left: 0, top: 8, bottom: 8, width: 2.5, borderRadius: 2, backgroundColor: C.accent }} /> : null}
-                  <Icon size={16} color={on ? C.ink : C.ink3} strokeWidth={1.9} />
-                  <Text style={{ color: on ? C.ink : C.ink2, fontSize: 13.5, fontWeight: on ? '600' : '500' }}>{n.label}</Text>
+                  style={({ hovered }: any) => ({ flexDirection: 'row', alignItems: 'center', gap: 11, paddingLeft: 12, paddingRight: 10, paddingVertical: 9, borderRadius: 10, marginBottom: 2,
+                    backgroundColor: on ? hexA(C.accent, 0.10) : (hovered ? C.cardHover : 'transparent'),
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) })}>
+                  <Icon size={16} color={on ? C.accent : C.ink3} strokeWidth={1.9} />
+                  <Text style={{ color: on ? C.accent : C.ink2, fontSize: 13.5, fontWeight: on ? '600' : '500' }}>{n.label}</Text>
                 </Pressable>
               );
             })}
@@ -92,7 +102,7 @@ export function PlatformSidebar() {
       {/* Alt: çıkış */}
       <View style={{ borderTopWidth: 1, borderTopColor: C.line, paddingTop: 10, marginTop: 8 }}>
         <Pressable onPress={() => supabase.auth.signOut()}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+          style={({ hovered }: any) => ({ flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, backgroundColor: hovered ? C.cardHover : 'transparent', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) })}>
           <LogOut size={16} color={C.ink3} strokeWidth={1.8} />
           <Text style={{ color: C.ink2, fontSize: 13.5, fontWeight: '500' }}>Çıkış</Text>
         </Pressable>
@@ -257,7 +267,7 @@ export function StatPill({ label, value, tone = C.ink }: { label: string; value:
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
       <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', color: C.ink3 }}>{label}</Text>
       <View style={{ backgroundColor: dark ? C.ink : hexA(tone, 0.14), borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3, minWidth: 24, alignItems: 'center' }}>
-        <Text style={{ fontSize: 11.5, fontWeight: '700', color: dark ? '#FFFFFF' : tone }}>{value}</Text>
+        <Text style={{ ...NUM, fontSize: 11.5, fontWeight: '700', color: dark ? '#FFFFFF' : tone }}>{value}</Text>
       </View>
     </View>
   );
@@ -267,8 +277,8 @@ export function StatPill({ label, value, tone = C.ink }: { label: string; value:
 export function BigStat({ label, value, tone }: { label: string; value: React.ReactNode; tone?: string }) {
   return (
     <View>
-      <Text style={{ ...SERIF, fontSize: 40, letterSpacing: -1.4, lineHeight: 42, color: tone ?? C.ink }}>{value}</Text>
-      <Text style={{ fontSize: 10.5, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', color: C.ink3, marginTop: 4 }}>{label}</Text>
+      <Text style={{ fontSize: 10.5, fontWeight: '700', letterSpacing: 0.9, textTransform: 'uppercase', color: C.ink3, marginBottom: 5 }}>{label}</Text>
+      <Text style={{ ...SERIF, ...NUM, fontSize: 40, letterSpacing: -1.4, lineHeight: 42, color: tone ?? C.ink }}>{value}</Text>
     </View>
   );
 }
@@ -297,7 +307,12 @@ export function PageHeader({ eyebrow, title, accent: accentWord, description, ac
     <View style={{ paddingBottom: 24, marginBottom: 28, borderBottomWidth: 1, borderBottomColor: C.line }}>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 32, flexWrap: 'wrap' }}>
         <View style={{ flex: 1, minWidth: 260 }}>
-          {eyebrow ? <Text style={{ fontSize: 11, fontWeight: '600', letterSpacing: 1.3, textTransform: 'uppercase', color: C.ink3, marginBottom: 14 }}>{eyebrow}</Text> : null}
+          {eyebrow ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 14 }}>
+              <View style={{ width: 22, height: 2, borderRadius: 1, backgroundColor: C.accent }} />
+              <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase', color: C.accent }}>{eyebrow}</Text>
+            </View>
+          ) : null}
           <Text style={{ ...SERIF, fontSize: 44, letterSpacing: -1.5, lineHeight: 48, color: C.ink }}>
             {title}
             {accentWord ? <Text style={{ ...SERIF, color: C.accent }}>{' ' + accentWord}</Text> : null}
@@ -325,29 +340,40 @@ export function Btn({ children, onPress, variant = 'primary', icon: Icon, disabl
   children: React.ReactNode; onPress?: () => void; variant?: 'primary' | 'danger' | 'outline' | 'ghost'; icon?: any; disabled?: boolean; size?: 'sm' | 'md';
 }) {
   const ph = size === 'sm' ? 14 : 18, pv = size === 'sm' ? 8 : 10, fs = size === 'sm' ? 13 : 14;
-  const s = variant === 'primary' ? { bg: C.accent, fg: '#FFFFFF', bd: C.accent }
-    : variant === 'danger' ? { bg: C.red, fg: '#FFFFFF', bd: C.red }
-    : variant === 'outline' ? { bg: 'transparent', fg: C.ink, bd: C.line }
-    : { bg: C.cardHover, fg: C.ink2, bd: 'transparent' };
+  const s = variant === 'primary' ? { bg: C.accent, hov: C.accentDeep, fg: '#FFFFFF', bd: C.accent }
+    : variant === 'danger' ? { bg: C.red, hov: '#C13B3B', fg: '#FFFFFF', bd: C.red }
+    : variant === 'outline' ? { bg: 'transparent', hov: C.cardHover, fg: C.ink, bd: C.line }
+    : { bg: C.cardHover, hov: hexA(C.ink3, 0.14), fg: C.ink2, bd: 'transparent' };
   return (
     <Pressable onPress={onPress} disabled={disabled}
-      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingHorizontal: ph, paddingVertical: pv, borderRadius: 999, backgroundColor: s.bg, borderWidth: 1, borderColor: s.bd, opacity: disabled ? 0.5 : 1, ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}) }}>
+      style={({ hovered, pressed }: any) => ({ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingHorizontal: ph, paddingVertical: pv, borderRadius: 999,
+        backgroundColor: hovered && !disabled ? s.hov : s.bg, borderWidth: 1, borderColor: hovered && !disabled ? s.hov : s.bd,
+        opacity: disabled ? 0.5 : 1, transform: [{ translateY: pressed && !disabled ? 1 : 0 }],
+        ...(Platform.OS === 'web' ? ({ cursor: disabled ? 'default' : 'pointer', transition: 'background-color 140ms ease, transform 140ms ease' } as any) : {}) })}>
       {Icon ? <Icon size={size === 'sm' ? 14 : 16} color={s.fg} strokeWidth={2} /> : null}
       <Text style={{ color: s.fg, fontSize: fs, fontWeight: '700' }}>{children}</Text>
     </Pressable>
   );
 }
 
-/** KPI kartı — büyük ince display metrik + muted etiket + opsiyonel ikon çipi/alt metin */
+/** KPI kartı — editorial hiyerarşi: micro etiket ÜSTTE, devasa ince display
+ * metrik ALTINDA; opsiyonel alt satır hairline ayraçla ayrılır. */
 export function Kpi({ label, value, tone, icon: Icon, sub }: { label: string; value: string | number; tone?: string; icon?: any; sub?: string }) {
   return (
     <View style={{ flex: 1, minWidth: 156, backgroundColor: C.card, borderRadius: 18, borderWidth: 1, borderColor: C.line, padding: 18, ...CARD_SHADOW }}>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-        <Text style={{ ...SERIF, fontSize: 34, letterSpacing: -1.2, color: tone ?? C.ink, lineHeight: 38 }}>{value}</Text>
-        {Icon ? <IconChip icon={Icon} tone={tone ?? C.accent} size={30} /> : null}
+      {/* Eyebrow etiket + opsiyonel ince ikon */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <Text numberOfLines={1} style={{ flex: 1, fontSize: 11, fontWeight: '700', letterSpacing: 0.9, textTransform: 'uppercase', color: C.ink3 }}>{label}</Text>
+        {Icon ? <Icon size={15} color={tone ?? C.ink3} strokeWidth={1.9} /> : null}
       </View>
-      <Text style={{ fontSize: 12.5, fontWeight: '500', color: C.ink3, marginTop: 6 }}>{label}</Text>
-      {sub ? <Text style={{ fontSize: 11.5, color: C.ink3, marginTop: 2 }}>{sub}</Text> : null}
+      {/* Devasa metrik */}
+      <Text style={{ ...SERIF, ...NUM, fontSize: 42, letterSpacing: -1.7, lineHeight: 46, color: tone ?? C.ink, marginTop: 10 }}>{value}</Text>
+      {/* Alt satır — hairline ayraçla */}
+      {sub ? (
+        <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: C.line }}>
+          <Text style={{ fontSize: 11.5, color: C.ink3 }}>{sub}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }

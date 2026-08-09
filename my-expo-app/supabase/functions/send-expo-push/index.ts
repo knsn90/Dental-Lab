@@ -195,12 +195,25 @@ serve(async (req) => {
   const sent   = allTickets.filter(t => t.status === 'ok').length;
   const failed = allTickets.length - sent;
 
-  // 5. notifications.delivered güncelle
+  // 5. notifications.delivered güncelle — best-effort.
+  // PostgrestBuilder'da .catch() YOK (yalnız then) → zincirlemek TypeError atar.
+  // Ayrıca delivered ÜZERİNE YAZILMAMALI: diğer kanalların kaydını korumak için MERGE.
   if (body.notificationId && sent > 0) {
-    await supabase.from('notifications')
-      .update({ delivered: { native_push: { ts: new Date().toISOString(), count: sent } } })
-      .eq('id', body.notificationId)
-      .catch(() => null);
+    const patch = { native_push: { ts: new Date().toISOString(), count: sent } };
+    try {
+      const { error } = await supabase.rpc('jsonb_merge_delivered' as any, {
+        p_id: body.notificationId, p_patch: patch,
+      });
+      if (error) throw error;
+    } catch {
+      try {
+        const { data: cur } = await supabase.from('notifications')
+          .select('delivered').eq('id', body.notificationId).maybeSingle();
+        await supabase.from('notifications')
+          .update({ delivered: { ...((cur as any)?.delivered ?? {}), ...patch } })
+          .eq('id', body.notificationId);
+      } catch { /* delivered izleme opsiyonel */ }
+    }
   }
 
   return json({

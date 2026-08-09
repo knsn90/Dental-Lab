@@ -16,12 +16,13 @@ import {
   Inbox, Flame, Play,
 } from 'lucide-react-native';
 import { supabase } from '../../../core/api/supabase';
+import { useAppResume } from '../../../core/hooks/useAppResume';
 import { toast } from '../../../core/ui/Toast';
 import { useAuthStore } from '../../../core/store/authStore';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 import { fetchStageMaterialContext, confirmStageMaterials } from '../api';
 import { recordStageActivity, completeStageResilient, startStage } from '../api/timing';
-import { MaterialConfirmModal } from '../components/MaterialConfirmModal';
+import { StageMaterialModal } from '../components/StageMaterialModal';
 import { ValidationChecklistModal } from '../components/ValidationChecklistModal';
 import { LivingToothChart } from '../components/LivingToothChart';
 import { useStationTheme, hexA, type StationPalette } from '../../../core/theme/stationPalette';
@@ -44,6 +45,7 @@ import { StageCompletionPopup, type StageCompletionInfo } from '../components/St
 import { deriveMasterStep } from '../components/MasterWorkflowTimeline';
 import type { StageStatus } from '../stations/stageStates';
 import { ActivityIndicator } from '../../../core/ui/teethCompat';
+import { mobileTopPad } from '../../../core/ui/pageMetrics';
 
 const DISPLAY_FONT =
   Platform.OS === 'web'
@@ -406,6 +408,9 @@ export function OperatorScreen() {
     return () => { supabase.removeChannel(ch); };
   }, [profile?.id]);
 
+  // Ön plana dönünce işleri tazele — askıdayken kaçan atamaları/aşama değişimlerini telafi eder.
+  useAppResume(() => { void load(); }, { enabled: !!profile?.id });
+
   async function handleComplete() {
     if (!selected || submitting) return;
     if (selectedDesc?.requiresFileUpload && stageFileCount === 0) {
@@ -568,6 +573,20 @@ export function OperatorScreen() {
   const canComplete = !!selected && !submitting && selected.status === 'aktif' && !!selected.started_at;
 
   // Hero'nun action slot'u — birincil aksiyon (İşe Başla / Tamamla)
+  /**
+   * Bu işi bekleten aşama: seçilinin sıra numarasından ÖNCE gelen, henüz
+   * tamamlanmamış (ve atlanmamış) ilk aşama. Teknisyen kimi beklediğini
+   * bilmeden ne yapacağını da bilemiyordu.
+   */
+  const blockedBy = useMemo(() => {
+    if (!selected || selected.status !== 'bekliyor') return null;
+    const prior = timelineStages
+      .filter(t => t.sequence < (selected.sequence_order ?? 0))
+      .filter(t => !['tamamlandi', 'skipped', 'onaylandi'].includes(String(t.status)))
+      .sort((a, b) => a.sequence - b.sequence);
+    return prior[0]?.station_name ?? null;
+  }, [selected?.stage_id, selected?.status, selected?.sequence_order, timelineStages]);
+
   const heroActionSlot = useMemo(() => {
     if (!selected || !selectedDesc) return null;
     return (
@@ -600,10 +619,11 @@ export function OperatorScreen() {
         onStarted={() => load()}
         onStateChanged={() => load()}
         waitingHint={selectedDesc.waitingHint}
+        blockedBy={blockedBy}
       />
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected?.stage_id, selected?.status, selected?.started_at, selectedDesc, canComplete, submitting, stageFileCount]);
+  }, [selected?.stage_id, selected?.status, selected?.started_at, selectedDesc, canComplete, submitting, stageFileCount, blockedBy]);
 
   // Üst-seviye macro adım — teknisyen için hep uretim/qc/hazir aralığında
   const masterStep = useMemo(() => {
@@ -633,7 +653,9 @@ export function OperatorScreen() {
       contentContainerStyle={{
         paddingLeft: 16,
         paddingRight: 16,
-        paddingTop: isWide ? 16 : insets.top + 16,
+        // Yüzen üst başlık (logo + aksiyon düğmeleri) 72px kaplıyor;
+        // 16 yetmiyordu ve "İşlerim" logonun altına giriyordu.
+        paddingTop: isWide ? 16 : mobileTopPad(insets.top),
         // Mobile'da yüzen tab bar (~76px) + alt safe-area için ekstra padding (içerik arkaya girmesin)
         paddingBottom: isWide ? 16 : insets.bottom + 96,
       }}
@@ -677,20 +699,31 @@ export function OperatorScreen() {
               ...(Platform.OS === 'web' ? { cursor: jobs.length > 1 ? 'pointer' : 'default' } as any : {}),
             }}
           >
+            {/* Başlık gerçeği söylesin: hiç aktif iş yokken "AKTİF KUYRUK"
+                yazmak yanıltıyordu — Test Tek'in 5 aşamasının hepsi bekliyor
+                durumdayken de aynı başlık çıkıyordu. */}
             <Text style={{ fontSize: 11, fontWeight: '700', color: P.ink500, letterSpacing: 0.8, textTransform: 'uppercase', lineHeight: 16 }}>
-              {isWide ? 'İşlerim' : 'Aktif Kuyruk'}
+              {totalActive > 0 ? 'Şu an çalışılan' : 'Sıradaki işler'}
             </Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              {totalActive > 0 && (
+              {/* Aktif varsa canlı nokta + "N AKTİF"; yoksa sessiz "N iş" —
+                  eskiden aktif yokken rozet hiç çıkmıyordu ve teknisyen kaç iş
+                  beklediğini ancak listeyi açınca görüyordu. */}
+              {(totalActive > 0 || jobs.length > 0) && (
                 <View style={{
                   paddingHorizontal: 9, paddingVertical: 3, borderRadius: 999,
-                  backgroundColor: hexA(P.accent, 0.10),
-                  borderWidth: 1, borderColor: hexA(P.accent, 0.22),
+                  backgroundColor: totalActive > 0 ? hexA(P.accent, 0.10) : hexA(P.ink500, 0.07),
+                  borderWidth: 1, borderColor: totalActive > 0 ? hexA(P.accent, 0.22) : 'transparent',
                   flexDirection: 'row', alignItems: 'center', gap: 5,
                 }}>
-                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: P.accent }} />
-                  <Text style={{ fontSize: 10.5, fontWeight: '700', color: P.accentDeep, letterSpacing: 0.4 }}>
-                    {totalActive} AKTİF
+                  {totalActive > 0 && (
+                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: P.accent }} />
+                  )}
+                  <Text style={{
+                    fontSize: 10.5, fontWeight: '700', letterSpacing: 0.4,
+                    color: totalActive > 0 ? P.accentDeep : P.ink500,
+                  }}>
+                    {totalActive > 0 ? `${totalActive} AKTİF` : `${jobs.length} İŞ`}
                   </Text>
                 </View>
               )}
@@ -775,8 +808,11 @@ export function OperatorScreen() {
             </Pressable>
           )}
 
-          {/* Son tamamlananlar — aynı kart içinde, divider ile ayrılır */}
-          <RecentCompletedList accentColor={P.accent} limit={5} embedded collapsible />
+          {/* Son tamamlananlar — MASAÜSTÜNDE kuyruğun altında (sol kolon boş kalmasın).
+              Mobilde buraya konunca kuyruk ile asıl işin arasına giriyor ve hero'yu
+              ekranın altına itiyordu: bitmiş işler, yapılacak işin önüne geçemez.
+              Mobil sürümü sayfanın en altına taşındı. */}
+          {isWide && <RecentCompletedList accentColor={P.accent} limit={5} embedded collapsible />}
         </View>
         </View>
 
@@ -837,6 +873,13 @@ export function OperatorScreen() {
         )}
       </View>
 
+      {/* Son tamamlananlar (mobil) — asıl işten SONRA, sayfanın en altında */}
+      {!isWide && jobs.length > 0 && (
+        <View style={{ marginTop: 16 }}>
+          <RecentCompletedList accentColor={P.accent} limit={5} embedded collapsible />
+        </View>
+      )}
+
       {/* Aşama Kontrol Listesi popup — Tamamla CTA'ya basıldığında */}
       {selected && selectedDesc && (
         <ValidationChecklistModal
@@ -855,7 +898,7 @@ export function OperatorScreen() {
         />
       )}
 
-      <MaterialConfirmModal
+      <StageMaterialModal
         visible={!!materialModalStageId}
         stageId={materialModalStageId}
         accentColor={P.accent}
@@ -956,26 +999,6 @@ function SelectedJobDetail({
          sadece destekleyici içerik: notlar / dosyalar / workspace / checklist.
          DIŞ KART YOK — her bölüm bağımsız. */}
 
-        {/* ═══ Mesaj kutusu — teknisyen bu iş hakkında hekim/lab ile yazışabilir ═══ */}
-        <Pressable
-          onPress={() => setChatOpen(true)}
-          style={{
-            flexDirection: 'row', alignItems: 'center', gap: 11,
-            paddingHorizontal: 14, paddingVertical: 13, borderRadius: 16,
-            backgroundColor: hexA(P.accent, 0.10), borderWidth: 1, borderColor: hexA(P.accent, 0.22),
-            ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-          }}
-        >
-          <View style={{ width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: hexA(P.accent, 0.16) }}>
-            <MessageSquare size={17} color={P.accent} strokeWidth={2} />
-          </View>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: P.ink900 }}>Mesaj kutusu</Text>
-            <Text style={{ fontSize: 11.5, color: P.ink500 }} numberOfLines={1}>Bu iş hakkında hekim/lab ile yazış</Text>
-          </View>
-          <ChevronRight size={16} color={P.accent} strokeWidth={2} />
-        </Pressable>
-
         {/* ═══ Notlar (sadece varsa) ═══ */}
         {hasNotes && (
           <View style={panelCardStyle(P)}>
@@ -1037,6 +1060,29 @@ function SelectedJobDetail({
             isActive={job.status === 'aktif'}
           />
         )}
+
+        {/* ═══ Mesaj kutusu ═══
+            Eskiden hero'nun hemen altında accent dolgulu KALIN bir banner'dı ve
+            hekim notunun ÜSTÜNDE duruyordu. Teknisyenin işi yapmak için önce
+            talimata, sonra dosyalara, sonra tezgâha ihtiyacı var; yazışma
+            destekleyici bir eylem. Sıralama düzeltildi, ağırlık hafifletildi. */}
+        <Pressable
+          onPress={() => setChatOpen(true)}
+          style={({ pressed }: any) => ({
+            flexDirection: 'row', alignItems: 'center', gap: 10,
+            paddingHorizontal: 14, paddingVertical: 11, borderRadius: 14,
+            backgroundColor: P.surface, borderWidth: 1, borderColor: P.ink100,
+            opacity: pressed ? 0.7 : 1,
+            transform: [{ scale: pressed ? 0.99 : 1 }],
+            ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+          })}
+        >
+          <MessageSquare size={16} color={P.ink400} strokeWidth={1.9} />
+          <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: P.ink700 }}>
+            Bu iş hakkında yazış
+          </Text>
+          <ChevronRight size={15} color={P.ink400} strokeWidth={2} />
+        </Pressable>
 
         {/* Validation checklist artık popup'a taşındı — Tamamla butonuna basınca açılır */}
 

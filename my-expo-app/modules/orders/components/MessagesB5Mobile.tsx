@@ -304,10 +304,12 @@ function ThreadView({
         </View>
       </View>
 
+      {/* Klavyeyi ARTIK kapsayıcı (MessagesPopup sheet'i) yönetiyor —
+          burada tekrar itersek çift itme/zıplama olur. */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={20}
+        behavior={undefined}
+        keyboardVerticalOffset={0}
       >
         {loading && messages.length === 0 ? (
           <View style={{ padding: 40, alignItems: 'center' }}>
@@ -347,6 +349,17 @@ function ThreadView({
                         : { backgroundColor: '#FFF', borderColor: 'rgba(0,0,0,0.06)', borderWidth: 1, borderTopLeftRadius: 22, borderBottomLeftRadius: 6 },
                     ]}
                   >
+                    {item.external_source === 'whatsapp' && (
+                      <View style={{
+                        alignSelf: 'flex-start', marginBottom: 4,
+                        paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999,
+                        backgroundColor: 'rgba(37,211,102,0.14)',
+                      }}>
+                        <Text style={{ fontSize: 9.5, fontWeight: '700', color: '#128C7E', letterSpacing: 0.2 }}>
+                          WhatsApp{item.external_sender ? ` · ${item.external_sender}` : ''}
+                        </Text>
+                      </View>
+                    )}
                     {!!item.content && (
                       <Text style={{
                         color: mine ? '#FFF' : DS.ink[900],

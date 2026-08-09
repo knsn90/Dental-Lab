@@ -39,7 +39,7 @@
     "items": {
       "today": "Heute",
       "orders": "Aufträge",
-      "paperOrders": "Papieraufträge",
+      "paperOrders": "Manuelle Aufträge",
       "approvals": "Freigaben",
       "clinics": "Kliniken",
       "team": "Team",
@@ -57,7 +57,7 @@
       "search": "Suchen",
       "more": "Mehr",
       "new": "Neu",
-      "paperInbox": "Papier-Eingang",
+      "paperInbox": "Manueller Eingang",
       "deliveries": "Lieferungen",
       "map": "Karte",
       "stats": "Statistik",
@@ -70,7 +70,8 @@
       "panel": "Dashboard",
       "myJobs": "Meine Aufgaben",
       "history": "Verlauf",
-      "requests": "Anfragen"
+      "requests": "Anfragen",
+      "waSupport": "WhatsApp-Support"
     },
     "sections": {
       "work": "Arbeitsverwaltung",
@@ -410,6 +411,10 @@
       "logs": {
         "label": "Protokolle",
         "sub": "Systemaktivität"
+      },
+      "workflows": {
+        "label": "Arbeitsabläufe",
+        "sub": "Designer für Produktionsabläufe"
       }
     }
   },
@@ -465,9 +470,11 @@
       "qcShort": "QK",
       "ready": "Bereit",
       "live": "LIVE",
-      "awaitingPlanning": "wartet auf Planung",
+      "awaitingPlanning": "Aufträge eingegangen — Planung starten",
+      "newWorkKicker": "NEUE ARBEIT",
       "overdueOrder": "überfälliger Auftrag",
-      "urgent": "DRINGEND"
+      "urgent": "DRINGEND",
+      "toPlanShort": "Zu planen"
     },
     "months": {
       "short": "Jan, Feb, Mär, Apr, Mai, Jun, Jul, Aug, Sep, Okt, Nov, Dez",
@@ -497,7 +504,7 @@
       "deliveryRate": "Lieferquote",
       "delivered": "Geliefert",
       "inProduction": "in Produktion",
-      "todaysTasks": "Heutige Aufgaben",
+      "todaysTasks": "Offene Aktionen",
       "recentOrders": "Letzte Aufträge",
       "viewAll": "Alle anzeigen →",
       "noOrders": "Noch keine Aufträge",
@@ -516,13 +523,18 @@
       "ordersSummary": "{{total}} Aufträge, {{active}} aktiv{{overdue}}.",
       "liveProduction": "Live-Produktion",
       "monthlyRevenue": "Monatsumsatz",
+      "pendingApprovals": "Ausstehende Freigaben",
+      "approvalsActionNeeded": "Aktion erforderlich",
+      "approvalsClear": "Alles erledigt",
       "revenueTarget": "Ziel ₺60K",
       "activeOrders": "Aktive Aufträge",
       "overdueCount": "{{count}} überfällig",
       "total": "Gesamt {{total}}",
       "delayedCases": "Verzögerte Fälle",
       "noDelayedCases": "Keine verzögerten Fälle",
-      "productionOnTrack": "Die gesamte Produktion verläuft planmäßig."
+      "productionOnTrack": "Die gesamte Produktion verläuft planmäßig.",
+      "ordersOfTotal": "{{done}} / {{total}} Aufträge",
+      "deliveredAllTime": "Geliefert · gesamt"
     },
     "buttons": {
       "start": "Start"
@@ -543,12 +555,17 @@
       "actor": {
         "admin": "Admin",
         "doctor": "Zahnarzt",
-        "lab": "Labor"
+        "lab": "Labor",
+        "clinic": "Klinik",
+        "technician": "Techniker",
+        "courier": "Kurier"
       },
       "tab": {
         "all": "Alle",
         "users": "Benutzer",
-        "doctors": "Zahnärzte"
+        "doctors": "Zahnärzte",
+        "technicians": "Techniker",
+        "clinics": "Kliniken"
       },
       "searchPlaceholder": "Nach Name, Aktion oder Eintrag suchen...",
       "loading": "Protokolle werden geladen…",

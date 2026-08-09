@@ -13,6 +13,7 @@ import { localeTag } from '../../../core/i18n';
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { View, Text, ScrollView, Pressable, Platform, Modal, useWindowDimensions, Image, ActivityIndicator, TextInput, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter, useSegments } from 'expo-router';
+import { safeBack } from '../../../core/util/safeBack';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../../core/store/authStore';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
@@ -23,7 +24,7 @@ import { SupportButton } from '../../support/components/SupportButton';
 import { useOrderStages } from '../hooks/useOrderStages';
 import { LivingToothChart } from '../components/LivingToothChart';
 import { LinearProgressX, PercentRingX, StepsTimelineX } from '../../../core/ui/ProgressX';
-import { Bell, Printer, Check, ArrowUpRight, ChevronRight, Phone, MapPin, Download, MessageSquare, FileText, Image as ImageIcon, File as FileIcon, RotateCcw, UserCheck, Upload, AlertTriangle, CircleCheck, Circle, Clock, ChevronDown, ChevronUp, ListChecks, Play, Truck, Eye, Trash2, Plus, SkipForward, Pause, Layers, CornerUpLeft } from 'lucide-react-native';
+import { Bell, Printer, Check, ArrowUpRight, ChevronRight, Phone, MapPin, Download, MessageSquare, FileText, Image as ImageIcon, File as FileIcon, RotateCcw, UserCheck, Upload, AlertTriangle, CircleCheck, Circle, Clock, ChevronDown, ChevronUp, ListChecks, Play, Truck, Eye, Trash2, Plus, SkipForward, Pause, Layers, CornerUpLeft, User } from 'lucide-react-native';
 
 // Lazy viewer-3d (three.js ayrı chunk) — tek paylaşılan retry'lı lazy instance.
 import { Viewer3DModalLazy as Viewer3DModal } from '../../viewer-3d/Viewer3DLazy';
@@ -70,18 +71,19 @@ import { getOrderStageLabel } from '../utils/currentStage';
 import { titleCaseTR } from '../../../core/utils/textCase';
 import { confirmAsync } from '../../../core/util/confirm';
 import { openFileUrl } from '../../../core/util/openFile';
-import { MaterialConfirmModal } from '../components/MaterialConfirmModal';
+import { StageMaterialModal } from '../components/StageMaterialModal';
 import { fetchStageMaterialContext, confirmStageMaterials } from '../api';
 import { advanceOrderStatus, forceActivateStage, revertStage, updateDeliveryStatus, addOrderStage, removeOrderStage, requestDesignApproval, adminCompleteStage, adminSkipStage, adminActivateStage, fetchRevisionLinks, type RevisionLink } from '../api';
+import { StageWorkflowTimeline } from '../components/StageWorkflowTimeline';
 import { OriginFillButton, OriginFillPressable } from '../../../core/ui/OriginFillButton';
 import { RevisionModal } from '../components/RevisionModal';
+import { useContinuationOrder } from '../useContinuationOrder';
 import { AddStageModal } from '../components/AddStageModal';
 import { DeliveryModal } from '../components/DeliveryModal';
 import { DeliveryFeeModal } from '../components/DeliveryFeeModal';
 import { OrderLogisticsCard } from '../components/OrderLogisticsCard';
 import { CURRENCY_META, type Currency } from '../../../core/money/currency';
 import { CourierLiveMap } from '../../courier/CourierLiveMap';
-import { MeditCompleteModal } from '../components/MeditCompleteModal';
 import { DoctorChangeModal } from '../components/DoctorChangeModal';
 import { Pencil } from 'lucide-react-native';
 import { Star } from 'lucide-react-native';
@@ -254,7 +256,12 @@ export function OrderDetailScreenV2() {
   const [orderRating, setOrderRating] = useState<{ avg: number; count: number } | null>(null);
   // Route param order_number slug'ı olabilir (/order/LAB-2026-0118) — chat sorgusu
   // work_order_id UUID ister; bu yüzden her zaman çözülmüş order.id kullanılır.
-  const revParentIds = (order as any)?.revision_of_id ? [(order as any).revision_of_id as string] : undefined;
+  // Mesaj kutusu, ASIL işin geçmişini de gösterir: revizyon → revision_of_id,
+  // devam siparişi → continues_order_id üzerinden ebeveyni miras alır.
+  const revParentIds = (() => {
+    const ids = [(order as any)?.revision_of_id, (order as any)?.continues_order_id].filter(Boolean) as string[];
+    return ids.length ? ids : undefined;
+  })();
   const { messages: chatMessages } = useChatMessages((order as any)?.id ?? '', profile?.id, revParentIds);
   const [togglingUrgent, setTogglingUrgent] = useState(false);
   const [qcRejectOpen, setQcRejectOpen] = useState(false);
@@ -262,8 +269,11 @@ export function OrderDetailScreenV2() {
   const [deliveryModalOpen, setDeliveryModalOpen] = useState(false);
   // Revizyon (teslim sonrası yeniden yapım) — modal + karşılıklı bağlantı rozetleri
   const [revisionOpen, setRevisionOpen] = useState(false);
+  // Devam siparişi (geçici→nihai planlı devam) — sihirbazı önceden-dolu açar
+  const { startContinuation, starting: contStarting } = useContinuationOrder();
   const [revLinks, setRevLinks] = useState<{ parent: RevisionLink | null; children: RevisionLink[] }>({ parent: null, children: [] });
-  const [meditCompleteOpen, setMeditCompleteOpen] = useState(false);
+  // Devam siparişi (tedavi zinciri) bağlantıları — bu iş neyin devamı + bundan açılan devamlar
+  const [contLinks, setContLinks] = useState<{ parent: { id: string; order_number: string } | null; children: { id: string; order_number: string }[] }>({ parent: null, children: [] });
   const [doctorChangeOpen, setDoctorChangeOpen] = useState(false);
   const [activeDelivery, setActiveDelivery] = useState<any | null>(null);
   /** Siparişin TÜM kurye hareketleri (final teslimat + ara bacaklar), yeniden eskiye. */
@@ -344,7 +354,9 @@ export function OrderDetailScreenV2() {
   // Revizyonda orijinalin DOSYALARI devralınır — kopyalanmaz, salt okunur gösterilir.
   const [inheritedFiles, setInheritedFiles] = useState<{ photos: any[]; urls: Record<string, string> }>({ photos: [], urls: {} });
   useEffect(() => {
-    const pid = (order as any)?.revision_of_id as string | undefined;
+    // Revizyon (revision_of_id) VEYA devam siparişi (continues_order_id) → ASIL işin
+    // dosyaları (taramalar/fotoğraflar) devralınır; kopyalanmaz, salt okunur gösterilir.
+    const pid = ((order as any)?.revision_of_id ?? (order as any)?.continues_order_id) as string | undefined;
     if (!pid) { setInheritedFiles({ photos: [], urls: {} }); return; }
     let cancelled = false;
     (async () => {
@@ -359,7 +371,7 @@ export function OrderDetailScreenV2() {
       if (!cancelled) setInheritedFiles({ photos: ph, urls });
     })().catch(() => { /* dosya devralma opsiyonel */ });
     return () => { cancelled = true; };
-  }, [(order as any)?.revision_of_id]);
+  }, [(order as any)?.revision_of_id, (order as any)?.continues_order_id]);
 
   // Revizyon bağlantıları — bu sipariş neyin revizyonu + bundan açılan revizyonlar
   useEffect(() => {
@@ -371,6 +383,29 @@ export function OrderDetailScreenV2() {
       .catch(() => { /* rozet opsiyonel — sessiz geç */ });
     return () => { cancelled = true; };
   }, [(order as any)?.id, (order as any)?.revision_of_id]);
+
+  // Tedavi zinciri (devam siparişi) bağlantıları — ebeveyn (continues_order_id) +
+  // bu işten açılmış devam siparişleri. Karşılıklı, tıklanınca ilgili siparişe gider.
+  useEffect(() => {
+    const oid = (order as any)?.id as string | undefined;
+    if (!oid) { setContLinks({ parent: null, children: [] }); return; }
+    const parentId = (order as any)?.continues_order_id as string | undefined;
+    let cancelled = false;
+    (async () => {
+      const [parentRes, childRes] = await Promise.all([
+        parentId
+          ? supabase.from('work_orders').select('id, order_number').eq('id', parentId).maybeSingle()
+          : Promise.resolve({ data: null } as any),
+        supabase.from('work_orders').select('id, order_number').eq('continues_order_id', oid).order('created_at', { ascending: true }),
+      ]);
+      if (cancelled) return;
+      setContLinks({
+        parent: (parentRes as any)?.data ?? null,
+        children: ((childRes as any)?.data as { id: string; order_number: string }[]) ?? [],
+      });
+    })().catch(() => { /* rozet opsiyonel — sessiz geç */ });
+    return () => { cancelled = true; };
+  }, [(order as any)?.id, (order as any)?.continues_order_id]);
 
   // (LAB-2026-0042). history.replaceState → remount/refetch YOK, expo-router
   // state korunur; eski UUID linkleri/QR'lar çalışmaya devam eder.
@@ -461,6 +496,8 @@ export function OrderDetailScreenV2() {
   const [bbkTracking, setBbkTracking] = useState(false);
   const [cancelingDelivery, setCancelingDelivery] = useState(false);
   const [editDeliveryTarget, setEditDeliveryTarget] = useState<{ id: string; orderId: string } | null>(null);
+  // Aşama aksiyon dropdown'u — hangi aşamanın menüsü açık (birincil "Tamamla" + ▼).
+  const [stageMenuOpen, setStageMenuOpen] = useState<string | null>(null);
   const [stagesExpanded, setStagesExpanded] = useState(false);
   // Faz 4b: çok-şeritte AŞAMA DETAYLARI iş (şerit) başına collapse gruplar.
   const [expandedLanes, setExpandedLanes] = useState<Record<number, boolean>>({});
@@ -481,13 +518,9 @@ export function OrderDetailScreenV2() {
   // Triaj yetkisi: admin + lab_manager (C seçildi)
   // 'triage' station'ına atanmış teknisyen kontrolü ileride eklenebilir
   const canTriage = isManager;
-  // Medit Link'ten geldiyse ve eksik alanlar varsa "Tamamla" gerekir
-  const meditNeedsCompletion = !!order
-    && (order as any).external_source === 'medit_link'
-    && ((!(order.tooth_numbers?.length)) || (order.work_type === 'medit_import' || !order.work_type));
 
-  // Henüz triajlanmamış mı? — Medit eksikse triaja açma
-  const needsTriage = !!order && !(order as any).triaged_at && ((order.status as string) === 'alindi' || (order.status as string) === 'aktif') && !meditNeedsCompletion;
+  // Henüz triajlanmamış mı?
+  const needsTriage = !!order && !(order as any).triaged_at && ((order.status as string) === 'alindi' || (order.status as string) === 'aktif');
 
   // Yeniden planlanabilir mi? — triajlı + hiçbir aşama TAMAMLANMAMIŞ.
   // 'skipped' aşamalar normaldir (atlanmış), göz ardı edilir. Tamamlanmamış
@@ -947,6 +980,25 @@ export function OrderDetailScreenV2() {
   // ══════════════════════════════════════════════════════════════
   //  MOBILE — Variant B B3 dark hero (early return)
   // ══════════════════════════════════════════════════════════════
+  // AŞAMA DETAYLARI timeline — desktop + mobil TEK bileşenden (StageWorkflowTimeline).
+  const stageTimelineEl = (
+    <StageWorkflowTimeline
+      combinedStages={combinedStages} displayStages={displayStages}
+      stagesExpanded={stagesExpanded} setStagesExpanded={setStagesExpanded}
+      stageMenuOpen={stageMenuOpen} setStageMenuOpen={setStageMenuOpen}
+      completedCount={completedCount} order={order} profile={profile} isManager={isManager}
+      panelAccent={panelAccent} panelTheme={panelTheme}
+      handleCompleteProductionStage={handleCompleteProductionStage}
+      handleAdminCompleteStage={handleAdminCompleteStage}
+      handleAdminActivateStage={handleAdminActivateStage}
+      handleAdminSkipStage={handleAdminSkipStage} handleRemoveStage={handleRemoveStage}
+      setReassignOpen={setReassignOpen} setAddStageOpen={setAddStageOpen}
+      refetch={refetch} refetchStages={refetchStages}
+      fmtDate={fmtDate} isLaneOpen={isLaneOpen} toggleLane={toggleLane}
+      activeDelivery={activeDelivery} setDeliveryModalOpen={setDeliveryModalOpen} stageCompleting={stageCompleting}
+    />
+  );
+
   if (!isDesktop) {
     const { OrderDetailMobileHandoff } = require('./OrderDetailMobileHandoff');
     const stageIdx = Math.min(Math.max(0, statusIdx), 4);
@@ -1075,6 +1127,10 @@ export function OrderDetailScreenV2() {
         onOpenRelated={handleNavigateRelated}
         technicianName={techName ?? undefined}
         technicianInitials={techInit}
+        overdue={!!overdue}
+        rating={(order.status as string) === 'teslim_edildi' ? orderRating : undefined}
+        onAssignTech={isManager && reassignTargetStage ? () => setReassignOpen(true) : undefined}
+        stageTimelineNode={stageTimelineEl}
         ringPercent={Math.round(progressPct)}
         remainingTime={remainingDays > 0 ? `${remainingDays}g` : 'Bugün'}
         teeth={order.tooth_numbers ?? []}
@@ -1105,10 +1161,7 @@ export function OrderDetailScreenV2() {
           { title: 'Sipariş alındı', user: 'Sistem', time: '—', kind: 'wait' },
         ]}
         doctorNote={(order as any).notes ?? null}
-        onBack={() => {
-          if (router.canGoBack()) router.back();
-          else router.replace(`${panelGroup}/orders` as any);
-        }}
+        onBack={() => safeBack(`${panelGroup}/orders`)}
         onChat={() => setChatOpen(true)}
         cancelNode={<OrderClientActions order={order as any} panelGroup={panelGroup} onChanged={refetch} />}
         logisticsNode={
@@ -1445,6 +1498,36 @@ export function OrderDetailScreenV2() {
                     ))}
                   </View>
                 )}
+
+                {/* Tedavi zinciri (devam siparişi) — mavi; asıl iş ↔ devam siparişleri */}
+                {(contLinks.parent || contLinks.children.length > 0) && (
+                  <View className="flex-row flex-wrap items-center mt-2.5" style={{ gap: 6 }}>
+                    {contLinks.parent && (
+                      <Pressable onPress={() => handleNavigateRelated(contLinks.parent!.id)}>
+                        <View className="flex-row items-center gap-1.5 px-2.5 py-1 rounded-full"
+                          style={{ backgroundColor: heroPalette.dark ? 'rgba(255,255,255,0.16)' : 'rgba(53,99,168,0.12)',
+                                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                          <CornerUpLeft size={11} color={heroPalette.dark ? '#FFFFFF' : '#3563A8'} strokeWidth={2} />
+                          <Text className="text-[11.5px] font-medium" style={{ color: heroPalette.dark ? '#FFFFFF' : '#3563A8' }}>
+                            Asıl iş: {contLinks.parent.order_number}
+                          </Text>
+                        </View>
+                      </Pressable>
+                    )}
+                    {contLinks.children.map(ch => (
+                      <Pressable key={ch.id} onPress={() => handleNavigateRelated(ch.id)}>
+                        <View className="flex-row items-center gap-1.5 px-2.5 py-1 rounded-full"
+                          style={{ backgroundColor: heroPalette.dark ? 'rgba(255,255,255,0.16)' : 'rgba(53,99,168,0.12)',
+                                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                          <Layers size={11} color={heroPalette.dark ? '#FFFFFF' : '#3563A8'} strokeWidth={2} />
+                          <Text className="text-[11.5px] font-medium" style={{ color: heroPalette.dark ? '#FFFFFF' : '#3563A8' }}>
+                            Devam: {ch.order_number}
+                          </Text>
+                        </View>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
               </View>
               {/* İşi beklemede — gecikme yerine BEKLEMEDE + neden (sayaç durdu) */}
               {onHold && order.status !== 'teslim_edildi' && order.status !== 'iptal' && (
@@ -1642,6 +1725,14 @@ export function OrderDetailScreenV2() {
                         Revizyon Oluştur
                       </PillBtn>
                   )}
+                  {/* Devam siparişi — teslim edilmiş işin planlı sonraki aşaması (ör.
+                      geçici→nihai). Revizyon DEĞİL: hasta+diş+dosyalar dolu gelir,
+                      iş tipi/materyal sıfırdan seçilir; tam ücretli yeni sipariş. */}
+                  {(isManager || _isDoctorOrClinic) && (order.status as string) === 'teslim_edildi' && (
+                                          <PillBtn onDark={heroPalette.dark} variant="ghost" size="sm" icon={Layers} onPress={() => startContinuation(order.id)} disabled={!!contStarting}>
+                        {contStarting ? 'Açılıyor…' : 'Devam Siparişi'}
+                      </PillBtn>
+                  )}
                   {/* Teslimata hazır + henüz teslimat yok → teslim şekline göre aksiyon */}
                   {isManager && (order.status as string) === 'teslimata_hazir' && !activeDelivery && (
                     (order as any).delivery_method === 'elden' ? (
@@ -1781,40 +1872,6 @@ export function OrderDetailScreenV2() {
               markColor={heroPalette.dark ? '#0C8F56' : undefined}
             />
 
-            {/* Medit Link tamamla banner — eksik diş/work_type için */}
-            {meditNeedsCompletion && (
-              <View
-                className="flex-row items-center"
-                style={{
-                  marginTop: 16, padding: 14, gap: 12, borderRadius: 14,
-                  backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FDE68A',
-                }}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#92400E', letterSpacing: 0.6, textTransform: 'uppercase' }}>
-                    Medit Link · Eksik Bilgi
-                  </Text>
-                  <Text style={{ fontSize: 12, color: '#78350F', marginTop: 2 }}>
-                    Bu sipariş Medit Link'ten geldi. Diş seçimi, vaka türü ve iş detaylarını tamamla — sonra planlama açılır.
-                  </Text>
-                </View>
-                {isManager && (
-                  <Pressable
-                    onPress={() => setMeditCompleteOpen(true)}
-                    style={{
-                      flexDirection: 'row', alignItems: 'center', gap: 6,
-                      paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10,
-                      backgroundColor: panelAccent,
-                    }}
-                  >
-                    <Check size={14} color="#FFFFFF" strokeWidth={2.5} />
-                    <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#FFFFFF', letterSpacing: 0.3 }}>
-                      Tamamla
-                    </Text>
-                  </Pressable>
-                )}
-              </View>
-            )}
 
             {/* NOT: "Planlamayı Onayla" bloğu kaldırıldı. Planlamayı kaydetmek
                 artık approve_triage'ı da çağırıyor (TriageModal.handleSave), yani
@@ -2123,405 +2180,7 @@ export function OrderDetailScreenV2() {
               );
             })()}
 
-            {/* Aşama Detayları — collapse trigger (siyah kart içinde) */}
-            {combinedStages.length > 0 && (
-              <>
-                <Pressable
-                  onPress={() => setStagesExpanded(v => !v)}
-                  style={({ hovered }: any) => ({
-                    paddingHorizontal: 24, paddingVertical: 14,
-                    borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)',
-                    flexDirection: 'row', alignItems: 'center', gap: 8,
-                    backgroundColor: hovered ? 'rgba(255,255,255,0.04)' : 'transparent',
-                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                  })}
-                >
-                  <Text className="text-[10px] font-semibold uppercase" style={{ letterSpacing: 1.2, color: 'rgba(255,255,255,0.55)' }}>
-                    Aşama Detayları
-                  </Text>
-                  <View className="flex-1" />
-                  <View style={{
-                    paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999,
-                    backgroundColor: panelAccent + '22',
-                    borderWidth: 1, borderColor: panelAccent + '40',
-                  }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: panelAccent }}>
-                      {combinedStages.filter((s: any) => s.status === 'tamamlandi' || s.status === 'onaylandi').length}/{combinedStages.length}
-                    </Text>
-                  </View>
-                  {stagesExpanded
-                    ? <ChevronUp size={15} color="rgba(255,255,255,0.7)" strokeWidth={2} />
-                    : <ChevronDown size={15} color="rgba(255,255,255,0.7)" strokeWidth={2} />}
-                </Pressable>
-
-                {stagesExpanded && (
-                  <View style={{
-                    paddingHorizontal: 24, paddingTop: 8, paddingBottom: 22,
-                    borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)',
-                  }}>
-                    {displayStages.map((stg: any, i: number) => {
-                      // Faz 4b: şerit grup başlığı (çok-şerit) — diş etiketi + ilerleme + collapse
-                      if (stg.__laneHeader) {
-                        const open = stg.lane != null ? isLaneOpen(stg.lane) : true;
-                        return (
-                          <Pressable key={stg.id}
-                            onPress={stg.lane != null ? () => toggleLane(stg.lane) : undefined}
-                            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 11, marginTop: i === 0 ? 0 : 6, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: 'rgba(255,255,255,0.06)', ...(Platform.OS === 'web' && stg.lane != null ? { cursor: 'pointer' } as any : {}) }}>
-                            {stg.lane != null && (
-                              <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: panelAccent + '26' }}>
-                                <Text style={{ fontSize: 11.5, fontWeight: '800', color: panelAccent, fontFamily: Platform.OS === 'web' ? 'monospace' : undefined }}>{stg.teeth}</Text>
-                              </View>
-                            )}
-                            <Text numberOfLines={1} style={{ flex: 1, color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>
-                              {stg.lane == null ? stg.teeth : (stg.workType || (stg.done >= stg.total ? 'Tamamlandı' : ''))}
-                            </Text>
-                            <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11.5, fontWeight: '700' }}>{stg.done}/{stg.total}</Text>
-                            {stg.lane != null && (
-                              open
-                                ? <ChevronUp size={15} color="rgba(255,255,255,0.6)" strokeWidth={2} />
-                                : <ChevronDown size={15} color="rgba(255,255,255,0.6)" strokeWidth={2} />
-                            )}
-                          </Pressable>
-                        );
-                      }
-                      const isCompleted = stg.status === 'onaylandi' || stg.status === 'tamamlandi';
-                      const isActive    = stg.status === 'aktif';
-                      const isPending   = stg.status === 'bekliyor';
-                      const isRejected  = stg.status === 'reddedildi';
-                      const stationName = stg.station?.name ?? `Aşama ${i + 1}`;
-                      const stationColor = stg.station?.color ?? panelAccent;
-                      const techName = stg.technician?.full_name;
-                      // Sonraki öğe bir grup başlığıysa (veya son) timeline çizgisi çizilmez.
-                      const isLast = i === displayStages.length - 1 || !!displayStages[i + 1]?.__laneHeader;
-
-                      return (
-                        <View key={stg.id} className="flex-row">
-                          {/* Timeline rail — dark adapted */}
-                          <View className="items-center" style={{ width: 32 }}>
-                            <View
-                              className="w-6 h-6 rounded-full items-center justify-center"
-                              style={{
-                                backgroundColor: isCompleted ? stationColor
-                                  : isActive   ? stationColor + '33'
-                                  : isRejected ? '#DC262633'
-                                  : 'rgba(255,255,255,0.06)',
-                                borderWidth: isActive ? 2 : 0,
-                                borderColor: isActive ? stationColor : 'transparent',
-                              }}
-                            >
-                              {isCompleted && <CircleCheck size={14} color="#FFF" strokeWidth={2.2} />}
-                              {isActive    && <Circle size={10} color={stationColor} strokeWidth={0} fill={stationColor} />}
-                              {isRejected  && <AlertTriangle size={12} color="#FCA5A5" strokeWidth={2} />}
-                              {isPending   && <Circle size={8} color="rgba(255,255,255,0.30)" strokeWidth={0} fill="rgba(255,255,255,0.30)" />}
-                            </View>
-                            {!isLast && (
-                              <View style={{
-                                width: 2, flex: 1,
-                                backgroundColor: isCompleted ? stationColor + '55' : 'rgba(255,255,255,0.08)',
-                                borderRadius: 1,
-                              }} />
-                            )}
-                          </View>
-
-                          {/* Content */}
-                          <View className={`flex-1 ml-2.5 ${isLast ? '' : 'pb-4'}`}>
-                            <View className="flex-row items-center gap-2 flex-wrap">
-                              <Text style={{
-                                fontSize: 13, fontWeight: '600',
-                                color: isActive ? '#FFFFFF' : isCompleted ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.50)',
-                              }}>
-                                {stationName}
-                              </Text>
-                              {isActive && (
-                                <View style={{
-                                  paddingHorizontal: 6, paddingVertical: 1.5, borderRadius: 4,
-                                  backgroundColor: stationColor + '33',
-                                  borderWidth: 1, borderColor: stationColor + '55',
-                                }}>
-                                  <Text style={{ fontSize: 9, fontWeight: '700', color: stationColor, letterSpacing: 0.5 }}>AKTİF</Text>
-                                </View>
-                              )}
-                              {isRejected && (
-                                <View style={{ paddingHorizontal: 6, paddingVertical: 1.5, borderRadius: 4, backgroundColor: 'rgba(220,38,38,0.20)' }}>
-                                  <Text style={{ fontSize: 9, fontWeight: '700', color: '#FCA5A5', letterSpacing: 0.5 }}>RED</Text>
-                                </View>
-                              )}
-                              {stg.is_critical && (
-                                <View style={{ paddingHorizontal: 6, paddingVertical: 1.5, borderRadius: 4, backgroundColor: 'rgba(245,158,11,0.20)' }}>
-                                  <Text style={{ fontSize: 9, fontWeight: '700', color: '#FCD34D', letterSpacing: 0.5 }}>KRİTİK</Text>
-                                </View>
-                              )}
-                            </View>
-
-                            {techName && (
-                              <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', marginTop: 2 }}>{techName}</Text>
-                            )}
-
-                            {(stg.started_at || stg.completed_at) && (
-                              <View className="flex-row gap-3 mt-1">
-                                {stg.started_at && (
-                                  <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.40)' }}>
-                                    Başladı: {fmtDate(stg.started_at)}
-                                  </Text>
-                                )}
-                                {stg.completed_at && (
-                                  <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.40)' }}>
-                                    Bitti: {fmtDate(stg.completed_at)}
-                                  </Text>
-                                )}
-                              </View>
-                            )}
-
-                            {stg.technician_note && (
-                              <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', marginTop: 4, fontStyle: 'italic' }}>
-                                "{stg.technician_note}"
-                              </Text>
-                            )}
-
-                            {/* Sanal Kurye aşaması — "Kuryeye Gönder" (üst hero ile aynı modal/akış) */}
-                            {isManager && stg.station?.id === '__courier' && !activeDelivery && (
-                              <View className="flex-row gap-2 mt-2 flex-wrap">
-                                <Pressable
-                                  onPress={() => setDeliveryModalOpen(true)}
-                                  style={{
-                                    flexDirection: 'row', alignItems: 'center', gap: 5,
-                                    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 9999,
-                                    backgroundColor: panelAccent,
-                                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                                  }}
-                                >
-                                  <Truck size={11} color="#0A0A0A" strokeWidth={2.2} />
-                                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#0A0A0A' }}>Kuryeye Gönder</Text>
-                                </Pressable>
-                              </View>
-                            )}
-
-                            {/* Active stage actions — sanal aşamalar (kurye/teslim) hariç */}
-                            {isActive && !stg.is_virtual && (isManager || stg.technician?.id === profile?.id) && (
-                              <View className="flex-row gap-2 mt-2 flex-wrap">
-                                <Pressable
-                                  onPress={() => handleCompleteProductionStage(stg.id)}
-                                  disabled={stageCompleting}
-                                  style={{
-                                    flexDirection: 'row', alignItems: 'center', gap: 5,
-                                    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 9999,
-                                    backgroundColor: panelAccent,
-                                    opacity: stageCompleting ? 0.5 : 1,
-                                    ...(Platform.OS === 'web' ? { cursor: stageCompleting ? 'wait' : 'pointer' } as any : {}),
-                                  }}
-                                >
-                                  <Check size={11} color="#0A0A0A" strokeWidth={2.4} />
-                                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#0A0A0A' }}>
-                                    Tamamla & ilerlet
-                                  </Text>
-                                </Pressable>
-                                {isManager && (
-                                  <Pressable
-                                    onPress={() => setReassignOpen(true)}
-                                    style={{
-                                      flexDirection: 'row', alignItems: 'center', gap: 5,
-                                      paddingHorizontal: 10, paddingVertical: 5, borderRadius: 9999,
-                                      backgroundColor: 'rgba(255,255,255,0.10)',
-                                      borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
-                                    }}
-                                  >
-                                    <UserCheck size={11} color="rgba(255,255,255,0.85)" strokeWidth={1.8} />
-                                    <Text style={{ fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.85)' }}>Devret</Text>
-                                  </Pressable>
-                                )}
-                                {/* Manager: önceki aşamaya dön — sadece tamamlanmış önceki aşama varsa */}
-                                {isManager && completedCount > 0 && (
-                                  <Pressable
-                                    onPress={async () => {
-                                      if (!order) return;
-                                      const ok = await confirmAsync('Önceki Aşamaya Dön', 'Bir önceki aşamaya dönülsün mü? Şu anki aşama "bekliyor"a, önceki aşama "aktif"e çevrilir.', { confirmText: 'Geri Al', destructive: true });
-                                      if (!ok) return;
-                                      const r = await revertStage(order.id);
-                                      if (!r.ok) { alert(`Geri alınamadı: ${r.error}`); return; }
-                                      refetch(); refetchStages();
-                                    }}
-                                    style={{
-                                      flexDirection: 'row', alignItems: 'center', gap: 5,
-                                      paddingHorizontal: 10, paddingVertical: 5, borderRadius: 9999,
-                                      backgroundColor: 'rgba(255,255,255,0.10)',
-                                      borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
-                                    }}
-                                  >
-                                    <RotateCcw size={11} color="rgba(255,255,255,0.85)" strokeWidth={1.8} />
-                                    <Text style={{ fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.85)' }}>Önceki aşamaya dön</Text>
-                                  </Pressable>
-                                )}
-                              </View>
-                            )}
-
-                            {/* Force-activate — manager için 'bekliyor' aşamayı manuel aktif yap.
-                                Sanal aşamalarda (Kurye/Teslim) GİZLİ: gerçek order_stages satırı
-                                değiller, teknisyene atanmazlar; doğru aksiyonları kendi
-                                "Kuryeye Gönder" / teslim akışları. */}
-                            {isPending && isManager && !stg.is_virtual && (
-                              <View className="flex-row gap-2 mt-2 flex-wrap">
-                                <Pressable
-                                  onPress={async () => {
-                                    const res = await forceActivateStage(stg.id);
-                                    if (!res.ok) { alert(`Aktif edilemedi: ${res.error ?? ''}`); return; }
-                                    refetch(); refetchStages();
-                                  }}
-                                  style={{
-                                    flexDirection: 'row', alignItems: 'center', gap: 5,
-                                    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 9999,
-                                    backgroundColor: 'rgba(255,255,255,0.10)',
-                                    borderWidth: 1, borderColor: 'rgba(255,255,255,0.20)',
-                                  }}
-                                >
-                                  <Play size={11} color="rgba(255,255,255,0.85)" strokeWidth={2.2} />
-                                  <Text style={{ fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.85)' }}>
-                                    Teknisyene gönder
-                                  </Text>
-                                </Pressable>
-                              </View>
-                            )}
-
-                            {/* Müdür/admin override: her durumda Tamamla / Aktif et / Atla.
-                                Aktif aşamanın kendi 'Tamamla & ilerlet'i var (yukarıda);
-                                burada non-aktif/duraklamış/ara durum aşamalara müdahale. */}
-                            {isManager && !stg.is_virtual && !isCompleted && (
-                              <View className="flex-row gap-2 mt-2 flex-wrap">
-                                {/* Aktif değilse: admin doğrudan tamamla */}
-                                {!isActive && (
-                                  <Pressable
-                                    onPress={() => handleAdminCompleteStage(stg)}
-                                    style={{
-                                      flexDirection: 'row', alignItems: 'center', gap: 5,
-                                      paddingHorizontal: 10, paddingVertical: 5, borderRadius: 9999,
-                                      backgroundColor: 'rgba(45,154,107,0.18)',
-                                      borderWidth: 1, borderColor: 'rgba(45,154,107,0.40)',
-                                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                                    }}
-                                  >
-                                    <Check size={11} color="#6EE7B7" strokeWidth={2.2} />
-                                    <Text style={{ fontSize: 10, fontWeight: '600', color: '#6EE7B7' }}>Tamamla</Text>
-                                  </Pressable>
-                                )}
-                                {/* Aktif/bekliyor değilse (duraklamış/ara durum): tekrar aktif et */}
-                                {!isActive && !isPending && (
-                                  <Pressable
-                                    onPress={() => handleAdminActivateStage(stg)}
-                                    style={{
-                                      flexDirection: 'row', alignItems: 'center', gap: 5,
-                                      paddingHorizontal: 10, paddingVertical: 5, borderRadius: 9999,
-                                      backgroundColor: 'rgba(255,255,255,0.10)',
-                                      borderWidth: 1, borderColor: 'rgba(255,255,255,0.20)',
-                                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                                    }}
-                                  >
-                                    <Play size={11} color="rgba(255,255,255,0.85)" strokeWidth={2.2} />
-                                    <Text style={{ fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.85)' }}>Teknisyene gönder</Text>
-                                  </Pressable>
-                                )}
-                                {/* Her non-completed aşama: atla */}
-                                <Pressable
-                                  onPress={() => handleAdminSkipStage(stg)}
-                                  style={{
-                                    flexDirection: 'row', alignItems: 'center', gap: 5,
-                                    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 9999,
-                                    backgroundColor: 'rgba(232,155,42,0.16)',
-                                    borderWidth: 1, borderColor: 'rgba(232,155,42,0.38)',
-                                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                                  }}
-                                >
-                                  <SkipForward size={11} color="#FCD34D" strokeWidth={2} />
-                                  <Text style={{ fontSize: 10, fontWeight: '600', color: '#FCD34D' }}>Aşamayı atla</Text>
-                                </Pressable>
-                              </View>
-                            )}
-
-                            {/* Müdür/admin: sanal Kurye/Teslim aşamasını ilerlet.
-                                Bunlar order_stages satırı değil (deliveries'ten türetilir),
-                                o yüzden aşama RPC'leri işlemez — teslimat durumu üzerinden
-                                ilerletilir. Kurye kaydı varsa onu 'teslim edildi' yapar,
-                                yoksa siparişin statüsünü doğrudan taşır. */}
-                            {isManager && stg.is_virtual && !isCompleted && (
-                              <View className="flex-row gap-2 mt-2 flex-wrap">
-                                <Pressable
-                                  onPress={async () => {
-                                    const label = stg?.station?.name ?? 'Aşama';
-                                    const ok = await confirmAsync(
-                                      `${label} aşamasını tamamla`,
-                                      activeDelivery && activeDelivery.status !== 'teslim_edildi'
-                                        ? 'Kurye teslimatı "teslim edildi" olarak işaretlenecek. Emin misin?'
-                                        : 'Sipariş "teslim edildi" olarak işaretlenecek. Emin misin?',
-                                      { confirmText: 'Tamamla' },
-                                    );
-                                    if (!ok) return;
-                                    if (activeDelivery && activeDelivery.status !== 'teslim_edildi') {
-                                      const r = await updateDeliveryStatus(activeDelivery.id, 'teslim_edildi');
-                                      if (!r.ok) { toast.error(r.error ?? 'Teslimat güncellenemedi'); return; }
-                                    } else {
-                                      const { error } = await advanceOrderStatus(
-                                        order.id, 'teslim_edildi' as WorkOrderStatus, profile?.id ?? '',
-                                      );
-                                      if (error) { toast.error((error as any).message ?? 'Statü güncellenemedi'); return; }
-                                    }
-                                    toast.success(`"${label}" tamamlandı.`);
-                                    refetch(); refetchStages();
-                                  }}
-                                  style={{
-                                    flexDirection: 'row', alignItems: 'center', gap: 5,
-                                    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 9999,
-                                    backgroundColor: 'rgba(45,154,107,0.18)',
-                                    borderWidth: 1, borderColor: 'rgba(45,154,107,0.40)',
-                                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                                  }}
-                                >
-                                  <Check size={11} color="#6EE7B7" strokeWidth={2.2} />
-                                  <Text style={{ fontSize: 10, fontWeight: '600', color: '#6EE7B7' }}>Tamamla</Text>
-                                </Pressable>
-                              </View>
-                            )}
-
-                            {/* Müdür/admin: aşamayı sil — sanal (kurye/teslim) aşamalar hariç */}
-                            {isManager && !stg.is_virtual && (
-                              <View className="flex-row gap-2 mt-2 flex-wrap">
-                                <Pressable
-                                  onPress={() => handleRemoveStage(stg)}
-                                  style={{
-                                    flexDirection: 'row', alignItems: 'center', gap: 5,
-                                    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 9999,
-                                    backgroundColor: 'rgba(217,75,75,0.15)',
-                                    borderWidth: 1, borderColor: 'rgba(217,75,75,0.35)',
-                                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                                  }}
-                                >
-                                  <Trash2 size={11} color="#FCA5A5" strokeWidth={1.9} />
-                                  <Text style={{ fontSize: 10, fontWeight: '600', color: '#FCA5A5' }}>Aşamayı sil</Text>
-                                </Pressable>
-                              </View>
-                            )}
-                          </View>
-                        </View>
-                      );
-                    })}
-
-                    {/* Müdür/admin: sona / araya yeni aşama ekle */}
-                    {isManager && (
-                      <Pressable
-                        onPress={() => setAddStageOpen(true)}
-                        style={{
-                          flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-                          marginTop: 10, paddingVertical: 9, borderRadius: 12,
-                          borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)', borderStyle: 'dashed',
-                          backgroundColor: 'rgba(255,255,255,0.06)',
-                          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                        }}
-                      >
-                        <Plus size={13} color="rgba(255,255,255,0.85)" strokeWidth={2.2} />
-                        <Text style={{ fontSize: 11.5, fontWeight: '700', color: 'rgba(255,255,255,0.85)' }}>Aşama ekle</Text>
-                      </Pressable>
-                    )}
-                  </View>
-                )}
-              </>
-            )}
+          {stageTimelineEl}
           </View>
 
           {/* ÇALIŞMALAR TABLOSU — basit (gerçek work item modeli yok, tooth listesi tek satır) */}
@@ -2705,7 +2364,12 @@ export function OrderDetailScreenV2() {
         {/* ═══════════ SAĞ KOLON ═══════════ */}
         <View className="gap-4" style={{ width: isDesktop ? 360 : undefined }}>
 
-          {/* MESAJ KUTUSU — sağ kolon en üstünde (QR hero'ya taşındı) */}
+          {/* MESAJ KUTUSU — sağ kolon en üstünde (QR hero'ya taşındı)
+              Eskiden kartın altında tam genişlikte dolu bir "Mesaj gönder"
+              çubuğu vardı; hemen altındaki Lojistik kartının "Kurye çağır"
+              çubuğuyla birlikte sağ kolon iki kalın butona dönüşüyordu. Artık
+              eylem içeriğin kendisinde: boşken satırın tamamı tıklanır, dolu
+              iken son mesaj önizlemesi zaten sohbeti açar. */}
           <View className="bg-white rounded-3xl border border-black/[0.06] p-5">
             <View className="flex-row items-center gap-2 mb-3.5">
               <MessageSquare size={12} color="#9A9A9A" strokeWidth={1.8} />
@@ -2714,9 +2378,23 @@ export function OrderDetailScreenV2() {
               </Text>
               <View className="flex-1" />
               {chatMessages.length > 0 && (
-                <View className="px-2 py-0.5 rounded-full bg-ink-50">
-                  <Text className="text-[11px] font-medium text-ink-700">{chatMessages.length}</Text>
-                </View>
+                <>
+                  <Text className="text-[11px] font-medium text-ink-400">{chatMessages.length} mesaj</Text>
+                  <Pressable
+                    onPress={() => setChatOpen(true)}
+                    style={({ pressed }: any) => ({
+                      flexDirection: 'row', alignItems: 'center', gap: 4,
+                      paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
+                      backgroundColor: hexA(panelAccent, 0.10),
+                      opacity: pressed ? 0.6 : 1,
+                      transform: [{ scale: pressed ? 0.96 : 1 }],
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                    })}
+                  >
+                    <Text className="text-[11.5px] font-semibold" style={{ color: panelAccent }}>Aç</Text>
+                    <ChevronRight size={12} color={panelAccent} strokeWidth={2.4} />
+                  </Pressable>
+                </>
               )}
             </View>
 
@@ -2724,15 +2402,42 @@ export function OrderDetailScreenV2() {
               const last = chatMessages.length > 0 ? chatMessages[chatMessages.length - 1] : null;
               if (!last) {
                 return (
-                  <Text className="text-[12px] text-ink-400 italic mb-3.5 px-0.5">
-                    Bu vaka için henüz mesaj yok.
-                  </Text>
+                  <Pressable
+                    onPress={() => setChatOpen(true)}
+                    style={({ pressed }: any) => ({
+                      flexDirection: 'row', alignItems: 'center', gap: 12,
+                      padding: 14, borderRadius: 16, backgroundColor: softPanelBg,
+                      opacity: pressed ? 0.7 : 1,
+                      transform: [{ scale: pressed ? 0.99 : 1 }],
+                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                    })}
+                  >
+                    <View
+                      className="w-[34px] h-[34px] rounded-full items-center justify-center"
+                      style={{ backgroundColor: hexA(panelAccent, 0.12) }}
+                    >
+                      <MessageSquare size={16} color={panelAccent} strokeWidth={1.9} />
+                    </View>
+                    <View className="flex-1 min-w-0">
+                      <Text className="text-[13px] font-semibold text-ink-900">İlk mesajı yaz</Text>
+                      <Text className="text-[11.5px] text-ink-400 mt-px">Bu vaka için henüz mesaj yok</Text>
+                    </View>
+                    <ChevronRight size={15} color="#9A9A9A" strokeWidth={2} />
+                  </Pressable>
                 );
               }
               const who = last.sender?.full_name ?? 'Bilinmeyen';
               const body = String(last.content ?? '').trim() || 'Dosya gönderildi';
               return (
-                <Pressable onPress={() => setChatOpen(true)} className="rounded-2xl p-3.5 mb-3.5" style={{ backgroundColor: softPanelBg }}>
+                <Pressable
+                  onPress={() => setChatOpen(true)}
+                  style={({ pressed }: any) => ({
+                    borderRadius: 16, padding: 14, backgroundColor: softPanelBg,
+                    opacity: pressed ? 0.7 : 1,
+                    transform: [{ scale: pressed ? 0.99 : 1 }],
+                    ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                  })}
+                >
                   <View className="flex-row items-center gap-2 mb-1.5">
                     <View
                       className="w-6 h-6 rounded-full items-center justify-center"
@@ -2753,20 +2458,6 @@ export function OrderDetailScreenV2() {
                 </Pressable>
               );
             })()}
-
-            <OriginFillButton
-              label={chatMessages.length > 0 ? 'Sohbeti aç' : 'Mesaj gönder'}
-              icon={MessageSquare}
-              onPress={() => setChatOpen(true)}
-              backgroundColor={panelAccent}
-              fillColor={readableInk(panelAccent)}
-              baseTextColor={readableInk(panelAccent)}
-              fillTextColor={panelAccent}
-              radius={16}
-              paddingVertical={12}
-              fontSize={13}
-              iconSize={15}
-            />
           </View>
 
           {/* LOJİSTİK — siparişin tüm kurye hareketleri (desktop + mobil ortak bileşen) */}
@@ -3148,10 +2839,7 @@ export function OrderDetailScreenV2() {
               order={order}
               isArchived={!!(order as any).is_archived}
               onArchived={() => { refetch(); }}
-              onDeleted={() => {
-                if (router.canGoBack()) router.back();
-                else router.replace(`/(${panelGroup})/orders` as any);
-              }}
+              onDeleted={() => safeBack(`/(${panelGroup})/orders`)}
               onEdited={() => { refetch(); }}
             />
           )}
@@ -3193,20 +2881,6 @@ export function OrderDetailScreenV2() {
           accentColor={panelAccent}
           onClose={() => setDoctorChangeOpen(false)}
           onChanged={() => refetch()}
-        />
-      )}
-
-      {/* Medit Link Tamamla — eksik bilgileri doldur */}
-      {isManager && order && (order as any).external_source === 'medit_link' && (
-        <MeditCompleteModal
-          visible={meditCompleteOpen}
-          workOrderId={order.id}
-          initialTeeth={order.tooth_numbers ?? []}
-          initialWorkType={order.work_type ?? undefined}
-          initialNotes={(order as any).notes ?? ''}
-          accentColor={panelAccent}
-          onClose={() => setMeditCompleteOpen(false)}
-          onSaved={() => { refetch(); }}
         />
       )}
 
@@ -3390,7 +3064,7 @@ export function OrderDetailScreenV2() {
       </Modal>
 
       {/* Material Confirm Modal — aşamayı malzeme onayıyla tamamla */}
-      <MaterialConfirmModal
+      <StageMaterialModal
         visible={!!materialModalStageId}
         stageId={materialModalStageId}
         accentColor={panelAccent}
@@ -3737,6 +3411,20 @@ function alphaOf(hex: string, a: number): string {
   return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`;
 }
 
+// Dosya kategorisi — Taramalar (3D/zip) · Fotoğraflar (görsel) · Belgeler (diğer)
+type FileCat = 'scan' | 'photo' | 'doc';
+function fileCategoryOf(pathOrName: string): FileCat {
+  const p = (pathOrName || '').toLowerCase();
+  if (/\.(stl|ply|obj|zip|3mf|dcm)$/.test(p)) return 'scan';
+  if (/\.(jpe?g|png|webp|gif|bmp|heic|heif|avif|svg)$/.test(p)) return 'photo';
+  return 'doc';
+}
+const FILE_CAT_META: { key: FileCat; label: string }[] = [
+  { key: 'scan',  label: 'Taramalar' },
+  { key: 'photo', label: 'Fotoğraflar' },
+  { key: 'doc',   label: 'Belgeler' },
+];
+
 function FilesList({
   photos, signedUrls, workOrderId, accentColor, onUploaded,
 }: {
@@ -3747,6 +3435,8 @@ function FilesList({
   onUploaded?: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  // Kategori aç/kapa durumu (varsayılan: KAPALI — kullanıcı isterse açar)
+  const [openCats, setOpenCats] = useState<Record<string, boolean>>({});
   // 3D viewer state
   const [viewer3DFile, setViewer3DFile] = useState<{ id: string; name: string; url: string; format: 'stl'|'ply'|'obj'; textureUrl?: string|null } | null>(null);
   // Uygulama-içi görsel / HTML tasarım önizleme (yeni tab yerine popup) — dosya modalı ile aynı davranış
@@ -3778,6 +3468,15 @@ function FilesList({
     return signedUrls[tex.storage_path] ?? (tex as any).signed_url ?? null;
   };
 
+  // İndirme dosya adı — caption'da uzantı yoksa gerçek uzantıyı ekle (zip zip iner).
+  const zipDownloadName = (f: WorkOrderPhoto): string => {
+    const base = f.storage_path.split('/').pop() ?? 'file';
+    const realExt = base.includes('.') ? base.split('.').pop()!.toLowerCase() : '';
+    let name = (f.caption?.trim() || base);
+    if (realExt && !name.toLowerCase().endsWith('.' + realExt)) name = `${name}.${realExt}`;
+    return name;
+  };
+
   const openPreview = (f: WorkOrderPhoto) => {
     const url = signedUrls[f.storage_path] ?? (f as any).signed_url ?? null;
     // İmzalı URL yok (henüz yüklenmedi ya da storage erişimi yok) → sessiz kalma.
@@ -3806,6 +3505,7 @@ function FilesList({
           const r = await unzipToViewerNative(url, { idPrefix: f.id });
           if (r.files.length > 0) {
             setZipImages(r.images.length ? r.images : null);
+            setZipSource({ url, name: zipDownloadName(f) });   // indirme → kaynak zip
             setViewerAll(r.files);
           } else if (r.images.length > 0) {
             setZipImages(r.images);
@@ -3849,6 +3549,7 @@ function FilesList({
           zipUrlsRef.current = r.objectUrls;
           if (r.files.length > 0) {
             setZipImages(r.images.length ? r.images : null);
+            setZipSource({ url, name: zipDownloadName(f) });   // indirme → kaynak zip
             setViewerAll(r.files);
           } else if (r.images.length > 0) {
             setZipImages(r.images);
@@ -3867,31 +3568,34 @@ function FilesList({
   const forceDownload = async (f: WorkOrderPhoto) => {
     const url = signedUrls[f.storage_path] ?? (f as any).signed_url ?? null;
     if (!url) return;
-    const filename = f.caption ?? f.storage_path.split('/').pop() ?? 'file';
-    // Native: <a download> yok → dosyayı sistem tarayıcısında aç (kullanıcı oradan kaydeder/paylaşır).
-    if (Platform.OS !== 'web') { openFileUrl(url); return; }
-    if (typeof document === 'undefined') return;
-    // Cross-origin (Supabase storage) signed URL'de <a download> YOK SAYILIR →
-    // HTML/SVG vb. yeni sekmede text gibi açılır. Çözüm: içeriği blob olarak çek,
-    // same-origin blob URL ile indir → her dosya tipi (html dahil) gerçekten iner.
+    // Dosya adı — caption'da uzantı yoksa gerçek uzantıyı ekle (ör. "Üst Çene · OrthoCAD" → ".zip").
+    // Böylece ZIP, ZIP olarak iner (içi AÇILMAZ) — tüm platformlarda ham dosya.
+    const base = f.storage_path.split('/').pop() ?? 'file';
+    const realExt = (base.includes('.') ? base.split('.').pop()! : '').toLowerCase();
+    let name = (f.caption?.trim() || base);
+    if (realExt && !name.toLowerCase().endsWith('.' + realExt)) name = `${name}.${realExt}`;
+    // Supabase signed URL'e `download` parametresi → sunucu Content-Disposition: attachment
+    // döner; tarayıcı ham dosyayı İNDİRİR (blob/CORS/iOS-PWA sorunları olmadan, zip açılmadan).
+    const dlUrl = url + (url.includes('?') ? '&' : '?') + 'download=' + encodeURIComponent(name);
+    // Native: sistem indiricisi/tarayıcısı. Web (desktop + PWA): <a download> ile tetikle.
+    if (Platform.OS !== 'web' || typeof document === 'undefined') { openFileUrl(dlUrl); return; }
     try {
-      const res = await fetch(url);
-      const blob = await res.blob();
-      const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = blobUrl;
-      a.download = filename;
+      a.href = dlUrl;
+      a.download = name;
+      a.rel = 'noopener';
       document.body.appendChild(a);
       a.click();
-      setTimeout(() => { try { document.body.removeChild(a); URL.revokeObjectURL(blobUrl); } catch {} }, 1000);
+      setTimeout(() => { try { document.body.removeChild(a); } catch {} }, 100);
     } catch {
-      // Ağ hatası → eski davranışa düş (yeni sekmede aç)
-      try { window.open(url, '_blank'); } catch {}
+      try { window.open(dlUrl, '_blank'); } catch {}
     }
   };
 
   // Multi-file viewer (tüm 3D dosyaları üst üste aç) — Faz 7
   const [viewerAll, setViewerAll] = useState<Array<{ id: string; name: string; url: string; format: 'stl'|'ply'|'obj'; textureUrl?: string|null }> | null>(null);
+  // ZIP'ten açılan viewer'da indirme kaynağı (mesh yerine kaynak zip insin)
+  const [zipSource, setZipSource] = useState<{ url: string; name: string } | null>(null);
   const all3DFiles = useMemo(() => {
     return photos
       .map(f => {
@@ -3917,6 +3621,13 @@ function FilesList({
       .filter(Boolean) as Array<{ id: string; name: string; url: string }>;
   }, [photos, signedUrls]);
 
+  // Kategori grupları — Taramalar / Fotoğraflar / Belgeler (boş olanlar gizli)
+  const photoGroups = useMemo(() => {
+    const by: Record<FileCat, WorkOrderPhoto[]> = { scan: [], photo: [], doc: [] };
+    for (const f of photos) by[fileCategoryOf(f.caption || f.storage_path)].push(f);
+    return FILE_CAT_META.map(m => ({ ...m, files: by[m.key] })).filter(g => g.files.length > 0);
+  }, [photos]);
+
   // ÖNEMLİ: StageFileUpload her zaman aynı JSX pozisyonunda render edilmeli;
   // photos.length 0→1 geçişinde unmount olmamalı. Aksi halde modalOpen state
   // sıfırlanır ve modal kapanır.
@@ -3930,7 +3641,7 @@ function FilesList({
         const fg = onAccent(accentColor);
         return (
           <Pressable
-            onPress={() => setViewerAll(all3DFiles)}
+            onPress={() => { setZipSource(null); setViewerAll(all3DFiles); }}
             android_ripple={{ color: alphaOf(fg, 0.12) }}
             /* NOT: object style ZORUNLU — NativeWind v4'te fonksiyon-stilli Pressable
                native'de backgroundColor'ı düşürüyor (buton beyaz kalıyordu). */
@@ -3960,7 +3671,29 @@ function FilesList({
         </View>
       ) : (
         <View>
-          {photos.map((f) => {
+          {photoGroups.map((g) => {
+          const isCollapsed = !openCats[g.key];
+          const catColor = g.key === 'photo' ? '#10B981' : g.key === 'scan' ? '#3B82F6' : '#6B7280';
+          return (
+          <View key={g.key} style={{ marginBottom: 2 }}>
+            {/* Kategori başlığı — tıklayınca aç/kapa (varsayılan kapalı) */}
+            <Pressable
+              onPress={() => setOpenCats(s => ({ ...s, [g.key]: !s[g.key] }))}
+              hitSlop={4}
+              style={({ hovered }: any) => ({
+                flexDirection: 'row', alignItems: 'center', gap: 7,
+                paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8,
+                backgroundColor: hovered ? '#F8FAFC' : 'transparent',
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              })}
+            >
+              {isCollapsed ? <ChevronRight size={14} color="#64748B" strokeWidth={2} /> : <ChevronDown size={14} color="#64748B" strokeWidth={2} />}
+              <Text style={{ flex: 1, fontSize: 11, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase', color: '#475569' }}>{g.label}</Text>
+              <View style={{ minWidth: 20, height: 18, paddingHorizontal: 6, borderRadius: 9, backgroundColor: catColor + '1A', alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 10, fontWeight: '800', color: catColor }}>{g.files.length}</Text>
+              </View>
+            </Pressable>
+            {!isCollapsed && g.files.map((f) => {
             const ext = (f.storage_path.split('.').pop() ?? '').toUpperCase().slice(0, 4);
             const isImage = /\.(jpe?g|png|webp|gif|bmp)$/i.test(f.storage_path);
             const color = isImage ? '#10B981' : '#3B82F6';
@@ -3971,7 +3704,7 @@ function FilesList({
                 key={f.id}
                 style={{
                   flexDirection: 'row', alignItems: 'center', gap: 9,
-                  paddingHorizontal: 12, paddingVertical: 5,
+                  paddingHorizontal: 12, paddingVertical: 5, paddingLeft: 28,
                 }}
               >
                 <View
@@ -4027,6 +3760,9 @@ function FilesList({
                 </Pressable>
               </View>
             );
+            })}
+          </View>
+          );
           })}
         </View>
       )}
@@ -4177,7 +3913,8 @@ function FilesList({
             files={viewerAll}
             referenceImages={zipImages ?? referenceImages}
             title={`${viewerAll.length} dosya birlikte`}
-            onClose={() => { setViewerAll(null); setZipImages(null); revokeZipUrls(); }}
+            sourceDownload={zipSource ?? undefined}
+            onClose={() => { setViewerAll(null); setZipImages(null); setZipSource(null); revokeZipUrls(); }}
           />
         </React.Suspense>
       )}
@@ -4187,7 +3924,7 @@ function FilesList({
           visible={!!viewerAll}
           files={viewerAll}
           title={`${viewerAll.length} dosya birlikte`}
-          onClose={() => { setViewerAll(null); setZipImages(null); }}
+          onClose={() => { setViewerAll(null); setZipImages(null); setZipSource(null); }}
         />
       )}
     </View>

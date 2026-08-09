@@ -37,9 +37,25 @@ import {
   Undo2, Upload, User, UserCheck, UserCircle, UserPlus, UserX, Users,
   WifiOff, X, XCircle, Zap,
 } from 'lucide-react-native';
+// Lucide'de karşılığı olmayan dental ikonlar — createLucideIcon ile üretildi,
+// dolayısıyla yukarıdakilerle birebir aynı props sözleşmesine sahipler.
+import { Tooth, Crown, Implant, ZirconiaDisc, DentalArch } from './dentalIcons';
+import { WhatsAppGlyph } from './WhatsAppGlyph';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type LucideFC = React.ComponentType<any>;
+
+/**
+ * WhatsApp marka işareti — Lucide marka ikonu içermediği için tek istisna.
+ *
+ * Glif kenar payı olmadan çizilmiş (path 0..24'ü doldurur), Lucide ikonlarında
+ * ise 1px pay + stroke var. Aynı `size` ile yan yana konunca marka işareti
+ * optik olarak büyük duruyordu; %88'e indirip dengeledik. WhatsAppGlyph'in
+ * kendisine dokunulmadı — Bildirimler ekranı da onu kullanıyor.
+ */
+const WhatsAppMark: LucideFC = ({ size = 20, color }: { size?: number; color?: string }) => (
+  <WhatsAppGlyph size={Math.round(size * 0.88)} color={color} />
+);
 
 // ── Tam isim → Lucide bileşeni ───────────────────────────────────────────────
 const ICONS: Record<string, LucideFC> = {
@@ -53,6 +69,7 @@ const ICONS: Record<string, LucideFC> = {
   'mail':                Mail,
   'message-circle':      MessageCircle,
   'messages-square':     MessagesSquare,
+  'whatsapp':            WhatsAppMark,
   'more-horizontal':     MoreHorizontal,
   'panel-left':          PanelLeft,
   'info':                Info,
@@ -174,6 +191,14 @@ const ICONS: Record<string, LucideFC> = {
   'play-circle':         PlayCircle,
   'atom':                Atom,
   'flask-conical':       FlaskConical,
+
+  // ── Dental (özel çizim — core/ui/dentalIcons.tsx) ─────────────────────────
+  'tooth':               Tooth,
+  'crown':               Crown,
+  'implant':             Implant,
+  'zirconia-disc':       ZirconiaDisc,
+  'dental-arch':         DentalArch,
+
   'crosshair':           Crosshair,
   'sliders-horizontal':  SlidersHorizontal,
   'network':             Network,

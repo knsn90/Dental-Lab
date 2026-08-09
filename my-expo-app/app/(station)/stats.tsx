@@ -18,6 +18,7 @@ import { LinearProgressX, PercentRingX } from '../../core/ui/ProgressX';
 import { DS } from '../../core/theme/dsTokens';
 import { useStationTheme, hexA } from '../../core/theme/stationPalette';
 import { localeTag } from '../../core/i18n';
+import { mobileTopPad } from '../../core/ui/pageMetrics';
 
 const SERIF = {
   fontFamily: 'Inter Tight, Inter, system-ui, sans-serif' as const,
@@ -561,7 +562,7 @@ export default function StationDashboard() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: P.pageBg }}
-      contentContainerStyle={{ padding: 16, paddingTop: insets.top + 8, paddingBottom: 120, gap: 16 }}
+      contentContainerStyle={{ padding: 16, paddingTop: mobileTopPad(insets.top), paddingBottom: 120, gap: 16 }}
     >
       {/* ═══ HERO — Tarih + selamlama ═══ */}
       <View style={{ marginBottom: 6 }}>
@@ -640,7 +641,7 @@ export default function StationDashboard() {
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
                   <Text style={{ ...SERIF, fontSize: 26, lineHeight: 28, color: P.ink900, letterSpacing: -0.6 }}>
-                    {loading ? '…' : stats.completed.toLocaleString(localeTag(i18n.language))}
+                    {loading ? '…' : (Number(stats.completed) || 0).toLocaleString(localeTag(i18n.language))}
                   </Text>
                   <Text style={{ fontSize: 11, color: P.ink400 }}>{t('common.stages')}</Text>
                 </View>

@@ -135,16 +135,25 @@ export function AdminApprovalsScreen() {
         </View>
       )}
 
-      {/* iOS-style segmented control (full-width) */}
+      {/* Segmented control.
+          Eskiden her sekme flex:1 idi → 2400px'lik ekranda şerit tüm genişliğe
+          yayılıyor, sekmeler birbirinden kopuk duruyordu. Masaüstünde içeriğine
+          sarılır ve içerik paneliyle AYNI kenardan (24) başlar; mobilde tam
+          genişlik kalır (orada yayılmak doğru). */}
       <View style={{
-        paddingHorizontal: 16,
+        paddingHorizontal: isDesktop ? 24 : 16,
         paddingTop: isDesktop ? headerTopPad : 8,
         paddingBottom: 12,
       }}>
         <View style={{
           flexDirection: 'row',
+          alignSelf: isDesktop ? 'flex-start' : 'stretch',
+          maxWidth: '100%',
+          // DESIGN_LANGUAGE §6 — üst nav "Pill" variant:
+          // padding 4 + bg rgba(0,0,0,0.05) + radius 999. (Segmented/radius 12
+          // yalnız görünüm değiştirici içindir: Liste / Kart / Grid.)
           backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
-          borderRadius: 12,
+          borderRadius: 999,
           padding: 4,
         }}>
           {TABS.map(t => {
@@ -154,18 +163,19 @@ export function AdminApprovalsScreen() {
               <Pressable
                 key={t.key}
                 onPress={() => setTab(t.key)}
-                style={{
-                  flex: 1,
+                style={({ pressed }: any) => ({
+                  flex: isDesktop ? undefined : 1,
                   minWidth: 0,
                   flexDirection: 'row',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: 5,
+                  gap: 6,
                   height: 38,
-                  paddingHorizontal: 4,
-                  borderRadius: 9,
+                  paddingHorizontal: isDesktop ? 16 : 4,
+                  borderRadius: 999,
+                  opacity: pressed ? 0.7 : 1,
                   overflow: 'hidden',
-                  backgroundColor: active ? (isDark ? '#2A2724' : '#FFFFFF') : 'transparent',
+                  backgroundColor: active ? T.card : 'transparent',
                   ...(active && Platform.OS === 'ios'
                     ? {
                         shadowColor: '#000',
@@ -177,7 +187,7 @@ export function AdminApprovalsScreen() {
                       ? ({ boxShadow: isDark ? '0 1px 3px rgba(0,0,0,0.45)' : '0 1px 3px rgba(0,0,0,0.10)' } as any)
                       : {}),
                   ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                }}
+                })}
               >
                 <Icon
                   size={15}
@@ -188,7 +198,7 @@ export function AdminApprovalsScreen() {
                   numberOfLines={1}
                   style={{
                     fontSize: isDesktop ? 13 : 12.5,
-                    fontWeight: active ? '700' : '600',
+                    fontWeight: active ? '600' : '500',
                     color: active ? T.ink : T.ink3,
                     letterSpacing: -0.1,
                     flexShrink: 1,
@@ -197,14 +207,17 @@ export function AdminApprovalsScreen() {
                   {isDesktop ? t.label : t.short}
                 </Text>
                 {t.count != null && (
+                  /* Bu bir HATA değil, DURUM sayacı. Aktif sekmede dolu kırmızı,
+                     pasifte yumuşak ton — beş sekmede beş dolu kırmızı daire
+                     "her şey acil" gürültüsü yapıyordu. */
                   <View style={{
                     minWidth: 18, height: 18, borderRadius: 9,
                     paddingHorizontal: 5,
-                    backgroundColor: '#DC2626',
+                    backgroundColor: active ? DS.lab.danger : 'rgba(217,75,75,0.14)',
                     alignItems: 'center', justifyContent: 'center',
                     marginLeft: 2,
                   }}>
-                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#FFFFFF' }}>{t.count}</Text>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: active ? '#FFFFFF' : '#9C2E2E' }}>{t.count}</Text>
                   </View>
                 )}
               </Pressable>

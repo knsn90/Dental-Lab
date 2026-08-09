@@ -99,6 +99,9 @@ export interface CreateWorkOrderParams {
   patient_city?: string;
   lab_notes_visible?: boolean;
   scan_bodies_delivered?: boolean;
+  /** Devam siparişi — bu iş emri, teslim edilmiş başka bir siparişin planlı devamı
+   *  (ör. geçici→nihai). Revizyon DEĞİL. Bkz. work_orders.continues_order_id. */
+  continues_order_id?: string | null;
 }
 
 export interface PendingItem {

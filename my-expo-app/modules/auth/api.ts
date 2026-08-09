@@ -1,7 +1,28 @@
 import { supabase } from '../../core/api/supabase';
+import { toConsentPayload, type ConsentState } from './components/ConsentGate';
 
 export type UserType = 'lab' | 'doctor' | 'admin' | 'clinic_admin';
 export type LabRole = 'technician' | 'manager';
+
+/**
+ * Kayıt sırasında alınan onayları append-only `user_consents` defterine yazar
+ * (P0-5 · R-01).
+ *
+ * Sessizce yutulmaz ama kaydı da bloklamaz: signUp başarılı olduysa kullanıcı
+ * hesabı vardır; onay yazımı ağ hatasıyla düşerse `has_required_consents()`
+ * false döner ve kullanıcı bir sonraki girişte tekrar onay ekranına düşer.
+ * Böylece "hesap var ama onay yok" durumu sessiz kalmaz.
+ */
+async function recordConsents(consents?: ConsentState): Promise<void> {
+  if (!consents) return;
+  const { error } = await supabase.rpc('record_consents', {
+    p_consents: toConsentPayload(consents),
+  });
+  if (error) {
+    // eslint-disable-next-line no-console
+    console.warn('[consent] kayıt yazılamadı — girişte tekrar sorulacak:', error.message);
+  }
+}
 
 export interface SignUpDoctorParams {
   email: string;
@@ -10,6 +31,8 @@ export interface SignUpDoctorParams {
   clinic_name: string;
   phone: string;
   address: string;
+  /** P0-5 · R-01 — kayıt ekranında toplanan onaylar. */
+  consents?: ConsentState;
 }
 
 export interface SignUpLabParams {
@@ -18,6 +41,8 @@ export interface SignUpLabParams {
   full_name: string;
   role: LabRole;
   phone?: string;
+  /** P0-5 · R-01 — kayıt ekranında toplanan onaylar. */
+  consents?: ConsentState;
 }
 
 export async function signUpDoctor(params: SignUpDoctorParams) {
@@ -37,6 +62,9 @@ export async function signUpDoctor(params: SignUpDoctorParams) {
   });
 
   if (authResult.error || !authResult.data.user) return authResult;
+
+  // Onayları hesap oluşur oluşmaz yaz — RLS gereği oturum açık olmalı.
+  await recordConsents(params.consents);
 
   // Mark doctor as pending approval (belt & suspenders alongside trigger)
   await supabase
@@ -76,6 +104,8 @@ export interface SignUpClinicParams {
   phone: string;
   address: string;
   clinic_type: 'klinik' | 'poliklinik' | 'hastane';
+  /** P0-5 · R-01 — kayıt ekranında toplanan onaylar. */
+  consents?: ConsentState;
 }
 
 export async function signUpClinic(params: SignUpClinicParams) {
@@ -98,6 +128,8 @@ export async function signUpClinic(params: SignUpClinicParams) {
   });
 
   if (authResult.error || !authResult.data.user) return authResult;
+
+  await recordConsents(params.consents);
 
   // Mark as pending approval
   await supabase
@@ -131,7 +163,7 @@ export async function signUpClinic(params: SignUpClinicParams) {
 }
 
 export async function signUpLabUser(params: SignUpLabParams) {
-  return supabase.auth.signUp({
+  const res = await supabase.auth.signUp({
     email: params.email,
     password: params.password,
     options: {
@@ -144,6 +176,8 @@ export async function signUpLabUser(params: SignUpLabParams) {
       },
     },
   });
+  if (!res.error && res.data.user) await recordConsents(params.consents);
+  return res;
 }
 
 export async function signIn(email: string, password: string) {

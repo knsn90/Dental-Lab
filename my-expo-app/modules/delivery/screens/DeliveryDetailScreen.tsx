@@ -1,4 +1,5 @@
 import { localeTag } from '../../../core/i18n';
+import { safeBack } from '../../../core/util/safeBack';
 // modules/delivery/screens/DeliveryDetailScreen.tsx
 // Teslimat detayı — GPS geçmişi, durum timeline, kurye bilgisi
 
@@ -136,7 +137,7 @@ export function DeliveryDetailScreen() {
   if (!delivery) {
     return (
       <SafeAreaView style={s.container}>
-        <TouchableOpacity style={{ padding: 20 }} onPress={() => router.back()}>
+        <TouchableOpacity style={{ padding: 20 }} onPress={() => safeBack('/')}>
           <Text style={{ color: ACCENT }}>← Geri</Text>
         </TouchableOpacity>
         <Text style={{ textAlign: 'center', color: '#94A3B8', marginTop: 40 }}>Teslimat bulunamadı.</Text>
@@ -155,7 +156,7 @@ export function DeliveryDetailScreen() {
     <SafeAreaView style={s.container} edges={['top']}>
       {/* Header */}
       <View style={s.header}>
-        <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={s.backBtn} onPress={() => safeBack('/')}>
           <AppIcon name="arrow-left" size={20} color={ACCENT} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>

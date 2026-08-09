@@ -12,14 +12,22 @@
  *      ...
  *    </ResponsiveCanvas>
  *
+ *  HUB İÇİNDE YATAY DOLGU YOK:
+ *    Bir hub'a (Stok, Finans, İK…) gömülü render edildiğinde sayfa kenarını
+ *    HUB verir. Canvas bir kez daha `px-4` eklerse kenar boşluğu ikiye katlanır
+ *    ve kartlar başlıkla/sekmelerle aynı hizada durmaz — Stok › Malzeme
+ *    Eşleştirme'de tam olarak bu oluyordu (sekmeler 16, kartlar 32).
+ *    HubContext true iken yalnız DİKEY dolgu uygulanır.
+ *
  *  Variant:
  *    size="sm"  → 720px max (form, settings)
  *    size="md"  → 980px max (orta yoğunluk)
  *    size="lg"  → 1280px max (default — dashboard, liste)
  *    size="xl"  → 1440px max (geniş tablo, kanban)
  */
-import React from 'react';
+import React, { useContext } from 'react';
 import { View, ScrollView, ScrollViewProps, ViewProps } from 'react-native';
+import { HubContext } from '../ui/HubContext';
 
 type Size = 'sm' | 'md' | 'lg' | 'xl';
 
@@ -38,7 +46,7 @@ export interface ResponsiveCanvasProps extends ViewProps {
   scrollProps?: ScrollViewProps;
   /** Page background'ı override (default: #F1F5F9) */
   bgClassName?: string;
-  /** Padding override */
+  /** Dolgu override — verilmezse hub içinde `py-4`, dışında `px-4 … py-6`. */
   padClassName?:string;
 }
 
@@ -48,15 +56,18 @@ export function ResponsiveCanvas({
   children,
   scrollProps,
   bgClassName = 'bg-page',
-  padClassName = 'px-4 sm:px-6 lg:px-10 py-6',
+  padClassName,
   className,
   ...rest
 }: ResponsiveCanvasProps) {
   const widthClass = MAX_WIDTH[size];
+  const isHub = useContext(HubContext);
+  // Hub sayfa kenarını zaten veriyor → yalnız dikey nefes bırak.
+  const pad = padClassName ?? (isHub ? 'py-4' : 'px-4 sm:px-6 lg:px-10 py-6');
 
   const content = (
     <View
-      className={`${widthClass} mx-auto w-full ${padClassName} ${className ?? ''}`}
+      className={`${widthClass} mx-auto w-full ${pad} ${className ?? ''}`}
       {...rest}
     >
       {children}

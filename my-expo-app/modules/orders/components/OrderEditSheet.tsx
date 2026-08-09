@@ -11,13 +11,15 @@ import React, { useMemo, useState } from 'react';
 import {
   Modal, View, Text, ScrollView, Pressable, TextInput, Platform, ActivityIndicator, useWindowDimensions,
 } from 'react-native';
-import { X, Save, Trash2, Plus, Send, Info } from 'lucide-react-native';
+import { X, Save, Trash2, Plus, Send, Info, ChevronDown, Check } from 'lucide-react-native';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { ModalCard, MODAL_BACKDROP_COLOR, MODAL_OVERLAY_WEB } from '../../../core/ui/ModalBackdrop';
 import { DatePicker } from '../../../core/ui/DatePicker';
 import { toast } from '../../../core/ui/Toast';
 import { updateOrderClient, updateOrderAdmin, isOrderPrePlanning, fetchOrderItems, type ClientOrderEditItem, type ClientOrderEditFields } from '../api';
 import { createChangeRequest } from '../changeRequests';
+import { ToothNumberPicker } from './ToothNumberPicker';
+import { WORK_TYPES, ALL_SHADES } from '../constants';
 import type { WorkOrder } from '../types';
 
 function hexA(hex: string, a: number): string {
@@ -111,6 +113,73 @@ function EditSeg({
   );
 }
 
+// Dropdown seçici — iş tipi / renk gibi listeden seçim (serbest yazmaya da izin verir).
+// ⚠️ Modül seviyesinde (remount → focus/scroll kaybı olmasın).
+function EditPicker({
+  label, value, options, onChange, placeholder, allowCustom,
+}: {
+  label: string; value: string; options: readonly string[]; onChange: (v: string) => void;
+  placeholder?: string; allowCustom?: boolean;
+}) {
+  const theme = usePanelTheme();
+  const ink = theme.accent;
+  const A = theme.primary;
+  const [open, setOpen] = useState(false);
+  return (
+    <View style={{ gap: 6, zIndex: open ? 20 : 1 }}>
+      <Text style={{ fontSize: 11, fontWeight: '600', color: hexA(ink, 0.6) }}>{label}</Text>
+      <Pressable
+        onPress={() => setOpen((o) => !o)}
+        style={{
+          flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+          borderWidth: 1, borderColor: open ? A : hexA(ink, 0.1), borderRadius: 12,
+          paddingHorizontal: 13, paddingVertical: 11, backgroundColor: '#F6F7F9',
+          ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+        }}
+      >
+        <Text numberOfLines={1} style={{ flex: 1, fontSize: 13.5, color: value ? ink : hexA(ink, 0.35) }}>{value || placeholder || 'Seç…'}</Text>
+        <ChevronDown size={16} color={hexA(ink, 0.5)} strokeWidth={2} style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }} />
+      </Pressable>
+      {open && (
+        <View style={{ borderWidth: 1, borderColor: hexA(ink, 0.12), borderRadius: 12, backgroundColor: '#FFFFFF', overflow: 'hidden', ...(Platform.OS === 'web' ? ({ boxShadow: '0 8px 24px rgba(0,0,0,0.12)' } as any) : {}) }}>
+          {allowCustom && (
+            <TextInput
+              value={value}
+              onChangeText={onChange}
+              placeholder="Serbest yaz…"
+              placeholderTextColor={hexA(ink, 0.35)}
+              style={[
+                { paddingHorizontal: 13, paddingVertical: 10, fontSize: 13, color: ink, borderBottomWidth: 1, borderBottomColor: hexA(ink, 0.08) },
+                Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null,
+              ]}
+            />
+          )}
+          <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+            {options.map((opt) => {
+              const active = value === opt;
+              return (
+                <Pressable
+                  key={opt}
+                  onPress={() => { onChange(opt); setOpen(false); }}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                    paddingHorizontal: 13, paddingVertical: 10,
+                    backgroundColor: active ? hexA(A, 0.08) : 'transparent',
+                    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : {}),
+                  }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: active ? '700' : '500', color: active ? A : hexA(ink, 0.8) }}>{opt}</Text>
+                  {active && <Check size={14} color={A} strokeWidth={2.4} />}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+    </View>
+  );
+}
+
 export function OrderEditSheet({
   visible, onClose, order, onSaved, mode = 'auto',
 }: {
@@ -170,6 +239,7 @@ export function OrderEditSheet({
   const [f, setF] = useState(seed);
   const [items, setItems] = useState<ItemRow[]>(seed.items);
   const [saving, setSaving] = useState(false);
+  const [itemW, setItemW] = useState(0); // diş şeması genişliği (kalem kartı iç genişliği)
 
   const isAdmin = mode === 'admin';
   // Planlama başladıysa (ve admin değilse) → doğrudan uygulama yok; değişiklik TALEBİ (lab onayı) modu.
@@ -331,8 +401,14 @@ export function OrderEditSheet({
                   <Text style={{ fontSize: 12, fontWeight: '700', color: A }}>Kalem ekle</Text>
                 </Pressable>
               </View>
-              {items.map((r, i) => (
-                <View key={i} style={{ gap: 10, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: hexA(ink, 0.1), backgroundColor: theme.surface }}>
+              {items.map((r, i) => {
+                const teethSel = parseTeeth(r.teeth);
+                return (
+                <View
+                  key={i}
+                  onLayout={(e) => { const w = e.nativeEvent.layout.width; if (w && Math.abs(w - itemW) > 2) setItemW(w); }}
+                  style={{ gap: 12, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: hexA(ink, 0.1), backgroundColor: theme.surface }}
+                >
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                     <Text style={{ fontSize: 12, fontWeight: '700', color: hexA(ink, 0.55) }}>Kalem {i + 1}</Text>
                     {items.length > 1 && (
@@ -341,18 +417,36 @@ export function OrderEditSheet({
                       </Pressable>
                     )}
                   </View>
-                  <EditField label="İş tipi" value={r.name} onChangeText={setItem(i, 'name')} placeholder="ör. Zirkonyum Kron" />
-                  <View style={{ flexDirection: 'row', gap: 10 }}>
-                    <View style={{ flex: 1.4 }}><EditField label="Dişler (FDI)" value={r.teeth} onChangeText={setItem(i, 'teeth')} placeholder="11, 21" keyboardType="numeric" /></View>
-                    <View style={{ flex: 1 }}><EditField label="Renk" value={r.shade} onChangeText={setItem(i, 'shade')} placeholder="A2" /></View>
+                  {/* İş tipi — listeden seç veya serbest yaz */}
+                  <EditPicker label="İş tipi" value={r.name} options={WORK_TYPES} onChange={setItem(i, 'name')} placeholder="İş tipi seç…" allowCustom />
+
+                  {/* Diş şeması — görsel seçim (FDI). Seçili dişler onChange ile teeth string'ine yazılır. */}
+                  <View style={{ gap: 6 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: hexA(ink, 0.6) }}>Dişler (FDI)</Text>
+                      <Text style={{ fontSize: 11.5, fontWeight: '700', color: teethSel.length ? A : hexA(ink, 0.35) }}>
+                        {teethSel.length ? teethSel.slice().sort((a, b) => a - b).join(', ') : 'diş seç'}
+                      </Text>
+                    </View>
+                    <View style={{ borderWidth: 1, borderColor: hexA(ink, 0.1), borderRadius: 12, backgroundColor: '#F6F7F9', paddingVertical: 8 }}>
+                      <ToothNumberPicker
+                        selected={teethSel}
+                        onChange={(t) => setItem(i, 'teeth')(t.slice().sort((a, b) => a - b).join(', '))}
+                        accentColor={A}
+                        containerWidth={itemW ? itemW - 24 : undefined}
+                      />
+                    </View>
                   </View>
+
                   <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <View style={{ flex: 1.2 }}><EditPicker label="Renk" value={r.shade} options={ALL_SHADES} onChange={setItem(i, 'shade')} placeholder="A2" allowCustom /></View>
                     <View style={{ flex: 1 }}><EditField label="Adet" value={r.quantity} onChangeText={setItem(i, 'quantity')} placeholder="1" keyboardType="numeric" /></View>
                     <View style={{ flex: 1 }}><EditField label="Fiyat" value={r.price} onChangeText={setItem(i, 'price')} placeholder="0" keyboardType="numeric" /></View>
                   </View>
                   <EditField label="Kalem notu" value={r.notes} onChangeText={setItem(i, 'notes')} placeholder="İmplant marka/abutment vb." />
                 </View>
-              ))}
+                );
+              })}
             </View>
 
             {/* Vaka detayları */}

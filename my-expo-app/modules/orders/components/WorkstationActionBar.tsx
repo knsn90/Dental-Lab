@@ -9,7 +9,7 @@
 import React, { useState } from 'react';
 import { View, Text, Pressable, Platform, Modal, TextInput } from 'react-native';
 import {
-  Pause, Play, AlertOctagon, Check, Clock,
+  Pause, Play, AlertOctagon, Check, Clock, Cog,
 } from 'lucide-react-native';
 import { useStationTheme, hexA } from '../../../core/theme/stationPalette';
 import { toast } from '../../../core/ui/Toast';
@@ -137,6 +137,10 @@ const STATE_ACTIONS: Array<{
     icon: Pause,        color: '#FBBF24', bgColor: 'rgba(255,255,255,0.14)',
     visibleIn: ['aktif'],
     invoke: id => pauseStage(id) },
+  { key: 'machine',  label: 'Makineye Ver', tooltip: 'Fırın / kürleme gibi bir cihaza verildi — süre "makine zamanı" sayılır ve elini serbest bırakır. Bu iş beklerken başka işe geçebilirsin; "Devam Et" ile geri dönersin.',
+    icon: Cog,          color: '#67E8F9', bgColor: 'rgba(255,255,255,0.14)',
+    visibleIn: ['aktif'],
+    invoke: id => transitionStageState(id, 'makine_bekliyor') },
   { key: 'resume',   label: 'Devam Et', tooltip: 'İşe geri dön — süre tekrar saymaya başlar',
     icon: Play,         color: '#86EFAC', bgColor: 'rgba(255,255,255,0.14)',
     visibleIn: ['durakladi','makine_bekliyor','onay_bekliyor','bloklu','yeniden'],
@@ -149,7 +153,7 @@ const STATE_ACTIONS: Array<{
 
 export function WorkstationActionBar({
   stageId, status, startedAt, ctaLabel, canComplete, validationReady, submitting,
-  onComplete, onStateChanged, onStarted, waitingHint, disabledLabel,
+  onComplete, onStateChanged, onStarted, waitingHint, disabledLabel, blockedBy,
 }: {
   stageId:           string;
   status:            StageStatus;
@@ -162,6 +166,8 @@ export function WorkstationActionBar({
   onStateChanged?:   () => void;
   onStarted?:        () => void;
   waitingHint?:      string;
+  /** Bu aşamayı bekleten, henüz bitmemiş önceki aşamanın adı. */
+  blockedBy?:        string | null;
   /** validationReady=false iken görünecek özel metin (varsayılan: "Önce Kontrol Listesi") */
   disabledLabel?:    string;
 }) {
@@ -200,19 +206,32 @@ export function WorkstationActionBar({
     }
   }
 
-  // Bekliyor durumda CTA yerine "sıra mesajı"
+  // Bekliyor: CTA yerine NEDEN + hangi aşamanın beklendiği.
+  // "Sıra sana gelmedi" tek başına yetmiyordu — teknisyen kimi beklediğini
+  // bilmeden ne yapacağını da bilemiyor (§8 error-clarity: sebep + çıkış yolu).
   if (status === 'bekliyor') {
     return (
       <View style={{
-        flexDirection: 'row', alignItems: 'center', gap: 10,
-        padding: 16, borderRadius: 14,
-        backgroundColor: P.surfaceAlt,
-        borderWidth: 1, borderColor: P.ink100,
+        flexDirection: 'row', alignItems: 'flex-start', gap: 11,
+        padding: 14, borderRadius: 14,
+        backgroundColor: 'rgba(255,255,255,0.14)',
+        borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
       }}>
-        <Clock size={15} color={P.ink500} strokeWidth={1.8} />
-        <Text style={{ flex: 1, fontSize: 12.5, color: P.ink700, fontWeight: '500' }}>
-          {waitingHint ?? 'Sıra henüz sana gelmedi — önceki aşama bittiğinde otomatik aktif olacak.'}
-        </Text>
+        <View style={{
+          width: 30, height: 30, borderRadius: 999,
+          backgroundColor: 'rgba(255,255,255,0.18)',
+          alignItems: 'center', justifyContent: 'center', marginTop: 1,
+        }}>
+          <Clock size={15} color="#FFFFFF" strokeWidth={2} />
+        </View>
+        <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>
+            {blockedBy ? `Önce "${blockedBy}" bitmeli` : 'Sıra henüz sana gelmedi'}
+          </Text>
+          <Text style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.78)', lineHeight: 16 }}>
+            {waitingHint ?? 'O aşama tamamlandığında bu iş otomatik olarak sana açılır — bir şey yapmana gerek yok.'}
+          </Text>
+        </View>
       </View>
     );
   }

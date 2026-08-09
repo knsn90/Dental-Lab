@@ -16,6 +16,14 @@
         "EXPO_PUBLIC_VAPID_PUBLIC_KEY": "BPFYa4FP0L6xMCVatkEUoJLbAOdBiPZW0fIVPxvAVYX81aFAu485caHXm5Uibs1AKKQl5yqHd5v_GuPQdMdMpQ0"
       }
     },
+    "device": {
+      "extends": "development",
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "simulator": false
+      }
+    },
     "preview": {
       "distribution": "internal",
       "ios": {
@@ -41,6 +49,10 @@
       "ios": {
         "ascAppId": "6772297713",
         "appleTeamId": "772P3JLQ7W"
+      },
+      "android": {
+        "serviceAccountKeyPath": "./google-play-service-account.json",
+        "track": "internal"
       }
     }
   }

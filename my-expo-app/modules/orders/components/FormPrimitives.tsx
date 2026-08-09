@@ -10,7 +10,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, ScrollView, Pressable,
-  TextInput, ActivityIndicator, Platform,
+  TextInput, ActivityIndicator, Platform, Image,
 } from 'react-native';
 import {
   AlertCircle, Search, Lock, XCircle, Check, Plus, Building2,
@@ -250,6 +250,8 @@ export interface DropdownOption {
   id: string;
   label: string;
   sublabel?: string;
+  /** Varsa baş harfler yerine bu görsel gösterilir (klinik logosu, avatar). */
+  imageUrl?: string | null;
 }
 
 export interface SearchableDropdownProps {
@@ -502,16 +504,20 @@ export function SearchableDropdown({
                       backgroundColor: active ? `${accentColor}12` : 'transparent',
                     }}
                   >
-                    {/* Avatar — baş harfler, accent tonlu */}
+                    {/* Avatar — logo varsa görsel, yoksa baş harfler */}
                     <View style={{
-                      width: 38, height: 38, borderRadius: 19, flexShrink: 0,
-                      backgroundColor: active ? accentColor : `${accentColor}18`,
-                      borderWidth: 1, borderColor: active ? accentColor : `${accentColor}2E`,
+                      width: 38, height: 38, borderRadius: 19, flexShrink: 0, overflow: 'hidden',
+                      backgroundColor: item.imageUrl ? T.card : (active ? accentColor : `${accentColor}18`),
+                      borderWidth: 1, borderColor: item.imageUrl ? T.hairline : (active ? accentColor : `${accentColor}2E`),
                       alignItems: 'center', justifyContent: 'center',
                     }}>
-                      <Text style={{ fontSize: 13, fontWeight: '700', color: active ? '#FFFFFF' : accentColor }}>
-                        {initials}
-                      </Text>
+                      {item.imageUrl ? (
+                        <Image source={{ uri: item.imageUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                      ) : (
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: active ? '#FFFFFF' : accentColor }}>
+                          {initials}
+                        </Text>
+                      )}
                     </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text style={{ fontSize: 14.5, color: T.ink, fontWeight: '600', letterSpacing: -0.1 }} numberOfLines={1}>

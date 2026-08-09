@@ -19,3 +19,19 @@ expo-env.d.ts
 # @end expo-cli
 .vercel
 .env*.local
+
+# Editor swap/backup dosyaları
+*.swp
+*.swo
+*~
+*.orig
+*.rej
+
+# Android release secrets — ASLA commit edilmez (Firebase FCM + Google Play submit)
+google-services.json
+google-play-service-account.json
+
+# Performance test suite — credentials and run output are never committed
+tests/performance/seed/users.json
+tests/performance/seed/tenants.json
+tests/performance/results/

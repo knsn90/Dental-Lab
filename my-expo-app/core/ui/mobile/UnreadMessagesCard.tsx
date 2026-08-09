@@ -2,7 +2,7 @@
 // Panel-agnostik: accent prop'u ile her panel kendi rengini verir (belirgin ama sade).
 // Veriyi useOrderChatInbox'tan çeker (realtime); mesaj yoksa hiç render etmez.
 import React from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text, Pressable, Image } from 'react-native';
 import { MessageCircle, ChevronRight } from 'lucide-react-native';
 import { useMobileTokens } from '../../theme/mobileDesignTokens';
 import { useOrderChatInbox } from '../../../modules/orders/hooks/useOrderChatInbox';
@@ -16,6 +16,18 @@ function relTime(iso: string | null): string {
   return `${Math.floor(diff / 86400)} g`;
 }
 
+/** Accent'i siyaha doğru karıştırır. Başlık metni için şart: lab safranı (#F5C24B)
+ *  gibi açık accent'ler soft tint zemininde ham haliyle okunmuyor. */
+function deepen(hex: string, ratio = 0.42): string {
+  const h = hex.replace('#', '');
+  if (h.length !== 6) return hex;
+  const mix = (v: number) => Math.round(v * (1 - ratio));
+  const r = mix(parseInt(h.slice(0, 2), 16));
+  const g = mix(parseInt(h.slice(2, 4), 16));
+  const b = mix(parseInt(h.slice(4, 6), 16));
+  return `#${[r, g, b].map(v => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return '?';
@@ -27,10 +39,14 @@ export function UnreadMessagesCard({
   accent,
   onOpenOrder,
   onOpenInbox,
+  showClinicLogo = false,
 }: {
   accent: string;
   onOpenOrder?: (workOrderId: string) => void;
   onOpenInbox?: () => void;
+  /** Lab/admin tarafında avatar yerine kliniğin logosu gösterilir (karşı taraf klinik).
+   *  Klinik/hekim panelinde anlamsız olurdu — kendi logolarını görürlerdi. */
+  showClinicLogo?: boolean;
 }) {
   const T = useMobileTokens();
   const { items, totalUnread } = useOrderChatInbox();
@@ -46,6 +62,14 @@ export function UnreadMessagesCard({
   });
   const top = sorted.slice(0, 3);
   const tint = `${accent}1A`;
+  // Okunmuş satırlarda da accent görünsün diye avatar zemini nötr bej yerine
+  // accent'in çok açık tonu. Metin ink kalır: lab safranı gibi açık accent'lerde
+  // accent-renkli metin okunmuyordu.
+  const avatarIdle = `${accent}1F`;
+  // Başlık şeridi: yumuşak accent zemin + koyulaştırılmış accent metin.
+  // Dolu accent + beyaz metin denenmedi çünkü lab safranında kontrast düşük kalıyor.
+  const headerBg  = `${accent}14`;
+  const headerInk = deepen(accent);
 
   return (
     <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
@@ -53,25 +77,31 @@ export function UnreadMessagesCard({
         {/* Başlık */}
         <Pressable
           onPress={onOpenInbox}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10 }}
+          style={{
+            flexDirection: 'row', alignItems: 'center', gap: 10,
+            paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12,
+            backgroundColor: headerBg,
+          }}
         >
-          <View style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: tint, alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
             <MessageCircle size={16} color={accent} strokeWidth={2.2} />
           </View>
-          <Text style={{ fontSize: 13, fontWeight: '700', color: T.ink, letterSpacing: 0.2 }}>Mesajlar</Text>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: headerInk, letterSpacing: 0.2 }}>Mesajlar</Text>
           {totalUnread > 0 && (
             <View style={{ minWidth: 20, height: 20, paddingHorizontal: 6, borderRadius: 10, backgroundColor: accent, alignItems: 'center', justifyContent: 'center' }}>
               <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>{totalUnread > 99 ? '99+' : totalUnread}</Text>
             </View>
           )}
           <View style={{ flex: 1 }} />
-          <ChevronRight size={18} color={T.ink3} strokeWidth={2} />
+          <ChevronRight size={18} color={headerInk} strokeWidth={2} />
         </Pressable>
 
         {/* Konuşmalar */}
         {top.map((it, i) => {
           const title = it.patient_name || it.order_number || 'Sipariş';
           const unread = it.unread_for_me > 0;
+          // Eski localStorage cache'inde clinic_logo alanı yok → undefined → baş harf
+          const logo = showClinicLogo ? (it.clinic_logo || null) : null;
           return (
             <Pressable
               key={it.work_order_id}
@@ -83,8 +113,21 @@ export function UnreadMessagesCard({
                 backgroundColor: unread ? tint : 'transparent',
               }}
             >
-              <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: unread ? accent : T.bgDeep, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontSize: 12, fontWeight: '700', color: unread ? '#FFFFFF' : T.ink2 }}>{initials(it.last_sender_name || title)}</Text>
+              <View style={{
+                width: 36, height: 36, borderRadius: 18, overflow: 'hidden',
+                backgroundColor: logo ? '#FFFFFF' : (unread ? accent : avatarIdle),
+                borderWidth: logo ? 1 : 0, borderColor: T.hairline,
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                {logo ? (
+                  // Logo genelde kare/yatay ve beyaz zeminli → 'contain' ile kırpmadan sığdır
+                  <Image source={{ uri: logo }} style={{ width: '82%', height: '82%' }} resizeMode="contain" />
+                ) : (
+                  /* Baş harfler BAŞLIKTAN (hasta/sipariş) türetilir; daha önce
+                     last_sender_name kullanılıyordu ve tüm satırlar aynı gönderici
+                     yüzünden "AE, AE, AE" görünüyordu — isimle avatar uyuşmuyordu. */
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: unread ? '#FFFFFF' : T.ink2 }}>{initials(title)}</Text>
+                )}
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>

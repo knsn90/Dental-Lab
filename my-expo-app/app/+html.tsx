@@ -3,9 +3,11 @@ import { ScrollViewStyleReset } from 'expo-router/html';
 // Expo Router web HTML document — sets global styles for the web build.
 export default function Root({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="tr">
+    <html lang="tr" translate="no">
       <head>
         <meta charSet="utf-8" />
+        {/* Chrome/Android otomatik Google Translate'i kapat (uygulama Türkçe + kendi i18n'i var) */}
+        <meta name="google" content="notranslate" />
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
         <meta
           name="viewport"
@@ -13,7 +15,7 @@ export default function Root({ children }: { children: React.ReactNode }) {
         />
         {/* PWA — manifest + theme + apple touch icons */}
         <link rel="manifest" href="/manifest.webmanifest" />
-        <meta name="theme-color" content="#F2EDE3" />
+        <meta name="theme-color" content="#FFFFFF" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />

@@ -19,6 +19,7 @@ import { ArrowLeft, ArrowRight, Check, Loader, X, CloudUpload, MessageCircle, Pr
 import { useNOTokens } from './NOTokens';
 import { NOActionBar, NOActionBarProps } from './NOActionBar';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { useBottomActionBar } from '../../../core/store/uiOverlayStore';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 
 export interface NOPageChromeProps {
@@ -60,6 +61,10 @@ export interface NOPageChromeProps {
   accent?: string;
   /** Sayfa zemini — panel-aware bg (varsayılan NO.bgStage cream) */
   bgColor?: string;
+  /** Onboarding turu spotlight ref'i — mesaj butonu (opsiyonel, izole). */
+  chatRef?: (node: any) => void;
+  /** Onboarding turu spotlight ref'i — dosya yükle butonu (opsiyonel, izole). */
+  uploadRef?: (node: any) => void;
 }
 
 const PANEL_BREAKPOINT = 768;
@@ -84,7 +89,12 @@ export function NOPageChrome({
   onPrint,
   accent,
   bgColor,
+  chatRef,
+  uploadRef,
 }: NOPageChromeProps) {
+  // Sağ-altta yapışkan aksiyon çubuğu var → Simanty FAB'ı üstüne kaydır
+  // (ikisi de aynı köşede ve zIndex 9999; eşitlikte DOM sırası kazanıyordu).
+  useBottomActionBar(onBack || onNext ? 76 : 0);
   const { width } = useWindowDimensions();
   const showPanel = width >= PANEL_BREAKPOINT;
   const insets = useSafeAreaInsets();
@@ -124,16 +134,20 @@ export function NOPageChrome({
           </GlassActionBtn>
         )}
         {!!onChat && (
-          <GlassActionBtn onPress={onChat} label="Mesaj" iconColor={accent ?? NO.inkStrong}
-            badge={chatUnreadCount > 0 ? { value: chatUnreadCount, color: '#C25450' } : undefined}>
-            <MessageCircle size={20} color={accent ?? NO.inkStrong} strokeWidth={2} />
-          </GlassActionBtn>
+          <View ref={chatRef}>
+            <GlassActionBtn onPress={onChat} label="Mesaj" iconColor={accent ?? NO.inkStrong}
+              badge={chatUnreadCount > 0 ? { value: chatUnreadCount, color: '#C25450' } : undefined}>
+              <MessageCircle size={20} color={accent ?? NO.inkStrong} strokeWidth={2} />
+            </GlassActionBtn>
+          </View>
         )}
         {!!onUpload && (
-          <GlassActionBtn onPress={onUpload} label="Dosya yükle" iconColor={accent ?? NO.inkStrong}
-            badge={uploadCount > 0 ? { value: uploadCount, color: accent ?? NO.inkStrong } : undefined}>
-            <CloudUpload size={20} color={accent ?? NO.inkStrong} strokeWidth={2} />
-          </GlassActionBtn>
+          <View ref={uploadRef}>
+            <GlassActionBtn onPress={onUpload} label="Dosya yükle" iconColor={accent ?? NO.inkStrong}
+              badge={uploadCount > 0 ? { value: uploadCount, color: accent ?? NO.inkStrong } : undefined}>
+              <CloudUpload size={20} color={accent ?? NO.inkStrong} strokeWidth={2} />
+            </GlassActionBtn>
+          </View>
         )}
         {onCancel && (
           <GlassActionBtn onPress={onCancel} label="Kapat" iconColor={NO.inkStrong}>

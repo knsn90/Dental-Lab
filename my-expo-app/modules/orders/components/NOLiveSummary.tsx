@@ -401,7 +401,7 @@ export function NOLiveSummary({
             lineHeight: 28,
           }}
         >
-          ₺ {total.toLocaleString('tr-TR')}
+          ₺ {(Number(total) || 0).toLocaleString('tr-TR')}
         </Text>
         {estimatedDeliveryDate && (
           <View

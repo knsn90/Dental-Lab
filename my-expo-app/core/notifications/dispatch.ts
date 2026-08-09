@@ -144,27 +144,11 @@ export async function dispatchNotification(input: DispatchInput): Promise<Dispat
     if (typeof console !== 'undefined') console.debug('[dispatch] send-email-notification skipped:', e);
   }
 
-  // ─── WhatsApp (Twilio) ────────────────────────────────────────────
-  // Opt-in: yalnız profiles.notification_prefs.categories[cat].whatsapp == true
-  // olan + whatsapp_phone'u dolu kullanıcılara gider (filtre edge fn içinde).
-  try {
-    await supabase.functions.invoke('send-whatsapp-notification', {
-      body: {
-        userIds,
-        category: input.category,
-        payload: {
-          title:     input.title,
-          body:      input.body ?? '',
-          actionUrl: input.actionUrl,
-          extra:     input.payload ?? {},
-        },
-        notificationId: undefined,
-      },
-    });
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    if (typeof console !== 'undefined') console.debug('[dispatch] send-whatsapp-notification skipped:', e);
-  }
+  // ─── WhatsApp ──────────────────────────────────────────────────────
+  // Twilio (send-whatsapp-notification, düz metin) ARTIK KULLANILMIYOR — müşteriye
+  // giden WhatsApp yalnız Meta ONAYLI ŞABLONLARLA gider. Meta yolu client'tan değil,
+  // `notifications` AFTER INSERT trigger'ı (trg_whatsapp_meta_notify → send-whatsapp-meta)
+  // üzerinden çalışır; burada ek çağrı YOK (çift gönderimi önler).
 
   return { ok: errors.length === 0, inserted, errors };
 }

@@ -34,6 +34,7 @@ import {
   Palmtree, MapPinCheck, QrCode, Sparkles,
 } from 'lucide-react-native';
 import { getHolidaysForMonth, type TRHoliday } from '../helpers/turkeyHolidays';
+import { confirmAsync } from '../../../core/util/confirm';
 
 // ─── Lucide icon map for leave type icons (from api) ─────────────────────────
 const LUCIDE_ICON_MAP: Record<string, React.FC<any>> = {
@@ -195,46 +196,40 @@ export function HRScreen() {
     setRejectOpen(true);
   };
 
-  const handleCancel = (id: string) => {
-    Alert.alert('İzni İptal Et', 'Bu izin talebi iptal edilecek. Onaylıyor musunuz?', [
-      { text: 'Vazgeç', style: 'cancel' },
-      { text: 'İptal Et', style: 'destructive', onPress: async () => {
-        try {
-          const { error } = await cancelLeave(id);
-          if (error) throw error;
-          toast.success('İzin iptal edildi.');
-          refetchSum(); refetchLeaves();
-        } catch (e: any) { toast.error(e?.message ?? 'Hata oluştu.'); }
-      }},
-    ]);
+  const handleCancel = async (id: string) => {
+    const ok = await confirmAsync('İzni İptal Et', 'Bu izin talebi iptal edilecek. Onaylıyor musunuz?',
+      { confirmText: 'İptal Et', destructive: true });
+    if (!ok) return;
+    try {
+      const { error } = await cancelLeave(id);
+      if (error) throw error;
+      toast.success('İzin iptal edildi.');
+      refetchSum(); refetchLeaves();
+    } catch (e: any) { toast.error(e?.message ?? 'Hata oluştu.'); }
   };
 
-  const handleDeleteLeave = (id: string) => {
-    Alert.alert('İzni Sil', 'Bu izin kaydı kalıcı olarak silinecek. Devam edilsin mi?', [
-      { text: 'Vazgeç', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: async () => {
-        try {
-          const { error } = await deleteLeave(id);
-          if (error) throw error;
-          toast.success('İzin silindi.');
-          refetchSum(); refetchLeaves();
-        } catch (e: any) { toast.error(e?.message ?? 'Hata oluştu.'); }
-      }},
-    ]);
+  const handleDeleteLeave = async (id: string) => {
+    const ok = await confirmAsync('İzni Sil', 'Bu izin kaydı kalıcı olarak silinecek. Devam edilsin mi?',
+      { confirmText: 'Sil', destructive: true });
+    if (!ok) return;
+    try {
+      const { error } = await deleteLeave(id);
+      if (error) throw error;
+      toast.success('İzin silindi.');
+      refetchSum(); refetchLeaves();
+    } catch (e: any) { toast.error(e?.message ?? 'Hata oluştu.'); }
   };
 
-  const handleDeleteAtt = (id: string) => {
-    Alert.alert('Devam Kaydını Sil', 'Bu devam kaydı silinecek. Emin misiniz?', [
-      { text: 'Vazgeç', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: async () => {
-        try {
-          const { error } = await deleteAttendance(id);
-          if (error) throw error;
-          toast.success('Kayıt silindi.');
-          refetchAtt();
-        } catch (e: any) { toast.error(e?.message ?? 'Hata oluştu.'); }
-      }},
-    ]);
+  const handleDeleteAtt = async (id: string) => {
+    const ok = await confirmAsync('Devam Kaydını Sil', 'Bu devam kaydı silinecek. Emin misiniz?',
+      { confirmText: 'Sil', destructive: true });
+    if (!ok) return;
+    try {
+      const { error } = await deleteAttendance(id);
+      if (error) throw error;
+      toast.success('Kayıt silindi.');
+      refetchAtt();
+    } catch (e: any) { toast.error(e?.message ?? 'Hata oluştu.'); }
   };
 
   const handleSelectEmployee = (id: string) => {

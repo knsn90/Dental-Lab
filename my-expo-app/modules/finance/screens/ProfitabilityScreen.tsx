@@ -6,7 +6,7 @@ import {
   View, Text, ScrollView, Pressable,
   Platform, useWindowDimensions,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useSegments } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TrendingUp, TrendingDown, Users, AlertTriangle, Percent, Wallet, Boxes } from 'lucide-react-native';
 
@@ -147,6 +147,11 @@ const CHIP_TONES = {
 export function ProfitabilityScreen() {
   const isEmbedded = useContext(HubContext);
   const router      = useRouter();
+  // Sipariş linki AKTİF panelde açılmalı — sabit '/(lab)/...' admin panelinden
+  // tıklayınca kullanıcıyı lab paneline atıyordu (aynı kalıp: InvoiceDetailScreen).
+  const segments    = useSegments();
+  const panelBase   = String((segments as string[])?.[0] ?? '(lab)');
+  const orderHref   = (id: string) => `/${panelBase}/order/${id}`;
   const { profile } = useAuthStore();
   const { width }   = useWindowDimensions();
   const insets      = useSafeAreaInsets();
@@ -395,6 +400,7 @@ export function ProfitabilityScreen() {
             </View>
             <Text style={{ fontSize: 9, color: 'rgba(255,255,255,0.65)', marginTop: 8 }}>
               Net Kâr · Maliyet · İşçilik · Materyal raporlama para biriminde ({baseSymbol()}) gösterilir.
+              Farklı para birimindeki ({'₺'}/$) kalemler güncel TCMB kuruyla çevrildiği için tutarlar yaklaşıktır (≈).
             </Text>
           </View>
 
@@ -424,7 +430,7 @@ export function ProfitabilityScreen() {
                     key={o.id}
                     order={o}
                     isLast={i === best.length - 1}
-                    onPress={() => router.push(`/(lab)/order/${o.id}` as any)}
+                    onPress={() => router.push(orderHref(o.id) as any)}
                   />
                 ))}
               </View>
@@ -442,7 +448,7 @@ export function ProfitabilityScreen() {
                     key={o.id}
                     order={o}
                     isLast={i === realWorst.length - 1}
-                    onPress={() => router.push(`/(lab)/order/${o.id}` as any)}
+                    onPress={() => router.push(orderHref(o.id) as any)}
                   />
                 ))}
               </View>
@@ -470,8 +476,11 @@ export function ProfitabilityScreen() {
 
           {/* ── Technician usage + efficiency ─────────────────────────── */}
           <View style={{ gap: 8 }}>
-            <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink3, letterSpacing: 0.3, marginBottom: 10, paddingHorizontal: 4 }}>
-              TEKNİSYEN VERİMLİLİĞİ
+            <Text style={{ fontSize: 13, fontWeight: '600', color: T.ink3, letterSpacing: 0.3, marginBottom: 2, paddingHorizontal: 4 }}>
+              TEKNİSYEN MALZEME VERİMİ
+            </Text>
+            <Text style={{ fontSize: 10.5, color: T.ink3, marginBottom: 10, paddingHorizontal: 4 }}>
+              Kullanılan / fire malzeme oranı. Zaman/iş performansı için Performans ekranına bakın.
             </Text>
             <View style={{ ...tableCard, backgroundColor: T.card, borderColor: T.hairline } as any}>
               {technicians.length === 0 ? (

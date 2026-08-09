@@ -39,6 +39,10 @@ interface InboundBody {
   photo_base64?: string;
   photo_mime?: string;
   photo_url?: string;
+  /** Fotoğrafla birlikte/ayrı gelen serbest metin (WhatsApp caption veya ayrı mesaj) */
+  sender_note?: string;
+  /** Fotoğraf YOK — iş emri düz metin olarak geldi (WhatsApp yazısı). Varsa metinden oluşturulur. */
+  text?: string;
 }
 
 interface OcrResponse {
@@ -52,6 +56,7 @@ async function callParseWorkOrder(
   serviceRoleKey: string,
   fileBase64: string,
   mimeType: string,
+  senderNote = '',
 ): Promise<OcrResponse> {
   const resp = await fetch(`${supabaseUrl}/functions/v1/parse-work-order`, {
     method: 'POST',
@@ -59,7 +64,28 @@ async function callParseWorkOrder(
       'content-type': 'application/json',
       'Authorization': `Bearer ${serviceRoleKey}`,
     },
-    body: JSON.stringify({ file_base64: fileBase64, mime_type: mimeType }),
+    body: JSON.stringify({ file_base64: fileBase64, mime_type: mimeType, sender_note: senderNote }),
+  });
+  if (!resp.ok) {
+    return { ok: false, error: `OCR HTTP ${resp.status}: ${(await resp.text()).slice(0, 200)}` };
+  }
+  return await resp.json();
+}
+
+// Fotoğrafsız — düz METİN iş emrini parse-work-order metin moduna gönderir.
+async function callParseWorkOrderText(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  orderText: string,
+  senderNote = '',
+): Promise<OcrResponse> {
+  const resp = await fetch(`${supabaseUrl}/functions/v1/parse-work-order`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'Authorization': `Bearer ${serviceRoleKey}`,
+    },
+    body: JSON.stringify({ text: orderText, sender_note: senderNote }),
   });
   if (!resp.ok) {
     return { ok: false, error: `OCR HTTP ${resp.status}: ${(await resp.text()).slice(0, 200)}` };
@@ -118,7 +144,8 @@ Deno.serve(async (req: Request) => {
       photoB64 = r.b64;
       photoMime = r.mime;
     }
-    if (!photoB64) throw new Error('photo_base64 veya photo_url zorunlu');
+    const orderText = String(body.text ?? '').trim();
+    if (!photoB64 && !orderText) throw new Error('photo_base64/photo_url veya text zorunlu');
 
     // Dedupe: aynı channel_msg_id daha önce işlendiyse atla
     if (body.channel_msg_id) {
@@ -136,34 +163,65 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // 1) OCR
-    const ocr = await callParseWorkOrder(supabaseUrl, serviceRoleKey, photoB64, photoMime);
-    if (!ocr.ok) throw new Error(ocr.error ?? 'OCR başarısız');
+    // 1) İçeriği işle. FOTOĞRAF varsa storage'a yükle + görüntü OCR'ı; YOKSA düz METİN
+    //    iş emri olarak parse et (fotoğraf istenmez — WhatsApp yazısı yeterli).
+    //    OCR/parse BAŞARISIZ OLSA BİLE aşağıda satır HER ZAMAN insert edilir.
+    const senderNote = String(body.sender_note ?? '').trim();
+    let storagePath: string | null = null;
+    let photoUrl: string | null = null;
+    let uploadErr: string | null = null;
+    let ocrData: any;
+    let ocrOk = true;
 
-    const ocrData = ocr.data;
-    const confAvg = avgConfidence(ocrData);
-
-    // 2) Storage'a fotoyu yükle
-    const storagePath = `${body.lab_id}/${Date.now()}-${crypto.randomUUID().slice(0, 8)}.jpg`;
-    const photoBytes = Uint8Array.from(atob(photoB64), c => c.charCodeAt(0));
-    const uploadResp = await fetch(
-      `${supabaseUrl}/storage/v1/object/paper-orders/${storagePath}`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${serviceRoleKey}`,
-          'Content-Type': photoMime,
+    if (photoB64) {
+      // Uzantı gerçek mime'a göre (pdf/png/jpg) — yanlış uzantı önizlemeyi bozar.
+      const ext = photoMime.includes('pdf') ? 'pdf'
+        : photoMime.includes('png') ? 'png'
+        : photoMime.includes('webp') ? 'webp'
+        : 'jpg';
+      storagePath = `${body.lab_id}/${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${ext}`;
+      const photoBytes = Uint8Array.from(atob(photoB64), c => c.charCodeAt(0));
+      // NOT: ham binary storage upload'ı `apikey` header'ı OLMADAN 400 döner.
+      const uploadResp = await fetch(
+        `${supabaseUrl}/storage/v1/object/paper-orders/${storagePath}`,
+        {
+          method: 'POST',
+          headers: {
+            'apikey': serviceRoleKey,
+            'Authorization': `Bearer ${serviceRoleKey}`,
+            'Content-Type': photoMime,
+            'x-upsert': 'true',
+            'Cache-Control': '3600',
+          },
+          body: photoBytes,
         },
-        body: photoBytes,
-      },
-    );
-    const photoUrl = uploadResp.ok
-      ? `${supabaseUrl}/storage/v1/object/authenticated/paper-orders/${storagePath}`
-      : null;
+      );
+      if (!uploadResp.ok) uploadErr = `${uploadResp.status}: ${(await uploadResp.text()).slice(0, 200)}`;
+      photoUrl = uploadResp.ok
+        ? `${supabaseUrl}/storage/v1/object/authenticated/paper-orders/${storagePath}`
+        : null;
 
-    // 3) Klinik kontrolü — clinic_id OCR'da varsa
+      const ocr = await callParseWorkOrder(supabaseUrl, serviceRoleKey, photoB64, photoMime, senderNote);
+      if (ocr.ok && ocr.data) ocrData = ocr.data;
+      else { ocrOk = false; ocrData = { _ocr_failed: true, _error: String(ocr.error ?? 'OCR başarısız').slice(0, 400) }; }
+      // Gönderenin serbest notunu her zaman sakla (onaycı görsün).
+      if (senderNote) ocrData.sender_note = senderNote.slice(0, 2000);
+      if (uploadErr) ocrData._upload_error = uploadErr;
+    } else {
+      // DÜZ METİN iş emri — fotoğraf yok. parse-work-order metin modu.
+      const ocr = await callParseWorkOrderText(supabaseUrl, serviceRoleKey, orderText, senderNote);
+      if (ocr.ok && ocr.data) ocrData = ocr.data;
+      else { ocrOk = false; ocrData = { _ocr_failed: true, _error: String(ocr.error ?? 'Metin ayrıştırılamadı').slice(0, 400) }; }
+      ocrData._text_only = true;
+      // Orijinal metni her zaman göster (onaycı ham metni görsün) + varsa ek not.
+      ocrData.sender_note = [orderText, senderNote].filter(Boolean).join('\n').slice(0, 2000);
+    }
+
+    const confAvg = ocrOk ? avgConfidence(ocrData) : 0;
+
+    // 3) Klinik kontrolü — yalnız OCR başarılı + clinic_id varsa
     let resolvedClinicId: string | null = null;
-    if (ocrData?.clinic_id) {
+    if (ocrOk && ocrData?.clinic_id) {
       const cCheck = await fetch(
         `${supabaseUrl}/rest/v1/clinics?id=eq.${ocrData.clinic_id}&select=id&limit=1`,
         { headers: { 'apikey': serviceRoleKey, 'Authorization': `Bearer ${serviceRoleKey}` } },
@@ -174,7 +232,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // 4) pending_paper_orders'a insert
+    // 4) pending_paper_orders'a insert — HER ZAMAN (OCR başarısız olsa bile).
     const insertResp = await fetch(
       `${supabaseUrl}/rest/v1/pending_paper_orders`,
       {
@@ -195,7 +253,7 @@ Deno.serve(async (req: Request) => {
           photo_storage_path: storagePath,
           ocr_data: ocrData,
           clinic_id: resolvedClinicId,
-          patient_name: ocrData?.patient_name ?? null,
+          patient_name: ocrOk ? (ocrData?.patient_name ?? null) : null,
           confidence_avg: confAvg,
           status: 'pending',
         }),
@@ -211,6 +269,7 @@ Deno.serve(async (req: Request) => {
       ok: true,
       pending_order_id: pendingId,
       confidence_avg: confAvg,
+      ocr_ok: ocrOk,
     }), { headers: { ...corsHeaders, 'content-type': 'application/json' } });
 
   } catch (e: any) {

@@ -1,0 +1,52 @@
+[
+  {
+    "email": "k6.lab.manager.t0@example.test",
+    "password": "REPLACE_ME",
+    "user_type": "lab",
+    "role": "manager",
+    "lab_id": "00000000-0000-0000-0000-000000000000",
+    "tenant": 0
+  },
+  {
+    "email": "k6.lab.tech1.t0@example.test",
+    "password": "REPLACE_ME",
+    "user_type": "lab",
+    "role": "technician",
+    "lab_id": "00000000-0000-0000-0000-000000000000",
+    "tenant": 0
+  },
+  {
+    "email": "k6.admin.t0@example.test",
+    "password": "REPLACE_ME",
+    "user_type": "admin",
+    "role": "manager",
+    "lab_id": "00000000-0000-0000-0000-000000000000",
+    "tenant": 0
+  },
+  {
+    "email": "k6.doctor.t0@example.test",
+    "password": "REPLACE_ME",
+    "user_type": "doctor",
+    "role": null,
+    "lab_id": null,
+    "clinic_id": "00000000-0000-0000-0000-000000000000",
+    "tenant": 0
+  },
+  {
+    "email": "k6.clinic.admin.t0@example.test",
+    "password": "REPLACE_ME",
+    "user_type": "clinic_admin",
+    "role": "clinic_admin",
+    "lab_id": null,
+    "clinic_id": "00000000-0000-0000-0000-000000000000",
+    "tenant": 0
+  },
+  {
+    "email": "k6.lab.manager.t1@example.test",
+    "password": "REPLACE_ME",
+    "user_type": "lab",
+    "role": "manager",
+    "lab_id": "11111111-1111-1111-1111-111111111111",
+    "tenant": 1
+  }
+]

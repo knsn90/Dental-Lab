@@ -14,10 +14,9 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import {
-  Camera, Edit2, Mail, Phone, Lock, Shield,
-  Calendar, LogOut, ChevronRight, ChevronUp, Eye, EyeOff, X,
+  Camera, Edit2, Mail, Phone, Lock, LogOut, ChevronRight, Eye, EyeOff, X,
   MapPin, User as UserIcon, Hash, MessageCircle, GraduationCap, Briefcase, Building2,
-  Receipt, CreditCard, Search,
+  Receipt, CreditCard, Search, Plus, Calendar,
 } from 'lucide-react-native';
 import { useAuthStore } from '../../../core/store/authStore';
 import { supabase } from '../../../core/api/supabase';
@@ -53,6 +52,33 @@ const CARD_SHADOW = Platform.select({
   default: { shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
 });
 
+// ── Profil tamamlanma ────────────────────────────────────────────────────
+// Hangi alanların "profil" sayıldığı tek yerde dursun: yüzde, eksik sayısı ve
+// ilerleme çubuğu aynı listeden türer, birbirinden kaymaz.
+const COMPLETION_FIELDS: { key: string; label: string }[] = [
+  { key: 'avatar_url',      label: 'Profil fotoğrafı' },
+  { key: 'email',           label: 'E-posta' },
+  { key: 'phone',           label: 'Telefon' },
+  { key: 'whatsapp_phone',  label: 'WhatsApp' },
+  { key: 'birth_date',      label: 'Doğum tarihi' },
+  { key: 'gender',          label: 'Cinsiyet' },
+  { key: 'city',            label: 'Şehir' },
+  { key: 'address',         label: 'Adres' },
+  { key: 'tc_kimlik_no',    label: 'TC Kimlik' },
+  { key: 'specialty',       label: 'Uzmanlık' },
+  { key: 'department',      label: 'Departman' },
+  { key: 'diploma_no',      label: 'Diploma No' },
+];
+
+function profileCompletion(p: any): { pct: number; missing: number; total: number } {
+  const total = COMPLETION_FIELDS.length;
+  const filled = COMPLETION_FIELDS.reduce((n, f) => {
+    const v = p?.[f.key];
+    return n + (v != null && String(v).trim() !== '' ? 1 : 0);
+  }, 0);
+  return { pct: Math.round((filled / total) * 100), missing: total - filled, total };
+}
+
 // ── InfoRow (hero card bilgi satırı) ─────────────────────────────────────
 function InfoRow({ icon: Icon, value }: { icon: any; value?: string | null }) {
   const T = useMobileTokens();
@@ -66,17 +92,33 @@ function InfoRow({ icon: Icon, value }: { icon: any; value?: string | null }) {
 }
 
 // ── CardRow (sağ taraf kart satırı — view / edit modları) ────────────────
-function CardRow({ icon: Icon, iconColor, iconBg, label, value, placeholder, editing, editValue, onChangeEdit, inputProps }: {
+function CardRow({ icon: Icon, iconColor, iconBg, label, value, placeholder, editing, editValue, onChangeEdit, inputProps, onPress }: {
   icon: any; iconColor: string; iconBg: string;
   label: string; value?: string | null; placeholder?: string;
   editing?: boolean; editValue?: string; onChangeEdit?: (v: string) => void;
   inputProps?: Record<string, any>;
+  /** Boş alanı doldurmak için düzenleme moduna götürür. */
+  onPress?: () => void;
 }) {
   const T = useMobileTokens();
+  const empty = !value;
+  const Row: any = onPress && !editing ? Pressable : View;
   return (
-    <View className="flex-row items-center gap-3 py-1">
-      <View className="w-8 h-8 rounded-lg items-center justify-center" style={{ backgroundColor: iconBg }}>
-        <Icon size={14} color={iconColor} strokeWidth={1.8} />
+    <Row
+      {...(onPress && !editing ? {
+        onPress,
+        accessibilityRole: 'button',
+        accessibilityLabel: empty ? `${label} ekle` : `${label} düzenle`,
+        style: ({ pressed }: any) => ({
+          flexDirection: 'row', alignItems: 'center', gap: 12,
+          paddingVertical: 8, marginHorizontal: -6, paddingHorizontal: 6, borderRadius: 12,
+          opacity: pressed ? 0.6 : 1,
+          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
+        }),
+      } : { className: 'flex-row items-center gap-3 py-2' })}
+    >
+      <View className="w-7 h-7 rounded-[9px] items-center justify-center" style={{ backgroundColor: iconBg }}>
+        <Icon size={13} color={iconColor} strokeWidth={1.8} />
       </View>
       <View className="flex-1">
         <Text className="text-[11px] mb-0.5" style={{ color: T.ink3 }}>{label}</Text>
@@ -89,13 +131,25 @@ function CardRow({ icon: Icon, iconColor, iconBg, label, value, placeholder, edi
             style={{ outlineWidth: 0, borderWidth: 1, borderColor: T.hairline, backgroundColor: T.cardSoft, color: T.ink }}
             {...inputProps}
           />
+        ) : empty ? (
+          /* "Eklenmedi" pasif bir cümledir ve dolu değerle aynı ağırlıkta
+             görünüyordu. Yerine aksiyon: kullanıcı satıra basıp doldurur. */
+          <View className="flex-row items-center gap-1">
+            <Text className="text-[13.5px] font-medium" style={{ color: iconColor }} numberOfLines={1}>
+              {placeholder ?? `${label} ekle`}
+            </Text>
+            <Plus size={12} color={iconColor} strokeWidth={2.2} />
+          </View>
         ) : (
-          <Text className="text-[14px] font-medium" style={{ color: value ? T.ink : T.ink3 }} numberOfLines={1}>
-            {value || placeholder || '—'}
+          <Text className="text-[14px] font-semibold" style={{ color: T.ink }} numberOfLines={1}>
+            {value}
           </Text>
         )}
       </View>
-    </View>
+      {onPress && !editing && !empty ? (
+        <Edit2 size={13} color={T.ink3} strokeWidth={1.8} />
+      ) : null}
+    </Row>
   );
 }
 
@@ -117,6 +171,7 @@ export function ProfileSection({ accentColor }: Props) {
   const T = useMobileTokens();
   const isDark = useThemeModeStore(s => s.resolvedDark);
   const roleLabel = getRoleLabel(profile);
+  const completion = profileCompletion(profile);
   const initial = (profile?.full_name ?? '?').charAt(0).toUpperCase();
 
   // Avatar
@@ -386,109 +441,123 @@ export function ProfileSection({ accentColor }: Props) {
       {/* ═══════ ANA LAYOUT: Sol (Profil hero) — Sağ (Bilgi kartları) ═══════ */}
       <View style={{ flexDirection: isNarrow ? 'column' : 'row', gap: isNarrow ? 14 : 20, alignItems: 'flex-start' }}>
 
-        {/* ══ SOL — Profil hero kartı ══ */}
-        <View style={{ width: isNarrow ? '100%' : 280 }}>
+        {/* ══ SOL — Kimlik kartı ══
+            Eskiden avatar 4/5 en-boy oranında tam genişlikte bir bloktu ve
+            ekranın ~%30'unu kaplıyordu; ayrıca rol + kayıt tarihi kartın hem
+            üstünde hem altında iki kez yazılıydı. Avatar 88px daireye indi,
+            tekrar eden blok kaldırıldı, yerine profil tamamlanma göstergesi
+            geldi — sayfa "görüntüleme"den "yönetme"ye döndü. */}
+        <View style={{ width: isNarrow ? '100%' : 300 }}>
           <View
-            className="rounded-[24px]"
+            className="rounded-[24px] p-5"
             style={[CARD_SHADOW, { backgroundColor: T.card }]}
           >
-            {/* Avatar — kart içinde padding + rounded */}
-            <Pressable onPress={handlePickAvatar} className="relative p-3 pb-0">
-              {avatarUri ? (
-                <Image
-                  source={{ uri: avatarUri }}
-                  className="w-full rounded-[18px]"
-                  style={{ aspectRatio: isNarrow ? 16 / 9 : 4 / 5 }}
-                  resizeMode="cover"
-                />
-              ) : (
+            {/* Avatar + kimlik */}
+            <View className="items-center">
+              <Pressable onPress={handlePickAvatar} className="relative" style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : undefined}>
+                {avatarUri ? (
+                  <Image source={{ uri: avatarUri }} style={{ width: 88, height: 88, borderRadius: 44 }} resizeMode="cover" />
+                ) : (
+                  <View className="items-center justify-center" style={{ width: 88, height: 88, borderRadius: 44, backgroundColor: accentColor }}>
+                    <Text style={{ fontSize: 34, fontWeight: '600', color: '#FFFFFF', letterSpacing: -0.5 }}>{initial}</Text>
+                  </View>
+                )}
                 <View
-                  className="w-full items-center justify-center rounded-[18px]"
-                  style={{ aspectRatio: isNarrow ? 16 / 9 : 4 / 5, backgroundColor: accentColor }}
+                  className="absolute bottom-0 right-0 w-7 h-7 rounded-full items-center justify-center border-2"
+                  style={{ backgroundColor: accentColor, borderColor: T.card }}
                 >
-                  <Text className="text-[72px] font-bold text-white">{initial}</Text>
+                  <Camera size={12} color="#FFFFFF" strokeWidth={2} />
                 </View>
-              )}
-              {/* Camera badge */}
-              <View
-                className="absolute bottom-2 right-5 w-8 h-8 rounded-full items-center justify-center border-2 border-white"
-                style={{ backgroundColor: accentColor }}
-              >
-                <Camera size={14} color="#FFFFFF" strokeWidth={2} />
-              </View>
-            </Pressable>
+              </Pressable>
 
-            {/* Name + role + info */}
-            <View className="px-5 pt-4 pb-5">
+              {/* Büyük punto → negatif tracking, sıkı satır yüksekliği */}
               <Text
-                className="mb-1.5"
-                style={{ fontFamily: 'Inter Tight, Inter, system-ui, sans-serif', fontWeight: '300', fontSize: 20, letterSpacing: -0.4, color: T.ink }}
-                numberOfLines={1}
+                className="mt-3.5"
+                style={{ fontFamily: 'Inter Tight, Inter, system-ui, sans-serif', fontWeight: '400', fontSize: 19, lineHeight: 24, letterSpacing: -0.4, color: T.ink, textAlign: 'center' }}
+                numberOfLines={2}
               >
                 {profile?.full_name ?? '—'}
               </Text>
-              <View className="self-start rounded-full px-3 py-1 mb-4" style={{ backgroundColor: `${accentColor}18` }}>
+              <View className="rounded-full px-2.5 py-1 mt-2" style={{ backgroundColor: `${accentColor}18` }}>
                 <Text className="text-[11px] font-semibold" style={{ color: accentColor }}>{roleLabel}</Text>
               </View>
-
-              {/* Info rows */}
-              <View className="gap-2">
-                <InfoRow icon={Mail} value={profile?.email} />
-                <InfoRow icon={Phone} value={profile?.phone} />
-                {profile?.whatsapp_phone ? <InfoRow icon={MessageCircle} value={profile.whatsapp_phone} /> : null}
-                {profile?.city ? <InfoRow icon={MapPin} value={profile.city} /> : null}
-                {profile?.specialty ? <InfoRow icon={GraduationCap} value={profile.specialty} /> : null}
-                {profile?.department ? <InfoRow icon={Briefcase} value={profile.department} /> : null}
-                <InfoRow icon={Calendar} value={joinedDate(profile)} />
-              </View>
-
-              {/* Edit button */}
-              <Pressable
-                onPress={() => setEditing(true)}
-                className="flex-row items-center justify-center gap-2 py-2.5 rounded-xl mt-4"
-                style={{ backgroundColor: accentColor }}
-              >
-                <Edit2 size={13} color="#FFFFFF" strokeWidth={1.8} />
-                <Text className="text-[13px] font-semibold text-white">Profili Düzenle</Text>
-              </Pressable>
-
-              {/* Hesap bilgileri */}
-              <View className="mt-4 pt-4 gap-2" style={{ borderTopWidth: 1, borderTopColor: T.hairline2 }}>
-                <View className="flex-row items-center gap-2.5">
-                  <Shield size={13} color={T.ink3} strokeWidth={1.6} />
-                  <Text className="text-[13px]" style={{ color: T.ink2 }}>{roleLabel}</Text>
-                </View>
-                <View className="flex-row items-center gap-2.5">
-                  <Calendar size={13} color={T.ink3} strokeWidth={1.6} />
-                  <Text className="text-[13px]" style={{ color: T.ink2 }}>{joinedDate(profile) || '—'}</Text>
-                </View>
-              </View>
-
-              {/* Çıkış */}
-              <Pressable onPress={handleSignOut} className="flex-row items-center justify-center gap-2 py-2 rounded-xl mt-3 border border-red-200">
-                <LogOut size={13} color="#EF4444" strokeWidth={1.8} />
-                <Text className="text-[13px] font-semibold text-red-500">Çıkış Yap</Text>
-              </Pressable>
             </View>
-          </View>
 
+            {/* Birincil iletişim — geri kalanı sağdaki İletişim kartında */}
+            <View className="gap-2.5 mt-4 pt-4" style={{ borderTopWidth: 1, borderTopColor: T.hairline2 }}>
+              <InfoRow icon={Mail} value={profile?.email} />
+              <InfoRow icon={Phone} value={profile?.phone} />
+            </View>
+
+            {/* ── Profil tamamlanma ── */}
+            <View className="mt-4 pt-4" style={{ borderTopWidth: 1, borderTopColor: T.hairline2 }}>
+              <View className="flex-row items-baseline justify-between mb-2">
+                <Text className="text-[10px] font-semibold tracking-wider uppercase" style={{ color: T.ink3 }}>
+                  Profil Tamamlanma
+                </Text>
+                <Text style={{ fontFamily: 'Inter Tight, Inter, system-ui, sans-serif', fontWeight: '500', fontSize: 17, letterSpacing: -0.3, color: T.ink }}>
+                  %{completion.pct}
+                </Text>
+              </View>
+              <View style={{ height: 6, borderRadius: 3, backgroundColor: T.hairline2, overflow: 'hidden' }}>
+                <View style={{ width: `${completion.pct}%`, height: '100%', borderRadius: 3, backgroundColor: accentColor }} />
+              </View>
+              <Text className="text-[11.5px] mt-2" style={{ color: T.ink3 }}>
+                {completion.missing > 0
+                  ? `${completion.missing} bilgi eksik — tamamlamak için satırlara dokun`
+                  : 'Profilin eksiksiz.'}
+              </Text>
+            </View>
+
+            {/* Birincil aksiyon */}
+            <Pressable
+              onPress={() => setEditing(true)}
+              style={({ pressed }: any) => ({
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+                paddingVertical: 11, borderRadius: 14, marginTop: 16,
+                backgroundColor: accentColor,
+                opacity: pressed ? 0.85 : 1,
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
+              })}
+            >
+              <Edit2 size={13} color="#FFFFFF" strokeWidth={1.8} />
+              <Text className="text-[13px] font-semibold text-white">Profili Düzenle</Text>
+            </Pressable>
+
+            {/* Çıkış */}
+            <Pressable
+              onPress={handleSignOut}
+              style={({ pressed }: any) => ({
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+                paddingVertical: 9, borderRadius: 14, marginTop: 8,
+                borderWidth: 1, borderColor: 'rgba(239,68,68,0.28)',
+                opacity: pressed ? 0.6 : 1,
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
+              })}
+            >
+              <LogOut size={13} color="#EF4444" strokeWidth={1.8} />
+              <Text className="text-[13px] font-semibold" style={{ color: '#EF4444' }}>Çıkış Yap</Text>
+            </Pressable>
+          </View>
         </View>
 
         {/* ══ SAĞ — Bilgi kartları (her zaman view mode) ══ */}
-        <View className="gap-4" style={{ flex: isNarrow ? undefined : 1, width: isNarrow ? '100%' : undefined }}>
+        <View className="gap-[18px]" style={{ flex: isNarrow ? undefined : 1, width: isNarrow ? '100%' : undefined }}>
 
-          {/* ROW 1 — Kişisel + İletişim */}
-          <View style={{ flexDirection: isNarrow ? 'column' : 'row', gap: isNarrow ? 14 : 16, alignItems: 'flex-start' }}>
+          {/* ROW 1 — Kişisel + İletişim.
+              alignItems 'stretch': iki kart aynı yükseklikte bitsin (eskiden
+              kısa olan kartın altında ragged boşluk kalıyordu). */}
+          <View style={{ flexDirection: isNarrow ? 'column' : 'row', gap: isNarrow ? 14 : 18, alignItems: 'stretch' }}>
             {/* Kişisel Bilgiler */}
             <View className="rounded-[24px] p-[22px]" style={[CARD_SHADOW, { backgroundColor: T.card, flex: isNarrow ? undefined : 1, width: isNarrow ? "100%" : undefined } as any]}>
               <Text className="text-[10px] font-semibold tracking-wider uppercase mb-3" style={{ color: T.ink3 }}>Kişisel Bilgiler</Text>
-              <CardRow icon={UserIcon} iconColor={accentColor} iconBg={`${accentColor}14`} label="Doğum Tarihi" value={profile?.birth_date ? new Date(profile.birth_date).toLocaleDateString(localeTag(), { day: 'numeric', month: 'long', year: 'numeric' }) : null} />
+              <CardRow icon={UserIcon} iconColor={accentColor} iconBg={`${accentColor}14`} label="Doğum Tarihi" value={profile?.birth_date ? new Date(profile.birth_date).toLocaleDateString(localeTag(), { day: 'numeric', month: 'long', year: 'numeric' }) : null} placeholder="Doğum tarihi ekle" onPress={() => setEditing(true)} />
               <View className="h-px my-2" style={{ backgroundColor: T.hairline2 }} />
-              <CardRow icon={UserIcon} iconColor={accentColor} iconBg={`${accentColor}14`} label="Cinsiyet" value={profile?.gender === 'erkek' ? 'Erkek' : profile?.gender === 'kadın' ? 'Kadın' : profile?.gender === 'belirtilmedi' ? 'Belirtilmedi' : null} />
+              <CardRow icon={UserIcon} iconColor={accentColor} iconBg={`${accentColor}14`} label="Cinsiyet" value={profile?.gender === 'erkek' ? 'Erkek' : profile?.gender === 'kadın' ? 'Kadın' : null} placeholder="Cinsiyet seç" onPress={() => setEditing(true)} />
               <View className="h-px my-2" style={{ backgroundColor: T.hairline2 }} />
-              <CardRow icon={MapPin} iconColor={accentColor} iconBg={`${accentColor}14`} label="Şehir" value={profile?.city} />
+              <CardRow icon={MapPin} iconColor={accentColor} iconBg={`${accentColor}14`} label="Şehir" value={profile?.city} placeholder="Şehir ekle" onPress={() => setEditing(true)} />
               <View className="h-px my-2" style={{ backgroundColor: T.hairline2 }} />
-              <CardRow icon={Hash} iconColor={accentColor} iconBg={`${accentColor}14`} label="TC Kimlik" value={profile?.tc_kimlik_no ? `***${profile.tc_kimlik_no.slice(-4)}` : null} />
+              <CardRow icon={Hash} iconColor={accentColor} iconBg={`${accentColor}14`} label="TC Kimlik" value={profile?.tc_kimlik_no ? `***${profile.tc_kimlik_no.slice(-4)}` : null} placeholder="TC Kimlik ekle" onPress={() => setEditing(true)} />
             </View>
 
             {/* İletişim */}
@@ -515,35 +584,53 @@ export function ProfileSection({ accentColor }: Props) {
                 </View>
               )}
               <View className="h-px my-2" style={{ backgroundColor: T.hairline2 }} />
-              <CardRow icon={Phone} iconColor={accentColor} iconBg={`${accentColor}14`} label="Telefon" value={profile?.phone} placeholder="Eklenmedi" />
+              <CardRow icon={Phone} iconColor={accentColor} iconBg={`${accentColor}14`} label="Telefon" value={profile?.phone} placeholder="Telefon ekle" onPress={() => setEditing(true)} />
               <View className="h-px my-2" style={{ backgroundColor: T.hairline2 }} />
-              <CardRow icon={MessageCircle} iconColor={accentColor} iconBg={`${accentColor}14`} label="WhatsApp" value={profile?.whatsapp_phone} placeholder="Eklenmedi" />
+              <CardRow icon={MessageCircle} iconColor={accentColor} iconBg={`${accentColor}14`} label="WhatsApp" value={profile?.whatsapp_phone} placeholder="WhatsApp ekle" onPress={() => setEditing(true)} />
               <View className="h-px my-2" style={{ backgroundColor: T.hairline2 }} />
-              <CardRow icon={MapPin} iconColor={accentColor} iconBg={`${accentColor}14`} label="Adres" value={profile?.address} placeholder="Eklenmedi" />
+              <CardRow icon={MapPin} iconColor={accentColor} iconBg={`${accentColor}14`} label="Adres" value={profile?.address} placeholder="Adres ekle" onPress={() => setEditing(true)} />
             </View>
           </View>
 
           {/* ROW 2 — Mesleki + Güvenlik */}
-          <View style={{ flexDirection: isNarrow ? 'column' : 'row', gap: isNarrow ? 14 : 16, alignItems: 'flex-start' }}>
+          <View style={{ flexDirection: isNarrow ? 'column' : 'row', gap: isNarrow ? 14 : 18, alignItems: 'stretch' }}>
             {/* Mesleki Bilgiler */}
             <View className="rounded-[24px] p-[22px]" style={[CARD_SHADOW, { backgroundColor: T.card, flex: isNarrow ? undefined : 1, width: isNarrow ? "100%" : undefined } as any]}>
               <Text className="text-[10px] font-semibold tracking-wider uppercase mb-3" style={{ color: T.ink3 }}>Mesleki Bilgiler</Text>
-              <CardRow icon={GraduationCap} iconColor={accentColor} iconBg={`${accentColor}14`} label="Uzmanlık" value={profile?.specialty} placeholder="Belirtilmedi" />
+              <CardRow icon={GraduationCap} iconColor={accentColor} iconBg={`${accentColor}14`} label="Uzmanlık" value={profile?.specialty} placeholder="Uzmanlık ekle" onPress={() => setEditing(true)} />
               <View className="h-px my-2" style={{ backgroundColor: T.hairline2 }} />
-              <CardRow icon={Briefcase} iconColor={accentColor} iconBg={`${accentColor}14`} label="Departman" value={profile?.department} placeholder="Belirtilmedi" />
+              <CardRow icon={Briefcase} iconColor={accentColor} iconBg={`${accentColor}14`} label="Departman" value={profile?.department} placeholder="Departman ekle" onPress={() => setEditing(true)} />
               <View className="h-px my-2" style={{ backgroundColor: T.hairline2 }} />
-              <CardRow icon={Hash} iconColor={accentColor} iconBg={`${accentColor}14`} label="Diploma No" value={profile?.diploma_no} placeholder="Belirtilmedi" />
+              <CardRow icon={Hash} iconColor={accentColor} iconBg={`${accentColor}14`} label="Diploma No" value={profile?.diploma_no} placeholder="Diploma No ekle" onPress={() => setEditing(true)} />
             </View>
 
             {/* Güvenlik */}
             <View className="rounded-[24px] p-[22px]" style={[CARD_SHADOW, { backgroundColor: T.card, flex: isNarrow ? undefined : 1, width: isNarrow ? "100%" : undefined } as any]}>
               <Text className="text-[10px] font-semibold tracking-wider uppercase mb-3" style={{ color: T.ink3 }}>Güvenlik</Text>
-              <Pressable onPress={() => setShowPass(v => !v)} className="flex-row items-center gap-3 py-1">
-                <View className="w-8 h-8 rounded-lg items-center justify-center bg-amber-50">
-                  <Lock size={14} color="#D97706" strokeWidth={1.8} />
+              {/* Tek satırlık kart yarım kalıyordu: satıra açıklama eklendi.
+                  İki adımlı doğrulama / aktif oturumlar HENÜZ backend'de yok —
+                  çalışmayan satır göstermek yerine yer verilmedi. */}
+              <Pressable
+                onPress={() => setShowPass(v => !v)}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: showPass }}
+                style={({ pressed }: any) => ({
+                  flexDirection: 'row', alignItems: 'center', gap: 12,
+                  paddingVertical: 8, marginHorizontal: -6, paddingHorizontal: 6, borderRadius: 12,
+                  opacity: pressed ? 0.6 : 1,
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
+                })}
+              >
+                <View className="w-7 h-7 rounded-[9px] items-center justify-center" style={{ backgroundColor: 'rgba(217,119,6,0.10)' }}>
+                  <Lock size={13} color="#D97706" strokeWidth={1.8} />
                 </View>
-                <Text className="flex-1 text-[14px] font-medium" style={{ color: T.ink }}>Şifre Değiştir</Text>
-                {showPass ? <ChevronUp size={16} color={T.ink3} strokeWidth={1.8} /> : <ChevronRight size={16} color={T.ink3} strokeWidth={1.8} />}
+                <View className="flex-1">
+                  <Text className="text-[11px] mb-0.5" style={{ color: T.ink3 }}>Şifre</Text>
+                  <Text className="text-[14px] font-semibold" style={{ color: T.ink }}>Şifre Değiştir</Text>
+                </View>
+                <View style={{ transform: [{ rotate: showPass ? '90deg' : '0deg' }] }}>
+                  <ChevronRight size={15} color={T.ink3} strokeWidth={1.8} />
+                </View>
               </Pressable>
               {showPass && (
                 <View className="mt-3 pt-3.5 gap-3.5" style={{ borderTopWidth: 1, borderTopColor: T.hairline2 }}>
@@ -875,7 +962,8 @@ function ClinicKurumTab({
         body: { apply: true, url, clinicId: clinic.id },
       });
       if (error || !data?.logo_url) { toast.error(data?.error ?? error?.message ?? 'Logo uygulanamadı'); return; }
-      setLogoUri(`${data.logo_url}?t=${Date.now()}`);
+      // Edge function artık sürümlü URL döndürüyor — olduğu gibi kullan
+      setLogoUri(data.logo_url);
       onSaved({ ...clinic, logo_url: data.logo_url });
       toast.success('Logo güncellendi');
       setLogoFinderOpen(false);
@@ -910,12 +998,15 @@ function ClinicKurumTab({
       const { error: uploadErr } = await supabase.storage.from('avatars').upload(path, bytes, { upsert: true, contentType: mime });
       if (uploadErr) { toast.error(uploadErr.message); return; }
       const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
-      const publicUrl = `${urlData.publicUrl}?t=${Date.now()}`;
-      const { error: dbErr } = await supabase.from('clinics').update({ logo_url: urlData.publicUrl }).eq('id', clinic.id);
+      // Sürüm damgası DB'ye de yazılır: yol sabit olduğu için CDN eski görseli
+      // servis ediyor; yalnız ekranda ?t= eklemek yetmiyordu (yeniden yüklemede
+      // damgasız URL geri geliyordu).
+      const publicUrl = `${urlData.publicUrl}?v=${Date.now()}`;
+      const { error: dbErr } = await supabase.from('clinics').update({ logo_url: publicUrl }).eq('id', clinic.id);
       if (dbErr) { toast.error(dbErr.message); return; }
       setLogoUri(publicUrl);
       toast.success('Logo güncellendi');
-      onSaved({ ...clinic, logo_url: urlData.publicUrl });
+      onSaved({ ...clinic, logo_url: publicUrl });
     } finally {
       setUploadingLogo(false);
     }

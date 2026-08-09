@@ -11,7 +11,7 @@ import {
   useWindowDimensions, Modal, Animated, Easing,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useSegments } from 'expo-router';
 import {
   TrendingUp, Users, PieChart, BarChart2, FileText, Building2,
   CreditCard, TrendingDown, Landmark, Tag, Wallet, Truck,
@@ -20,6 +20,7 @@ import {
 } from 'lucide-react-native';
 
 import { HubContext } from '../../../core/ui/HubContext';
+import { PurchaseInvoiceDetailScreen } from '../../purchases/screens/PurchaseInvoiceDetailScreen';
 import { MobilePageTitle } from '../../../core/ui/mobile/MobilePageTitle';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
@@ -104,12 +105,20 @@ interface FinanceHubProps {
 
 export function FinanceHubScreen({ forceActiveKey, overrideContent }: FinanceHubProps = {}) {
   const router = useRouter();
-  const params = useLocalSearchParams<{ tab?: string }>();
+  const params = useLocalSearchParams<{ tab?: string; pi?: string }>();
+  const panelBase = String((useSegments() as string[])?.[0] ?? '(lab)');
   const validKeys = ALL_TABS.map(t => t.key);
 
   // Tab state — URL (?tab=) ile senkron, refresh sonrası korunur
   const initialFromUrl = typeof params.tab === 'string' && validKeys.includes(params.tab) ? params.tab : null;
   const [activeKey, setActiveKeyRaw] = useState<string>(forceActiveKey ?? initialFromUrl ?? 'profitability');
+
+  /**
+   * Satın alma faturası detayı hub'ın İÇİNDE açılır (?pi=<id>).
+   * Ayrı route'a gitseydik finans kenar çubuğu kaybolurdu — fatura, cari
+   * hesabın devamı; kullanıcı bağlamdan kopmamalı.
+   */
+  const purchaseInvoiceId = typeof params.pi === 'string' && params.pi ? params.pi : null;
 
   // URL'deki tab değişirse state'i güncelle (browser back/forward için)
   useEffect(() => {
@@ -122,10 +131,18 @@ export function FinanceHubScreen({ forceActiveKey, overrideContent }: FinanceHub
   // Tab değiştir → state + URL query string güncellenir
   const setActiveKey = useCallback((key: string) => {
     setActiveKeyRaw(key);
+    // Ekstre gibi override'lı bir alt rotadayız (/statement/<uuid>) ve başka bir
+    // sekmeye geçiliyorsa: o rotada kalmak yanlış — hem içerik override'da
+    // kilitleniyordu hem de URL gereksiz uzun kalıyordu. Normal Finans rotasına
+    // dön (replace: geçmişe çöp eklemez, geri tuşu ekstreye değil bir öncekine gider).
+    if (overrideContent && forceActiveKey && key !== forceActiveKey) {
+      router.replace(`/${panelBase}/finance?tab=${key}` as any);
+      return;
+    }
     try {
       router.setParams({ tab: key } as any);
     } catch { /* ignore — native bazı sürümlerde setParams yok */ }
-  }, [router]);
+  }, [router, overrideContent, forceActiveKey, panelBase]);
 
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -406,7 +423,14 @@ export function FinanceHubScreen({ forceActiveKey, overrideContent }: FinanceHub
             {/* Section body */}
             <HubContext.Provider value={true}>
               <View style={{ flex: 1, minHeight: 0 }}>
-                {overrideContent ?? <TabContent activeKey={activeKey} />}
+                {purchaseInvoiceId ? (
+                  <PurchaseInvoiceDetailScreen
+                    invoiceId={purchaseInvoiceId}
+                    onBack={() => router.setParams({ pi: undefined } as any)}
+                  />
+                ) : overrideContent && activeKey === forceActiveKey
+                  ? overrideContent
+                  : <TabContent activeKey={activeKey} />}
               </View>
             </HubContext.Provider>
           </View>
@@ -416,7 +440,17 @@ export function FinanceHubScreen({ forceActiveKey, overrideContent }: FinanceHub
         <View style={{ flex: 1, paddingHorizontal: 0, paddingTop: 4 }}>
           <HubContext.Provider value={true}>
             <View style={{ flex: 1 }}>
-              <TabContent activeKey={activeKey} />
+              {/* Masaüstüyle aynı sıra: derin bağlantı → override → sekme.
+                  Eskiden mobil dal overrideContent'i yok sayıyordu; ekstre veya
+                  fatura linki mobilde liste açıyordu. */}
+              {purchaseInvoiceId ? (
+                <PurchaseInvoiceDetailScreen
+                  invoiceId={purchaseInvoiceId}
+                  onBack={() => router.setParams({ pi: undefined } as any)}
+                />
+              ) : overrideContent && activeKey === forceActiveKey
+                ? overrideContent
+                : <TabContent activeKey={activeKey} />}
             </View>
           </HubContext.Provider>
         </View>

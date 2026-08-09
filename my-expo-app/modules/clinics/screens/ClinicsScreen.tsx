@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity,
+  View, Text, ScrollView, TouchableOpacity, Image,
   Modal, TextInput,
   KeyboardAvoidingView, Platform, Alert, Pressable,
   RefreshControl, useWindowDimensions, Animated, Easing,
 } from 'react-native';
+import { ClinicLogoPicker } from '../components/ClinicLogoPicker';
 import { Search, X, SlidersHorizontal, Plus, Building2, Users, UserPlus, List, ChevronRight, ChevronUp, ChevronDown, Edit2, Trash2, Phone, Mail, MapPin, RefreshCw, UserX, AlertCircle, Check, Percent, MinusCircle, Briefcase, Stethoscope, Printer, Eye, EyeOff, Link2, Copy } from 'lucide-react-native';
 import { buildWorkOrderFormHtml } from '../../orders/buildWorkOrderFormHtml';
 import { useSegments } from 'expo-router';
@@ -1063,9 +1064,13 @@ function ClinicRow({
   return (
     <View style={{ ...CARD, padding: isNarrow ? 12 : 18, borderRadius: isNarrow ? 14 : R.xl, opacity: clinic.is_active ? 1 : 0.7 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: isNarrow ? 10 : 14 }}>
-        {/* Icon */}
-        <View style={{ width: isNarrow ? 36 : 48, height: isNarrow ? 36 : 48, borderRadius: R.md, backgroundColor: clinic.is_active ? cat.bg : DS.ink[100], alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <AppIcon name={cat.icon as any} size={isNarrow ? 16 : 22} color={clinic.is_active ? cat.color : DS.ink[400]} />
+        {/* Icon — logo varsa logo, yoksa kategori ikonu */}
+        <View style={{ width: isNarrow ? 36 : 48, height: isNarrow ? 36 : 48, borderRadius: R.md, overflow: 'hidden', backgroundColor: (clinic as any).logo_url ? '#FFFFFF' : (clinic.is_active ? cat.bg : DS.ink[100]), borderWidth: (clinic as any).logo_url ? 1 : 0, borderColor: 'rgba(0,0,0,0.06)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          {(clinic as any).logo_url ? (
+            <Image source={{ uri: (clinic as any).logo_url }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+          ) : (
+            <AppIcon name={cat.icon as any} size={isNarrow ? 16 : 22} color={clinic.is_active ? cat.color : DS.ink[400]} />
+          )}
         </View>
 
         {/* Content */}
@@ -1480,6 +1485,9 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
   } as any;
 
   const [form, setForm] = useState<ClinicForm>(EMPTY_CLINIC);
+  // Logo ayrı tutulur: form alanlarıyla birlikte kaydedilmez, seçilir seçilmez
+  // edge function/storage üzerinden clinics.logo_url'e yazılır.
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [nameFocused, setNameFocused] = useState(false);
@@ -1600,7 +1608,8 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
         billing_mode: (editingClinic.billing_mode ?? 'monthly_bulk') as 'per_order' | 'monthly_bulk',
         default_payment_terms_days: String(editingClinic.default_payment_terms_days ?? 30),
       });
-    } else { setForm(EMPTY_CLINIC); }
+      setLogoUrl((editingClinic as any).logo_url ?? null);
+    } else { setForm(EMPTY_CLINIC); setLogoUrl(null); }
     setError(''); setIlOpen(false); setIlceOpen(false); setMahOpen(false); setIlSearch(''); setIlceSearch(''); setMahSearch('');
   }, [editingClinic, visible]);
 
@@ -1795,6 +1804,19 @@ export function ClinicModal({ visible, editingClinic, existingClinics, accentCol
                 })}
               </View>
             </SectionCard>
+
+            {/* Logo — yalnız KAYITLI kurumda (yeni kurumda henüz id yok) */}
+            {editingClinic?.id && (
+              <SectionCard title="Logo">
+                <ClinicLogoPicker
+                  clinicId={editingClinic.id}
+                  clinicName={form.name || editingClinic.name}
+                  logoUrl={logoUrl}
+                  accentColor={accentColor}
+                  onChange={setLogoUrl}
+                />
+              </SectionCard>
+            )}
 
             {/* Kurum Bilgileri */}
             <SectionCard title="Kurum Bilgileri">
@@ -2156,6 +2178,23 @@ export function DoctorModal({ visible, editingDoctor, clinics, defaultClinicId, 
       const payload = { full_name: finalName, phone: form.phone.trim() || null, specialty: form.specialty.trim() || null,
         notes: form.notes.trim() || null, clinic_id: form.clinic_id || null, is_active: form.is_active, tckn: tcknTrim || null };
 
+      // ÇİFT KAYIT KORUMASI: aynı klinikte aynı isimde bir KULLANICI profili
+      // varsa (hekim ya da klinik yetkilisi — yetkili de hekim olabiliyor),
+      // ikinci bir `doctors` satırı açmak kişiyi listede iki kez gösteriyordu.
+      if (!editingDoctor && payload.clinic_id) {
+        const { data: dupe } = await supabase
+          .from('profiles')
+          .select('id, full_name, user_type')
+          .eq('clinic_id', payload.clinic_id)
+          .in('user_type', ['doctor', 'clinic_admin', 'clinic_secretary'])
+          .ilike('full_name', finalName.replace(/^(Dr|Dt|Prof|Doç|Opr|Uzm)\.?\s+/i, '%'))
+          .limit(1);
+        if (dupe && dupe.length) {
+          setError(`"${dupe[0].full_name}" bu klinikte zaten kullanıcı olarak kayıtlı — yeni hekim eklemek yerine listeden onu seçin.`);
+          return;
+        }
+      }
+
       // 1) doctors tablosunu olustur/guncelle
       const docRes = editingDoctor ? await updateDoctor(editingDoctor.id, payload) : await createDoctor(payload);
       if (docRes.error) { setError(docRes.error.message ?? 'Bir hata oluştu'); return; }
@@ -2164,37 +2203,34 @@ export function DoctorModal({ visible, editingDoctor, clinics, defaultClinicId, 
         onCreated(docRes.data as Doctor);
       }
 
-      // 2) Auth user istendiyse signUp dene (mevcut kullanici varsa "User already registered" hatasi gelir)
+      // 2) Auth user istendiyse: service-role edge fn ile oluştur.
+      //    supabase.auth.signUp KULLANMA — onay e-postası tetikler ("Error sending
+      //    confirmation email") ve yeni kullanıcıyla oturum açıp admin'in session'ını
+      //    bozar. admin-create-user: email_confirm=true (mail atmaz) + admin session korunur.
+      //    doctors satırı yukarıda createDoctor ile açıldı → skip_doctor_row:true (çift kayıt önle).
       if (wantsAuth) {
-        const signUpRes = await supabase.auth.signUp({
-          email: emailTrim,
-          password: form.password,
-          options: {
-            data: {
-              user_type: 'doctor',
-              full_name: payload.full_name,
-              phone: payload.phone,
-              clinic_id: payload.clinic_id,
-              // role: profiles.role CHECK ('technician'|'manager') — doctor icin NULL
-              approval_status: 'approved',
-            },
+        const { data: fnData, error: fnErr } = await supabase.functions.invoke('admin-create-user', {
+          body: {
+            email: emailTrim,
+            password: form.password,
+            full_name: payload.full_name,
+            user_type: 'doctor',
+            clinic_id: payload.clinic_id,
+            specialty: payload.specialty,
+            phone: payload.phone,
+            skip_doctor_row: true,
           },
         });
-        if (signUpRes.error) {
-          setError(`Hekim kaydedildi, ancak giriş hesabı oluşturulamadı: ${signUpRes.error.message}`);
+        if (fnErr || (fnData as any)?.error) {
+          const rawMsg = (fnData as any)?.error ?? fnErr?.message ?? 'Bilinmeyen hata';
+          const friendly =
+            /already (been )?registered|user already exists|email.*exists/i.test(rawMsg)
+              ? 'Bu e-posta zaten kullanılıyor. Farklı bir e-posta deneyin.'
+            : /password.*(short|weak)|en az 6/i.test(rawMsg)
+              ? 'Şifre çok zayıf — en az 6 karakter olmalı.'
+            : rawMsg;
+          setError(`Hekim kaydedildi, ancak giriş hesabı oluşturulamadı: ${friendly}`);
           return;
-        }
-        if (signUpRes.data.user?.id) {
-          await supabase.from('profiles')
-            .update({
-              full_name: payload.full_name,
-              phone: payload.phone,
-              approval_status: 'approved',
-              is_active: true,
-              clinic_id: payload.clinic_id,
-              specialty: payload.specialty,
-            })
-            .eq('id', signUpRes.data.user.id);
         }
       }
 

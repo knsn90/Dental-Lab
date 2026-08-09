@@ -209,6 +209,35 @@ export async function fetchUnbilledWorkOrders(clinicId?: string) {
 }
 
 /**
+ * Kliniğin özel fiyat listesindeki baskın para birimi.
+ *
+ * NEDEN: hesap ekstresi katı per-currency çalışır ve varsayılan sekme körlemesine
+ * `TRY, EUR, USD, GBP` sırasının ilki seçiliyordu. Fiyatları USD olan bir klinikte
+ * ekran EUR'da açılıp "0 hareket" gösteriyordu — kullanıcı hesabın boş olduğunu
+ * sanıyor. Klinikle hangi para biriminde çalışıldığının en doğrudan kanıtı fiyat
+ * listesi; fatura geçmişi henüz yokken bile bilinir.
+ *
+ * Baskın = en çok kalemin para birimi (liste kısmen başka dövize çevrilmiş olabilir).
+ */
+export async function fetchClinicPriceCurrency(clinicId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('clinic_price_overrides')
+    .select('currency')
+    .eq('clinic_id', clinicId);
+  if (error || !Array.isArray(data) || data.length === 0) return null;
+
+  const tally = new Map<string, number>();
+  for (const r of data as { currency: string | null }[]) {
+    const c = r.currency || 'TRY';
+    tally.set(c, (tally.get(c) ?? 0) + 1);
+  }
+  let best: string | null = null;
+  let bestN = 0;
+  for (const [c, n] of tally) if (n > bestN) { best = c; bestN = n; }
+  return best;
+}
+
+/**
  * Bir faturanın bağlı tüm siparişlerini döner (toplu fatura için).
  */
 export async function fetchLinkedOrders(invoiceId: string) {

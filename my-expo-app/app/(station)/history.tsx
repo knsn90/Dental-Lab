@@ -14,6 +14,7 @@ import { useAuthStore } from '../../core/store/authStore';
 import { usePageTitleStore } from '../../core/store/pageTitleStore';
 import { supabase } from '../../core/api/supabase';
 import { useStationTheme, hexA } from '../../core/theme/stationPalette';
+import { mobileTopPad } from '../../core/ui/pageMetrics';
 
 const DISPLAY_FONT = Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui, sans-serif' : 'InterTight_300Light';
 
@@ -268,7 +269,7 @@ export default function StationHistoryScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: P.pageBg }}
-      contentContainerStyle={{ padding: 16, paddingTop: insets.top + 16, paddingBottom: 80 }}
+      contentContainerStyle={{ padding: 16, paddingTop: mobileTopPad(insets.top), paddingBottom: 80 }}
     >
       {/* Mobil başlık — PatternsShell desktop'ta zaten üstte başlığı gösteriyor */}
       {isMobile && (

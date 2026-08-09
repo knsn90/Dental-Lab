@@ -8,6 +8,7 @@
  */
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { safeBack } from '../../../../core/util/safeBack';
 import { View, Text, Pressable, ScrollView, TextInput, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
@@ -593,7 +594,7 @@ function QualityRulesCard({
                   <View style={{ flex: 1 }} />
                   <Text style={{ fontSize: 12, color: DS.ink[500] }}>{sym}1.000 →</Text>
                   <Text style={{ ...DISPLAY, fontSize: 22, color: matchedEffect.color, letterSpacing: -0.5 }}>
-                    {sym}{simulatedResult.toLocaleString('tr-TR')}
+                    {sym}{(Number(simulatedResult) || 0).toLocaleString('tr-TR')}
                   </Text>
                 </View>
               ) : (
@@ -644,7 +645,7 @@ function PlanBuilderCard({
   const summary = useMemo(() => {
     const parts: string[] = [];
     parts.push(`${MODE_LABELS[policy.mode]} dağılım`);
-    parts.push(`üye başına ${currency} ${baseRate.toLocaleString('tr-TR')}`);
+    parts.push(`üye başına ${currency} ${(Number(baseRate) || 0).toLocaleString('tr-TR')}`);
     if (thresholdCount > 0)  parts.push(`${thresholdCount} eşik`);
     if (qualityCount > 0)    parts.push(`${qualityCount} kalite kuralı`);
     if (difficultyCount > 0) parts.push(`${difficultyCount} zorluk çarpanı`);
@@ -878,7 +879,7 @@ export default function BonusPolicyEditorScreen({ embeddedId, onBack }: Props = 
   const params = useLocalSearchParams<{ id?: string }>();
   const policyId = embeddedId ?? String(params.id || '');
   const router = useRouter();
-  const goBack = () => (onBack ? onBack() : router.back());
+  const goBack = () => (onBack ? onBack() : safeBack('/'));
   const pad = usePagePadding();
 
   const [full, setFull] = useState<PolicyFull | null>(null);

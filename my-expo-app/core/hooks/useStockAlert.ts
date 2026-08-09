@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../api/supabase';
+import { subscribeShared } from '../api/sharedChannel';
 
 /** Returns the count of stock items below their minimum quantity. */
 export function useStockAlert() {
@@ -26,13 +27,15 @@ export function useStockAlert() {
 
   useEffect(() => {
     load();
-
-    const channel = supabase
-      .channel('stock_alert')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_items' }, load)
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
+    // Bu hook üç yerden mount ediliyor (lab layout, admin layout, admin index).
+    // Sabit ad tek başına yetmiyor: supabase.channel(ad) her çağrıda YENİ kanal
+    // nesnesi döndürür, sunucu tarafında ayrı abonelik açılır. subscribeShared
+    // anahtar başına tek kanal tutar. (Ölçüm: stock_items 6 abonelik / 2 kullanıcı.)
+    return subscribeShared(
+      'stock_alert',
+      [{ event: '*', schema: 'public', table: 'stock_items' }],
+      load,
+    );
   }, []);
 
   return count;

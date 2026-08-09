@@ -5,13 +5,16 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Platform, Pressable, useWindowDimensions } from 'react-native';
+import { COURIER_ICON_URI } from './courierIcon';
 import { MapPin, Plus, Minus, Locate } from 'lucide-react-native';
 import { supabase } from '../../core/api/supabase';
 import { geocodeTR } from './geocoder';
 import { useThemeModeStore } from '../../core/store/themeModeStore';
 
-// Yellow scooter marker — faces right by default
-const SCOOTER_SVG = `<svg viewBox="0 0 2122 2122" xmlns="http://www.w3.org/2000/svg"><g><path fill="#FFD353" d="M1891.053,528.119h-204.048h-194.397c-17.922,0-32.45,14.529-32.45,32.453v396.287c-129.002-7.765-328.198-19.95-355.02-15.435c-85.6,14.387-108.738,127.664-75.647,122.733c-35.459,33.491,55.829,248.833,14.185,271.473c-63.827,34.685-248.217,51.81-334.112,17.34c-21.709-8.711-45.187-38.142-77.441-71.04c-69.961-341.713,86.127-532.286,96.362-569.607c10.463-38.144,5.055-122.948-29.345-127.381c-27.007-3.485-92.553-15.825-133.143,8.097c-0.004-0.004-0.007-0.015-0.012-0.02c-4.728-4.438-39.087-0.784-46.044,38.183c-5.773,32.325,18.624,62.497,27.098,55.046c19.272,32.201,52.684,55.604,45.333,55.604c-227.591,184.39-258.947,363.226-262.009,430.844c-115.802,20.382-183.052,101.828-195.684,123.197c-14.212,24.045-11.059,70.848,8.45,66.871c-24.832,38.242-39.309,83.828-39.309,132.822c0,134.908,109.369,244.277,244.277,244.277c134.906,0,244.275-109.369,244.275-244.277c0-5.678-0.264-11.291-0.645-16.873c16.243,20.024,39.465,32.605,76.869,31.055l386.28-15.997c8.011,12.276,21.839,20.723,38.095,20.723h48.678c9.662,126.063,114.939,225.369,243.478,225.369c128.536,0,233.813-99.306,243.475-225.369h29.112c33.871,0,61.295-26.297,63.67-59.189c8.669-8.06,14.17-19.45,14.349-32.138c1.132-79.688-7.323-252.032-93.799-346.255h198.374c13.72,0,24.945-11.225,24.945-24.945s-11.225-24.945-24.945-24.945h50.745c17.922,0,32.451-14.528,32.451-32.448V560.572C1923.504,542.647,1908.975,528.119,1891.053,528.119z"/><path fill="#E84434" d="M1891.053,528.119h-204.048h-194.397c-17.922,0-32.45,14.529-32.45,32.453v396.287v37.715c0,9.271,3.908,17.611,10.143,23.524c5.817,5.517,13.657,8.924,22.307,8.924h5.121h264.73h77.849h50.745c17.922,0,32.451-14.528,32.451-32.448V560.572C1923.504,542.647,1908.975,528.119,1891.053,528.119z"/><path fill="#352E35" d="M1559.039,1514.495h-21.188h-305.448h-21.19h-69.563c9.662,126.063,114.939,225.369,243.478,225.369c128.536,0,233.813-99.306,243.475-225.369H1559.039z"/><path fill="#CCCCCC" d="M1537.851,1514.495h-305.448h-21.19c9.431,87.727,83.684,156.039,173.914,156.039c90.228,0,164.482-68.312,173.912-156.039H1537.851z"/><path fill="#352E35" d="M591.728,1478.714c-8.639-10.651-15.338-23.371-21.07-37.271c-26.596-64.487-79.544-125.797-146.346-158.036c-130.314-62.879-238.579,45.613-271.142,73.778c-3.728,3.224-7.069,4.974-10.04,5.58c-24.832,38.242-39.309,83.828-39.309,132.822c0,134.908,109.369,244.277,244.277,244.277c134.906,0,244.275-109.369,244.275-244.277C592.373,1489.908,592.109,1484.296,591.728,1478.714z"/><path fill="#FCC352" d="M1721.514,1447.328c-8.353-161.534-52.219-340.706-217.354-340.706c-168.255,0-405.561,186.012-454.755,349.846c-4.018,13.381-1.414,26.752,5.472,37.303c8.011,12.276,21.839,20.723,38.095,20.723h48.678h69.563h21.19h305.448h21.188h69.563h29.112c33.871,0,61.295-26.297,63.67-59.189C1721.573,1452.681,1721.654,1450.027,1721.514,1447.328z"/><path fill="#CCCCCC" d="M348.098,1320.634c-96.621,0-174.947,78.329-174.947,174.952s78.326,174.947,174.947,174.947c96.618,0,174.945-78.324,174.945-174.947S444.717,1320.634,348.098,1320.634z"/><path fill="#B3B3B3" d="M348.098,1341.662c-85.011,0-153.922,68.911-153.922,153.925c0,85.013,68.911,153.919,153.922,153.919c85.006,0,153.921-68.906,153.921-153.919C502.02,1410.573,433.104,1341.662,348.098,1341.662z"/><path fill="#808080" d="M348.098,1469.16c-14.594,0-26.424,11.83-26.424,26.426c0,14.592,11.829,26.421,26.424,26.421c14.592,0,26.421-11.829,26.421-26.421C374.52,1480.99,362.69,1469.16,348.098,1469.16z"/><path fill="#FFE67A" d="M556.829,875.987c-11.264,19.776-24.086,38.611-37.367,57.071c-26.753,37.184-55.622,72.984-79.176,112.365c-2.816,4.707-5.552,9.462-8.193,14.271c-8.468,15.425-16.1,32.204-15.447,49.787c0.767,20.721,13.189,39.615,29.089,52.916c15.902,13.301,35.128,21.88,54.076,30.29c12.258,5.437,28.765,10.012,37.286-0.341c2.875-3.493,4.071-8.029,5.191-12.409c13.433-52.521,26.862-105.043,40.295-157.564c13.505-52.809,27.299-105.554,40.509-158.436c3.474-13.905,13.971-44.175-3.876-52.579c-11.768-5.544-27.717,0.224-35.554,9.871c-5.744,7.064-7.995,17.111-11.72,25.315C567.381,856.596,562.29,866.399,556.829,875.987z"/><path fill="#FFE67A" d="M1397.709,1032.717c-9.762-2.699-20.073-2.431-30.188-1.9c-55.218,2.879-109.798,12.804-164.195,22.708c-21.756,3.961-43.515,7.917-65.271,11.878c-21.847,3.98-43.695,7.956-65.549,11.937c-10.799,1.958-21.654,0.39-20.166,14.762c3.025,29.228,9.259,59.917,9.259,89.242c0,14.017-2.236,48.629,3.869,75.143c4.611,20.015,13.978,35.415,32.653,33.846c28.36-2.377,49.474-31.318,69.491-48.429c20.048-17.14,40.041-34.353,60.725-50.728c40.712-32.229,84.589-61.564,134.083-78.392c15.32-5.214,31.486-9.403,44.217-19.391c12.731-9.983,21.055-27.932,14.327-42.645C1416.754,1041.536,1407.47,1035.417,1397.709,1032.717z"/><path fill="#FFD353" d="M1589.809,1228.673c-18.19-25.574-41.447-49.174-71.184-59.206c-30.663-10.339-64.441-5.023-95.366,4.502c-63.06,19.415-120.114,55.698-168.923,100.097c-13.535,12.312-26.485,25.262-38.896,38.704c-22.256,24.098-42.779,49.759-62.051,76.292c-4.897,6.743-9.713,13.545-14.458,20.39c-4.024,5.808-8.865,10.87-12.945,16.561c-8.358,11.649,9.52,24.916,19.374,27.347c12.337,3.05,25.245-0.019,37.693-2.567c125.342-25.672,254.998,1.807,382.886-2.003c26.378-0.784,56.414-4.921,71.281-26.724c10.804-15.844,10.263-36.682,7.561-55.669C1637.758,1316.995,1618.734,1269.336,1589.809,1228.673z"/><path fill="#B3B3B3" d="M1385.127,1649.506c78.6,0,143.397-58.926,152.724-135.011h-305.448C1241.729,1590.58,1306.523,1649.506,1385.127,1649.506z"/></g></svg>`;
+// Kurye konum marker ikonu — kullanıcının assets/courier-pin.png'i 128px'e
+// küçültülüp base64 DATA URI olarak ./courierIcon'a gömüldü (require(png).uri
+// production static export'ta çözülmüyordu → "kırık görsel").
+
 
 interface Coord { lat: number; lng: number; }
 interface Ping extends Coord { recorded_at: string; accuracy_m?: number | null; }
@@ -24,6 +27,21 @@ interface Props {
   height?:       number | string;
   accent?:       string;
   style?:        any;
+  /**
+   * Dış kurye (BanaBiKurye) konumu. Kendi kuryemiz gps_pings'e yazar; dış sağlayıcının
+   * kuryesi bizim uygulamayı kullanmadığı için konumu API'den gelir ve buradan beslenir.
+   * Verildiğinde gps_pings aboneliği kurulmaz, işaretçi bu konumdan çizilir.
+   */
+  externalPosition?: Coord | null;
+  /** Çıkış adresi — koordinat yoksa geokodlanır. Teslim edilmiş gönderilerde rota buradan başlar. */
+  originLabel?: string;
+  /**
+   * Rota hesaplanınca sürüş süresi/mesafesi. `live=true` → rota KURYENİN anlık
+   * konumundan başlıyor, yani gerçek tahmini varış. `live=false` → kurye konumu
+   * yok; süre çıkış noktası→teslim güzergâhının süresi (varış tahmini değil).
+   * Rota hiç çizilemezse null.
+   */
+  onRouteInfo?: (info: { durationSec: number | null; distanceM: number | null; live: boolean } | null) => void;
 }
 
 const LEAFLET_CSS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
@@ -115,25 +133,122 @@ function loadLeaflet(): Promise<any> {
 const geocode = geocodeTR;
 
 // ─── Routing (OSRM public) ───────────────────────────────────────────────
-async function fetchRoute(from: Coord, to: Coord): Promise<[number, number][] | null> {
+// İki nokta arası mesafe (metre) — pickup uğrağı kararı için.
+function haversineM(a: Coord, b: Coord): number {
+  const R = 6371000, toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng);
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+
+interface RouteResult { coords: [number, number][]; durationSec: number | null; distanceM: number | null; }
+// `via` verilirse rota o ara noktadan GEÇEREK çizilir (kurye → alım → teslim).
+// coords ile birlikte sürüş SÜRESİ (duration) + MESAFE (distance) de döner → tahmini varış.
+async function fetchRoute(from: Coord, to: Coord, via?: Coord | null): Promise<RouteResult | null> {
   try {
-    const url = `https://router.project-osrm.org/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson`;
+    const pts = [from, ...(via ? [via] : []), to].map((p) => `${p.lng},${p.lat}`).join(';');
+    const url = `https://router.project-osrm.org/route/v1/driving/${pts}?overview=full&geometries=geojson`;
     const res = await fetch(url);
     const json = await res.json();
-    if (json.routes?.[0]?.geometry?.coordinates) {
-      // GeoJSON [lng, lat] → Leaflet [lat, lng]
-      return json.routes[0].geometry.coordinates.map((c: [number, number]) => [c[1], c[0]]);
+    const r0 = json.routes?.[0];
+    if (r0?.geometry?.coordinates) {
+      return {
+        // GeoJSON [lng, lat] → Leaflet [lat, lng]
+        coords: r0.geometry.coordinates.map((c: [number, number]) => [c[1], c[0]]),
+        durationSec: typeof r0.duration === 'number' ? r0.duration : null,
+        distanceM:   typeof r0.distance === 'number' ? r0.distance : null,
+      };
     }
   } catch (e) { console.warn('[osrm] failed', e); }
   return null;
 }
 
+// Google Maps tarzı NUMARALI kırmızı damla pin (varış sırası: 1=alım, 2=teslim).
+function numberedPinHtml(n: number | string): string {
+  return `
+    <div style="width:26px;height:34px;filter:drop-shadow(0 4px 8px rgba(0,0,0,0.32))">
+      <svg width="26" height="34" viewBox="0 0 32 42" fill="none">
+        <path d="M16 0C7.16 0 0 7.16 0 16c0 11.2 16 26 16 26s16-14.8 16-26C32 7.16 24.84 0 16 0z" fill="#D9483B"/>
+        <text x="16" y="15" text-anchor="middle" dominant-baseline="central"
+              font-family="system-ui,-apple-system,Segoe UI,sans-serif" font-size="15" font-weight="800" fill="#fff">${n}</text>
+      </svg>
+    </div>`;
+}
+
+// Hex rengi belirtilen oranda koyulaştırır (panel renginden gradient tonları üretmek için).
+function darkenHex(hex: string, amt: number): string {
+  try {
+    const h = hex.replace('#', '');
+    const n = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+    const ch = (i: number) => Math.max(0, Math.min(255, Math.round(parseInt(n.slice(i, i + 2), 16) * (1 - amt))));
+    return `#${[ch(0), ch(2), ch(4)].map((x) => x.toString(16).padStart(2, '0')).join('')}`;
+  } catch { return hex; }
+}
+
+// Hex rengi beyaza doğru harmanlayıp AÇAR (gradient'in açık ucu için).
+function lightenHex(hex: string, amt: number): string {
+  try {
+    const h = hex.replace('#', '');
+    const n = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+    const ch = (i: number) => {
+      const c = parseInt(n.slice(i, i + 2), 16);
+      return Math.max(0, Math.min(255, Math.round(c + (255 - c) * amt)));
+    };
+    return `#${[ch(0), ch(2), ch(4)].map((x) => x.toString(16).padStart(2, '0')).join('')}`;
+  } catch { return hex; }
+}
+
+// Aktif PANEL renginden rota gradient'i: AÇIK ton → TOK (dolgun) ton. Belirgin geçiş.
+function panelGradientStops(accent: string): string[] {
+  return [lightenHex(accent, 0.55), accent, darkenHex(accent, 0.18)];
+}
+
+// Rota çizgisine PANEL-renginde gradient verir: Leaflet SVG overlay'ine linearGradient
+// def'i enjekte/GÜNCELLER (panel değişince renk de değişir). Stroke `url(#courierRouteGrad)`.
+function ensureRouteGradient(map: any, stops: string[]): void {
+  if (typeof document === 'undefined') return;
+  try {
+    const svg = map?.getPanes?.()?.overlayPane?.querySelector('svg');
+    if (!svg) return;
+    const NS = 'http://www.w3.org/2000/svg';
+    let grad: any = svg.querySelector('#courierRouteGrad');
+    if (!grad) {
+      const defs = document.createElementNS(NS, 'defs');
+      grad = document.createElementNS(NS, 'linearGradient');
+      grad.setAttribute('id', 'courierRouteGrad');
+      grad.setAttribute('x1', '0'); grad.setAttribute('y1', '0');
+      grad.setAttribute('x2', '1'); grad.setAttribute('y2', '1');
+      defs.appendChild(grad);
+      svg.insertBefore(defs, svg.firstChild);
+    }
+    // Stop'ları güncel panel renkleriyle yeniden yaz.
+    while (grad.firstChild) grad.removeChild(grad.firstChild);
+    const denom = Math.max(1, stops.length - 1);
+    stops.forEach((col, i) => {
+      const s = document.createElementNS(NS, 'stop');
+      s.setAttribute('offset', `${Math.round((i / denom) * 100)}%`);
+      s.setAttribute('stop-color', col);
+      grad.appendChild(s);
+    });
+  } catch { /* gradient yoksa düz renk kalır */ }
+}
+
+// Polyline'ın SVG path'ine panel-renginde gradient stroke uygular.
+function applyRouteGradient(map: any, poly: any, stops: string[]): void {
+  ensureRouteGradient(map, stops);
+  const set = () => { try { if (poly?._path) poly._path.setAttribute('stroke', 'url(#courierRouteGrad)'); } catch { /* */ } };
+  set();
+  // Leaflet path'i bazen sonraki frame'de yeniden çiziyor → gradient'i tekrar uygula.
+  if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(set);
+}
+
 export function CourierTrackingMap({
   deliveryId, origin, destination, destinationLabel,
-  height = '100%', accent = '#2563EB', style,
+  height = '100%', accent = '#2563EB', style, externalPosition, originLabel, onRouteInfo,
 }: Props) {
   const [lastPing, setLastPing] = useState<Ping | null>(null);
   const [destCoord, setDestCoord] = useState<Coord | null>(destination ?? null);
+  const [originCoord, setOriginCoord] = useState<Coord | null>(origin ?? null);
   const [routeCoords, setRouteCoords] = useState<[number, number][] | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef      = useRef<any>(null);
@@ -159,17 +274,64 @@ export function CourierTrackingMap({
     return () => { cancelled = true; };
   }, [destination?.lat, destination?.lng, destinationLabel]);
 
-  // Fetch route when both courier and destination available
+  // Çıkış noktası: koordinat verilmemişse adresten geokodla (hedefle aynı desen).
+  // Teslim edilmiş gönderilerde rota bu noktadan çizilir.
   useEffect(() => {
-    if (!lastPing || !destCoord) { setRouteCoords(null); return; }
+    if (origin) { setOriginCoord(origin); return; }
+    if (!originLabel) { setOriginCoord(null); return; }
     let cancelled = false;
-    fetchRoute({ lat: lastPing.lat, lng: lastPing.lng }, destCoord)
-      .then(r => { if (!cancelled) setRouteCoords(r); });
+    geocode(originLabel).then(c => { if (!cancelled) setOriginCoord(c); });
     return () => { cancelled = true; };
-  }, [lastPing?.lat, lastPing?.lng, destCoord?.lat, destCoord?.lng]);
+  }, [origin?.lat, origin?.lng, originLabel]);
+
+  // Rota: canlı konum varsa kuryeden, yoksa çıkış noktasından hedefe.
+  // Teslim edilmiş/henüz atanmamış gönderilerde kurye konumu gelmez; o durumda
+  // origin → destination çizilerek güzergâh yine gösterilir.
+  const routeStart = lastPing
+    ? { lat: lastPing.lat, lng: lastPing.lng }
+    : (originCoord ?? null);
+  // Kurye CANLI + alım noktası (lab) varsa VE kurye henüz alıma uğramadıysa → rota
+  // alımdan GEÇEREK gider (kurye → lab → teslim). Kurye laba yaklaşınca/geçince
+  // (alımı yaptıysa) düz rota (kurye → teslim). Heuristik: kurye laba >150m uzak VE
+  // teslime laboratuvardan daha uzaksa henüz alım yapmamıştır.
+  const routeVia = (() => {
+    if (!lastPing || !originCoord || !destCoord) return null;
+    const c = { lat: lastPing.lat, lng: lastPing.lng };
+    const dCO = haversineM(c, originCoord);
+    const dCD = haversineM(c, destCoord);
+    const dOD = haversineM(originCoord, destCoord);
+    return (dCO > 150 && dCD > dOD + 100) ? originCoord : null;
+  })();
+  useEffect(() => {
+    if (!routeStart || !destCoord) { setRouteCoords(null); onRouteInfo?.(null); return; }
+    let cancelled = false;
+    fetchRoute(routeStart, destCoord, routeVia)
+      .then(r => {
+        if (cancelled) return;
+        setRouteCoords(r?.coords ?? null);
+        // Süre her durumda verilir; "tahmini varış" mı yoksa yalnızca güzergâh
+        // süresi mi olduğunu `live` ayırt eder (rota kuryeden mi başlıyor?).
+        // Eskiden kurye canlı değilken null gönderiliyordu ve kart hiç görünmüyordu.
+        if (r) onRouteInfo?.({ durationSec: r.durationSec, distanceM: r.distanceM, live: !!lastPing });
+        else onRouteInfo?.(null);
+      });
+    return () => { cancelled = true; };
+  }, [routeStart?.lat, routeStart?.lng, destCoord?.lat, destCoord?.lng, routeVia?.lat, routeVia?.lng, !!lastPing]);
+
+  // Dış kurye konumu (BanaBiKurye) — gps_pings yerine API'den beslenir.
+  useEffect(() => {
+    if (!externalPosition) return;
+    setLastPing({
+      lat: externalPosition.lat,
+      lng: externalPosition.lng,
+      accuracy_m: null,
+      recorded_at: new Date().toISOString(),
+    } as any);
+  }, [externalPosition?.lat, externalPosition?.lng]);
 
   // Ping fetch + realtime
   useEffect(() => {
+    if (externalPosition) return;   // dış kurye → gps_pings dinleme
     if (!deliveryId) { setLastPing(null); return; }
     let cancelled = false;
     const fetchLast = async () => {
@@ -191,7 +353,7 @@ export function CourierTrackingMap({
       )
       .subscribe();
     return () => { cancelled = true; supabase.removeChannel(ch); };
-  }, [deliveryId]);
+  }, [deliveryId, !!externalPosition]);
 
   // Bir kez global CSS inject: dark mode tile filtresi (sokak okunabilirliği)
   useEffect(() => {
@@ -250,20 +412,15 @@ export function CourierTrackingMap({
         // Leaflet default zoom kapalı — React tarafında kendi butonlarımız var.
       }
 
-      // Destination marker — classic red map pin
+      // Teslim noktası — 2 numaralı kırmızı pin (varış sırası). Alım yoksa (originCoord
+      // yoksa) tek durak olduğu için numarasız görünmesin diye yine "2" mantıklı değil →
+      // origin yoksa bu tek durak olur; o durumda numara "1".
       if (destCoord) {
         if (destMarkerRef.current) destMarkerRef.current.remove();
         const destIcon = L.divIcon({
           className: 'tracking-dest',
-          html: `
-            <div style="width:32px;height:42px;filter:drop-shadow(0 4px 8px rgba(0,0,0,0.3))">
-              <svg width="32" height="42" viewBox="0 0 32 42" fill="none">
-                <path d="M16 0C7.16 0 0 7.16 0 16c0 11.2 16 26 16 26s16-14.8 16-26C32 7.16 24.84 0 16 0z" fill="#D9483B"/>
-                <circle cx="16" cy="15" r="7" fill="#fff"/>
-              </svg>
-            </div>
-          `,
-          iconSize: [32, 42], iconAnchor: [16, 42],
+          html: numberedPinHtml(originCoord ? 2 : 1),
+          iconSize: [26, 34], iconAnchor: [13, 34],
         });
         destMarkerRef.current = L.marker([destCoord.lat, destCoord.lng], { icon: destIcon }).addTo(mapRef.current);
         if (destinationLabel) {
@@ -274,15 +431,21 @@ export function CourierTrackingMap({
         }
       }
 
-      // Origin marker (lab — küçük yeşil)
-      if (origin) {
+      // Alım noktası — 1 numaralı kırmızı pin (varış sırası).
+      if (originCoord) {
         if (originMarkerRef.current) originMarkerRef.current.remove();
         const originIcon = L.divIcon({
           className: 'tracking-origin',
-          html: `<div style="width:12px;height:12px;border-radius:50%;background:#10B981;border:3px solid #fff;box-shadow:0 4px 12px rgba(16,185,129,0.4)"></div>`,
-          iconSize: [12, 12], iconAnchor: [6, 6],
+          html: numberedPinHtml(1),
+          iconSize: [26, 34], iconAnchor: [13, 34],
         });
-        originMarkerRef.current = L.marker([origin.lat, origin.lng], { icon: originIcon }).addTo(mapRef.current);
+        originMarkerRef.current = L.marker([originCoord.lat, originCoord.lng], { icon: originIcon }).addTo(mapRef.current);
+        if (originLabel) {
+          originMarkerRef.current.bindPopup(
+            `<div style="font:600 12px system-ui;color:#0A0A0A;line-height:1.4;max-width:240px">${originLabel.replace(/</g, '&lt;')}</div>`,
+            { closeButton: false, offset: [0, -26] as any, autoClose: false },
+          );
+        }
       }
 
       // Courier marker — yellow scooter, rotated toward route direction (animated)
@@ -322,22 +485,19 @@ export function CourierTrackingMap({
         const rot = targetRot - 90;
 
         if (!markerRef.current) {
+          // Diş-scooter PIN — dik durur (dönmez); ucu tam konuma oturur.
+          // Kullanıcının ikonu — base64 data URI (harici istek yok, her ortamda yüklenir).
           const icon = L.divIcon({
             className: 'tracking-courier',
-            html: `
-              <div class="scooter-rotor" style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;transform:rotate(${rot}deg);transition:transform 800ms cubic-bezier(0.4,0,0.2,1);filter:drop-shadow(0 6px 10px rgba(0,0,0,0.3))">
-                <div style="width:100%;height:100%">${SCOOTER_SVG}</div>
-              </div>
-            `,
-            iconSize: [48, 48], iconAnchor: [24, 24],
+            html: `<div style="width:64px;height:64px;filter:drop-shadow(0 6px 10px rgba(0,0,0,0.32))"><img src="${COURIER_ICON_URI}" style="width:100%;height:100%;object-fit:contain;display:block" draggable="false"/></div>`,
+            iconSize: [64, 64], iconAnchor: [32, 54],
           });
-          markerRef.current = L.marker([lastPing.lat, lastPing.lng], { icon }).addTo(mapRef.current);
+          // zIndexOffset yüksek: numaralı pin'ler her poll'de yeniden eklenip
+          // (origin/dest remove+readd) kurye marker'ının ÜSTÜNde kalıyordu; kurye
+          // alım noktasındayken (pin "1" ile aynı konum) scooter örtülüyordu.
+          markerRef.current = L.marker([lastPing.lat, lastPing.lng], { icon, zIndexOffset: 1000 }).addTo(mapRef.current);
         } else {
-          // Update rotation via DOM (CSS transition handles smoothness)
-          const el = markerRef.current.getElement();
-          const rotor = el?.querySelector('.scooter-rotor') as HTMLElement | null;
-          if (rotor) rotor.style.transform = `rotate(${rot}deg)`;
-
+          // Pin dik durur (dönmez); yalnız konum ~1s yumuşak tween.
           // Animate position by tweening lat/lng over ~1s
           if (moveAnimRef.current != null) cancelAnimationFrame(moveAnimRef.current);
           const start = markerRef.current.getLatLng();
@@ -365,21 +525,26 @@ export function CourierTrackingMap({
       if (rc && rc.length > 1) {
         pts = rc;
       } else {
-        if (origin)    pts.push([origin.lat, origin.lng]);
+        if (originCoord) pts.push([originCoord.lat, originCoord.lng]);
         if (lastPing)  pts.push([lastPing.lat, lastPing.lng]);
         if (destCoord) pts.push([destCoord.lat, destCoord.lng]);
       }
       if (pts.length >= 2) {
         routeRef.current = L.polyline(pts, {
-          color: accent, weight: 4, opacity: 0.85,
+          color: accent, weight: rc ? 7 : 5, opacity: rc ? 1 : 0.9,
           lineCap: 'round', lineJoin: 'round',
-          dashArray: rc ? undefined : '6 8',
+          dashArray: rc ? undefined : '6 10',
         }).addTo(mapRef.current);
+        // Gerçek rota (düz tahmin değil) → panel-renginde gradient stroke.
+        if (rc) applyRouteGradient(mapRef.current, routeRef.current, panelGradientStops(accent));
         if (!didFitRef.current) {
           try {
             mapRef.current.invalidateSize();
+            // Kenar boşlukları overlay panelleri hesaba katar: solda liste (~360px),
+            // sağda seçili gönderi kartı (320px + 24 kenar). Aksi hâlde rotanın ucu
+            // kartların altında kalıyor ve "tek görünümde tamamı" bozuluyor.
             mapRef.current.fitBounds(routeRef.current.getBounds(), {
-              paddingTopLeft: [420, 40], paddingBottomRight: [40, 40],
+              paddingTopLeft: [355, 100], paddingBottomRight: [380, 60],
               maxZoom: 16, animate: true,
             });
             didFitRef.current = true;
@@ -390,7 +555,7 @@ export function CourierTrackingMap({
       }
     }).catch((e) => console.warn('[tracking-map]', e?.message ?? e));
     return () => { cancelled = true; };
-  }, [lastPing, destCoord?.lat, destCoord?.lng, origin?.lat, origin?.lng, destinationLabel, accent]);
+  }, [lastPing, destCoord?.lat, destCoord?.lng, originCoord?.lat, originCoord?.lng, destinationLabel, accent]);
 
   // Yeni delivery seçilince fit'i sıfırla
   useEffect(() => { didFitRef.current = false; }, [deliveryId]);
@@ -403,14 +568,17 @@ export function CourierTrackingMap({
       if (cancelled || !mapRef.current) return;
       if (routeRef.current) { routeRef.current.remove(); routeRef.current = null; }
       routeRef.current = L.polyline(routeCoords, {
-        color: accent, weight: 4, opacity: 0.85,
+        color: accent, weight: 7, opacity: 1,
         lineCap: 'round', lineJoin: 'round',
       }).addTo(mapRef.current);
+      applyRouteGradient(mapRef.current, routeRef.current, panelGradientStops(accent));
       if (!didFitRef.current) {
         try {
           mapRef.current.invalidateSize();
+          // Overlay panelleri hesaba kat: solda liste, sağda seçili gönderi kartı.
+          // Böylece rotanın tamamı tek görünümde, kartların altında kalmadan görünür.
           mapRef.current.fitBounds(routeRef.current.getBounds(), {
-            paddingTopLeft: [420, 40], paddingBottomRight: [40, 40],
+            paddingTopLeft: [355, 100], paddingBottomRight: [380, 60],
             maxZoom: 16, animate: true,
           });
           didFitRef.current = true;
@@ -499,7 +667,9 @@ window.__updateMap=function(d){
           right: 12,
           ...(isNarrow
             ? { top: 112 }                              // mobile: floating TopActionBar (QR/Bell/Profile) altında
-            : { bottom: 16 }),                          // desktop: altta
+            // desktop: sağ altta global "Simanty'ye sor" balonu duruyor (~56px + kenar
+            // boşluğu). 92 vermezsek zoom-out butonu onun altında kalıyor.
+            : { bottom: 92 }),
           gap: 8,
           zIndex: 1100,
         }}>

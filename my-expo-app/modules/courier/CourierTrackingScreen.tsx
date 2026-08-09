@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Search, MapPin, ArrowRight, MessageSquare, Phone, ChevronRight, Clock,
   QrCode, Bell, User as UserIcon, X, Package, PackageCheck, Trash2,
+  ChevronDown, Check,
 } from 'lucide-react-native';
 import { supabase } from '../../core/api/supabase';
 import { CourierTrackingMap } from './CourierTrackingMap';
@@ -112,6 +113,14 @@ function fmtDateTime(iso?: string | null): string | null {
 }
 
 /** BanaBiKurye telefonu "905355244859" biçiminde gelir → "0535 524 48 59". */
+/** ISO → "09:42". Geçersiz/boş girdide null (defansif: kayıtlar eksik olabiliyor). */
+function fmtTime(iso?: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
 function formatPhone(raw: string): string {
   const d = String(raw).replace(/\D/g, '');
   const local = d.startsWith('90') && d.length === 12 ? '0' + d.slice(2) : d;
@@ -583,6 +592,10 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix 
                 </View>
               </View>
 
+              {/* ─── Zaman Çizelgesi (katlanabilir) ─── */}
+              <View style={HAIRLINE} />
+              <DeliveryTimeline delivery={selected} etaSec={eta?.durationSec} accent={accent} flush />
+
               {/* ─── Tahmini Varış ───
                   Kurye canlı konum verirken rota kuryeden başlar → gerçek varış tahmini.
                   Konum yoksa süre çıkış→teslim güzergâhınındır, etiket ona göre değişir.
@@ -722,6 +735,9 @@ export function CourierTrackingScreen({ accent, pageBg = '#F5F1EB', routePrefix 
                   </View>
                 </View>
 
+                {/* Zaman çizelgesi (katlanabilir) */}
+                <DeliveryTimeline delivery={selected} etaSec={eta?.durationSec} accent={accent} />
+
                 {/* Tahmini varış — OSRM rota süresinden hesaplanır (BanaBiKurye ETA
                     vermiyor). Kurye canlı değilse süre güzergâhın kendisine aittir. */}
                 {eta?.durationSec != null && selected.status !== 'teslim_edildi' && selected.status !== 'iptal' && (
@@ -836,6 +852,167 @@ function InfoCol({ label, value, flex }: { label: string; value: string; flex?: 
     <View style={{ flex: flex ?? 1, gap: 2, minWidth: 0 }}>
       <Text style={{ fontSize: 9, fontWeight: '700', color: INK_300, letterSpacing: 0.6, textTransform: 'uppercase' }}>{label}</Text>
       <Text style={{ fontSize: 12, color: INK_900, fontWeight: '500' }} numberOfLines={2}>{value}</Text>
+    </View>
+  );
+}
+
+// ─── Teslimat Zaman Çizelgesi (katlanabilir) ──────────────────────────
+//
+// NEDEN: kurye kartı yalnız "şu an neredeyiz"i gösteriyordu; "ne zaman ne oldu"
+// bilgisi tarih alanlarına dağılmıştı (assigned_at / picked_up_at / delivered_at
+// ayrı ayrı kutulardaydı). Tek bir dikey çizelgede toplandı.
+//
+// KAPALI GELİR: kart zaten yoğun; kapalıyken tek satır özet (son gerçekleşen
+// adım + saati) verir, açılınca tüm adımlar görünür.
+//
+// UYDURULMUŞ SAAT YOK: yalnız kayıtta var olan zaman damgaları yazılır. Süresi
+// olmayan adım (ör. "Yolda") saat göstermez; tahmini teslim, ETA varsa ve iş
+// henüz teslim edilmediyse "~" ile işaretlenir.
+type TimelineStep = {
+  key: string;
+  label: string;
+  time: string | null;
+  state: 'done' | 'active' | 'pending';
+  estimate?: boolean;
+};
+
+function buildTimeline(
+  d: DeliveryRow,
+  etaSec: number | null | undefined,
+): TimelineStep[] {
+  const incoming = d.direction === 'clinic_to_lab';
+  const cancelled = d.status === 'iptal';
+  const delivered = d.status === 'teslim_edildi';
+  const enRoute   = d.status === 'yolda';
+  const picked    = !!d.picked_up_at || enRoute || delivered;
+
+  const steps: TimelineStep[] = [
+    {
+      key: 'assigned',
+      label: 'Kurye atandı',
+      time: fmtTime(d.assigned_at),
+      state: d.assigned_at ? 'done' : (d.status === 'beklemede' ? 'active' : 'pending'),
+    },
+    {
+      key: 'picked',
+      label: incoming ? 'Klinikten alındı' : 'Laboratuvardan çıktı',
+      time: fmtTime(d.picked_up_at),
+      state: picked ? 'done' : (d.status === 'atandi' ? 'active' : 'pending'),
+    },
+    {
+      key: 'enroute',
+      // Yolda'nın kendi zaman damgası yok — teslim alma saatinden sonrası.
+      label: 'Yolda',
+      time: null,
+      state: delivered ? 'done' : (enRoute ? 'active' : 'pending'),
+    },
+  ];
+
+  if (delivered) {
+    steps.push({
+      key: 'delivered',
+      label: incoming ? 'Laboratuvara teslim edildi' : 'Teslim edildi',
+      time: fmtTime(d.delivered_at),
+      state: 'done',
+    });
+  } else if (!cancelled) {
+    // ETA yalnız kurye canlıyken/rota bilinirken gelir; yoksa saatsiz beklemede kalır.
+    const etaTime = etaSec != null ? fmtTime(new Date(Date.now() + etaSec * 1000).toISOString()) : null;
+    steps.push({
+      key: 'eta',
+      label: 'Tahmini teslim',
+      time: etaTime,
+      state: 'pending',
+      estimate: true,
+    });
+  }
+
+  if (cancelled) steps.push({ key: 'cancelled', label: 'İptal edildi', time: null, state: 'done' });
+  return steps;
+}
+
+function DeliveryTimeline({ delivery, etaSec, accent, flush = false }: {
+  delivery: DeliveryRow; etaSec?: number | null; accent: string;
+  /** true → masaüstü cam kutusunun içinde: kendi kenarlığı/zemini olmasın. */
+  flush?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const steps = buildTimeline(delivery, etaSec);
+  // Özet: son gerçekleşen ya da şu an aktif olan adım.
+  const current = [...steps].reverse().find(st => st.state === 'active')
+    ?? [...steps].reverse().find(st => st.state === 'done')
+    ?? steps[0];
+
+  return (
+    <View style={flush
+      ? { overflow: 'hidden' }
+      : { borderRadius: 16, backgroundColor: '#FAFAF7', borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)', overflow: 'hidden' }}>
+      <Pressable
+        onPress={() => setOpen(v => !v)}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        style={({ pressed }: any) => ({
+          flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14,
+          opacity: pressed ? 0.75 : 1,
+          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : null),
+        })}
+      >
+        <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: `${accent}1F`, alignItems: 'center', justifyContent: 'center' }}>
+          <Clock size={15} color={accent} strokeWidth={2} />
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={{ fontSize: 10, fontWeight: '700', color: INK_500, letterSpacing: 0.4, textTransform: 'uppercase' }}>Zaman Çizelgesi</Text>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: INK_900 }} numberOfLines={1}>
+            {current?.label ?? '—'}
+            {current?.time ? <Text style={{ fontWeight: '600', color: INK_500 }}>{`  ·  ${current.time}`}</Text> : null}
+          </Text>
+        </View>
+        <View style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }}>
+          <ChevronDown size={16} color={INK_500} strokeWidth={2} />
+        </View>
+      </Pressable>
+
+      {open && (
+        <View style={{ paddingHorizontal: 14, paddingBottom: 14, gap: 0 }}>
+          {steps.map((st, i) => {
+            const last = i === steps.length - 1;
+            const dotColor = st.state === 'done' ? accent : st.state === 'active' ? accent : 'transparent';
+            return (
+              <View key={st.key} style={{ flexDirection: 'row', gap: 10 }}>
+                {/* Ray: nokta + alta inen çizgi */}
+                <View style={{ width: 16, alignItems: 'center' }}>
+                  <View style={{
+                    width: 14, height: 14, borderRadius: 7,
+                    alignItems: 'center', justifyContent: 'center',
+                    backgroundColor: dotColor,
+                    borderWidth: st.state === 'pending' ? 1.5 : 0,
+                    borderColor: 'rgba(15,23,42,0.20)',
+                    ...(st.state === 'active' && Platform.OS === 'web'
+                      ? { boxShadow: `0 0 0 4px ${accent}26` } as any : null),
+                  }}>
+                    {st.state === 'done' && <Check size={9} color="#FFFFFF" strokeWidth={3} />}
+                  </View>
+                  {!last && (
+                    <View style={{ width: 1.5, flex: 1, minHeight: 18, backgroundColor: st.state === 'done' ? `${accent}55` : 'rgba(15,23,42,0.10)' }} />
+                  )}
+                </View>
+                <View style={{ flex: 1, minWidth: 0, paddingBottom: last ? 0 : 12 }}>
+                  <Text style={{
+                    fontSize: 12.5,
+                    fontWeight: st.state === 'pending' ? '500' : '700',
+                    color: st.state === 'pending' ? INK_500 : INK_900,
+                  }} numberOfLines={1}>{st.label}</Text>
+                  {st.time ? (
+                    <Text style={{ fontSize: 11, color: INK_500, marginTop: 1 }}>
+                      {st.estimate ? '~' : ''}{st.time}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      )}
     </View>
   );
 }

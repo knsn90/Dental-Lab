@@ -26,15 +26,29 @@ export interface OrderMessage {
   approval_status?: ApprovalStatus;
   approved_by?: string | null;
   approved_at?: string | null;
+  /** Mesaj bir dış kanaldan geldiyse ('whatsapp') — UI rozeti için */
+  external_source?: string | null;
+  /** Dış kanaldaki gönderenin görünen adı/telefonu (profile eşleşmediğinde) */
+  external_sender?: string | null;
   sender?: { id: string; full_name: string; user_type: string };
 }
 
-export async function fetchMessages(workOrderId: string) {
-  return supabase
+/** archiveOrderIds: revizyon siparişinde ORİJİNALİN mesaj geçmişi de gelsin diye.
+ *  Kopyalama yok — kayıtlar yerinde kalır, sadece birlikte okunur. Sıralama
+ *  created_at olduğu için eski (orijinal) mesajlar doğal olarak üstte çıkar. */
+export async function fetchMessages(workOrderId: string, archiveOrderIds?: string[]) {
+  const ids = [workOrderId, ...(archiveOrderIds ?? [])].filter(Boolean);
+  const q = supabase
     .from('order_messages')
-    .select('*, sender:profiles!order_messages_sender_id_fkey(id, full_name, user_type, avatar_url, clinic_name)')
-    .eq('work_order_id', workOrderId)
+    .select('*, sender:profiles!order_messages_sender_id_fkey(id, full_name, user_type, avatar_url, clinic_name)');
+  const res = await (ids.length > 1 ? q.in('work_order_id', ids) : q.eq('work_order_id', workOrderId))
     .order('created_at', { ascending: true });
+
+  // `chat-attachments` is a PRIVATE bucket (P0-3 / R-02). Rows store the object
+  // PATH; render sites consume `attachment_url` synchronously (<Image>, AudioPlayer),
+  // so we hydrate signed URLs here — one place — rather than touching every UI.
+  if (res.data?.length) await hydrateAttachmentUrls(res.data as OrderMessage[]);
+  return res;
 }
 
 // ── Message approval ─────────────────────────────────────────────────
@@ -81,6 +95,8 @@ export interface OrderChatInboxItem {
   is_urgent:     boolean;
   doctor_name:   string | null;
   clinic_name:   string | null;
+  /** Kliniğin logosu (clinics.logo_url) — lab/admin panelinde avatar olarak kullanılır */
+  clinic_logo:   string | null;
   // ── Sticky pin info (chat detail başlığı altında gösterilir) ──────
   tooth_numbers: number[] | null;
   shade:         string | null;
@@ -174,18 +190,23 @@ export async function fetchOrderChatInbox(
   const doctorIds = Array.from(new Set((orders ?? []).map(o => o.doctor_id))).filter(Boolean);
   const doctorName = new Map<string, string>();
   const clinicName = new Map<string, string>();
+  // hekim → klinik id (logo tek sorguda toplanır; iki hekim kaynağı da aynı
+  // clinics tablosuna bakar: profiles.clinic_id ve doctors.clinic_id)
+  const doctorClinicId = new Map<string, string>();
+  const clinicLogo = new Map<string, string>();
 
   if (doctorIds.length > 0) {
     // 3a) profiles üzerinden (kendi user account'u olan hekimler)
     const { data: profDocs } = await supabase
       .from('profiles')
-      .select('id, full_name, clinic_name')
+      .select('id, full_name, clinic_name, clinic_id')
       .in('id', doctorIds);
     const matchedProfileIds = new Set<string>();
     (profDocs ?? []).forEach((p: any) => {
       matchedProfileIds.add(p.id);
       if (p.full_name)   doctorName.set(p.id, p.full_name);
       if (p.clinic_name) clinicName.set(p.id, p.clinic_name);
+      if (p.clinic_id)   doctorClinicId.set(p.id, p.clinic_id);
     });
 
     // 3b) Profile'da bulunmayan id'ler için doctors tablosu (klinik içi hekim)
@@ -193,11 +214,25 @@ export async function fetchOrderChatInbox(
     if (remaining.length > 0) {
       const { data: tableDocs } = await supabase
         .from('doctors')
-        .select('id, full_name, clinic:clinics(name)')
+        .select('id, full_name, clinic_id, clinic:clinics(name)')
         .in('id', remaining);
       (tableDocs ?? []).forEach((d: any) => {
         if (d.full_name)    doctorName.set(d.id, d.full_name);
         if (d.clinic?.name) clinicName.set(d.id, d.clinic.name);
+        if (d.clinic_id)    doctorClinicId.set(d.id, d.clinic_id);
+      });
+    }
+
+    // 3c) Klinik logoları — tek sorgu. RLS logoyu gizlerse map boş kalır ve
+    //     kart baş-harf avatarına düşer (hata değil).
+    const clinicIds = Array.from(new Set(doctorClinicId.values()));
+    if (clinicIds.length > 0) {
+      const { data: clinicRows } = await supabase
+        .from('clinics')
+        .select('id, logo_url')
+        .in('id', clinicIds);
+      (clinicRows ?? []).forEach((c: any) => {
+        if (c.logo_url) clinicLogo.set(c.id, c.logo_url);
       });
     }
   }
@@ -221,6 +256,7 @@ export async function fetchOrderChatInbox(
       is_urgent:     !!o.is_urgent,
       doctor_name:   doctorName.get(o.doctor_id) ?? null,
       clinic_name:   clinicName.get(o.doctor_id) ?? null,
+      clinic_logo:   clinicLogo.get(doctorClinicId.get(o.doctor_id) ?? '') ?? null,
       tooth_numbers: o.tooth_numbers ?? null,
       shade:         o.shade ?? null,
       machine_type:  o.machine_type ?? null,
@@ -273,12 +309,23 @@ export async function sendMessage(
 }
 
 /**
- * Yeni mesaj için push alıcılarını çözer ve push-only dispatch'i tetikler.
- * Alıcı kümesi (gönderen hariç):
- *   • thread'e daha önce mesaj yazmış herkes (distinct sender_id)
- *   • iş emrinin hekimi (doctor_id bir profiles app-kullanıcısı ise)
- *   • bağlı kliniğin kullanıcıları (clinic_id)
- *   • lab tarafı: atanan teknisyen (assigned_to) + lab admin/owner/manager rolleri
+ * Yeni mesaj için bildirim alıcılarını çözer ve dispatch'i tetikler.
+ *
+ * Alıcı listesi SUNUCUDA (`chat_message_recipients` RPC) çözülür. Eskiden burada
+ * `profiles` sorgulanıyordu ve üç ayrı nedenle sessizce boşalıyordu (ölçüldü
+ * 2026-08-05, 0 chat e-postası / 50 mesaj):
+ *
+ *   1. `select(... clinic_id ...)` — work_orders'da böyle bir kolon YOK.
+ *      PostgREST hata döndürüyor, `wo` null oluyor, fonksiyon ilk satırda
+ *      `return` ediyordu. Yani bildirim HİÇ tetiklenmiyordu. Asıl kök neden bu.
+ *   2. Lab yöneticileri yalnız `role` üzerinden aranıyordu; admin kullanıcıların
+ *      role'ü NULL (admin'lik `user_type`'ta). Chat e-postası açık olan tek iki
+ *      kişi tam da bunlardı.
+ *   3. `work_orders.doctor_id` doctors(id)'e bakar, profiles'a değil (34/34 vs
+ *      0/34) — `profiles.id = doctor_id` araması hekimi hiç bulmuyordu.
+ *
+ * Ayrıca istemci sorgusu RLS'e tabiydi: klinik kullanıcısı lab personelini
+ * göremez. Sunucu tarafı SECURITY DEFINER olduğu için bu sorun da kalkıyor.
  */
 async function notifyChatRecipients(
   workOrderId: string,
@@ -286,58 +333,36 @@ async function notifyChatRecipients(
   content: string,
   attachment?: ChatAttachment,
 ): Promise<void> {
-  // İş emri temel alanları
+  const { data: recipientRows, error: rpcErr } = await supabase
+    .rpc('chat_message_recipients', {
+      p_work_order_id: workOrderId,
+      p_sender_id:     senderId,
+    });
+  if (rpcErr) {
+    if (typeof console !== 'undefined') console.debug('[chat-notify] recipients rpc failed:', rpcErr);
+    return;
+  }
+
+  // RPC `setof uuid` döndürür → PostgREST düz uuid dizisi olarak verir.
+  const userIds = (recipientRows as unknown as (string | { chat_message_recipients?: string })[] ?? [])
+    .map(r => (typeof r === 'string' ? r : r?.chat_message_recipients))
+    .filter((id): id is string => !!id);
+  if (userIds.length === 0) return;
+
+  // Başlıktaki sipariş numarası için tek hafif okuma (alıcı çözümüne dahil değil).
   const { data: wo } = await supabase
     .from('work_orders')
-    .select('id, order_number, lab_id, clinic_id, doctor_id, assigned_to')
+    .select('order_number')
     .eq('id', workOrderId)
     .maybeSingle();
-  if (!wo) return;
 
-  const targets = new Set<string>();
-
-  // 1) Thread'e daha önce katılanlar
-  const { data: priorMsgs } = await supabase
-    .from('order_messages')
-    .select('sender_id')
-    .eq('work_order_id', workOrderId);
-  for (const m of (priorMsgs ?? []) as any[]) if (m?.sender_id) targets.add(m.sender_id);
-
-  // 2) Hekim — doctor_id bir profiles (app kullanıcısı) ise
-  if ((wo as any).doctor_id) {
-    const { data: doc } = await supabase
-      .from('profiles').select('id').eq('id', (wo as any).doctor_id).maybeSingle();
-    if ((doc as any)?.id) targets.add((doc as any).id);
-  }
-
-  // 3) Klinik kullanıcıları
-  if ((wo as any).clinic_id) {
-    const { data: clinicUsers } = await supabase
-      .from('profiles').select('id').eq('clinic_id', (wo as any).clinic_id);
-    for (const r of (clinicUsers ?? []) as any[]) if (r?.id) targets.add(r.id);
-  }
-
-  // 4) Lab tarafı — atanan teknisyen + lab yöneticileri (tüm lab'a yaymadan)
-  if ((wo as any).assigned_to) targets.add((wo as any).assigned_to);
-  if ((wo as any).lab_id) {
-    const { data: labAdmins } = await supabase
-      .from('profiles').select('id')
-      .eq('lab_id', (wo as any).lab_id)
-      .in('role', ['admin', 'owner', 'manager']);
-    for (const r of (labAdmins ?? []) as any[]) if (r?.id) targets.add(r.id);
-  }
-
-  // Gönderen kendine push almaz
-  targets.delete(senderId);
-  if (targets.size === 0) return;
-
-  const orderNum = (wo as any).order_number ? ` · ${(wo as any).order_number}` : '';
+  const orderNum = (wo as any)?.order_number ? ` · ${(wo as any).order_number}` : '';
   const preview = content?.trim()
     ? content.trim().slice(0, 120)
     : (attachment ? 'Ek dosya gönderildi' : 'Yeni mesaj');
 
   await dispatchChatPush({
-    userIds:   Array.from(targets),
+    userIds,
     title:     `Yeni mesaj${orderNum}`,
     body:      preview,
     actionUrl: `/order/${workOrderId}`,
@@ -378,12 +403,9 @@ export async function deleteMessage(messageId: string) {
   // Storage'daki eki best-effort sil (satır silindiyse)
   if (!res.error && attachmentUrl) {
     try {
-      const marker = `/${BUCKET}/`;
-      const idx = attachmentUrl.indexOf(marker);
-      if (idx >= 0) {
-        const path = decodeURIComponent(attachmentUrl.slice(idx + marker.length));
-        await supabase.storage.from(BUCKET).remove([path]);
-      }
+      // Handles both shapes: legacy absolute public URL and current bare path.
+      const path = chatAttachmentPath(attachmentUrl);
+      if (path) await supabase.storage.from(BUCKET).remove([path]);
     } catch { /* sessiz — orphan ek kritik değil */ }
   }
 
@@ -394,11 +416,69 @@ const BUCKET = 'chat-attachments';
 
 const MAX_FILE_BYTES = 100 * 1024 * 1024; // 100 MB
 
+/** Signed-URL lifetime for chat attachments. Long enough for a reading session,
+ *  short enough that a leaked URL expires. */
+const SIGNED_URL_TTL_SEC = 60 * 60;
+
+/**
+ * Recovers the storage object path from whatever is stored in
+ * `order_messages.attachment_url`.
+ *
+ * Two shapes exist in the wild:
+ *   • legacy — an absolute public URL, written while the bucket was public
+ *   • current — a bare object path, `{work_order_id}/{ts}_{name}`
+ *
+ * Returning null means "not ours to sign" (e.g. an external link).
+ */
+export function chatAttachmentPath(stored: string | null | undefined): string | null {
+  if (!stored) return null;
+  if (!/^https?:\/\//i.test(stored)) return stored; // already a path
+  const marker = `/${BUCKET}/`;
+  const idx = stored.indexOf(marker);
+  if (idx < 0) return null;
+  // Public URLs may carry a query string (cache-buster); strip it before decoding.
+  return decodeURIComponent(stored.slice(idx + marker.length).split('?')[0]);
+}
+
+/**
+ * Replaces `attachment_url` on each message with a freshly signed URL.
+ * Batched into a single createSignedUrls call. Mutates in place so callers keep
+ * their existing object references.
+ */
+export async function hydrateAttachmentUrls(messages: OrderMessage[]): Promise<void> {
+  const targets = messages
+    .map((m) => ({ msg: m, path: chatAttachmentPath(m.attachment_url) }))
+    .filter((t): t is { msg: OrderMessage; path: string } => !!t.path);
+
+  if (!targets.length) return;
+
+  // De-duplicate: the same object can appear in more than one row.
+  const uniquePaths = Array.from(new Set(targets.map((t) => t.path)));
+
+  const { data, error } = await supabase.storage
+    .from(BUCKET)
+    .createSignedUrls(uniquePaths, SIGNED_URL_TTL_SEC);
+
+  if (error || !data) return; // leave the stored value; the UI degrades to "unopenable"
+
+  const signed = new Map<string, string>();
+  data.forEach((d, i) => {
+    // createSignedUrls preserves input order; `path` is echoed back but can be null on error.
+    const key = (d as any).path ?? uniquePaths[i];
+    if (d.signedUrl) signed.set(key, d.signedUrl);
+  });
+
+  for (const t of targets) {
+    const url = signed.get(t.path);
+    if (url) t.msg.attachment_url = url;
+  }
+}
+
 export async function uploadChatAttachment(
   file: File | Blob,
   workOrderId: string,
   fileName: string
-): Promise<{ url: string | null; error: string | null }> {
+): Promise<{ url: string | null; previewUrl?: string | null; error: string | null }> {
   if (file.size > MAX_FILE_BYTES) {
     return { url: null, error: 'Dosya boyutu 100 MB\'ı aşamaz.' };
   }
@@ -416,6 +496,13 @@ export async function uploadChatAttachment(
 
   if (uploadError) return { url: null, error: uploadError.message };
 
-  const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
-  return { url: data.publicUrl, error: null };
+  // The bucket is private (P0-3 / R-02): persist the PATH, not a URL.
+  // fetchMessages() mints a signed URL at read time via hydrateAttachmentUrls().
+  // Returning a signed URL here as well lets the sender preview immediately,
+  // without the caller needing to know which shape it received.
+  const { data: signed } = await supabase.storage
+    .from(BUCKET)
+    .createSignedUrl(path, SIGNED_URL_TTL_SEC);
+
+  return { url: path, previewUrl: signed?.signedUrl ?? null, error: null };
 }

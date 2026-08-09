@@ -6,6 +6,7 @@
  *   • Renders <Slot /> for child route content.
  */
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { safeBack } from '../util/safeBack';
 import { View, Text, ScrollView, Pressable, TextInput, Platform, useWindowDimensions, Animated, Easing, Image } from 'react-native';
 import { Slot, usePathname, useRouter } from 'expo-router';
 
@@ -114,6 +115,13 @@ interface Props {
   brandSubtitle?: string;
   newOrderHref?: string;
   onSearchSubmit?: (query: string) => void;
+  /**
+   * İlk-giriş coach-mark turu hedefleri (opsiyonel — yalnız hekim/klinik geçer, diğer
+   * paneller undefined → no-op). Masaüstü sidebar öğelerine spotlight ref'i bağlar.
+   */
+  tourRefs?: { newOrder?: (n: any) => void; orders?: (n: any) => void; messages?: (n: any) => void };
+  /** Sidebar'da hangi nav item'ının "Siparişler" hedefi olduğunu belirler (href eşleşmesi). */
+  tourOrdersHref?: string;
 }
 
 // Lucide icon resolver — tüm DesktopShell iconName'leri kapsar
@@ -188,6 +196,8 @@ export function PatternsShell({
   brandSubtitle,
   newOrderHref,
   onSearchSubmit,
+  tourRefs,
+  tourOrdersHref,
 }: Props) {
   const pathname = usePathname();
   const router = useRouter();
@@ -400,6 +410,8 @@ export function PatternsShell({
             newOrderHref={newOrderHref}
             router={router}
             brand={{ ...brand, mode: brandMode, scale: brandScale }}
+            tourRefs={tourRefs}
+            tourOrdersHref={tourOrdersHref}
           />
         ) : (
           <ExpandedSidebar
@@ -415,6 +427,8 @@ export function PatternsShell({
             hideSidebarMessages={hideSidebarMessages}
             newOrderHref={newOrderHref}
             router={router}
+            tourRefs={tourRefs}
+            tourOrdersHref={tourOrdersHref}
           />
         )}
         {/* ── Collapse toggle — sidebar'ın içinde sağ-alt köşede ── */}
@@ -508,7 +522,7 @@ export function PatternsShell({
                       if (!isLast) {
                         return (
                           <React.Fragment key={idx}>
-                            <Pressable onPress={() => router.back()}>
+                            <Pressable onPress={() => safeBack('/')}>
                               <Text className="text-[13px] text-ink-400" style={{ textDecorationLine: 'underline' }}>{trimmed}</Text>
                             </Pressable>
                             <Text className="text-[11px] text-ink-300">›</Text>
@@ -586,6 +600,7 @@ export function PatternsShell({
           {/* Messages */}
           {onPressMessages && (
             <Pressable
+              ref={tourRefs?.messages}
               onPress={onPressMessages}
               className="w-8 h-8 rounded-full items-center justify-center hover:bg-black/5 relative"
             >
@@ -819,6 +834,39 @@ function AnimatedNewOrderCTA({ onPress, accentColor, expanded }: {
 }
 
 // ─── Expanded sidebar — tek satır (opsiyonel açılır alt menü) ─────────
+// Sidebar satırını web'de gerçek bir <a href> ile sarar → sağ-tık "yeni sekmede aç",
+// Cmd/Ctrl/orta-tık yeni sekme; normal sol-tık ise SPA gezinmesine (Pressable onPress)
+// bırakılır. `display: contents` sayesinde layout hiç değişmez. Native'de no-op.
+function NavAnchor({ href, children }: { href?: string; children: React.ReactNode }) {
+  if (Platform.OS !== 'web' || !href) return <>{children}</>;
+  // expo-router grup öneki tarayıcı URL'inde görünmez: '/(lab)/orders' → '/orders'
+  const webHref = href.replace(/^\/\([^)]+\)/, '') || '/';
+  return React.createElement(
+    'a',
+    {
+      href: webHref,
+      style: { display: 'contents', color: 'inherit', textDecoration: 'none' },
+      // CAPTURE fazı — bubble DEĞİL. Kritik fark:
+      // İçerideki React Native Web Pressable/TouchableOpacity tıklamayı işlerken
+      // propagation'ı durdurabiliyor; o durumda bubble'daki onClick HİÇ çalışmıyor,
+      // preventDefault yapılmıyor ve tarayıcı gerçek <a> gezinmesini yapıyordu.
+      // Sonuç (ölçülen): onPress ile sayfa SPA olarak açılıyor (~1,4 sn), hemen
+      // ardından tarayıcı tam sayfa gezinme yapıp belgeyi baştan kuruyor →
+      // lf-splash geri geliyor + 7 MB paket yeniden parse ediliyor = 10-18 sn donma.
+      // navigation.type "reload" değil "navigate" olduğu için reload aramaları
+      // yanlış yöne gidiyordu.
+      // Capture fazında preventDefault, çocuk stopPropagation yapsa bile çalışır.
+      onClickCapture: (e: any) => {
+        // Yeni sekme/pencere isteği → tarayıcıya bırak (preventDefault YOK)
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button === 1) return;
+        // Normal tık → tam sayfa gezinmeyi engelle, SPA nav (onPress) çalışsın
+        e.preventDefault();
+      },
+    },
+    children as any,
+  );
+}
+
 function ExpandedNavRow({ item, isActive, accentColor, activeRowBg, router }: any) {
   const rtl = isRTL();
   const hasChildren = Array.isArray(item.children) && item.children.length > 0;
@@ -829,20 +877,22 @@ function ExpandedNavRow({ item, isActive, accentColor, activeRowBg, router }: an
   if (!hasChildren) {
     const active = isActive(item);
     return (
-      <Pressable
-        onPress={() => item.onPress ? item.onPress() : router.push(item.href)}
-        className="px-3 py-2.5 rounded-[10px] flex-row items-center gap-2.5 relative"
-        style={active ? { backgroundColor: activeRowBg } : undefined}
-      >
-        {active && <View className="absolute rounded" style={{ ...(rtl ? { right: 0 } : { left: 0 }), top: 8, bottom: 8, width: 2.5, backgroundColor: accentColor }} />}
-        <IconCmp size={15} color={active ? '#0A0A0A' : '#2C2C2C'} strokeWidth={1.8} />
-        <Text className={`flex-1 text-[13px] ${active ? 'font-medium text-ink-900' : 'text-ink-700'}`}>{item.label}</Text>
-        {item.badgeCount != null && item.badgeCount > 0 && (
-          <View className="px-1.5 py-px rounded-full" style={{ backgroundColor: item.badgeColor ?? (active ? '#0A0A0A' : 'rgba(0,0,0,0.06)') }}>
-            <Text className="text-[10px] font-semibold" style={{ color: item.badgeColor ? '#FFFFFF' : (active ? accentColor : '#6B6B6B') }}>{item.badgeCount}</Text>
-          </View>
-        )}
-      </Pressable>
+      <NavAnchor href={item.onPress ? undefined : item.href}>
+        <Pressable
+          onPress={() => item.onPress ? item.onPress() : router.push(item.href)}
+          className="px-3 py-2.5 rounded-[10px] flex-row items-center gap-2.5 relative"
+          style={active ? { backgroundColor: activeRowBg } : undefined}
+        >
+          {active && <View className="absolute rounded" style={{ ...(rtl ? { right: 0 } : { left: 0 }), top: 8, bottom: 8, width: 2.5, backgroundColor: accentColor }} />}
+          <IconCmp size={15} color={active ? '#0A0A0A' : '#2C2C2C'} strokeWidth={1.8} />
+          <Text className={`flex-1 text-[13px] ${active ? 'font-medium text-ink-900' : 'text-ink-700'}`}>{item.label}</Text>
+          {item.badgeCount != null && item.badgeCount > 0 && (
+            <View className="px-1.5 py-px rounded-full" style={{ backgroundColor: item.badgeColor ?? (active ? '#0A0A0A' : 'rgba(0,0,0,0.06)') }}>
+              <Text className="text-[10px] font-semibold" style={{ color: item.badgeColor ? '#FFFFFF' : (active ? accentColor : '#6B6B6B') }}>{item.badgeCount}</Text>
+            </View>
+          )}
+        </Pressable>
+      </NavAnchor>
     );
   }
 
@@ -865,21 +915,22 @@ function ExpandedNavRow({ item, isActive, accentColor, activeRowBg, router }: an
         const a = isActive(c);
         const CIcon = resolveIcon(c.iconName);
         return (
-          <Pressable
-            key={j}
-            onPress={() => c.onPress ? c.onPress() : router.push(c.href)}
-            className="py-2 rounded-[10px] flex-row items-center gap-2.5 relative"
-            style={[(rtl ? { paddingRight: 34, paddingLeft: 12 } : { paddingLeft: 34, paddingRight: 12 }), a ? { backgroundColor: activeRowBg } : undefined]}
-          >
-            {a && <View className="absolute rounded" style={{ ...(rtl ? { right: 14 } : { left: 14 }), top: 7, bottom: 7, width: 2.5, backgroundColor: accentColor }} />}
-            <CIcon size={14} color={a ? '#0A0A0A' : '#6B6B6B'} strokeWidth={1.8} />
-            <Text className={`flex-1 text-[12.5px] ${a ? 'font-medium text-ink-900' : 'text-ink-500'}`}>{c.label}</Text>
-            {c.badgeCount != null && c.badgeCount > 0 && (
-              <View className="px-1.5 py-px rounded-full" style={{ backgroundColor: a ? '#0A0A0A' : 'rgba(0,0,0,0.06)' }}>
-                <Text className="text-[10px] font-semibold" style={{ color: a ? accentColor : '#6B6B6B' }}>{c.badgeCount}</Text>
-              </View>
-            )}
-          </Pressable>
+          <NavAnchor key={j} href={c.onPress ? undefined : c.href}>
+            <Pressable
+              onPress={() => c.onPress ? c.onPress() : router.push(c.href)}
+              className="py-2 rounded-[10px] flex-row items-center gap-2.5 relative"
+              style={[(rtl ? { paddingRight: 34, paddingLeft: 12 } : { paddingLeft: 34, paddingRight: 12 }), a ? { backgroundColor: activeRowBg } : undefined]}
+            >
+              {a && <View className="absolute rounded" style={{ ...(rtl ? { right: 14 } : { left: 14 }), top: 7, bottom: 7, width: 2.5, backgroundColor: accentColor }} />}
+              <CIcon size={14} color={a ? '#0A0A0A' : '#6B6B6B'} strokeWidth={1.8} />
+              <Text className={`flex-1 text-[12.5px] ${a ? 'font-medium text-ink-900' : 'text-ink-500'}`}>{c.label}</Text>
+              {c.badgeCount != null && c.badgeCount > 0 && (
+                <View className="px-1.5 py-px rounded-full" style={{ backgroundColor: a ? '#0A0A0A' : 'rgba(0,0,0,0.06)' }}>
+                  <Text className="text-[10px] font-semibold" style={{ color: a ? accentColor : '#6B6B6B' }}>{c.badgeCount}</Text>
+                </View>
+              )}
+            </Pressable>
+          </NavAnchor>
         );
       })}
     </View>
@@ -890,6 +941,7 @@ function ExpandedNavRow({ item, isActive, accentColor, activeRowBg, router }: an
 function ExpandedSidebar({
   navItems, isActive, accentColor, brand, panelType, palette,
   onCollapse, onPressMessages, messagesUnreadCount, hideSidebarMessages, newOrderHref, router,
+  tourRefs, tourOrdersHref,
 }: any) {
   const rtl = isRTL();
   // Panel-aware sidebar tonları
@@ -938,11 +990,13 @@ function ExpandedSidebar({
 
       {/* New order CTA — animated */}
       {newOrderHref ? (
-        <AnimatedNewOrderCTA
-          onPress={() => router.push(newOrderHref)}
-          accentColor={accentColor}
-          expanded
-        />
+        <View ref={tourRefs?.newOrder}>
+          <AnimatedNewOrderCTA
+            onPress={() => router.push(newOrderHref)}
+            accentColor={accentColor}
+            expanded
+          />
+        </View>
       ) : null}
 
       {/* Section label */}
@@ -953,14 +1007,15 @@ function ExpandedSidebar({
       {/* Nav items */}
       <ScrollView className="flex-1" contentContainerStyle={{ gap: 2 }} showsVerticalScrollIndicator={false}>
         {navItems.map((item: PatternsNavItem, i: number) => (
-          <ExpandedNavRow
-            key={i}
-            item={item}
-            isActive={isActive}
-            accentColor={accentColor}
-            activeRowBg={activeRowBg}
-            router={router}
-          />
+          <View key={i} ref={tourOrdersHref && item.href === tourOrdersHref ? tourRefs?.orders : undefined}>
+            <ExpandedNavRow
+              item={item}
+              isActive={isActive}
+              accentColor={accentColor}
+              activeRowBg={activeRowBg}
+              router={router}
+            />
+          </View>
         ))}
 
         {onPressMessages && !hideSidebarMessages && (
@@ -1000,6 +1055,7 @@ function ExpandedSidebar({
 function CollapsedSidebar({
   navItems, isActive, accentColor, brand, panelType, palette,
   onExpand, onPressMessages, messagesUnreadCount, hideSidebarMessages, newOrderHref, router,
+  tourRefs, tourOrdersHref,
 }: any) {
   const logoSquareBg = panelType === 'station' ? '#0F2840' : '#0A0A0A';
   const activeRowBg  = palette?.panelBg ?? '#FBFAF6';
@@ -1026,11 +1082,13 @@ function CollapsedSidebar({
       </View>
 
       {newOrderHref && (
-        <AnimatedNewOrderCTA
-          onPress={() => router.push(newOrderHref)}
-          accentColor={accentColor}
-          expanded={false}
-        />
+        <View ref={tourRefs?.newOrder}>
+          <AnimatedNewOrderCTA
+            onPress={() => router.push(newOrderHref)}
+            accentColor={accentColor}
+            expanded={false}
+          />
+        </View>
       )}
       <View className="w-7 h-px bg-black/[0.08] mb-3" />
 
@@ -1039,28 +1097,30 @@ function CollapsedSidebar({
           const active = isActive(item);
           const IconCmp = resolveIcon(item.iconName);
           return (
-            <Pressable
-              key={i}
-              onPress={() => item.onPress ? item.onPress() : router.push(item.href)}
-              className="w-10 h-10 rounded-[10px] items-center justify-center relative"
-              style={active ? { backgroundColor: activeRowBg } : undefined}
-            >
-              {active && (
-                <View
-                  className="absolute left-0 rounded"
-                  style={{ top: 8, bottom: 8, width: 2.5, backgroundColor: accentColor }}
-                />
-              )}
-              <IconCmp size={16} color={active ? '#0A0A0A' : '#2C2C2C'} strokeWidth={1.8} />
-              {item.badgeCount != null && item.badgeCount > 0 && (
-                <View
-                  className="absolute min-w-[16px] h-4 px-1 rounded-full border-2 border-white items-center justify-center"
-                  style={{ top: -2, right: -2, backgroundColor: '#9C2E2E' }}
-                >
-                  <Text className="text-[9px] font-semibold text-white">{item.badgeCount}</Text>
-                </View>
-              )}
-            </Pressable>
+            <NavAnchor key={i} href={item.onPress ? undefined : item.href}>
+              <Pressable
+                ref={tourOrdersHref && item.href === tourOrdersHref ? tourRefs?.orders : undefined}
+                onPress={() => item.onPress ? item.onPress() : router.push(item.href)}
+                className="w-10 h-10 rounded-[10px] items-center justify-center relative"
+                style={active ? { backgroundColor: activeRowBg } : undefined}
+              >
+                {active && (
+                  <View
+                    className="absolute left-0 rounded"
+                    style={{ top: 8, bottom: 8, width: 2.5, backgroundColor: accentColor }}
+                  />
+                )}
+                <IconCmp size={16} color={active ? '#0A0A0A' : '#2C2C2C'} strokeWidth={1.8} />
+                {item.badgeCount != null && item.badgeCount > 0 && (
+                  <View
+                    className="absolute min-w-[16px] h-4 px-1 rounded-full border-2 border-white items-center justify-center"
+                    style={{ top: -2, right: -2, backgroundColor: '#9C2E2E' }}
+                  >
+                    <Text className="text-[9px] font-semibold text-white">{item.badgeCount}</Text>
+                  </View>
+                )}
+              </Pressable>
+            </NavAnchor>
           );
         })}
         {onPressMessages && !hideSidebarMessages && (

@@ -7,23 +7,27 @@ const CommandPalette: any = React.lazy(() => import('../../core/ui/CommandPalett
 const CommandPaletteFAB: any = React.lazy(() => import('../../core/ui/CommandPalette').then(m => ({ default: (m as any).CommandPaletteFAB })));
 import { Modal, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { Slot, Tabs, useRouter, usePathname } from 'expo-router';
+import { FaceScanQuickAction, useFaceScanAvailable } from '../../modules/orders/components/FaceScanQuickAction';
+import { Slot, Tabs, useRouter, usePathname, Redirect } from 'expo-router';
 import {
   Home, ClipboardList, QrCode, MessageCircle, User, Plus, MoreHorizontal,
   Landmark as Landmark2, FileSpreadsheet as FileSpreadsheet2, Banknote as Banknote2,
   Package as Package2, Building2 as Building22, Truck as Truck2,
   CheckCircle2 as CheckCircle22, Users as Users2, Settings as Settings2,
-  TrendingUp as TrendingUp2, FileText as FileText2,
+  TrendingUp as TrendingUp2, FileText as FileText2,  ScanFace,
 } from 'lucide-react-native';
 
 import { TopActionBar } from '../../core/ui/mobile/TopActionBar';
+import { PaymentReminderPreview } from '../../core/finance/PaymentReminderPreview';
+import { bootMark } from '../../core/debug/bootTrace';
 import { PanelTopHeader } from '../../core/ui/mobile/PanelTopHeader';
 import { PatternsShell, useIsDesktop } from '../../core/layout/PatternsShell';
 import { PillTabBar, type PillTabItem } from '../../core/ui/mobile/PillTabBar';
-import { MOBILE_TOKENS as T } from '../../core/theme/mobileDesignTokens';
+import { MOBILE_TOKENS as T, MOBILE_PANEL_THEMES } from '../../core/theme/mobileDesignTokens';
 import { usePendingApprovals } from '../../core/hooks/usePendingApprovals';
 import { useStockAlert } from '../../core/hooks/useStockAlert';
 import { useAuthStore } from '../../core/store/authStore';
+import { supabase } from '../../core/api/supabase';
 import { useScanStore } from '../../core/store/scanStore';
 import { useNewOrderModalStore } from '../../core/store/newOrderModalStore';
 
@@ -47,7 +51,7 @@ export default function AdminLayout() {
   const router = useRouter();
   const pathname = usePathname();
   const hideTopActionBar =
-    /^\/(order|invoice|statement|delivery)\//.test(pathname);
+    /^\/(order|invoice|purchase-invoice|expense|statement|delivery)\//.test(pathname);
   const { profile, loading } = useAuthStore();
   const pendingCount      = usePendingApprovals();
   const stockAlert        = useStockAlert();
@@ -58,6 +62,9 @@ export default function AdminLayout() {
   const newOrderOpen    = useNewOrderModalStore(s => s.open);
   const setNewOrderOpen = useNewOrderModalStore(s => s.setOpen);
   const [messagesOpen, setMessagesOpen] = useState(false);
+  // Bekleyen manuel sipariş sayısı (WhatsApp/webhook → OCR). Lab panelindeki
+  // sayaçla birebir aynı sorgu; admin de aynı gelen kutusunu görür.
+  const [pendingPaperCount, setPendingPaperCount] = useState(0);
   const scanOpen    = useScanStore(s => s.open);
   const setScanOpen = useScanStore(s => s.setOpen);
   const [moreOpen,     setMoreOpen]     = useState(false);
@@ -66,6 +73,29 @@ export default function AdminLayout() {
   // Load saved color theme
   const { getTheme, loadTheme } = useColorThemeStore();
   const { fetchForPanel } = usePermissionStore();
+  useEffect(() => {
+    const labId = (profile as any)?.lab_id ?? profile?.id;
+    if (!labId) return;
+    let mounted = true;
+    const load = async () => {
+      const { count } = await supabase
+        .from('pending_paper_orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('lab_id', labId)
+        .eq('status', 'pending');
+      if (mounted) setPendingPaperCount(count ?? 0);
+    };
+    load();
+    const ch = supabase
+      .channel(`paper-inbox-admin-${labId}`)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'pending_paper_orders',
+        filter: `lab_id=eq.${labId}`,
+      }, () => load())
+      .subscribe();
+    return () => { mounted = false; supabase.removeChannel(ch); };
+  }, [profile?.id]);
+
   useEffect(() => {
     const theme = loadTheme('admin');
     applyColorThemeWeb(theme, ADMIN_DEFAULT_ACCENT);
@@ -79,8 +109,17 @@ export default function AdminLayout() {
 
   // Loading sırasında veya kullanıcı admin değilken hiçbir panel UI çizme
   // (önceki davranış: loading=true iken FabTabBar mount oluyordu → panel flicker)
-  if (!profile || profile.user_type !== 'admin') {
-    return <Slot />;
+  // Yüz tarama navbar butonu. HOOK'LAR erken return'lerin ÜSTÜNDE olmalı —
+  // aşağıda (!profile / isDesktop) dalları var; altta kalırsa render'lar arası
+  // hook sayısı değişiyor ve React "Rendered more hooks" hatası veriyor.
+  const faceScanOk = useFaceScanAvailable();
+  const [faceScanOpen, setFaceScanOpen] = React.useState(false);
+
+  if (!profile) {
+    return <Slot />;  // profil yükleniyor (optimistic) → kabuk
+  }
+  if (profile.user_type !== 'admin') {
+    return <Redirect href="/" />;  // yanlış panel → doğru panele yönlendir
   }
 
   // Sıra: Özet · Siparişler · Onaylar · Sağlık Kurumları · Ekip ·
@@ -108,7 +147,6 @@ export default function AdminLayout() {
       badgeCount: stockAlert,
       requiresPermission: 'view_stock' },
     { label: t('nav.items.production'),     href: '/(admin)/production',       iconName: 'activity',       matchPrefix: true, sectionLabel: t('nav.sections.production') },
-    { label: t('nav.items.workflows'),       href: '/(admin)/workflows',        iconName: 'list-todo',      matchPrefix: true },
 
     // ── Teslimat ───────────────────────────────────────────────────────────
     { label: t('nav.items.courier'),       href: '/(admin)/courier-tracking', iconName: 'scooter',        matchPrefix: true, sectionLabel: t('nav.sections.delivery') },
@@ -117,6 +155,8 @@ export default function AdminLayout() {
 
     // ── Destek / İletişim / Hesap ─────────────────────────────────────────
     { label: t('nav.items.support'),    href: '/(admin)/support',          iconName: 'help-circle',    matchPrefix: true, sectionLabel: t('nav.sections.help') },
+    { label: t('nav.items.waSupport'),  href: '/(admin)/wa-support',       iconName: 'whatsapp', matchPrefix: false,
+      requiresPermission: 'manage_settings' },
     { label: t('nav.items.messages'),          href: '/(admin)/messages',         iconName: 'messages-square', matchPrefix: false,
       onPress: () => setMessagesOpen(true),
       badgeCount: chatUnread > 0 ? chatUnread : undefined },
@@ -168,6 +208,8 @@ export default function AdminLayout() {
     { routeName: 'orders',    label: t('nav.items.cases'), icon: ClipboardList },
     { routeName: 'approvals', label: t('nav.items.approvals'), icon: CheckCircle22, badgeCount: pendingCount > 0 ? pendingCount : undefined },
     { routeName: 'messages',  label: t('nav.items.messages'),   icon: MessageCircle, onPress: () => setMessagesOpen(true), badgeCount: chatUnread },
+    // Yalnız TrueDepth'li iPhone'da görünür
+    ...(faceScanOk ? [{ routeName: 'face-scan', label: 'Yüz Tara', icon: ScanFace, onPress: () => setFaceScanOpen(true) }] : []),
     { routeName: 'more',      label: t('nav.items.more'),    icon: MoreHorizontal, onPress: () => setMoreOpen(true) },
   ];
   const FAB_ITEM: PillTabItem = {
@@ -193,7 +235,7 @@ export default function AdminLayout() {
       {/* NOT: navigator (<Tabs>) lazy kardeşlerle AYNI Suspense sınırında OLMAMALI —
           lazy chunk yüklenirken fallback={null} navigator'ı da söker ve expo-router
           durumunu kaybedip index'e sıfırlanır. Bkz. masaüstü dalındaki not. */}
-      <View style={{ flex: 1, backgroundColor: isDark ? T.dark : T.bg }}>
+      <View style={{ flex: 1, backgroundColor: isDark ? T.dark : MOBILE_PANEL_THEMES.exec.bgPage }}>
         {/* MobileHeader kaldırıldı — yeni AdminMobileDashboard kendi başlığını taşıyor */}
         <Tabs
           screenOptions={{
@@ -203,6 +245,7 @@ export default function AdminLayout() {
           }}
         >
         <Tabs.Screen name="index" options={{ title: t('nav.items.summary') }} />
+        <Tabs.Screen name="wa-support" options={{ href: null }} />
         <Tabs.Screen name="new-order" options={{ title: t('admin.tabs.newOrder') }} />
         <Tabs.Screen name="users" options={{ title: t('admin.tabs.users') }} />
         <Tabs.Screen name="clinics" options={{ title: t('nav.items.clinics') }} />
@@ -210,6 +253,11 @@ export default function AdminLayout() {
         <Tabs.Screen name="orders" options={{ title: t('nav.items.orders') }} />
         <Tabs.Screen name="courier-tracking" options={{ title: t('nav.items.courier') }} />
         <Tabs.Screen name="stock" options={{ title: t('admin.tabs.stock') }} />
+        <Tabs.Screen name="material-mapping" options={{ title: 'Malzeme Eşleştirme', href: null }} />
+        <Tabs.Screen name="consumption-profile" options={{ title: 'Tüketim Profili', href: null }} />
+        <Tabs.Screen name="inventory-verification" options={{ title: 'Envanter Doğrulama', href: null }} />
+        <Tabs.Screen name="consumption-audit" options={{ title: 'Tüketim Denetimi', href: null }} />
+        <Tabs.Screen name="fifo-reorder" options={{ title: 'FIFO & Sipariş', href: null }} />
         <Tabs.Screen name="production" options={{ title: t('nav.items.production') }} />
         <Tabs.Screen name="workflows" options={{ title: t('nav.items.workflows') }} />
         {/* suppliers route Settings hub içinden açılır — tabs'ta gizli */}
@@ -224,6 +272,7 @@ export default function AdminLayout() {
         <Tabs.Screen name="documents" options={{ title: t('admin.tabs.documents') }} />
         <Tabs.Screen name="ik-depo" options={{ title: t('nav.items.team') }} />
         <Tabs.Screen name="checkin-settings" options={{ title: t('admin.tabs.checkinSettings') }} />
+        <Tabs.Screen name="pending-paper" options={{ title: t('nav.items.paperOrders'), href: null }} />
         <Tabs.Screen name="approvals" options={{ title: t('nav.items.approvals') }} />
         <Tabs.Screen name="logs" options={{ title: t('admin.tabs.logs') }} />
         <Tabs.Screen name="profile" options={{ title: t('nav.items.profile') }} />
@@ -296,9 +345,24 @@ export default function AdminLayout() {
         />
       </React.Suspense>
 
+      {/* Yüz tarama — navbar butonundan tetiklenen headless sipariş seçici.
+          Buton PILL_TABS içinde; bu bileşen yalnız modalı render eder. */}
+      {faceScanOk && (
+        <FaceScanQuickAction
+          variant="headless"
+          accentColor={accentColor}
+          open={faceScanOpen}
+          onOpenChange={setFaceScanOpen}
+        />
+      )}
+
       {/* Sağ üst kalıcı aksiyon butonları (mobile only) — QR · Bell · Profile */}
       {!hideTopActionBar && <TopActionBar routePrefix="/(admin)" accentColor={accentColor} />}
       {!hideTopActionBar && <PanelTopHeader />}
+
+      {/* Ödeme hatırlatma popup'ı ÖNİZLEMESİ — yalnız geliştirmede.
+          Canlıda admin bu popup'ı görmez; o klinik/hekim panelinde çıkar. */}
+      {__DEV__ && <PaymentReminderPreview />}
 
       {/* Command Palette — mobile search FAB üzerinden de erişilebilir */}
       <React.Suspense fallback={null}>

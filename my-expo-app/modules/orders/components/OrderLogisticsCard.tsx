@@ -8,12 +8,12 @@
 
 import React from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
-import { Truck, ArrowLeft, ArrowRight } from 'lucide-react-native';
+import { Truck, ArrowLeft, ArrowRight, Plus, ChevronRight } from 'lucide-react-native';
 import { DELIVERY_PURPOSE_LABELS, type DeliveryPurpose } from '../api';
 import { StaticRouteMap, legRouteAddresses } from './StaticRouteMap';
 import { formatMoney } from '../../../core/money/currency';
 import { hexA } from '../../../core/theme/stationPalette';
-import { OriginFillButton, readableInk } from '../../../core/ui/OriginFillButton';
+
 
 /** Teslimat durumu rozetleri — kurye takip ekranıyla aynı dil. */
 export const DELIVERY_STATUS_CFG: Record<string, { label: string; bg: string; fg: string }> = {
@@ -105,6 +105,12 @@ export function OrderLogisticsCard({
 
   const body = (
     <>
+      {/* Başlık — sayaç + eylem sağda.
+          "Kurye çağır" eskiden kartın altında tam genişlikte bir çubuktu;
+          hemen üstündeki "Mesaj gönder" ile birlikte sağ kolonda iki kalın
+          buton üst üste geliyordu. İkisi de aynı ağırlıkta olunca göz hangisine
+          bakacağını bilmiyordu. Eylem artık etkilediği kartın başlığında,
+          içerikten hafif. */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
         <Truck size={12} color={tone.label} strokeWidth={1.8} />
         <Text style={{ fontSize: 11, fontWeight: '600', color: tone.label, letterSpacing: 1.1, textTransform: 'uppercase' }}>
@@ -112,18 +118,62 @@ export function OrderLogisticsCard({
         </Text>
         <View style={{ flex: 1 }} />
         {shownLegs.length > 0 && (
-          <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: rowBg }}>
-            <Text style={{ fontSize: 11, fontWeight: '500', color: tone.muted }}>{shownLegs.length} hareket</Text>
-          </View>
+          <Text style={{ fontSize: 11, fontWeight: '500', color: tone.muted }}>
+            {shownLegs.length} hareket
+          </Text>
+        )}
+        {isManager && canCall && shownLegs.length > 0 && (
+          <Pressable
+            onPress={onCall}
+            style={({ pressed }: any) => ({
+              flexDirection: 'row', alignItems: 'center', gap: 5,
+              paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
+              backgroundColor: hexA(accent, 0.10),
+              opacity: pressed ? 0.6 : 1,
+              transform: [{ scale: pressed ? 0.96 : 1 }],
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+            })}
+          >
+            <Plus size={12} color={accent} strokeWidth={2.4} />
+            <Text style={{ fontSize: 11.5, fontWeight: '600', color: accent }}>Kurye</Text>
+          </Pressable>
         )}
       </View>
 
       {shownLegs.length === 0 ? (
-        <Text style={{ fontSize: 12, color: tone.label, fontStyle: 'italic', marginBottom: 14, paddingHorizontal: 2 }}>
-          Henüz kurye hareketi yok.
-        </Text>
+        /* Boş durum eylemin KENDİSİ — italik bir cümle + ayrı bir buton yerine
+           tek dokunulabilir satır. Hem durumu söyler hem çıkış yolunu verir. */
+        isManager && canCall ? (
+          <Pressable
+            onPress={onCall}
+            style={({ pressed }: any) => ({
+              flexDirection: 'row', alignItems: 'center', gap: 12,
+              padding: 14, borderRadius: 16, backgroundColor: rowBg,
+              opacity: pressed ? 0.7 : 1,
+              transform: [{ scale: pressed ? 0.99 : 1 }],
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+            })}
+          >
+            <View style={{
+              width: 34, height: 34, borderRadius: 999,
+              backgroundColor: hexA(accent, 0.12),
+              alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Truck size={16} color={accent} strokeWidth={1.9} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: tone.title }}>Kurye çağır</Text>
+              <Text style={{ fontSize: 11.5, color: tone.muted }}>Henüz kurye hareketi yok</Text>
+            </View>
+            <ChevronRight size={15} color={tone.muted} strokeWidth={2} />
+          </Pressable>
+        ) : (
+          <Text style={{ fontSize: 12, color: tone.muted, paddingHorizontal: 2 }}>
+            Henüz kurye hareketi yok.
+          </Text>
+        )
       ) : (
-        <View style={{ gap: 8, marginBottom: 14 }}>
+        <View style={{ gap: 8 }}>
           {shownLegs.map(leg => {
             const st = DELIVERY_STATUS_CFG[leg.status]
               ?? { label: leg.status, bg: 'rgba(0,0,0,0.05)', fg: tone.muted };
@@ -139,10 +189,13 @@ export function OrderLogisticsCard({
                 key={leg.id}
                 onPress={onOpenTracking ? () => onOpenTracking(leg) : undefined}
                 disabled={!onOpenTracking}
-                style={{
+                style={({ pressed }: any) => ({
                   padding: 12, borderRadius: 16, backgroundColor: rowBg,
+                  // Tıklanabilir satır basıldığı anda cevap versin — bırakmayı beklemesin.
+                  opacity: onOpenTracking && pressed ? 0.7 : 1,
+                  transform: [{ scale: onOpenTracking && pressed ? 0.99 : 1 }],
                   ...(onOpenTracking && Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                }}
+                })}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                   <Text style={{ fontSize: 12, fontWeight: '600', color: tone.title }}>{purposeLabel}</Text>
@@ -189,6 +242,7 @@ export function OrderLogisticsCard({
                         apiKey={mapsApiKey}
                         accent={accent}
                         height={90}
+                        radius={11}
                       />
                     </View>
                   );
@@ -199,20 +253,6 @@ export function OrderLogisticsCard({
         </View>
       )}
 
-      {isManager && canCall && (
-        <OriginFillButton
-          label="Kurye çağır"
-          icon={Truck}
-          onPress={onCall}
-          backgroundColor={hexA(accent, 0.08)}
-          borderColor={hexA(accent, 0.35)}
-          fillColor={accent}
-          baseTextColor={accent}
-          fillTextColor={readableInk(accent)}
-          radius={16}
-          paddingVertical={10}
-        />
-      )}
     </>
   );
 

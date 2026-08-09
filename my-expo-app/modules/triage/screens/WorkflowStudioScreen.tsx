@@ -6,10 +6,11 @@
 
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { View, Text, Pressable, ScrollView, TextInput, Platform, useWindowDimensions, Modal } from 'react-native';
+import { confirmAsync } from '../../../core/util/confirm';
 import {
   Workflow, Cpu, Users, SlidersHorizontal, Plus, X, GripVertical, ChevronUp, ChevronDown,
   Save, Trash2, Copy, Star, AlertTriangle, Sparkles, Clock, Layers, Zap, Check, Lightbulb, ArrowRight,
-  Pencil, Wrench, Brush, Box, ScanLine, Printer, Gem, Cog,
+  Pencil, Wrench, Brush, Box, ScanLine, Printer, Gem, Cog, Info, Search, ChevronRight,
 } from 'lucide-react-native';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
 import { DS } from '../../../core/theme/dsTokens';
@@ -19,18 +20,59 @@ import { fetchStationSkillsMap, toggleUserStationSkill } from '../../../core/api
 import { useLocalSearchParams } from 'expo-router';
 import {
   fetchStudioData, fetchSkillsData, createTemplate, updateTemplate, deleteTemplate,
-  updateStationSkills, updateStationTiming, updateTechSkills, fetchAutoTriage, setAutoTriage, fmtDuration,
+  updateStationSkills, updateStationTiming, updateStationMaterials, updateTechSkills, fetchAutoTriage, setAutoTriage, fmtDuration,
   fetchLabSkills, createLabSkill, updateLabSkill, deleteLabSkill, aiBuildWorkflow,
   generateTemplatesFromServices,
   type StudioTemplate, type TriageStation, type TriageTech, type LabSkill, type AiWorkflowResult,
 } from '../api';
+import { MATERIAL_CATEGORIES } from '../../../core/materials/stageCategories';
 import { toast } from '../../../core/ui/Toast';
 
-// Yetkinlik ikon paleti (lucide)
+// Yetkinlik ikon paleti (lucide).
+// KATEGORİLİ: on ikon tek sırada dizilince hepsi birbirine benziyordu ve hangisinin
+// ne olduğu ancak tahmin edilebiliyordu. Başlık + ad, seçimi tahminden çıkarır.
 const SKILL_ICONS: Record<string, any> = { cpu: Cpu, layers: Layers, wrench: Wrench, brush: Brush, box: Box, scan: ScanLine, printer: Printer, gem: Gem, cog: Cog, zap: Zap };
 const SKILL_ICON_KEYS = Object.keys(SKILL_ICONS);
-const SKILL_COLORS = ['#6BA888', '#3B82F6', '#8B5CB8', '#EA7A4C', '#2BA39B', '#E89B2A', '#D94B4B', '#0891B2'];
-const CERT_LEVELS: { key: string | null; label: string }[] = [{ key: null, label: 'Yok' }, { key: 'temel', label: 'Temel' }, { key: 'orta', label: 'Orta' }, { key: 'uzman', label: 'Uzman' }];
+const SKILL_ICON_GROUPS: { label: string; items: { key: string; label: string }[] }[] = [
+  { label: 'Üretim', items: [
+    { key: 'scan',    label: 'Tarama'  },
+    { key: 'cpu',     label: 'CAD'     },
+    { key: 'printer', label: 'Baskı'   },
+    { key: 'cog',     label: 'Freze'   },
+  ] },
+  { label: 'Malzeme', items: [
+    { key: 'layers',  label: 'Katman'  },
+    { key: 'gem',     label: 'Seramik' },
+    { key: 'box',     label: 'Model'   },
+  ] },
+  { label: 'Araç', items: [
+    { key: 'wrench',  label: 'Ayar'    },
+    { key: 'brush',   label: 'Boyama'  },
+    { key: 'zap',     label: 'Hızlı'   },
+  ] },
+];
+
+// Renkler ADLI: çıplak daireler neyi temsil ettiğini söylemiyordu.
+const SKILL_COLORS_NAMED: { hex: string; label: string }[] = [
+  { hex: '#6BA888', label: 'Adaçayı' },
+  { hex: '#3B82F6', label: 'Mavi'    },
+  { hex: '#8B5CB8', label: 'Mor'     },
+  { hex: '#EA7A4C', label: 'Turuncu' },
+  { hex: '#2BA39B', label: 'Turkuaz' },
+  { hex: '#E89B2A', label: 'Amber'   },
+  { hex: '#D94B4B', label: 'Kırmızı' },
+  { hex: '#0891B2', label: 'Deniz'   },
+];
+const SKILL_COLORS = SKILL_COLORS_NAMED.map(c => c.hex);
+
+// Sertifika seviyeleri yıldızla: "Temel/Orta/Uzman" dümdüz metin sıralamayı
+// göstermiyordu; yıldız sayısı sırayı, renk de kademeyi taşır.
+const CERT_LEVELS: { key: string | null; label: string; stars: number; color: string }[] = [
+  { key: null,    label: 'Yok',   stars: 0, color: '#9A9A9A' },
+  { key: 'temel', label: 'Temel', stars: 1, color: '#4A8FC9' },
+  { key: 'orta',  label: 'Orta',  stars: 2, color: '#2BA39B' },
+  { key: 'uzman', label: 'Uzman', stars: 3, color: '#E89B2A' },
+];
 function SkillIcon({ name, ...p }: { name: string | null; size: number; color: string; strokeWidth?: number }) {
   const C = (name && SKILL_ICONS[name]) || Cpu; return <C {...p} />;
 }
@@ -91,7 +133,11 @@ const AREAS: { key: AreaKey; label: string; icon: any; hint: string }[] = [
 interface Draft { id: string | null; name: string; caseTypesText: string; stationIds: string[]; isDefault: boolean; isActive: boolean; }
 const EMPTY_DRAFT: Draft = { id: null, name: '', caseTypesText: '', stationIds: [], isDefault: false, isActive: true };
 
-export function WorkflowStudioScreen() {
+export function WorkflowStudioScreen({ embedded = false }: {
+  /** Ayarlar hub'ının içinde render edilirken: üstteki TopActionBar payı ve
+      sayfa zemini kabın kendisinden gelir, burada tekrarlanmaz. */
+  embedded?: boolean;
+} = {}) {
   const theme = usePanelTheme();
   const A = theme.primary, A_DEEP = theme.primaryDeep, PAGE = PANEL_BGPAGE[theme.key] ?? theme.bg;
   const onA = onPrimaryText(A, theme.accent);   // turuncu/mercan zeminde beyaz, açık saffron'da koyu
@@ -155,6 +201,7 @@ export function WorkflowStudioScreen() {
     setStations(prev => prev.map(s => s.id === id ? { ...s, ...p } : s));
   const onStationSkills = async (st: TriageStation, skills: string[]) => { patchStation(st.id, { required_skills: skills }); await updateStationSkills(st.id, skills); };
   const onStationTiming = async (st: TriageStation, dur: number | null, sla: number | null) => { patchStation(st.id, { est_duration_min: dur, sla_hours: sla }); await updateStationTiming(st.id, dur, sla); };
+  const onStationMaterials = async (st: TriageStation, cats: string[]) => { patchStation(st.id, { allowed_material_types: cats, consumes_materials: cats.length > 0 }); await updateStationMaterials(st.id, cats); };
   const onTechSkills = async (t: TriageTech, skills: string[]) => { setTechs(prev => prev.map(x => x.id === t.id ? { ...x, skills } : x)); await updateTechSkills(t.id, skills, t.capacity); };
 
   if (loading) {
@@ -162,7 +209,15 @@ export function WorkflowStudioScreen() {
   }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: PAGE }} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 62, paddingBottom: 90, width: '100%' }}>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: embedded ? 'transparent' : PAGE }}
+      contentContainerStyle={{
+        paddingHorizontal: embedded ? 0 : 16,
+        paddingTop: embedded ? 0 : 62,
+        paddingBottom: embedded ? 24 : 90,
+        width: '100%',
+      }}
+    >
       {/* ── Hero ── */}
       <View style={{ borderRadius: 22, padding: 20, overflow: 'hidden', backgroundColor: A, marginBottom: 16,
         // @ts-ignore web gradient
@@ -203,7 +258,7 @@ export function WorkflowStudioScreen() {
         />
       )}
       {area === 'rules' && (
-        <RulesArea theme={{ A, A_DEEP, onA, PAGE }} labId={labId} stations={stations} techs={techs} skillCatalog={skillCatalog}
+        <RulesArea theme={{ A, A_DEEP, onA, PAGE }} labId={labId} stations={stations} techs={techs} skillCatalog={skillCatalog} onStationMaterials={onStationMaterials}
           onStationSkills={onStationSkills} onStationTiming={onStationTiming} />
       )}
     </ScrollView>
@@ -290,7 +345,7 @@ function BuilderArea({ theme, isNarrow, stations, techs, templates, stationById,
 
   // Kart üzerinden doğrudan sil (onaylı) — Düzenle'ye girmeye gerek yok.
   const removeCard = async (t: StudioTemplate) => {
-    const ok = Platform.OS === 'web' ? window.confirm(`"${t.name}" iş akışını silmek istediğine emin misin?`) : true;
+    const ok = await confirmAsync('İş Akışını Sil', `"${t.name}" iş akışını silmek istediğine emin misin?`, { confirmText: 'Sil', destructive: true });
     if (!ok) return;
     const res: any = await deleteTemplate(t.id);
     if (res?.error) { toast.error(res.error.message ?? 'Silinemedi'); return; }
@@ -323,9 +378,72 @@ function BuilderArea({ theme, isNarrow, stations, techs, templates, stationById,
   // ── Şablon galerisi (draft yokken) ──
   if (!draft) {
     return (
-      <View style={{ gap: 14 }}>
+      <View style={{ gap: 16 }}>
+        {/* Başlık — DESIGN_LANGUAGE SecHeader (eyebrow + display + desc) */}
+        <View style={{ gap: 6 }}>
+          <Text style={{
+            fontSize: 11, fontWeight: '500', letterSpacing: 1.4,
+            textTransform: 'uppercase', color: INK[500],
+          }}>
+            Üretim · İş Akışları
+          </Text>
+          <Text style={{
+            fontFamily: DISPLAY, fontWeight: '300',
+            fontSize: 22, letterSpacing: -0.5, lineHeight: 26, color: INK[900],
+          }}>
+            Üretim Akışı Stüdyosu
+          </Text>
+          <Text style={{ fontSize: 13, color: INK[500], lineHeight: 19, maxWidth: 640 }}>
+            Her iş tipinin hangi aşamalardan geçeceğini burada tasarlarsınız. Aşamaları
+            sürükleyerek dizin; süre, yetkinlik ve uygun teknisyen kuralları aşama
+            seçildiğinde sağda görünür.
+          </Text>
+        </View>
+
+        {/* Özet şeridi — kaç akış, kaç aşama, varsayılan var mı */}
+        <View style={{
+          flexDirection: 'row', alignItems: 'center', gap: 26, flexWrap: 'wrap',
+          backgroundColor: '#FFFFFF', borderRadius: 24, borderWidth: 1,
+          borderColor: 'rgba(0,0,0,0.05)', paddingHorizontal: 20, paddingVertical: 16,
+        }}>
+          <View style={{ gap: 2 }}>
+            <Text style={{ fontFamily: DISPLAY, fontWeight: '300', fontSize: 20, letterSpacing: -0.6, lineHeight: 24, color: INK[900] }}>
+              {templates.length}
+            </Text>
+            <Text style={{ fontSize: 10, fontWeight: '500', letterSpacing: 0.8, textTransform: 'uppercase', color: INK[400] }}>
+              Tanımlı akış
+            </Text>
+          </View>
+          <View style={{ gap: 2 }}>
+            <Text style={{ fontFamily: DISPLAY, fontWeight: '300', fontSize: 20, letterSpacing: -0.6, lineHeight: 24, color: INK[900] }}>
+              {stations.length}
+            </Text>
+            <Text style={{ fontSize: 10, fontWeight: '500', letterSpacing: 0.8, textTransform: 'uppercase', color: INK[400] }}>
+              İstasyon
+            </Text>
+          </View>
+          <View style={{ gap: 2 }}>
+            <Text style={{
+              fontFamily: DISPLAY, fontWeight: '300', fontSize: 20, letterSpacing: -0.6, lineHeight: 24,
+              color: templates.some(t => t.is_default) ? '#2D9A6B' : '#E89B2A',
+            }}>
+              {templates.some(t => t.is_default) ? 'Var' : 'Yok'}
+            </Text>
+            <Text style={{ fontSize: 10, fontWeight: '500', letterSpacing: 0.8, textTransform: 'uppercase', color: INK[400] }}>
+              Varsayılan akış
+            </Text>
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }} />
+          {!templates.some(t => t.is_default) && templates.length > 0 ? (
+            <Text style={{ fontSize: 12, color: '#9C5E0E', maxWidth: 320, lineHeight: 18 }}>
+              Varsayılan akış yok — eşleşmeyen işler otomatik planlanamaz.
+            </Text>
+          ) : null}
+        </View>
+
+        {/* Aksiyonlar */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <Text style={{ fontSize: 15, fontWeight: '700', color: INK[900], flex: 1 }}>İş Akışları</Text>
+          <View style={{ flex: 1, minWidth: 0 }} />
           <Pressable onPress={genFromServices} disabled={generating}
             style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 13, paddingVertical: 10, borderRadius: 12, backgroundColor: tint(A, 0.12), borderWidth: 1, borderColor: tint(A, 0.3), opacity: generating ? 0.6 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
             <Layers size={14} color={A_DEEP} strokeWidth={2} />
@@ -773,6 +891,9 @@ export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload 
   const [draft, setDraft] = useState<SkillDraft | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const { width: vw } = useWindowDimensions();
+  // Master-detail eşiği: altında panel yan yana sığmaz, alttan sheet olur.
+  const isWide = vw >= 1024;
 
   const usage = useMemo(() => {
     const m = new Map<string, { stations: number; techs: number }>();
@@ -796,6 +917,248 @@ export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload 
   };
   const del = async (id: string) => { setBusy(true); await deleteLabSkill(id); setBusy(false); setDraft(null); onReload(); };
 
+  // ─── Editör gövdesi ───────────────────────────────────────────────────────
+  // Tek yerde tanımlı; masaüstünde sağ panele, darda alttan açılan sheet'e girer.
+  const editorBody = draft && (
+    <View style={{ gap: 12 }}>
+      {/* Birincil eylem SAĞ ÜSTTE: panelin en görünür köşesi. Vazgeç yanında
+          (aynı işi yapan ayrı bir X'e gerek yok). Yıkıcı "Sil" bu satırda DEĞİL —
+          en altta, ayraçtan sonra: kaydetmeye giderken yanlışlıkla silinmesin. */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: INK[900] }} numberOfLines={1}>
+          {draft.id ? 'Yetkinliği Düzenle' : 'Yeni Yetkinlik'}
+        </Text>
+        <Pressable onPress={() => setDraft(null)}
+          style={({ pressed }: any) => ({ paddingHorizontal: 10, paddingVertical: 7, borderRadius: 9, opacity: pressed ? 0.6 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) })}>
+          <Text style={{ fontSize: 12.5, fontWeight: '600', color: INK[500] }}>Vazgeç</Text>
+        </Pressable>
+        <Pressable onPress={save} disabled={busy}
+          style={({ pressed }: any) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, backgroundColor: A, opacity: busy ? 0.5 : pressed ? 0.85 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) })}>
+          <Save size={14} color={onA} strokeWidth={2.1} />
+          <Text style={{ fontSize: 12.5, fontWeight: '800', color: onA }}>{busy ? '…' : 'Kaydet'}</Text>
+        </Pressable>
+      </View>
+      {error ? <Text style={{ fontSize: 12, color: '#9C2E2E', fontWeight: '600' }}>{error}</Text> : null}
+      <View style={{ gap: 5 }}>
+        <Text style={dlabel}>Ad</Text>
+        <TextInput value={draft.name} onChangeText={t => setDraft(d => d ? { ...d, name: t } : d)} placeholder="ör. İmplant Tasarımı" placeholderTextColor={INK[400]}
+          style={{ fontSize: 14, color: INK[900], backgroundColor: PAGE, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' } as any} />
+      </View>
+      <View style={{ gap: 5 }}>
+        <Text style={dlabel}>Açıklama (opsiyonel)</Text>
+        <TextInput value={draft.description} onChangeText={t => setDraft(d => d ? { ...d, description: t } : d)} placeholder="kısa açıklama" placeholderTextColor={INK[400]}
+          style={{ fontSize: 13, color: INK[800], backgroundColor: PAGE, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' } as any} />
+      </View>
+      <View style={{ gap: 6 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={dlabel}>Renk</Text>
+          {/* Seçili rengin ADI yazılı: çıplak daireler neyi seçtiğini söylemiyordu. */}
+          <Text style={{ fontSize: 11, fontWeight: '600', color: draft.color }}>
+            {SKILL_COLORS_NAMED.find(c => c.hex === draft.color)?.label ?? ''}
+          </Text>
+        </View>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+          {SKILL_COLORS_NAMED.map(c => {
+            const sel = draft.color === c.hex;
+            return (
+              <Pressable
+                key={c.hex}
+                onPress={() => setDraft(d => d ? { ...d, color: c.hex } : d)}
+                accessibilityLabel={c.label}
+                // Seçili olan BÜYÜR (26→32) — hangi rengin seçili olduğu
+                // yalnız ince bir halkadan değil, boyuttan da okunur.
+                style={({ pressed, hovered }: any) => ({
+                  width: sel ? 32 : 26, height: sel ? 32 : 26, borderRadius: 16,
+                  backgroundColor: c.hex, alignItems: 'center', justifyContent: 'center',
+                  transform: [{ scale: pressed ? 0.92 : 1 }],
+                  ...(Platform.OS === 'web'
+                    ? {
+                        cursor: 'pointer',
+                        boxShadow: sel ? `0 0 0 3px #FFFFFF, 0 0 0 5px ${c.hex}` : hovered ? `0 0 0 3px ${tint(c.hex, 0.30)}` : 'none',
+                        transitionProperty: 'width, height, box-shadow, transform',
+                        transitionDuration: '140ms',
+                      } as any
+                    : {}),
+                })}
+              >
+                {sel && <Check size={15} color="#FFFFFF" strokeWidth={3} />}
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+      <View style={{ gap: 8 }}>
+        <Text style={dlabel}>İkon</Text>
+        {/* Kategorili + ADLI: on ikon tek sırada dizilince hepsi birbirine
+            benziyordu, hangisinin ne olduğu tahmine kalıyordu. */}
+        {SKILL_ICON_GROUPS.map(group => (
+          <View key={group.label} style={{ gap: 6 }}>
+            <Text style={{ fontSize: 9.5, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', color: INK[400] }}>
+              {group.label}
+            </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {group.items.map(it => {
+                const sel = draft.icon === it.key;
+                return (
+                  <Pressable
+                    key={it.key}
+                    onPress={() => setDraft(d => d ? { ...d, icon: it.key } : d)}
+                    accessibilityLabel={it.label}
+                    style={({ pressed, hovered }: any) => ({
+                      alignItems: 'center', gap: 4, width: 62,
+                      paddingVertical: 8, borderRadius: 12,
+                      backgroundColor: sel ? tint(draft.color, 0.14) : hovered ? 'rgba(0,0,0,0.03)' : '#FFFFFF',
+                      borderWidth: 1,
+                      borderColor: sel ? draft.color : hovered ? 'rgba(0,0,0,0.20)' : 'rgba(0,0,0,0.10)',
+                      transform: [{ scale: pressed ? 0.96 : 1 }],
+                      ...(Platform.OS === 'web'
+                        ? {
+                            cursor: 'pointer',
+                            boxShadow: hovered && !sel ? '0 2px 8px rgba(15,23,42,0.08)' : 'none',
+                            transitionProperty: 'transform, box-shadow, border-color, background-color',
+                            transitionDuration: '120ms',
+                          } as any
+                        : {}),
+                    })}
+                  >
+                    <SkillIcon name={it.key} size={19} color={sel ? draft.color : INK[500]} strokeWidth={2} />
+                    <Text style={{ fontSize: 9.5, fontWeight: sel ? '700' : '500', color: sel ? draft.color : INK[400] }} numberOfLines={1}>
+                      {it.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ))}
+      </View>
+      <View style={{ gap: 6 }}>
+        <Text style={dlabel}>Sertifika seviyesi (opsiyonel)</Text>
+        {/* Yıldız SIRAYI, renk KADEMEYİ taşır: düz metin dört seçenek arasında
+            bir hiyerarşi olduğunu göstermiyordu. */}
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          {CERT_LEVELS.map(c => {
+            const sel = draft.cert_level === c.key;
+            return (
+              <Pressable
+                key={String(c.key)}
+                onPress={() => setDraft(d => d ? { ...d, cert_level: c.key } : d)}
+                style={({ pressed, hovered }: any) => ({
+                  flex: 1, paddingVertical: 9, borderRadius: 11, alignItems: 'center', gap: 3,
+                  backgroundColor: sel ? tint(c.color, 0.14) : hovered ? 'rgba(0,0,0,0.03)' : '#FFFFFF',
+                  borderWidth: 1,
+                  borderColor: sel ? c.color : hovered ? 'rgba(0,0,0,0.20)' : 'rgba(0,0,0,0.10)',
+                  transform: [{ scale: pressed ? 0.97 : 1 }],
+                  ...(Platform.OS === 'web'
+                    ? { cursor: 'pointer', transitionProperty: 'transform, border-color, background-color', transitionDuration: '120ms' } as any
+                    : {}),
+                })}
+              >
+                <View style={{ flexDirection: 'row', gap: 1, height: 12, alignItems: 'center' }}>
+                  {c.stars === 0
+                    ? <Text style={{ fontSize: 11, color: sel ? c.color : INK[300] }}>—</Text>
+                    : Array.from({ length: c.stars }).map((_, i) => (
+                        <Star key={i} size={10} color={sel ? c.color : INK[300]} fill={sel ? c.color : 'transparent'} strokeWidth={2} />
+                      ))}
+                </View>
+                <Text style={{ fontSize: 11.5, fontWeight: sel ? '700' : '600', color: sel ? c.color : INK[500] }}>{c.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+      {/* Yıkıcı eylem: ayraçtan sonra, solda, sessiz. Kaydet'in komşusu değil. */}
+      {draft.id && (
+        <>
+          <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.07)', marginTop: 4 }} />
+          <Pressable onPress={() => del(draft.id!)} disabled={busy}
+            style={({ pressed, hovered }: any) => ({
+              alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6,
+              paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10,
+              backgroundColor: hovered ? tint('#D94B4B', 0.08) : 'transparent',
+              opacity: pressed ? 0.6 : 1,
+              ...(Platform.OS === 'web' ? { cursor: 'pointer', transitionProperty: 'background-color', transitionDuration: '120ms' } as any : {}),
+            })}>
+            <Trash2 size={13} color="#9C2E2E" strokeWidth={2} />
+            <Text style={{ fontSize: 12, fontWeight: '600', color: '#9C2E2E' }}>Yetkinliği sil</Text>
+          </Pressable>
+        </>
+      )}
+    </View>
+  );
+
+  // ─── Liste ────────────────────────────────────────────────────────────────
+  const listNode = labSkills.length === 0 ? (
+    <View style={{ borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', padding: 30, alignItems: 'center', gap: 8 }}>
+      <View style={{ width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(A, 0.12) }}><Cpu size={22} color={A_DEEP} strokeWidth={1.8} /></View>
+      <Text style={{ fontSize: 14, fontWeight: '700', color: INK[900] }}>Henüz yönetilen yetkinlik yok</Text>
+      <Text style={{ fontSize: 12.5, color: INK[500], textAlign: 'center', maxWidth: 340 }}>İlk yetkinliği oluştur — ad, renk, ikon ve sertifika seviyesiyle. Sonra istasyon/teknisyenlere atarsın.</Text>
+    </View>
+  ) : (
+    <View style={{ gap: 8 }}>
+      {labSkills.map(s => {
+        const u = usage.get(s.name) ?? { stations: 0, techs: 0 };
+        const orphan = u.techs === 0 && u.stations > 0;
+        const active = draft?.id === s.id;
+        const cert = CERT_LEVELS.find(c => c.key === s.cert_level);
+        return (
+          <Pressable
+            key={s.id}
+            onPress={() => openEdit(s)}
+            // Satırın TAMAMI tıklanabilir: kalem ikonunu bulmak gerekmiyor.
+            // Seçili satır accent kenarlıkla panelde ne düzenlendiğini gösterir.
+            // Seçili satır ZEMİN de değiştirir — yalnız kenarlık, panelde hangi
+            // kaydın düzenlendiğini yeterince güçlü söylemiyordu.
+            style={({ hovered }: any) => ({
+              flexDirection: 'row', alignItems: 'center', gap: 11, padding: 12, borderRadius: 13,
+              backgroundColor: active ? tint(A, 0.07) : '#FFFFFF',
+              borderWidth: 1,
+              borderColor: active ? A : hovered ? tint(A, 0.45) : 'rgba(0,0,0,0.07)',
+              ...(Platform.OS === 'web'
+                ? {
+                    cursor: 'pointer',
+                    boxShadow: active ? `0 6px 18px ${tint(A, 0.20)}` : hovered ? '0 4px 14px rgba(15,23,42,0.07)' : 'none',
+                    transitionProperty: 'box-shadow, border-color, background-color',
+                    transitionDuration: '140ms',
+                  } as any
+                : {}),
+            })}
+          >
+            {/* Sol kenarda renk şeridi: yetkinliğin rengi listede de okunsun. */}
+            <View style={{ width: 3, alignSelf: 'stretch', borderRadius: 2, backgroundColor: s.color ?? A }} />
+            <View style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(s.color ?? A, 0.16) }}>
+              <SkillIcon name={s.icon} size={16} color={s.color ?? A_DEEP} strokeWidth={2} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <Text style={{ fontSize: 13.5, fontWeight: '700', color: INK[900] }}>{s.name}</Text>
+                {cert && cert.stars > 0 && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: tint(cert.color, 0.14) }}>
+                    {Array.from({ length: cert.stars }).map((_, i) => (
+                      <Star key={i} size={8} color={cert.color} fill={cert.color} strokeWidth={2} />
+                    ))}
+                    <Text style={{ fontSize: 9, fontWeight: '800', color: cert.color, letterSpacing: 0.3 }}>{cert.label.toUpperCase()}</Text>
+                  </View>
+                )}
+                {orphan && <Badge color="#9C2E2E" bg={tint('#D94B4B', 0.12)} label="KİMSE YOK" />}
+              </View>
+              {/* Sayımlar HER ZAMAN görünür — eskiden yalnız açıklama boşsa
+                  çıkıyordu, yani en çok bilgi taşıyan satır kayboluyordu. */}
+              <Text style={{ fontSize: 11, color: INK[400] }} numberOfLines={1}>
+                {[
+                  `${u.stations} istasyon`,
+                  `${u.techs} kişi`,
+                  s.description?.trim() || null,
+                ].filter(Boolean).join(' · ')}
+              </Text>
+            </View>
+            <ChevronRight size={16} color={active ? A_DEEP : INK[300]} strokeWidth={2} />
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+
   return (
     <View style={{ gap: 12 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -803,91 +1166,44 @@ export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload 
           <Text style={{ fontSize: 15, fontWeight: '700', color: INK[900] }}>Yetkinlik Kataloğu</Text>
           <Text style={{ fontSize: 11.5, color: INK[500] }}>İstasyon ve teknisyen becerileri bu kataloğu kullanır.</Text>
         </View>
-        {!draft && (
-          <Pressable onPress={openNew} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: A, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-            <Plus size={15} color={onA} strokeWidth={2.2} /><Text style={{ fontSize: 13, fontWeight: '800', color: onA }}>Yeni Yetkinlik</Text>
-          </Pressable>
-        )}
+        {/* "Yeni Yetkinlik" artık düzenleme sırasında da görünür: form listenin
+            üstünü kaplamadığı için gizlemeye gerek kalmadı. */}
+        <Pressable onPress={openNew}
+          style={({ pressed }: any) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: A, opacity: pressed ? 0.85 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) })}>
+          <Plus size={15} color={onA} strokeWidth={2.2} /><Text style={{ fontSize: 13, fontWeight: '800', color: onA }}>Yeni Yetkinlik</Text>
+        </Pressable>
       </View>
 
-      {/* Editör */}
-      {draft && (
-        <View style={{ borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: tint(A, 0.35), padding: 16, gap: 12 }}>
-          <Text style={{ fontSize: 14, fontWeight: '700', color: INK[900] }}>{draft.id ? 'Yetkinliği Düzenle' : 'Yeni Yetkinlik'}</Text>
-          {error ? <Text style={{ fontSize: 12, color: '#9C2E2E', fontWeight: '600' }}>{error}</Text> : null}
-          <View style={{ gap: 5 }}>
-            <Text style={dlabel}>Ad</Text>
-            <TextInput value={draft.name} onChangeText={t => setDraft(d => d ? { ...d, name: t } : d)} placeholder="ör. İmplant Tasarımı" placeholderTextColor={INK[400]}
-              style={{ fontSize: 14, color: INK[900], backgroundColor: PAGE, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' } as any} />
-          </View>
-          <View style={{ gap: 5 }}>
-            <Text style={dlabel}>Açıklama (opsiyonel)</Text>
-            <TextInput value={draft.description} onChangeText={t => setDraft(d => d ? { ...d, description: t } : d)} placeholder="kısa açıklama" placeholderTextColor={INK[400]}
-              style={{ fontSize: 13, color: INK[800], backgroundColor: PAGE, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' } as any} />
-          </View>
-          <View style={{ gap: 5 }}>
-            <Text style={dlabel}>Renk</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {SKILL_COLORS.map(c => (
-                <Pressable key={c} onPress={() => setDraft(d => d ? { ...d, color: c } : d)} style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: c, alignItems: 'center', justifyContent: 'center', borderWidth: draft.color === c ? 3 : 0, borderColor: '#FFFFFF', ...(Platform.OS === 'web' ? { cursor: 'pointer', boxShadow: draft.color === c ? `0 0 0 2px ${c}` : 'none' } as any : {}) }}>
-                  {draft.color === c && <Check size={14} color="#FFFFFF" strokeWidth={3} />}
-                </Pressable>
-              ))}
+      {/* Liste önce, düzenleme yanda: eskiden form listenin ÜSTÜNDE açılıyor ve
+          katalog ekrandan kayıyordu — hangi kaydı düzenlediğin görünmüyordu. */}
+      {isWide ? (
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 14 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>{listNode}</View>
+          {draft && (
+            <View style={{
+              width: 380,
+              borderRadius: 16, backgroundColor: '#FFFFFF',
+              borderWidth: 1, borderColor: tint(A, 0.35), padding: 16,
+              ...(Platform.OS === 'web' ? { position: 'sticky', top: 12, boxShadow: '0 10px 30px rgba(15,23,42,0.10)' } as any : {}),
+            }}>
+              {editorBody}
             </View>
-          </View>
-          <View style={{ gap: 5 }}>
-            <Text style={dlabel}>İkon</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {SKILL_ICON_KEYS.map(k => { const sel = draft.icon === k; return (
-                <Pressable key={k} onPress={() => setDraft(d => d ? { ...d, icon: k } : d)} style={{ width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: sel ? tint(draft.color, 0.18) : '#FFFFFF', borderWidth: 1, borderColor: sel ? draft.color : 'rgba(0,0,0,0.10)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-                  <SkillIcon name={k} size={17} color={sel ? draft.color : INK[500]} strokeWidth={2} />
-                </Pressable>
-              ); })}
-            </View>
-          </View>
-          <View style={{ gap: 5 }}>
-            <Text style={dlabel}>Sertifika seviyesi (opsiyonel)</Text>
-            <View style={{ flexDirection: 'row', gap: 6 }}>
-              {CERT_LEVELS.map(c => { const sel = draft.cert_level === c.key; return (
-                <Pressable key={String(c.key)} onPress={() => setDraft(d => d ? { ...d, cert_level: c.key } : d)} style={{ flex: 1, paddingVertical: 8, borderRadius: 9, alignItems: 'center', backgroundColor: sel ? A : '#FFFFFF', borderWidth: 1, borderColor: sel ? A : 'rgba(0,0,0,0.10)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: sel ? onA : INK[500] }}>{c.label}</Text>
-                </Pressable>
-              ); })}
-            </View>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 2 }}>
-            {draft.id && <Pressable onPress={() => del(draft.id!)} disabled={busy} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 13, paddingVertical: 10, borderRadius: 11, backgroundColor: tint('#D94B4B', 0.10), borderWidth: 1, borderColor: tint('#D94B4B', 0.25) }}><Trash2 size={14} color="#9C2E2E" strokeWidth={2} /><Text style={{ fontSize: 12.5, fontWeight: '700', color: '#9C2E2E' }}>Sil</Text></Pressable>}
-            <View style={{ flex: 1 }} />
-            <Pressable onPress={() => setDraft(null)} style={{ paddingHorizontal: 15, paddingVertical: 10, borderRadius: 11, borderWidth: 1, borderColor: 'rgba(0,0,0,0.12)' }}><Text style={{ fontSize: 12.5, fontWeight: '700', color: INK[500] }}>Vazgeç</Text></Pressable>
-            <Pressable onPress={save} disabled={busy} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 11, backgroundColor: A, opacity: busy ? 0.5 : 1 }}><Save size={15} color={onA} strokeWidth={2.1} /><Text style={{ fontSize: 13, fontWeight: '800', color: onA }}>{busy ? '…' : 'Kaydet'}</Text></Pressable>
-          </View>
-        </View>
-      )}
-
-      {/* Liste */}
-      {labSkills.length === 0 && !draft ? (
-        <View style={{ borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', padding: 30, alignItems: 'center', gap: 8 }}>
-          <View style={{ width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(A, 0.12) }}><Cpu size={22} color={A_DEEP} strokeWidth={1.8} /></View>
-          <Text style={{ fontSize: 14, fontWeight: '700', color: INK[900] }}>Henüz yönetilen yetkinlik yok</Text>
-          <Text style={{ fontSize: 12.5, color: INK[500], textAlign: 'center', maxWidth: 340 }}>İlk yetkinliği oluştur — ad, renk, ikon ve sertifika seviyesiyle. Sonra istasyon/teknisyenlere atarsın.</Text>
+          )}
         </View>
       ) : (
-        <View style={{ gap: 8 }}>
-          {labSkills.map(s => { const u = usage.get(s.name) ?? { stations: 0, techs: 0 }; const orphan = u.techs === 0 && u.stations > 0; return (
-            <View key={s.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 11, padding: 12, borderRadius: 13, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.07)' }}>
-              <View style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(s.color ?? A, 0.16) }}><SkillIcon name={s.icon} size={16} color={s.color ?? A_DEEP} strokeWidth={2} /></View>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={{ fontSize: 13.5, fontWeight: '700', color: INK[900] }}>{s.name}</Text>
-                  {s.cert_level && <Badge color={A_DEEP} bg={tint(A, 0.14)} label={s.cert_level.toUpperCase()} />}
-                  {orphan && <Badge color="#9C2E2E" bg={tint('#D94B4B', 0.12)} label="KİMSE YOK" />}
+        <>
+          {listNode}
+          <Modal visible={!!draft} transparent animationType="slide" onRequestClose={() => setDraft(null)}>
+            <Pressable onPress={() => setDraft(null)} style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.35)', justifyContent: 'flex-end' }}>
+              <Pressable onPress={() => {}} style={{ backgroundColor: '#FFFFFF', borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 18, paddingBottom: 28, maxHeight: '88%' }}>
+                <View style={{ alignItems: 'center', marginBottom: 10 }}>
+                  <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(15,23,42,0.15)' }} />
                 </View>
-                {s.description ? <Text style={{ fontSize: 11.5, color: INK[500] }} numberOfLines={1}>{s.description}</Text> : <Text style={{ fontSize: 11, color: INK[400] }}>{u.stations} aşama · {u.techs} kişi</Text>}
-              </View>
-              <Pressable onPress={() => openEdit(s)} style={{ width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.04)', ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}><Pencil size={14} color={INK[500]} strokeWidth={2} /></Pressable>
-            </View>
-          ); })}
-        </View>
+                <ScrollView showsVerticalScrollIndicator={false}>{editorBody}</ScrollView>
+              </Pressable>
+            </Pressable>
+          </Modal>
+        </>
       )}
     </View>
   );
@@ -896,67 +1212,547 @@ export function SkillsArea({ theme, labId, labSkills, stations, techs, onReload 
 // ════════════════════════════════════════════════════════════════════════════
 // AREA 3 — Personel (teknisyen yetkinlikleri)
 // ════════════════════════════════════════════════════════════════════════════
+// ─── İstasyon grupları ───────────────────────────────────────────────────────
+//
+// NEDEN: 17 istasyon tek sırada dizilince kart başına iki-üç satır kapsül
+// çıkıyordu; göz "mavi kapsül duvarı" görüp okumayı bırakıyordu. Aynı işi yapan
+// istasyonlar bir başlık altında toplanınca satır sayısı değil, ANLAM birimi
+// azalıyor: kullanıcı "CAD/CAM biliyor mu?" diye tek yere bakıyor.
+//
+// SINIR: stations tablosunda kategori kolonu YOK. Grup, istasyon adından
+// çözülüyor; eşleşmeyen her istasyon "Diğer" grubuna düşer (asla kaybolmaz).
+// Lab istasyonlarını yeniden adlandırırsa gruplama bozulmaz, sadece "Diğer"e
+// düşer. Kalıcı çözüm istasyona kategori alanı eklemek olur.
+const STATION_GROUPS: { key: string; label: string; match: RegExp }[] = [
+  { key: 'hazirlik', label: 'Hazırlık',        match: /(al[çc][ıi]|model(aj)?\b|tarama|scan)/i },
+  { key: 'dijital',  label: 'Dijital Tasarım', match: /(cad|cam|tasar[ıi]m)/i },
+  { key: 'uretim',   label: 'Üretim',          match: /(3d|bask[ıi]|freze|d[öo]k[üu]m|wash|cure|sinter)/i },
+  { key: 'estetik',  label: 'Estetik & Bitiş', match: /(porselen|make.?up|glaze|polisaj|boyama)/i },
+  { key: 'sevk',     label: 'Kontrol & Sevk',  match: /(implant|kalite|kontrol|paket|teslim|sevk)/i },
+];
+
+function groupStations(stations: TriageStation[]): { label: string; items: TriageStation[] }[] {
+  const buckets = new Map<string, TriageStation[]>();
+  for (const st of stations) {
+    const g = STATION_GROUPS.find(gr => gr.match.test(st.name ?? ''));
+    const key = g?.key ?? 'diger';
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key)!.push(st);
+  }
+  const labelOf = (k: string) => STATION_GROUPS.find(g => g.key === k)?.label ?? 'Diğer';
+  // Grup sırası üretim akışını izlesin: en küçük sequence_hint'e göre.
+  const seqOf = (items: TriageStation[]) =>
+    Math.min(...items.map(i => (i.sequence_hint ?? Number.MAX_SAFE_INTEGER)));
+  return Array.from(buckets.entries())
+    .map(([key, items]) => ({ key, label: labelOf(key), items }))
+    .sort((a, b) => seqOf(a.items) - seqOf(b.items))
+    .map(({ label, items }) => ({ label, items }));
+}
+
+/**
+ * Kişinin baskın uzmanlık alanı — yetkili olduğu istasyonlardan TÜRETİLİR,
+ * ayrı bir alan tutulmaz (tutulsaydı yetkinlikle senkron kalması gerekirdi).
+ * Ölçüt önce KAPSAMA ORANI (grubun kaçta kaçı), eşitlikte istasyon sayısı:
+ * 3/3 porselen bilen biri, 4/9 üretim bilenden daha çok "porselenci"dir.
+ */
+function dominantGroupLabel(owned: Set<string>, stations: TriageStation[]): string | null {
+  if (stations.length === 0 || owned.size === 0) return null;
+  if (owned.size === stations.length) return 'Tüm istasyonlar';
+  let best: string | null = null;
+  let bestScore = -1;
+  for (const g of groupStations(stations)) {
+    const n = g.items.filter(st => owned.has(st.id)).length;
+    if (n === 0) continue;
+    const score = (n / g.items.length) * 100 + n;
+    if (score > bestScore) { bestScore = score; best = g.label; }
+  }
+  return best;
+}
+
+const PERSON_ROLE_LABEL: Record<string, string> = {
+  technician: 'Teknisyen',
+  manager:    'Yönetici',
+};
+
+/**
+ * Filtre kapsülü — MODÜL seviyesinde tanımlı olmalı.
+ * PeopleArea'nın gövdesinde tanımlıydı: her render'da yeni bir bileşen TİPİ
+ * üretiyordu, React de onu her seferinde unmount/remount ediyordu (state kaybı
+ * + "Expected static flag was missing" türü iç hatalar). Renkler artık prop.
+ */
+function FilterChip({ label, on, onPress, accent, accentDeep }: {
+  label: string; on: boolean; onPress: () => void; accent: string; accentDeep: string;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed, hovered }: any) => ({
+        paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999,
+        borderWidth: 1,
+        borderColor: on ? accent : hovered ? 'rgba(0,0,0,0.20)' : 'rgba(0,0,0,0.10)',
+        backgroundColor: on ? tint(accent, 0.12) : '#FFFFFF',
+        opacity: pressed ? 0.65 : 1,
+        ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+      })}
+    >
+      <Text style={{ fontSize: 11.5, fontWeight: on ? '700' : '500', color: on ? accentDeep : INK[500] }}>{label}</Text>
+    </Pressable>
+  );
+}
+
 export function PeopleArea({ theme, techs, stations, stationSkills, onToggleStation }: {
   theme: Theme; techs: TriageTech[]; stations: TriageStation[];
   stationSkills: Map<string, Set<string>>;
   onToggleStation: (techId: string, stationId: string, currentlyHas: boolean) => void;
 }) {
   const { A, A_DEEP } = theme;
-  // Teknisyen + YÖNETİCİ görünür (yönetici de istasyonda çalışabilir → yetkinlik alabilir).
-  // Kurye hariç (üretim istasyonu yetkinliği olmaz) + pasif personel hariç.
+  // Teknisyen + YÖNETİCİ görünür (yönetici de istasyonda çalışabilir → yetkinlik
+  // alabilir). Kurye hariç: üretim istasyonu yetkinliği alamaz, bu yüzden
+  // "Kurye" diye bir filtre de yok — boş liste gösterirdi.
   // is_active undefined = bilinmiyor → gösterilir (fail-open; liste asla boşalmaz).
   const techList = techs.filter(t => (t.role ?? 'technician') !== 'courier' && t.is_active !== false);
+
+  const [infoOpen, setInfoOpen]   = useState(false);
+  const [search, setSearch]       = useState('');
+  const [roleF, setRoleF]         = useState<string | null>(null);   // null = hepsi
+  const [deptF, setDeptF]         = useState<string | null>(null);
+  const [onlyEmpty, setOnlyEmpty] = useState(false);                 // yetkisi olmayanlar
+  const [selected, setSelected]   = useState<Set<string>>(new Set());
+  const [bulkOpen, setBulkOpen]   = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
+
+  // Departman listesi veriden gelir (profiles.department); hiç dolu değilse
+  // filtre satırı da çıkmaz — boş bir kontrol göstermenin anlamı yok.
+  const departments = useMemo(
+    () => Array.from(new Set(techList.map(t => (t.department ?? '').trim()).filter(Boolean))).sort(),
+    [techList],
+  );
+
+  const visible = useMemo(() => {
+    let list = techList;
+    if (roleF)     list = list.filter(t => (t.role ?? 'technician') === roleF);
+    if (deptF)     list = list.filter(t => (t.department ?? '').trim() === deptF);
+    if (onlyEmpty) list = list.filter(t => (stationSkills.get(t.id)?.size ?? 0) === 0);
+    const q = search.trim().toLocaleLowerCase('tr-TR');
+    if (q) list = list.filter(t => t.full_name.toLocaleLowerCase('tr-TR').includes(q));
+    return list;
+  }, [techList, roleF, deptF, onlyEmpty, search, stationSkills]);
+
+  // Düğme etiketi: tek filtre varsa onu yazar, birden fazlaysa sayısını.
+  const chipFilterOn = !!roleF || !!deptF || onlyEmpty;
+  const activeLabels = [
+    roleF ? (PERSON_ROLE_LABEL[roleF] ?? roleF) : null,
+    deptF,
+    onlyEmpty ? 'Yetkisiz' : null,
+  ].filter(Boolean) as string[];
+  const filterLabel = activeLabels.length === 0 ? 'Filtre'
+    : activeLabels.length === 1 ? activeLabels[0]
+    : `${activeLabels.length} filtre`;
+  const noSkillCount = techList.filter(t => (stationSkills.get(t.id)?.size ?? 0) === 0).length;
+
+  const toggleSelect = (id: string) => setSelected(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  /** Toplu ver/kaldır — seçili herkes için tek istasyonu aynı yöne çevirir. */
+  const applyBulk = (stationId: string, grant: boolean) => {
+    selected.forEach(techId => {
+      const has = stationSkills.get(techId)?.has(stationId) ?? false;
+      if (has !== grant) onToggleStation(techId, stationId, has);
+    });
+    setBulkOpen(false);
+    setSelected(new Set());
+  };
+
   return (
     <View style={{ gap: 12 }}>
-      <View style={{ borderRadius: 14, backgroundColor: tint(A, 0.06), borderWidth: 1, borderColor: tint(A, 0.18), padding: 14, gap: 4 }}>
-        <Text style={{ fontSize: 13, fontWeight: '700', color: INK[900] }}>Personel yetkinlikleri</Text>
-        <Text style={{ fontSize: 12, color: INK[500], lineHeight: 18 }}>Her personelin (teknisyen + yönetici) hangi istasyonlarda çalışabildiğini işaretle. Otomatik atama ve "Yeniden Ata" YALNIZ yetkili personele yapılır; hiç yetkili yoksa aşama boş kalır. Pasif personel ve kuryeler listede yer almaz. (Tek yetkinlik kaynağı burası.)</Text>
-      </View>
+      {/* Beş satırlık açıklama kimse tarafından okunmuyordu. Tek cümlelik öz
+          görünür kalır, ayrıntı bir dokunuş altta. */}
+      <Pressable
+        onPress={() => setInfoOpen(v => !v)}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: infoOpen }}
+        style={({ pressed }: any) => ({
+          borderRadius: 14, backgroundColor: tint(A, 0.06),
+          borderWidth: 1, borderColor: tint(A, 0.18),
+          paddingHorizontal: 14, paddingVertical: 11, gap: 8,
+          opacity: pressed ? 0.8 : 1,
+          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+        })}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
+          <Info size={15} color={A_DEEP} strokeWidth={1.9} />
+          <Text style={{ flex: 1, fontSize: 12.5, color: INK[700] }} numberOfLines={1}>
+            Yetkinlikler otomatik atamayı belirler.
+          </Text>
+          <Text style={{ fontSize: 11.5, fontWeight: '600', color: A_DEEP }}>
+            {infoOpen ? 'Kapat' : 'Daha fazla'}
+          </Text>
+          <View style={{ transform: [{ rotate: infoOpen ? '180deg' : '0deg' }] }}>
+            <ChevronDown size={14} color={A_DEEP} strokeWidth={2} />
+          </View>
+        </View>
+        {infoOpen && (
+          <Text style={{ fontSize: 12, color: INK[500], lineHeight: 18 }}>
+            Her personelin (teknisyen + yönetici) hangi istasyonlarda çalışabildiğini işaretle.
+            Otomatik atama ve "Yeniden Ata" YALNIZ yetkili personele yapılır; hiç yetkili yoksa
+            aşama boş kalır. Pasif personel ve kuryeler listede yer almaz. (Tek yetkinlik kaynağı burası.)
+          </Text>
+        )}
+      </Pressable>
+
+      {/* ── Araç çubuğu: arama + Filtre ──
+          50 kişilik listede kartları tek tek taramak mümkün değil. Filtreler
+          serbest kapsül olarak durunca üç ayrı satır kaplıyordu; tek düğmenin
+          altına alındı, düğme aktif filtreyi kendi üstünde taşıyor. */}
+      {techList.length > 0 && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{
+            flex: 1, flexDirection: 'row', alignItems: 'center', gap: 9,
+            height: 40, paddingHorizontal: 12, borderRadius: 12,
+            borderWidth: 1, borderColor: 'rgba(0,0,0,0.10)', backgroundColor: '#FFFFFF',
+          }}>
+            <Search size={14} color={INK[400]} strokeWidth={1.8} />
+            <TextInput
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Personel ara…"
+              placeholderTextColor={INK[400]}
+              style={{ flex: 1, fontSize: 13, color: INK[900], ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) }}
+            />
+            {search.length > 0 && (
+              <Pressable onPress={() => setSearch('')} style={{ ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                <X size={13} color={INK[400]} strokeWidth={2} />
+              </Pressable>
+            )}
+          </View>
+
+          <Pressable
+            onPress={() => setFilterOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Filtre"
+            style={({ pressed, hovered }: any) => ({
+              flexDirection: 'row', alignItems: 'center', gap: 7,
+              height: 40, paddingHorizontal: 12, borderRadius: 12,
+              borderWidth: 1,
+              borderColor: chipFilterOn ? A : hovered ? 'rgba(0,0,0,0.20)' : 'rgba(0,0,0,0.10)',
+              backgroundColor: chipFilterOn ? tint(A, 0.10) : '#FFFFFF',
+              opacity: pressed ? 0.7 : 1,
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+            })}
+          >
+            <SlidersHorizontal size={14} color={chipFilterOn ? A_DEEP : INK[400]} strokeWidth={1.8} />
+            <Text style={{ fontSize: 12.5, fontWeight: chipFilterOn ? '700' : '500', color: chipFilterOn ? A_DEEP : INK[500] }}>
+              {filterLabel}
+            </Text>
+            <ChevronDown size={13} color={chipFilterOn ? A_DEEP : INK[400]} strokeWidth={2} />
+          </Pressable>
+
+          <Text style={{ fontSize: 11, color: INK[400] }}>{visible.length} kişi</Text>
+        </View>
+      )}
+
+      {/* Filtre menüsü — Rol · Departman · Yetkisi olmayanlar */}
+      <Modal visible={filterOpen} transparent animationType="fade" onRequestClose={() => setFilterOpen(false)}>
+        <Pressable
+          onPress={() => setFilterOpen(false)}
+          style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.28)', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+        >
+          <Pressable onPress={() => {}} style={{
+            width: '100%', maxWidth: 380, backgroundColor: '#FFFFFF', borderRadius: 20, padding: 18, gap: 16,
+            ...(Platform.OS === 'web' ? { boxShadow: '0 20px 48px rgba(15,23,42,0.22)' } as any : {}),
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={{ flex: 1, fontSize: 15, fontWeight: '700', color: INK[900] }}>Filtre</Text>
+              <Pressable onPress={() => setFilterOpen(false)} style={{ padding: 4, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                <X size={16} color={INK[400]} strokeWidth={2} />
+              </Pressable>
+            </View>
+
+            <View style={{ gap: 8 }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', color: INK[400] }}>Pozisyon</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                <FilterChip label="Teknisyen" on={roleF === 'technician'} onPress={() => setRoleF(roleF === 'technician' ? null : 'technician')} accent={A} accentDeep={A_DEEP} />
+                <FilterChip label="Yönetici"  on={roleF === 'manager'}    onPress={() => setRoleF(roleF === 'manager' ? null : 'manager')} accent={A} accentDeep={A_DEEP} />
+              </View>
+            </View>
+
+            {/* Departman yalnız veride doluysa görünür — boş kontrol göstermenin
+                anlamı yok (profiles.department çoğu labda boş). */}
+            {departments.length > 0 && (
+              <View style={{ gap: 8 }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', color: INK[400] }}>Departman</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {departments.map(d => (
+                    <FilterChip key={d} label={d} on={deptF === d} onPress={() => setDeptF(deptF === d ? null : d)} accent={A} accentDeep={A_DEEP} />
+                  ))}
+                </View>
+              </View>
+            )}
+
+            <View style={{ gap: 8 }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', color: INK[400] }}>Durum</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                <FilterChip
+                  label={`Yetkisi olmayanlar${noSkillCount > 0 ? ` (${noSkillCount})` : ''}`}
+                  on={onlyEmpty}
+                  onPress={() => setOnlyEmpty(v => !v)}
+                  accent={A}
+                  accentDeep={A_DEEP}
+                />
+              </View>
+            </View>
+
+            {chipFilterOn && (
+              <Pressable
+                onPress={() => { setRoleF(null); setDeptF(null); setOnlyEmpty(false); }}
+                style={({ pressed }: any) => ({ alignSelf: 'flex-start', paddingVertical: 6, opacity: pressed ? 0.6 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) })}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '600', color: INK[500] }}>Filtreleri temizle</Text>
+              </Pressable>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* ── Toplu işlem şeridi — yalnız seçim varken ── */}
+      {selected.size > 0 && (
+        <View style={{
+          flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+          borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
+          backgroundColor: tint(A, 0.12), borderWidth: 1, borderColor: tint(A, 0.28),
+        }}>
+          <Text style={{ fontSize: 12.5, fontWeight: '700', color: A_DEEP }}>{selected.size} kişi seçildi</Text>
+          <View style={{ flex: 1 }} />
+          <Pressable
+            onPress={() => setBulkOpen(true)}
+            style={({ pressed }: any) => ({
+              flexDirection: 'row', alignItems: 'center', gap: 6,
+              paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
+              backgroundColor: A, opacity: pressed ? 0.85 : 1,
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+            })}
+          >
+            <Zap size={12} color={theme.onA} strokeWidth={2.2} />
+            <Text style={{ fontSize: 12, fontWeight: '700', color: theme.onA }}>İstasyon ver / kaldır</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setSelected(new Set())}
+            style={({ pressed }: any) => ({ paddingHorizontal: 8, paddingVertical: 6, opacity: pressed ? 0.6 : 1, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) })}
+          >
+            <Text style={{ fontSize: 11.5, fontWeight: '600', color: A_DEEP }}>Seçimi bırak</Text>
+          </Pressable>
+        </View>
+      )}
+
       {techList.length === 0 && <Text style={{ fontSize: 12, color: INK[400], fontStyle: 'italic' }}>Personel yok.</Text>}
       {stations.length === 0 && techList.length > 0 && (
         <Text style={{ fontSize: 12, color: INK[400], fontStyle: 'italic' }}>Önce "Akış" alanından istasyon ekleyin.</Text>
       )}
-      {techList.map(t => {
+      {techList.length > 0 && visible.length === 0 && (
+        <Text style={{ fontSize: 12, color: INK[400], fontStyle: 'italic' }}>Filtreye uyan personel yok.</Text>
+      )}
+
+      {visible.map(t => {
         const owned = stationSkills.get(t.id) ?? new Set<string>();
+        const isSel = selected.has(t.id);
+        const pct = stations.length > 0 ? Math.round((owned.size / stations.length) * 100) : 0;
         return (
-          <View key={t.id} style={{ borderRadius: 14, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.07)', padding: 14, gap: 10 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
-              <View style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(A, 0.18) }}>
-                <Text style={{ fontSize: 11, fontWeight: '800', color: A_DEEP }}>{initials(t.full_name)}</Text>
+          <Pressable
+            key={t.id}
+            onPress={() => toggleSelect(t.id)}
+            // Kart tıklanabilir: seçim toplu işlem için. Hover'da yükselti +
+            // accent kenarlık gelir — eskiden tüm kartlar birbirinin aynısıydı
+            // ve tablo gibi duruyordu.
+            style={({ hovered }: any) => ({
+              borderRadius: 14, backgroundColor: '#FFFFFF',
+              borderWidth: 1,
+              borderColor: isSel ? A : hovered ? tint(A, 0.45) : 'rgba(0,0,0,0.07)',
+              padding: 14, gap: 10,
+              ...(Platform.OS === 'web'
+                ? {
+                    cursor: 'pointer',
+                    boxShadow: isSel
+                      ? `0 6px 20px ${tint(A, 0.22)}`
+                      : hovered ? '0 6px 18px rgba(15,23,42,0.08)' : '0 1px 2px rgba(15,23,42,0.04)',
+                    transitionProperty: 'box-shadow, border-color',
+                    transitionDuration: '140ms',
+                  } as any
+                : {}),
+            })}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              {/* Seçim kutusu — toplu işlem için */}
+              <View style={{
+                width: 18, height: 18, borderRadius: 6,
+                alignItems: 'center', justifyContent: 'center',
+                backgroundColor: isSel ? A : 'transparent',
+                borderWidth: isSel ? 0 : 1.5, borderColor: 'rgba(0,0,0,0.18)',
+              }}>
+                {isSel && <Check size={11} color={theme.onA} strokeWidth={3} />}
               </View>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: INK[900] }}>{t.full_name}</Text>
-              {(t.role ?? 'technician') === 'manager' && (
-                <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: tint(A, 0.12), borderWidth: 1, borderColor: tint(A, 0.25) }}>
-                  <Text style={{ fontSize: 9.5, fontWeight: '800', color: A_DEEP, letterSpacing: 0.4 }}>YÖNETİCİ</Text>
+              <View style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(A, 0.18) }}>
+                <Text style={{ fontSize: 12, fontWeight: '800', color: A_DEEP }}>{initials(t.full_name)}</Text>
+              </View>
+              {/* Ad + tek satırlık kimlik: rol · baskın uzmanlık. */}
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: INK[900] }} numberOfLines={1}>{t.full_name}</Text>
+                <Text style={{ fontSize: 11, color: INK[400], marginTop: 1 }} numberOfLines={1}>
+                  {[
+                    PERSON_ROLE_LABEL[t.role ?? 'technician'] ?? 'Personel',
+                    (t.department ?? '').trim() || null,
+                    dominantGroupLabel(owned, stations),
+                  ].filter(Boolean).join(' · ')}
+                </Text>
+              </View>
+              <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5 }}>
+                  <Text style={{ fontSize: 12.5, fontWeight: '700', color: INK[900] }}>{owned.size}</Text>
+                  <Text style={{ fontSize: 11, color: INK[400] }}>/ {stations.length}</Text>
+                  <Text style={{ fontSize: 10.5, color: INK[300] }}>{stations.length > 0 ? `· %${pct}` : ''}</Text>
                 </View>
-              )}
-              <Text style={{ fontSize: 11, color: INK[400], marginLeft: 'auto' }}>{owned.size}/{stations.length}</Text>
+                <View style={{ width: 104, height: 5, borderRadius: 3, backgroundColor: 'rgba(0,0,0,0.07)', overflow: 'hidden' }}>
+                  <View style={{ width: `${pct}%`, height: '100%', borderRadius: 3, backgroundColor: A }} />
+                </View>
+              </View>
             </View>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-              {stations.map(st => {
-                const has = owned.has(st.id);
+
+            <View style={{ gap: 10 }}>
+              {groupStations(stations).map(group => {
+                const groupOwned = group.items.filter(st => owned.has(st.id)).length;
+                const allOn = groupOwned === group.items.length;
                 return (
-                  <Pressable
-                    key={st.id}
-                    onPress={() => onToggleStation(t.id, st.id, has)}
-                    style={{
-                      flexDirection: 'row', alignItems: 'center', gap: 5,
-                      paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999,
-                      borderWidth: 1,
-                      borderColor: has ? A : 'rgba(0,0,0,0.12)',
-                      backgroundColor: has ? tint(A, 0.12) : '#FFFFFF',
-                      ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
-                    }}
-                  >
-                    {has && <Check size={12} color={A_DEEP} strokeWidth={3} />}
-                    <Text style={{ fontSize: 11.5, fontWeight: '600', color: has ? A_DEEP : INK[500] }}>{st.name}</Text>
-                  </Pressable>
+                  <View key={group.label} style={{ gap: 6 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Text style={{ fontSize: 9.5, fontWeight: '700', letterSpacing: 0.9, textTransform: 'uppercase', color: INK[400] }}>
+                        {group.label}
+                      </Text>
+                      <Text style={{ fontSize: 9.5, color: INK[300] }}>{groupOwned}/{group.items.length}</Text>
+                      <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(0,0,0,0.06)' }} />
+                      {/* Grup başına toplu aç/kapat: 5 kapsülü tek tek çevirmek yerine. */}
+                      <Pressable
+                        onPress={() => group.items.forEach(st => {
+                          const has = owned.has(st.id);
+                          if (allOn ? has : !has) onToggleStation(t.id, st.id, has);
+                        })}
+                        style={({ pressed }: any) => ({
+                          paddingHorizontal: 6, paddingVertical: 2,
+                          opacity: pressed ? 0.6 : 1,
+                          ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                        })}
+                      >
+                        <Text style={{ fontSize: 10, fontWeight: '600', color: A_DEEP }}>
+                          {allOn ? 'Kaldır' : 'Tümü'}
+                        </Text>
+                      </Pressable>
+                    </View>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                      {group.items.map(st => {
+                        const has = owned.has(st.id);
+                        return (
+                          <Pressable
+                            key={st.id}
+                            onPress={() => onToggleStation(t.id, st.id, has)}
+                            // Kapsüller SEÇİLEBİLİR: hover'da kenarlık koyulaşır +
+                            // hafif gölge, basınca 0.96'ya iner. Eskiden statik
+                            // etiket gibi duruyorlardı, tıklanacağı anlaşılmıyordu.
+                            style={({ pressed, hovered }: any) => ({
+                              flexDirection: 'row', alignItems: 'center', gap: 5,
+                              paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999,
+                              borderWidth: 1,
+                              borderColor: has ? A : hovered ? 'rgba(0,0,0,0.24)' : 'rgba(0,0,0,0.12)',
+                              backgroundColor: has ? tint(A, 0.12) : hovered ? 'rgba(0,0,0,0.02)' : '#FFFFFF',
+                              transform: [{ scale: pressed ? 0.96 : 1 }],
+                              ...(Platform.OS === 'web'
+                                ? {
+                                    cursor: 'pointer',
+                                    boxShadow: hovered ? '0 2px 8px rgba(15,23,42,0.10)' : 'none',
+                                    transitionProperty: 'transform, box-shadow, border-color, background-color',
+                                    transitionDuration: '120ms',
+                                  } as any
+                                : {}),
+                            })}
+                          >
+                            {has && <Check size={12} color={A_DEEP} strokeWidth={3} />}
+                            <Text style={{ fontSize: 11.5, fontWeight: '600', color: has ? A_DEEP : INK[500] }}>{st.name}</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
                 );
               })}
             </View>
-          </View>
+          </Pressable>
         );
       })}
+
+      {/* ── Toplu işlem: istasyon seç → ver / kaldır ── */}
+      <Modal visible={bulkOpen} transparent animationType="fade" onRequestClose={() => setBulkOpen(false)}>
+        <Pressable
+          onPress={() => setBulkOpen(false)}
+          style={{ flex: 1, backgroundColor: 'rgba(10,14,26,0.30)', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+        >
+          <Pressable onPress={() => {}} style={{
+            width: '100%', maxWidth: 460, maxHeight: '80%', backgroundColor: '#FFFFFF', borderRadius: 20, padding: 18, gap: 14,
+            ...(Platform.OS === 'web' ? { boxShadow: '0 20px 48px rgba(15,23,42,0.22)' } as any : {}),
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={{ flex: 1, fontSize: 15, fontWeight: '700', color: INK[900] }}>
+                {selected.size} kişi · istasyon ata
+              </Text>
+              <Pressable onPress={() => setBulkOpen(false)} style={{ padding: 4, ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}>
+                <X size={16} color={INK[400]} strokeWidth={2} />
+              </Pressable>
+            </View>
+            <Text style={{ fontSize: 12, color: INK[500], lineHeight: 17 }}>
+              Seçtiğin istasyon, işaretli herkese verilir ya da hepsinden kaldırılır.
+            </Text>
+            <ScrollView style={{ maxHeight: 340 }} showsVerticalScrollIndicator={false}>
+              <View style={{ gap: 10 }}>
+                {groupStations(stations).map(group => (
+                  <View key={group.label} style={{ gap: 6 }}>
+                    <Text style={{ fontSize: 9.5, fontWeight: '700', letterSpacing: 0.9, textTransform: 'uppercase', color: INK[400] }}>
+                      {group.label}
+                    </Text>
+                    {group.items.map(st => {
+                      const haveCount = Array.from(selected).filter(id => stationSkills.get(id)?.has(st.id)).length;
+                      return (
+                        <View key={st.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <Text style={{ flex: 1, fontSize: 12.5, color: INK[900] }} numberOfLines={1}>{st.name}</Text>
+                          <Text style={{ fontSize: 10.5, color: INK[300] }}>{haveCount}/{selected.size}</Text>
+                          <Pressable
+                            onPress={() => applyBulk(st.id, true)}
+                            style={({ pressed }: any) => ({
+                              paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
+                              backgroundColor: tint(A, 0.14), opacity: pressed ? 0.7 : 1,
+                              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                            })}
+                          >
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: A_DEEP }}>Ver</Text>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => applyBulk(st.id, false)}
+                            style={({ pressed }: any) => ({
+                              paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
+                              backgroundColor: 'rgba(0,0,0,0.05)', opacity: pressed ? 0.7 : 1,
+                              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                            })}
+                          >
+                            <Text style={{ fontSize: 11, fontWeight: '600', color: INK[500] }}>Kaldır</Text>
+                          </Pressable>
+                        </View>
+                      );
+                    })}
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -964,9 +1760,10 @@ export function PeopleArea({ theme, techs, stations, stationSkills, onToggleStat
 // ════════════════════════════════════════════════════════════════════════════
 // AREA 4 — Kurallar (aşama bazlı: süre · SLA · gerekli yetkinlik · oto-triaj)
 // ════════════════════════════════════════════════════════════════════════════
-function RulesArea({ theme, labId, stations, techs, skillCatalog, onStationSkills, onStationTiming }: {
+function RulesArea({ theme, labId, stations, techs, skillCatalog, onStationSkills, onStationTiming, onStationMaterials }: {
   theme: Theme; labId: string | null; stations: TriageStation[]; techs: TriageTech[]; skillCatalog: string[];
   onStationSkills: (st: TriageStation, s: string[]) => void; onStationTiming: (st: TriageStation, d: number | null, sla: number | null) => void;
+  onStationMaterials: (st: TriageStation, cats: string[]) => void;
 }) {
   const { A, A_DEEP } = theme;
   return (
@@ -991,6 +1788,22 @@ function RulesArea({ theme, labId, stations, techs, skillCatalog, onStationSkill
           <View style={{ gap: 6 }}>
             <Text style={dlabel}>Tahmini süre & teslim hedefi</Text>
             <TimingFields st={st} theme={theme} onSave={(d, s) => onStationTiming(st, d, s)} />
+          </View>
+          <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.06)' }} />
+          <View style={{ gap: 6 }}>
+            <Text style={dlabel}>Kullanılan malzeme kategorileri</Text>
+            <ChipEditor
+              values={st.allowed_material_types}
+              suggestions={Array.from(new Set([...MATERIAL_CATEGORIES, ...st.allowed_material_types]))}
+              theme={theme}
+              onChange={(c) => onStationMaterials(st, c)}
+              placeholder="kategori ekle (ör. Zirkonyum)"
+            />
+            <Text style={{ fontSize: 11, color: st.consumes_materials ? INK[500] : '#9C5E0E' }}>
+              {st.consumes_materials
+                ? 'Bu aşama tamamlanırken, bu kategorilerdeki stok kalemleri önerilir ve stoktan düşülür.'
+                : 'Kategori eklenmedi → bu aşamada malzeme tüketimi sorulmaz (popup açılmaz).'}
+            </Text>
           </View>
         </View>
       ))}

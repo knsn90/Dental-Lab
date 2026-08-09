@@ -53,12 +53,18 @@ interface Props {
    */
   searchItems?: PillSearchItem[];
   onSearchNavigate?: (href: string) => void;
+  /**
+   * OPTIONAL — onboarding tour target hook. Returns a ref-callback for a given
+   * routeName (pill cell or fabItem) so the coach-mark overlay can spotlight it.
+   * Only the doctor layout passes this; other panels leave it undefined → no-op.
+   */
+  getItemRef?: (routeName: string) => ((node: any) => void) | undefined;
 }
 
 // iOS 26+ native liquid glass available? (via @callstack/liquid-glass)
 const LIQUID_GLASS = Platform.OS === 'ios' && !!isLiquidGlassSupported;
 
-export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems, onSearchNavigate }: Props) {
+export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems, onSearchNavigate, getItemRef }: Props) {
   const pathname = usePathname();
   const router   = useRouter();
   const insets   = useSafeAreaInsets();
@@ -212,6 +218,7 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
       dark={dark}
       onPress={() => handle(item)}
       onLayout={handleCellLayout(i)}
+      itemRef={getItemRef?.(item.routeName)}
     />
   ));
 
@@ -347,7 +354,7 @@ export function PillTabBar({ items, baseRoute, accentColor, fabItem, searchItems
   const content = (fabItem && !searchActive) ? (
     <View style={s.asymRow}>
       {barContent}
-      <FabButton item={fabItem} accentColor={accent} />
+      <FabButton item={fabItem} accentColor={accent} itemRef={getItemRef?.(fabItem.routeName)} />
     </View>
   ) : (
     barContent
@@ -475,7 +482,7 @@ function SearchAboveFab({ accentColor }: { accentColor?: string }) {
 }
 
 // ─── Side FAB — separate accent-filled circle next to the pill ──────────────
-function FabButton({ item, accentColor }: { item: PillTabItem; accentColor: string }) {
+function FabButton({ item, accentColor, itemRef }: { item: PillTabItem; accentColor: string; itemRef?: (node: any) => void }) {
   const scale = useRef(new Animated.Value(1)).current;
   const Icon  = item.icon;
 
@@ -492,7 +499,7 @@ function FabButton({ item, accentColor }: { item: PillTabItem; accentColor: stri
   // onto nearby glass surfaces (search button) via screen-pixel refraction.
   if (LIQUID_GLASS) {
     return (
-      <Pressable onPress={handle} hitSlop={6}>
+      <Pressable ref={itemRef} onPress={handle} hitSlop={6}>
         <Animated.View
           style={[
             s.fab,
@@ -526,7 +533,7 @@ function FabButton({ item, accentColor }: { item: PillTabItem; accentColor: stri
   }
 
   return (
-    <Pressable onPress={handle} hitSlop={6}>
+    <Pressable ref={itemRef} onPress={handle} hitSlop={6}>
       <Animated.View
         style={[
           s.fab,
@@ -557,7 +564,7 @@ function FabButton({ item, accentColor }: { item: PillTabItem; accentColor: stri
 
 // ─── Single cell — collapses to icon-only or expands to icon+label pill ──────
 function PillCell({
-  item, active, accentColor, dark, onPress, onLayout,
+  item, active, accentColor, dark, onPress, onLayout, itemRef,
 }: {
   item: PillTabItem;
   active: boolean;
@@ -565,6 +572,7 @@ function PillCell({
   dark: boolean;
   onPress: () => void;
   onLayout?: (e: any) => void;
+  itemRef?: (node: any) => void;
 }) {
   const Icon  = item.icon;
   const scale = useRef(new Animated.Value(1)).current;
@@ -606,7 +614,7 @@ function PillCell({
   });
 
   return (
-    <Pressable onPress={tapAnim} style={s.cellPressable} onLayout={onLayout}>
+    <Pressable ref={itemRef} onPress={tapAnim} style={s.cellPressable} onLayout={onLayout}>
       <Animated.View style={[s.cellInner, { transform: [{ scale }] }]}>
         {/* NOTE: Pill background artık parent'taki shared sliding indicator
             tarafından çiziliyor (WhatsApp-style smooth motion). */}
@@ -665,7 +673,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 7,
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     borderRadius: 999,
     width: '100%',
     maxWidth: 420,
@@ -789,10 +797,12 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 12,
+    // Pasif hücreler daraltıldı (12→8 / 44→38) → aktif "Siparişler" pill'i + ••• sığsın,
+    // sona taşma / sıkışma olmasın.
+    paddingHorizontal: 8,
     paddingVertical: 9,
     borderRadius: 999,
-    minWidth: 44,
+    minWidth: 38,
     overflow: 'hidden',
   },
 

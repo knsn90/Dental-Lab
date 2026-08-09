@@ -1,4 +1,5 @@
 import { localeTag } from '../../../core/i18n';
+import { safeBack } from '../../../core/util/safeBack';
 // modules/station/screens/RouteAssignScreen.tsx
 // Mesul müdür — iş emri için istasyon rotası + teknisyen atama
 
@@ -332,7 +333,7 @@ export function RouteAssignScreen() {
       Alert.alert('Hata', error.message);
     } else {
       toast.success('Rota başarıyla kaydedildi ✓');
-      router.back();
+      safeBack('/(station)');
     }
   }
 
@@ -363,7 +364,7 @@ export function RouteAssignScreen() {
     <SafeAreaView style={s.container} edges={['top']}>
       {/* ── Başlık ── */}
       <View style={s.header}>
-        <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={s.backBtn} onPress={() => safeBack('/(station)')}>
           <AppIcon name="arrow-left" size={20} color={ACCENT} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>

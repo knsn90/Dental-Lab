@@ -281,23 +281,33 @@ export function ActiveJobHero({
             <View style={{ flex: 1, minWidth: 0 }}>
               {job ? (
                 <>
+                  {/* Eskiden başlık İSTASYON ADIYDI ve aynı kelime ekranda üç kez
+                      geçiyordu: kuyruk kartı → hero eyebrow → hero başlığı. Üstelik
+                      teknisyen hangi istasyonda çalıştığını zaten biliyor; bilmediği
+                      HANGİ HASTA. Kimlik başlığa, istasyon etikete alındı. */}
                   <Text style={{
                     fontSize: 10.5, fontWeight: '700',
                     color: 'rgba(255,255,255,0.65)',
                     letterSpacing: 1.4, textTransform: 'uppercase',
                   }}>
-                    {desc.eyebrow} · Aşama #{job.sequence_order}
+                    {job.station_name ?? desc.eyebrow} · Aşama #{job.sequence_order}
                   </Text>
                   <Text
-                    numberOfLines={isMobile ? 2 : 1}
+                    numberOfLines={2}
                     style={{
-                      ...SERIF, fontSize: isMobile ? 24 : 32,
+                      ...SERIF, fontSize: isMobile ? 26 : 32,
                       color: '#FFFFFF',
-                      letterSpacing: isMobile ? -0.5 : -0.8, lineHeight: isMobile ? 28 : 36,
+                      letterSpacing: isMobile ? -0.6 : -0.8, lineHeight: isMobile ? 30 : 36,
                       marginTop: 2,
                     }}
                   >
-                    {job.station_name ?? '—'}
+                    {job.patient_name ?? 'Hasta belirtilmemiş'}
+                  </Text>
+                  <Text numberOfLines={1} style={{
+                    fontSize: 12, color: 'rgba(255,255,255,0.72)', marginTop: 3,
+                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                  }}>
+                    #{job.order_number}
                   </Text>
                 </>
               ) : (
@@ -354,8 +364,14 @@ export function ActiveJobHero({
           )}
         </View>
 
-        {/* ★ Action slot — timer'ın altında, mavi alanda (state buttons + Tamamla) */}
-        {job && job.status !== 'bekliyor' && actionSlot && (
+        {/* ★ Action slot — timer'ın altında, mavi alanda.
+            ÖNCEDEN `status !== 'bekliyor'` koşulu vardı: sırası gelmemiş işte
+            hiçbir şey render edilmiyordu. Oysa WorkstationActionBar o durum için
+            zaten açıklama döndürüyor — kod yazılmış ama hiç gösterilmiyordu.
+            Sonuç: teknisyen işe bakıyor, buton yok, sebep yok, boşluk var.
+            Kural (§9 empty-nav-state): kullanılamayan bir hedefi sessizce gizleme,
+            NEDENİNİ söyle. */}
+        {job && actionSlot && (
           <View style={{ marginTop: 16, zIndex: 1 }}>
             {actionSlot}
           </View>
@@ -365,32 +381,9 @@ export function ActiveJobHero({
       {/* ═══ ALT — White section: bağlam (action slot mavi alana taşındı) ═══ */}
       {job ? (
         <View style={{ paddingHorizontal: isMobile ? 16 : 24, paddingTop: 16, paddingBottom: 18, gap: 12 }}>
-          {/* Patient + order — dikey, tam-genişlik okunur düzen */}
+          {/* Hasta adı + sipariş no artık HERO'da — burada tekrar edilmez.
+              Kalan: kimin gönderdiği (hekim/klinik) ve işin özellikleri. */}
           <View style={{ gap: 8 }}>
-            {/* Üst satır: HASTA etiketi (sol) + sipariş no pill (sağ) */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-              <Text style={{ fontSize: 9.5, fontWeight: '700', color: P.ink400, letterSpacing: 1.2, textTransform: 'uppercase' }}>
-                Hasta
-              </Text>
-              <View style={{
-                paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6,
-                backgroundColor: hexA(P.accent, 0.10),
-                borderWidth: 1, borderColor: hexA(P.accent, 0.22),
-              }}>
-                <Text style={{
-                  fontSize: 11.5, fontWeight: '700', color: P.accentDeep,
-                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                }}>
-                  #{job.order_number}
-                </Text>
-              </View>
-            </View>
-
-            {/* Hasta adı — tam genişlik */}
-            <Text style={{ ...SERIF, fontSize: 24, color: P.ink900, letterSpacing: -0.5, lineHeight: 28 }} numberOfLines={2}>
-              {job.patient_name ?? 'Belirtilmemiş'}
-            </Text>
-
             {(job.doctor_name || job.clinic_name) && (
               <Text style={{ fontSize: 12, color: P.ink500 }} numberOfLines={1}>
                 {job.doctor_name && <Text style={{ color: P.ink700, fontWeight: '600' }}>{job.doctor_name}</Text>}
@@ -456,14 +449,31 @@ export function ActiveJobHero({
             </View>
           )}
 
-          {/* Üst-seviye iş yaşam döngüsü */}
+          {/* Üst-seviye iş yaşam döngüsü.
+              MOBİLDE tek satıra indirildi: 6 adımlık şerit ~60px kaplıyor ve
+              HEKİM NOTUNU ekranın altına itiyordu. Teknisyen zaten üretimde
+              olduğunu biliyor; ihtiyacı olan "siparişin neresindeyim" bilgisi
+              tek satırda korunur. Masaüstünde tam şerit kalır (yer var). */}
           {masterStep && (
-            <View style={{ paddingTop: 12 }}>
-              <Text style={{ fontSize: 9.5, fontWeight: '700', color: P.ink400, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>
-                Sipariş Akışı
-              </Text>
-              <MasterWorkflowTimeline currentStep={masterStep} />
-            </View>
+            isMobile ? (
+              <View style={{
+                flexDirection: 'row', alignItems: 'center', gap: 8,
+                paddingTop: 10, borderTopWidth: 1, borderTopColor: P.ink100,
+              }}>
+                <Text style={{ fontSize: 9.5, fontWeight: '700', color: P.ink400, letterSpacing: 1.2, textTransform: 'uppercase' }}>
+                  Sipariş Akışı
+                </Text>
+                <View style={{ flex: 1 }} />
+                <MasterStepInline currentStep={masterStep} />
+              </View>
+            ) : (
+              <View style={{ paddingTop: 12 }}>
+                <Text style={{ fontSize: 9.5, fontWeight: '700', color: P.ink400, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>
+                  Sipariş Akışı
+                </Text>
+                <MasterWorkflowTimeline currentStep={masterStep} />
+              </View>
+            )
           )}
 
           {/* "Üretim Adımları" sub-timeline kaldırıldı — Sipariş Akışı yeterli odak. */}
@@ -477,6 +487,41 @@ export function ActiveJobHero({
           </Text>
         </View>
       )}
+    </View>
+  );
+}
+
+/**
+ * Sipariş akışının tek satırlık hâli: "Üretim · 3/6" + minik ilerleme noktaları.
+ * Adım adları ve sıra korunur; yalnız dikey yer harcanmaz.
+ */
+function MasterStepInline({ currentStep }: { currentStep: MasterStep }) {
+  const P = useStationTheme();
+  const LABELS: Record<string, string> = {
+    alindi: 'Alındı', planlama: 'Planlama', uretim: 'Üretim',
+    qc: 'QC', hazir: 'Hazır', teslim: 'Teslim',
+  };
+  const ORDER = ['alindi', 'planlama', 'uretim', 'qc', 'hazir', 'teslim'];
+  const idx = Math.max(0, ORDER.indexOf(currentStep));
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+        {ORDER.map((k, i) => (
+          <View
+            key={k}
+            style={{
+              width: i === idx ? 14 : 5, height: 5, borderRadius: 3,
+              backgroundColor: i < idx ? hexA(P.accent, 0.35)
+                             : i === idx ? P.accent
+                             : P.ink300,
+            }}
+          />
+        ))}
+      </View>
+      <Text style={{ fontSize: 11.5, fontWeight: '700', color: P.ink700 }}>
+        {LABELS[currentStep] ?? currentStep}
+      </Text>
+      <Text style={{ fontSize: 10.5, color: P.ink400 }}>{idx + 1}/{ORDER.length}</Text>
     </View>
   );
 }

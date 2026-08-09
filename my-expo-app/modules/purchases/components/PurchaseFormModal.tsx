@@ -34,10 +34,22 @@ interface Line {
   vat_rate: string;            // satır KDV % (string for input). '' → header default kullanılır
   brand?: string;              // opsiyonel: yeni ürün için marka
   category?: string;           // opsiyonel: yeni ürün için kategori
-  item_kind?: 'consumable' | 'equipment';  // 'equipment' → demirbaş, sarf değil
+  /**
+   * Satırın stoğa girip girmeyeceği:
+   *   consumable      → stok kalemi olur, miktar/FIFO işler
+   *   equipment       → demirbaş kaydı açılır, stok etkilenmez
+   *   service         → hizmet/işçilik
+   *   shipping        → kargo/nakliye
+   *   other_nonstock  → diğer stok dışı
+   * Stok dışı olanlar faturada satır olarak görünür (purchase_invoice_extras).
+   */
+  item_kind?: 'consumable' | 'equipment' | 'service' | 'shipping' | 'other_nonstock';
   model?: string;              // sadece equipment için
   equipment_category?: string; // cihaz kategorisi
   needs_review?: boolean;      // OCR şüpheli → kullanıcıya sor
+  lot_no?: string;             // opsiyonel: lot/seri no (izlenebilirlik)
+  expiry_date?: string;        // opsiyonel: son kullanma (YYYY-AA-GG)
+  show_lot?: boolean;          // sadece UI: lot/SKT alanları açık mı
 }
 
 interface StockItemLite {
@@ -142,7 +154,7 @@ export function PurchaseFormModal({ visible, accentColor = '#0A0A0A', onClose, o
         setLines(d.lines.map((l: any) => {
           const rawKind = String(l.item_kind ?? 'consumable').toLowerCase();
           const isUnknown = rawKind === 'unknown';
-          const kind: 'consumable' | 'equipment' = rawKind === 'equipment' ? 'equipment' : 'consumable';
+          const kind: Line['item_kind'] = rawKind === 'equipment' ? 'equipment' : 'consumable';
           return {
             id: Math.random().toString(36).slice(2),
             item_id: null,
@@ -310,6 +322,10 @@ export function PurchaseFormModal({ visible, accentColor = '#0A0A0A', onClose, o
         item_kind: l.item_kind ?? 'consumable',
         model: l.model?.trim() || null,
         equipment_category: (l.equipment_category as any) || null,
+        lot_no: l.lot_no?.trim() || null,
+        expiry_date: /^\d{4}-\d{2}-\d{2}$/.test((l.expiry_date ?? '').trim())
+          ? l.expiry_date!.trim()
+          : null,
       }));
 
     // Opsiyonel PDF arşivleme — kullanıcı checkbox'ı işaretlediyse Storage'a yükle
@@ -334,8 +350,10 @@ export function PurchaseFormModal({ visible, accentColor = '#0A0A0A', onClose, o
           stopSaving();
           return;
         }
-        const { data: urlData } = supabase.storage.from('purchase-invoices').getPublicUrl(path);
-        invoiceFileUrl = urlData?.publicUrl ?? null;
+        // URL DEĞİL, YOL saklanır. Bucket özel; public URL çalışmaz, imzalı URL
+        // ise süreli — veritabanına yazılırsa bir süre sonra ölü bağlantı olur.
+        // Okuma anında imzalanır (PurchaseInvoicePreviewModal).
+        invoiceFileUrl = path;
       } catch (e: any) {
         setError('PDF arşivlenirken hata: ' + (e?.message ?? 'bilinmeyen hata'));
         stopSaving();
@@ -807,24 +825,36 @@ function LineRow({
   const filtered = items.filter(i =>
     !search || i.name.toLowerCase().includes(search.toLowerCase())
   );
+  // Tam eşleşme varsa (kullanıcı listeden seçti ya da adı bire bir yazdı) liste
+  // gösterilmez; aksi hâlde seçimden sonra bile açık kalıp altını örtüyordu.
+  const exact = filtered.length === 1 && filtered[0].name.toLowerCase() === search.trim().toLowerCase();
+  const showList = pickerOpen && filtered.length > 0 && !exact;
 
   return (
-    <View style={{ position: 'relative' as any, zIndex: pickerOpen ? 10 : 1 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' }}>
+    // YIĞIN SIRASI: dropdown mutlak konumlu ve zIndex'i yüksek olsa da, ATA
+    // zincirinde yükseltme olmadığı için KENDİNDEN SONRA gelen kardeşlerin
+    // ("Stoğa eklensin mi?" şeridi, "+ Lot / SKT ekle", bir sonraki satır)
+    // altında kalıyordu. Açıkken kökü + satır kabını + input sarmalayıcısını
+    // birlikte yükseltmek gerekir; tek katmanda zIndex vermek yetmiyor.
+    <View style={{ position: 'relative' as any, zIndex: pickerOpen ? 3000 : 1, ...(Platform.OS === 'android' ? { elevation: pickerOpen ? 24 : 0 } : {}) }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', position: 'relative' as any, zIndex: pickerOpen ? 3000 : 1 }}>
         {/* Item name + picker */}
         <View style={{ flex: 2.2 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <Text style={{ fontSize: 10, color: '#9A9A9A', fontWeight: '600', minWidth: 14 }}>#{idx}</Text>
-            <View style={{ flex: 1, position: 'relative' as any }}>
+            <View style={{ flex: 1, position: 'relative' as any, zIndex: pickerOpen ? 3000 : 1 }}>
               <TextInput
                 style={cellInput}
                 value={search}
                 onChangeText={(t) => { setSearch(t); onChange({ item_name: t, item_id: null }); setPickerOpen(true); }}
                 onFocus={() => setPickerOpen(true)}
+                // Odak gidince kapat. 140 ms gecikme: liste öğesine yapılan basış
+                // blur'dan SONRA işleniyor; gecikmesiz kapatınca seçim kayboluyor.
+                onBlur={() => setTimeout(() => setPickerOpen(false), 140)}
                 placeholder="Ürün adı (ara veya yaz)"
                 placeholderTextColor="#9A9A9A"
               />
-              {pickerOpen && filtered.length > 0 && (
+              {showList && (
                 <View style={{ position: 'absolute' as any, top: 42, left: 0, right: 0, zIndex: 100, backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', overflow: 'hidden', ...(Platform.OS === 'web' ? { boxShadow: '0 8px 24px rgba(0,0,0,0.10)' } as any : {}) }}>
                   <ScrollView style={{ maxHeight: 180 }} keyboardShouldPersistTaps="handled">
                     {filtered.slice(0, 20).map(i => (
@@ -922,8 +952,10 @@ function LineRow({
         </View>
       </View>
 
-      {/* Sarf / Demirbaş seçimi — needs_review veya item_kind=equipment ise göster */}
-      {(line.needs_review || line.item_kind === 'equipment') && (
+      {/* Stoğa eklensin mi? — HER satırda sorulur. Faturaya giren her kalem
+          stok kalemi değildir; cihaz/hizmet/kargo stoğu etkilemez ama faturada
+          satır olarak görünmelidir. */}
+      {true && (
         <View style={{
           marginTop: 4, padding: 10, borderRadius: 10,
           backgroundColor: line.needs_review ? 'rgba(217,119,6,0.08)' : 'rgba(15,118,110,0.06)',
@@ -934,11 +966,14 @@ function LineRow({
           {line.needs_review && (
             <Text style={{ fontSize: 11, fontWeight: '700', color: '#9C5E0E' }}>⚠ Tipi belirsiz —</Text>
           )}
-          <Text style={{ fontSize: 11, color: '#475569', flex: line.needs_review ? 0 : 1 }}>Bu kalem:</Text>
-          <View style={{ flexDirection: 'row', gap: 4 }}>
+          <Text style={{ fontSize: 11, color: '#475569' }}>Stoğa eklensin mi?</Text>
+          <View style={{ flexDirection: 'row', gap: 4, flexWrap: 'wrap', flex: 1 }}>
             {([
-              { v: 'consumable', l: 'Sarf', c: '#0F766E' },
-              { v: 'equipment',  l: 'Demirbaş', c: '#7C3AED' },
+              { v: 'consumable',     l: 'Evet · Stok',  c: '#0F766E' },
+              { v: 'equipment',      l: 'Demirbaş',     c: '#7C3AED' },
+              { v: 'service',        l: 'Hizmet',       c: '#0EA5E9' },
+              { v: 'shipping',       l: 'Kargo',        c: '#D97706' },
+              { v: 'other_nonstock', l: 'Diğer',        c: '#6B7280' },
             ] as const).map(opt => {
               const active = (line.item_kind ?? 'consumable') === opt.v;
               return (
@@ -975,6 +1010,40 @@ function LineRow({
             </View>
           )}
         </View>
+      )}
+
+      {/* Lot / SKT — sarf kalemleri için opsiyonel izlenebilirlik alanı.
+          Varsayılan gizli; girilmiş değer varsa otomatik açık kalır. */}
+      {(line.item_kind ?? 'consumable') === 'consumable' && (
+        (line.show_lot || line.lot_no || line.expiry_date) ? (
+          <View style={{ marginTop: 4, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={{ fontSize: 10, fontWeight: '700', color: '#9A9A9A', letterSpacing: 0.6, width: 56 }}>LOT / SKT</Text>
+            <TextInput
+              style={{ ...cellInput, flex: 1 }}
+              value={line.lot_no ?? ''}
+              onChangeText={(t) => onChange({ lot_no: t })}
+              placeholder="Lot / seri no (ops.)"
+              placeholderTextColor="#9A9A9A"
+            />
+            <TextInput
+              style={{ ...cellInput, width: 140 }}
+              value={line.expiry_date ?? ''}
+              onChangeText={(t) => onChange({ expiry_date: t })}
+              placeholder="SKT: 2027-05-31"
+              placeholderTextColor="#9A9A9A"
+            />
+          </View>
+        ) : (
+          <Pressable
+            onPress={() => onChange({ show_lot: true } as any)}
+            style={{
+              marginTop: 3, alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3,
+              ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+            }}
+          >
+            <Text style={{ fontSize: 10, fontWeight: '600', color: '#9A9A9A' }}>+ Lot / SKT ekle</Text>
+          </Pressable>
+        )
       )}
     </View>
   );

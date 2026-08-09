@@ -16,13 +16,13 @@ import { localeTag } from '../../../core/i18n';
 //   • Tek kontrol çubuğu: durum solda · arama + filtre + yenile sağda.
 //     KPI şeridi kaldırıldı — aynı sayıları durum satırı zaten söylüyordu.
 
-import React, { useEffect, useMemo, useState, useContext } from 'react';
+import React, { useEffect, useMemo, useState, useContext, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
-  RefreshControl, useWindowDimensions, Platform, Modal,
+  RefreshControl, useWindowDimensions, Platform, Modal, Animated, Easing,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useSegments } from 'expo-router';
 
 import { useAuthStore } from '../../../core/store/authStore';
 import { usePanelTheme } from '../../../core/theme/usePanelTheme';
@@ -55,6 +55,29 @@ const WARN   = DS.lab.warning;   // #E89B2A
 
 /** Sayı sütunları dikeyde hizalansın. */
 const NUM = { fontVariant: ['tabular-nums'] as any };
+/** DESIGN_LANGUAGE §2 — display başlık/rakam ailesi (daima light 300) */
+const DISPLAY_FONT = Platform.select({
+  web: 'Inter Tight, Inter, system-ui, sans-serif',
+  default: 'InterTight_300Light',
+}) as string;
+
+/** Canlı veri göstergesi — 2.4sn'lik yumuşak nabız (DESIGN_LANGUAGE §9). */
+function LiveDot({ color }: { color: string }) {
+  const v = useRef(new Animated.Value(0.35)).current;
+  useEffect(() => {
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(v, { toValue: 1,    duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: Platform.OS !== 'web' }),
+      Animated.timing(v, { toValue: 0.35, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: Platform.OS !== 'web' }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [v]);
+  return (
+    <Animated.View style={{
+      width: 6, height: 6, borderRadius: 999, backgroundColor: color, opacity: v,
+    }} />
+  );
+}
 
 function hexA(hex: string, a: number) {
   try { const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16); return `rgba(${r},${g},${b},${a})`; } catch { return hex; }
@@ -91,6 +114,20 @@ function makeStyles(C: Palette) {
       },
       status:     { flexGrow: 1, flexShrink: 1, flexBasis: 160, minWidth: 0, fontSize: 14, fontWeight: '600', color: C.ink2, ...NUM },
       statusMuted:{ color: C.ink3, fontWeight: '500' },
+
+      // Durum şeridi — DESIGN_LANGUAGE §2: DISPLAY (Inter Tight 300) rakam +
+      // 10px uppercase meta etiket. Düz "4 iş · 2 aktif" cümlesinin yerini alır;
+      // rakamlar tek bakışta okunur, etiketler geri planda kalır.
+      statWrap:   { flexDirection: 'row', alignItems: 'center', gap: 22, flexGrow: 1, flexShrink: 1, flexBasis: 220, minWidth: 0, flexWrap: 'wrap' },
+      statBlock:  { gap: 2 },
+      statValue:  {
+        fontFamily: DISPLAY_FONT, fontWeight: '300', fontSize: 20,
+        letterSpacing: -0.6, lineHeight: 24, color: C.ink, ...NUM,
+      },
+      statLabel:  {
+        fontSize: 10, fontWeight: '500', letterSpacing: 0.8,
+        textTransform: 'uppercase', color: C.ink3,
+      },
       // flexBasis şart: temeli olmayan wrap-item kendi satırına düştüğünde
       // içeriğine göre boyutlanıp taşar, içindeki çipler sarmalanmaz.
       barTools:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap', flexGrow: 1, flexShrink: 1, flexBasis: 300, minWidth: 0 },
@@ -98,7 +135,7 @@ function makeStyles(C: Palette) {
       searchBox:  { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.card, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, flexGrow: 1, flexBasis: 200, minWidth: 150, borderWidth: 1, borderColor: C.hairline },
       searchInput:{ flex: 1, fontSize: 13, color: C.ink, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) },
       fchip:      { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: C.hairline, backgroundColor: C.card },
-      fchipTxt:   { fontSize: 12.5, fontWeight: '700', color: C.ink2 },
+      fchipTxt:   { fontSize: 12.5, fontWeight: '500', color: C.ink2 },
       clearBtn:   { paddingHorizontal: 10, paddingVertical: 7 },
       clearTxt:   { fontSize: 12.5, fontWeight: '600' },
       refreshBtn: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
@@ -114,15 +151,15 @@ function makeStyles(C: Palette) {
       headerOuter: { paddingHorizontal: 14, paddingTop: 4, paddingBottom: 4, gap: 2 },
       headerRow:   { flexDirection: 'row', alignItems: 'center', gap: 8 },
       dot:         { width: 10, height: 10, borderRadius: 5 },
-      title:       { flex: 1, fontSize: 15, fontWeight: '700', color: C.ink, letterSpacing: -0.2 },
-      count:       { fontSize: 13, fontWeight: '700', color: C.ink3, ...NUM },
+      title:       { flex: 1, fontSize: 14, fontWeight: '600', color: C.ink, letterSpacing: -0.2 },
+      count:       { fontSize: 13, fontWeight: '600', color: C.ink3, ...NUM },
       subtitle:    { fontSize: 12, color: C.ink3, fontWeight: '500' },
       list:        { backgroundColor: C.card, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: C.hairline },
-      empty:       { fontSize: 14, color: C.ink3, textAlign: 'center', paddingVertical: 26, fontWeight: '500' },
+      empty:       { fontSize: 13, color: C.ink3, textAlign: 'center', paddingVertical: 18, fontWeight: '500' },
     }),
 
     r: StyleSheet.create({
-      rowOuter:   { paddingHorizontal: 14, paddingVertical: 12, gap: 8 },
+      rowOuter:   { paddingHorizontal: 14, paddingVertical: 9, gap: 6 },
       row:        { flexDirection: 'row', alignItems: 'center', gap: 12 },
       // Atanmamış satırda iki pil (Otomatik+Manuel) genişliğin yarısını yiyor →
       // kendi satırlarına in, başlık tam genişliği alsın.
@@ -140,13 +177,17 @@ function makeStyles(C: Palette) {
       parallelBadge:     { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: hexA(C.accent, 0.12) },
       parallelBadgeText: { fontSize: 8.5, fontWeight: '800', color: C.accentDeep, letterSpacing: 0.4 },
 
-      meta:       { fontSize: 12, color: C.ink3, fontWeight: '500' },
-      metaStrong: { color: C.ink2, fontWeight: '700' },
+      meta:       { fontSize: 11.5, color: C.ink3, fontWeight: '500' },
+      metaStrong: { color: C.ink2, fontWeight: '600' },
 
       actionWrap: { flexShrink: 0 },
       pill:           { paddingHorizontal: 14, height: 30, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
       pillFilledText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF', letterSpacing: -0.1 },
       pillTintedText: { fontSize: 13, fontWeight: '700', letterSpacing: -0.1 },
+      // "Devam" birincil aksiyon DEĞİL — sayfada 20 kez tekrar ediyor ve dolgulu
+      // pill olarak asıl bilgiden (iş tipi, gecikme) dikkat çalıyordu. Sade metin.
+      pillGhost:     { paddingHorizontal: 8, height: 28, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+      pillGhostText: { fontSize: 12.5, fontWeight: '600', letterSpacing: -0.1 },
     }),
 
     mp: StyleSheet.create({
@@ -260,9 +301,9 @@ function ItemRow({
               onPress={onContinue}
               disabled={busy}
               activeOpacity={0.75}
-              style={[r.pill, { backgroundColor: hexA(C.accent, 0.12) }, busy && { opacity: 0.5 }]}
+              style={[r.pillGhost, busy && { opacity: 0.5 }]}
             >
-              <Text style={[r.pillTintedText, { color: C.accentDeep }]}>Devam ›</Text>
+              <Text style={[r.pillGhostText, { color: C.ink3 }]}>Devam ›</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -325,6 +366,18 @@ function ColumnView({
         <View style={col.headerRow}>
           <View style={[col.dot, { backgroundColor: headerColor }]} />
           <Text style={col.title} numberOfLines={1}>{column.label}</Text>
+          {/* Atanmamış = bekleyen iş; operasyonel olarak en kritik kuyruk */}
+          {isUnassigned && column.cards.length > 0 ? (
+            <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: hexA(WARN, 0.16) }}>
+              <Text style={{ fontSize: 10, fontWeight: '600', color: WARN, letterSpacing: 0.3 }}>ATAMA BEKLİYOR</Text>
+            </View>
+          ) : null}
+          {/* İstasyon boşsa atıl kapasite — sessizce belirt */}
+          {!isUnassigned && column.cards.length === 0 ? (
+            <Text style={{ fontSize: 10, fontWeight: '500', color: C.ink3, letterSpacing: 0.6, textTransform: 'uppercase' }}>
+              Boşta
+            </Text>
+          ) : null}
           <Text style={col.count}>{column.cards.length}</Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 18, marginTop: 2, flexWrap: 'wrap' }}>
@@ -344,7 +397,11 @@ function ColumnView({
       </View>
 
       {/* Liste konteyneri — darboğazda kenarlık kırmızıya döner (kart-içinde-kart değil) */}
-      <View style={[col.list, bottleneck && { borderColor: hexA(DANGER, 0.45) }]}>
+      <View style={[
+        col.list,
+        isUnassigned && column.cards.length > 0 && { borderColor: hexA(WARN, 0.45) },
+        bottleneck && { borderColor: hexA(DANGER, 0.45) },
+      ]}>
         {column.cards.length === 0 ? (
           <Text style={col.empty}>Boş</Text>
         ) : (
@@ -365,6 +422,95 @@ function ColumnView({
           ))
         )}
       </View>
+    </View>
+  );
+}
+
+
+// ─── Sağ operasyon şeridi ────────────────────────────────────────────────────
+// Geniş ekranda kolonların sağında kalan boşluğu kullanır. Kendi verisi yok —
+// hepsi `columns`'tan türetilir, ek sorgu açmaz. İleride canlı istasyon
+// izleme / iş yükü dengeleme widget'ları bu şeride eklenebilir.
+function OpsRail({ columns, C, width }: { columns: KanbanColumn[]; C: Palette; width: number }) {
+  const overdueCards = columns
+    .flatMap(c => c.cards.map(card => ({ card, col: c })))
+    .filter(({ card }) => {
+      const idle = card.stage_started_at ? Date.now() - new Date(card.stage_started_at).getTime() : 0;
+      return slaStatus(card.current_stage, idle) === 'red';
+    })
+    .slice(0, 6);
+  const idle = columns.filter(c => !c.isUnassigned && c.cards.length === 0);
+  const busy = [...columns].filter(c => !c.isUnassigned && c.cards.length > 0)
+    .sort((a, b) => b.cards.length - a.cards.length).slice(0, 5);
+
+  const Section = ({ title, count, children }: { title: string; count: number; children: React.ReactNode }) => (
+    <View style={{ gap: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Text style={{ fontSize: 10, fontWeight: '500', letterSpacing: 1.2, textTransform: 'uppercase', color: C.ink3, flex: 1 }}>
+          {title}
+        </Text>
+        <Text style={{ fontSize: 11, fontWeight: '600', color: C.ink3, ...NUM }}>{count}</Text>
+      </View>
+      <View style={{ backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.hairline, overflow: 'hidden' }}>
+        {children}
+      </View>
+    </View>
+  );
+
+  return (
+    <View style={{ width, gap: 16 }}>
+      <Section title="Gecikenler" count={overdueCards.length}>
+        {overdueCards.length === 0 ? (
+          <Text style={{ fontSize: 12, color: C.ink3, textAlign: 'center', paddingVertical: 14 }}>Geciken iş yok</Text>
+        ) : overdueCards.map(({ card, col }, i) => (
+          <View key={card.id} style={{
+            paddingHorizontal: 12, paddingVertical: 9,
+            borderTopWidth: i === 0 ? 0 : StyleSheet.hairlineWidth, borderTopColor: C.hairline,
+          }}>
+            <Text numberOfLines={1} style={{ fontSize: 12.5, fontWeight: '600', color: C.ink }}>
+              #{card.order_number}
+            </Text>
+            <Text numberOfLines={1} style={{ fontSize: 11, color: C.ink3, marginTop: 1 }}>
+              {col.label}{card.technician_name ? ` · ${card.technician_name}` : ' · atanmadı'}
+            </Text>
+          </View>
+        ))}
+      </Section>
+
+      <Section title="Yoğun istasyonlar" count={busy.length}>
+        {busy.length === 0 ? (
+          <Text style={{ fontSize: 12, color: C.ink3, textAlign: 'center', paddingVertical: 14 }}>Aktif istasyon yok</Text>
+        ) : busy.map((c, i) => (
+          <View key={c.key} style={{
+            flexDirection: 'row', alignItems: 'center', gap: 8,
+            paddingHorizontal: 12, paddingVertical: 9,
+            borderTopWidth: i === 0 ? 0 : StyleSheet.hairlineWidth, borderTopColor: C.hairline,
+          }}>
+            <View style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: c.color }} />
+            <Text numberOfLines={1} style={{ flex: 1, fontSize: 12.5, fontWeight: '500', color: C.ink }}>{c.label}</Text>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: C.ink2, ...NUM }}>{c.cards.length}</Text>
+          </View>
+        ))}
+      </Section>
+
+      <Section title="Atıl kapasite" count={idle.length}>
+        {idle.length === 0 ? (
+          <Text style={{ fontSize: 12, color: C.ink3, textAlign: 'center', paddingVertical: 14 }}>Tüm istasyonlar dolu</Text>
+        ) : (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, padding: 12 }}>
+            {idle.map(c => (
+              <View key={c.key} style={{
+                flexDirection: 'row', alignItems: 'center', gap: 5,
+                paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999,
+                backgroundColor: hexA(C.ink3, 0.08),
+              }}>
+                <View style={{ width: 6, height: 6, borderRadius: 999, backgroundColor: c.color }} />
+                <Text style={{ fontSize: 11, fontWeight: '500', color: C.ink2 }}>{c.label}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </Section>
     </View>
   );
 }
@@ -478,6 +624,9 @@ function FilterChip({ label, active, onPress, color, sx }: {
 
 export function ProductionKanbanScreen() {
   const router      = useRouter();
+  // Rota/sipariş linki AKTİF panelde açılmalı — sabit '/(lab)/...' admin veya
+  // istasyon panelinden tıklayınca kullanıcıyı lab paneline atıyordu.
+  const panelBase = String((useSegments() as string[])?.[0] ?? '(lab)');
   const { profile } = useAuthStore();
   const { width }   = useWindowDimensions();
   const isDesktop   = width >= 900;
@@ -542,7 +691,7 @@ export function ProductionKanbanScreen() {
   }
 
   function onCard(card: KanbanCard) {
-    router.push(`/(lab)/order/${card.id}` as any);
+    router.push(`/${panelBase}/order/${card.id}` as any);
   }
 
   async function onContinue(card: KanbanCard) {
@@ -552,7 +701,7 @@ export function ProductionKanbanScreen() {
       const items = STAGE_CHECKLIST[stage] ?? [];
       const required = items.filter(i => i.required !== false);
       if (required.length === 0) {
-        router.push(`/(lab)/order/${card.id}` as any);
+        router.push(`/${panelBase}/order/${card.id}` as any);
         return;
       }
       const { data: logs } = await supabase
@@ -563,7 +712,7 @@ export function ProductionKanbanScreen() {
       const checkedKeys = new Set((logs ?? []).filter((r: any) => r.checked).map((r: any) => r.item_key));
       const allDone = required.every(i => checkedKeys.has(i.key));
       if (allDone) {
-        router.push(`/(lab)/order/${card.id}` as any);
+        router.push(`/${panelBase}/order/${card.id}` as any);
       } else {
         setChecklistFor({ card, stage });
       }
@@ -605,7 +754,11 @@ export function ProductionKanbanScreen() {
 
   // Kolonlar boşluğa yayılmaz — geniş ekranda da tavan var, sola yaslı akar.
   const visibleCount = filteredColumns.length || 1;
-  const available = width - PAD * 2 - COL_GAP * Math.max(visibleCount - 1, 0);
+  // Sağ operasyon şeridi 1440px üstünde açılır; genişliği kolon hesabından düşülür.
+  const RAIL_W    = 280;
+  const railOn    = isDesktop && width >= 1440;
+  const available = width - PAD * 2 - COL_GAP * Math.max(visibleCount - 1, 0)
+                    - (railOn ? RAIL_W + COL_GAP : 0);
   const fits      = isDesktop && available / visibleCount >= COL_WIDTH;
   const colWidth  = fits ? Math.min(available / visibleCount, COL_MAX) : COL_WIDTH;
 
@@ -624,43 +777,60 @@ export function ProductionKanbanScreen() {
     />
   ));
 
-  // Durum satırı — KPI şeridinin yerini alır. Sıfırlar render EDİLMEZ.
-  const statusBits: React.ReactNode[] = [];
-  statusBits.push(<Text key="t">{totalCards} iş</Text>);
-  statusBits.push(<Text key="a">{activeCount} aktif</Text>);
-  if (overdueTotal > 0) statusBits.push(<Text key="o" style={{ color: DANGER }}>{overdueTotal} geciken</Text>);
-  if (rushTotal > 0)    statusBits.push(<Text key="r" style={{ color: WARN }}>{rushTotal} acil</Text>);
+  // Durum şeridi — rakam üstte (DISPLAY), etiket altta (uppercase meta).
+  // Sıfır olan sorun sayıları render EDİLMEZ; pano sakin kalır.
+  // Atanmamış = operasyonel olarak en kritik kuyruk; boş istasyon = atıl kapasite.
+  const unassignedTotal = columns.filter(c => c.isUnassigned).reduce((n, c) => n + c.cards.length, 0);
+  const emptyStations   = columns.filter(c => !c.isUnassigned && c.cards.length === 0).length;
+
+  const stats: { key: string; value: number; label: string; color?: string }[] = [
+    { key: 't', value: totalCards,  label: 'İş' },
+    { key: 'a', value: activeCount, label: 'Aktif' },
+  ];
+  if (unassignedTotal > 0) stats.push({ key: 'u', value: unassignedTotal, label: 'Atanmamış', color: WARN });
+  if (overdueTotal > 0)    stats.push({ key: 'o', value: overdueTotal,    label: 'Geciken',   color: DANGER });
+  if (rushTotal > 0)       stats.push({ key: 'r', value: rushTotal,       label: 'Acil',      color: WARN });
+  if (emptyStations > 0)   stats.push({ key: 'e', value: emptyStations,   label: 'Boş istasyon' });
 
   return (
     <SafeAreaView style={[s.container]} edges={isEmbedded ? ([] as any) : ['top']}>
       {/* ── Tek kontrol çubuğu: durum + arama + filtre + yenile ── */}
       {!loading && !error && (
         <View style={s.bar}>
-          <Text style={s.status} numberOfLines={1}>
-            {statusBits.map((b, i) => (
-              <Text key={i}>{i > 0 ? '  ·  ' : ''}{b}</Text>
+          <View style={s.statWrap}>
+            {stats.map(st => (
+              <View key={st.key} style={s.statBlock}>
+                <Text style={[s.statValue, st.color ? { color: st.color } : null]}>{st.value}</Text>
+                <Text style={s.statLabel}>{st.label}</Text>
+              </View>
             ))}
             {lastSync && (
-              <Text style={s.statusMuted}>
-                {'  ·  '}{lastSync.toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' })}
-              </Text>
+              <View style={s.statBlock}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <LiveDot color={DS.lab.success} />
+                  <Text style={[s.statValue, { color: C.ink3 }]}>
+                    {lastSync.toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' })}
+                  </Text>
+                </View>
+                <Text style={s.statLabel}>Son eşitleme</Text>
+              </View>
             )}
-          </Text>
+          </View>
 
           <View style={s.barTools}>
             <View style={s.searchBox}>
               <AppIcon name="search" size={14} color={C.ink3} />
               <TextInput
                 value={search} onChangeText={setSearch}
-                placeholder="Vaka no, hasta, hekim, teknisyen…" placeholderTextColor={C.ink3}
+                placeholder="Vaka, hasta veya teknisyen ara" placeholderTextColor={C.ink3}
                 style={s.searchInput as any}
               />
               {search.length > 0 && (
                 <TouchableOpacity onPress={() => setSearch('')} hitSlop={8}><AppIcon name="x" size={14} color={C.ink3} /></TouchableOpacity>
               )}
             </View>
-            <FilterChip label="Acil" active={fAcil} onPress={() => setFAcil(v => !v)} color={WARN} sx={sx} />
-            <FilterChip label="Geciken" active={fGeciken} onPress={() => setFGeciken(v => !v)} color={DANGER} sx={sx} />
+            <FilterChip label={rushTotal > 0 ? `Acil (${rushTotal})` : 'Acil'} active={fAcil} onPress={() => setFAcil(v => !v)} color={WARN} sx={sx} />
+            <FilterChip label={overdueTotal > 0 ? `Geciken (${overdueTotal})` : 'Geciken'} active={fGeciken} onPress={() => setFGeciken(v => !v)} color={DANGER} sx={sx} />
             {hiddenEmptyCount > 0 && (
               <FilterChip label={showEmpty ? 'Boşları gizle' : `Boş istasyonlar (${hiddenEmptyCount})`} active={showEmpty} onPress={() => setShowEmpty(v => !v)} color={A} sx={sx} />
             )}
@@ -691,26 +861,37 @@ export function ProductionKanbanScreen() {
           contentContainerStyle={{ padding: PAD }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={A} />}
         >
-          <View style={{ flexDirection: 'row', gap: COL_GAP, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-            {renderColumns()}
+          <View style={{ flexDirection: 'row', gap: COL_GAP, alignItems: 'flex-start' }}>
+            <View style={{ flex: 1, flexDirection: 'row', gap: COL_GAP, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+              {renderColumns()}
+            </View>
+            {railOn ? <OpsRail columns={filteredColumns} C={C} width={RAIL_W} /> : null}
           </View>
         </ScrollView>
       ) : (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={Platform.OS === 'web'}
-          style={{ flex: 1 }}
-          contentContainerStyle={{ padding: PAD, gap: COL_GAP, flexDirection: 'row', alignItems: 'flex-start' }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={A} />}
-        >
-          {renderColumns()}
-        </ScrollView>
+        <View style={{ flex: 1, flexDirection: 'row' }}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={Platform.OS === 'web'}
+            style={{ flex: 1 }}
+            contentContainerStyle={{ padding: PAD, gap: COL_GAP, flexDirection: 'row', alignItems: 'flex-start' }}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={A} />}
+          >
+            {renderColumns()}
+          </ScrollView>
+          {railOn ? (
+            <ScrollView style={{ width: RAIL_W + PAD }} contentContainerStyle={{ paddingRight: PAD, paddingVertical: PAD }}>
+              <OpsRail columns={filteredColumns} C={C} width={RAIL_W} />
+            </ScrollView>
+          ) : null}
+        </View>
       )}
 
       {checklistFor && profile && (
         <StageChecklistModal
           visible
           workOrderId={checklistFor.card.id}
+          stageId={checklistFor.card.current_stage_id ?? null}
           stage={checklistFor.stage}
           managerId={profile.id}
           onClose={() => setChecklistFor(null)}

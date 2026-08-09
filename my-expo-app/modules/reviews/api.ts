@@ -3,8 +3,20 @@ import type { OrderReview, ReviewInput, PendingReviewOrder } from './types';
 
 const COLS = 'id, work_order_id, lab_id, rater_id, rater_role, overall, fit, occlusion, contacts, esthetics, surface, on_time, comment, photos, clinical_photos, lab_reply, lab_reply_at, lab_reply_by, created_at, updated_at';
 
+/**
+ * İstemci tarafı yükleme sınırı — bucket 200 MB'a izin veriyor ama değerlendirme
+ * fotoğrafı için o tavan anlamsız. StageFileUpload/chatApi ile aynı değer.
+ */
+const MAX_REVIEW_PHOTO_MB = 100;
+
 /** Değerlendirme fotoğrafını work-order-photos bucket'ına yükle, storage path döndür. */
-export async function uploadReviewPhoto(workOrderId: string, asset: { uri: string; mimeType?: string | null; fileName?: string | null }, category: 'general' | 'clinical' = 'general'): Promise<{ path: string | null; error: any }> {
+export async function uploadReviewPhoto(workOrderId: string, asset: { uri: string; mimeType?: string | null; fileName?: string | null; fileSize?: number | null }, category: 'general' | 'clinical' = 'general'): Promise<{ path: string | null; error: any }> {
+  if (typeof asset.fileSize === 'number' && asset.fileSize > MAX_REVIEW_PHOTO_MB * 1024 * 1024) {
+    return {
+      path: null,
+      error: { message: `Fotoğraf ${MAX_REVIEW_PHOTO_MB} MB sınırını aşıyor.` },
+    };
+  }
   const ext = (asset.fileName?.split('.').pop() || asset.mimeType?.split('/').pop() || 'jpg').toLowerCase();
   const rand = Math.random().toString(36).slice(2, 9);
   const sub = category === 'clinical' ? 'clinical/' : '';

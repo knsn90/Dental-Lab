@@ -1,4 +1,6 @@
 import { localeTag } from '../../../core/i18n';
+import { openFileUrl } from '../../../core/util/openFile';
+import { confirmAsync } from '../../../core/util/confirm';
 /**
  * PendingPaperOrdersScreen — Klinikten WhatsApp/webhook ile gelmiş kağıt iş emrilerinin inbox'u.
  * Lab kullanıcısı görür, OCR sonuçlarını kontrol eder, "Onayla" ile NewOrder'a geçer,
@@ -12,7 +14,7 @@ import {
 import { useRouter } from 'expo-router';
 import {
   Inbox, MessageCircle, Phone, Camera, Check, X, AlertCircle,
-  ChevronRight, Sparkles, Calendar, Building2,
+  ChevronRight, Sparkles, Calendar, Building2, MessageSquare, ScanLine,
 } from 'lucide-react-native';
 import { supabase } from '../../../core/api/supabase';
 import { useAuthStore } from '../../../core/store/authStore';
@@ -27,6 +29,7 @@ interface PendingRow {
   sender_phone: string | null;
   sender_name: string | null;
   photo_url: string | null;
+  photo_storage_path: string | null;
   ocr_data: any;
   clinic_id: string | null;
   patient_name: string | null;
@@ -64,7 +67,18 @@ export function PendingPaperOrdersScreen() {
       .eq('status', 'pending')
       .order('created_at', { ascending: false })
       .limit(100);
-    if (!error && data) setRows(data as PendingRow[]);
+    if (!error && data) {
+      // photo_url `authenticated/…` yolu bearer ister — düz <Image> yükleyemez.
+      // photo_storage_path'ten kısa ömürlü imzalı URL üret (önizleme + tam boy).
+      const withUrls = await Promise.all((data as PendingRow[]).map(async (r) => {
+        if (!r.photo_storage_path) return r;
+        const { data: signed } = await supabase
+          .storage.from('paper-orders')
+          .createSignedUrl(r.photo_storage_path, 3600);
+        return signed?.signedUrl ? { ...r, photo_url: signed.signedUrl } : r;
+      }));
+      setRows(withUrls);
+    }
 
     // Klinik adlarını çek
     const clinicIds = Array.from(new Set((data ?? []).map((r: any) => r.clinic_id).filter(Boolean)));
@@ -97,25 +111,17 @@ export function PendingPaperOrdersScreen() {
 
   const handleApprove = (row: PendingRow) => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    // Manuel sipariş, work_order BAŞARIYLA oluşana kadar kutuda kalsın — status'ü ŞİMDİ
+    // değiştirme. pending_id'yi taşı; NewOrderScreen sipariş oluşunca 'approved' +
+    // work_order_id yazacak (yarıda bırakılırsa kayıt kaybolmaz).
     try {
-      window.sessionStorage.setItem('ocr_work_order', JSON.stringify(row.ocr_data));
+      window.sessionStorage.setItem('ocr_work_order', JSON.stringify({ ...(row.ocr_data ?? {}), __pending_id: row.id }));
     } catch { /* ignore */ }
-    // Tabloyu approved olarak işaretle (gerçek work_order_id sonra eklenecek — Faz 5)
-    supabase
-      .from('pending_paper_orders')
-      .update({
-        status: 'approved',
-        reviewed_by: profile?.id ?? null,
-        reviewed_at: new Date().toISOString(),
-      })
-      .eq('id', row.id)
-      .then(() => router.push('/(lab)/new-order' as any));
+    router.push('/(lab)/new-order' as any);
   };
 
   const handleReject = async (row: PendingRow) => {
-    const ok = Platform.OS === 'web' && typeof window !== 'undefined'
-      ? window.confirm(`Bu kağıt sipariş kaydı reddedilsin mi? "${row.patient_name ?? row.sender_phone ?? 'Bilinmeyen'}"`)
-      : true;
+    const ok = await confirmAsync('Manuel Siparişi Reddet', `Bu manuel sipariş kaydı reddedilsin mi? "${row.patient_name ?? row.sender_phone ?? 'Bilinmeyen'}"`, { confirmText: 'Reddet', destructive: true });
     if (!ok) return;
     const { error } = await supabase
       .from('pending_paper_orders')
@@ -159,10 +165,10 @@ export function PendingPaperOrdersScreen() {
     >
       <View>
         <Text style={{ fontFamily: Platform.OS === 'web' ? 'Inter Tight, Inter, system-ui' : 'InterTight_300Light', fontWeight: '300', fontSize: 26, letterSpacing: -0.6, color: DS.ink[900] }}>
-          Bekleyen Kağıt Siparişler
+          Bekleyen Manuel Siparişler
         </Text>
         <Text style={{ fontSize: 12, color: DS.ink[400], marginTop: 4 }}>
-          Kliniklerden WhatsApp / mesajla gelen iş emri taramaları — onaylayıp dijital sisteme aktar.
+          Kliniklerden WhatsApp / mesajla gelen iş emirleri (fotoğraf veya yazılı) — onaylayıp dijital sisteme aktar.
         </Text>
       </View>
 
@@ -173,9 +179,9 @@ export function PendingPaperOrdersScreen() {
           borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
         }}>
           <Inbox size={32} color="#CBD5E1" strokeWidth={1.4} />
-          <Text style={{ fontSize: 14, color: DS.ink[500], fontWeight: '600' }}>Bekleyen kağıt sipariş yok</Text>
+          <Text style={{ fontSize: 14, color: DS.ink[500], fontWeight: '600' }}>Bekleyen manuel sipariş yok</Text>
           <Text style={{ fontSize: 11, color: DS.ink[400], textAlign: 'center', maxWidth: 320, lineHeight: 16 }}>
-            Klinikler WhatsApp/webhook ile fotoğraf gönderdiğinde otomatik burada görünür.{'\n'}
+            Klinikler WhatsApp/webhook ile fotoğraf ya da yazılı iş emri gönderdiğinde otomatik burada görünür.{'\n'}
             Kanal kurulumu: Ayarlar → Entegrasyonlar.
           </Text>
         </View>
@@ -216,26 +222,38 @@ export function PendingPaperOrdersScreen() {
                   </View>
                   <Text style={{ fontSize: 11, color: DS.ink[400] }}>· {fmtRelative(row.created_at)}</Text>
                   <View style={{ flex: 1 }} />
-                  <View style={{
-                    paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999,
-                    backgroundColor: confBg,
-                  }}>
-                    <Text style={{ fontSize: 10.5, fontWeight: '700', color: confColor }}>
-                      %{conf} kesinlik
-                    </Text>
-                  </View>
+                  {ocr._text_only ? (
+                    // Yazıyla gelen sipariş → OCR "kesinlik"i anlamsız; net etiket göster.
+                    <View style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 5,
+                      paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999,
+                      backgroundColor: 'rgba(15,118,110,0.10)',
+                    }}>
+                      <MessageSquare size={11} color="#0F766E" strokeWidth={2} />
+                      <Text style={{ fontSize: 10.5, fontWeight: '700', color: '#0F766E' }}>Yazılı sipariş</Text>
+                    </View>
+                  ) : (
+                    <View style={{
+                      paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999,
+                      backgroundColor: confBg,
+                    }}>
+                      <Text style={{ fontSize: 10.5, fontWeight: '700', color: confColor }}>
+                        %{conf} kesinlik
+                      </Text>
+                    </View>
+                  )}
                 </View>
 
-                {/* Foto + ana bilgi */}
+                {/* Foto + ana bilgi (yazılı siparişte foto kutusu yok → bilgi tam genişlik) */}
                 <View style={{ flexDirection: 'row', gap: 14 }}>
                   {row.photo_url ? (
                     <Pressable
-                      onPress={() => { if (typeof window !== 'undefined') window.open(row.photo_url!, '_blank'); }}
+                      onPress={() => { openFileUrl(row.photo_url); }}
                       style={{ width: 80, height: 100, borderRadius: 8, overflow: 'hidden', backgroundColor: DS.ink[100], ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}) }}
                     >
                       <Image source={{ uri: row.photo_url }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
                     </Pressable>
-                  ) : (
+                  ) : ocr._text_only ? null : (
                     <View style={{ width: 80, height: 100, borderRadius: 8, backgroundColor: DS.ink[100], alignItems: 'center', justifyContent: 'center' }}>
                       <Camera size={20} color={DS.ink[400]} strokeWidth={1.4} />
                     </View>
@@ -243,7 +261,7 @@ export function PendingPaperOrdersScreen() {
 
                   <View style={{ flex: 1, gap: 6 }}>
                     <Text style={{ fontSize: 15, fontWeight: '700', color: DS.ink[900] }} numberOfLines={1}>
-                      {row.patient_name ?? '— Hasta adı okunamadı —'}
+                      {row.patient_name ?? (ocr._text_only ? '— Hasta adı belirtilmemiş —' : '— Hasta adı okunamadı —')}
                     </Text>
 
                     {clinicName ? (
@@ -288,6 +306,35 @@ export function PendingPaperOrdersScreen() {
                     ) : null}
                   </View>
                 </View>
+
+                {/* Gelen mesaj (yazılı sipariş: metnin kendisi) / gönderen notu (foto: ek mesaj) */}
+                {ocr.sender_note ? (
+                  <View style={{
+                    flexDirection: 'row', gap: 8, alignItems: 'flex-start',
+                    backgroundColor: 'rgba(37,99,235,0.05)', borderRadius: 10,
+                    padding: 10, borderWidth: 1, borderColor: 'rgba(37,99,235,0.12)',
+                  }}>
+                    <MessageSquare size={13} color="#2563EB" strokeWidth={1.9} style={{ marginTop: 1 }} />
+                    <Text style={{ flex: 1, fontSize: 12, color: DS.ink[700], lineHeight: 17 }}>
+                      <Text style={{ fontWeight: '700', color: '#2563EB' }}>{ocr._text_only ? 'Gelen mesaj: ' : 'Gönderen notu: '}</Text>
+                      {String(ocr.sender_note)}
+                    </Text>
+                  </View>
+                ) : null}
+
+                {/* Otomatik okuma başarısız → manuel giriş uyarısı */}
+                {ocr._ocr_failed ? (
+                  <View style={{
+                    flexDirection: 'row', gap: 8, alignItems: 'flex-start',
+                    backgroundColor: '#FFFBEB', borderRadius: 10,
+                    padding: 10, borderWidth: 1, borderColor: 'rgba(146,64,14,0.18)',
+                  }}>
+                    <ScanLine size={13} color="#92400E" strokeWidth={1.9} style={{ marginTop: 1 }} />
+                    <Text style={{ flex: 1, fontSize: 11.5, color: '#92400E', lineHeight: 16 }}>
+                      Otomatik okuma yapılamadı — fotoğrafı açıp bilgileri elle girin.
+                    </Text>
+                  </View>
+                ) : null}
 
                 {/* Aksiyonlar */}
                 <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>

@@ -78,8 +78,12 @@ export async function fetchAllDoctors() {
       .order('full_name'),
     supabase
       .from('profiles')
-      .select('id, full_name, phone, specialty, clinic_id, clinic:clinics(id, name)')
-      .eq('user_type', 'doctor')
+      // KLİNİK YETKİLİSİ DE HEKİM OLABİLİR: tek hekimli kliniklerde yetkilinin
+      // profili user_type='clinic_admin' olur. Eskiden yalnız 'doctor' çekiliyordu,
+      // o kişi seçicide çıkmıyordu ve kullanıcı mecburen ikinci bir `doctors`
+      // kaydı açıyordu → Kullanıcılar sayfasında aynı kişi iki kez görünüyordu.
+      .select('id, full_name, phone, specialty, clinic_id, user_type, clinic:clinics(id, name)')
+      .in('user_type', ['doctor', 'clinic_admin'])
       .eq('is_active', true)
       .order('full_name'),
   ]);
@@ -94,12 +98,14 @@ export async function fetchAllDoctors() {
     id: p.id,
     full_name: p.full_name,
     phone: p.phone,
-    specialty: p.specialty,
+    // Yetkili hekimi seçerken kim olduğu belli olsun (uzmanlık yoksa rol yazılır)
+    specialty: p.specialty ?? (p.user_type === 'clinic_admin' ? 'Klinik yetkilisi' : null),
     clinic_id: p.clinic_id,
     clinic: p.clinic,
     is_active: true,
     source: 'profile' as const,
     auth_user: true,
+    is_clinic_admin: p.user_type === 'clinic_admin',
   }));
 
   // Ayni isimde duplicate olmasin diye full_name'e gore tekille

@@ -42,11 +42,15 @@ interface Props {
   accentColor: string;
   /** Opsiyonel kompakt mod — sadece icon + minimal text (pill variant) */
   compact?: boolean;
-  /** 'pill' = floating buton · 'card' = dashboard ¼ kart (Yeni vaka yanında) */
-  variant?: 'pill' | 'card';
+  /** 'pill' = floating buton · 'card' = dashboard ¼ kart · 'headless' = buton YOK,
+   *  yalnız sipariş seçici modal (navbar gibi dış bir tetikleyiciden açılır) */
+  variant?: 'pill' | 'card' | 'headless';
+  /** headless modda modalı dışarıdan aç/kapat */
+  open?: boolean;
+  onOpenChange?: (v: boolean) => void;
 }
 
-export function FaceScanQuickAction({ accentColor, compact = false, variant = 'pill' }: Props) {
+export function FaceScanQuickAction({ accentColor, compact = false, variant = 'pill', open, onOpenChange }: Props) {
   const profile = useAuthStore(s => s.profile);
   const [supported, setSupported] = useState<boolean | null>(null);
 
@@ -66,15 +70,22 @@ export function FaceScanQuickAction({ accentColor, compact = false, variant = 'p
   if (Platform.OS !== 'ios') return null;
   if (supported === null) return null; // ilk useEffect cycle bekleniyor
   if (!profile) return null;
-  return <FaceScanQuickActionInner accentColor={accentColor} compact={compact} variant={variant} profile={profile} />;
+  return <FaceScanQuickActionInner accentColor={accentColor} compact={compact} variant={variant} open={open} onOpenChange={onOpenChange} profile={profile} />;
 }
 
 interface InnerProps extends Props {
   profile: NonNullable<ReturnType<typeof useAuthStore.getState>['profile']>;
 }
 
-function FaceScanQuickActionInner({ accentColor, compact, profile, variant = 'pill' }: InnerProps) {
-  const [pickerOpen, setPickerOpen] = useState(false);
+function FaceScanQuickActionInner({ accentColor, compact, profile, variant = 'pill', open, onOpenChange }: InnerProps) {
+  const [pickerOpenLocal, setPickerOpenLocal] = useState(false);
+  // headless modda açık/kapalı durumu dışarıdan (navbar) yönetilir
+  const controlled = variant === 'headless';
+  const pickerOpen = controlled ? !!open : pickerOpenLocal;
+  const setPickerOpen = (v: boolean) => {
+    if (controlled) onOpenChange?.(v);
+    else setPickerOpenLocal(v);
+  };
   const [pendingOrder, setPendingOrder] = useState<WorkOrder | null>(null);
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<ScanMode>('rearGuided');
@@ -125,9 +136,11 @@ function FaceScanQuickActionInner({ accentColor, compact, profile, variant = 'pi
 
   return (
     <>
-      {variant === 'card'
-        ? <ScanCard accentColor={accentColor} busy={busy} onPress={() => setPickerOpen(true)} />
-        : <ScanPill accentColor={accentColor} busy={busy} compact={compact} onPress={() => setPickerOpen(true)} />}
+      {variant === 'headless'
+        ? null
+        : variant === 'card'
+          ? <ScanCard accentColor={accentColor} busy={busy} onPress={() => setPickerOpen(true)} />
+          : <ScanPill accentColor={accentColor} busy={busy} compact={compact} onPress={() => setPickerOpen(true)} />}
 
       <OrderPickerModal
         visible={pickerOpen}
@@ -179,6 +192,13 @@ function ScanPill({ accentColor, busy, compact, onPress }: {
 function ScanCard({ accentColor, busy, onPress }: {
   accentColor: string; busy: boolean; onPress: () => void;
 }) {
+  // NewOrderCTACard'ın BİREBİR görsel dili: dolu accent zemin, radius 20,
+  // accent-tonlu gölge, sağ üstte yumuşak beyaz blob, beyaz ikon dairesi (44).
+  // Tek fark içerik — artı yerine yüz tarama ikonu.
+  //
+  // Yükseklik: içerik kısa tutuldu (daire + tek satır). Satır
+  // alignItems:'stretch' olduğu için yüksekliği CTA belirler ve bu kart ona
+  // uzar. Eskiden 2 satırlık yazı bu kartı uzatıp CTA'yı da şişiriyordu.
   return (
     <Pressable
       onPress={onPress}
@@ -186,10 +206,11 @@ function ScanCard({ accentColor, busy, onPress }: {
       style={({ pressed }) => ({
         flex: 1, alignSelf: 'stretch',
         borderRadius: 20,
-        backgroundColor: busy ? '#94A3B8' : accentColor,
+        backgroundColor: accentColor,
         overflow: 'hidden',
         alignItems: 'center', justifyContent: 'center',
-        paddingVertical: 16, paddingHorizontal: 8, gap: 8,
+        paddingVertical: 12, paddingHorizontal: 8, gap: 8,
+        opacity: busy ? 0.7 : 1,
         transform: [{ scale: pressed ? 0.97 : 1 }],
         ...(Platform.OS === 'web'
           ? ({ cursor: 'pointer', boxShadow: `0 8px 22px ${accentColor}40` } as any)
@@ -199,7 +220,17 @@ function ScanCard({ accentColor, busy, onPress }: {
             }),
       })}
     >
-      {/* Beyaz ikon dairesi — NewOrderCTACard'daki + dairesi gibi */}
+      {/* CTA'daki gibi yumuşak arka plan blob'u */}
+      <View
+        pointerEvents="none"
+        style={{
+          position: 'absolute', top: -34, right: -34,
+          width: 110, height: 110, borderRadius: 55,
+          backgroundColor: 'rgba(255,255,255,0.12)',
+        }}
+      />
+
+      {/* CTA'daki beyaz daire — artı yerine yüz tarama ikonu */}
       <View
         style={{
           width: 44, height: 44, borderRadius: 22,
@@ -215,14 +246,17 @@ function ScanCard({ accentColor, busy, onPress }: {
       >
         {busy
           ? <ActivityIndicator size="small" color={accentColor} />
-          : <ScanFace size={22} color={accentColor} strokeWidth={2.2} />}
+          : <ScanFace size={22} color={accentColor} strokeWidth={2.4} />}
       </View>
 
-      <Text style={{
-        fontSize: 13, fontWeight: '700', color: '#FFFFFF',
-        textAlign: 'center', letterSpacing: -0.2, lineHeight: 16,
-      }}>
-        {busy ? 'Taranıyor…' : '3D Yüz\nTara'}
+      <Text
+        numberOfLines={1}
+        style={{
+          fontSize: 12, fontWeight: '600', color: '#FFFFFF',
+          textAlign: 'center', letterSpacing: -0.2,
+        }}
+      >
+        {busy ? 'Taranıyor…' : 'Yüz Tara'}
       </Text>
     </Pressable>
   );
@@ -409,3 +443,6 @@ function statusLabel(s: WorkOrder['status']): string {
     default:                 return s;
   }
 }
+
+
+

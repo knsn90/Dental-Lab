@@ -37,6 +37,7 @@ import { sanitizeIlikeTerm } from '../util/search';
 import { BlurFade } from '../ui/BlurFade';
 
 import { AppIcon } from '../ui/AppIcon';
+import { PulseRing } from '../ui/PulseRing';
 import { NotificationPopover } from '../ui/NotificationPopover';
 
 // ─── Tokens ───────────────────────────────────────────────────────────────────
@@ -123,6 +124,9 @@ function NavIcon({
         <AppIcon name={item.iconName} size={20} color={iconColor} strokeWidth={1.75} />
       ) : (
         <Text style={{ fontSize: 17, opacity: active ? 1 : 0.5, width: 22, textAlign: 'center' }}>{item.emoji}</Text>
+      )}
+      {showBadge && (badgeNum || badgeDot) && (
+        <PulseRing size={14} color="#DC2626" top={-4} right={-6} />
       )}
       {showBadge && (badgeNum || badgeDot) && (
         <View
@@ -1124,7 +1128,10 @@ const s = StyleSheet.create({
     marginBottom: 2,
     gap: 12,
     minHeight: 42,
-  },
+    // Web: tıklayınca çıkan varsayılan mavi odak-outline'ını kaldır (aktif
+    // durumun kendi görseli zaten var). Native bu alanı yok sayar.
+    outlineStyle: 'none',
+  } as any,
   navItemCollapsed: {
     width: 44,
     height: 44,

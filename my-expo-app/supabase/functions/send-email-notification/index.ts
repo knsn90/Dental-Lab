@@ -37,9 +37,11 @@ const supabaseUrl    = Deno.env.get('SUPABASE_URL')!;
 const supabaseSrvKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const resendApiKey   = Deno.env.get('RESEND_API_KEY')   ?? '';
 const resendFrom     = Deno.env.get('RESEND_FROM')      ?? 'Siman <noreply@nexadentlab.com>';
-const appPublicUrl   = (Deno.env.get('APP_PUBLIC_URL')  ?? 'https://www.nexadentlab.com').replace(/\/$/, '');
+const appPublicUrl   = (Deno.env.get('APP_PUBLIC_URL')  ?? 'https://siman.app').replace(/\/$/, '');
 
 const RESEND_URL = 'https://api.resend.com/emails';
+// Siman marka wordmark'ı (footer "Powered by Siman") — public storage PNG (e-posta-safe raster).
+const SIMAN_LOGO_URL = 'https://kjwjxqfdsxkxgcgophdy.supabase.co/storage/v1/object/public/lab-logos/_brand/siman-type.png';
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -68,6 +70,8 @@ interface EmailPayload {
   resourceType?: string;
   resourceId?:  string;
   extra?:       Record<string, unknown>;
+  /** Detaylı liste (ör. günlük iş takibi): her satır bir iş/kayıt */
+  items?:       Array<{ patient?: string; clinic?: string; work?: string; tag?: string; note?: string; kind?: string }>;
   /** Override template seçimi */
   template?:    string;
 }
@@ -103,7 +107,7 @@ serve(async (req) => {
   // 1. Profiller + email + prefs çek
   const { data: profiles, error: profErr } = await supabase
     .from('profiles')
-    .select('id, email, full_name, notification_prefs')
+    .select('id, email, full_name, notification_prefs, lab_id')
     .in('id', body.userIds);
 
   if (profErr) return json({ error: profErr.message }, 500);
@@ -120,6 +124,53 @@ serve(async (req) => {
 
   if (targets.length === 0) {
     return json({ ok: true, sent: 0, skipped: body.userIds.length, reason: 'no_targets' });
+  }
+
+  // Lab markası (isim + logo) — her e-posta alıcının kendi lab'ının markasını taşır.
+  // Caller extra.labName/labLogoUrl verirse o öncelikli; yoksa labs tablosundan çözülür.
+  const labIds = [...new Set(targets.map((t: any) => t.lab_id).filter(Boolean))];
+  const labBrand = new Map<string, { name: string; logo: string }>();
+  if (labIds.length > 0) {
+    const { data: labs } = await supabase.from('labs').select('id, name, logo_url').in('id', labIds);
+    for (const l of labs ?? []) labBrand.set(l.id, { name: l.name ?? '', logo: l.logo_url ?? '' });
+  }
+
+  // Sipariş e-postalarını OTOMATİK zenginleştir: resourceType='work_order' ise
+  // client ne gönderirse göndersin sipariş satırından detaylı kart üretilir
+  // (yeni sipariş, beklemede vb. hepsi tek yerden zengin olur — caller'a dokunmadan).
+  let orderDetail: Record<string, string> | null = null;
+  let orderUrgent = false;
+  const woId = body.payload.resourceType === 'work_order' ? String(body.payload.resourceId ?? '').trim() : '';
+  if (woId) {
+    try {
+      const { data: wo } = await supabase.from('work_orders')
+        .select('order_number, patient_name, work_type, tooth_numbers, shade, delivery_date, is_urgent, status, current_stage_name, doctor_id')
+        .eq('id', woId).maybeSingle();
+      if (wo) {
+        let clinicName = '';
+        if ((wo as any).doctor_id) {
+          const { data: doc } = await supabase.from('doctors').select('clinic:clinics(name)').eq('id', (wo as any).doctor_id).maybeSingle();
+          clinicName = (doc as any)?.clinic?.name ?? '';
+        }
+        orderUrgent = !!(wo as any).is_urgent;
+        const teeth = Array.isArray((wo as any).tooth_numbers) ? (wo as any).tooth_numbers : [];
+        const dd = (wo as any).delivery_date ? new Date(String((wo as any).delivery_date) + 'T00:00:00') : null;
+        orderDetail = {};
+        if ((wo as any).patient_name) orderDetail['Hasta'] = String((wo as any).patient_name);
+        if (clinicName)               orderDetail['Klinik'] = clinicName;
+        if ((wo as any).work_type)    orderDetail['Çalışma'] = String((wo as any).work_type);
+        if (teeth.length)             orderDetail['Diş No'] = teeth.join(', ');
+        if ((wo as any).shade)        orderDetail['Renk'] = String((wo as any).shade);
+        if (dd)                       orderDetail['Teslim tarihi'] = dd.toLocaleDateString('tr-TR', { day:'2-digit', month:'long', year:'numeric' });
+        // "Durum: Aşamada" belirsiz → üretimdeyse HANGİ aşamada olduğunu (güncel aşama adı) göster.
+        const st = String((wo as any).status ?? '');
+        const stageName = String((wo as any).current_stage_name ?? '').trim();
+        if (st && stageName && (st === 'asamada' || st === 'uretimde'))
+                                      orderDetail['Güncel aşama'] = stageName;
+        else if (st)                  orderDetail['Durum'] = STATUS_LABEL[st] ?? st;
+        if (Object.keys(orderDetail).length === 0) orderDetail = null;
+      }
+    } catch { orderDetail = null; }
   }
 
   // 2. Template render + email_notifications.insert (pending)
@@ -145,11 +196,16 @@ serve(async (req) => {
   // 3. Resend'e gönder (paralel)
   const results = await Promise.all((insertedRows ?? auditRows).map(async (audit: any, idx: number) => {
     const target = targets[idx] as any;
+    const brand = target?.lab_id ? labBrand.get(target.lab_id) : undefined;
     const html = renderHtmlBody({
       category: body.category,
       payload:  body.payload,
       name:     target?.full_name ?? null,
       appUrl:   appPublicUrl,
+      labName:  brand?.name || undefined,
+      labLogoUrl: brand?.logo || undefined,
+      orderDetail,
+      orderUrgent,
     });
     const text = renderTextBody({
       category: body.category,
@@ -202,12 +258,14 @@ serve(async (req) => {
   const sent   = results.filter(r => r.ok).length;
   const failed = results.length - sent;
 
-  // 4. notifications.delivered güncelle
+  // 4. notifications.delivered güncelle (best-effort — PostgrestBuilder'da .catch() yok,
+  //    o yüzden try/catch ile await; hata teslimatı etkilemesin)
   if (body.notificationId && sent > 0) {
-    await supabase.from('notifications')
-      .update({ delivered: { email: { ts: new Date().toISOString(), count: sent } } })
-      .eq('id', body.notificationId)
-      .catch(() => null);
+    try {
+      await supabase.from('notifications')
+        .update({ delivered: { email: { ts: new Date().toISOString(), count: sent } } })
+        .eq('id', body.notificationId);
+    } catch { /* delivered izleme opsiyonel */ }
   }
 
   return json({ ok: true, sent, failed, totalTargets: targets.length });
@@ -224,6 +282,23 @@ const CATEGORY_LABEL: Record<string, string> = {
   stock:        'Stok Uyarısı',
   delivery:     'Teslimat',
   paper_order:  'Yeni Kağıt Sipariş',
+  order_watch:  'Günlük İş Takibi',
+  stage_critical: 'Kritik Aşama Tamamlandı',
+};
+
+// work_order_status enum → okunur Türkçe etiket (sipariş detay kartında "Durum")
+const STATUS_LABEL: Record<string, string> = {
+  alindi:            'Alındı',
+  kutu_atandi:       'Kutu atandı',
+  atama_bekleniyor:  'Atama bekleniyor',
+  asamada:           'Üretimde',
+  uretimde:          'Üretimde',
+  kalite_kontrol:    'Kalite kontrol',
+  teslimata_hazir:   'Teslimata hazır',
+  kurye_bekleniyor:  'Kurye bekleniyor',
+  kuryede:           'Kuryede',
+  teslim_edildi:     'Teslim edildi',
+  iptal:             'İptal',
 };
 
 function renderSubject(_category: string, p: EmailPayload): string {
@@ -243,7 +318,12 @@ function renderTextBody(opts: { category: string; payload: EmailPayload; appUrl:
 
 function toAbs(url: string, base: string): string {
   if (/^https?:\/\//i.test(url)) return url;
-  return `${base}${url.startsWith('/') ? '' : '/'}${url}`;
+  // Expo Router route-group segmentleri parantezlidir ( /(lab)/order/x )
+  // ve GERÇEK URL'de yer almaz → temizle, yoksa link 404 olur.
+  let path = url.replace(/\/\([^)]*\)/g, '');
+  if (!path.startsWith('/')) path = '/' + path;
+  if (path === '/' && url !== '/') path = '/';
+  return `${base}${path === '' ? '/' : path}`;
 }
 
 function renderHtmlBody(opts: {
@@ -251,6 +331,10 @@ function renderHtmlBody(opts: {
   payload:  EmailPayload;
   name:     string | null;
   appUrl:   string;
+  labName?:    string;
+  labLogoUrl?: string;
+  orderDetail?: Record<string, string> | null;
+  orderUrgent?: boolean;
 }): string {
   const { category, payload, name, appUrl } = opts;
   const label = CATEGORY_LABEL[category] ?? 'Bildirim';
@@ -261,8 +345,59 @@ function renderHtmlBody(opts: {
   const clinicName  = extra.clinic || extra.clinicName || '';
   const patientName = extra.patient || extra.patientName || '';
   const workType    = extra.workType || extra.work_type || '';
-  const labName     = extra.labName || extra.lab || 'Nexadent';
-  const labLogoUrl  = extra.labLogoUrl || extra.lab_logo_url || '';
+  // Marka: caller override (opts) > extra > default. Alıcının gerçek lab'ından gelir.
+  const labName     = opts.labName || extra.labName || extra.lab || 'Nexadent';
+  const labLogoUrl  = opts.labLogoUrl || extra.labLogoUrl || extra.lab_logo_url || '';
+  // Yalnız gerçek bir vaka/kayıt olan bildirimlerde QR göster (dijest vb.'de gösterme).
+  const showQr = !!(payload.resourceId && String(payload.resourceId).trim());
+  // Gövde metnini (dijest özeti, mesaj vb.) gerçekten göster; yoksa generic satır.
+  const bodyLine = payload.body && String(payload.body).trim()
+    ? escape(String(payload.body).trim())
+    : 'Detayları görüntülemek için aşağıdaki butonu kullanın.';
+  // CTA etiketi: tek bir vaka varsa "İş Emrini Aç", yoksa (dijest/liste) "Panele Git".
+  const ctaLabel = showQr ? 'İş Emrini Aç' : 'Panele Git';
+
+  // Sipariş detay kartı (server'da sipariş satırından çözülür) — yeni sipariş,
+  // beklemede vb. tüm work_order e-postalarını caller'a dokunmadan detaylandırır.
+  const orderRows = opts.orderDetail ? Object.entries(opts.orderDetail) : [];
+  const orderCardHtml = orderRows.length ? `
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-top:18px;border:1px solid #E2E8F0;border-radius:12px;overflow:hidden;">
+            ${orderRows.map(([k, v], i) => `
+            <tr><td style="padding:11px 15px;${i < orderRows.length - 1 ? 'border-bottom:1px solid #F1F5F9;' : ''}">
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%"><tr>
+                <td width="120" valign="top"><div style="font-size:10.5px;color:#94A3B8;letter-spacing:0.3px;text-transform:uppercase;font-weight:600;">${escape(k)}</div></td>
+                <td valign="top"><div style="font-size:13px;font-weight:600;color:#0F172A;line-height:1.4;">${escape(v)}</div></td>
+              </tr></table>
+            </td></tr>`).join('')}
+          </table>` : '';
+  // ACİL rozeti (başlık yanında)
+  const urgentBadge = opts.orderUrgent
+    ? `<span style="display:inline-block;margin-left:8px;font-size:10px;font-weight:800;letter-spacing:0.6px;color:#B91C1C;background:#FEE2E2;border-radius:9999px;padding:3px 9px;vertical-align:middle;">ACİL</span>`
+    : '';
+
+  // Detay listesi (günlük iş takibi vb.): her satır bir iş — hasta · klinik · iş + durum rozeti.
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  const itemsHtml = items.length ? `
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:2px 0 20px;border:1px solid #E2E8F0;border-radius:12px;overflow:hidden;">
+            ${items.map((it, i) => {
+              const danger = it.kind === 'overdue';
+              const tagBg = danger ? '#FEE2E2' : '#FEF3C7';
+              const tagFg = danger ? '#B91C1C' : '#B45309';
+              return `
+            <tr><td style="padding:12px 15px;${i < items.length - 1 ? 'border-bottom:1px solid #F1F5F9;' : ''}">
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%"><tr>
+                <td valign="top" style="text-align:left;">
+                  <div style="font-size:13px;font-weight:700;color:#0F172A;line-height:1.35;">${escape(it.patient || '—')}</div>
+                  <div style="font-size:11.5px;color:#64748B;margin-top:2px;line-height:1.4;">${escape(it.clinic || '')}${it.work ? ' · ' + escape(it.work) : ''}</div>
+                  ${it.note ? `<div style="font-size:11.5px;color:#475569;margin-top:5px;line-height:1.4;">“${escape(it.note)}”</div>` : ''}
+                </td>
+                <td valign="top" align="right" width="104" style="padding-left:8px;">
+                  <span style="display:inline-block;font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:9999px;background:${tagBg};color:${tagFg};white-space:nowrap;">${escape(it.tag || '')}</span>
+                </td>
+              </tr></table>
+            </td></tr>`;
+            }).join('')}
+          </table>` : '';
   const createdAt   = new Date().toLocaleString('tr-TR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
 
   // Brand-level meta keys — UI'da brand strip / category chip / hero'da yer alıyor;
@@ -272,10 +407,22 @@ function renderHtmlBody(opts: {
     .filter(k => !SKIP_KEYS.has(k))
     .filter(k => extra[k] !== undefined && extra[k] !== null && String(extra[k]).trim() !== '');
 
-  // Lab logo markup — caller'dan gelen URL'i kullan, yoksa "N" placeholder tile
-  const labLogoMarkup = labLogoUrl
-    ? `<img src="${escape(labLogoUrl)}" alt="${escape(labName)}" width="64" height="64" style="display:block;width:64px;height:64px;object-fit:contain;background:transparent;" />`
-    : `<div style="width:56px;height:56px;border-radius:10px;background:#0F172A;text-align:center;line-height:56px;color:#FFFFFF;font-weight:800;font-size:22px;letter-spacing:0.5px;">${escape((labName[0] ?? 'N').toUpperCase())}</div>`;
+  // Lab logo — e-posta istemcileri (Gmail/Outlook) SVG'yi RENDER ETMEZ. Raster
+  // (png/jpg/webp/gif) ise gerçek logo <img>; SVG/boşsa lab adının baş harfiyle plaka.
+  const isRasterLogo = /\.(png|jpe?g|webp|gif)(\?|$)/i.test(labLogoUrl);
+  const hasLogo = !!(labLogoUrl && isRasterLogo);
+  // Gerçek logo: büyük + yatay (logo zaten lab adını içerir → yanına yazı yazma).
+  const headerLogoImg = `<img src="${escape(labLogoUrl)}" alt="${escape(labName)}" style="height:52px;width:auto;max-width:360px;display:inline-block;" />`;
+  // Fallback plaka (logo yoksa) — plaka tek başına anlamsız, yanında isim gösterilir.
+  const tileMarkup = `<div style="width:52px;height:52px;border-radius:10px;background:#0F172A;text-align:center;line-height:52px;color:#FFFFFF;font-weight:800;font-size:21px;letter-spacing:0.5px;">${escape((labName.trim()[0] ?? 'N').toUpperCase())}</div>`;
+  // Kategori çipi + QR hücresi (yalnız gerçek vakada).
+  const chipHtml = `<div style="display:inline-block;font-size:9px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:#64748B;border:1px solid #E2E8F0;border-radius:9999px;padding:4px 10px;background:#F8FAFC;">${escape(label)}</div>`;
+  const qrCell = `<td valign="top" align="right" width="92">
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=2&qzone=1&bgcolor=ffffff&color=0f172a&ecc=M&data=${encodeURIComponent(link)}"
+                  alt="Vaka QR" width="84" height="84"
+                  style="display:block;width:84px;height:84px;border:1px solid #E2E8F0;border-radius:8px;padding:4px;background:#FFFFFF;" />
+                <div style="font-size:8px;font-weight:800;color:#0F172A;letter-spacing:1.4px;margin-top:6px;text-align:center;">VAKA QR</div>
+              </td>`;
 
   // Email-safe: table-based layout, inline styles, no flex/grid.
   // Print preview ile aynı görsel sistem (beyaz bg, ince border kartlar,
@@ -312,35 +459,34 @@ function renderHtmlBody(opts: {
       <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#FFFFFF;border:1px solid #E2E8F0;border-radius:16px;overflow:hidden;">
         <tr><td style="padding:26px 26px 0;">
 
-          <!-- TOP BAR: brand left + QR right -->
+          <!-- TOP BAR — gerçek logo: büyük+ortalı+yazısız · yoksa plaka+isim -->
+          ${hasLogo ? `
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+            <tr>
+              <td align="${showQr ? 'left' : 'center'}" valign="middle">
+                ${headerLogoImg}
+                <div style="margin-top:12px;">${chipHtml}</div>
+              </td>
+              ${showQr ? qrCell : ''}
+            </tr>
+          </table>` : `
           <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
             <tr>
               <td valign="top">
                 <table role="presentation" cellpadding="0" cellspacing="0">
                   <tr>
-                    <td valign="middle" style="padding-right:10px;">
-                      ${labLogoMarkup}
-                    </td>
+                    <td valign="middle" style="padding-right:10px;">${tileMarkup}</td>
                     <td valign="middle">
                       <div style="font-size:17px;font-weight:800;letter-spacing:0.8px;color:#0F172A;line-height:1.1;">${escape(labName.toUpperCase())}</div>
                       <div style="font-size:8px;font-weight:700;color:#64748B;letter-spacing:3.4px;margin-top:4px;">LABORATORY</div>
                     </td>
                   </tr>
                 </table>
-                <div style="margin-top:10px;display:inline-block;font-size:9px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:#64748B;border:1px solid #E2E8F0;border-radius:9999px;padding:4px 10px;background:#F8FAFC;">
-                  ${escape(label)}
-                </div>
+                <div style="margin-top:10px;">${chipHtml}</div>
               </td>
-              <td valign="top" align="right" width="92">
-                <!-- QR — external (qrserver.com) — email-safe img -->
-                <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=2&qzone=1&bgcolor=ffffff&color=0f172a&ecc=M&data=${encodeURIComponent(link)}"
-                  alt="Vaka QR"
-                  width="84" height="84"
-                  style="display:block;width:84px;height:84px;border:1px solid #E2E8F0;border-radius:8px;padding:4px;background:#FFFFFF;" />
-                <div style="font-size:8px;font-weight:800;color:#0F172A;letter-spacing:1.4px;margin-top:6px;text-align:center;">VAKA QR</div>
-              </td>
+              ${showQr ? qrCell : ''}
             </tr>
-          </table>
+          </table>`}
 
           <!-- Divider -->
           <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-top:18px;border-bottom:2px solid #0F172A;"><tr><td></td></tr></table>
@@ -350,11 +496,11 @@ function renderHtmlBody(opts: {
             ${escape(label)}
           </div>
           <h1 style="margin:6px 0 0 0;font-size:28px;font-weight:300;letter-spacing:-0.7px;color:#0F172A;line-height:1.1;font-family:'Inter Tight','Inter',-apple-system,sans-serif;">
-            ${escape(payload.title)}
+            ${escape(payload.title)}${urgentBadge}
           </h1>
 
-          <!-- DETAIL CARD — generic: extra payload key'leri + oluşturulma -->
-          ${(detailKeys.length > 0) ? `
+          <!-- DETAIL CARD — work_order ise server'dan zengin kart, değilse generic extra -->
+          ${orderCardHtml || ((detailKeys.length > 0) ? `
           <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-top:18px;border:1px solid #E2E8F0;border-radius:10px;">
             ${detailKeys.map((k, i) => `
             <tr><td style="padding:10px 14px;${i < detailKeys.length - 1 || true ? 'border-bottom:1px solid #F1F5F9;' : ''}">
@@ -373,28 +519,30 @@ function renderHtmlBody(opts: {
                 </tr>
               </table>
             </td></tr>
-          </table>` : ''}
+          </table>` : '')}
 
-          <!-- GREETING + CTA -->
+          <!-- GREETING + CTA — metin sola, buton+link ortalı -->
           <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-top:22px;">
-            <tr><td>
+            <tr><td style="text-align:left;">
               <p style="margin:0 0 6px 0;font-size:14px;line-height:1.55;color:#0F172A;font-weight:600;">${greeting}</p>
-              <p style="margin:0 0 18px 0;font-size:13px;line-height:1.55;color:#475569;">
-                Detayları görüntülemek için aşağıdaki butonu kullanın.
+              <p style="margin:0 0 ${itemsHtml ? '16' : '18'}px 0;font-size:13.5px;line-height:1.6;color:#334155;">
+                ${bodyLine}
               </p>
-
-              <!-- Bulletproof button (table-based) -->
-              <table role="presentation" cellpadding="0" cellspacing="0">
+              ${itemsHtml}
+            </td></tr>
+            <tr><td align="center" style="text-align:center;padding-top:4px;">
+              <!-- Bulletproof button (table-based, ortalı) -->
+              <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
                 <tr>
                   <td align="center" bgcolor="#0F172A" style="border-radius:10px;">
-                    <a href="${escape(link)}" target="_blank" style="display:inline-block;padding:12px 22px;font-size:13.5px;font-weight:600;color:#FFFFFF;text-decoration:none;letter-spacing:0.2px;border-radius:10px;font-family:'Inter',Arial,sans-serif;">
-                      İş Emrini Aç &nbsp;→
+                    <a href="${escape(link)}" target="_blank" style="display:inline-block;padding:12px 26px;font-size:13.5px;font-weight:600;color:#FFFFFF;text-decoration:none;letter-spacing:0.2px;border-radius:10px;font-family:'Inter',Arial,sans-serif;">
+                      ${escape(ctaLabel)} &nbsp;→
                     </a>
                   </td>
                 </tr>
               </table>
 
-              <p style="margin:10px 0 0 0;font-size:11px;color:#94A3B8;line-height:1.5;word-break:break-all;">
+              <p style="margin:12px auto 0;font-size:11px;color:#94A3B8;line-height:1.5;word-break:break-all;max-width:440px;">
                 Veya linki tarayıcınıza yapıştırın:<br>
                 <a href="${escape(link)}" target="_blank" style="color:#64748B;text-decoration:underline;">${escape(link)}</a>
               </p>
@@ -425,8 +573,12 @@ function renderHtmlBody(opts: {
         </td></tr>
       </table>
 
-      <!-- Outer brand mark -->
-      <div style="margin-top:14px;text-align:center;font-size:9px;color:#94A3B8;letter-spacing:0.5px;">
+      <!-- Outer brand mark — powered by Siman (logo görseli) -->
+      <div style="margin-top:16px;text-align:center;">
+        <span style="font-size:10px;color:#94A3B8;letter-spacing:0.4px;vertical-align:middle;">Powered by</span>
+        <img src="${SIMAN_LOGO_URL}" alt="Siman" height="12" style="height:12px;width:auto;vertical-align:middle;margin-left:7px;opacity:0.85;" />
+      </div>
+      <div style="margin-top:6px;text-align:center;font-size:9px;color:#CBD5E1;letter-spacing:0.4px;">
         © ${new Date().getFullYear()} Siman · Dijital Diş Laboratuvarı Yönetimi
       </div>
 
@@ -499,6 +651,8 @@ const ACCENT_BY_CATEGORY: Record<string, string> = {
   stock:        '#D97706',
   delivery:     '#0D9488',
   paper_order:  '#9333EA',
+  order_watch:  '#DC2626',
+  stage_critical: '#0C8F56',
 };
 
 function escape(s: string): string {

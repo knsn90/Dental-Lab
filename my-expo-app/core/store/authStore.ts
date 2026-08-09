@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { Session } from '@supabase/supabase-js';
 import { Profile } from '../../lib/types';
 import { supabase } from '../api/supabase';
+import { bootMark } from '../debug/bootTrace';
+import { useLastPanelStore, type PanelKey } from './lastPanelStore';
 
 interface AuthState {
   session: Session | null;
@@ -19,7 +21,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   profile: null,
   loading: true,
 
-  setSession: (session) => set({ session }),
+  setSession: (session) => { bootMark('session set', { user: session?.user?.id?.slice(0, 8) ?? null }); set({ session }); },
   setProfile: (profile) => {
     set({ profile });
     if (profile && typeof window !== 'undefined') {
@@ -62,24 +64,24 @@ export const useAuthStore = create<AuthState>((set) => ({
         if (res !== TIMED_OUT) { data = res; break; } // yalnız timeout'ta tekrar dene
       }
       if (data) {
+        bootMark('profile GELDİ', { user_type: (data as any).user_type, role: (data as any).role });
         set({ profile: data as Profile });
-        // Persist last-known panel for the loader on next refresh
-        if (typeof window !== 'undefined') {
-          const p: any = data;
-          const panel =
-            p.user_type === 'admin'        ? 'exec'      :
-            p.user_type === 'doctor'       ? 'doctor'    :
-            p.user_type === 'clinic_admin' ? 'klinik'    :
-            p.user_type === 'lab' && (p.role === 'technician' || p.role === 'courier') ? 'teknisyen' :
-            p.user_type === 'lab'          ? 'lab'       : null;
-          if (panel) {
-            try { window.localStorage.setItem('lastPanel', panel); } catch { /* noop */ }
-          }
-        }
+        // Son paneli kalıcı yaz (sonraki açılışta optimistic routing).
+        // Kurye hariç (kurye (courier) rotasına gider, optimistic set dışı).
+        const p: any = data;
+        const lp: PanelKey | null =
+          p.user_type === 'admin'                                   ? 'exec'      :
+          p.user_type === 'doctor'                                  ? 'doctor'    :
+          (p.user_type === 'clinic_admin' || p.user_type === 'clinic_secretary') ? 'klinik' :
+          p.user_type === 'lab' && p.role === 'technician'          ? 'teknisyen' :
+          p.user_type === 'lab' && p.role === 'courier'             ? null        :
+          p.user_type === 'lab'                                     ? 'lab'       : null;
+        if (lp) useLastPanelStore.getState().setPanel(lp);
       }
     } catch (_) {
       // sessizce geç
     } finally {
+      bootMark('loading=false');
       set({ loading: false });
     }
   },

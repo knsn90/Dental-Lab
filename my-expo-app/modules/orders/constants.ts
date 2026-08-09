@@ -67,7 +67,7 @@ export const STATUS_CONFIG: Record<string, StatusConfig> = {
   },
   // Yeni: iş aktif istasyonda — tüm stage'ler bitince otomatik kalite_kontrol'e geçer
   asamada: {
-    label: 'Üretim Aşaması',
+    label: 'Üretimde',
     color: '#D97706',
     bgColor: '#FEF3C7',
     next: 'kalite_kontrol',

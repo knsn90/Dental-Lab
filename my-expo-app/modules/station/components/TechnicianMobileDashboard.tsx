@@ -29,6 +29,7 @@ import { useAuthStore } from '../../../core/store/authStore';
 import { useScanStore } from '../../../core/store/scanStore';
 
 import { UnreadMessagesCard } from '../../../core/ui/mobile/UnreadMessagesCard';
+import { confirmAsync } from '../../../core/util/confirm';
 const TECH = MOBILE_PANEL_THEMES.teknisyen;
 
 export interface TechActiveJob {
@@ -78,10 +79,10 @@ export function TechnicianMobileDashboard(props: TechnicianMobileDashboardProps)
 
   const handleLogout = () => {
     setProfileMenuOpen(false);
-    Alert.alert(t('common.signOut'), t('profile.signOutConfirm'), [
-      { text: t('common.cancel'), style: 'cancel' },
-      { text: t('common.signOut'), style: 'destructive', onPress: () => signOut?.() },
-    ]);
+    // Web/PWA'da Alert.alert butonları çalışmıyor → confirmAsync
+    confirmAsync(t('common.signOut'), t('profile.signOutConfirm'), {
+      confirmText: t('common.signOut'), cancelText: t('common.cancel'), destructive: true,
+    }).then(ok => { if (ok) signOut?.(); });
   };
   const handleProfile = () => {
     setProfileMenuOpen(false);

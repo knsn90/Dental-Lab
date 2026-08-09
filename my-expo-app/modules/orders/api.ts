@@ -15,6 +15,13 @@ export async function createWorkOrder(params: CreateWorkOrderParams & { measurem
   } = params as any;
   // NOT: patient_dob + patient_nationality/country/city kolonları artık VAR — strip'lenmez.
 
+  // Boş string ("") uuid kolonuna gidince Postgres "invalid input syntax for type
+  // uuid: ''" verir (ör. hekim seçilmemiş WhatsApp/OCR siparişinde doctor_id=""). Bu
+  // kolonlar nullable → "" değerini NULL'a çevir (sipariş oluşturma akışı bozulmasın).
+  for (const k of ['doctor_id', 'assigned_to', 'revision_of_id', 'lab_id', 'continues_order_id'] as const) {
+    if ((safeParams as any)[k] === '') (safeParams as any)[k] = null;
+  }
+
   let { data, error } = await supabase
     .from('work_orders')
     .insert(safeParams)
@@ -36,6 +43,27 @@ export async function createWorkOrder(params: CreateWorkOrderParams & { measurem
     const measurementType = (params.measurement_type ?? 'manual') as 'manual' | 'digital';
     await createCaseSteps(data.id, measurementType);
 
+    // Klinik çöz: work_orders'ta clinic_id kolonu YOK + clinic_name boş olabilir →
+    // doctor_id (doctors.id VEYA profiles.id) → clinic_id → clinics.name.
+    // Hem admin bildirimi payload'ında ("şu klinikten") hem hekim/klinik hedeflemesinde kullanılır.
+    let resolvedClinicId: string | null = null;
+    let resolvedClinicName: string = (data as any).clinic_name ?? '';
+    try {
+      const docId0 = (data as any).doctor_id as string | null;
+      if (docId0) {
+        const { data: dp } = await supabase.from('profiles').select('clinic_id').eq('id', docId0).maybeSingle();
+        if ((dp as any)?.clinic_id) resolvedClinicId = (dp as any).clinic_id as string;
+        else {
+          const { data: dr } = await supabase.from('doctors').select('clinic_id').eq('id', docId0).maybeSingle();
+          if ((dr as any)?.clinic_id) resolvedClinicId = (dr as any).clinic_id as string;
+        }
+        if (!resolvedClinicName && resolvedClinicId) {
+          const { data: c } = await supabase.from('clinics').select('name').eq('id', resolvedClinicId).maybeSingle();
+          if ((c as any)?.name) resolvedClinicName = (c as any).name as string;
+        }
+      }
+    } catch { /* sessiz */ }
+
     // ─── Notification: new_order → admin + lab manager (teknisyen değil) ─────
     // Async fire-and-forget, hata olursa sipariş akışını bozma
     try {
@@ -44,7 +72,7 @@ export async function createWorkOrder(params: CreateWorkOrderParams & { measurem
         const orderNum   = (data as any).order_number ?? '';
         const patient    = (data as any).patient_name ?? '';
         const workType   = Array.from(new Set(String((data as any).work_type ?? '').split(',').map((s: string) => s.trim()).filter(Boolean))).join(', ');
-        const clinicName = (data as any).clinic_name ?? '';
+        const clinicName = resolvedClinicName;
         // Yalnızca admin (user_type=admin) veya lab manager (user_type=lab, role=manager)
         const { data: targetUsers } = await supabase
           .from('profiles')
@@ -77,7 +105,7 @@ export async function createWorkOrder(params: CreateWorkOrderParams & { measurem
     // hekime ve klinik kullanıcılarına "yeni sipariş" bildirimi gider.
     try {
       const orderId  = (data as any).id as string;
-      const clinicId = (data as any).clinic_id as string | null;
+      const clinicId = resolvedClinicId;   // yukarıda doctor_id → doctors.clinic_id ile çözüldü
       const docId    = (data as any).doctor_id as string | null;
       const orderNum = (data as any).order_number ?? '';
       const patient  = (data as any).patient_name ?? '';
@@ -128,16 +156,26 @@ const LIST_SELECT = `
   *,
   current_stage:order_stages!fk_work_orders_stage(
     station:lab_stations(name, color)
-  )
+  ),
+  all_stages:order_stages!order_stages_work_order_id_fkey(status)
 `;
 
 /** Embedded `current_stage` objesini düz `current_stage_name` string'ine map'ler. */
 function flattenStageName(rows: any[]): any[] {
-  return rows.map(r => ({
-    ...r,
-    current_stage_name: r.current_stage?.station?.name ?? null,
-    current_stage_color: r.current_stage?.station?.color ?? null,
-  }));
+  return rows.map(r => {
+    // Üretim ilerleme mini-göstergesi için: skipped hariç toplam + tamamlanan sayısı.
+    const stages: any[] = Array.isArray(r.all_stages) ? r.all_stages : [];
+    const stagesTotal = stages.filter(s => s?.status !== 'skipped').length;
+    const stagesDone  = stages.filter(s => s?.status === 'tamamlandi').length;
+    const { all_stages, ...rest } = r;
+    return {
+      ...rest,
+      current_stage_name: r.current_stage?.station?.name ?? null,
+      current_stage_color: r.current_stage?.station?.color ?? null,
+      stages_total: stagesTotal,
+      stages_done: stagesDone,
+    };
+  });
 }
 
 /**
@@ -153,29 +191,47 @@ async function attachDoctors(rows: any[]): Promise<any[]> {
   if (ids.length === 0) return rows.map(r => ({ ...r, doctor: null }));
 
   const [docsRes, profsRes] = await Promise.all([
-    supabase.from('doctors').select('id, full_name, clinic:clinics(id, name)').in('id', ids),
-    supabase.from('profiles').select('id, full_name, clinic_name').in('id', ids),
+    // logo_url: lab/admin/teknisyen listelerinde hasta baş harfleri yerine
+    // KLİNİK LOGOSU gösterilir — hangi klinikten geldiği bir bakışta anlaşılsın.
+    supabase.from('doctors').select('id, full_name, clinic:clinics(id, name, logo_url)').in('id', ids),
+    supabase.from('profiles').select('id, full_name, clinic_id, clinic_name').in('id', ids),
   ]);
 
   const map = new Map<string, any>();
   for (const d of (docsRes.data ?? [])) map.set((d as any).id, d);
+  // Profil-hekimlerde klinik yalnız isim olarak duruyor; logolar tek batch ile çözülür.
+  const profClinicIds = Array.from(new Set(
+    (profsRes.data ?? []).map((p: any) => p.clinic_id).filter(Boolean),
+  ));
+  const clinicLogos = new Map<string, string | null>();
+  if (profClinicIds.length) {
+    const { data: cls } = await supabase.from('clinics').select('id, logo_url').in('id', profClinicIds);
+    for (const c of (cls ?? []) as any[]) clinicLogos.set(c.id, c.logo_url ?? null);
+  }
   for (const p of (profsRes.data ?? [])) {
     if (map.has((p as any).id)) continue;            // doctors önceliği
+    const cid = (p as any).clinic_id as string | null;
     map.set((p as any).id, {
       id: (p as any).id,
       full_name: (p as any).full_name,
-      clinic: (p as any).clinic_name ? { id: null, name: (p as any).clinic_name } : null,
+      clinic: (p as any).clinic_name || cid
+        ? { id: cid, name: (p as any).clinic_name, logo_url: cid ? (clinicLogos.get(cid) ?? null) : null }
+        : null,
     });
   }
 
   return rows.map(r => ({ ...r, doctor: r.doctor_id ? (map.get(r.doctor_id) ?? null) : null }));
 }
 
-export async function fetchWorkOrdersForDoctor(doctorId: string) {
+export async function fetchWorkOrdersForDoctor(_doctorId: string) {
+  // NOT: work_orders.doctor_id POLİMORFİK (doctors.id VEYA profiles.id). Sipariş
+  // oluşturulurken doctor_id doctors-satırına çevriliyor, bu yüzden `.eq('doctor_id',
+  // profile.id)` hekimin KENDİ siparişlerini KAÇIRIYORDU (liste boş görünüyordu).
+  // RLS "Doctors see own orders" (doctor_owns_order_doctor) zaten yalnız hekimin
+  // kendi siparişlerini döndürür → istemci filtresi gereksiz ve hatalı. Kaldırıldı.
   const res = await supabase
     .from('work_orders')
     .select(LIST_SELECT)
-    .eq('doctor_id', doctorId)
     .or('is_archived.is.null,is_archived.eq.false')
     .order('created_at', { ascending: false });
   if (res.data) (res as any).data = await attachDoctors(flattenStageName(res.data as any[]));
@@ -280,6 +336,131 @@ export async function advanceOrderStatus(
   });
 }
 
+// ─── Revizyon siparişi (teslim sonrası yeniden yapım) ────────────────────────
+
+export type RevisionResponsible = 'lab' | 'client';
+
+/** Teslim edilmiş siparişin revizyonunu BAĞLI YENİ sipariş olarak açar.
+ *  responsible='lab' → garanti (kalem fiyatları 0), 'client' → orijinal fiyatlar.
+ *  Yeni sipariş status='alindi' ile normal triaj/planlamaya düşer. */
+export async function createRevisionOrder(
+  orderId: string,
+  reason: string,
+  responsible: RevisionResponsible,
+  deliveryDate?: string | null,
+  faultStationId?: string | null,
+): Promise<{ ok: boolean; id?: string; error?: string }> {
+  const { data, error } = await supabase.rpc('create_revision_order', {
+    p_order_id:         orderId,
+    p_reason:           reason,
+    p_responsible:      responsible,
+    p_delivery_date:    deliveryDate ?? null,
+    p_fault_station_id: faultStationId ?? null,
+  });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, id: data as string };
+}
+
+export interface RevisionLink {
+  id: string;
+  order_number: string;
+  revision_no?: number | null;
+  revision_responsible?: RevisionResponsible | null;
+  status?: string | null;
+}
+
+/** Siparişin revizyon bağlantıları: kaynağı (bunun revizyonu olduğu sipariş)
+ *  + bundan açılmış revizyonlar. Rozetlerde karşılıklı gösterilir. */
+export async function fetchRevisionLinks(
+  orderId: string,
+  revisionOfId?: string | null,
+): Promise<{ parent: RevisionLink | null; children: RevisionLink[] }> {
+  const [parentRes, childRes] = await Promise.all([
+    revisionOfId
+      ? supabase.from('work_orders')
+          .select('id, order_number, revision_no, revision_responsible, status')
+          .eq('id', revisionOfId).maybeSingle()
+      : Promise.resolve({ data: null } as any),
+    supabase.from('work_orders')
+      .select('id, order_number, revision_no, revision_responsible, status')
+      .eq('revision_of_id', orderId)
+      .order('revision_no', { ascending: true }),
+  ]);
+  return {
+    parent:   (parentRes?.data as RevisionLink) ?? null,
+    children: ((childRes as any)?.data as RevisionLink[]) ?? [],
+  };
+}
+
+// ─── Yeniden-yapım (remake) KPI ──────────────────────────────────────────────
+
+export interface RemakeRow {
+  id: string;
+  order_number: string;
+  created_at: string;
+  revision_reason: string | null;
+  revision_responsible: RevisionResponsible | null;
+  fault_station: string | null;
+  parent_order_number: string | null;
+}
+
+export interface RemakeStats {
+  delivered: number;          // dönemde teslim edilen sipariş
+  revisionsLab: number;       // lab kaynaklı revizyon (garanti)
+  revisionsClient: number;    // hekim kaynaklı revizyon (ücretli)
+  rate: number;               // yeniden-yapım oranı % = lab / teslim
+  byStation: { name: string; count: number }[];
+  rows: RemakeRow[];
+}
+
+/** Yeniden-yapım panosu verisi. RLS lab'a göre kapsar; ek filtre gerekmez.
+ *  Oran = dönemdeki LAB kaynaklı revizyon / dönemde teslim edilen sipariş. */
+export async function fetchRemakeStats(from: string, to: string): Promise<RemakeStats> {
+  const [deliveredRes, revRes] = await Promise.all([
+    supabase.from('work_orders')
+      .select('id', { count: 'exact', head: true })
+      .gte('delivered_at', from).lte('delivered_at', `${to}T23:59:59`),
+    supabase.from('work_orders')
+      .select('id, order_number, created_at, revision_reason, revision_responsible, station:revision_fault_station_id(name), parent:revision_of_id(order_number)')
+      .not('revision_of_id', 'is', null)
+      .gte('created_at', from).lte('created_at', `${to}T23:59:59`)
+      .order('created_at', { ascending: false }),
+  ]);
+
+  const rows: RemakeRow[] = ((revRes.data ?? []) as any[]).map(r => ({
+    id: r.id,
+    order_number: r.order_number,
+    created_at: r.created_at,
+    revision_reason: r.revision_reason ?? null,
+    revision_responsible: r.revision_responsible ?? null,
+    fault_station: r.station?.name ?? null,
+    parent_order_number: r.parent?.order_number ?? null,
+  }));
+
+  const revisionsLab    = rows.filter(r => r.revision_responsible === 'lab').length;
+  const revisionsClient = rows.filter(r => r.revision_responsible === 'client').length;
+  const delivered       = deliveredRes.count ?? 0;
+
+  // İstasyon kırılımı — yalnız lab kaynaklılar (hekim değişikliği hata değildir)
+  const stationMap = new Map<string, number>();
+  rows.filter(r => r.revision_responsible === 'lab').forEach(r => {
+    const k = r.fault_station ?? 'Belirtilmemiş';
+    stationMap.set(k, (stationMap.get(k) ?? 0) + 1);
+  });
+  const byStation = [...stationMap.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count);
+
+  return {
+    delivered,
+    revisionsLab,
+    revisionsClient,
+    rate: delivered > 0 ? (revisionsLab / delivered) * 100 : 0,
+    byStation,
+    rows,
+  };
+}
+
 // ─── Tasarım (hekim) onayı ───────────────────────────────────────────────────
 
 /** Lab → tasarımı hekim onayına gönderir. status='pending' + token + 48s. */
@@ -344,6 +525,26 @@ export async function approveTriage(workOrderId: string): Promise<{ ok: boolean;
   return { ok: true };
 }
 
+/**
+ * Kurye hareketinin amacı. `teslimat` = siparişin final teslimatı (timeline'daki
+ * Kurye aşamasını besleyen kayıt); diğerleri üretim sırasındaki ara hareketler.
+ */
+export type DeliveryPurpose =
+  | 'teslimat' | 'model_alma' | 'eksik_parca'
+  | 'prova_gidis' | 'prova_donus' | 'iade' | 'diger';
+
+export type DeliveryDirection = 'lab_to_clinic' | 'clinic_to_lab';
+
+export const DELIVERY_PURPOSE_LABELS: Record<DeliveryPurpose, string> = {
+  teslimat:    'Teslimat',
+  model_alma:  'Model alma',
+  eksik_parca: 'Eksik parça',
+  prova_gidis: 'Prova gidiş',
+  prova_donus: 'Prova dönüş',
+  iade:        'İade',
+  diger:       'Diğer',
+};
+
 /** Teslimat oluştur (internal kurye veya external firma). */
 export async function createDelivery(params: {
   workOrderId: string;
@@ -352,6 +553,16 @@ export async function createDelivery(params: {
   externalProvider?: string;
   externalTrackingNo?: string;
   notes?: string;
+  /** Varsayılan 'teslimat' — ara kurye hareketlerinde amaç verilir. */
+  purpose?: DeliveryPurpose;
+  direction?: DeliveryDirection;
+  /** Kurye ücreti; verilmezse sonradan setDeliveryFee ile girilebilir. */
+  feeAmount?: number | null;
+  /** Verilmezse lab'ın baz para birimi kullanılır. */
+  feeCurrency?: string | null;
+  feeSource?: 'banabikurye' | 'manuel';
+  /** Çağrı anındaki üretim aşaması adı. */
+  stageSnapshot?: string | null;
 }): Promise<{ ok: boolean; deliveryId?: string; error?: string }> {
   const { data, error } = await supabase.rpc('create_delivery', {
     p_work_order_id:        params.workOrderId,
@@ -360,9 +571,32 @@ export async function createDelivery(params: {
     p_external_provider:    params.externalProvider ?? null,
     p_external_tracking_no: params.externalTrackingNo ?? null,
     p_notes:                params.notes ?? null,
+    p_purpose:              params.purpose ?? 'teslimat',
+    p_direction:            params.direction ?? 'lab_to_clinic',
+    p_fee_amount:           params.feeAmount ?? null,
+    p_fee_currency:         params.feeCurrency ?? null,
+    p_fee_source:           params.feeSource ?? null,
+    p_stage_snapshot:       params.stageSnapshot ?? null,
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true, deliveryId: data as string };
+}
+
+/** Kurye ücretini sonradan gir / düzelt (lab manager + admin). */
+export async function setDeliveryFee(
+  deliveryId: string,
+  amount: number | null,
+  currency?: string | null,
+  source: 'banabikurye' | 'manuel' = 'manuel',
+): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.rpc('set_delivery_fee', {
+    p_delivery_id: deliveryId,
+    p_amount:      amount,
+    p_currency:    currency ?? null,
+    p_source:      source,
+  });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
 }
 
 /** Teslimat status güncelle (kurye veya manager). */
@@ -462,12 +696,19 @@ export async function addOrderItem(data: {
   service_id?: string;
   name: string;
   price: number;
+  /** Sipariş anındaki para birimi (lab_services.currency / resolve_item_price).
+   *  Yazılmazsa NULL kalır → tüketiciler lab varsayılanına düşer. Fiyatı olan
+   *  her kalemde DOLDUR: yoksa 7 EUR ekranda ₺7 olarak görünür. */
+  currency?: string;
   quantity?: number;
   notes?: string;
   /** Bu hizmete denk gelen diş FDI numaraları (renk haritası + raporlama için) */
   tooth_numbers?: number[];
 }) {
-  return supabase.from('order_items').insert(data).select().single();
+  // Custom (hizmet seçilmemiş) kalemde service_id "" olabilir → uuid kolonuna ""
+  // gitmesin (invalid input syntax for type uuid). "" veya undefined → NULL.
+  const clean = { ...data, service_id: data.service_id || null };
+  return supabase.from('order_items').insert(clean).select().single();
 }
 
 export async function updateOrderItem(
@@ -602,7 +843,7 @@ export interface StageMaterialContext {
     work_type: string | null;
     tooth_numbers: number[] | null;
   };
-  /** Lab'a ait, bu istasyonla eşleşen stok kalemleri */
+  /** Lab'a ait, bu istasyonla eşleşen stok kalemleri (tahmin motoru için) */
   candidateItems: Array<{
     id: string;
     name: string;
@@ -613,6 +854,22 @@ export interface StageMaterialContext {
     unit_cost: number | null;
     units_per_tooth: number | null;
     consume_at_stage: string | null;
+  }>;
+  /** Lab'a ait TÜM aktif stok kalemleri (modal "Stoktan seç" picker'ı için) */
+  allStockItems: Array<{
+    id: string;
+    name: string;
+    category: string | null;
+    unit: string | null;
+    quantity: number;
+    unit_cost: number | null;
+    /** Paket içeriği (örn 50) — doluysa tüketim content_unit'te girilir, kesirli adet düşer */
+    pack_size: number | null;
+    content_unit: string | null;
+    /** Kalemin maliyet para birimi (EUR/USD/TRY…) */
+    currency: string | null;
+    /** Bu malzemenin kullanılabileceği aşamalar (istasyon adları). Boş = genel. */
+    usable_stages: string[] | null;
   }>;
 }
 
@@ -655,7 +912,7 @@ export async function fetchStageMaterialContext(
     const allowed: string[] = station.allowed_material_types ?? [];
     let q = supabase
       .from('stock_items')
-      .select('id, name, category, type, unit, quantity, unit_cost, units_per_tooth, consume_at_stage')
+      .select('id, name, category, type, unit, quantity, unit_cost, units_per_tooth, consume_at_stage, pack_size, content_unit, last_unit_cost_currency, default_purchase_currency')
       .eq('lab_id', labId)
       .gt('quantity', 0);
 
@@ -670,7 +927,35 @@ export async function fetchStageMaterialContext(
       q = q.eq('consume_at_stage', station.name);
     }
     const { data: items } = await q;
-    candidateItems = items ?? [];
+    candidateItems = (items ?? []).map((it: any) => ({
+      ...it,
+      currency: it.last_unit_cost_currency || it.default_purchase_currency || 'TRY',
+    }));
+  }
+
+  // 3) Modal picker için labın TÜM aktif stok kalemleri (istasyon/kategori
+  //    filtresi yok — teknisyen elle istediği kalemi seçebilsin). consumes_materials
+  //    false olsa bile picker çalışsın diye yalnız labId'ye bağlı.
+  let allStockItems: any[] = [];
+  if (labId) {
+    const { data: allItems } = await supabase
+      .from('stock_items')
+      .select('id, name, category, unit, quantity, unit_cost, pack_size, content_unit, usable_stages, last_unit_cost_currency, default_purchase_currency')
+      .eq('lab_id', labId)
+      .eq('is_active', true)
+      .order('name');
+    allStockItems = (allItems ?? []).map((it: any) => ({
+      id: it.id,
+      name: it.name,
+      category: it.category,
+      unit: it.unit,
+      quantity: it.quantity,
+      unit_cost: it.unit_cost,
+      pack_size: it.pack_size ?? null,
+      content_unit: it.content_unit ?? null,
+      currency: it.last_unit_cost_currency || it.default_purchase_currency || 'TRY',
+      usable_stages: Array.isArray(it.usable_stages) ? it.usable_stages : null,
+    }));
   }
 
   return {
@@ -696,8 +981,140 @@ export async function fetchStageMaterialContext(
         tooth_numbers: order.tooth_numbers ?? null,
       },
       candidateItems,
+      allStockItems,
     },
   };
+}
+
+/**
+ * Modaldan hızlı stok kalemi oluştur — teknisyen ihtiyaç duyduğu malzeme
+ * stokta yoksa buradan ekler, satıra bağlanır ve onayda düşer.
+ * RLS "Lab users manage stock_items" ile lab_id = get_my_lab_id() zorunlu;
+ * lab_id açıkça verilir (order.lab_id).
+ */
+export async function createStockItem(input: {
+  lab_id: string;
+  name: string;
+  unit?: string | null;
+  category?: string | null;
+  quantity?: number;
+  unit_cost?: number;
+  consume_at_stage?: string | null;
+  pack_size?: number | null;
+  content_unit?: string | null;
+  currency?: string | null;
+  usable_stages?: string[] | null;
+}): Promise<{
+  data: {
+    id: string; name: string; category: string | null; unit: string | null;
+    quantity: number; unit_cost: number | null;
+    pack_size: number | null; content_unit: string | null; currency: string | null;
+    usable_stages: string[] | null;
+  } | null;
+  error?: string;
+}> {
+  const ccy = input.currency || 'TRY';
+  const { data, error } = await supabase
+    .from('stock_items')
+    .insert({
+      lab_id: input.lab_id,
+      name: input.name.trim(),
+      unit: input.unit ?? null,
+      category: input.category ?? null,
+      quantity: input.quantity ?? 0,
+      unit_cost: input.unit_cost ?? 0,
+      consume_at_stage: input.consume_at_stage ?? null,
+      pack_size: input.pack_size ?? null,
+      content_unit: input.content_unit ?? null,
+      usable_stages: (input.usable_stages && input.usable_stages.length) ? input.usable_stages : null,
+      default_purchase_currency: ccy,
+      last_unit_cost_currency: ccy,
+      usage_category: 'production',
+    })
+    .select('id, name, category, unit, quantity, unit_cost, pack_size, content_unit, usable_stages, last_unit_cost_currency, default_purchase_currency')
+    .single();
+  if (error) return { data: null, error: error.message };
+  const d: any = data;
+  return {
+    data: {
+      id: d.id, name: d.name, category: d.category, unit: d.unit,
+      quantity: d.quantity, unit_cost: d.unit_cost,
+      pack_size: d.pack_size ?? null, content_unit: d.content_unit ?? null,
+      currency: d.last_unit_cost_currency || d.default_purchase_currency || 'TRY',
+      usable_stages: Array.isArray(d.usable_stages) ? d.usable_stages : null,
+    },
+  };
+}
+
+// ── Miktarsız malzeme seçimi (Envanter D2) ─────────────────────────────────
+
+/** Bu aşamada seçilebilecek üretim malzemesi + ona bağlı gerçek stok kalemi */
+export interface StageMaterialOption {
+  production_material_id: string;
+  production_code: string;
+  production_name: string;
+  /** false → seçilebilir ama tüketim hesaplanamaz (stok düşmez) */
+  has_rule: boolean;
+  stock_item_id: string;
+  stock_item_name: string;
+  stock_unit: string | null;
+  quantity: number;
+  already_selected: number;
+}
+
+/** Labın miktarsız akışı açık mı? Kapalıysa eski miktar girişli modal kullanılır. */
+export async function fetchQtylessEnabled(): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('lab_settings')
+    .select('inventory_qtyless_enabled')
+    .maybeSingle();
+  if (error || !data) return false;
+  return !!(data as any).inventory_qtyless_enabled;
+}
+
+export async function fetchStageMaterialOptions(
+  stageId: string,
+): Promise<{ data: StageMaterialOption[]; error?: string }> {
+  const { data, error } = await supabase.rpc('list_stage_material_options', {
+    p_stage_id: stageId,
+  });
+  if (error) return { data: [], error: error.message };
+  return { data: (data ?? []) as StageMaterialOption[] };
+}
+
+/**
+ * Miktarsız onay. Teknisyen yalnız kullandığı ürünleri gönderir; miktarı
+ * profil hesaplar. Aynı ürün birden çok kez gönderilirse ayrı kullanım
+ * olayı olur (fire / yeniden üretim).
+ */
+export async function confirmStageMaterialsV2(
+  stageId: string,
+  selections: { stock_item_id: string; usage_kind?: 'normal' | 'fire' | 'rework' }[],
+  advanceStage = true,
+  idempotencyKey?: string | null,
+): Promise<{ ok: boolean; applied?: number; pending?: number; error?: string }> {
+  const { data, error } = await supabase.rpc('confirm_stage_materials_v2', {
+    p_stage_id: stageId,
+    p_selections: selections,
+    p_advance_stage: advanceStage,
+    p_idempotency_key: idempotencyKey ?? null,
+  });
+  if (error) return { ok: false, error: error.message };
+  const r = (data ?? {}) as { applied?: number; pending?: number };
+  return { ok: true, applied: r.applied ?? 0, pending: r.pending ?? 0 };
+}
+
+/**
+ * Onay oturumu başına benzersiz idempotency anahtarı.
+ * Aynı anahtarla yapılan tekrar denemeler stoğu İKİNCİ KEZ düşürmez
+ * (ağ zaman aşımı, çift dokunuş, fallback zinciri).
+ */
+export function newIdempotencyKey(prefix = 'stage-mat'): string {
+  const rand =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  return `${prefix}:${rand}`;
 }
 
 /**
@@ -706,16 +1123,19 @@ export async function fetchStageMaterialContext(
  * @param stageId Stage uuid
  * @param lines Onaylı malzeme satırları (estimated + actual + waste)
  * @param advanceStage true → stage tamamlandı'ya çevir + sıradakini aktif et
+ * @param idempotencyKey Aynı onay için tekrar denemelerde AYNI anahtar gönderilmeli
  */
 export async function confirmStageMaterials(
   stageId: string,
   lines: any[],
   advanceStage = true,
+  idempotencyKey?: string | null,
 ): Promise<{ ok: boolean; error?: string }> {
   const { error } = await supabase.rpc('confirm_stage_materials', {
     p_stage_id: stageId,
     p_lines: lines,
     p_advance_stage: advanceStage,
+    p_idempotency_key: idempotencyKey ?? null,
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true };

@@ -70,6 +70,12 @@ interface FeatureDef {
   hasView: boolean;
   /** manage_<key> permission var mı? false → sadece okuma (view_only) */
   hasManage: boolean;
+  /** Yetkiler ekranında satırın altında görünen tek cümlelik açıklama.
+   *  Etiket tek başına ("Maliyet") neyin açıldığını söylemiyordu. */
+  desc?: string;
+  /** Yanlış verildiğinde parasal/hukuki sonucu olan yetki → ekranda ⚠ Kritik.
+   *  Ölçüt: para görünürlüğü, personel özlük verisi, yetki/ayar değiştirme. */
+  critical?: boolean;
 }
 
 export type CategoryKey =
@@ -95,68 +101,68 @@ export const PERMISSION_CATEGORIES: Record<CategoryKey, string> = {
 
 export const FEATURES: FeatureDef[] = [
   // Orders
-  { key: 'orders',           category: 'orders',       label: 'Siparişler',         hasView: true,  hasManage: true  },
-  { key: 'order_create',     category: 'orders',       label: 'Yeni Sipariş Oluştur', hasView: false, hasManage: true  },
-  { key: 'order_pricing',    category: 'orders',       label: 'Sipariş Fiyatları (görme)', hasView: true, hasManage: false },
-  { key: 'approvals',        category: 'orders',       label: 'Onaylar',            hasView: true,  hasManage: true  },
+  { key: 'orders',           category: 'orders',       label: 'Siparişler',         hasView: true,  hasManage: true  , desc: 'Sipariş listesini ve detaylarını görür; yönetme, durum ve içerik değiştirmeyi kapsar.', },
+  { key: 'order_create',     category: 'orders',       label: 'Yeni Sipariş Oluştur', hasView: false, hasManage: true  , desc: 'Yeni iş emri oluşturabilir.', },
+  { key: 'order_pricing',    category: 'orders',       label: 'Sipariş Fiyatları (görme)', hasView: true, hasManage: false , desc: 'Sipariş satırlarındaki fiyatları görebilir.', critical: true, },
+  { key: 'approvals',        category: 'orders',       label: 'Onaylar',            hasView: true,  hasManage: true  , desc: 'Tasarım ve üretim onaylarını görür, onaylar veya reddeder.', },
   // Production / Design
-  { key: 'production',       category: 'production',   label: 'Üretim',             hasView: true,  hasManage: true  },
-  { key: 'design',           category: 'production',   label: 'Tasarım',            hasView: true,  hasManage: true  },
+  { key: 'production',       category: 'production',   label: 'Üretim',             hasView: true,  hasManage: true  , desc: 'Üretim panosunu görür; aşama başlatma/tamamlama yönetmeye bağlıdır.', },
+  { key: 'design',           category: 'production',   label: 'Tasarım',            hasView: true,  hasManage: true  , desc: 'Tasarım dosyalarını görür ve yükler.', },
   // Customers
-  { key: 'customers',        category: 'customers',    label: 'Müşteriler',         hasView: true,  hasManage: true  },
+  { key: 'customers',        category: 'customers',    label: 'Müşteriler',         hasView: true,  hasManage: true  , desc: 'Klinik ve hekim kayıtlarını görür, düzenler.', },
   // Finance
-  { key: 'finance',          category: 'finance',      label: 'Mali Özet',          hasView: true,  hasManage: true  },
-  { key: 'cost',             category: 'finance',      label: 'Maliyet',            hasView: true,  hasManage: false },
-  { key: 'profit',           category: 'finance',      label: 'Karlılık',           hasView: true,  hasManage: false },
-  { key: 'clinic_balance',   category: 'finance',      label: 'Klinik Bakiyesi',    hasView: true,  hasManage: false },
-  { key: 'supplier_balance', category: 'finance',      label: 'Tedarikçi Bakiyesi', hasView: true,  hasManage: false },
+  { key: 'finance',          category: 'finance',      label: 'Mali Özet',          hasView: true,  hasManage: true  , desc: 'Gelir-gider özetini ve mali panoyu görür.', critical: true, },
+  { key: 'cost',             category: 'finance',      label: 'Maliyet',            hasView: true,  hasManage: false , desc: 'İş başına maliyet tutarlarını görür.', critical: true, },
+  { key: 'profit',           category: 'finance',      label: 'Karlılık',           hasView: true,  hasManage: false , desc: 'Kâr marjı ve kârlılık raporlarını görür.', critical: true, },
+  { key: 'clinic_balance',   category: 'finance',      label: 'Klinik Bakiyesi',    hasView: true,  hasManage: false , desc: 'Kliniklerin cari bakiyesini görür.', critical: true, },
+  { key: 'supplier_balance', category: 'finance',      label: 'Tedarikçi Bakiyesi', hasView: true,  hasManage: false , desc: 'Tedarikçi cari bakiyesini görür.', critical: true, },
   // Invoices
-  { key: 'invoices',         category: 'invoices',     label: 'Satış Faturaları',   hasView: true,  hasManage: true  },
-  { key: 'purchase_invoices',category: 'invoices',     label: 'Alış Faturaları',    hasView: true,  hasManage: true  },
+  { key: 'invoices',         category: 'invoices',     label: 'Satış Faturaları',   hasView: true,  hasManage: true  , desc: 'Satış faturalarını görür; yönetme kesme ve tahsilat girmeyi kapsar.', critical: true, },
+  { key: 'purchase_invoices',category: 'invoices',     label: 'Alış Faturaları',    hasView: true,  hasManage: true  , desc: 'Alış faturalarını görür ve kaydeder.', critical: true, },
   // Cashflow
-  { key: 'expenses',         category: 'cashflow',     label: 'Giderler',           hasView: true,  hasManage: true  },
-  { key: 'checks',           category: 'cashflow',     label: 'Çek & Senet',        hasView: true,  hasManage: true  },
-  { key: 'cash',             category: 'cashflow',     label: 'Kasa & Banka',       hasView: true,  hasManage: true  },
+  { key: 'expenses',         category: 'cashflow',     label: 'Giderler',           hasView: true,  hasManage: true  , desc: 'Gider kayıtlarını görür ve girer.', critical: true, },
+  { key: 'checks',           category: 'cashflow',     label: 'Çek & Senet',        hasView: true,  hasManage: true  , desc: 'Çek ve senetleri görür, portföy hareketi işler.', critical: true, },
+  { key: 'cash',             category: 'cashflow',     label: 'Kasa & Banka',       hasView: true,  hasManage: true  , desc: 'Kasa ve banka hesaplarını görür, hareket girer.', critical: true, },
   // Pricing
-  { key: 'pricelist',        category: 'pricing',      label: 'Fiyat Listesi',      hasView: true,  hasManage: true  },
-  { key: 'budget',           category: 'pricing',      label: 'Bütçe',              hasView: true,  hasManage: true  },
+  { key: 'pricelist',        category: 'pricing',      label: 'Fiyat Listesi',      hasView: true,  hasManage: true  , desc: 'Hizmet fiyat listesini görür; yönetme fiyat değiştirmeyi kapsar.', critical: true, },
+  { key: 'budget',           category: 'pricing',      label: 'Bütçe',              hasView: true,  hasManage: true  , desc: 'Bütçe hedeflerini görür ve düzenler.', critical: true, },
   // Production detayları
-  { key: 'qc',               category: 'production',   label: 'Kalite Kontrol',     hasView: true,  hasManage: true  },
-  { key: 'waste',            category: 'production',   label: 'Fire Bildirimi',     hasView: true,  hasManage: true  },
-  { key: 'stages',           category: 'production',   label: 'İstasyonlar',        hasView: true,  hasManage: true  },
+  { key: 'qc',               category: 'production',   label: 'Kalite Kontrol',     hasView: true,  hasManage: true  , desc: 'Kalite kontrol adımlarını görür ve sonuç girer.', },
+  { key: 'waste',            category: 'production',   label: 'Fire Bildirimi',     hasView: true,  hasManage: true  , desc: 'Fire kayıtlarını görür ve bildirir.', },
+  { key: 'stages',           category: 'production',   label: 'İstasyonlar',        hasView: true,  hasManage: true  , desc: 'Üretim istasyonlarını görür; yönetme istasyon tanımını değiştirir.', },
   // Stock
-  { key: 'stock',            category: 'stock',        label: 'Stok Ürünleri',      hasView: true,  hasManage: true  },
-  { key: 'stock_movements',  category: 'stock',        label: 'Stok Hareketleri',   hasView: true,  hasManage: true  },
-  { key: 'stock_cost',       category: 'stock',        label: 'Stok Maliyet',       hasView: true,  hasManage: true  },
-  { key: 'stock_locations',  category: 'stock',        label: 'Stok Lokasyon',      hasView: true,  hasManage: true  },
-  { key: 'stock_settings',   category: 'stock',        label: 'Stok Ayarları',      hasView: true,  hasManage: true  },
-  { key: 'stock_forecast',   category: 'stock',        label: 'Stok Tahmin',        hasView: true,  hasManage: false },
-  { key: 'suppliers',        category: 'stock',        label: 'Tedarikçiler',       hasView: true,  hasManage: true  },
-  { key: 'equipment',        category: 'stock',        label: 'Demirbaş',           hasView: true,  hasManage: true  },
+  { key: 'stock',            category: 'stock',        label: 'Stok Ürünleri',      hasView: true,  hasManage: true  , desc: 'Stok kalemlerini görür; yönetme ekleme/düzenlemeyi kapsar.', },
+  { key: 'stock_movements',  category: 'stock',        label: 'Stok Hareketleri',   hasView: true,  hasManage: true  , desc: 'Giriş, çıkış ve transfer hareketlerini görür, işler.', },
+  { key: 'stock_cost',       category: 'stock',        label: 'Stok Maliyet',       hasView: true,  hasManage: true  , desc: 'Stok kalemlerinin alış maliyetini görür.', critical: true, },
+  { key: 'stock_locations',  category: 'stock',        label: 'Stok Lokasyon',      hasView: true,  hasManage: true  , desc: 'Depo ve raf tanımlarını görür, düzenler.', },
+  { key: 'stock_settings',   category: 'stock',        label: 'Stok Ayarları',      hasView: true,  hasManage: true  , desc: 'Kritik seviye, sayım ve stok kurallarını düzenler.', },
+  { key: 'stock_forecast',   category: 'stock',        label: 'Stok Tahmin',        hasView: true,  hasManage: false , desc: 'Tüketime göre stok tahmin raporunu görür.', },
+  { key: 'suppliers',        category: 'stock',        label: 'Tedarikçiler',       hasView: true,  hasManage: true  , desc: 'Tedarikçi kayıtlarını görür ve düzenler.', },
+  { key: 'equipment',        category: 'stock',        label: 'Demirbaş',           hasView: true,  hasManage: true  , desc: 'Demirbaş ve cihaz envanterini görür, düzenler.', },
   // Lab Services
-  { key: 'services',         category: 'pricing',      label: 'Hizmet Kataloğu',    hasView: true,  hasManage: true  },
+  { key: 'services',         category: 'pricing',      label: 'Hizmet Kataloğu',    hasView: true,  hasManage: true  , desc: 'Laboratuvarın hizmet kataloğunu görür; yönetme hizmet ve birim tanımlar.', critical: true, },
   // HR
-  { key: 'employees',        category: 'hr',           label: 'Personel',           hasView: true,  hasManage: true  },
-  { key: 'attendance',       category: 'hr',           label: 'Devam',              hasView: true,  hasManage: true  },
-  { key: 'leaves',           category: 'hr',           label: 'İzinler',            hasView: true,  hasManage: true  },
-  { key: 'salaries',         category: 'hr',           label: 'Maaş & Avans',       hasView: true,  hasManage: true  },
-  { key: 'performance',      category: 'hr',           label: 'Performans',         hasView: true,  hasManage: false },
-  { key: 'employee_documents', category: 'hr',         label: 'Personel Belgeleri', hasView: true,  hasManage: true  },
+  { key: 'employees',        category: 'hr',           label: 'Personel',           hasView: true,  hasManage: true  , desc: 'Personel kayıtlarını görür; yönetme işe alma/çıkarmayı kapsar.', critical: true, },
+  { key: 'attendance',       category: 'hr',           label: 'Devam',              hasView: true,  hasManage: true  , desc: 'Devam ve mesai kayıtlarını görür, düzeltir.', },
+  { key: 'leaves',           category: 'hr',           label: 'İzinler',            hasView: true,  hasManage: true  , desc: 'İzin taleplerini görür, onaylar.', },
+  { key: 'salaries',         category: 'hr',           label: 'Maaş & Avans',       hasView: true,  hasManage: true  , desc: 'Maaş ve avans bilgilerini görür, ödeme işler.', critical: true, },
+  { key: 'performance',      category: 'hr',           label: 'Performans',         hasView: true,  hasManage: false , desc: 'Teknisyen ve istasyon performans raporlarını görür.', },
+  { key: 'employee_documents', category: 'hr',         label: 'Personel Belgeleri', hasView: true,  hasManage: true  , desc: 'Personel özlük belgelerini görür ve yükler.', critical: true, },
   // Delivery
-  { key: 'deliveries',       category: 'delivery',     label: 'Teslimatlar',        hasView: true,  hasManage: true  },
-  { key: 'couriers',         category: 'delivery',     label: 'Kuryeler',           hasView: true,  hasManage: true  },
+  { key: 'deliveries',       category: 'delivery',     label: 'Teslimatlar',        hasView: true,  hasManage: true  , desc: 'Teslimatları görür; yönetme kurye atama ve durum değiştirmeyi kapsar.', },
+  { key: 'couriers',         category: 'delivery',     label: 'Kuryeler',           hasView: true,  hasManage: true  , desc: 'Kurye kayıtlarını görür ve düzenler.', },
   // Communication
-  { key: 'messages',         category: 'communication',label: 'Mesajlar',           hasView: true,  hasManage: true  },
-  { key: 'support',          category: 'communication',label: 'Destek Talepleri',   hasView: true,  hasManage: true  },
+  { key: 'messages',         category: 'communication',label: 'Mesajlar',           hasView: true,  hasManage: true  , desc: 'Sipariş sohbetlerini görür ve yazar.', },
+  { key: 'support',          category: 'communication',label: 'Destek Talepleri',   hasView: true,  hasManage: true  , desc: 'Destek taleplerini görür ve yanıtlar.', },
   // Documents
-  { key: 'documents',        category: 'settings',     label: 'Dosya Arşivi',       hasView: true,  hasManage: true  },
+  { key: 'documents',        category: 'settings',     label: 'Dosya Arşivi',       hasView: true,  hasManage: true  , desc: 'Dosya arşivini görür ve belge yükler.', },
   // System
-  { key: 'users',            category: 'users',        label: 'Kullanıcılar',       hasView: true,  hasManage: true  },
-  { key: 'permissions',      category: 'users',        label: 'Yetkiler',           hasView: false, hasManage: true  },
-  { key: 'settings',         category: 'settings',     label: 'Genel Ayarlar',      hasView: true,  hasManage: true  },
-  { key: 'integrations',     category: 'settings',     label: 'Entegrasyonlar',     hasView: false, hasManage: true  },
-  { key: 'logs',             category: 'settings',     label: 'Sistem Logları',     hasView: true,  hasManage: false },
-  { key: 'analytics',        category: 'settings',     label: 'Analitik & Rapor',   hasView: true,  hasManage: false },
+  { key: 'users',            category: 'users',        label: 'Kullanıcılar',       hasView: true,  hasManage: true  , desc: 'Kullanıcı listesini görür; yönetme hesap açma/kapatmayı kapsar.', critical: true, },
+  { key: 'permissions',      category: 'users',        label: 'Yetkiler',           hasView: false, hasManage: true  , desc: 'Rol ve kullanıcı yetkilerini değiştirebilir.', critical: true, },
+  { key: 'settings',         category: 'settings',     label: 'Genel Ayarlar',      hasView: true,  hasManage: true  , desc: 'Laboratuvar genel ayarlarını görür ve değiştirir.', critical: true, },
+  { key: 'integrations',     category: 'settings',     label: 'Entegrasyonlar',     hasView: false, hasManage: true  , desc: 'e-Fatura, POS ve kurye entegrasyonlarını yapılandırır.', critical: true, },
+  { key: 'logs',             category: 'settings',     label: 'Sistem Logları',     hasView: true,  hasManage: false , desc: 'Sistem aktivite kayıtlarını görür.', critical: true, },
+  { key: 'analytics',        category: 'settings',     label: 'Analitik & Rapor',   hasView: true,  hasManage: false , desc: 'Analitik panolarını ve raporları görür.', },
 ];
 
 // ─── Build new permission key list from FEATURES ─────────────

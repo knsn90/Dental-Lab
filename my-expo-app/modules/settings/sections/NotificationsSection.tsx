@@ -19,7 +19,7 @@ import {
   ClipboardList, RefreshCw, MessageCircle, CheckCircle,
   CreditCard, Package, Truck, Camera, Wrench,
   Mail, Smartphone, Bell, BellOff, Volume2, AlertTriangle,
-  Shield, Check, X, MessageSquare,
+  Shield, Check, X, AlarmClock, ClipboardCheck
 } from 'lucide-react-native';
 import { supabase } from '../../../core/api/supabase';
 import { toE164 } from '../../../core/utils/format';
@@ -35,6 +35,7 @@ import { useAuthStore } from '../../../core/store/authStore';
 import { getWebPushState, unsubscribeWebPush } from '../../../core/notifications/webPush';
 import { registerForNativePush, unregisterNativePush, getNativePushState } from '../../../core/notifications/nativePush';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
+import { WhatsAppGlyph } from '../../../core/ui/WhatsAppGlyph';
 
 interface Props {
   panelType: string;
@@ -51,6 +52,9 @@ const ALL_GROUPS: {
     items: [
       { key: 'new_order',    icon: ClipboardList, label: 'Yeni Sipariş',         sub: 'Yeni iş emri geldiğinde' },
       { key: 'order_status', icon: RefreshCw,     label: 'Sipariş Durumu',       sub: 'Aşama veya statü değiştiğinde' },
+      { key: 'order_watch',  icon: AlarmClock,    label: 'Günlük İş Takibi',     sub: 'Her gün geciken + beklemedeki işler' },
+      { key: 'stock_count',  icon: ClipboardCheck, label: 'Stok Sayımı',          sub: 'Sayım zamanı geldiğinde / taslak yarım kaldığında' },
+      { key: 'stage_critical', icon: CheckCircle,  label: 'Kritik Aşama',         sub: 'Kritik bir aşama tamamlandığında' },
       { key: 'paper_order',  icon: Camera,        label: 'Kağıt Inbox',          sub: 'OCR sonrası bekleyen sipariş' },
       { key: 'approval',     icon: CheckCircle,   label: 'Onay Bekleyenler',     sub: 'Tasarım/üretim onayı gerektiğinde' },
       { key: 'delivery',     icon: Truck,         label: 'Teslimat & Kurye',     sub: 'Kurye atama/teslim olayları' },
@@ -85,6 +89,7 @@ function getGroupsForRole(userType?: string | null, role?: string | null) {
     'paper_order',       // OCR sipariş inbox — lab içi
     'stock',             // stok seviyesi — lab içi
     'material_request',  // sarf/alet talebi — lab içi
+    'order_watch',       // günlük geciken/beklemede digest — yalnız admin/lab-manager
   ]);
 
   // Teknisyen için gereksiz kategoriler — finans/yönetim odaklı olanlar
@@ -95,6 +100,8 @@ function getGroupsForRole(userType?: string | null, role?: string | null) {
     'payment',       // Ödeme/fatura — finans
     'stock',         // Stok kritik seviye — depo/yönetici
     'delivery',      // Kurye/teslimat — operasyon
+    'order_watch',   // günlük geciken/beklemede digest — yönetici işi
+    'stage_critical',// kritik aşama bildirimi — teknisyene gerekmez
   ]);
 
   let hide: Set<NotificationCategory> | null = null;
@@ -115,7 +122,7 @@ const CHANNEL_META: { key: NotificationChannel; label: string; sub: string; icon
     sub: Platform.OS === 'web' ? 'Sekme dışıyken masaüstü bildirimi' : 'iOS / Android push notification',
     icon: Bell },
   { key: 'email',        label: 'E-posta',         sub: 'Hesabınızın e-posta adresine gönderilir', icon: Mail },
-  { key: 'whatsapp',     label: 'WhatsApp',        sub: 'WhatsApp numaranıza mesaj olarak gönderilir', icon: MessageSquare },
+  { key: 'whatsapp',     label: 'WhatsApp',        sub: 'WhatsApp numaranıza mesaj olarak gönderilir', icon: WhatsAppGlyph },
 ];
 
 const CARD_SHADOW = Platform.select({
@@ -176,6 +183,7 @@ export function NotificationsSection({ accentColor }: Props) {
   const setMaster = useNotificationPrefs(s => s.setMaster);
   const setChannel = useNotificationPrefs(s => s.setChannel);
   const setCategoryChannel = useNotificationPrefs(s => s.setCategoryChannel);
+  const setCategoriesBulk  = useNotificationPrefs(s => s.setCategoriesBulk);
 
   const [browserPerm, setBrowserPerm] = useState<NotificationPermission | 'unsupported'>(getBrowserPermission());
   const [savingMaster, setSavingMaster] = useState(false);
@@ -314,6 +322,22 @@ export function NotificationsSection({ accentColor }: Props) {
   const categoryEnabled = (cat: NotificationCategory, ch: NotificationChannel) =>
     !!prefs.categories?.[cat]?.[ch];
 
+  // Hero özeti: aktif kanal sayısı + gerçekten çalışan kural sayısı.
+  // "Kural" = kategori × kanal çifti; kanalın kendisi kapalıysa sayılmaz,
+  // çünkü o kural fiilen bildirim üretmiyor.
+  const activeChannelCount = CHANNEL_META.filter(c => !!prefs.channels?.[c.key]).length;
+  const activeRuleCount = GROUPS.reduce((n, g) => n + g.items.reduce((m, it) =>
+    m + CHANNEL_META.filter(ch => !!prefs.channels?.[ch.key] && categoryEnabled(it.key, ch.key)).length, 0), 0);
+
+  /** "Tümünü Aç / Kapat" — tek persist ile (bkz. store.setCategoriesBulk). */
+  const toggleGroup = (items: { key: NotificationCategory }[], on: boolean) => {
+    setCategoriesBulk(
+      items.map(i => i.key),
+      CHANNEL_META.filter(ch => (VISIBLE_CHANNELS as readonly string[]).includes(ch.key)).map(ch => ch.key),
+      on,
+    );
+  };
+
   return (
     <ScrollView
       className="flex-1"
@@ -350,10 +374,26 @@ export function NotificationsSection({ accentColor }: Props) {
           </View>
           <Toggle on={prefs.master_enabled} onPress={toggleMaster} accentColor={accentColor} disabled={savingMaster} />
         </View>
+
+        {/* Durum özeti — "şu an ne oluyor?" sorusunu tek bakışta yanıtlar.
+            Kanal ve kural sayısı aynı kaynaklardan türetilir (aşağıdaki
+            listelerle birebir), elle güncellenen bir metin değil. */}
+        {prefs.master_enabled && (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: `${accentColor}26` }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: surface }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: inkPrimary }}>{activeChannelCount}</Text>
+              <Text style={{ fontSize: 11.5, color: '#6B7280' }}>kanal aktif</Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: surface }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: inkPrimary }}>{activeRuleCount}</Text>
+              <Text style={{ fontSize: 11.5, color: '#6B7280' }}>bildirim kuralı aktif</Text>
+            </View>
+          </View>
+        )}
       </View>
 
       {/* ═════ KANAL TERCİHLERİ ═════ */}
-      <Text style={{ fontSize: 10, fontWeight: '700', color: '#94A3B8', letterSpacing: 1.2, textTransform: 'uppercase', marginTop: 24, marginBottom: 10 }}>
+      <Text style={{ fontSize: 10, fontWeight: '700', color: '#94A3B8', letterSpacing: 1.2, textTransform: 'uppercase', marginTop: 28, marginBottom: 10 }}>
         Bildirim Kanalları
       </Text>
       <View style={{ backgroundColor: surface, borderRadius: 20, padding: 18, ...CARD_SHADOW }}>
@@ -365,7 +405,7 @@ export function NotificationsSection({ accentColor }: Props) {
           const Icon = ch.icon;
           return (
             <React.Fragment key={ch.key}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14 }}>
                 <View style={{
                   width: 36, height: 36, borderRadius: 10,
                   alignItems: 'center', justifyContent: 'center',
@@ -411,6 +451,47 @@ export function NotificationsSection({ accentColor }: Props) {
                   />
                 )}
               </View>
+
+              {/* WhatsApp numarası kanalın İÇİNDE — ayrı bir kart olarak
+                  durduğunda "hangi ayara ait?" bağı kopuyordu. Yakınlık =
+                  ilişki: numara, açtığın kanalın hemen altında. */}
+              {ch.key === 'whatsapp' && on && (
+                <View style={{ marginLeft: 48, marginBottom: 12, gap: 8 }}>
+                  <Text style={{ fontSize: 11, color: '#6B7280' }}>
+                    Telefon numarası — uluslararası biçim, örn. +905551112233
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                    <TextInput
+                      value={waPhone}
+                      onChangeText={setWaPhone}
+                      placeholder="+90..."
+                      placeholderTextColor="#9CA3AF"
+                      keyboardType="phone-pad"
+                      autoCapitalize="none"
+                      style={{
+                        flex: 1, height: 42, borderRadius: 12, paddingHorizontal: 14,
+                        borderWidth: 1, borderColor: hairline, backgroundColor: surfaceSoft,
+                        fontSize: 14, color: inkPrimary,
+                        ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
+                      }}
+                    />
+                    <Pressable
+                      onPress={saveWaPhone}
+                      disabled={!waDirty || waSaving}
+                      style={({ pressed }: any) => ({
+                        height: 42, paddingHorizontal: 18, borderRadius: 12,
+                        alignItems: 'center', justifyContent: 'center',
+                        backgroundColor: (!waDirty || waSaving) ? `${accentColor}55` : accentColor,
+                        opacity: pressed ? 0.85 : 1,
+                        ...(Platform.OS === 'web' ? { cursor: (!waDirty || waSaving) ? 'not-allowed' : 'pointer' } as any : {}),
+                      })}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>{waSaving ? 'Kaydediliyor…' : 'Kaydet'}</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              )}
+
               {i < CHANNEL_META.length - 1 && (
                 <View style={{ height: 1, backgroundColor: hairline, marginLeft: 48 }} />
               )}
@@ -419,66 +500,48 @@ export function NotificationsSection({ accentColor }: Props) {
         })}
       </View>
 
-      {/* ═════ WHATSAPP NUMARASI (kanal açıksa) ═════ */}
-      {prefs.channels?.whatsapp && (
-        <View style={{ backgroundColor: surface, borderRadius: 20, padding: 18, marginTop: 12, ...CARD_SHADOW }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-            <View style={{ width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: `${accentColor}14` }}>
-              <MessageSquare size={16} color={accentColor} strokeWidth={1.8} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 14, fontWeight: '600', color: inkPrimary }}>WhatsApp numarası</Text>
-              <Text style={{ fontSize: 11.5, color: '#6B7280', marginTop: 2 }}>
-                Uluslararası biçim — örn. +905551112233
-              </Text>
-            </View>
-          </View>
-          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-            <TextInput
-              value={waPhone}
-              onChangeText={setWaPhone}
-              placeholder="+90..."
-              placeholderTextColor="#9CA3AF"
-              keyboardType="phone-pad"
-              autoCapitalize="none"
-              style={{
-                flex: 1, height: 44, borderRadius: 14, paddingHorizontal: 14,
-                borderWidth: 1, borderColor: hairline, backgroundColor: surfaceSoft,
-                fontSize: 14, color: inkPrimary,
-                ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
-              }}
-            />
-            <Pressable
-              onPress={saveWaPhone}
-              disabled={!waDirty || waSaving}
-              style={({ hovered }: any) => ({
-                height: 44, paddingHorizontal: 18, borderRadius: 14,
-                alignItems: 'center', justifyContent: 'center',
-                backgroundColor: (!waDirty || waSaving) ? `${accentColor}55` : (hovered ? accentColor : `${accentColor}E0`),
-                ...(Platform.OS === 'web' ? { cursor: (!waDirty || waSaving) ? 'not-allowed' : 'pointer' } as any : {}),
-              })}
-            >
-              <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>{waSaving ? 'Kaydediliyor…' : 'Kaydet'}</Text>
-            </Pressable>
-          </View>
-        </View>
-      )}
-
       {/* ═════ KATEGORİ TERCİHLERİ ═════ */}
       {GROUPS.map(group => (
         <React.Fragment key={group.title}>
-          <Text style={{ fontSize: 10, fontWeight: '700', color: '#94A3B8', letterSpacing: 1.2, textTransform: 'uppercase', marginTop: 22, marginBottom: 10 }}>
-            {group.title}
-          </Text>
+          {/* Grup başlığı + toplu işlemler. Çok sayıda anahtar tek tek
+              çevrilmek zorunda kalmasın diye. */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 26, marginBottom: 10, gap: 12 }}>
+            <Text style={{ flex: 1, fontSize: 10, fontWeight: '700', color: '#94A3B8', letterSpacing: 1.2, textTransform: 'uppercase' }}>
+              {group.title}
+            </Text>
+            <Pressable
+              onPress={() => toggleGroup(group.items, true)}
+              disabled={!prefs.master_enabled}
+              style={({ pressed }: any) => ({
+                paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
+                opacity: !prefs.master_enabled ? 0.4 : pressed ? 0.6 : 1,
+                ...(Platform.OS === 'web' ? { cursor: prefs.master_enabled ? 'pointer' : 'not-allowed' } as any : {}),
+              })}
+            >
+              <Text style={{ fontSize: 11, fontWeight: '600', color: accentColor }}>Tümünü aç</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => toggleGroup(group.items, false)}
+              disabled={!prefs.master_enabled}
+              style={({ pressed }: any) => ({
+                paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
+                opacity: !prefs.master_enabled ? 0.4 : pressed ? 0.6 : 1,
+                ...(Platform.OS === 'web' ? { cursor: prefs.master_enabled ? 'pointer' : 'not-allowed' } as any : {}),
+              })}
+            >
+              <Text style={{ fontSize: 11, fontWeight: '600', color: '#6B7280' }}>Tümünü kapat</Text>
+            </Pressable>
+          </View>
           <View style={{ backgroundColor: surface, borderRadius: 20, padding: isNarrow ? 12 : 18, ...CARD_SHADOW }}>
             {/* Kolon başlıkları */}
             <View style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: ICON_GUTTER, paddingBottom: 6 }}>
               <View style={{ flex: 1 }} />
               {CHANNEL_META.filter(ch => (VISIBLE_CHANNELS as readonly string[]).includes(ch.key)).map(ch => (
-                <View key={ch.key} style={{ width: COL_W, alignItems: 'center' }}>
-                  <Text style={{ fontSize: 9, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.6, textTransform: 'uppercase' }}>
-                    {ch.key === 'in_app' ? 'Uyg.' : ch.key === 'browser_push' ? 'Push' : ch.key === 'email' ? 'E-pst.' : 'WApp'}
-                  </Text>
+                /* "UYG / PUSH / E-PST / WAPP" kısaltmaları okunmuyordu —
+                   kanalın kendi ikonu zaten yukarıdaki kanal listesinde
+                   öğrenildi, burada onu tekrarlamak yeter. */
+                <View key={ch.key} style={{ width: COL_W, alignItems: 'center' }} accessibilityLabel={ch.label}>
+                  <ch.icon size={14} color="#94A3B8" strokeWidth={1.9} />
                 </View>
               ))}
             </View>
@@ -488,7 +551,7 @@ export function NotificationsSection({ accentColor }: Props) {
               const Icon = item.icon;
               return (
                 <React.Fragment key={item.key}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: isNarrow ? 8 : 12, paddingVertical: 10 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: isNarrow ? 8 : 12, paddingVertical: 14 }}>
                     <View style={{
                       width: isNarrow ? 28 : 36, height: isNarrow ? 28 : 36, borderRadius: 10,
                       alignItems: 'center', justifyContent: 'center',

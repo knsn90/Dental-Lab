@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Platform } from 'react-native';
 import { supabase } from '../../../core/api/supabase';
+import { useAppResume } from '../../../core/hooks/useAppResume';
 import { WorkOrder } from '../../../lib/types';
 import { fetchClinicOrders, fetchMyClinicDoctors } from '../api';
 import { getActiveLabId } from '../../../core/store/activeLabStore';
@@ -97,6 +98,9 @@ export function useClinicOrders(enabled = true) {
       supabase.removeChannel(channel);
     };
   }, [load, scheduleRefetch, enabled]);
+
+  // Ön plana dönünce sessiz tazele — askıdayken kaçan realtime olaylarını telafi eder.
+  useAppResume(() => { load(true); }, { enabled });
 
   return { orders, loading, error, refetch: load };
 }

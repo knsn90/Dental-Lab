@@ -35,7 +35,7 @@ function Viewer3DModal(props: Viewer3DProps) {
     return <Mobile {...props} />;
   }
 
-  const { visible, files, title, onClose, referenceImages = [] } = props;
+  const { visible, files, title, onClose, referenceImages = [], sourceDownload } = props;
   const T = useViewerTheme();
   const insets = useSafeAreaInsets(); // mobil-web çentik/status bar boşluğu
 
@@ -185,6 +185,19 @@ function Viewer3DModal(props: Viewer3DProps) {
     if (Platform.OS !== 'web' || typeof document === 'undefined' || downloading) return;
     setDownloading(true);
     try {
+      // ZIP'ten açıldıysa: tek tek mesh (ply) yerine KAYNAK dosyayı (zip) indir.
+      // Supabase `download` parametresi → sunucu attachment döner, ham dosya iner.
+      if (sourceDownload?.url) {
+        try {
+          const u = sourceDownload.url;
+          const dlUrl = u + (u.includes('?') ? '&' : '?') + 'download=' + encodeURIComponent(sourceDownload.name || 'dosya.zip');
+          const a = document.createElement('a');
+          a.href = dlUrl; a.download = sourceDownload.name || 'dosya.zip'; a.rel = 'noopener';
+          document.body.appendChild(a); a.click();
+          setTimeout(() => { try { a.remove(); } catch {} }, 100);
+        } catch { try { window.open(sourceDownload.url, '_blank'); } catch {} }
+        return;
+      }
       for (const f of files) {
         try {
           const res = await fetch(f.url);

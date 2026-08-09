@@ -14,10 +14,11 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Search, SlidersHorizontal, Plus, AlertTriangle, ChevronRight, Inbox,
-  Flame, Clock, CheckCircle2, ClipboardList,
+  Flame, Clock, CheckCircle2, ClipboardList, CornerDownRight,
 } from 'lucide-react-native';
 import { MOBILE_PANEL_THEMES, type StatusKind, useMobileTokens, useStatusTokens } from '../../../core/theme/mobileDesignTokens';
 import type { WorkOrder, WorkOrderStatus } from '../types';
+import { buildRevisionCases } from '../revisionGroups';
 
 const DOCTOR = MOBILE_PANEL_THEMES.doctor;
 
@@ -40,30 +41,42 @@ const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'delivered',   label: 'Teslim' },
 ];
 
-const STATUS_TO_KIND: Record<WorkOrderStatus, StatusKind> = {
+const STATUS_TO_KIND: Record<string, StatusKind> = {
+  atama_bekleniyor: 'wait',
   alindi:           'wait',
+  asamada:          'prod',
   uretimde:         'prod',
   kalite_kontrol:   'qc',
   teslimata_hazir:  'ready',
+  kurye_bekleniyor: 'ready',
+  kuryede:          'ready',
   teslim_edildi:    'done',
   iptal:            'wait',
 };
 
-const STATUS_LABEL: Record<WorkOrderStatus, string> = {
+const STATUS_LABEL: Record<string, string> = {
+  atama_bekleniyor: 'Atama Bekliyor',
   alindi:           'Alındı',
+  asamada:          'Üretimde',
   uretimde:         'Üretimde',
   kalite_kontrol:   'Kalite Kontrol',
   teslimata_hazir:  'Hazır',
+  kurye_bekleniyor: 'Kurye Bekleniyor',
+  kuryede:          'Kuryede',
   teslim_edildi:    'Teslim Edildi',
   iptal:            'İptal',
 };
 
 // Status → 5 aşamalı progress (0-4 index)
-const STATUS_STEP: Record<WorkOrderStatus, number> = {
+const STATUS_STEP: Record<string, number> = {
+  atama_bekleniyor: 0,
   alindi:           0,
+  asamada:          1,
   uretimde:         1,
   kalite_kontrol:   2,
   teslimata_hazir:  3,
+  kurye_bekleniyor: 3,
+  kuryede:          3,
   teslim_edildi:    4,
   iptal:            0,
 };
@@ -118,7 +131,10 @@ export function DoctorOrdersMobile({ orders, loading, refetch, onOpenOrder, onNe
     const later: WorkOrder[] = [];
     const delivered: WorkOrder[] = [];
 
-    for (const o of filtered) {
+    // Revizyonlar: vaka grubu tek satır olur; gruba YALNIZ en güncel üye girer,
+    // eskiler onun altında alt-liste olarak çizilir (bkz. revisionGroups).
+    const { anchors, children } = buildRevisionCases(filtered as any[]);
+    for (const o of anchors as WorkOrder[]) {
       if (o.status === 'teslim_edildi') { delivered.push(o); continue; }
       if (isOverdue(o) || o.is_urgent)  { urgent.push(o);    continue; }
       const d = new Date(o.delivery_date + 'T00:00:00');
@@ -130,7 +146,7 @@ export function DoctorOrdersMobile({ orders, loading, refetch, onOpenOrder, onNe
       String((b as any).created_at ?? '').localeCompare(String((a as any).created_at ?? ''));
     urgent.sort(byNewest); thisWeek.sort(byNewest); later.sort(byNewest);
     delivered.sort(byNewest);
-    return { urgent, thisWeek, later, delivered };
+    return { urgent, thisWeek, later, delivered, revChildren: children };
   }, [filtered]);
 
   return (
@@ -303,16 +319,16 @@ export function DoctorOrdersMobile({ orders, loading, refetch, onOpenOrder, onNe
         ) : (
           <>
             <Group title="Acil & Geciken" icon={Flame} iconColor={T.ruby} items={groups.urgent}
-              renderItem={o => <OrderCard key={o.id} order={o} overdue={isOverdue(o)} onPress={() => onOpenOrder(o)} />}
+              renderItem={o => <OrderCard key={o.id} order={o} overdue={isOverdue(o)} onPress={() => onOpenOrder(o)} history={groups.revChildren.get(String(o.id)) as WorkOrder[] | undefined} onOpenOrder={onOpenOrder} />}
             />
             <Group title="Bu hafta teslim" icon={Clock} iconColor={DOCTOR.primary} items={groups.thisWeek}
-              renderItem={o => <OrderCard key={o.id} order={o} overdue={false} onPress={() => onOpenOrder(o)} />}
+              renderItem={o => <OrderCard key={o.id} order={o} overdue={false} onPress={() => onOpenOrder(o)} history={groups.revChildren.get(String(o.id)) as WorkOrder[] | undefined} onOpenOrder={onOpenOrder} />}
             />
             <Group title="Yaklaşan" icon={Clock} iconColor={T.ink3} items={groups.later}
-              renderItem={o => <OrderCard key={o.id} order={o} overdue={false} onPress={() => onOpenOrder(o)} />}
+              renderItem={o => <OrderCard key={o.id} order={o} overdue={false} onPress={() => onOpenOrder(o)} history={groups.revChildren.get(String(o.id)) as WorkOrder[] | undefined} onOpenOrder={onOpenOrder} />}
             />
             <Group title="Tamamlanan" icon={CheckCircle2} iconColor={T.jade} items={groups.delivered}
-              renderItem={o => <OrderCard key={o.id} order={o} overdue={false} onPress={() => onOpenOrder(o)} />}
+              renderItem={o => <OrderCard key={o.id} order={o} overdue={false} onPress={() => onOpenOrder(o)} history={groups.revChildren.get(String(o.id)) as WorkOrder[] | undefined} onOpenOrder={onOpenOrder} />}
             />
           </>
         )}
@@ -423,8 +439,10 @@ function MetricPill({ label, value, accent, dark, dim }:
 
 // ─── Order card ──────────────────────────────────────────────────────────
 
-function OrderCard({ order, overdue, onPress }:
-  { order: WorkOrder; overdue: boolean; onPress: () => void }) {
+function OrderCard({ order, overdue, onPress, history, onOpenOrder }:
+  { order: WorkOrder; overdue: boolean; onPress: () => void;
+    /** Aynı vakanın eski revizyonları — kartın altında girintili alt-liste */
+    history?: WorkOrder[]; onOpenOrder?: (o: WorkOrder) => void }) {
   const T = useMobileTokens();
   const STATUS = useStatusTokens();
   const statusKind = overdue
@@ -440,6 +458,7 @@ function OrderCard({ order, overdue, onPress }:
   const initial = (order.patient_name ?? '?').charAt(0).toUpperCase();
 
   return (
+    <>
     <Pressable onPress={onPress}>
       {({ pressed }: any) => (
       <View style={{
@@ -586,6 +605,31 @@ function OrderCard({ order, overdue, onPress }:
       </View>
       )}
     </Pressable>
+
+    {/* Vakanın eski revizyonları — ayrı kart değil, girintili alt satır */}
+    {(history ?? []).map(h => (
+      <Pressable
+        key={h.id}
+        onPress={() => onOpenOrder?.(h)}
+        style={{
+          flexDirection: 'row', alignItems: 'center', gap: 8,
+          marginLeft: 20, marginTop: 6,
+          paddingHorizontal: 12, paddingVertical: 9,
+          borderRadius: 12,
+          backgroundColor: `${DOCTOR.primary}0D`,
+          borderWidth: 1, borderColor: `${DOCTOR.primary}1F`,
+        }}
+      >
+        <CornerDownRight size={13} color={T.ink3} strokeWidth={2} />
+        <Text style={{ flex: 1, fontSize: 11.5, color: T.ink2, fontFamily: T.mono }} numberOfLines={1}>
+          #{String((h as any).order_number ?? h.id).slice(-6)}
+        </Text>
+        <Text style={{ fontSize: 10.5, color: h.status === 'teslim_edildi' ? T.jade : T.ink3, fontWeight: '600' }}>
+          {h.status === 'teslim_edildi' ? 'Teslim edildi' : 'Önceki'}
+        </Text>
+      </Pressable>
+    ))}
+    </>
   );
 }
 

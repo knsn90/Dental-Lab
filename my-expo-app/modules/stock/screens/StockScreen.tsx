@@ -9,19 +9,49 @@ import { MobilePageTitle } from '../../../core/ui/mobile/MobilePageTitle';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { supabase } from '../../../core/api/supabase';
 import { StockMovementsScreen } from './StockMovementsScreen';
+import { MaterialMappingScreen } from './MaterialMappingScreen';
+import { ConsumptionProfileScreen } from './ConsumptionProfileScreen';
+import { InventoryVerificationScreen } from './InventoryVerificationScreen';
+import { ConsumptionAuditScreen } from './ConsumptionAuditScreen';
+import { FifoReorderScreen } from './FifoReorderScreen';
 import { MaterialRequestsScreen } from '../../material-requests/screens/MaterialRequestsScreen';
 import { WasteReportModal } from '../components/WasteReportModal';
 import { useAuthStore } from '../../../core/store/authStore';
 import { DS } from '../../../core/theme/dsTokens';
+import { formatQty as fmtQty, formatQtyDual as fmtQtyDual } from '../../../core/util/formatQty';
 import { usePageTitleStore } from '../../../core/store/pageTitleStore';
 import { useMobileTokens } from '../../../core/theme/mobileDesignTokens';
 import { useThemeModeStore } from '../../../core/store/themeModeStore';
 import { usePermissions } from '../../../core/hooks/usePermissions';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import {
+  STOCK_TABS, SUBTABS, LEGACY_TAB_MAP, isTabVisible, isSubTabVisible,
+  type TabKey, type SubTabDef,
+} from '../hubTabs';
+import { MinLevelBulkModal } from '../components/MinLevelBulkModal';
+import { fetchStockAlerts, type StockDashboardAlerts } from '../api';
+import { useLocalSearchParams, useRouter, useSegments } from 'expo-router';
 // Phase 2: Multi-currency
 import { MoneyInput } from '../../../core/money/MoneyInput';
 import { MoneyDisplay } from '../../../core/money/MoneyDisplay';
 import type { Currency as MoneyCurrency } from '../../../core/money/currency';
+import { CURRENCY_META, type Currency } from '../../../core/money/currency';
+
+// ── Çoklu-döviz: değer/maliyet döviz-başına gruplanır (finans deseniyle uyumlu;
+// naif ₺ toplamı yasak — kalemler EUR/USD/₺ karışık). "€X · ₺Y" biçiminde gösterilir.
+const curSym = (c?: string | null) => CURRENCY_META[(c || 'TRY') as Currency]?.symbol ?? (c || '₺');
+const fmt2 = (n: number | null | undefined) => (Number(n) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/** {EUR: 1234.5, TRY: 90} → "1.234,50 € · 90,00 ₺" */
+function fmtCcyMap(m: Record<string, number>): string {
+  const e = Object.entries(m).filter(([, v]) => Math.abs(Number(v) || 0) > 0.005);
+  if (e.length === 0) return `0,00 ₺`;
+  return e.sort((a, b) => (Number(b[1]) || 0) - (Number(a[1]) || 0)).map(([c, v]) => `${fmt2(v)} ${curSym(c)}`).join(' · ');
+}
+const itemCcy = (it: any): string => (it?.last_unit_cost_currency || 'TRY');
+import {
+  DISC_YIELD, discUnitsPerTooth, discMaterialFor,
+  porcelainUnitsPerTooth, glassCeramicUnitsPerTooth,
+  isPorcelainType, isGlassCeramicType, isModelResinType, MODEL_RESIN_ML,
+} from '../../../core/materials/consumptionRef';
 import {
   Package, Plus, Search, X, Pencil, Trash2,
   ArrowDownCircle, ArrowUpCircle, AlertTriangle, AlertCircle,
@@ -29,7 +59,7 @@ import {
   ChevronRight, Tag, Grid3x3, ShoppingCart, Clock,
   TrendingDown, Flame, PlusCircle, Check, ArrowLeftRight,
   DatabaseZap, Inbox, BarChart3, TrendingUp, Users,
-  Calendar, Zap, Layers, MapPin, QrCode, Copy, Warehouse,
+  Calendar, Zap, Layers, MapPin, QrCode, Copy, Warehouse, ScanSearch,
 } from 'lucide-react-native';
 
 // ─── Patterns Design Language Tokens ─────────────────────────────────────────
@@ -162,6 +192,8 @@ interface StockItem {
   name: string;
   quantity: number;
   min_quantity: number;
+  /** true = minimum sistemce atandı (referansın %10'u), kullanıcı girmedi */
+  min_auto?: boolean | null;
   unit?: string;
   category?: string;
   supplier?: string;
@@ -169,6 +201,7 @@ interface StockItem {
   type?: string | null;
   usage_category?: 'production' | 'office' | 'misc' | null;
   units_per_tooth?: number | null;
+  thickness_mm?: number | null;
   consume_at_stage?: string | null;
   unit_cost?: number | null;
   location?: string | null;
@@ -176,6 +209,10 @@ interface StockItem {
   // Phase 2: multi-currency
   default_purchase_currency?: 'TRY' | 'EUR' | 'USD' | 'GBP' | null;
   last_unit_cost_currency?:   'TRY' | 'EUR' | 'USD' | 'GBP' | null;
+  // Faz 3: paket içeriği (ör. 1 Adet = 50 gr). Doluysa tüketim içerik biriminde
+  // (gr) girilir, stoktan kesirli adet (gr ÷ pack_size) düşer; unit_cost = paket başı.
+  pack_size?: number | null;
+  content_unit?: string | null;
 }
 
 const USAGE_CATEGORY_OPTIONS: { key: 'all' | 'production' | 'office' | 'misc'; label: string }[] = [
@@ -202,7 +239,7 @@ const UNIT_OPTIONS: { value: string; label: string; hint: string }[] = [
 
 type MovType = 'IN' | 'OUT' | 'WASTE';
 type StatusFilter = 'all' | 'critical' | 'ok' | 'empty';
-type TabKey = 'dashboard' | 'list' | 'movements' | 'suggestions' | 'analytics' | 'locations' | 'cost' | 'forecast' | 'material_requests' | 'settings';
+// TabKey / STOCK_TABS artık ortak: modules/stock/hubTabs.ts (alt sayfalar da kullanıyor)
 
 // ─── StockHeroCard — F1 stilinde accent bg + beyaz bloblar + stat strip ──────
 interface StockHeroProps {
@@ -301,11 +338,13 @@ interface ProductModalProps {
   accentColor: string;
   existingCategories: string[];
   existingBrands: string[];
+  /** Lab — usable_stages için lab_stations adlarını çekmekte kullanılır */
+  labId: string | null;
   onClose: () => void;
   onSaved: () => void;
 }
 
-function ProductModal({ visible, item, accentColor, existingCategories, existingBrands, onClose, onSaved }: ProductModalProps) {
+function ProductModal({ visible, item, accentColor, existingCategories, existingBrands, labId, onClose, onSaved }: ProductModalProps) {
   const isEdit = item !== null;
   const [name, setName]         = useState('');
   const [category, setCategory] = useState('');
@@ -322,13 +361,20 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
   const [matType, setMatType]             = useState('');
   const [usageCategory, setUsageCategory] = useState<'production' | 'office' | 'misc'>('misc');
   const [unitsPerTooth, setUnitsPerTooth] = useState('');
+  const [thicknessMm, setThicknessMm]     = useState<string>('');
   const [consumeStage, setConsumeStage]   = useState<string>('MILLING');
+  // Bu malzeme hangi üretim aşamalarında kullanılabilir (lab_stations adları)
+  const [usableStages, setUsableStages]   = useState<string[]>([]);
+  const [stationOpts, setStationOpts]     = useState<string[]>([]);
   const [unitCost, setUnitCost]           = useState('');
   // Phase 2: default purchase currency
   const [purchaseCurrency, setPurchaseCurrency] = useState<MoneyCurrency>('TRY');
   const [consumptionType, setConsumptionType] = useState<'fixed' | 'per_tooth' | 'manual'>('manual');
   const [location, setLocation] = useState('');
   const [barcode, setBarcode]   = useState('');
+  // Faz 3: paket içeriği (1 Adet = N içerik-birimi, ör. 50 gr)
+  const [packSize, setPackSize]       = useState('');
+  const [contentUnit, setContentUnit] = useState('');
   const [saving, setSaving]     = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError]       = useState('');
@@ -347,22 +393,43 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
       setMatType(item?.type ?? '');
       setUsageCategory((item?.usage_category as any) ?? 'misc');
       setUnitsPerTooth(item?.units_per_tooth != null ? String(item.units_per_tooth) : '');
+      setThicknessMm(item?.thickness_mm != null ? String(item.thickness_mm) : '');
       setConsumeStage(item?.consume_at_stage ?? 'MILLING');
+      setUsableStages(Array.isArray((item as any)?.usable_stages) ? (item as any).usable_stages : []);
       setUnitCost(item?.unit_cost != null ? String(item.unit_cost) : '');
       setPurchaseCurrency((item?.default_purchase_currency as MoneyCurrency) ?? 'TRY');
       setConsumptionType(((item as any)?.consumption_type as any) ?? 'manual');
       setLocation(item?.location ?? '');
       setBarcode(item?.barcode ?? '');
+      setPackSize(item?.pack_size != null ? String(item.pack_size) : '');
+      setContentUnit(item?.content_unit ?? '');
       setError('');
     }
   }, [visible, item]);
 
+  // usable_stages seçenekleri = labın malzeme tüketen istasyonları (gerçek adlar)
+  useEffect(() => {
+    if (!visible || !labId) return;
+    let alive = true;
+    (async () => {
+      const { data } = await supabase
+        .from('lab_stations')
+        .select('name')
+        .eq('lab_profile_id', labId)
+        .eq('consumes_materials', true)
+        .order('name');
+      if (alive) setStationOpts((data ?? []).map((s: any) => s.name).filter(Boolean));
+    })();
+    return () => { alive = false; };
+  }, [visible, labId]);
+
   const handleSave = async () => {
-    if (!name.trim()) { setError('Urun adi zorunlu'); return; }
-    const qty = parseFloat(quantity);
-    const min = parseFloat(minQty);
-    if (isNaN(qty) || qty < 0) { setError('Gecerli bir miktar girin'); return; }
-    if (isNaN(min) || min < 0) { setError('Gecerli bir minimum girin'); return; }
+    if (!name.trim()) { setError('Ürün adı zorunlu'); return; }
+    // Türkçe klavye virgülünü normalize et (parseFloat("1,5")=1 hatası)
+    const qty = parseFloat(quantity.replace(',', '.'));
+    const min = parseFloat(minQty.replace(',', '.'));
+    if (isNaN(qty) || qty < 0) { setError('Geçerli bir miktar girin'); return; }
+    if (isNaN(min) || min < 0) { setError('Geçerli bir minimum girin'); return; }
     setSaving(true); setError('');
     try {
       const brandName = brand.trim() || null;
@@ -380,11 +447,15 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
         usage_category: usageCategory,
         consumption_type: consumptionType,
         units_per_tooth: !isNaN(upt) && upt > 0 ? upt : null,
-        consume_at_stage: usageCategory === 'production' ? consumeStage : 'MILLING',
+        thickness_mm: (() => { const t = parseFloat(thicknessMm); return !isNaN(t) && t > 0 ? t : null; })(),
+        consume_at_stage: usageCategory === 'production' ? consumeStage : null,
+        usable_stages: (usageCategory === 'production' && usableStages.length) ? usableStages : null,
         unit_cost: !isNaN(cost) && cost >= 0 ? cost : 0,
         default_purchase_currency: purchaseCurrency,
         location: location.trim() || null,
         barcode: barcode.trim() || null,
+        pack_size: (() => { const p = parseFloat(packSize.replace(',', '.')); return !isNaN(p) && p > 0 ? p : null; })(),
+        content_unit: contentUnit.trim() || null,
       };
       if (isEdit) {
         const { error: e } = await supabase.from('stock_items').update(payload).eq('id', item!.id);
@@ -394,11 +465,13 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
         if (e) throw e;
       }
       const categoryName = category.trim() || null;
-      if (brandName) await supabase.from('brands').upsert({ name: brandName }, { onConflict: 'name', ignoreDuplicates: true });
-      if (categoryName) await supabase.from('categories').upsert({ name: categoryName }, { onConflict: 'name', ignoreDuplicates: true });
+      // Lab-scoped upsert — unique index (name, lab_id) ile eşleşir; eskiden onConflict:'name'
+      // kompozit unique'e uymuyor + lab_id yazılmıyordu (labs arası paylaşım/çift kayıt).
+      if (brandName && labId) await supabase.from('brands').upsert({ name: brandName, lab_id: labId }, { onConflict: 'name,lab_id', ignoreDuplicates: true });
+      if (categoryName && labId) await supabase.from('categories').upsert({ name: categoryName, lab_id: labId }, { onConflict: 'name,lab_id', ignoreDuplicates: true });
       onSaved(); onClose();
     } catch (e: any) {
-      setError(e.message ?? 'Kayit hatasi');
+      setError(e.message ?? 'Kayıt hatası');
     } finally { setSaving(false); }
   };
 
@@ -417,7 +490,7 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
         <View style={modalSheet}>
           <View style={modalHeader}>
             <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.3, color: DS.ink[900] }}>
-              {isEdit ? 'Urunu Duzenle' : 'Yeni Urun Ekle'}
+              {isEdit ? 'Ürünü Düzenle' : 'Yeni Ürün Ekle'}
             </Text>
             <Pressable
               onPress={onClose}
@@ -429,12 +502,12 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
 
           <ScrollView style={{ padding: 16 }} showsVerticalScrollIndicator={false}>
             <View style={sectionCard}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[800], marginBottom: 14 }}>Urun Bilgileri</Text>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[800], marginBottom: 14 }}>Ürün Bilgileri</Text>
 
-              {/* Urun Adi */}
+              {/* Ürün Adı */}
               <View style={{ marginBottom: 12 }}>
                 <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>
-                  URUN ADI <Text style={{ color: CHIP_TONES.danger.fg }}>*</Text>
+                  ÜRÜN ADI <Text style={{ color: CHIP_TONES.danger.fg }}>*</Text>
                 </Text>
                 <TextInput style={fieldInput} value={name} onChangeText={setName} placeholder="orn. Zirkonyum Blok" placeholderTextColor={DS.ink[400]} />
               </View>
@@ -447,7 +520,7 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                   style={{ ...fieldInput, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                 >
                   <Text style={category ? { fontSize: 14, color: DS.ink[900] } : { fontSize: 14, color: DS.ink[400] }}>
-                    {category || 'Kategori secin veya yazin...'}
+                    {category || 'Kategori seçin veya yazın...'}
                   </Text>
                   {catDropOpen
                     ? <ChevronUp size={14} color={DS.ink[400]} strokeWidth={1.6} />
@@ -487,7 +560,7 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                         </Pressable>
                       )}
                       {existingCategories.filter(c => !catSearch || c.toLowerCase().includes(catSearch.toLowerCase())).length === 0 && !catSearch.trim() && (
-                        <Text style={{ paddingHorizontal: 14, paddingVertical: 14, fontSize: 13, color: DS.ink[400], textAlign: 'center' }}>Henuz kategori yok</Text>
+                        <Text style={{ paddingHorizontal: 14, paddingVertical: 14, fontSize: 13, color: DS.ink[400], textAlign: 'center' }}>Henüz kategori yok</Text>
                       )}
                     </ScrollView>
                     {category ? (
@@ -510,7 +583,7 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                   style={{ ...fieldInput, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                 >
                   <Text style={brand ? { fontSize: 14, color: DS.ink[900] } : { fontSize: 14, color: DS.ink[400] }}>
-                    {brand || 'Marka secin veya yazin...'}
+                    {brand || 'Marka seçin veya yazın...'}
                   </Text>
                   {brandDropOpen
                     ? <ChevronUp size={14} color={DS.ink[400]} strokeWidth={1.6} />
@@ -550,7 +623,7 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                         </Pressable>
                       )}
                       {existingBrands.filter(b => !brandSearch || b.toLowerCase().includes(brandSearch.toLowerCase())).length === 0 && !brandSearch.trim() && (
-                        <Text style={{ paddingHorizontal: 14, paddingVertical: 14, fontSize: 13, color: DS.ink[400], textAlign: 'center' }}>Henuz marka yok</Text>
+                        <Text style={{ paddingHorizontal: 14, paddingVertical: 14, fontSize: 13, color: DS.ink[400], textAlign: 'center' }}>Henüz marka yok</Text>
                       )}
                     </ScrollView>
                     {brand ? (
@@ -619,8 +692,8 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                 </Text>
               </View>
               <View style={{ marginBottom: 0 }}>
-                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>TEDARIKCI</Text>
-                <TextInput style={fieldInput} value={supplier} onChangeText={setSupplier} placeholder="Tedarikci firma adi..." placeholderTextColor={DS.ink[400]} />
+                <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>TEDARİKÇİ</Text>
+                <TextInput style={fieldInput} value={supplier} onChangeText={setSupplier} placeholder="Tedarikçi firma adı..." placeholderTextColor={DS.ink[400]} />
               </View>
             </View>
 
@@ -635,6 +708,25 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                 <View style={{ flex: 1, marginBottom: 0 }}>
                   <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>BARKOD / QR</Text>
                   <TextInput style={fieldInput} value={barcode} onChangeText={setBarcode} placeholder="orn. STK-00123" placeholderTextColor={DS.ink[400]} />
+                </View>
+              </View>
+            </View>
+
+            {/* Paket İçeriği (opsiyonel) — 1 sayım-birimi (Adet/Kutu) = N içerik-birimi (gr/ml) */}
+            <View style={sectionCard}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[800], marginBottom: 4 }}>Paket İçeriği (opsiyonel)</Text>
+              <Text style={{ fontSize: 11, color: DS.ink[500], marginBottom: 14 }}>
+                Kavanoz/paket ise doldurun: 1 {unit || 'Adet'} = paket boyutu × içerik birimi (ör. 50 gr).
+                Tüketim içerik biriminde girilir, stoktan kesirli {unit || 'adet'} düşer.
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <View style={{ flex: 1, marginBottom: 0 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>PAKET BOYUTU</Text>
+                  <TextInput style={fieldInput} value={packSize} onChangeText={setPackSize} keyboardType="numeric" placeholder="orn. 50" placeholderTextColor={DS.ink[400]} />
+                </View>
+                <View style={{ flex: 1, marginBottom: 0 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>İÇERİK BİRİMİ</Text>
+                  <TextInput style={fieldInput} value={contentUnit} onChangeText={setContentUnit} placeholder="orn. gr, ml" placeholderTextColor={DS.ink[400]} />
                 </View>
               </View>
             </View>
@@ -751,6 +843,131 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                 </View>
               )}
 
+              {/* Malzeme tüketim önerisi (matType'a göre) */}
+              {usageCategory === 'production' && (() => {
+                const discMat = discMaterialFor(matType);
+                const isPorc = isPorcelainType(matType);
+                const isGlass = isGlassCeramicType(matType);
+                const isModel = isModelResinType(matType);
+                if (!discMat && !isPorc && !isGlass && !isModel) return null;
+
+                const applyUpt = (v: number) => setUnitsPerTooth(String(v));
+                const fmt = (n: number) => String(n).replace('.', ',');
+
+                return (
+                  <View style={{
+                    marginBottom: 12, padding: 12, borderRadius: 12,
+                    backgroundColor: 'rgba(37,99,235,0.05)',
+                    borderWidth: 1, borderColor: 'rgba(37,99,235,0.14)',
+                  }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#1D4ED8', marginBottom: 8, letterSpacing: 0.4 }}>
+                      TÜKETİM ÖNERİSİ
+                    </Text>
+
+                    {discMat && (
+                      <>
+                        <Text style={{ fontSize: 11, color: DS.ink[500], marginBottom: 8 }}>
+                          Disk kalınlığını seçin — diş başına tüketim otomatik hesaplanır.
+                        </Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                          {DISC_YIELD[discMat].map(row => {
+                            const active = parseFloat(thicknessMm) === row.thicknessMm;
+                            const upt = discUnitsPerTooth(discMat, row.thicknessMm);
+                            const crownsMid = Math.round((row.crowns[0] + row.crowns[1]) / 2);
+                            return (
+                              <Pressable
+                                key={row.thicknessMm}
+                                onPress={() => {
+                                  setThicknessMm(String(row.thicknessMm));
+                                  if (upt != null) applyUpt(upt);
+                                }}
+                                style={{
+                                  paddingHorizontal: 12, paddingVertical: 7,
+                                  borderRadius: 9999, borderWidth: 1,
+                                  borderColor: active ? '#2563EB' : 'rgba(0,0,0,0.10)',
+                                  backgroundColor: active ? '#2563EB' : '#FFFFFF',
+                                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                                }}
+                              >
+                                <Text style={{ fontSize: 12, fontWeight: active ? '700' : '600', color: active ? '#FFFFFF' : DS.ink[700] }}>
+                                  {row.label}
+                                </Text>
+                                <Text style={{ fontSize: 9, color: active ? 'rgba(255,255,255,0.85)' : DS.ink[400], marginTop: 1 }}>
+                                  ≈{crownsMid} kron
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                        {parseFloat(thicknessMm) > 0 && (() => {
+                          const upt = discUnitsPerTooth(discMat, parseFloat(thicknessMm));
+                          return upt != null ? (
+                            <Text style={{ fontSize: 11, color: '#1D4ED8', marginTop: 8, fontWeight: '600' }}>
+                              → Diş başına ≈ {fmt(upt)} disk ({parseFloat(thicknessMm)} mm)
+                            </Text>
+                          ) : null;
+                        })()}
+                      </>
+                    )}
+
+                    {isPorc && !discMat && (() => {
+                      const g = porcelainUnitsPerTooth();
+                      return (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                          <Text style={{ fontSize: 11, color: DS.ink[500], flex: 1 }}>
+                            Porselen: tek kron için ~0,3–1 gr (ortalama {fmt(g)} gr).
+                          </Text>
+                          <Pressable
+                            onPress={() => applyUpt(g)}
+                            style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999, backgroundColor: '#2563EB', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                          >
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>{fmt(g)} gr/diş uygula</Text>
+                          </Pressable>
+                        </View>
+                      );
+                    })()}
+
+                    {isGlass && !discMat && !isPorc && (() => {
+                      const b = glassCeramicUnitsPerTooth();
+                      return (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                          <Text style={{ fontSize: 11, color: DS.ink[500], flex: 1 }}>
+                            Cam seramik: 1 blok → 1 iş (kron / veneer / inlay-onlay).
+                          </Text>
+                          <Pressable
+                            onPress={() => applyUpt(b)}
+                            style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9999, backgroundColor: '#2563EB', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
+                          >
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>1 blok/diş uygula</Text>
+                          </Pressable>
+                        </View>
+                      );
+                    })()}
+
+                    {isModel && !discMat && !isPorc && !isGlass && (
+                      <>
+                        <Text style={{ fontSize: 11, color: DS.ink[500], marginBottom: 6 }}>
+                          Model reçinesi çene/vaka başına tüketilir (diş sayısına bağlı değil):
+                        </Text>
+                        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 6 }}>
+                          <View style={{ flex: 1, padding: 8, borderRadius: 10, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' }}>
+                            <Text style={{ fontSize: 10, color: DS.ink[400] }}>Tek çene</Text>
+                            <Text style={{ fontSize: 15, fontWeight: '700', color: DS.ink[900] }}>{MODEL_RESIN_ML.singleJaw} ml</Text>
+                          </View>
+                          <View style={{ flex: 1, padding: 8, borderRadius: 10, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' }}>
+                            <Text style={{ fontSize: 10, color: DS.ink[400] }}>Alt + üst</Text>
+                            <Text style={{ fontSize: 15, fontWeight: '700', color: DS.ink[900] }}>{MODEL_RESIN_ML.bothJaws} ml</Text>
+                          </View>
+                        </View>
+                        <Text style={{ fontSize: 10, color: '#92400E' }}>
+                          Diş-başı formüle uymaz → "Tüketim modeli"ni Manuel bırakın, her işte ml girin.
+                        </Text>
+                      </>
+                    )}
+                  </View>
+                );
+              })()}
+
               {/* Production-only fields */}
               {usageCategory === 'production' && (
                 <>
@@ -836,6 +1053,49 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
                   <Text style={{ fontSize: 11, color: DS.ink[400], marginBottom: 12 }}>
                     Siparis bu asamayi tamamlayinca: dis sayisi x tuketim = stoktan otomatik dusulur.
                   </Text>
+
+                  {/* Hangi aşamalarda kullanılır — malzeme onayı picker'ı bunu filtreler */}
+                  <View style={{ marginBottom: 12 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 3, letterSpacing: 0.5 }}>
+                      HANGİ AŞAMALARDA KULLANILIR
+                    </Text>
+                    <Text style={{ fontSize: 11, color: DS.ink[400], marginBottom: 7 }}>
+                      İşaretlenen aşamaların malzeme onayında bu malzeme öne çıkar. Boş bırakılırsa her aşamada görünür.
+                    </Text>
+                    {stationOpts.length === 0 ? (
+                      <Text style={{ fontSize: 11, color: DS.ink[400], fontStyle: 'italic' }}>
+                        Malzeme tüketen istasyon bulunamadı.
+                      </Text>
+                    ) : (
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+                        {stationOpts.map(st => {
+                          const active = usableStages.includes(st);
+                          return (
+                            <Pressable
+                              key={st}
+                              onPress={() => setUsableStages(prev =>
+                                active ? prev.filter(x => x !== st) : [...prev, st],
+                              )}
+                              style={{
+                                paddingHorizontal: 10, paddingVertical: 5,
+                                borderRadius: 9999,
+                                borderWidth: 1,
+                                borderColor: active ? accentColor : 'rgba(0,0,0,0.10)',
+                                backgroundColor: active ? accentColor : '#FFFFFF',
+                                flexDirection: 'row', alignItems: 'center', gap: 5,
+                                ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+                              }}
+                            >
+                              {active && <Check size={11} color="#FFFFFF" strokeWidth={2.4} />}
+                              <Text style={{ fontSize: 11.5, fontWeight: active ? '700' : '500', color: active ? '#FFFFFF' : DS.ink[500] }}>
+                                {st}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </View>
                 </>
               )}
 
@@ -908,7 +1168,7 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
               <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[700] }}>Iptal</Text>
             </Pressable>
             <Pressable style={{ ...darkPillBtn, backgroundColor: accentColor }} onPress={handleSave} disabled={saving}>
-              {saving ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>{isEdit ? 'Guncelle' : 'Ekle'}</Text>}
+              {saving ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>{isEdit ? 'Güncelle' : 'Ekle'}</Text>}
             </Pressable>
           </View>
         </View>
@@ -920,8 +1180,8 @@ function ProductModal({ visible, item, accentColor, existingCategories, existing
 // ─── MovementModal ────────────────────────────────────────────────────────────
 
 const MOV_TYPES: { key: MovType; label: string; color: string; bg: string }[] = [
-  { key: 'IN',    label: 'Giris',  color: CHIP_TONES.success.fg, bg: CHIP_TONES.success.bg },
-  { key: 'OUT',   label: 'Cikis',  color: CHIP_TONES.info.fg,    bg: CHIP_TONES.info.bg },
+  { key: 'IN',    label: 'Giriş',  color: CHIP_TONES.success.fg, bg: CHIP_TONES.success.bg },
+  { key: 'OUT',   label: 'Çıkış',  color: CHIP_TONES.info.fg,    bg: CHIP_TONES.info.bg },
   { key: 'WASTE', label: 'Fire',   color: CHIP_TONES.danger.fg,  bg: CHIP_TONES.danger.bg },
 ];
 
@@ -986,6 +1246,14 @@ function MovementModal({ visible, item, items = [], accentColor, defaultType = '
     const cost = unitCost ? parseFloat(unitCost.replace(',', '.')) : null;
     if (isInbound && cost != null && cost <= 0) { setError('Birim maliyet pozitif olmalı'); return; }
 
+    // Paketli kalem: tüketimde (OUT/WASTE) içerik biriminde (gr) girilir → kesirli
+    // sayım-birimi (Adet) düşer (gr ÷ pack_size). Girişte (IN) sayım-birimi girilir.
+    const packaged = !!resolvedItem.pack_size && resolvedItem.pack_size > 0;
+    const consumeContent = packaged && (type === 'OUT' || type === 'WASTE');
+    const moveQty = consumeContent ? +(amount / (resolvedItem.pack_size as number)).toFixed(6) : amount;
+    const packNote = consumeContent ? `${amount} ${resolvedItem.content_unit ?? ''}`.trim() : '';
+    const finalNote = [packNote, note.trim()].filter(Boolean).join(' · ') || null;
+
     setSaving(true); setError('');
     try {
       // ÖNCE hareket kaydı, SONRA miktar — hareket başarısız olursa (örn. kur
@@ -998,11 +1266,11 @@ function MovementModal({ visible, item, items = [], accentColor, defaultType = '
           p_item_id: resolvedItem.id,
           p_item_name: resolvedItem.name,
           p_type: type,
-          p_quantity: amount,
+          p_quantity: moveQty,
           p_unit: resolvedItem.unit ?? null,
           p_unit_cost_at_time: cost,
           p_currency: currency,
-          p_note: note.trim() || null,
+          p_note: finalNote,
         });
         if (rpcErr) {
           // Kur tanımsızsa kullanıcıyı uyar
@@ -1028,11 +1296,11 @@ function MovementModal({ visible, item, items = [], accentColor, defaultType = '
             p_item_id: resolvedItem.id,
             p_item_name: resolvedItem.name,
             p_type: type,
-            p_quantity: amount,
+            p_quantity: moveQty,
             p_unit: resolvedItem.unit ?? null,
             p_unit_cost_at_time: itemCost,
             p_currency: (resolvedItem as any).last_unit_cost_currency ?? 'TRY',
-            p_note: note.trim() || null,
+            p_note: finalNote,
           });
           inserted = !rpcErr;
         }
@@ -1041,19 +1309,18 @@ function MovementModal({ visible, item, items = [], accentColor, defaultType = '
           const { error: insErr } = await supabase.from('stock_movements').insert({
             item_id: resolvedItem.id,
             item_name: resolvedItem.name,
-            type, quantity: amount,
+            type, quantity: moveQty,
             unit: resolvedItem.unit ?? null,
-            note: note.trim() || null,
+            note: finalNote,
             currency: 'TRY',
           });
           if (insErr) throw insErr;
         }
       }
 
-      const next = type === 'IN' ? resolvedItem.quantity + amount : Math.max(0, resolvedItem.quantity - amount);
-      const { error: qtyErr } = await supabase.from('stock_items').update({ quantity: next }).eq('id', resolvedItem.id);
-      if (qtyErr) throw qtyErr;
-
+      // Stok miktarı artık stock_movements trigger'ı (trg_stock_qty_sync) ile
+      // ATOMİK ve birim-dönüşümlü güncellenir — client read-modify-write KALDIRILDI
+      // (yarış/lost-update + defter-stok ayrışması giderildi). Tek kaynak: hareket defteri.
       onSaved(); onClose();
     } catch (e: any) {
       setError(e.message ?? 'İşlem hatası');
@@ -1082,14 +1349,14 @@ function MovementModal({ visible, item, items = [], accentColor, defaultType = '
             {standalone && (
               <View style={sectionCard}>
                 <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[800], marginBottom: 14 }}>
-                  Urun Sec <Text style={{ color: CHIP_TONES.danger.fg }}>*</Text>
+                  Ürün Seç <Text style={{ color: CHIP_TONES.danger.fg }}>*</Text>
                 </Text>
                 <Pressable
                   style={{ ...fieldInput, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
                   onPress={() => setPickerOpen(v => !v)}
                 >
                   <Text style={resolvedItem ? { fontSize: 14, color: DS.ink[900] } : { fontSize: 14, color: DS.ink[400] }}>
-                    {resolvedItem ? resolvedItem.name : 'Urun secin...'}
+                    {resolvedItem ? resolvedItem.name : 'Ürün seçin...'}
                   </Text>
                   {pickerOpen
                     ? <ChevronUp size={15} color={DS.ink[400]} strokeWidth={1.6} />
@@ -1104,7 +1371,7 @@ function MovementModal({ visible, item, items = [], accentColor, defaultType = '
                         style={{ flex: 1, fontSize: 13, color: DS.ink[900], ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) } as any}
                         value={pickerSearch}
                         onChangeText={setPickerSearch}
-                        placeholder="Urun ara..."
+                        placeholder="Ürün ara..."
                         placeholderTextColor={DS.ink[400]}
                         autoFocus
                       />
@@ -1128,7 +1395,7 @@ function MovementModal({ visible, item, items = [], accentColor, defaultType = '
 
             {/* Type selector */}
             <View style={sectionCard}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[800], marginBottom: 14 }}>Islem Tipi</Text>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: DS.ink[800], marginBottom: 14 }}>İşlem Tipi</Text>
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 {MOV_TYPES.map(t => (
                   <Pressable
@@ -1155,9 +1422,19 @@ function MovementModal({ visible, item, items = [], accentColor, defaultType = '
             <View style={sectionCard}>
               <View style={{ marginBottom: 12 }}>
                 <Text style={{ fontSize: 11, fontWeight: '500', color: DS.ink[500], marginBottom: 7, letterSpacing: 0.5 }}>
-                  MİKTAR <Text style={{ color: CHIP_TONES.danger.fg }}>*</Text>
+                  MİKTAR{(() => {
+                    const packaged = !!resolvedItem?.pack_size && resolvedItem.pack_size > 0;
+                    const consumeContent = packaged && (type === 'OUT' || type === 'WASTE');
+                    const u = consumeContent ? (resolvedItem?.content_unit ?? '') : (resolvedItem?.unit ?? '');
+                    return u ? ` (${u})` : '';
+                  })()} <Text style={{ color: CHIP_TONES.danger.fg }}>*</Text>
                 </Text>
                 <TextInput style={fieldInput} value={qty} onChangeText={setQty} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={DS.ink[400]} />
+                {!!resolvedItem?.pack_size && resolvedItem.pack_size > 0 && (type === 'OUT' || type === 'WASTE') && (
+                  <Text style={{ fontSize: 10.5, color: DS.ink[400], marginTop: 5 }}>
+                    Paketli kalem: {resolvedItem.content_unit ?? 'içerik'} gir → stoktan {qty ? `${(parseFloat(qty.replace(',','.')) / (resolvedItem.pack_size as number) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 4 })} ` : ''}{resolvedItem.unit ?? 'adet'} düşer (1 {resolvedItem.unit ?? 'adet'} = {resolvedItem.pack_size} {resolvedItem.content_unit ?? ''}).
+                  </Text>
+                )}
               </View>
 
               {/* IN için birim maliyet + currency (Phase 2) */}
@@ -1325,13 +1602,25 @@ interface DashboardProps {
 
 function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditProduct }: DashboardProps) {
   const [recentCount, setRecentCount] = useState<number | null>(null);
+  const [alerts, setAlerts] = useState<StockDashboardAlerts | null>(null);
+  const [minModal, setMinModal] = useState(false);
+  const router = useRouter();
+  const segments = useSegments();
+  const panel = (segments?.[0] as string) ?? '(lab)';
+
+  const loadAlerts = useCallback(() => { fetchStockAlerts().then(setAlerts); }, []);
 
   useEffect(() => {
     const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     supabase.from('stock_movements').select('id', { count: 'exact', head: true })
       .gte('created_at', since)
       .then(({ count }) => setRecentCount(count ?? 0));
-  }, []);
+    loadAlerts();
+  }, [loadAlerts]);
+
+  /** Uyarı satırından ilgili kurulum adımına (veya sipariş görünümüne) git */
+  const goTab = (tab: TabKey, sub?: string) =>
+    router.push(`/${panel}/stock?tab=${tab}${sub ? `&sub=${sub}` : ''}` as any);
 
   const total    = items.length;
   const normal   = items.filter(i => i.quantity >= i.min_quantity);
@@ -1344,6 +1633,11 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
     catMap.set(key, (catMap.get(key) ?? 0) + 1);
   });
   const catStats = Array.from(catMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+  // Minimum seviyesi tanımsız kalem "kritik" olamaz — sağlık yüzdesi bu yüzden
+  // olduğundan iyi çıkabiliyor. Sayıyı gizlemek yerine kartta söylüyoruz.
+  const noMinCount = items.filter(i => !(i.min_quantity > 0)).length;
+  const autoMinCount = items.filter(i => i.min_auto && i.min_quantity > 0).length;
 
   const urgentItems = [...empty, ...critical]
     .sort((a, b) => {
@@ -1413,7 +1707,7 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
               {total}
             </Text>
             <Text style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.78)', marginTop: 4 }}>
-              {catStats.length} kategori · {recentCount != null ? `${recentCount} son 7 günde hareket` : 'son 7 gün —'}
+              {catMap.size} kategori · {recentCount != null ? `${recentCount} son 7 günde hareket` : 'son 7 gün —'}
             </Text>
           </View>
           <View style={{ width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.18)' }}>
@@ -1454,6 +1748,87 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
 
       </View>
 
+      {/* ── İşlem bekleyenler — sayı değil, tıklanabilir görev ── */}
+      {(() => {
+        if (!alerts) return null;
+        const tasks: { key: string; label: string; detail: string; count: number; tone: 'warning' | 'danger' | 'info'; onPress: () => void }[] = [];
+
+        if (alerts.items_without_min > 0) tasks.push({
+          key: 'min',
+          label: 'Minimum seviyesi tanımsız',
+          detail: 'Bu kalemler kritik uyarısı vermez, sipariş önerisine girmez',
+          count: alerts.items_without_min, tone: 'warning',
+          onPress: () => setMinModal(true),
+        });
+        if (alerts.verification_id && alerts.verification_total > alerts.verification_counted) tasks.push({
+          key: 'count',
+          label: 'Açık stok sayımı',
+          detail: `${alerts.verification_counted}/${alerts.verification_total} kalem sayıldı`,
+          count: alerts.verification_total - alerts.verification_counted, tone: 'info',
+          onPress: () => goTab('setup', 'inventory_verification'),
+        });
+        if (alerts.stages_missing > 0) tasks.push({
+          key: 'stages',
+          label: 'Malzeme kaydı girilmemiş aşama',
+          detail: 'Tamamlanmış ama tüketimi yazılmamış işler',
+          count: alerts.stages_missing, tone: 'warning',
+          onPress: () => goTab('setup', 'consumption_audit'),
+        });
+        if (alerts.pending_no_profile > 0) tasks.push({
+          key: 'profile',
+          label: 'Profilsiz tüketim seçimi',
+          detail: 'Kural bulunamadı — stok düşmedi',
+          count: alerts.pending_no_profile, tone: 'danger',
+          onPress: () => goTab('setup', 'consumption_profile'),
+        });
+        if (alerts.expiring_soon > 0) tasks.push({
+          key: 'expiry',
+          label: 'Son kullanma tarihi yaklaşan lot',
+          detail: '60 gün içinde dolan açık katmanlar',
+          count: alerts.expiring_soon, tone: 'danger',
+          onPress: () => goTab('cost', 'value'),
+        });
+
+        if (tasks.length === 0) return null;
+        const TONE = {
+          warning: CHIP_TONES.warning,
+          danger:  CHIP_TONES.danger,
+          info:    CHIP_TONES.info ?? CHIP_TONES.warning,
+        } as any;
+
+        return (
+          <View style={[PCard, { padding: 0, overflow: 'hidden' }]}>
+            <View style={{ paddingHorizontal: 18, paddingTop: 16, paddingBottom: 10 }}>
+              <Text style={eyebrow}>İşlem bekleyenler</Text>
+            </View>
+            {tasks.map((t, i) => (
+              <Pressable
+                key={t.key}
+                onPress={t.onPress}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 12,
+                  paddingHorizontal: 18, paddingVertical: 12,
+                  borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)',
+                  ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+                }}
+              >
+                <View style={{
+                  minWidth: 34, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
+                  alignItems: 'center', backgroundColor: TONE[t.tone].bg,
+                }}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: TONE[t.tone].fg }}>{t.count}</Text>
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '600', color: '#0A0A0A' }}>{t.label}</Text>
+                  <Text numberOfLines={1} style={{ fontSize: 11, color: '#9A9A9A' }}>{t.detail}</Text>
+                </View>
+                <ChevronRight size={15} color="#9A9A9A" strokeWidth={1.8} />
+              </Pressable>
+            ))}
+          </View>
+        );
+      })()}
+
       {/* ── Category breakdown + Status donut ── */}
       <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
         {catStats.length > 0 && (
@@ -1461,7 +1836,9 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
               <View style={{ gap: 2 }}>
                 <Text style={eyebrow}>Kategori dağılımı</Text>
-                <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 22, letterSpacing: -0.4, color: '#0A0A0A' }}>İlk {catStats.length} kategori</Text>
+                <Text style={{ fontFamily: DisplayFont, fontWeight: '300', fontSize: 22, letterSpacing: -0.4, color: '#0A0A0A' }}>
+                  {catMap.size > catStats.length ? `İlk ${catStats.length} kategori` : 'Tüm kategoriler'}
+                </Text>
               </View>
               <View style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: accSoft }}>
                 <BarChart3 size={15} color={accentColor} strokeWidth={1.6} />
@@ -1501,6 +1878,21 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
               <Text style={{ fontSize: 11, color: '#9A9A9A', fontWeight: '500', letterSpacing: 0.6, textTransform: 'uppercase', marginTop: -2 }}>Normal</Text>
             </View>
           </View>
+          {noMinCount > 0 || autoMinCount > 0 ? (
+            <View style={{
+              width: '100%', flexDirection: 'row', gap: 8, marginTop: 12,
+              paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12,
+              backgroundColor: CHIP_TONES.warning.bg,
+            }}>
+              <AlertTriangle size={13} color={CHIP_TONES.warning.fg} strokeWidth={1.9} />
+              <Text style={{ flex: 1, fontSize: 11, lineHeight: 16, color: CHIP_TONES.warning.fg }}>
+                {noMinCount > 0
+                  ? `${noMinCount} kalemde minimum seviye yok — bu kalemler asla "kritik" görünmez.`
+                  : `${autoMinCount} kalemin minimumu otomatik atandı (referansın %10'u). Gerçek tüketiminize göre gözden geçirin.`}
+              </Text>
+            </View>
+          ) : null}
+
           <View style={{ width: '100%', gap: 9, marginTop: 10 }}>
             {([
               { label: 'Normal',  count: normal.length,   color: accentColor },
@@ -1516,6 +1908,13 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
           </View>
         </View>
       </View>
+
+      <MinLevelBulkModal
+        visible={minModal}
+        accentColor={accentColor}
+        onClose={() => setMinModal(false)}
+        onSaved={() => { setMinModal(false); loadAlerts(); }}
+      />
 
       {/* ── Urgent attention list ── */}
       {urgentItems.length > 0 && (
@@ -1547,7 +1946,7 @@ function StockDashboard({ items, accentColor, onMovement, onAddProduct, onEditPr
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 13, fontWeight: '600', color: '#0A0A0A' }} numberOfLines={1}>{item.name}</Text>
                     <Text style={{ fontSize: 11, color: '#9A9A9A', fontWeight: '500', marginTop: 1 }}>
-                      {isEmpty ? 'Stok tükendi' : `${item.quantity}${item.unit ? ` ${item.unit}` : ''} kaldı · minimum ${item.min_quantity}`}
+                      {isEmpty ? 'Stok tükendi' : `${fmtQtyDual(item.quantity, item.unit, item.pack_size, item.content_unit)} kaldı · minimum ${fmtQty(item.min_quantity)}`}
                     </Text>
                   </View>
                   <Pressable
@@ -1628,7 +2027,7 @@ function BrandModal({ visible, brand, accentColor, onClose, onSaved }: {
 
   const handleSave = async () => {
     const n = name.trim();
-    if (!n) { setError('Marka adi zorunlu'); return; }
+    if (!n) { setError('Marka adı zorunlu'); return; }
     setSaving(true); setError('');
     const payload: any = {
       name: n,
@@ -1653,7 +2052,7 @@ function BrandModal({ visible, brand, accentColor, onClose, onSaved }: {
         onSaved();
       }
       onClose();
-    } catch (e: any) { setError(e.message ?? 'Kayit hatasi'); }
+    } catch (e: any) { setError(e.message ?? 'Kayıt hatası'); }
     finally { setSaving(false); }
   };
 
@@ -1678,7 +2077,7 @@ function BrandModal({ visible, brand, accentColor, onClose, onSaved }: {
         <View style={modalSheet}>
           <View style={modalHeader}>
             <Text style={{ ...DISPLAY, fontSize: 20, letterSpacing: -0.3, color: DS.ink[900] }}>
-              {isEdit ? 'Markayi Duzenle' : 'Yeni Marka Ekle'}
+              {isEdit ? 'Markayı Düzenle' : 'Yeni Marka Ekle'}
             </Text>
             <Pressable
               onPress={onClose}
@@ -1744,7 +2143,7 @@ function BrandModal({ visible, brand, accentColor, onClose, onSaved }: {
               <Text style={{ fontSize: 14, fontWeight: '600', color: DS.ink[700] }}>Iptal</Text>
             </Pressable>
             <Pressable style={{ ...darkPillBtn, backgroundColor: accentColor }} onPress={handleSave} disabled={saving}>
-              {saving ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>{isEdit ? 'Guncelle' : 'Ekle'}</Text>}
+              {saving ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>{isEdit ? 'Güncelle' : 'Ekle'}</Text>}
             </Pressable>
           </View>
         </View>
@@ -1803,7 +2202,7 @@ function BrandsList({ accentColor, onReload }: { accentColor: string; onReload: 
         {loading ? (
           <ActivityIndicator size="small" color={accentColor} style={{ marginVertical: 20 }} />
         ) : brands.length === 0 ? (
-          <Text style={{ fontSize: 13, color: DS.ink[400], textAlign: 'center', paddingVertical: 24 }}>Henuz marka yok</Text>
+          <Text style={{ fontSize: 13, color: DS.ink[400], textAlign: 'center', paddingVertical: 24 }}>Henüz marka yok</Text>
         ) : (
           brands.map((b, idx) => {
             const isLast = idx === brands.length - 1;
@@ -1934,7 +2333,7 @@ function CategoryList({ accentColor, onReload }: { accentColor: string; onReload
           <TextInput
             style={{ ...fieldInput, flex: 1 }}
             value={addText} onChangeText={t => { setAddText(t); setError(''); }}
-            placeholder="Kategori adi..." placeholderTextColor={DS.ink[400]} autoFocus onSubmitEditing={handleAdd}
+            placeholder="Kategori adı..." placeholderTextColor={DS.ink[400]} autoFocus onSubmitEditing={handleAdd}
           />
           <Pressable
             style={{ width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor, ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}) }}
@@ -1956,7 +2355,7 @@ function CategoryList({ accentColor, onReload }: { accentColor: string; onReload
       {loading ? (
         <ActivityIndicator size="small" color={accentColor} style={{ marginVertical: 20 }} />
       ) : rows.length === 0 && !addMode ? (
-        <Text style={{ fontSize: 13, color: DS.ink[400], textAlign: 'center', paddingVertical: 24 }}>Henuz kategori yok</Text>
+        <Text style={{ fontSize: 13, color: DS.ink[400], textAlign: 'center', paddingVertical: 24 }}>Henüz kategori yok</Text>
       ) : (
         rows.map((name, idx) => {
           const isEditing = editName === name;
@@ -2013,11 +2412,76 @@ function CategoryList({ accentColor, onReload }: { accentColor: string; onReload
   );
 }
 
+/**
+ * SubTabStrip — üst sekmenin içindeki yatay adım/görünüm şeridi.
+ *
+ * Kenar çubuğunu her görünüm için bir satırla şişirmek yerine, aynı soruyu
+ * cevaplayan görünümler tek üst sekmede toplanıp burada bölünüyor. Şeridin
+ * altındaki tek satır, o görünümün neye baktığını söyler — üç ayrı sipariş
+ * önerisi arasındaki fark yalnız burada görünür.
+ */
+function SubTabStrip({
+  tabs, value, onChange, numbered,
+}: {
+  tabs: SubTabDef[];
+  value: string;
+  onChange: (k: string) => void;
+  /** Sıralı bir akışsa (kurulum adımları) numara gösterilir */
+  numbered?: boolean;
+}) {
+  const active = tabs.find(t => t.key === value) ?? tabs[0];
+  return (
+    <View style={{ paddingHorizontal: PAGE_PADDING, paddingBottom: 8 }}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ gap: 8, paddingVertical: 2 }}
+      >
+        {tabs.map((t, i) => {
+          const on = t.key === value;
+          const Icon = t.icon;
+          return (
+            <Pressable
+              key={t.key}
+              onPress={() => onChange(t.key)}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 8,
+                paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999,
+                backgroundColor: on ? DS.ink[900] : 'rgba(0,0,0,0.05)',
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              }}
+            >
+              {numbered ? (
+                <Text style={{
+                  fontSize: 11, fontWeight: '600',
+                  color: on ? 'rgba(255,255,255,0.5)' : DS.ink[400],
+                }}>
+                  {i + 1}
+                </Text>
+              ) : null}
+              <Icon size={14} strokeWidth={on ? 2 : 1.7} color={on ? '#FFF' : DS.ink[500]} />
+              <Text style={{
+                fontSize: 13, fontWeight: on ? '600' : '500',
+                color: on ? '#FFF' : DS.ink[800],
+              }}>
+                {t.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+      <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 8 }}>{active?.hint}</Text>
+    </View>
+  );
+}
+
 // ── StockSettings container ───────────────────────────────────────────────────
 
 function StockSettings({ accentColor, onReload }: { accentColor: string; onReload: () => void }) {
   return (
     <View style={{ gap: 16 }}>
+      {/* Tüketim kurulumu artık kenar çubuğunda ayrı bir sekme —
+          burada ikinci bir giriş noktası tutmuyoruz. */}
       <BrandsList accentColor={accentColor} onReload={onReload} />
       <CategoryList accentColor={accentColor} onReload={onReload} />
     </View>
@@ -2090,7 +2554,12 @@ function SuggestionsTab({
       return ratioA - ratioB;
     });
 
-  const totalEstimatedCost = suggestions.reduce((sum, s) => sum + s.estimatedCost, 0);
+  // Döviz-başına tahmini alım maliyeti (naif ₺ toplamı YASAK)
+  const estByCcy: Record<string, number> = {};
+  for (const s of suggestions) {
+    const c = itemCcy(s.item);
+    estByCcy[c] = (estByCcy[c] ?? 0) + (Number(s.estimatedCost) || 0);
+  }
 
   if (loadingConsumption) {
     return <ActivityIndicator size="large" color={accentColor} style={{ marginTop: 60 }} />;
@@ -2130,7 +2599,7 @@ function SuggestionsTab({
         accentColor={accentColor}
         eyebrow="Sipariş Önerisi"
         value={suggestions.length}
-        sub={`Tahmini toplam · ${totalEstimatedCost.toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 0 })}`}
+        sub={`Tahmini toplam · ${fmtCcyMap(estByCcy)}`}
         icon={ShoppingCart}
         stats={[
           { label: 'Tükendi',    value: emptyCnt,    icon: XCircle       },
@@ -2177,19 +2646,19 @@ function SuggestionsTab({
                 )}
               </View>
               <Text style={{ flex: 0.8, textAlign: 'center', fontSize: 13, fontWeight: isEmpty ? '700' : '500', color: isEmpty ? CHIP_TONES.danger.fg : DS.ink[700] }}>
-                {s.item.quantity}
+                {fmtQty(s.item.quantity)}
               </Text>
               <Text style={{ flex: 0.8, textAlign: 'center', fontSize: 13, color: DS.ink[500] }}>
-                {s.item.min_quantity}
+                {fmtQty(s.item.min_quantity)}
               </Text>
               <Text style={{ flex: 0.8, textAlign: 'center', fontSize: 13, fontWeight: '700', color: CHIP_TONES.danger.fg }}>
                 {s.missing}
               </Text>
               <Text style={{ flex: 1, textAlign: 'center', fontSize: 12, color: DS.ink[500] }}>
-                {s.item.unit_cost != null ? `${s.item.unit_cost.toLocaleString('tr-TR')} TL` : '-'}
+                {s.item.unit_cost != null ? `${s.item.unit_cost.toLocaleString('tr-TR')} ${curSym(itemCcy(s.item))}` : '-'}
               </Text>
               <Text style={{ flex: 1, textAlign: 'center', fontSize: 12, fontWeight: '600', color: DS.ink[900] }}>
-                {s.estimatedCost > 0 ? `${s.estimatedCost.toLocaleString('tr-TR')} TL` : '-'}
+                {s.estimatedCost > 0 ? `${s.estimatedCost.toLocaleString('tr-TR')} ${curSym(itemCcy(s.item))}` : '-'}
               </Text>
               <View style={{ flex: 1, alignItems: 'center' }}>
                 {s.daysRemaining === null ? (
@@ -2278,8 +2747,9 @@ function getAnalyticsRange(r: AnalyticsRange): { from: string; to: string } {
   return { from: `${yyyy}-01-01`, to: `${yyyy}-12-31` };
 }
 
-const fmt = (n: number) => n.toLocaleString('tr-TR', { maximumFractionDigits: 0 });
-const fmt1 = (n: number) => n.toLocaleString('tr-TR', { maximumFractionDigits: 1 });
+// Savunmacı: undefined/null/NaN → 0 (ham n.toLocaleString tekrarlayan çökme sebebi).
+const fmt = (n: number | null | undefined) => (Number(n) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 0 });
+const fmt1 = (n: number | null | undefined) => (Number(n) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 1 });
 
 function AnalyticsTab({ accentColor }: { accentColor: string }) {
   const { profile } = useAuthStore();
@@ -2894,7 +3364,7 @@ function ForecastTab({ items, accentColor }: { items: StockItem[]; accentColor: 
       {filtered.length === 0 ? (
         <View style={{ ...cardSolid, alignItems: 'center', paddingVertical: 48, gap: 12 }}>
           <CheckCircle size={36} color={DS.ink[200]} strokeWidth={1.2} />
-          <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[800] }}>Bu filtrede urun yok</Text>
+          <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[800] }}>Bu filtrede ürün yok</Text>
         </View>
       ) : (
         <View style={{ gap: 8 }}>
@@ -2925,7 +3395,7 @@ function ForecastTab({ items, accentColor }: { items: StockItem[]; accentColor: 
                     </View>
                     <View style={{ flexDirection: 'row', gap: 12 }}>
                       <Text style={{ fontSize: 12, color: DS.ink[500] }}>
-                        Stok: <Text style={{ fontWeight: '600', color: DS.ink[800] }}>{f.item.quantity} {f.item.unit || 'adet'}</Text>
+                        Stok: <Text style={{ fontWeight: '600', color: DS.ink[800] }}>{fmtQty(f.item.quantity)} {f.item.unit || 'adet'}</Text>
                       </Text>
                       <Text style={{ fontSize: 12, color: DS.ink[500] }}>
                         Gunluk tuketim: <Text style={{ fontWeight: '600', color: DS.ink[800] }}>{f.dailyRate.toFixed(1)}</Text>
@@ -2935,7 +3405,7 @@ function ForecastTab({ items, accentColor }: { items: StockItem[]; accentColor: 
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
                         <ShoppingCart size={11} color={CHIP_TONES.info.fg} strokeWidth={1.6} />
                         <Text style={{ fontSize: 11, color: CHIP_TONES.info.fg }}>
-                          Bekleyen siparisler icin tahmini ihtiyac: <Text style={{ fontWeight: '600' }}>{f.upcomingNeed.toFixed(1)}</Text>
+                          Bekleyen siparişler için tahmini ihtiyaç: <Text style={{ fontWeight: '600' }}>{f.upcomingNeed.toFixed(1)}</Text>
                         </Text>
                       </View>
                     )}
@@ -3042,12 +3512,16 @@ function CostTab({ items, accentColor }: CostTabProps) {
     else if (sortBy === 'cost') rows.sort((a, b) => (b.unit_cost ?? 0) - (a.unit_cost ?? 0));
     else                        rows.sort((a, b) => a.name.localeCompare(b.name, 'tr'));
 
-    const totalStockValue = rows.reduce((sum, r) => sum + r.totalValue, 0);
-    const avgUnitCost = rows.length > 0 ? rows.reduce((s, r) => s + (r.unit_cost ?? 0), 0) / rows.length : 0;
+    // Döviz-başına toplam değer (naif ₺ toplamı YASAK — kalemler EUR/₺ karışık)
+    const valueByCcy: Record<string, number> = {};
+    for (const r of rows) {
+      const c = itemCcy(r);
+      valueByCcy[c] = (valueByCcy[c] ?? 0) + (Number(r.totalValue) || 0);
+    }
     const highestValueItem = rows[0] ?? null;
     const costIncreased = rows.filter(r => r.costChange != null && r.costChange > 0).length;
 
-    return { rows, totalStockValue, avgUnitCost, highestValueItem, costIncreased };
+    return { rows, valueByCcy, highestValueItem, costIncreased };
   }, [items, priceHistory, sortBy]);
 
   // Selected item price history for mini chart
@@ -3056,7 +3530,7 @@ function CostTab({ items, accentColor }: CostTabProps) {
     return priceHistory.filter(h => h.item_id === selectedItem);
   }, [selectedItem, priceHistory]);
 
-  const fmt = (n: number) => n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmt = (n: number | null | undefined) => (Number(n) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   // ── Patterns design tokens ──
   const PCard = {
@@ -3076,8 +3550,8 @@ function CostTab({ items, accentColor }: CostTabProps) {
       <StockHeroCard
         accentColor={accentColor}
         eyebrow="Toplam Stok Değeri"
-        value={`${fmt(costData.totalStockValue)} ₺`}
-        sub={`Ort. birim maliyet · ${fmt(costData.avgUnitCost)} ₺`}
+        value={fmtCcyMap(costData.valueByCcy)}
+        sub={`${costData.rows.length} kalem · döviz-başına`}
         icon={Layers}
         stats={[
           { label: 'Fiyat Artan',   value: costData.costIncreased,     icon: TrendingUp },
@@ -3122,7 +3596,7 @@ function CostTab({ items, accentColor }: CostTabProps) {
           backgroundColor: '#FAFAFA',
           borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)',
         }}>
-          <Text style={{ ...colHeader, flex: 1 }}>URUN</Text>
+          <Text style={{ ...colHeader, flex: 1 }}>ÜRÜN</Text>
           {isDesktop && <Text style={{ ...colHeader, width: 100 }}>KATEGORI</Text>}
           <Text style={{ ...colHeader, width: 100, textAlign: 'right' }}>BIRIM MALIYET</Text>
           <Text style={{ ...colHeader, width: 80, textAlign: 'right' }}>MIKTAR</Text>
@@ -3151,13 +3625,13 @@ function CostTab({ items, accentColor }: CostTabProps) {
               <Text style={{ width: 100, fontSize: 12, color: DS.ink[500] }} numberOfLines={1}>{item.category || '—'}</Text>
             )}
             <Text style={{ width: 100, textAlign: 'right', fontSize: 13, fontWeight: '600', color: DS.ink[900] }}>
-              {item.unit_cost != null && item.unit_cost > 0 ? `${fmt(item.unit_cost)}` : '—'}
+              {item.unit_cost != null && item.unit_cost > 0 ? `${fmt(item.unit_cost)} ${curSym(itemCcy(item))}` : '—'}
             </Text>
             <Text style={{ width: 80, textAlign: 'right', fontSize: 13, color: DS.ink[700] }}>
-              {item.quantity} {item.unit || ''}
+              {fmtQtyDual(item.quantity, item.unit, item.pack_size, item.content_unit)}
             </Text>
             <Text style={{ width: 110, textAlign: 'right', fontSize: 13, fontWeight: '700', color: item.totalValue > 0 ? '#059669' : DS.ink[400] }}>
-              {item.totalValue > 0 ? `${fmt(item.totalValue)} TL` : '—'}
+              {item.totalValue > 0 ? `${fmt(item.totalValue)} ${curSym(itemCcy(item))}` : '—'}
             </Text>
             {isDesktop && (
               <View style={{ width: 80, alignItems: 'center' }}>
@@ -3199,10 +3673,10 @@ function CostTab({ items, accentColor }: CostTabProps) {
           {isDesktop && <View style={{ width: 100 }} />}
           <View style={{ width: 100 }} />
           <Text style={{ width: 80, textAlign: 'right', fontSize: 13, fontWeight: '600', color: DS.ink[700] }}>
-            {items.length} urun
+            {items.length} ürün
           </Text>
-          <Text style={{ width: 110, textAlign: 'right', fontSize: 14, fontWeight: '800', color: '#059669' }}>
-            {fmt(costData.totalStockValue)} TL
+          <Text style={{ minWidth: 110, textAlign: 'right', fontSize: 13, fontWeight: '800', color: '#059669' }} numberOfLines={1}>
+            {fmtCcyMap(costData.valueByCcy)}
           </Text>
           {isDesktop && <View style={{ width: 80 }} />}
         </View>
@@ -3259,9 +3733,9 @@ function CostTab({ items, accentColor }: CostTabProps) {
                 <Text style={{ flex: 1, fontSize: 12, color: DS.ink[700] }}>
                   {new Date(h.created_at).toLocaleDateString(localeTag(), { day: '2-digit', month: '2-digit', year: 'numeric' })}
                 </Text>
-                <Text style={{ width: 80, textAlign: 'right', fontSize: 12, color: DS.ink[700] }}>{h.quantity}</Text>
-                <Text style={{ width: 100, textAlign: 'right', fontSize: 12, fontWeight: '600', color: DS.ink[900] }}>{fmt(h.unit_cost)} TL</Text>
-                <Text style={{ width: 100, textAlign: 'right', fontSize: 12, fontWeight: '600', color: '#059669' }}>{fmt(h.unit_cost * h.quantity)} TL</Text>
+                <Text style={{ width: 80, textAlign: 'right', fontSize: 12, color: DS.ink[700] }}>{fmtQty(h.quantity)}</Text>
+                <Text style={{ width: 100, textAlign: 'right', fontSize: 12, fontWeight: '600', color: DS.ink[900] }}>{fmt(h.unit_cost)} {curSym(itemCcy(items.find(it => it.id === selectedItem)))}</Text>
+                <Text style={{ width: 100, textAlign: 'right', fontSize: 12, fontWeight: '600', color: '#059669' }}>{fmt(h.unit_cost * h.quantity)} {curSym(itemCcy(items.find(it => it.id === selectedItem)))}</Text>
               </View>
             ))}
           </View>
@@ -3411,9 +3885,9 @@ function LocationsTab({ items, accentColor, onEditProduct, canEdit = true }: Loc
           {locationGroups.length === 0 ? (
             <View style={{ ...cardSolid, alignItems: 'center', paddingVertical: 48, gap: 12 }}>
               <MapPin size={36} color={DS.ink[200]} strokeWidth={1.2} />
-              <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[800] }}>Lokasyon bulunamadi</Text>
+              <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[800] }}>Lokasyon bulunamadı</Text>
               <Text style={{ fontSize: 13, color: DS.ink[400], textAlign: 'center', maxWidth: 280 }}>
-                {'Urunlere lokasyon atamak icin urun duzenle ekranindan "Lokasyon / Raf" alanini doldurun.'}
+                {'Ürünlere lokasyon atamak için ürün düzenle ekranından "Lokasyon / Raf" alanını doldurun.'}
               </Text>
             </View>
           ) : locationGroups.map(([loc, locItems]) => {
@@ -3443,7 +3917,7 @@ function LocationsTab({ items, accentColor, onEditProduct, canEdit = true }: Loc
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 15, fontWeight: '600', color: DS.ink[900] }}>{label}</Text>
                     <View style={{ flexDirection: 'row', gap: 10, marginTop: 2 }}>
-                      <Text style={{ fontSize: 11, color: DS.ink[400] }}>{locItems.length} urun</Text>
+                      <Text style={{ fontSize: 11, color: DS.ink[400] }}>{locItems.length} ürün</Text>
                       {criticalInLoc > 0 && (
                         <Text style={{ fontSize: 11, color: CHIP_TONES.warning.fg }}>{criticalInLoc} kritik</Text>
                       )}
@@ -3520,7 +3994,7 @@ function LocationsTab({ items, accentColor, onEditProduct, canEdit = true }: Loc
             borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)',
           }}>
             <Text style={{ ...colHeader, width: 120 }}>LOKASYON</Text>
-            <Text style={{ ...colHeader, flex: 1 }}>URUN</Text>
+            <Text style={{ ...colHeader, flex: 1 }}>ÜRÜN</Text>
             <Text style={{ ...colHeader, width: 100 }}>KATEGORI</Text>
             <Text style={{ ...colHeader, width: 130 }}>BARKOD</Text>
             <Text style={{ ...colHeader, width: 90, textAlign: 'right' }}>MIKTAR</Text>
@@ -3579,7 +4053,7 @@ function LocationsTab({ items, accentColor, onEditProduct, canEdit = true }: Loc
           {locationGroups.length === 0 && (
             <View style={{ padding: 32, alignItems: 'center', gap: 8 }}>
               <MapPin size={28} color={DS.ink[200]} strokeWidth={1.2} />
-              <Text style={{ fontSize: 13, color: DS.ink[400] }}>Sonuc bulunamadi</Text>
+              <Text style={{ fontSize: 13, color: DS.ink[400] }}>Sonuç bulunamadı</Text>
             </View>
           )}
         </View>
@@ -3592,27 +4066,7 @@ function LocationsTab({ items, accentColor, onEditProduct, canEdit = true }: Loc
 
 import { HubContext } from '../../../core/ui/HubContext';
 import { Settings } from 'lucide-react-native';
-
-interface StockTabDef {
-  key:    TabKey;
-  label:  string;
-  icon:   React.ComponentType<any>;
-  accent: string;
-  hint:   string;
-}
-
-const STOCK_TABS: StockTabDef[] = [
-  { key: 'dashboard',   label: 'Dashboard',     icon: Grid3x3,       accent: '#0F172A', hint: 'Genel bakış, özet ve kritik durumlar'          },
-  { key: 'list',        label: 'Ürünler',       icon: Package,       accent: '#2563EB', hint: 'Ürün listesi, kategori ve stok seviyeleri'     },
-  { key: 'movements',   label: 'Hareketler',    icon: ArrowLeftRight,accent: '#EA7A4C', hint: 'Giriş, çıkış ve fire hareketleri'             },
-  { key: 'suggestions', label: 'Sipariş Öner',  icon: ShoppingCart,  accent: '#D97706', hint: 'Kritik stoklar için otomatik sipariş önerisi'  },
-  { key: 'analytics',   label: 'Analiz',        icon: BarChart3,     accent: '#0EA5E9', hint: 'Tüketim ve fire analizi'                      },
-  { key: 'locations',   label: 'Lokasyon',      icon: MapPin,        accent: '#8B5CF6', hint: 'Raf, bölüm ve barkod yönetimi'                },
-  { key: 'cost',        label: 'Maliyet',       icon: Layers,        accent: '#059669', hint: 'Stok değeri ve fiyat geçmişi'                 },
-  { key: 'forecast',    label: 'Tahmin',        icon: TrendingUp,    accent: '#DC2626', hint: 'Tüketim hızına göre bitiş tahmini'            },
-  { key: 'material_requests', label: 'Malzeme Talepleri', icon: Inbox, accent: '#D97706', hint: 'Teknisyen ve mesul müdür sarf/alet talepleri' },
-  { key: 'settings',    label: 'Ayarlar',       icon: Settings,      accent: '#6B7280', hint: 'Kategori, marka ve genel yapılandırma'        },
-];
+import { PAGE_PADDING, PAGE_BLEED } from '../../../core/ui/pageMetrics';
 
 const SIDEBAR_ACCENT = '#F5C24B';
 
@@ -3638,25 +4092,46 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
 
   // ── URL ?tab=... ile sync — refresh sonra aynı sekmede kalır ────────────
   const router = useRouter();
-  const params = useLocalSearchParams<{ tab?: string }>();
-  const VALID_TABS: TabKey[] = ['dashboard','list','movements','suggestions','analytics','locations','cost','forecast','material_requests','settings'];
-  const initialTab = (typeof params.tab === 'string' && (VALID_TABS as string[]).includes(params.tab))
-    ? params.tab as TabKey
-    : 'dashboard';
-  const [tab, setTabRaw] = useState<TabKey>(initialTab);
+  const params = useLocalSearchParams<{ tab?: string; sub?: string }>();
+  const VALID_TABS: TabKey[] = STOCK_TABS.map(t => t.key);
+
+  /** Eski anahtarları yeni sekme+alt sekmeye çevirir (kayıtlı linkler kırılmasın) */
+  const resolveTab = (raw?: string | null, rawSub?: string | null): { tab: TabKey; sub: string | null } => {
+    if (raw && (VALID_TABS as string[]).includes(raw)) {
+      return { tab: raw as TabKey, sub: rawSub ?? null };
+    }
+    const legacy = raw ? LEGACY_TAB_MAP[raw] : undefined;
+    if (legacy) return { tab: legacy.tab, sub: rawSub ?? legacy.sub ?? null };
+    return { tab: 'dashboard', sub: null };
+  };
+
+  const initial = resolveTab(
+    typeof params.tab === 'string' ? params.tab : null,
+    typeof params.sub === 'string' ? params.sub : null,
+  );
+  const [tab, setTabRaw] = useState<TabKey>(initial.tab);
+  const [sub, setSubRaw] = useState<string | null>(initial.sub);
 
   // URL değişirse state'i senkronla (browser back/forward)
   useEffect(() => {
-    const t = typeof params.tab === 'string' ? params.tab : null;
-    if (t && (VALID_TABS as string[]).includes(t) && t !== tab) {
-      setTabRaw(t as TabKey);
-    }
+    const r = resolveTab(
+      typeof params.tab === 'string' ? params.tab : null,
+      typeof params.sub === 'string' ? params.sub : null,
+    );
+    if (r.tab !== tab) setTabRaw(r.tab);
+    if (r.sub !== sub) setSubRaw(r.sub);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.tab]);
+  }, [params.tab, params.sub]);
 
   const setTab = useCallback((k: TabKey) => {
     setTabRaw(k);
-    try { router.setParams({ tab: k } as any); } catch {}
+    setSubRaw(null);   // yeni sekmenin ilk alt görünümüne dön
+    try { router.setParams({ tab: k, sub: undefined } as any); } catch {}
+  }, [router]);
+
+  const setSub = useCallback((k: string) => {
+    setSubRaw(k);
+    try { router.setParams({ sub: k } as any); } catch {}
   }, [router]);
 
   // Yetki kontrolleri — tab/kolon görünürlüğü için
@@ -3668,13 +4143,11 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
   const canManageStock    = can('manage_stock');
 
   // Yetkisiz tab'ları filtrele
-  const visibleTabs = STOCK_TABS.filter(t => {
-    if (t.key === 'cost'      && !canViewCost) return false;
-    if (t.key === 'forecast'  && !canViewForecast) return false;
-    if (t.key === 'locations' && !canViewLocations) return false;
-    if (t.key === 'settings'  && !canManageStockSet) return false;
-    return true;
-  });
+  const visibleTabs = STOCK_TABS.filter(t => isTabVisible(t.key, can));
+
+  // Aktif sekmenin alt sekmeleri (yetkiye göre süzülmüş) ve seçili olan
+  const subTabs = (SUBTABS[tab] ?? []).filter(st => isSubTabVisible(tab, st.key, can));
+  const activeSub = subTabs.find(st => st.key === sub)?.key ?? subTabs[0]?.key ?? null;
 
   // Aktif tab erişilemiyorsa dashboard'a düş
   useEffect(() => {
@@ -3722,15 +4195,17 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
       const since = new Date(); since.setDate(since.getDate() - 30);
       const sinceISO = since.toISOString();
 
+      // lab_id filtresi — RLS'e ek savunma + brands/categories tüm lab'ları göstermesin
+      const withLab = (q: any) => (labId ? q.eq('lab_id', labId) : q);
       const [itemsRes, brandsRes, catsRes, wasteRes] = await Promise.all([
-        supabase.from('stock_items').select('*').order('name'),
-        supabase.from('brands').select('name').order('name'),
-        supabase.from('categories').select('name').order('name'),
-        supabase
+        withLab(supabase.from('stock_items').select('*')).order('name'),
+        withLab(supabase.from('brands').select('name')).order('name'),
+        withLab(supabase.from('categories').select('name')).order('name'),
+        withLab(supabase
           .from('stock_movements')
           .select('item_id, quantity, unit_cost_at_time')
           .eq('type', 'WASTE')
-          .gte('created_at', sinceISO),
+          .gte('created_at', sinceISO)),
       ]);
       if (itemsRes.error) {
         if (itemsRes.error.code === '42P01' || itemsRes.error.message?.includes('does not exist')) setTableExists(false);
@@ -3814,7 +4289,7 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
 
   // ── CTA button config ──
   const showCta = (tab === 'dashboard' || tab === 'list' || tab === 'movements') && canManageStock;
-  const ctaLabel = tab === 'movements' ? 'Yeni Hareket' : 'Yeni Urun';
+  const ctaLabel = tab === 'movements' ? 'Yeni Hareket' : 'Yeni Ürün';
   const ctaAction = () => {
     if (!canManageStock) return;
     if (tab === 'movements') setMovModal({ visible: true, item: null });
@@ -3823,40 +4298,58 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
 
   // ── Tab content renderer ──
   const renderContent = () => {
+    const spin = <ActivityIndicator size="large" color={accentColor} style={{ marginTop: 60 }} />;
+
     // Yetkisiz tab → erişim yok mesajı (URL ile direkt navigasyonu engelle)
-    if (tab === 'cost'      && !canViewCost)      return <NoAccessView accentColor={accentColor} />;
-    if (tab === 'forecast'  && !canViewForecast)  return <NoAccessView accentColor={accentColor} />;
-    if (tab === 'locations' && !canViewLocations) return <NoAccessView accentColor={accentColor} />;
-    if (tab === 'settings'  && !canManageStockSet) return <NoAccessView accentColor={accentColor} />;
-    if (tab === 'settings') return <StockSettings accentColor={accentColor} onReload={load} />;
-    if (tab === 'dashboard') return loading
-      ? <ActivityIndicator size="large" color={accentColor} style={{ marginTop: 60 }} />
+    if (!isTabVisible(tab, can)) return <NoAccessView accentColor={accentColor} />;
+    if (activeSub && !isSubTabVisible(tab, activeSub, can)) return <NoAccessView accentColor={accentColor} />;
+
+    if (tab === 'dashboard') return loading ? spin
       : <StockDashboard items={items} accentColor={accentColor}
           onMovement={(item, dt) => { if (canManageStock) setMovModal({ visible: true, item, defaultType: dt }); }}
           onAddProduct={() => { if (canManageStock) setProductModal({ visible: true, item: null }); }}
           onEditProduct={item => { if (canManageStock) setProductModal({ visible: true, item }); }} />;
     if (tab === 'movements') return <StockMovementsScreen accentColor={accentColor} />;
-    if (tab === 'suggestions') return loading
-      ? <ActivityIndicator size="large" color={accentColor} style={{ marginTop: 60 }} />
-      : <SuggestionsTab items={items} accentColor={accentColor} onMovement={(item, dt) => { if (canManageStock) setMovModal({ visible: true, item, defaultType: dt }); }} />;
     if (tab === 'analytics') return <AnalyticsTab accentColor={accentColor} />;
-    if (tab === 'locations') return loading
-      ? <ActivityIndicator size="large" color={accentColor} style={{ marginTop: 60 }} />
-      : <LocationsTab items={items} accentColor={accentColor} canEdit={can('manage_stock') || can('manage_stock_locations')} onEditProduct={item => setProductModal({ visible: true, item })} />;
-    if (tab === 'cost') return loading
-      ? <ActivityIndicator size="large" color={accentColor} style={{ marginTop: 60 }} />
-      : <CostTab items={items} accentColor={accentColor} />;
-    if (tab === 'forecast') return loading
-      ? <ActivityIndicator size="large" color={accentColor} style={{ marginTop: 60 }} />
-      : <ForecastTab items={items} accentColor={accentColor} />;
     if (tab === 'material_requests') return <MaterialRequestsScreen />;
+
+    // ── Sipariş & Tahmin — üç yöntem, aynı soru ──
+    if (tab === 'orders') {
+      if (loading) return spin;
+      if (activeSub === 'forecast') return <ForecastTab items={items} accentColor={accentColor} />;
+      if (activeSub === 'fifo')     return <FifoReorderScreen accentColor={accentColor} embedded view="reorder" />;
+      return <SuggestionsTab items={items} accentColor={accentColor}
+        onMovement={(item, dt) => { if (canManageStock) setMovModal({ visible: true, item, defaultType: dt }); }} />;
+    }
+
+    // ── Maliyet — değer FIFO katmanlarından, geçmiş alış hareketlerinden ──
+    if (tab === 'cost') {
+      if (loading) return spin;
+      if (activeSub === 'history') return <CostTab items={items} accentColor={accentColor} />;
+      return <FifoReorderScreen accentColor={accentColor} embedded view="fifo" />;
+    }
+
+    // ── Kurulum — genel ayarlar + miktarsız tüketim akışının adımları ──
+    if (tab === 'setup') {
+      if (activeSub === 'material_mapping')       return <MaterialMappingScreen accentColor={accentColor} embedded />;
+      if (activeSub === 'consumption_profile')    return <ConsumptionProfileScreen accentColor={accentColor} embedded />;
+      if (activeSub === 'inventory_verification') return <InventoryVerificationScreen accentColor={accentColor} embedded />;
+      if (activeSub === 'consumption_audit')      return <ConsumptionAuditScreen accentColor={accentColor} embedded />;
+      return <StockSettings accentColor={accentColor} onReload={load} />;
+    }
+
+    // ── Ürünler: liste ile raf yerleşimi ──
+    if (tab === 'list' && activeSub === 'locations') return loading ? spin
+      : <LocationsTab items={items} accentColor={accentColor}
+          canEdit={can('manage_stock') || can('manage_stock_locations')}
+          onEditProduct={item => setProductModal({ visible: true, item })} />;
 
     // list tab (default)
     if (loading) return <ActivityIndicator size="large" color={accentColor} style={{ marginTop: 60 }} />;
     if (!tableExists) return (
       <View style={{ alignItems: 'center', paddingTop: 60, gap: 10 }}>
         <DatabaseZap size={40} color={T.ink3} strokeWidth={1.2} />
-        <Text style={{ fontSize: 16, fontWeight: '700', color: T.ink }}>Stok modulu kurulmadi</Text>
+        <Text style={{ fontSize: 16, fontWeight: '700', color: T.ink }}>Stok modülü kurulmadı</Text>
         <Text style={{ fontSize: 13, color: T.ink3 }}>{'Supabase\'de "stock_items" tablosu olusturuldugunda veriler gorunur.'}</Text>
       </View>
     );
@@ -4105,7 +4598,7 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
                               {(wasteMap[item.id]?.cost ?? 0) > 0 && (
                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 9999, backgroundColor: CHIP_TONES.danger.bg }}>
                                   <Flame size={8} color={CHIP_TONES.danger.fg} strokeWidth={2} />
-                                  <Text style={{ fontSize: 9, fontWeight: '600', color: CHIP_TONES.danger.fg, letterSpacing: 0.3 }}>{Math.round(wasteMap[item.id].cost).toLocaleString('tr-TR')} ₺</Text>
+                                  <Text style={{ fontSize: 9, fontWeight: '600', color: CHIP_TONES.danger.fg, letterSpacing: 0.3 }}>{Math.round(wasteMap[item.id].cost).toLocaleString('tr-TR')} {curSym(itemCcy(item))}</Text>
                                 </View>
                               )}
                             </View>
@@ -4278,7 +4771,7 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
           {/* ── Desktop Content ──────────────────────────────────── */}
           <View style={{ flex: 1, overflow: 'hidden' }}>
             {/* Title bar — Patterns Display 300 */}
-            <View style={{ paddingHorizontal: 28, paddingTop: 18, paddingBottom: 10, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+            <View style={{ paddingHorizontal: 16, paddingTop: 18, paddingBottom: 10, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 11, fontWeight: '600', color: T.ink3, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 }}>
                   Stok &amp; Depo
@@ -4317,9 +4810,18 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
               )}
             </View>
 
+            {subTabs.length > 1 && activeSub ? (
+              <SubTabStrip
+                tabs={subTabs}
+                value={activeSub}
+                onChange={setSub}
+                numbered={tab === 'setup'}
+              />
+            ) : null}
+
             <HubContext.Provider value={true}>
               <ScrollView
-                contentContainerStyle={{ padding: 20, paddingTop: 8, paddingBottom: 120 }}
+                contentContainerStyle={{ padding: PAGE_PADDING, paddingTop: 8, paddingBottom: 120 }}
                 showsVerticalScrollIndicator={false}
               >
                 {renderContent()}
@@ -4330,7 +4832,7 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
         </View>
       ) : (
         /* ── Mobile: full-width content ─────────────────────────── */
-        <View style={{ flex: 1, paddingHorizontal: 12, paddingTop: 4 }}>
+        <View style={{ flex: 1, paddingHorizontal: PAGE_PADDING, paddingTop: 4 }}>
           {/* Mobile CTA */}
           {showCta && (
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 10 }}>
@@ -4347,6 +4849,17 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
               </Pressable>
             </View>
           )}
+          {subTabs.length > 1 && activeSub ? (
+            <View style={{ marginHorizontal: PAGE_BLEED }}>
+              <SubTabStrip
+                tabs={subTabs}
+                value={activeSub}
+                onChange={setSub}
+                numbered={tab === 'setup'}
+              />
+            </View>
+          ) : null}
+
           <HubContext.Provider value={true}>
             <ScrollView
               contentContainerStyle={{ paddingBottom: 120 }}
@@ -4366,6 +4879,7 @@ export function StockScreen({ accentColor: panelAccent }: StockScreenProps = {})
         accentColor={accentColor}
         existingCategories={dbCategories}
         existingBrands={brands}
+        labId={labId}
         onClose={() => setProductModal({ visible: false, item: null })}
         onSaved={load}
       />

@@ -7,6 +7,7 @@
  * Tüm paneller (lab, admin, doctor, clinic) aynı ekranı kullanır.
  */
 import React, { useState, useEffect, useCallback } from 'react';
+import { safeBack } from '../../../core/util/safeBack';
 import { useTranslation } from 'react-i18next';
 import { View, Text, ScrollView, Pressable, useWindowDimensions, Modal, Platform } from 'react-native';
 import { useSegments, useRouter, useLocalSearchParams } from 'expo-router';
@@ -29,6 +30,7 @@ import { LogsSection } from '../sections/LogsSection';
 import { CurrencyRatesScreen } from './CurrencyRatesScreen';
 import { SuppliersScreen } from '../../suppliers/screens/SuppliersScreen';
 import { PermissionsScreen } from '../../admin/permissions/PermissionsScreen';
+import { WorkflowStudioScreen } from '../../triage/screens/WorkflowStudioScreen';
 import { EquipmentSection } from '../sections/EquipmentSection';
 import { WorkHoursSection } from '../sections/WorkHoursSection';
 import { MOBILE_PANEL_THEMES } from '../../../core/theme/mobileDesignTokens';
@@ -44,7 +46,8 @@ const DISPLAY = {
 type SectionKey =
   | 'profile' | 'notifications' | 'general'
   | 'users'   | 'checkin'    | 'stations'      | 'integrations' | 'logs'
-  | 'permissions' | 'equipment' | 'currency' | 'suppliers' | 'workhours';
+  | 'permissions' | 'equipment' | 'currency' | 'suppliers' | 'workhours'
+  | 'workflows';
 
 type PanelKind = 'lab' | 'admin' | 'doctor' | 'clinic' | 'station';
 
@@ -54,6 +57,9 @@ interface NavItem {
   sub:   string;
   /** If set, only show this tab when user has this permission */
   requiresPermission?: string;
+  /** Sol menüde hangi başlık altında görünsün. Boşsa öncekinin grubuna girer.
+      13 madde düz liste hâlindeyken "hangi ayar nerede" taranarak bulunuyordu. */
+  group?: string;
 }
 
 // ── Panel accent mapping ─────────────────────────────────────────────────
@@ -91,25 +97,36 @@ function detectPanel(segments: string[]): PanelKind {
 
 // ── Nav items ────────────────────────────────────────────────────────────
 const ACCOUNT_ITEMS: NavItem[] = [
-  { key: 'profile',       label: 'Profil',      sub: 'Kişisel bilgiler ve güvenlik' },
+  { key: 'profile',       label: 'Profil',      sub: 'Kişisel bilgiler ve güvenlik', group: 'Hesap' },
   { key: 'notifications', label: 'Bildirimler', sub: 'Uyarı ve bildirim tercihleri' },
   { key: 'general',       label: 'Genel',       sub: 'Dil, saat dilimi, format'     },
 ];
 
 const LAB_ITEMS: NavItem[] = [
-  { key: 'users',        label: 'Kullanıcılar',  sub: 'Personel ve stage yetkileri',  requiresPermission: 'manage_users'    },
+  // ── Organizasyon: kim, hangi yetkiyle, hangi düzende çalışıyor ──
+  { key: 'users',        label: 'Kullanıcılar',  sub: 'Personel ve stage yetkileri',  requiresPermission: 'manage_users',    group: 'Organizasyon' },
   { key: 'permissions',  label: 'Yetkiler',      sub: 'Rol bazli erisim yonetimi',    requiresPermission: 'manage_settings' },
-  { key: 'checkin',      label: 'QR Check-in',   sub: 'Mesai takip ayarları',         requiresPermission: 'manage_settings' },
-  { key: 'stations',     label: 'İstasyonlar',   sub: 'Üretim aşamaları',             requiresPermission: 'manage_settings' },
   { key: 'workhours',    label: 'Çalışma Saatleri', sub: 'Vardiya, öğle, eşzamanlı iş', requiresPermission: 'manage_settings' },
+  { key: 'checkin',      label: 'QR Check-in',   sub: 'Mesai takip ayarları',         requiresPermission: 'manage_settings' },
+  // ── Operasyon: üretim ve para akışını yapılandıran ayarlar ──
+  { key: 'stations',     label: 'İstasyonlar',   sub: 'Üretim aşamaları',             requiresPermission: 'manage_settings', group: 'Operasyon' },
   { key: 'currency',     label: 'Döviz Kurları',  sub: 'EUR/USD/GBP kur yönetimi',     requiresPermission: 'manage_settings' },
   { key: 'integrations', label: 'Entegrasyonlar', sub: 'e-Fatura & POS ayarları',     requiresPermission: 'manage_settings' },
-  { key: 'logs',         label: 'Loglar',         sub: 'Sistem aktivite kayıtları',   requiresPermission: 'manage_settings' },
+  // ── Sistem: gözlem ──
+  // NOT: "WhatsApp Destek" buradan CIKARILDI — ayar degil, gunluk operasyon
+  // ekrani. Artik kenar cubugunda Destek'in yaninda kendi girdisi var.
+  { key: 'logs',         label: 'Loglar',         sub: 'Sistem aktivite kayıtları',   requiresPermission: 'manage_settings', group: 'Sistem' },
+];
+
+/** Yalnız admin panelinde: İş Akışları kenar çubuğundan buraya taşındı.
+    Lab panelinde hâlâ kenar çubuğunda durduğu için orada tekrar gösterilmez. */
+const ADMIN_ONLY_ITEMS: NavItem[] = [
+  { key: 'workflows', label: 'İş Akışları', sub: 'Üretim akışı tasarımcısı', requiresPermission: 'manage_settings', group: 'Gelişmiş' },
 ];
 
 function getNavItems(panel: PanelKind): NavItem[] {
   if (panel === 'lab' || panel === 'admin') {
-    return [...ACCOUNT_ITEMS, ...LAB_ITEMS];
+    return [...ACCOUNT_ITEMS, ...LAB_ITEMS, ...(panel === 'admin' ? ADMIN_ONLY_ITEMS : [])];
   }
   // station/doctor/clinic — sadece hesap (Profil + Bildirimler + Genel)
   return ACCOUNT_ITEMS;
@@ -137,7 +154,7 @@ export function SettingsHubScreen({
   const params = useLocalSearchParams<{ tab?: string }>();
   const VALID_KEYS: SectionKey[] = [
     'profile','notifications','general','users','checkin','stations',
-    'integrations','logs','permissions','equipment','currency','suppliers',
+    'integrations','logs','permissions','equipment','currency','suppliers','workflows','workhours',
   ];
   const initialFromUrl = typeof params.tab === 'string' && (VALID_KEYS as string[]).includes(params.tab)
     ? params.tab as SectionKey
@@ -209,7 +226,7 @@ export function SettingsHubScreen({
           }}
         >
           <Pressable
-            onPress={() => { try { router.back(); } catch {} }}
+            onPress={() => { try { safeBack('/'); } catch {} }}
             style={({ pressed }: any) => ({
               width: 36, height: 36, borderRadius: 18,
               alignItems: 'center', justifyContent: 'center',
@@ -372,23 +389,37 @@ export function SettingsHubScreen({
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{ gap: 2, paddingHorizontal: 8 }}
           >
-            {navItems.map(item => {
+            {navItems.map((item, idx) => {
               const isActive = active === item.key;
+              // Grup başlığı: yalnız `group` tanımlı olan ilk maddede basılır;
+              // sonrakiler bir öncekinin grubuna girer.
+              const header = item.group && item.group !== navItems[idx - 1]?.group ? item.group : null;
               return (
+                <React.Fragment key={item.key}>
+                {header && (
+                  <Text style={{
+                    fontSize: 9.5, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase',
+                    color: 'rgba(15,23,42,0.35)',
+                    paddingHorizontal: 14, marginTop: idx === 0 ? 0 : 14, marginBottom: 4,
+                  }}>
+                    {header}
+                  </Text>
+                )}
                 <Pressable
-                  key={item.key}
                   onPress={() => setActive(item.key)}
-                  style={{
+                  style={({ hovered, pressed }: any) => ({
                     flexDirection: 'row',
                     alignItems: 'center',
                     gap: 10,
                     paddingHorizontal: 14,
                     paddingVertical: 10,
                     borderRadius: 12,
-                    backgroundColor: isActive ? '#FFFFFF' : 'transparent',
-                    // @ts-ignore web
-                    cursor: 'pointer',
-                  }}
+                    backgroundColor: isActive ? '#FFFFFF' : hovered ? 'rgba(15,23,42,0.04)' : 'transparent',
+                    opacity: pressed ? 0.7 : 1,
+                    ...(Platform.OS === 'web'
+                      ? { cursor: 'pointer', transitionProperty: 'background-color', transitionDuration: '120ms' } as any
+                      : null),
+                  })}
                 >
                   {isActive && (
                     <View
@@ -407,6 +438,7 @@ export function SettingsHubScreen({
                     {navLabel(item.key)}
                   </Text>
                 </Pressable>
+                </React.Fragment>
               );
             })}
           </ScrollView>
@@ -475,6 +507,7 @@ export function SettingsHubScreen({
               {active === 'integrations' && <IntegrationsScreen accentColor={accent} />}
               {active === 'logs' && <LogsSection accentColor={accent} />}
               {active === 'permissions' && <PermissionsScreen embedded accentColor={accent} />}
+              {active === 'workflows' && <WorkflowStudioScreen embedded />}
             </View>
           </HubContext.Provider>
         </View>

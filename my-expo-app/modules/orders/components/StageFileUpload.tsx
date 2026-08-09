@@ -4,12 +4,12 @@
 // tablosunu okur/yazar. Bir yerde yüklenen dosya tüm yerlerde aynı görünür.
 // Caption = kategori etiketi (Ekartörlü Resim / Üst Çene / vb).
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, Platform, Linking, Modal, Image } from 'react-native';
 import { useSegments } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-import { FileUp, FileText, Image as ImageIcon, FileBox, Eye, Trash2, UploadCloud, Download, UserCheck, Clock as ClockIcon } from 'lucide-react-native';
+import { FileUp, FileText, Image as ImageIcon, FileBox, Eye, Trash2, UploadCloud, Download, UserCheck, Clock as ClockIcon, ChevronDown } from 'lucide-react-native';
 import { supabase } from '../../../core/api/supabase';
 import { useStationTheme, hexA } from '../../../core/theme/stationPalette';
 import { toast } from '../../../core/ui/Toast';
@@ -23,6 +23,18 @@ import { ActivityIndicator } from '../../../core/ui/teethCompat';
 
 // Viewer3D — tek paylaşılan lazy (retry'lı; Metro dev async-chunk {} sorununa dayanıklı)
 import { Viewer3DModalLazy as Viewer3DModal } from '../../viewer-3d/Viewer3DLazy';
+
+// HTML tasarım (exocad) native önizleme — sadece native'de WebView yükle (web iframe kullanır).
+const HtmlWebView: any = Platform.OS !== 'web' ? require('react-native-webview').WebView : null;
+
+/**
+ * İstemci tarafı yükleme sınırı. work-order-photos bucket'ı 200 MB'a izin veriyor;
+ * bu sınır o tavanın altında bilinçli olarak duruyor — 200 MB'lık bir STL mobil
+ * veride dakikalarca sürer ve kullanıcıya hiçbir geri bildirim vermeden başarısız
+ * olabilir. chatApi.ts ile aynı değer (100 MB).
+ */
+const MAX_UPLOAD_MB = 100;
+const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
 
 function is3DFile(filename: string): 'stl' | 'ply' | 'obj' | null {
   const ext = filename.toLowerCase().split('.').pop();
@@ -40,6 +52,8 @@ interface StageFile {
   created_at:   string;
   filename:     string;
   signed_url?:  string;
+  /** Revizyonda asıl (ebeveyn) işten devralınan dosya — salt okunur, silinemez. */
+  __inherited?: boolean;
 }
 
 /** Web XHR upload — gerçek progress event'leriyle Supabase Storage'a doğrudan yazar. */
@@ -110,6 +124,26 @@ function inferIcon(filename: string) {
   return FileUp;
 }
 
+/**
+ * Dosyaları TÜRÜNE göre gruplar.
+ *
+ * Yükleme sırasında caption "Gülüş Fotoğrafı · DSC05981.JPG" biçiminde yazılıyor;
+ * kategori zaten " · " öncesinde duruyor. Caption yoksa uzantıdan aile çıkarılır.
+ *
+ * NEDEN: 29 dosyanın 25'i "Gülüş Fotoğrafı · DSC0598…" diye birbirinin aynı
+ * görünüyordu; teknisyen aradığı STL'i bulmak için düz listede kaydırmak
+ * zorundaydı. Kategori + sayı, aramayı tek bakışa indirir.
+ */
+function fileCategory(f: { filename: string; storage_path: string }): string {
+  const cap = (f.filename ?? '').split('·')[0].trim();
+  if (cap && cap !== f.filename.trim()) return cap;
+  const ext = (f.storage_path || f.filename).split('.').pop()?.toLowerCase() ?? '';
+  if (['stl', 'obj', 'ply', 'dcm', '3mf'].includes(ext))          return '3D Model';
+  if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic'].includes(ext)) return 'Fotoğraf';
+  if (['pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt'].includes(ext))  return 'Belge';
+  return 'Diğer';
+}
+
 export function StageFileUpload({
   stageId, workOrderId, accentColor, onUploaded, stationName,
   hideFileList = false, triggerStyle = 'card', fillHeight = false,
@@ -163,6 +197,23 @@ export function StageFileUpload({
 
   const [files, setFiles] = useState<StageFile[]>([]);
   const [loading, setLoading] = useState(true);
+  /** Açık kategori grupları. Az dosyada hepsi açık, kalabalıkta hepsi kapalı. */
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+
+  const fileGroups = useMemo(() => {
+    const map = new Map<string, StageFile[]>();
+    for (const f of files) {
+      const k = fileCategory(f);
+      const arr = map.get(k); if (arr) arr.push(f); else map.set(k, [f]);
+    }
+    // Çok dosyalı kategori üstte — aradığın büyük ihtimalle orada.
+    return Array.from(map.entries())
+      .map(([key, items]) => ({ key, items }))
+      .sort((a, b) => b.items.length - a.items.length || a.key.localeCompare(b.key, 'tr'));
+  }, [files]);
+
+  /** 8'den az dosyada gruplamanın anlamı yok — hepsi açık gelsin. */
+  const defaultOpen = files.length <= 8;
   const [uploading, setUploading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   // Yükleme tamamlandıktan sonra gelen "spurious" close event'lerini bloke etmek için
@@ -202,8 +253,8 @@ export function StageFileUpload({
   const [viewer3DFiles, setViewer3DFiles] = useState<Array<{ id: string; name: string; url: string; format: 'stl'|'ply'|'obj' }> | null>(null);
   // Uygulama-içi görsel önizleme (yeni tab yerine popup)
   const [imageViewer, setImageViewer] = useState<{ url: string; name: string } | null>(null);
-  // Uygulama-içi HTML tasarım önizleme (exocad web viewer — iframe)
-  const [htmlViewer, setHtmlViewer] = useState<{ url: string; name: string } | null>(null);
+  // Uygulama-içi HTML tasarım önizleme (exocad web viewer — web: iframe · native: WebView)
+  const [htmlViewer, setHtmlViewer] = useState<{ url?: string; html?: string; name: string } | null>(null);
 
   // Siparişe ait TÜM dosyaları yükle — yeni sipariş, detay, workstation
   // hepsinde aynı liste görünür.
@@ -232,6 +283,37 @@ export function StageFileUpload({
         filename:     display,
       };
     });
+    // Revizyon ise: asıl (ebeveyn) işin dosyalarını da devral — salt okunur.
+    // Böylece "Dosyalar" modülü/workstation revizyonda boş görünmez; teknisyen
+    // asıl taramaları görür. Kopyalanmaz; ebeveynin storage_path'i imzalanır.
+    try {
+      const { data: woRow } = await supabase
+        .from('work_orders').select('revision_of_id, continues_order_id').eq('id', workOrderId).maybeSingle();
+      // Revizyon → revision_of_id, devam siparişi → continues_order_id ile ASIL işin
+      // taramalarını devralır (salt okunur).
+      const parentId = ((woRow as any)?.revision_of_id ?? (woRow as any)?.continues_order_id) as string | undefined;
+      if (parentId) {
+        const { data: pdata } = await supabase
+          .from('work_order_photos')
+          .select('id, storage_path, caption, uploaded_by, created_at')
+          .eq('work_order_id', parentId)
+          .order('created_at', { ascending: false })
+          .limit(100);
+        const ownPaths = new Set(list.map(f => f.storage_path));
+        for (const r of (pdata ?? []) as any[]) {
+          if (ownPaths.has(r.storage_path)) continue;   // aynı path tekrarını atla
+          const parts = (r.storage_path as string).split('/');
+          const fname = parts[parts.length - 1] ?? r.storage_path;
+          const display = r.caption?.trim() || decodeURIComponent(fname.split('-').slice(1).join('-') || fname);
+          list.push({
+            id: r.id, storage_path: r.storage_path, caption: r.caption,
+            uploaded_by: r.uploaded_by, created_at: r.created_at,
+            filename: display, __inherited: true,
+          });
+        }
+      }
+    } catch { /* devralma opsiyonel — hata olsa da kendi dosyaları gösterilir */ }
+
     setFiles(list);
     setLoading(false);
   };
@@ -249,7 +331,7 @@ export function StageFileUpload({
       name:      f.caption?.trim() || f.filename,
       uri:       '',
       kind:      detectKind(f.storage_path) || detectKind(f.filename),
-      canRemove: canRemoveFile(f.uploaded_by),
+      canRemove: f.__inherited ? false : canRemoveFile(f.uploaded_by),
       filename:  f.storage_path,  // 3D format tespiti için gerçek uzantılı path
       created_at: f.created_at,
     }) as UploadAttachment);
@@ -268,7 +350,7 @@ export function StageFileUpload({
         name:      f.caption?.trim() || f.filename,
         uri:       urlByPath[f.storage_path] ?? '',
         kind:      detectKind(f.storage_path) || detectKind(f.filename),
-        canRemove: canRemoveFile(f.uploaded_by),
+        canRemove: f.__inherited ? false : canRemoveFile(f.uploaded_by),
         filename:  f.storage_path,
         created_at: f.created_at,
       })));
@@ -305,19 +387,22 @@ export function StageFileUpload({
     // dosyayı YAZI olarak gösteriyor. İçeriği çekip text/html blob URL'i ile
     // gömüyoruz → tarayıcı HTML olarak render eder (exocad self-contained).
     if (ext === 'html' || ext === 'htm') {
-      if (Platform.OS === 'web') {
-        try {
-          const res = await fetch(data.signedUrl);
-          const text = await res.text();
+      try {
+        const res = await fetch(data.signedUrl);
+        const text = await res.text();
+        if (Platform.OS === 'web') {
           const blobUrl = URL.createObjectURL(new Blob([text], { type: 'text/html' }));
           setHtmlViewer({ url: blobUrl, name: file.filename });
-        } catch (e) {
-          console.error('[html viewer] içerik alınamadı:', e);
-          window.open(data.signedUrl, '_blank');
+        } else {
+          // Native: dosya dışarı çıkmadan uygulama-içi WebView'de exocad viewer açılır.
+          setHtmlViewer({ html: text, name: file.filename });
         }
-        return;
+      } catch (e) {
+        console.error('[html viewer] içerik alınamadı:', e);
+        if (Platform.OS === 'web') window.open(data.signedUrl, '_blank');
+        else Linking.openURL(data.signedUrl);
       }
-      Linking.openURL(data.signedUrl); return;
+      return;
     }
     // Görsel → uygulama-içi popup viewer (gerçek görsel uzantısı; html buraya düşmesin).
     if (['jpg','jpeg','png','gif','webp','bmp','heic','heif','svg','avif'].includes(ext)) {
@@ -355,6 +440,10 @@ export function StageFileUpload({
 
   async function handleDelete(file: StageFile) {
     if (uploading) return;
+    if (file.__inherited) {
+      toast.error('Asıl işin dosyası — revizyondan silinemez');
+      return;
+    }
     if (!canRemoveFile(file.uploaded_by)) {
       toast.error('Bu dosyayı silme yetkiniz yok');
       return;
@@ -376,6 +465,16 @@ export function StageFileUpload({
   /** Belirli bir kategori (label) için dosya yükle. */
   async function uploadOne(label: string, asset: { uri: string; name?: string; mimeType?: string; size?: number; file?: any }) {
     if (!profile) return;
+
+    // İstemci tarafı boyut sınırı. Bucket sınırı 200 MB; oraya kadar sessizce
+    // yüklemeye çalışmak mobil veride dakikalarca sürüp sonunda başarısız
+    // olabiliyor. Sınırı erken ve anlaşılır şekilde bildir.
+    const assetSize = asset.size ?? asset.file?.size;
+    if (typeof assetSize === 'number' && assetSize > MAX_UPLOAD_BYTES) {
+      toast.error(`Dosya ${MAX_UPLOAD_MB} MB sınırını aşıyor (${(assetSize / 1024 / 1024).toFixed(1)} MB).`);
+      return;
+    }
+
     const uploadId = `up-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const safeName = (asset.name ?? `${label}.bin`).replace(/[^a-zA-Z0-9._-]/g, '_');
     // Çok-dosyalı slot: caption = `${label} · orijinalAd` — startsWith(label)
@@ -649,6 +748,38 @@ export function StageFileUpload({
         </View>
       </View>
     </Modal>
+  ) : htmlViewer && Platform.OS !== 'web' && HtmlWebView ? (
+    <Modal visible transparent animationType="fade" onRequestClose={closeHtmlViewer}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', padding: 12 }}>
+        <View style={{ flex: 1, borderRadius: 16, overflow: 'hidden', backgroundColor: '#FFFFFF' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' }}>
+            <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: '#0A0A0A' }} numberOfLines={1}>{htmlViewer.name}</Text>
+            <Pressable onPress={closeHtmlViewer} hitSlop={10} style={{ width: 32, height: 32, borderRadius: 999, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ fontSize: 18, lineHeight: 18, color: '#334155' }}>×</Text>
+            </Pressable>
+          </View>
+          <View style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
+            <HtmlWebView
+              originWhitelist={['*']}
+              source={{ html: htmlViewer.html ?? '' }}
+              style={{ flex: 1, backgroundColor: '#FFFFFF' }}
+              javaScriptEnabled
+              domStorageEnabled
+              allowFileAccess
+              allowUniversalAccessFromFileURLs
+              originAllowsMixedContent
+              scalesPageToFit
+              startInLoadingState
+              renderLoading={() => (
+                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
+                  <ActivityIndicator size="large" color={accent} />
+                </View>
+              )}
+            />
+          </View>
+        </View>
+      </View>
+    </Modal>
   ) : null;
 
   // ── triggerStyle='row' — kompakt drop-zone (sipariş detay için) ──
@@ -781,7 +912,37 @@ export function StageFileUpload({
         </View>
       ) : (
         <View style={fillHeight ? { flex: 1, paddingBottom: 8 } : { paddingBottom: 8 }}>
-          {files.map((f) => {
+          {fileGroups.map((g) => {
+          const isOpen = openGroups[g.key] ?? defaultOpen;
+          const GIcon = inferIcon(g.items[0]?.storage_path ?? g.items[0]?.filename ?? '');
+          return (
+          <View key={g.key}>
+            {/* Kategori başlığı — dokunulunca açılır/kapanır */}
+            <Pressable
+              onPress={() => setOpenGroups(prev => ({ ...prev, [g.key]: !isOpen }))}
+              style={({ pressed }: any) => ({
+                flexDirection: 'row', alignItems: 'center', gap: 8,
+                paddingHorizontal: 12, paddingVertical: 8,
+                backgroundColor: pressed ? P.ink50 : 'transparent',
+                ...(Platform.OS === 'web' ? { cursor: 'pointer' } as any : {}),
+              })}
+            >
+              <GIcon size={12} color={P.ink400} strokeWidth={1.8} />
+              <Text style={{ flex: 1, fontSize: 11.5, fontWeight: '700', color: P.ink700 }} numberOfLines={1}>
+                {g.key}
+              </Text>
+              <Text style={{ fontSize: 10.5, fontWeight: '600', color: P.ink400 }}>{g.items.length}</Text>
+              <ChevronDown
+                size={13}
+                color={P.ink400}
+                strokeWidth={2}
+                style={Platform.OS === 'web'
+                  ? ({ transform: [{ rotate: isOpen ? '180deg' : '0deg' }] } as any)
+                  : undefined}
+              />
+            </Pressable>
+
+            {isOpen && g.items.map((f) => {
             const Icon = inferIcon(f.filename);
             return (
               <View
@@ -806,6 +967,15 @@ export function StageFileUpload({
                   <Text style={{ fontSize: 10, color: P.ink400 }} numberOfLines={1}>
                     {new Date(f.created_at).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                   </Text>
+                  {f.__inherited && (
+                    <Text style={{
+                      fontSize: 8.5, fontWeight: '700', color: accent, letterSpacing: 0.3,
+                      textTransform: 'uppercase', backgroundColor: hexA(accent, 0.10),
+                      paddingHorizontal: 5, paddingVertical: 1, borderRadius: 5, overflow: 'hidden',
+                    }}>
+                      Asıl iş
+                    </Text>
+                  )}
                 </View>
                 <Pressable
                   onPress={() => handleOpen(f)}
@@ -835,7 +1005,7 @@ export function StageFileUpload({
                 >
                   <Download size={11} color={P.ink500} strokeWidth={1.8} />
                 </Pressable>
-                {canRemoveFile(f.uploaded_by) && (
+                {!f.__inherited && canRemoveFile(f.uploaded_by) && (
                   <Pressable
                     onPress={() => handleDelete(f)}
                     hitSlop={6}
@@ -851,6 +1021,9 @@ export function StageFileUpload({
                 )}
               </View>
             );
+            })}
+          </View>
+          );
           })}
         </View>
       )}

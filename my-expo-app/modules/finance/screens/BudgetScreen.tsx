@@ -86,7 +86,7 @@ interface BudgetActual {
 }
 
 function fmtMoney(n: number): string {
-  return baseSymbol() + n.toLocaleString('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  return baseSymbol() + (Number(n) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
 function periodLabel(period: BudgetPeriod, start: string): string {

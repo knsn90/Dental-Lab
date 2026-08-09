@@ -8,7 +8,8 @@ export type SupportCategory =
   | 'faturalama'
   | 'entegrasyon'
   | 'ozellik_egitim'
-  | 'yazilim_hatasi';
+  | 'yazilim_hatasi'
+  | 'kvkk_talebi';
 
 export type SupportPriority = 'dusuk' | 'normal' | 'yuksek' | 'kritik' | 'acil_mudahale';
 
@@ -133,6 +134,7 @@ export const CATEGORY_LABELS: Record<SupportCategory, string> = {
   entegrasyon:     'Entegrasyon',
   ozellik_egitim:  'Özellik / Eğitim',
   yazilim_hatasi:  'Yazılım Hatası',
+  kvkk_talebi:     'KVKK / Veri Talebi',
 };
 
 export const PRIORITY_LABELS: Record<SupportPriority, string> = {

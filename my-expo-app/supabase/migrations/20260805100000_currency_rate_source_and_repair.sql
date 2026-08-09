@@ -1,0 +1,31 @@
+-- ============================================================================
+-- Kur seçimi: yer tutucu, gerçek kurun yerine geçmesin
+--
+-- SORUN: currency_rates'te 07.05.2026 tarihli, source='system', notu
+-- "Foundation seed — gerçek kur girilene kadar" olan EUR/TRY = 38 satırı
+-- vardı. TCMB verisi ancak 19.06.2026'da başlıyor. Bu yüzden Mayıs ayındaki
+-- her çevrim 38'i kullandı; oysa faturalar ~53 kuruyla kesilmişti.
+--
+-- Sonuç: TL ile ödenip kapatılmış hesaplar açık göründü (LEPUS'ta 3 ödeme),
+-- tedarikçi bakiyeleri saptı. Kullanıcının tarifi birebir buydu: "ödemeler TL
+-- yapılmış ve hesaplar kapanmış ama sonradan ödemelere yanlış kur eklenmiş."
+--
+-- ÇÖZÜM
+--   1) get_currency_rate: aynı/önceki tarihte gerçek kur (tcmb/manual) varsa
+--      onu kullan; yer tutucu yalnız başka hiçbir şey yokken devreye girsin.
+--   2) get_currency_rate_info: kurun kaynağını da döndür — ekran "TCMB ·
+--      03.07.2026" yazabilsin, yer tutucu kullanılıyorsa kullanıcıyı uyarsın.
+--   3) Bozulan ödemelerin onarımı: faturasına bağlı ödemeler, o faturanın
+--      kendi kuruyla yeniden hesaplandı (ödeme faturayı tam kapatır).
+--
+-- Fonksiyon gövdeleri için canlı tanıma bakın:
+--   SELECT pg_get_functiondef('public.get_currency_rate'::regproc);
+--   SELECT pg_get_functiondef('public.get_currency_rate_info'::regproc);
+--
+-- Onarım sorgusu (bir kez çalıştırıldı, idempotent değil — tekrar çalıştırmayın):
+--   UPDATE supplier_transactions st
+--      SET amount_account = round(p.amount / pi.rate_at_time, 6),
+--          account_rate_at_time = pi.rate_at_time
+--     FROM (...) p JOIN purchase_invoices pi ON pi.invoice_number = p.fatura_no
+--    WHERE st.id = p.id AND st.account_rate_at_time = 38;
+-- ============================================================================

@@ -43,6 +43,30 @@ Deno.serve(async (req: Request) => {
     const { data: userData, error: userErr } = await sb.auth.getUser(token);
     if (userErr || !userData?.user) return json({ ok: false, error: 'unauthorized' }, 401);
 
+    // ─── 1b. Günlük kota (kullanıcı başına) ─────────────────────────────────
+    // Asistan tüm panellerde açık; döngüye giren bir sohbet sınırsız Claude
+    // çağrısı üretebiliyordu. Sayaç service role ile artar (RLS baypas), limit
+    // aşılırsa Claude'a HİÇ gidilmez. Servis anahtarı yoksa limit uygulanmaz
+    // (fonksiyon çalışmaya devam eder — geriye dönük güvenli).
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const dailyLimit = Number(Deno.env.get('DENTY_DAILY_LIMIT') ?? '120');
+    if (serviceKey && dailyLimit > 0) {
+      try {
+        const admin = createClient(supabaseUrl, serviceKey);
+        const { data: quota } = await admin.rpc('denty_consume_quota', {
+          p_user: userData.user.id,
+          p_limit: dailyLimit,
+        });
+        const row = Array.isArray(quota) ? quota[0] : quota;
+        if (row && row.allowed === false) {
+          return json({
+            ok: false,
+            error: `Günlük Simanty limitine ulaştın (${row.quota} istek). Yarın sıfırlanır.`,
+          }, 200);
+        }
+      } catch (_) { /* sayaç tablosu yoksa/erişilemezse limit uygulanmaz */ }
+    }
+
     // ─── 2. İstek gövdesi ────────────────────────────────────────────────────
     const body = await req.json();
     const system: string = body.system ?? '';

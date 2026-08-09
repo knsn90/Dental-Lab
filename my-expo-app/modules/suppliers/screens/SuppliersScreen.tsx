@@ -12,6 +12,7 @@ import { localeTag } from '../../../core/i18n';
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, Platform, ScrollView, TextInput, Modal, useWindowDimensions } from 'react-native';
+import { confirmAsync } from '../../../core/util/confirm';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Plus, Search, Building2, AlertCircle, ArrowDownCircle, ArrowUpCircle,
@@ -95,7 +96,7 @@ export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
     return suppliers.filter(s => {
       if (s.is_active) return true;
       const b = balanceMap[s.id];
-      return !!b && (Math.abs(Number(b.balance_base) || 0) > 0.01 || Math.abs(Number(b.balance_original) || 0) > 0.01);
+      return !!b && Math.abs(Number(b.balance_account) || 0) > 0.01;
     });
   }, [suppliers, balanceMap]);
 
@@ -118,18 +119,24 @@ export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
   }, [suppliers, baseCurrency]);
   // Hero toplamları LİSTEYLE AYNI kümeden hesaplanır (visibleSuppliers).
   const visibleIds = useMemo(() => new Set(visibleSuppliers.map(s => s.id)), [visibleSuppliers]);
-  // Her tedarikçi: yabancıysa balance_original (kendi parası), değilse balance_base (=TRY)
+  /**
+   * Her tedarikçi KENDİ hesap para biriminde okunur (balance_account).
+   *
+   * balance_base kullanılamaz: labın baz para birimi TRY'den EUR'ya geçti ve
+   * geçmiş yeniden yazılmadı. Eski satırların amount_base'i TRY, yenilerinki
+   * EUR — ikisini toplamak "739.917 TRY − 14.374 EUR = 725.543" gibi anlamsız
+   * bir sayı üretiyordu ve ekranda € olarak gösteriliyordu.
+   */
   const supBal = balances
     .filter(b => visibleIds.has(b.supplier_id))
-    .map(b => {
-      const cur = curById.get(b.supplier_id) || baseCurrency;
-      const isForeign = cur !== baseCurrency;
-      return { amount: Number(isForeign ? b.balance_original : b.balance_base) || 0, currency: cur as Currency };
-    });
+    .map(b => ({
+      amount: Number(b.balance_account) || 0,
+      currency: (curById.get(b.supplier_id) || baseCurrency) as Currency,
+    }));
   const debtSlices   = groupByCurrency(supBal.filter(x => x.amount > 0), x => ({ amount: x.amount,  currency: x.currency }));
   const creditSlices = groupByCurrency(supBal.filter(x => x.amount < 0), x => ({ amount: -x.amount, currency: x.currency }));
   const totalCount  = suppliers.filter(s => s.is_active).length;
-  const overdueCnt  = balances.filter(b => visibleIds.has(b.supplier_id) && b.balance_base > 0).length;
+  const overdueCnt  = balances.filter(b => visibleIds.has(b.supplier_id) && Number(b.balance_account) > 0).length;
 
   if (activeId) {
     return (
@@ -292,10 +299,13 @@ export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
             </View>
             {filtered.map((s, idx) => {
               const bal = balanceMap[s.id];
-              const tone = bal ? balanceColor(bal.balance_base) : 'zero';
+              const tone = bal ? balanceColor(Number(bal.balance_account)) : 'zero';
               // Katı per-currency: tedarikçi kendi para biriminde (yabancıysa balance_original)
-              const balCur = (bal && s.default_currency && s.default_currency !== baseCurrency) ? s.default_currency : baseCurrency;
-              const balanceText = bal ? formatMoney(Math.abs(balCur !== baseCurrency ? bal.balance_original : bal.balance_base), balCur as Currency, { fractionDigits: 0 }) : '—';
+              // Tedarikçinin kendi para birimi — baz dönüşümü yapılmaz
+              const balCur = (s.default_currency || baseCurrency) as Currency;
+              const balanceText = bal
+                ? formatMoney(Math.abs(Number(bal.balance_account) || 0), balCur, { fractionDigits: 0 })
+                : '—';
               const origText: string | null = null;
               const lastDate = bal?.last_transaction_date
                 ? new Date(bal.last_transaction_date).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short', year: 'numeric' })
@@ -371,11 +381,11 @@ export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
                     <Pressable
                       onPress={async (e: any) => {
                         e?.stopPropagation?.();
-                        const hasBalance = !!(bal && (bal.purchase_count > 0 || Math.abs(bal.balance_base ?? 0) > 0.01));
+                        const hasBalance = !!(bal && (bal.purchase_count > 0 || Math.abs(Number(bal.balance_account) || 0) > 0.01));
                         const confirmMsg = hasBalance
                           ? `${s.name} firmasının geçmiş işlemi var. Pasife alınsın mı? (Veriler korunur; bakiye kapanana kadar listede "Pasif" olarak görünür.)`
                           : `${s.name} firmasını kalıcı silmek istediğinden emin misin?`;
-                        if (typeof window !== 'undefined' && !window.confirm(confirmMsg)) return;
+                        if (!(await confirmAsync(hasBalance ? 'Firmayı Pasife Al' : 'Firmayı Sil', confirmMsg, { confirmText: hasBalance ? 'Pasife Al' : 'Sil', destructive: !hasBalance }))) return;
                         const res = hasBalance ? await deactivateSupplier(s.id) : await deleteSupplier(s.id);
                         if (res.error) {
                           const msg = String((res.error as any).message ?? '');
@@ -401,10 +411,12 @@ export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
           <View style={{ gap: 10 }}>
             {filtered.map((s) => {
               const bal = balanceMap[s.id];
-              const tone = bal ? balanceColor(bal.balance_base) : 'zero';
-              // Katı per-currency: tedarikçi kendi para biriminde (yabancıysa balance_original)
-              const balCur = (bal && s.default_currency && s.default_currency !== baseCurrency) ? s.default_currency : baseCurrency;
-              const balanceText = bal ? formatMoney(Math.abs(balCur !== baseCurrency ? bal.balance_original : bal.balance_base), balCur as Currency, { fractionDigits: 0 }) : '—';
+              const tone = bal ? balanceColor(Number(bal.balance_account)) : 'zero';
+              // Katı per-currency: tedarikçi kendi hesap para biriminde
+              const balCur = (s.default_currency || baseCurrency) as Currency;
+              const balanceText = bal
+                ? formatMoney(Math.abs(Number(bal.balance_account) || 0), balCur, { fractionDigits: 0 })
+                : '—';
               const origText: string | null = null;
               const lastDate = bal?.last_transaction_date
                 ? new Date(bal.last_transaction_date).toLocaleDateString(localeTag(), { day: '2-digit', month: 'short', year: 'numeric' })
@@ -484,11 +496,11 @@ export function SuppliersScreen({ accentColor = '#0A0A0A' }: Props) {
                     <Pressable
                       onPress={async (e: any) => {
                         e?.stopPropagation?.();
-                        const hasBalance = !!(bal && (bal.purchase_count > 0 || Math.abs(bal.balance_base ?? 0) > 0.01));
+                        const hasBalance = !!(bal && (bal.purchase_count > 0 || Math.abs(Number(bal.balance_account) || 0) > 0.01));
                         const confirmMsg = hasBalance
                           ? `${s.name} firmasının geçmiş işlemi var. Pasife alınsın mı?`
                           : `${s.name} firmasını silmek istediğinden emin misin?`;
-                        if (typeof window !== 'undefined' && !window.confirm(confirmMsg)) return;
+                        if (!(await confirmAsync(hasBalance ? 'Firmayı Pasife Al' : 'Firmayı Sil', confirmMsg, { confirmText: hasBalance ? 'Pasife Al' : 'Sil', destructive: !hasBalance }))) return;
                         const res = hasBalance ? await deactivateSupplier(s.id) : await deleteSupplier(s.id);
                         if (res.error) {
                           const msg = String((res.error as any).message ?? '');

@@ -15,8 +15,8 @@
  *   - reset(): yeniden tahmin üret
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { fetchStageMaterialContext, confirmStageMaterials, type StageMaterialContext } from '../api';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { fetchStageMaterialContext, confirmStageMaterials, newIdempotencyKey, type StageMaterialContext } from '../api';
 import {
   estimateStageMaterials,
   createManualLine,
@@ -42,6 +42,7 @@ interface UseStageMaterialEstimateResult {
   invalidCount: number;
   setLine: (index: number, patch: Partial<EstimatedMaterialLine>) => void;
   addLine: () => void;
+  addLines: (incoming: EstimatedMaterialLine[]) => void;
   removeLine: (index: number) => void;
   reset: () => Promise<void>;
   confirm: (opts?: { advanceStage?: boolean }) => Promise<{ ok: boolean; error?: string }>;
@@ -52,9 +53,15 @@ export function useStageMaterialEstimate(stageId: string | null): UseStageMateri
   const [lines, setLines] = useState<EstimatedMaterialLine[]>([]);
   const [context, setContext] = useState<StageMaterialContext | null>(null);
 
+  // Onay oturumu anahtarı — her yeniden yükleme (yeni kullanım olayı) yeni
+  // anahtar alır; aynı oturumdaki tekrar denemeler AYNI anahtarı kullanır,
+  // böylece stok iki kez düşmez.
+  const idemKeyRef = useRef<string>(newIdempotencyKey());
+
   const load = useCallback(async () => {
     if (!stageId) { setState({ phase: 'idle' }); return; }
     setState({ phase: 'loading' });
+    idemKeyRef.current = newIdempotencyKey();
 
     const { data, error } = await fetchStageMaterialContext(stageId);
     if (error || !data) {
@@ -94,6 +101,15 @@ export function useStageMaterialEstimate(stageId: string | null): UseStageMateri
     setLines(prev => [...prev, createManualLine()]);
   }, []);
 
+  // AI önerisi vb. için toplu ekleme — aynı stok kalemine bağlı satırları atlar
+  const addLines = useCallback((incoming: EstimatedMaterialLine[]) => {
+    setLines(prev => {
+      const seen = new Set(prev.map(l => l.item_id).filter(Boolean) as string[]);
+      const fresh = incoming.filter(l => !l.item_id || !seen.has(l.item_id));
+      return [...prev, ...fresh];
+    });
+  }, []);
+
   const removeLine = useCallback((index: number) => {
     setLines(prev => prev.filter((_, i) => i !== index));
   }, []);
@@ -127,7 +143,8 @@ export function useStageMaterialEstimate(stageId: string | null): UseStageMateri
       }));
 
     setState({ phase: 'saving' });
-    let res = await confirmStageMaterials(stageId, payload, opts?.advanceStage ?? true);
+    const idemKey = idemKeyRef.current;
+    let res = await confirmStageMaterials(stageId, payload, opts?.advanceStage ?? true, idemKey);
     // Sunucudaki confirm_stage_materials 'done' enum hatası verirse →
     // önce p_advance_stage=false ile materyalleri kaydet, sonra
     // transition_stage_state ile 'tamamlandi'ye geçir.
@@ -136,7 +153,8 @@ export function useStageMaterialEstimate(stageId: string | null): UseStageMateri
     if (isEnumDoneBug) {
       console.warn('[material-confirm] buggy RPC; using two-step fallback');
       // Adım 1: materyalleri kaydet, advance bypass
-      const save = await confirmStageMaterials(stageId, payload, false);
+      // AYNI idempotency anahtarı → ilk çağrı zaten yazdıysa tekrar düşmez
+      const save = await confirmStageMaterials(stageId, payload, false, idemKey);
       const errMsg2 = (save.error ?? '').toLowerCase();
       const saveIsBug = !save.ok && (errMsg2.includes('stage_status') || errMsg2.includes('"done"') || errMsg2.includes("'done'"));
       if (!save.ok && !saveIsBug) {
@@ -181,6 +199,7 @@ export function useStageMaterialEstimate(stageId: string | null): UseStageMateri
     invalidCount,
     setLine,
     addLine,
+    addLines,
     removeLine,
     reset: load,
     confirm,

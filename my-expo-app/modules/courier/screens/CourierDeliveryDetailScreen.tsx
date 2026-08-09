@@ -9,6 +9,7 @@
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
+import { safeBack } from '../../../core/util/safeBack';
 import {
   View, Text, ScrollView, Pressable, Platform, Linking, useWindowDimensions, ActivityIndicator, Modal,
 } from 'react-native';
@@ -25,6 +26,7 @@ import { useGpsTracker } from '../useGpsTracker';
 import { CourierLiveMap } from '../CourierLiveMap';
 import { DS } from '../../../core/theme/dsTokens';
 import { localeTag } from '../../../core/i18n';
+import { formatAddress } from '../../../core/util/formatAddress';
 
 const TH = DS.tech;
 const DISPLAY = {
@@ -133,7 +135,8 @@ export function CourierDeliveryDetailScreen() {
     if (!d?.destination_address) return;
     // Web: doğrudan Google Maps yeni sekme. Mobile: app picker modal.
     if (Platform.OS === 'web') {
-      const q = encodeURIComponent(d.destination_address);
+      // JSON adresi ham göndermek geocode'u bozar → okunabilir metne çevir
+      const q = encodeURIComponent(formatAddress(d.destination_address));
       window.open(`https://www.google.com/maps/dir/?api=1&destination=${q}`, '_blank');
       return;
     }
@@ -168,20 +171,20 @@ export function CourierDeliveryDetailScreen() {
     return (
       <View style={{ flex: 1, backgroundColor: TH.bg, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 32 }}>
         <Text style={{ ...DISPLAY, fontSize: 22, color: DS.ink[900] }}>{t('courier.delivery.notFound')}</Text>
-        <Pressable onPress={() => router.back()} style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999, backgroundColor: DS.ink[900] }}>
+        <Pressable onPress={() => safeBack('/(station)')} style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999, backgroundColor: DS.ink[900] }}>
           <Text style={{ fontSize: 13, fontWeight: '600', color: '#FFF' }}>{t('courier.delivery.back')}</Text>
         </Pressable>
       </View>
     );
   }
 
-  const props = { d, busy, onChangeStatus: changeStatus, onOpenMap: openMap, onCall: callCustomer, onBack: () => router.back() };
+  const props = { d, busy, onChangeStatus: changeStatus, onOpenMap: openMap, onCall: callCustomer, onBack: () => safeBack('/(station)') };
   return (
     <>
       {isDesktop ? <DesktopView {...props} /> : <MobileView {...props} />}
       <MapPickerModal
         visible={mapPickerOpen}
-        address={d.destination_address ?? ''}
+        address={formatAddress(d.destination_address)}
         onClose={() => setMapPickerOpen(false)}
         onSelect={launchMapApp}
       />
@@ -355,7 +358,7 @@ function MobileView({ d, busy, onChangeStatus, onOpenMap, onCall, onBack }: any)
             <Pressable onPress={onOpenMap} style={{ flexDirection: 'row', gap: 10, padding: 12, borderRadius: 12, backgroundColor: DS.ink[50], borderWidth: 1, borderColor: DS.ink[100] }}>
               <MapPin size={16} color={TH.primary} strokeWidth={2} />
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 12, color: DS.ink[800], lineHeight: 17 }}>{d.destination_address}</Text>
+                <Text style={{ fontSize: 12, color: DS.ink[800], lineHeight: 17 }}>{formatAddress(d.destination_address)}</Text>
                 <Text style={{ fontSize: 11, fontWeight: '600', color: TH.primary, marginTop: 6 }}>{t('courier.delivery.openOnMap')}</Text>
               </View>
             </Pressable>
@@ -429,7 +432,7 @@ function DesktopView({ d, busy, onChangeStatus, onOpenMap, onCall, onBack }: any
           {d.destination_address && (
             <Pressable onPress={onOpenMap}>
               <Text style={{ fontSize: 12, color: DS.ink[500], marginTop: 6 }}>
-                {d.destination_address} · <Text style={{ color: TH.primary, fontWeight: '600' }}>Haritada Aç →</Text>
+                {formatAddress(d.destination_address)} · <Text style={{ color: TH.primary, fontWeight: '600' }}>Haritada Aç →</Text>
               </Text>
             </Pressable>
           )}

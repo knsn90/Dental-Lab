@@ -1,4 +1,6 @@
+import { useSegments } from 'expo-router';
 import { localeTag } from '../../../core/i18n';
+import { confirmAsync } from '../../../core/util/confirm';
 /**
  * SupportScreen — Dental Production Support OS
  *
@@ -22,7 +24,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   HelpCircle, X, Plus, Send, ChevronLeft, ChevronRight, ChevronDown,
   AlertCircle, CheckCircle2, Clock, MessageSquare, MessageCirclePlus,
-  Bug, FileWarning, Cog, Truck, Receipt, Plug, GraduationCap, ShieldAlert,
+  Bug, FileWarning, Cog, Truck, Receipt, Plug, GraduationCap, ShieldAlert, ShieldCheck,
   Activity, Box, Layers, Hash, User as UserIcon, Briefcase, FlaskConical,
   ListChecks, Eye, FolderOpen, ExternalLink, Timer, Sparkles, Search,
   Check,
@@ -274,6 +276,7 @@ const CATEGORY_ICONS: Record<SupportCategory, any> = {
   entegrasyon:     Plug,
   ozellik_egitim:  GraduationCap,
   yazilim_hatasi:  ShieldAlert,
+  kvkk_talebi:     ShieldCheck,
 };
 
 const STATUS_FLOW: SupportStatus[] = ['yeni', 'inceleniyor', 'teknik_inceleme', 'klinik_bekleniyor', 'cozuldu', 'kapali'];
@@ -911,6 +914,8 @@ function CenterWorkspace({ ticket, isAdmin, onUpdate, onBack, showBack, px }: {
   showBack?: boolean;
   px: number;
 }) {
+  // Vaka linki AKTİF panelde açılsın (destek ekranı lab+admin'de paylaşılıyor)
+  const panelBase = String((useSegments() as string[])?.[0] ?? '(lab)');
   const [messages, setMessages] = useState<SupportMessage[]>([]);
   const [attachments, setAttachments] = useState<SupportAttachment[]>([]);
   const [pendingAtts, setPendingAtts] = useState<SupportAttachment[]>([]);
@@ -1018,7 +1023,7 @@ function CenterWorkspace({ ticket, isAdmin, onUpdate, onBack, showBack, px }: {
       if (remaining.length > 0) {
         const labels = remaining.map(r => '• ' + r.label).join('\n');
         const msg = `Çözüldü olarak işaretlemeden önce şu kontroller tamamlanmalı:\n\n${labels}\n\nYine de devam edilsin mi?`;
-        const ok = Platform.OS === 'web' ? window.confirm(msg) : true;
+        const ok = await confirmAsync('Çözüldü İşaretle', msg, { confirmText: 'Devam Et' });
         if (!ok) return;
       }
     }
@@ -1077,7 +1082,7 @@ function CenterWorkspace({ ticket, isAdmin, onUpdate, onBack, showBack, px }: {
               label="Vaka ekranı"
               onPress={() => {
                 if (Platform.OS === 'web' && typeof window !== 'undefined') {
-                  window.open(`/(lab)/order/${ticket.context.order_id}`, '_blank');
+                  window.open(`/${panelBase}/order/${ticket.context.order_id}`, '_blank');
                 }
               }}
             />

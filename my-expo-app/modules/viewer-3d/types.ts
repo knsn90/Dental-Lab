@@ -50,6 +50,9 @@ export interface Viewer3DProps {
   referenceImages?: ReferenceImage[];
   /** Modal title (e.g., order number / patient name) */
   title?: string;
+  /** Kaynak dosya indirme — ZIP'ten açıldıysa indirme butonu tek tek mesh (ply)
+   *  yerine KAYNAK dosyayı (zip) indirir. url = imzalı URL, name = kayıt adı. */
+  sourceDownload?: { url: string; name: string };
   /** Called when modal close requested */
   onClose: () => void;
 }

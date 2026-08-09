@@ -1,12 +1,15 @@
 /**
  * Design System tokens — Lab management handoff (handoff bundle)
  *
- *   3 panel teması:
- *     • lab    → Saffron + Krem
- *     • clinic → Sage + Koyu yeşil
- *     • exec   → Mercan + Krem
+ *   6 panel teması:
+ *     • lab    → Safran + açık krem
+ *     • clinic → Zümrüt + koyu yeşil
+ *     • exec   → Kobalt + açık mavi
+ *     • tech   → Parlak mavi (istasyon)
+ *     • plum   → Erik (analitik, ileride)
+ *     • teal   → Petrol (depo, ileride)
  *
- *   Tipografi: Instrument Serif (display) + Inter Tight/Geist (sans)
+ *   Tipografi: Inter Tight (display 300 light + sans) tek aile
  *   Radius: 8-28 büyük yumuşak köşeler
  */
 

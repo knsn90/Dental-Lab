@@ -12,13 +12,12 @@ import { View, Text, Pressable, ActivityIndicator, type StyleProp, type ViewStyl
 import { DS } from '../../../../core/theme/dsTokens';
 import { HubContext } from '../../../../core/ui/HubContext';
 import { baseSymbol } from '../../../../core/money/baseCurrency';
+import { PAGE_PADDING } from '../../../../core/ui/pageMetrics';
 
 /** Tüm bonus sayfalarında kart-kenar mesafesi 16px (Design Language).
  *  Hub içinde de standalone'da da aynı — kartlar daima ekran kenarından 16px uzakta. */
-export const usePagePadding = (): number => {
-  // useContext kullanılmıyor — sabit 16; HubContext sadece api uyumluluğu için import edildi
-  return 16;
-};
+/** @deprecated Doğrudan `PAGE_PADDING` (core/ui/pageMetrics) kullan. */
+export const usePagePadding = (): number => PAGE_PADDING;
 
 export const DISPLAY = {
   fontFamily: 'Inter Tight, Inter, system-ui, sans-serif' as const,

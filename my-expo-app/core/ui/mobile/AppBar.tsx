@@ -6,6 +6,7 @@ import React from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
 import { ChevronLeft } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
+import { safeBack } from '../../util/safeBack';
 import { MOBILE_TOKENS } from '../../theme/mobileDesignTokens';
 
 export function AppBar({
@@ -33,7 +34,7 @@ export function AppBar({
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             {showBack && (
               <Pressable
-                onPress={() => router.canGoBack() && router.back()}
+                onPress={() => safeBack()}
                 style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.05)' }}
               >
                 <ChevronLeft size={20} color={MOBILE_TOKENS.ink} strokeWidth={2} />
